@@ -1,0 +1,9 @@
+export class CombatAudio {
+  constructor(){this.ctx=null;this.volume=.35;this.enabled=true;this.seen=new Set();this.lastShot=-1;}
+  async unlock(){try{this.ctx??=new (window.AudioContext||window.webkitAudioContext)();await this.ctx.resume();}catch{}}
+  tone(freq,duration,gain=.1,type='sine',end=40){if(!this.ctx||!this.enabled)return;const t=this.ctx.currentTime,o=this.ctx.createOscillator(),g=this.ctx.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);o.frequency.exponentialRampToValueAtTime(Math.max(1,end),t+duration);g.gain.setValueAtTime(Math.max(.0001,gain*this.volume),t);g.gain.exponentialRampToValueAtTime(.0001,t+duration);o.connect(g).connect(this.ctx.destination);o.start();o.stop(t+duration);}
+  noise(duration,gain,lowpass=4000){if(!this.ctx||!this.enabled)return;const n=this.ctx.sampleRate*duration,b=this.ctx.createBuffer(1,n,this.ctx.sampleRate),a=b.getChannelData(0);for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);const s=this.ctx.createBufferSource(),g=this.ctx.createGain(),f=this.ctx.createBiquadFilter();s.buffer=b;f.type='lowpass';f.frequency.value=lowpass;g.gain.value=gain*this.volume;s.connect(f).connect(g).connect(this.ctx.destination);s.start();}
+  shot(distance=0){const v=1/(1+distance*.045);this.noise(.13,.55*v,5000/(1+distance*.03));this.tone(145,.12,.19*v,'triangle',40);}
+  events(state,local){for(const e of state.events??[]){if(this.seen.has(e.id))continue;this.seen.add(e.id);if(e.type==='shot'){const d=local?Math.hypot((e.x??0)-local.x,(e.z??0)-local.z):30;this.shot(d);}if(e.type==='explosion'){const d=local?Math.hypot(e.x-local.x,e.z-local.z):30;this.noise(.8,.8/(1+d*.025),900);this.tone(70,.7,.4/(1+d*.025),'sine',20);}if(e.type==='capture')this.tone(650,.2,.12,'sine',950);}if(this.seen.size>1500)this.seen=new Set([...this.seen].slice(-700));}
+  click(){this.tone(550,.04,.1,'triangle',380);}
+}

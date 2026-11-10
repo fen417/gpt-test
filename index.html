@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#10191c" />
+  <meta name="description" content="SECTOR 09 — браузерный пехотный шутер: захват точек, четыре класса, боты и сетевые комнаты." />
+  <title>SECTOR 09 · Infantry Conquest</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23101b20'/%3E%3Cpath d='M12 15h40v8H21v7h31v19H12v-8h31v-5H12z' fill='%23e4b776'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <canvas id="game" aria-label="Трёхмерное поле боя"></canvas>
+  <div class="screen-noise" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <main id="menu" class="menu">
+    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> INFANTRY CONQUEST · ALPHA 0.1</span><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук">ЗВУК ВКЛ.</button></header>
+    <div class="menu-content">
+      <section class="intro">
+        <div class="eyebrow"><span></span> ОПЕРАЦИЯ «ПОСЛЕДНИЙ РУБЕЖ»</div>
+        <h1>КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1>
+        <p class="lead">Промзона. Две стороны. Три точки.<br>Удержи сектор вместе со своим отрядом.</p>
+        <div class="map-caption"><span class="cross-icon">⌖</span><div><strong>ПОРТОВЫЙ РАЙОН / СЕКТОР 09</strong><small>Пехотный бой · Захват территории</small></div></div>
+      </section>
+      <section class="deploy-panel" aria-labelledby="deploy-title">
+        <div class="panel-top"><span>ГОТОВНОСТЬ К ВЫСАДКЕ</span><span class="tag">01 / 03</span></div>
+        <h2 id="deploy-title">Вступить в бой</h2>
+        <label class="field-label" for="callsign">ПОЗЫВНОЙ</label><input id="callsign" maxlength="20" value="Rookie" autocomplete="nickname" spellcheck="false" />
+        <div class="field-label class-label">СПЕЦИАЛИЗАЦИЯ <span id="class-weapon">AR-4 · ШТУРМОВАЯ ВИНТОВКА</span></div>
+        <div id="classes" class="classes">
+          <button class="class-card active" data-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>Боевая стимуляция</small></button>
+          <button class="class-card" data-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>Лечение отряда</small></button>
+          <button class="class-card" data-class="support" aria-pressed="false"><span>▥</span><b>Поддержка</b><small>Пополнение патронов</small></button>
+          <button class="class-card" data-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>Обнаружение противника</small></button>
+        </div>
+        <button id="solo" class="deploy-button"><span>НА ПОЛЕ БОЯ</span><span>↗</span></button>
+        <div class="solo-note">Мгновенный бой с ботами · Без регистрации</div>
+        <div class="network-divider"><span>ИЛИ ИГРА С ДРУЗЬЯМИ</span></div>
+        <div class="network-actions"><button id="host" class="outline-button">Создать комнату <span>+</span></button><button id="join-toggle" class="outline-button">Войти по коду <span>→</span></button></div>
+        <form id="join-form" class="hidden inline-form"><label class="sr-only" for="room-code">Код комнаты</label><input id="room-code" placeholder="КОД КОМНАТЫ" maxlength="6" autocomplete="off" /><button type="submit" class="outline-button">ВОЙТИ →</button></form>
+        <details class="server-details"><summary>Выделенный сервер</summary><form id="server-form" class="inline-form"><label class="sr-only" for="server-url">Адрес сервера</label><input id="server-url" placeholder="wss://your-server.example" /><button class="outline-button">→</button></form></details>
+        <p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p>
+      </section>
+    </div>
+    <footer class="menu-footer"><span><b>W A S D</b> ДВИЖЕНИЕ <b>МЫШЬ</b> ОБЗОР <b>ЛКМ / ПКМ</b> ОГОНЬ / ПРИЦЕЛ</span><span>ИГРА ДЛЯ ПК <span class="footer-dot">◆</span> БЕЗ ТЕХНИКИ</span></footer>
+  </main>
+  <section id="hud" class="hud hidden" aria-label="Информация о бое">
+    <div class="battle-top"><div class="team-score friendly"><small>СИНИЕ</small><strong id="tickets-blue">300</strong><div class="ticket-track"><i id="blue-bar"></i></div></div><div class="match-center"><span>ЗАХВАТ ТЕРРИТОРИИ</span><div id="objective-strip" class="objective-strip"></div><small id="match-time">00:00</small></div><div class="team-score enemy"><small>ОРАНЖЕВЫЕ</small><strong id="tickets-orange">300</strong><div class="ticket-track"><i id="orange-bar"></i></div></div></div>
+    <div id="room-badge" class="room-badge"></div><div id="killfeed" class="killfeed"></div>
+    <div id="world-markers"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
+    <div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
+    <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="360" height="360"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div></div>
+    <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span>G · ГРАНАТА</span><span>R · ПЕРЕЗАРЯДКА</span></div>
+    <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 / 0</span><span id="fps">60 FPS</span></div></div>
+    <div id="scoreboard" class="scoreboard hidden"><h2>СОСТАВ КОМАНД</h2><div id="score-rows"></div><small>Удерживай TAB · Убийства / Потери</small></div>
+  </section>
+  <section id="pause" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">SECTOR 09</div><h2>Бой продолжается</h2><p>Вернись в сектор. Твой отряд ждёт.</p><button id="resume" class="deploy-button">ПРОДОЛЖИТЬ <span>→</span></button><button id="unlocked" class="outline-button">Играть без захвата мыши</button><div class="settings"><label>Чувствительность <input id="sensitivity" type="range" min="0.3" max="2" value="0.8" step="0.05" /></label><label>Графика <select id="quality"><option value="high">Высокая</option><option value="low">Экономичная</option></select></label><label>Громкость <input id="volume" type="range" min="0" max="1" step="0.05" value="0.35" /></label></div><p class="controls-help">WASD — движение · Shift — бег · C — присесть<br>Пробел — прыжок · R — перезарядка · Q — способность<br>G — граната · Tab — счёт · Esc — меню</p><button id="leave" class="outline-button">Покинуть бой</button></div></section>
+  <section id="death" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">СВЯЗЬ ПРЕРВАНА</div><h2>Ты выбыл из боя</h2><p id="death-countdown">Подготовка к высадке…</p><label class="field-label" for="spawn-point">ТОЧКА ВОЗРОЖДЕНИЯ</label><select id="spawn-point"><option value="">База команды</option></select><button id="respawn" class="deploy-button">ВЕРНУТЬСЯ В БОЙ <span>→</span></button><button id="death-leave" class="outline-button">В главное меню</button></div></section>
+  <section id="result" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">ОПЕРАЦИЯ ЗАВЕРШЕНА</div><h2 id="result-title">Сектор удержан</h2><p id="result-stats"></p><button id="play-again" class="deploy-button">НОВАЯ ОПЕРАЦИЯ <span>→</span></button><button id="result-leave" class="outline-button">В главное меню</button></div></section>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
