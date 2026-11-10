@@ -1,5 +1,6 @@
 import Peer from 'peerjs';
 import { Simulation } from '../shared/simulation.js';
+import { MAP, PROTOCOL_VERSION } from '../shared/world.js';
 
 const ROOM_PREFIX = 'gpt-test-';
 const MAX_HUMANS = 16;
@@ -75,6 +76,7 @@ export class Multiplayer {
     this._nextInput = null;
     this._hostControls = sanitizeInput();
     this._hostActions = new Set();
+    this._lastHostInput = 0;
     this._localId = null;
   }
 
@@ -168,15 +170,16 @@ export class Multiplayer {
     });
   }
 
-  async host({ name = 'Боец', classId = 'assault', bots = 12 } = {}) {
+  async host({ name = 'Боец', classId = 'assault', bots = 23, difficulty = 'regular' } = {}) {
     const generation = this._begin('host');
     const code = roomCode();
     this.onStatus('Создаём сетевую комнату…');
     try {
       const peer = await this._openPeer(ROOM_PREFIX + code.toLowerCase(), generation);
       if (!this._active(generation)) throw new Error('Подключение отменено.');
-      const botCount = Math.max(0, Math.min(24, Math.floor(Number(bots) || 0)));
-      this._simulation = new Simulation({ bots: botCount });
+      const botCount = Math.max(0, Math.min(31, Math.floor(Number(bots) || 0)));
+      const botDifficulty = ['recruit','regular','veteran'].includes(difficulty) ? difficulty : 'regular';
+      this._simulation = new Simulation({ bots: botCount, difficulty: botDifficulty });
       this._localId = 'host';
       this._simulation.addPlayer(this._localId, playerName(name), 0, playerClass(classId));
       this.onIdentity(this._localId);
@@ -207,7 +210,7 @@ export class Multiplayer {
             if (!roundResetAt) roundResetAt = now + 12000;
             if (now >= roundResetAt) {
               const humans = this._simulation.snapshot().players.filter(player => !player.bot);
-              this._simulation = new Simulation({ bots: botCount });
+              this._simulation = new Simulation({ bots: botCount, difficulty: botDifficulty });
               for (const player of humans) this._simulation.addPlayer(player.id, player.name, player.team, player.classId);
               roundResetAt = 0;
               this.onStatus(`Комната ${code} · новый раунд`);
@@ -253,10 +256,14 @@ export class Multiplayer {
       if (second !== guest.second) { guest.second = second; guest.count = 0; }
       if (++guest.count > 120) { connection.close(); return; }
       if (message.type === 'join' && !guest.joined) {
+        if (message.protocol !== PROTOCOL_VERSION) {
+          this._safeSend(connection,{type:'error',message:'Версии карты различаются. Всем игрокам нужно обновить страницу и создать новую комнату.'});
+          this._timeout(()=>connection.close(),150);return;
+        }
         guest.joined = true;
         this._clearTimeout(joinTimer);
         this._simulation.addPlayer(guest.id, playerName(message.name), undefined, playerClass(message.classId));
-        this._safeSend(connection, { type: 'welcome', id: guest.id });
+        this._safeSend(connection, { type: 'welcome', id: guest.id, protocol: PROTOCOL_VERSION });
         this._safeSend(connection, { type: 'snapshot', state: this._simulation.snapshot() });
         this.onStatus(`Комната открыта · игроков: ${1 + [...this._connections.values()].filter(g => g.joined).length}`);
       } else if (guest.joined && message.type === 'input') {
@@ -264,7 +271,7 @@ export class Multiplayer {
         guest.lastControls = sanitizeInput(message.input);
         for (const action of PULSE_ACTIONS) if (guest.lastControls[action]) guest.actions.add(action);
       } else if (guest.joined && message.type === 'respawn') {
-        if (this._simulation.respawn(guest.id, playerClass(message.classId), ['A', 'B', 'C'].includes(message.pointId) ? message.pointId : undefined)) {
+        if (this._simulation.respawn(guest.id, playerClass(message.classId), MAP.points.some(p=>p.id===message.pointId) ? message.pointId : undefined)) {
           const state = this._simulation.snapshot();
           const player = state.players.find(p => p.id === guest.id);
           guest.lastControls = sanitizeInput({ yaw: player?.yaw, pitch: player?.pitch });
@@ -316,10 +323,11 @@ export class Multiplayer {
           if (error) reject(error); else resolve();
         };
         this._pending.add(cancel);
-        connection.on('open', () => this._safeSend(connection, { type: 'join', name: playerName(name), classId: playerClass(classId) }));
+        connection.on('open', () => this._safeSend(connection, { type: 'join', name: playerName(name), classId: playerClass(classId), protocol: PROTOCOL_VERSION }));
         connection.on('data', message => {
           if (!this._active(generation) || !message || typeof message !== 'object') return;
           if (message.type === 'welcome' && typeof message.id === 'string') {
+            if(message.protocol!==PROTOCOL_VERSION){finish(new Error('У хозяина старая версия карты. Обновите страницы и создайте новую комнату.'));return;}
             welcomed = true;
             this._localId = message.id;
             this.onIdentity(message.id);
@@ -375,13 +383,14 @@ export class Multiplayer {
           if (error) reject(error); else resolve();
         };
         this._pending.add(cancel);
-        socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'join', name: playerName(name), classId: playerClass(classId) })));
+        socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'join', name: playerName(name), classId: playerClass(classId), protocol: PROTOCOL_VERSION })));
         socket.addEventListener('message', event => {
           if (!this._active(generation) || typeof event.data !== 'string' || event.data.length > 2000000) return;
           let message;
           try { message = JSON.parse(event.data); } catch { return; }
           if (!message || typeof message !== 'object') return;
           if (message.type === 'welcome' && typeof message.id === 'string') {
+            if(message.protocol!==PROTOCOL_VERSION){finish(new Error('Сервер использует старую версию карты. Обновите сервер до версии 0.2.'));return;}
             welcomed = true;
             this._localId = message.id;
             this.onIdentity(message.id);
@@ -436,6 +445,7 @@ export class Multiplayer {
     const input = sanitizeInput(rawInput);
     if (this._mode === 'host' && this._simulation) {
       this._hostControls = input;
+      this._lastHostInput = performance.now();
       for (const action of PULSE_ACTIONS) if (input[action]) this._hostActions.add(action);
       return;
     }
@@ -449,15 +459,22 @@ export class Multiplayer {
 
   _flushHostInput() {
     if (!this._simulation || !this._localId) return;
-    const input = { ...this._hostControls };
-    for (const action of this._hostActions) input[action] = true;
+    const stale = performance.now()-this._lastHostInput>350;
+    const input = stale ? sanitizeInput({yaw:this._hostControls.yaw,pitch:this._hostControls.pitch}) : { ...this._hostControls };
+    if(!stale)for (const action of this._hostActions) input[action] = true;
     this._hostActions.clear();
     this._simulation.setInput(this._localId, input);
   }
 
+  clearInput({yaw=0,pitch=0}={}) {
+    const input=sanitizeInput({yaw,pitch});this._nextInput=null;this._hostControls=input;this._hostActions.clear();this._lastHostInput=performance.now();
+    if(this._mode==='host'&&this._simulation)this._simulation.setInput(this._localId,input);
+    else this._send({type:'input',input});
+  }
+
   respawn(classId = 'assault', pointId) {
     const selectedClass = playerClass(classId);
-    const selectedPoint = ['A', 'B', 'C'].includes(pointId) ? pointId : undefined;
+    const selectedPoint = MAP.points.some(p=>p.id===pointId) ? pointId : undefined;
     if (this._mode === 'host' && this._simulation) {
       const accepted = this._simulation.respawn(this._localId, selectedClass, selectedPoint);
       if (accepted) {

@@ -13,18 +13,21 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu">
-    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> INFANTRY CONQUEST · ALPHA 0.1</span><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук">ЗВУК ВКЛ.</button></header>
+    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> INFANTRY CONQUEST · ALPHA 0.2</span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
     <div class="menu-content">
       <section class="intro">
         <div class="eyebrow"><span></span> ОПЕРАЦИЯ «ПОСЛЕДНИЙ РУБЕЖ»</div>
         <h1>КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1>
-        <p class="lead">Промзона. Две стороны. Три точки.<br>Удержи сектор вместе со своим отрядом.</p>
-        <div class="map-caption"><span class="cross-icon">⌖</span><div><strong>ПОРТОВЫЙ РАЙОН / СЕКТОР 09</strong><small>Пехотный бой · Захват территории</small></div></div>
+        <p class="lead">Порт, склады и заводские кварталы.<br>Пять рубежей. Один шанс удержать сектор.</p>
+        <div class="map-caption"><span class="cross-icon">⌖</span><div><strong>ПОРТОВЫЙ РАЙОН / СЕКТОР 09</strong><small>360 × 360 м · 5 позиций · Только пехота</small></div></div>
+        <div class="operation-stats"><div><strong>05</strong><span>КОНТРОЛЬНЫХ ТОЧЕК</span></div><div><strong>04</strong><span>БОЕВЫХ КЛАССА</span></div><div><strong>32</strong><span>БОЙЦА С БОТАМИ</span></div></div>
+        <div class="now-playing"><span class="track-line"></span><span id="track-label">♫ AFTER THE RAIN · ORIGINAL SCORE</span></div>
       </section>
       <section class="deploy-panel" aria-labelledby="deploy-title">
         <div class="panel-top"><span>ГОТОВНОСТЬ К ВЫСАДКЕ</span><span class="tag">01 / 03</span></div>
         <h2 id="deploy-title">Вступить в бой</h2>
         <label class="field-label" for="callsign">ПОЗЫВНОЙ</label><input id="callsign" maxlength="20" value="Rookie" autocomplete="nickname" spellcheck="false" />
+        <div class="operation-options"><label for="difficulty">СЛОЖНОСТЬ БОТОВ<select id="difficulty"><option value="recruit">Новобранцы</option><option value="regular" selected>Обычные бойцы</option><option value="veteran">Ветераны</option></select></label><label for="population">ПЛОТНОСТЬ БОЯ<select id="population"><option value="15">16 бойцов</option><option value="23" selected>24 бойца</option><option value="31">32 бойца</option></select></label></div>
         <div class="field-label class-label">СПЕЦИАЛИЗАЦИЯ <span id="class-weapon">AR-4 · ШТУРМОВАЯ ВИНТОВКА</span></div>
         <div id="classes" class="classes">
           <button class="class-card active" data-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>Боевая стимуляция</small></button>
@@ -44,16 +47,29 @@
     <footer class="menu-footer"><span><b>W A S D</b> ДВИЖЕНИЕ <b>МЫШЬ</b> ОБЗОР <b>ЛКМ / ПКМ</b> ОГОНЬ / ПРИЦЕЛ</span><span>ИГРА ДЛЯ ПК <span class="footer-dot">◆</span> БЕЗ ТЕХНИКИ</span></footer>
   </main>
   <section id="hud" class="hud hidden" aria-label="Информация о бое">
-    <div class="battle-top"><div class="team-score friendly"><small>СИНИЕ</small><strong id="tickets-blue">300</strong><div class="ticket-track"><i id="blue-bar"></i></div></div><div class="match-center"><span>ЗАХВАТ ТЕРРИТОРИИ</span><div id="objective-strip" class="objective-strip"></div><small id="match-time">00:00</small></div><div class="team-score enemy"><small>ОРАНЖЕВЫЕ</small><strong id="tickets-orange">300</strong><div class="ticket-track"><i id="orange-bar"></i></div></div></div>
-    <div id="room-badge" class="room-badge"></div><div id="killfeed" class="killfeed"></div>
+    <div class="battle-top"><div class="team-score friendly"><small>СВОИ</small><strong id="tickets-blue">300</strong><div class="ticket-track"><i id="blue-bar"></i></div></div><div class="match-center"><span>ЗАХВАТ ТЕРРИТОРИИ</span><div id="objective-strip" class="objective-strip"></div><small id="match-time">00:00</small></div><div class="team-score enemy"><small>ПРОТИВНИК</small><strong id="tickets-orange">300</strong><div class="ticket-track"><i id="orange-bar"></i></div></div></div>
+    <div id="room-badge" class="room-badge"></div><div id="location-label" class="location-label"></div><div id="killfeed" class="killfeed"></div><div class="compass"><span id="compass-direction">N</span><div class="compass-rule">┊ · · ┊ · · ┊ <b id="compass-degrees">000°</b> ┊ · · ┊ · · ┊</div></div>
     <div id="world-markers"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
     <div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
-    <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="360" height="360"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div></div>
+    <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="360" height="360"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
     <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span>G · ГРАНАТА</span><span>R · ПЕРЕЗАРЯДКА</span></div>
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 / 0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden"><h2>СОСТАВ КОМАНД</h2><div id="score-rows"></div><small>Удерживай TAB · Убийства / Потери</small></div>
   </section>
-  <section id="pause" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">SECTOR 09</div><h2>Бой продолжается</h2><p>Вернись в сектор. Твой отряд ждёт.</p><button id="resume" class="deploy-button">ПРОДОЛЖИТЬ <span>→</span></button><button id="unlocked" class="outline-button">Играть без захвата мыши</button><div class="settings"><label>Чувствительность <input id="sensitivity" type="range" min="0.3" max="2" value="0.8" step="0.05" /></label><label>Графика <select id="quality"><option value="high">Высокая</option><option value="low">Экономичная</option></select></label><label>Громкость <input id="volume" type="range" min="0" max="1" step="0.05" value="0.35" /></label></div><p class="controls-help">WASD — движение · Shift — бег · C — присесть<br>Пробел — прыжок · R — перезарядка · Q — способность<br>G — граната · Tab — счёт · Esc — меню</p><button id="leave" class="outline-button">Покинуть бой</button></div></section>
+  <section id="pause" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">SECTOR 09</div><h2 id="pause-title">Бой продолжается</h2><p id="pause-description">Вернись в сектор. Твой отряд ждёт.</p><button id="resume" class="deploy-button">ПРОДОЛЖИТЬ <span>→</span></button><button id="unlocked" class="outline-button">Играть без захвата мыши</button>
+    <div class="settings">
+      <div class="settings-section">ОБЗОР И ИЗОБРАЖЕНИЕ</div>
+      <label>Чувствительность <input id="sensitivity" type="range" min="0.3" max="2" value="0.8" step="0.05" /></label>
+      <label>Угол обзора <input id="fov" type="range" min="70" max="100" value="85" step="1" /></label>
+      <label>Графика <select id="quality"><option value="high">Высокая</option><option value="low">Экономичная</option></select></label>
+      <label>Яркость <input id="brightness" type="range" min="0.8" max="1.3" value="1" step="0.05" /></label>
+      <label>Качание камеры <input id="camera-shake" type="checkbox" checked /></label>
+      <div class="settings-section">ЗВУК И МУЗЫКА</div>
+      <label>Общая громкость <input id="volume" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+      <label>Музыка меню <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.45" /></label>
+      <label>Звуки боя <input id="effects-volume" type="range" min="0" max="1" step="0.05" value="0.7" /></label>
+    </div>
+    <p class="controls-help">WASD — движение · Shift — бег · C — присесть<br>Пробел — прыжок · R — перезарядка · Q — способность<br>G — граната · Tab — счёт · Esc — меню</p><button id="leave" class="outline-button">Покинуть бой</button></div></section>
   <section id="death" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">СВЯЗЬ ПРЕРВАНА</div><h2>Ты выбыл из боя</h2><p id="death-countdown">Подготовка к высадке…</p><label class="field-label" for="spawn-point">ТОЧКА ВОЗРОЖДЕНИЯ</label><select id="spawn-point"><option value="">База команды</option></select><button id="respawn" class="deploy-button">ВЕРНУТЬСЯ В БОЙ <span>→</span></button><button id="death-leave" class="outline-button">В главное меню</button></div></section>
   <section id="result" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">ОПЕРАЦИЯ ЗАВЕРШЕНА</div><h2 id="result-title">Сектор удержан</h2><p id="result-stats"></p><button id="play-again" class="deploy-button">НОВАЯ ОПЕРАЦИЯ <span>→</span></button><button id="result-leave" class="outline-button">В главное меню</button></div></section>
   <div id="toast" class="toast hidden" role="status"></div>

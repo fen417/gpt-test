@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { Multiplayer, normalizeRoomCode, sanitizeInput } from '../src/network.js';
 import { Simulation } from '../shared/simulation.js';
+import { MAP } from '../shared/world.js';
 
 test('room codes accept copied PeerJS IDs and reject invalid destinations', () => {
   assert.equal(normalizeRoomCode(' gpt-test-ab12cd '), 'AB12CD');
@@ -88,6 +89,15 @@ test('host respawn emits authoritative acknowledgement synchronously and clears 
   session.close();
 });
 
+test('backgrounded host controls expire and explicit release cannot replay queued actions',()=>{
+  const session=new Multiplayer();session._mode='host';session._localId='host';session._simulation=new Simulation({bots:0});
+  const player=session._simulation.addPlayer('host','Host',0);session.sendInput({forward:1,fire:true,grenade:true,yaw:.7});
+  session._lastHostInput=performance.now()-500;session._flushHostInput();
+  assert.equal(player.input.forward,0);assert.equal(player.input.fire,false);assert.equal(player.input.grenade,false);assert.equal(player.input.yaw,.7);
+  session.sendInput({forward:1,grenade:true});session.clearInput({yaw:.9});session._flushHostInput();
+  assert.equal(player.input.forward,0);assert.equal(player.input.grenade,false);assert.equal(player.input.yaw,.9);session.close();
+});
+
 test('peer rooms select chunked binary transport for firefight snapshots larger than the JSON channel limit', async () => {
   const simulation = new Simulation({ bots: 14 });
   simulation.addPlayer('host', 'Host', 0);
@@ -104,7 +114,8 @@ test('peer rooms select chunked binary transport for firefight snapshots larger 
   connection.open = true;
   connection.send = message => {
     if (message.type === 'join') {
-      connection.emit('data', { type: 'welcome', id: 'guest' });
+      assert.equal(message.protocol,2);
+      connection.emit('data', { type: 'welcome', id: 'guest', protocol:2 });
       connection.emit('data', { type: 'snapshot', state: largeState });
     }
   };
@@ -143,6 +154,13 @@ test('closing a session invalidates asynchronous callbacks and cleans transports
   assert.equal(session._pending.size, 0);
   assert.equal(session._nextInput, null);
   session.close();
+});
+
+test('respawn requests support every capture point on the expanded map',()=>{
+  const session=new Multiplayer();session._mode='peer';const sent=[];session._send=message=>sent.push(message);
+  for(const point of MAP.points)session.respawn('medic',point.id);
+  assert.deepEqual(sent.map(message=>message.pointId),MAP.points.map(point=>point.id));
+  session.respawn('medic','INVALID');assert.equal(sent.at(-1).pointId,undefined);session.close();
 });
 
 test('dedicated transport rejects HTTP and insecure remote servers on an HTTPS page', async () => {

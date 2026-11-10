@@ -12,6 +12,8 @@ services:
       - key: PORT
         value: '8080'
       - key: BOTS
-        value: '12'
+        value: '23'
+      - key: DIFFICULTY
+        value: 'regular'
       - key: MAX_PLAYERS
         value: '16'

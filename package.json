@@ -1,6 +1,6 @@
 {
   "name": "gpt-test-sector-09",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "SECTOR 09 — infantry conquest in your browser",
@@ -11,7 +11,15 @@
     "start": "node server/index.js",
     "test": "node --test test/*.test.js"
   },
-  "dependencies": {"three": "^0.181.0", "peerjs": "^1.5.5", "ws": "^8.18.3"},
-  "devDependencies": {"vite": "^7.2.2"},
-  "engines": {"node": ">=22"}
+  "dependencies": {
+    "three": "^0.181.0",
+    "peerjs": "^1.5.5",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "vite": "^7.2.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }

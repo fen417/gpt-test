@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
-import { MAP, CLASSES } from '../shared/world.js';
+import { MAP, CLASSES, DIFFICULTIES, PROTOCOL_VERSION } from '../shared/world.js';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
@@ -10,6 +10,8 @@ const make=()=>new Simulation({bots:0,random:()=>.5});
 const advance=(sim,seconds)=>{for(let n=0;n<seconds*20;n++)sim.step(.05);};
 test('spawn points and capture centers are outside solid geometry',()=>{
   const sim=make();for(const point of [...MAP.spawns,...MAP.points])assert.equal(sim.collides(point.x,point.z),false,JSON.stringify(point));
+  assert.equal(MAP.points.length,5);assert(MAP.size>=360);
+  for(const start of MAP.spawns)for(const target of MAP.points){const path=sim.pathfind(start,target),last=path.at(-1);assert(last&&Math.hypot(last.x-target.x,last.z-target.z)<sim.gridCell,'every objective must be reachable from both bases');let previous=start;for(const step of path){assert(sim.lineClear({...previous,y:.8},{...step,y:.8}),'navigation must respect actual wall and cover geometry');previous=step;}}
 });
 test('untrusted input is bounded and non-finite values cannot corrupt simulation',()=>{
   const clean=sanitizeInput({forward:999,strafe:-999,yaw:Infinity,pitch:NaN,fire:'true',jump:true});
@@ -18,29 +20,30 @@ test('untrusted input is bounded and non-finite values cannot corrupt simulation
   sim.setInput('a',null);assert.equal(sim.addPlayer('b','Bad',1,'__proto__').classId,'assault');assert.equal(sim.addPlayer('c','Bad',1,'toString').classId,'assault');
 });
 test('diagonal input does not grant extra movement speed and walls stop movement',()=>{
-  const sim=make();const p=sim.addPlayer('a','Alice',0);p.x=0;p.z=80;
-  sim.setInput('a',{forward:1,strafe:1});advance(sim,1);assert(Math.abs(Math.hypot(p.x,p.z-80)-CLASSES.assault.speed)<.01);
-  p.x=0;p.z=-60;sim.setInput('a',{strafe:1});advance(sim,10);assert(p.x<26,'warehouse at x=26 blocks eastward motion');
+  const sim=make();const p=sim.addPlayer('a','Alice',0);p.x=0;p.z=130;
+  sim.setInput('a',{forward:1,strafe:1});advance(sim,1);assert(Math.abs(Math.hypot(p.x,p.z-130)-CLASSES.assault.speed)<.01);
+  const warehouse=MAP.boxes.find(b=>b.kind==='factory'&&b.z===145);p.x=0;p.z=warehouse.z;sim.setInput('a',{strafe:1});advance(sim,12);assert(p.x<warehouse.x-warehouse.w/2,'warehouse blocks eastward motion');
 });
 test('authoritative shots damage enemies and consume ammunition',()=>{
   const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=30;b.x=0;b.z=20;
+  a.invulnerableUntil=b.invulnerableUntil=0;
   sim.setInput('a',{yaw:0,pitch:0,fire:true,aim:true});sim.step(.05);assert(b.hp<100);assert.equal(a.ammo,29);assert(sim.snapshot().events.some(e=>e.type==='shot'&&e.hit));
   advance(sim,.5);assert.equal(b.alive,false);assert.equal(a.kills,1);assert.equal(b.deaths,1);assert.equal(sim.tickets[1],299);
 });
 test('solid cover blocks bullets; allies cannot receive friendly fire',()=>{
-  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=-53;a.z=-45;b.x=-53;b.z=-82;
+  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);const cover=MAP.boxes.find(box=>box.kind==='factory'&&box.z===-145);a.x=b.x=cover.x;a.z=cover.z+cover.d/2+5;b.z=cover.z-cover.d/2-5;a.invulnerableUntil=b.invulnerableUntil=0;
   sim.setInput('a',{yaw:0,fire:true,aim:true});advance(sim,1);assert.equal(b.hp,100);
   a.x=0;a.z=30;b.x=0;b.z=20;b.team=0;advance(sim,1);assert.equal(b.hp,100);
 });
 test('capture needs presence and majority objectives drain opposing tickets',()=>{
   const sim=make();const p=sim.addPlayer('a','Alice',0);p.x=0;p.z=0;advance(sim,8);
-  assert.equal(sim.points[1].owner,0);assert(sim.tickets[1]<300);assert.equal(sim.tickets[0],300);
+  assert.equal(sim.points.find(p=>p.id==='C').owner,0);assert(sim.tickets[1]<300);assert.equal(sim.tickets[0],300);
 });
 test('contested objectives stop capture',()=>{
-  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=0;b.x=2;b.z=0;advance(sim,5);assert.equal(sim.points[1].contested,true);assert.equal(sim.points[1].progress,0);
+  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=0;b.x=2;b.z=0;advance(sim,5);assert.equal(sim.points.find(p=>p.id==='C').contested,true);assert.equal(sim.points.find(p=>p.id==='C').progress,0);
 });
 test('death enforces respawn delay then restores correct class loadout',()=>{
-  const sim=make();const a=sim.addPlayer('a','Alice',0);assert.equal(sim.respawn('a','recon'),false);sim.damage(a,100);assert.equal(sim.respawn('a','recon'),false);advance(sim,4.1);assert.equal(sim.respawn('a','recon'),true);assert.equal(a.ammo,CLASSES.recon.mag);assert.equal(a.hp,100);
+  const sim=make();const a=sim.addPlayer('a','Alice',0);a.invulnerableUntil=0;assert.equal(sim.respawn('a','recon'),false);sim.damage(a,100);assert.equal(sim.respawn('a','recon'),false);advance(sim,4.1);assert.equal(sim.respawn('a','recon'),true);assert.equal(a.ammo,CLASSES.recon.mag);assert.equal(a.hp,100);
 });
 test('reload transfers finite reserve ammo',()=>{
   const sim=make();const p=sim.addPlayer('a','Alice',0);p.ammo=3;p.reserve=8;sim.setInput('a',{reload:true});advance(sim,2.3);assert.equal(p.ammo,11);assert.equal(p.reserve,0);
@@ -51,25 +54,43 @@ test('medic and support gadgets have bounded supply and cooldown',()=>{
 });
 test('grenades explode once and damage nearby enemies',()=>{
   const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=30;b.x=0;b.z=25;
+  a.invulnerableUntil=b.invulnerableUntil=0;
   sim.grenades.push({id:'test',owner:a.id,team:0,x:0,y:0.2,z:25,vx:0,vz:0,vy:0,fuse:.01});sim.step(.05);assert.equal(sim.grenades.length,0);assert(b.hp<100);assert.equal(sim.events.filter(e=>e.type==='explosion').length,1);
 });
 test('grenades cannot tunnel through thin concrete cover at a long frame step',()=>{
-  const sim=make();sim.grenades.push({id:'probe',owner:'none',team:0,x:-6,y:.5,z:4.75,vx:0,vz:-16,vy:0,fuse:2});sim.step(.1);
-  assert(sim.grenades[0].z>4.6,'grenade must remain on the approach side of the barrier');assert(sim.grenades[0].vz>0,'grenade bounces away from cover');
+  const sim=make();const box=MAP.boxes.find(b=>b.kind==='barrier'&&b.d===1.2);sim.grenades.push({id:'probe',owner:'none',team:0,x:box.x,y:.5,z:box.z+box.d/2+.15,vx:0,vz:-16,vy:0,fuse:2});sim.step(.1);
+  assert(sim.grenades[0].z>box.z+box.d/2,'grenade must remain on the approach side of the barrier');assert(sim.grenades[0].vz>0,'grenade bounces away from cover');
 });
 test('both bot teams receive all four classes',()=>{
   const sim=new Simulation({bots:16});for(const team of [0,1])assert.equal(new Set([...sim.players.values()].filter(p=>p.team===team).map(p=>p.classId)).size,4);
 });
+test('bots wait before firing, turn gradually and shoot in bursts',()=>{
+  const sim=new Simulation({bots:1,difficulty:'regular',random:()=>.5}),bot=sim.players.get('bot-0'),human=sim.addPlayer('human','Human',1);
+  sim.time=3;bot.x=0;bot.z=35;bot.yaw=0;human.x=0;human.z=5;bot.invulnerableUntil=human.invulnerableUntil=0;
+  advance(sim,.4);assert.equal(bot.shotSeq,0,'reaction delay gives players a chance to respond');
+  const firing=[];for(let tick=0;tick<40;tick++){sim.step(.05);firing.push(bot.input.fire);}
+  assert(bot.shotSeq>0);assert(firing.includes(true)&&firing.includes(false),'bursts must include pauses');
+  human.alive=true;human.hp=100;human.x=bot.x;human.z=bot.z+5;bot.botTargetId=null;bot.yaw=0;const before=bot.shotSeq;sim.step(.05);assert(Math.abs(bot.yaw)<=DIFFICULTIES.regular.turnSpeed*.05+.001);assert.equal(bot.shotSeq,before,'bots cannot instantly turn and shoot behind themselves');
+});
+test('regular bots cannot acquire distant enemies beyond their awareness range',()=>{
+  const sim=new Simulation({bots:1,difficulty:'regular',random:()=>.5}),bot=sim.players.get('bot-0'),human=sim.addPlayer('human','Human',1);
+  sim.time=3;bot.x=0;bot.z=50;bot.yaw=0;human.x=0;human.z=-30;human.invulnerableUntil=0;advance(sim,.5);assert.equal(bot.botTargetId,null);assert.equal(bot.shotSeq,0);
+  assert(DIFFICULTIES.recruit.reaction>DIFFICULTIES.regular.reaction);assert(DIFFICULTIES.regular.aimError>DIFFICULTIES.veteran.aimError);
+});
+test('spawn protection blocks damage for two seconds and ends on firing',()=>{
+  const sim=make(),player=sim.addPlayer('human','Human',0);sim.damage(player,100);assert.equal(player.hp,100);assert.equal(sim.snapshot().players[0].protected,true);advance(sim,2.1);sim.damage(player,20);assert.equal(player.hp,80);
+  player.alive=false;player.respawnIn=0;sim.respawn(player.id);sim.setInput(player.id,{fire:true});sim.step(.05);assert.equal(sim.snapshot().players[0].protected,false);
+});
 test('bots navigate and capture during a running round',()=>{
-  const sim=new Simulation({bots:8,random:()=>.5});advance(sim,35);assert(sim.snapshot().players.some(p=>Math.abs(p.z)<60));assert(sim.points.some(p=>p.owner!==-1));
+  const sim=new Simulation({bots:8,random:()=>.5});advance(sim,55);assert(sim.snapshot().players.some(p=>Math.abs(p.z)<100));assert(sim.points.some(p=>p.owner!==-1));
 });
 test('a full bot round remains finite, navigates the map, and reaches a winner',()=>{
   let seed=1;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  const sim=new Simulation({bots:16,random});const visited=new Map([...sim.players.keys()].map(id=>[id,new Set()]));
+  const sim=new Simulation({bots:24,random});const visited=new Map([...sim.players.keys()].map(id=>[id,new Set()]));
   for(let tick=0;tick<36000&&sim.winner===null;tick++){
     sim.step(1/60);
     for(const p of sim.players.values()){
-      assert([p.x,p.y,p.z,p.hp].every(Number.isFinite));assert(Math.abs(p.x)<=100&&Math.abs(p.z)<=100);
+      assert([p.x,p.y,p.z,p.hp].every(Number.isFinite));assert(Math.abs(p.x)<=MAP.size/2&&Math.abs(p.z)<=MAP.size/2);
       visited.get(p.id).add(`${Math.floor(p.x/10)},${Math.floor(p.z/10)}`);
     }
   }
@@ -89,11 +110,13 @@ test('real WebSocket server joins players, simulates inputs, rejects client posi
   const incoming=new Map([[a,[]],[b,[]]]);for(const socket of [a,b])socket.on('message',raw=>incoming.get(socket).push(JSON.parse(raw)));
   await Promise.all([once(a,'open'),once(b,'open')]);
   const packet=async(socket,predicate)=>{const limit=Date.now()+2500;while(Date.now()<limit){const list=incoming.get(socket),index=list.findIndex(predicate);if(index>=0)return list.splice(index,1)[0];await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Timed out waiting for server packet');};
-  a.send('invalid json');a.send(JSON.stringify({type:'join',name:'Alice',classId:'assault'}));b.send(JSON.stringify({type:'join',name:'Bob',classId:'medic'}));
+  a.send('invalid json');a.send(JSON.stringify({type:'join',protocol:PROTOCOL_VERSION,name:'Alice',classId:'assault'}));b.send(JSON.stringify({type:'join',protocol:PROTOCOL_VERSION,name:'Bob',classId:'medic'}));
   const welcomeA=await packet(a,p=>p.type==='welcome'),welcomeB=await packet(b,p=>p.type==='welcome');assert.notEqual(welcomeA.id,welcomeB.id);
+  assert.equal(welcomeA.protocol,PROTOCOL_VERSION);assert.equal(welcomeA.difficulty,'regular');
+  const old=new WebSocket(`ws://localhost:${port}`);t.after(()=>old.terminate());incoming.set(old,[]);old.on('message',raw=>incoming.get(old).push(JSON.parse(raw)));await once(old,'open');old.send(JSON.stringify({type:'join',name:'Old cached client'}));const mismatch=await packet(old,p=>p.type==='error');assert.match(mismatch.message,/Обновите страницу/);
   const before=(await packet(a,p=>p.type==='snapshot'&&p.state.players.length===2)).state.players.find(p=>p.id===welcomeA.id);
   a.send(JSON.stringify({type:'input',input:{forward:1,yaw:0,x:99999,z:99999,hp:99999}}));
   const moved=await packet(a,p=>p.type==='snapshot'&&p.state.players.some(q=>q.id===welcomeA.id&&q.z<before.z-.15));const after=moved.state.players.find(p=>p.id===welcomeA.id);
-  assert(after.x<100);assert(after.z<100);assert.equal(after.hp,100);assert.equal(after.classId,'assault');
+  assert(Math.abs(after.x)<MAP.size/2);assert(Math.abs(after.z)<MAP.size/2);assert.equal(after.hp,100);assert.equal(after.classId,'assault');
   b.close();const left=await packet(a,p=>p.type==='snapshot'&&p.state.players.length===1);assert.equal(left.state.players[0].id,welcomeA.id);
 });

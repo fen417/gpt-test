@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SECTOR 09 · Проверка моделей</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#14232b;color:#dce6e4;font:13px Arial,sans-serif}canvas{display:block;width:100vw;height:100dvh}aside{position:fixed;left:24px;top:24px;width:235px;padding:20px;background:#102029ed;border:1px solid #78949c55;backdrop-filter:blur(8px)}h1{font-size:18px;letter-spacing:2px;margin:0 0 6px;color:#e6b273}p{line-height:1.6;color:#a2b7be;font-size:11px}label{display:block;margin:15px 0 6px;font-size:10px;letter-spacing:1px;color:#a4babf}select,button{font:inherit;color:#e0e9e6;background:#213640;border:1px solid #68848b66;padding:9px;width:100%}button{cursor:pointer;margin-top:7px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px}.buttons button{font-size:10px}input{accent-color:#e6b273}#metrics{position:fixed;bottom:20px;right:25px;color:#b5c7ca;font:11px monospace;text-align:right;white-space:pre-line}footer{position:fixed;bottom:24px;left:25px;color:#8ba3ac;font-size:10px}a{color:#e6b273}</style></head>
+<body><canvas id="review"></canvas><aside><h1>SECTOR 09</h1><p>Проверка настоящих моделей игры.<br>Мышь — вращение, колесо — приближение.</p>
+<label for="model">МОДЕЛЬ</label><select id="model"><option value="soldier">Боец</option><option value="weapon">Оружие и руки</option></select>
+<label for="class">КЛАСС</label><select id="class"><option value="assault">Штурмовик</option><option value="medic">Медик</option><option value="support">Поддержка</option><option value="recon">Разведчик</option></select>
+<label for="team">ФОРМА</label><select id="team"><option value="0">Олива</option><option value="1">Койот</option></select>
+<label for="pose">ПОЗА</label><select id="pose"><option value="idle">Ожидание</option><option value="walk">Ходьба</option><option value="run">Бег</option><option value="crouch">Присесть</option><option value="fire">Стрельба</option></select>
+<div class="buttons"><button id="front">Спереди</button><button id="side">Сбоку</button><button id="back">Сзади</button><button id="detail">Крупный план</button></div><button id="turn">ВРАЩЕНИЕ ВКЛ.</button><p><a href="/">Вернуться к игре →</a></p></aside><div id="metrics"></div><footer>Локальный просмотр · те же геометрия, материалы и суставы, что в бою</footer>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GameRenderer} from '../src/renderer.js';
+const canvas=document.getElementById('review'),owner=new GameRenderer(canvas),webgl=owner.renderer;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x17252b);scene.environment=owner.scene.environment;scene.environmentIntensity=.7;
+const camera=new THREE.PerspectiveCamera(43,1,.025,50),controls=new OrbitControls(camera,canvas);camera.layers.enable(1);controls.enableDamping=true;controls.minDistance=.35;controls.maxDistance=7;controls.target.set(0,1,0);
+const hemi=new THREE.HemisphereLight(0xd8e9f0,0x5b5b42,2.2);scene.add(hemi);
+for(const [x,y,z,color,intensity]of [[-3,5,4,0xffe6c2,4],[4,3,-2,0x9bc8de,3],[-2,2,-4,0xc6d3d2,2]]){const light=new THREE.DirectionalLight(color,intensity);light.position.set(x,y,z);scene.add(light);}
+const ground=new THREE.Mesh(new THREE.CylinderGeometry(2.3,2.3,.05,64),new THREE.MeshStandardMaterial({color:0x303c40,roughness:.9}));ground.position.y=-.08;scene.add(ground);
+const ring=new THREE.Mesh(new THREE.RingGeometry(1.55,1.56,80),new THREE.MeshBasicMaterial({color:0xa88a58}));ring.rotation.x=-Math.PI/2;ring.position.y=-.048;scene.add(ring);
+const cache=new Map();let soldier,weapon,selectedKey='',autoTurn=true,time=0,last=performance.now(),frames=0,fps=0,statsClock=0;
+const $=id=>document.getElementById(id);
+function fit(detail=false,angle='front'){
+  const gun=$('model').value==='weapon';controls.target.set(0,gun?-.06:detail?1.38:.94,gun?-.15:0);
+  const dist=gun?(detail?.75:1.55):(detail?1.2:3.7),az=angle==='side'?Math.PI/2:angle==='back'?Math.PI:.18;
+  camera.position.set(Math.sin(az)*dist,gun?.18:detail?1.52:1.65,Math.cos(az)*dist);controls.update();
+}
+function choose(){
+  const key=$('class').value+'-'+$('team').value;
+  for(const pair of cache.values()){pair.soldier.group.visible=false;pair.weapon.visible=false;}
+  if(!cache.has(key)){
+    const player={id:key,classId:$('class').value,team:Number($('team').value),x:0,y:0,z:0,yaw:0,pitch:0,alive:true,shotSeq:0};
+    const s=owner.makeSoldier(player);scene.add(s.group);
+    owner.render({time:0,players:[{...player,id:'weapon-review',hp:100,ammo:30}],points:[],events:[],grenades:[]},'weapon-review',.016,{yaw:0,pitch:0,quality:'high',fov:85});
+    const w=owner.weapon.clone(true);w.position.set(0,0,0);w.rotation.set(0,0,0);scene.add(w);
+    w.traverse(mesh=>{if(mesh.isMesh&&mesh.material?.transparent&&mesh.material.opacity>.5&&mesh.geometry.type==='ConeGeometry')mesh.visible=false;});
+    cache.set(key,{soldier:s,weapon:w,player});
+  }
+  selectedKey=key;({soldier,weapon}=cache.get(key));owner.soldiers.clear();owner.soldiers.set(key,soldier);
+  const isGun=$('model').value==='weapon';soldier.group.visible=!isGun;weapon.visible=isGun;ground.visible=!isGun;ring.visible=!isGun;fit();
+}
+for(const id of ['model','class','team'])$(id).addEventListener('change',choose);
+$('front').onclick=()=>fit(false,'front');$('side').onclick=()=>fit(false,'side');$('back').onclick=()=>fit(false,'back');$('detail').onclick=()=>fit(true);
+$('turn').onclick=()=>{autoTurn=!autoTurn;$('turn').textContent=autoTurn?'ВРАЩЕНИЕ ВКЛ.':'ВРАЩЕНИЕ ВЫКЛ.';};
+function resize(){const w=window.innerWidth,h=window.innerHeight;webgl.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();choose();
+function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,(now-last)/1000);last=now;time+=dt;frames++;statsClock+=dt;const pair=cache.get(selectedKey),pose=$('pose').value;
+  if($('model').value==='soldier'){
+    const speed=pose==='run'?7:pose==='walk'?3.8:0;pair.player.x=time*speed;pair.player.sprint=pose==='run';pair.player.crouch=pose==='crouch';pair.player.shotSeq=pose==='fire'?Math.floor(time*8):0;
+    owner.clock=time;owner.updateSoldiers({time,players:[{id:'observer',x:pair.player.x,y:0,z:3,team:pair.player.team},pair.player]},'observer',dt);soldier.group.position.set(0,0,0);soldier.group.rotation.y=autoTurn?time*.22:0;weapon.visible=false;
+  }else{soldier.group.visible=false;weapon.visible=true;weapon.rotation.y=autoTurn?Math.sin(time*.25)*.65:0;}
+  controls.update();webgl.render(scene,camera);
+  if(statsClock>1){fps=Math.round(frames/statsClock);frames=0;statsClock=0;const stats=webgl.info.render;$('metrics').textContent=`${fps} FPS\n${stats.calls} draw calls\n${stats.triangles.toLocaleString()} triangles`;document.body.dataset.ready='true';document.body.dataset.triangles=stats.triangles;}
+}requestAnimationFrame(frame);
+</script></body></html>

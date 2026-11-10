@@ -5,16 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation } from '../shared/simulation.js';
+import { PROTOCOL_VERSION } from '../shared/world.js';
 
 const port=process.env.PORT===undefined?8080:Number(process.env.PORT);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist');
 const maxPlayers=Math.min(32,Math.max(2,Number(process.env.MAX_PLAYERS)||16));
-const botCount=Math.min(24,Math.max(0,Number(process.env.BOTS??12)||0));
-let simulation=new Simulation({bots:botCount});
+const botCount=Math.min(31,Math.max(0,Number(process.env.BOTS??23)||0));
+const difficulty=process.env.DIFFICULTY||'regular';
+let simulation=new Simulation({bots:botCount,difficulty});
 let roundResetAt=0;
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp','.woff2':'font/woff2'};
 const server=http.createServer(async(req,res)=>{
-  if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({ok:true,players:clients.size,bots:botCount,time:simulation.time}));return;}
+  if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({ok:true,players:clients.size,bots:botCount,difficulty:simulation.difficulty,time:simulation.time}));return;}
   try{
     const url=new URL(req.url,'http://localhost');
     const requested=decodeURIComponent(url.pathname)==='/'?'index.html':decodeURIComponent(url.pathname).replace(/^\/+/, '');
@@ -31,16 +33,17 @@ const send=(ws,data)=>{if(ws.readyState===WebSocket.OPEN&&ws.bufferedAmount<2621
 wss.on('connection',(ws)=>{
   if(clients.size>=maxPlayers){send(ws,{type:'error',message:'Сервер заполнен'});ws.close(1013,'Server full');return;}
   const client={id:randomUUID(),joined:false,messages:0,window:Date.now(),lastSeen:Date.now(),connectedAt:Date.now(),lastInput:0};clients.set(ws,client);
-  send(ws,{type:'hello',protocol:1,map:'Промзона «Рубеж»'});
+  send(ws,{type:'hello',protocol:PROTOCOL_VERSION,map:'Портовый район «Рубеж»',difficulty:simulation.difficulty});
   ws.on('message',(raw)=>{
     const now=Date.now();client.lastSeen=now;if(now-client.window>1000){client.window=now;client.messages=0;}
     if(++client.messages>100){ws.close(1008,'Rate limit');return;}
     let message;try{message=JSON.parse(raw.toString());}catch{return;}
     if(!message||typeof message!=='object')return;
     if(message.type==='join'&&!client.joined){
+      if(message.protocol!==PROTOCOL_VERSION){send(ws,{type:'error',message:'Версия игры устарела. Обновите страницу и подключитесь снова.'});ws.close(1008,'Protocol version mismatch');return;}
       client.name=typeof message.name==='string'?message.name:'Боец';client.classId=typeof message.classId==='string'?message.classId:'assault';
       const player=simulation.addPlayer(client.id,client.name,undefined,client.classId);client.joined=true;client.team=player.team;
-      send(ws,{type:'welcome',id:client.id,team:player.team});send(ws,{type:'snapshot',state:simulation.snapshot()});
+      send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
     }else if(message.type==='input'&&client.joined){client.lastInput=now;client.lastControls=message.input;simulation.setInput(client.id,message.input);}
     else if(message.type==='respawn'&&client.joined){if(simulation.respawn(client.id,message.classId,message.pointId))client.classId=simulation.players.get(client.id).classId;}
     else if(message.type==='ping'){send(ws,{type:'pong',time:message.time});}
@@ -55,7 +58,7 @@ const loop=setInterval(()=>{
   for(const c of clients.values())if(c.joined&&Date.now()-c.lastInput>350)simulation.setInput(c.id,{...c.lastControls,forward:0,strafe:0,fire:false,sprint:false,jump:false,reload:false,grenade:false,gadget:false});
   simulation.step(dt);broadcastClock+=dt;
   if(broadcastClock>=1/20){broadcastClock%=1/20;const packet={type:'snapshot',state:simulation.snapshot()};for(const [ws,c]of clients)if(c.joined)send(ws,packet);}
-  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount});for(const [ws,c]of clients)if(c.joined){simulation.addPlayer(c.id,c.name,c.team,c.classId);send(ws,{type:'roundReset'});}roundResetAt=0;}}
+  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount,difficulty});for(const [ws,c]of clients)if(c.joined){simulation.addPlayer(c.id,c.name,c.team,c.classId);send(ws,{type:'roundReset'});}roundResetAt=0;}}
   for(const [ws,c]of clients)if(Date.now()-c.lastSeen>120000||(!c.joined&&Date.now()-c.connectedAt>10000))ws.close(1001,'Connection timed out');
 },1000/60);
 server.listen(port,'0.0.0.0',()=>console.log(`RUBEZH server: http://localhost:${server.address().port} — WebSocket ws://localhost:${server.address().port} — ${botCount} bots`));
