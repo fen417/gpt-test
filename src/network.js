@@ -109,7 +109,23 @@ export class Multiplayer {
   _safeSend(connection, message, expendable = false) {
     if (!connection?.open) return false;
     if (expendable && (connection.bufferSize > 2 || connection.dataChannel?.bufferedAmount > 192000)) return false;
-    try { connection.send(message); return true; } catch { return false; }
+    try { connection.send(message); return true; } catch (error) {
+      this._diagnose('send-failed', connection, error);
+      return false;
+    }
+  }
+
+  _diagnose(stage, connection, error) {
+    console.warn('[SECTOR 09 network]', stage, {
+      mode: this._mode,
+      peer: connection?.peer,
+      open: connection?.open,
+      serialization: connection?.serialization,
+      channel: connection?.dataChannel?.readyState,
+      ice: connection?.peerConnection?.iceConnectionState,
+      type: error?.type,
+      message: error?.message,
+    });
   }
 
   _openPeer(id, generation) {
@@ -133,6 +149,7 @@ export class Multiplayer {
       });
       peer.on('error', error => {
         if (!this._active(generation)) return;
+        this._diagnose('peer-error', this._connection, error);
         if (!settled) finish(new Error(peerMessage(error)));
         else if (this._mode === 'host' && ['peer-unavailable', 'webrtc'].includes(error?.type)) {
           // An individual guest failing must not destroy the host's running match.
@@ -225,8 +242,11 @@ export class Multiplayer {
     const guest = { connection, id: `peer-${connection.peer}`, joined: false, count: 0, second: 0, lastInput: 0, lastControls: {}, actions: new Set() };
     this._connections.set(connection.peer, guest);
     const joinTimer = this._timeout(() => {
-      if (!guest.joined) connection.close();
-    }, 10000);
+      if (!guest.joined) {
+        this._diagnose('guest-handshake-timeout', connection);
+        connection.close();
+      }
+    }, CONNECT_TIMEOUT);
     connection.on('data', message => {
       if (!this._active(generation) || !message || typeof message !== 'object') return;
       const second = Math.floor(performance.now() / 1000);
@@ -260,7 +280,11 @@ export class Multiplayer {
       if (this._active(generation) && guest.joined) this._simulation.removePlayer(guest.id);
     };
     connection.on('close', remove);
-    connection.on('error', () => { remove(); connection.close(); });
+    connection.on('error', error => {
+      if (this._active(generation)) this._diagnose('guest-channel-error', connection, error);
+      remove();
+      connection.close();
+    });
   }
 
   async join({ code, name = 'Боец', classId = 'assault' } = {}) {
@@ -272,13 +296,18 @@ export class Multiplayer {
       if (!this._active(generation)) throw new Error('Подключение отменено.');
       // Guests cannot receive arbitrary incoming channels.
       peer.on('connection', connection => connection.close());
-      const connection = peer.connect(ROOM_PREFIX + normalizedCode.toLowerCase(), { serialization: 'json', reliable: true });
+      // PeerJS JSON channels reject packets >= 16.3 KB. Combat snapshots exceed
+      // that during sustained firefights; the binary serializer chunks them.
+      const connection = peer.connect(ROOM_PREFIX + normalizedCode.toLowerCase(), { serialization: 'binary', reliable: true });
       this._connection = connection;
       await new Promise((resolve, reject) => {
         let welcomed = false;
         let settled = false;
         const cancel = reason => finish(new Error(reason || 'Подключение отменено.'));
-        const timer = this._timeout(() => finish(new Error('Не удалось подключиться к хозяину комнаты. Проверьте код; сеть может блокировать WebRTC. Попробуйте другую сеть или выделенный сервер.')), CONNECT_TIMEOUT);
+        const timer = this._timeout(() => {
+          this._diagnose('host-handshake-timeout', connection);
+          finish(new Error('Не удалось подключиться к хозяину комнаты. Проверьте код; сеть может блокировать WebRTC. Попробуйте другую сеть или выделенный сервер.'));
+        }, CONNECT_TIMEOUT);
         const finish = error => {
           if (settled) return;
           settled = true;
@@ -304,10 +333,12 @@ export class Multiplayer {
           }
         });
         connection.on('close', () => {
+          if (this._active(generation)) this._diagnose('host-channel-closed', connection);
           const text = 'Связь с хозяином комнаты потеряна. Хозяин должен держать вкладку игры открытой.';
           if (!settled) finish(new Error(text)); else this._fail(text, generation);
         });
         connection.on('error', error => {
+          if (this._active(generation)) this._diagnose('host-channel-error', connection, error);
           if (!settled) finish(new Error(peerMessage(error))); else this._fail(peerMessage(error), generation);
         });
       });

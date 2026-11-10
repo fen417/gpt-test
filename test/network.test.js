@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { Multiplayer, normalizeRoomCode, sanitizeInput } from '../src/network.js';
 import { Simulation } from '../shared/simulation.js';
 
@@ -85,6 +86,46 @@ test('host respawn emits authoritative acknowledgement synchronously and clears 
   assert.equal(acknowledged.players.find(p => p.id === 'host').classId, 'medic');
   assert.equal(session._hostActions.size, 0);
   session.close();
+});
+
+test('peer rooms select chunked binary transport for firefight snapshots larger than the JSON channel limit', async () => {
+  const simulation = new Simulation({ bots: 14 });
+  simulation.addPlayer('host', 'Host', 0);
+  simulation.addPlayer('guest', 'Guest', 1);
+  for (let n = 0; n < 100; n++) simulation.event('shot', {
+    playerId: 'host', x: 12.123456, y: 1.65, z: 10.123456,
+    tx: 50.123456, ty: 1.65, tz: 30.123456, hit: false,
+  });
+  const largeState = simulation.snapshot();
+  assert.ok(new TextEncoder().encode(JSON.stringify({ type: 'snapshot', state: largeState })).byteLength > 16300);
+  let options;
+  let received;
+  const connection = new EventEmitter();
+  connection.open = true;
+  connection.send = message => {
+    if (message.type === 'join') {
+      connection.emit('data', { type: 'welcome', id: 'guest' });
+      connection.emit('data', { type: 'snapshot', state: largeState });
+    }
+  };
+  connection.close = () => { connection.open = false; connection.emit('close'); };
+  const peer = new EventEmitter();
+  peer.connect = (id, selectedOptions) => {
+    assert.equal(id, 'gpt-test-abc234');
+    options = selectedOptions;
+    queueMicrotask(() => connection.emit('open'));
+    return connection;
+  };
+  peer.destroy = () => {};
+  const session = new Multiplayer({ onState: state => { received = state; } });
+  session._openPeer = async () => { session._peer = peer; return peer; };
+  try {
+    await session.join({ code: 'ABC234', name: 'Guest' });
+    assert.equal(options.serialization, 'binary');
+    assert.equal(options.reliable, true);
+    assert.equal(received.events.length, largeState.events.length);
+    assert.equal(session.mode, 'peer');
+  } finally { session.close(); }
 });
 
 test('closing a session invalidates asynchronous callbacks and cleans transports', () => {
