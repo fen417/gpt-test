@@ -458,7 +458,25 @@ $('reset-binds')?.addEventListener('click',()=>{
 $('sound-toggle').addEventListener('click',()=>{audio.enabled=!audio.enabled;text('sound-toggle',audio.enabled?'ЗВУК ВКЛ.':'ЗВУК ВЫКЛ.');$('sound-toggle').setAttribute('aria-pressed',String(audio.enabled));unlockAudio();musicUI();});
 $('music-toggle').addEventListener('click',()=>{if(audioStarted)musicMuted=!musicMuted;else musicMuted=false;save('music-muted',musicMuted);unlockAudio();setMusic();});
 canvas.addEventListener('click',()=>{if(active&&!locked)requestControl();});
-document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===canvas;if(locked){listeningAction=null;show('pause',false);audio.unlock();}else{clearControls();if(active&&local()?.alive&&!finished)show('pause');}});
+document.addEventListener('pointerlockchange',()=>{
+  locked=document.pointerLockElement===canvas;
+  if(locked){
+    listeningAction=null;
+    show('pause',false);
+    audio.unlock();
+    navigator.keyboard?.lock?.(['KeyW','KeyA','KeyS','KeyD','ControlLeft','ControlRight','ShiftLeft','ShiftRight','Space','Tab'])?.catch?.(()=>{});
+  }else{
+    navigator.keyboard?.unlock?.();
+    clearControls();
+    if(active&&local()?.alive&&!finished)show('pause');
+  }
+});
+window.addEventListener('beforeunload',event=>{
+  if(active&&!finished){
+    event.preventDefault();
+    event.returnValue='';
+  }
+});
 document.addEventListener('pointerlockerror',()=>{if(active){show('pause');toast('Браузер не разрешил захват мыши. Нажми «Продолжить» ещё раз.');}});
 document.addEventListener('mousemove',event=>{
   if(!locked&&!(unlocked&&!unlockedPaused&&active&&aim))return;
@@ -506,7 +524,7 @@ document.addEventListener('keydown',event=>{
   if(event.code==='Escape'&&unlocked){unlockedPaused=!unlockedPaused;show('pause',unlockedPaused);clearControls();return;}
   if(isBound('score',event.code)){event.preventDefault();show('scoreboard');return;}
   if(!locked&&!(unlocked&&!unlockedPaused))return;
-  if(['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',keybinds.jump,keybinds.score].includes(event.code))event.preventDefault();
+  if(event.ctrlKey||['ControlLeft','ControlRight','Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',keybinds.jump,keybinds.score,keybinds.crouch,keybinds.forward,keybinds.back,keybinds.left,keybinds.right].includes(event.code))event.preventDefault();
   keys.add(event.code);
   if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('grenade',event.code))){
     pulses.add(event.code);
@@ -873,12 +891,18 @@ function hud(now){
   if(!player.alive)updateDeployScreen(player,now);
   if(!$('scoreboard').classList.contains('hidden')){
     text('scoreboard-tickets',`${Math.ceil(state.tickets[player.team])} : ${Math.ceil(state.tickets[1-player.team])}`);
-    const sorted=[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||(b.score||0)-(a.score||0)||b.kills-a.kills);
-    const scoreSig=sorted.map(p=>`${p.id}:${p.alive?1:0}:${p.kills}:${p.deaths}:${p.assists||0}:${p.score||0}:${p.classId}`).join('|');
-    const scoreEl=$('score-rows');
+    const allies=[...state.players].filter(p=>p.team===player.team).sort((a,b)=>(b.score||0)-(a.score||0)||b.kills-a.kills);
+    const enemies=[...state.players].filter(p=>p.team!==player.team).sort((a,b)=>(b.score||0)-(a.score||0)||b.kills-a.kills);
+    const allyTotal=allies.reduce((sum,p)=>sum+(p.score||0),0);
+    const enemyTotal=enemies.reduce((sum,p)=>sum+(p.score||0),0);
+    text('score-ally-total',`${allyTotal} ОЧК.`);
+    text('score-enemy-total',`${enemyTotal} ОЧК.`);
+    const scoreSig=allies.map(p=>`${p.id}:${p.alive?1:0}:${p.kills}:${p.deaths}:${p.assists||0}:${p.score||0}:${p.classId}`).join('|')+'||'+enemies.map(p=>`${p.id}:${p.alive?1:0}:${p.kills}:${p.deaths}:${p.assists||0}:${p.score||0}:${p.classId}`).join('|');
+    const scoreEl=$('scoreboard');
     if(scoreEl.dataset.signature!==scoreSig){
       scoreEl.dataset.signature=scoreSig;
-      scoreEl.replaceChildren(...sorted.map(p=>buildScoreRow(p,player.team)));
+      $('score-rows-ally').replaceChildren(...allies.map(p=>buildScoreRow(p,player.team)));
+      $('score-rows-enemy').replaceChildren(...enemies.map(p=>buildScoreRow(p,player.team)));
     }
   }
   minimap(player);

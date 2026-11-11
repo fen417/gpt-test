@@ -279,13 +279,25 @@ export function createWeaponRig(owner = {}) {
 
   // Aperture sights have actual holes and never cover the aiming centre.
   const ironSights=new THREE.Group();weapon.add(ironSights);
-  rounded(ironSights,0,.111,.043,.055,.027,.024,dark);
+  rounded(ironSights,0,.095,.043,.058,.034,.032,dark);
+  profile(ironSights,[[.029,.092],[.032,.152],[.054,.152],[.057,.092]],.026,metal,{bevel:.0015});
+  for(const side of [-1,1]){
+    screw(ironSights,side*.031,.095,.043,.0045);
+    curve(ironSights,[[side*.022,.118,.043],[side*.024,.155,.043],[side*.016,.176,.043]],.004,dark,8,8);
+  }
   ring(ironSights,0,.164,.043,.020,.011,.014,dark,'z',24);
   const frontSight=new THREE.Group();ironSights.add(frontSight);frontSight.position.set(0,0,-.525);
+  rounded(frontSight,0,.078,.002,.054,.024,.032,dark);
   profile(frontSight,[[-.01,.062],[-.01,.139],[.005,.162],[.01,.062]],.012,dark,{bevel:.001});
-  for(const side of [-1,1])curve(frontSight,[[side*.028,.105,.002],[side*.026,.15,.002],[side*.018,.174,.002]],.0045,dark,8,10);
+  for(const side of [-1,1])curve(frontSight,[[side*.028,.082,.002],[side*.026,.15,.002],[side*.018,.174,.002]],.0045,dark,8,10);
+
   const scope=new THREE.Group();weapon.add(scope);scope.visible=false;
-  for(const z of [-.235,-.07]){rounded(scope,0,.112,z,.045,.044,.026,metal);ring(scope,0,.169,z,.041,.034,.019,dark,'z',24);}
+  rounded(scope,0,.092,-.135,.058,.026,.195,metal);
+  for(const z of [-.205,-.07]){
+    rounded(scope,0,.112,z,.052,.056,.032,metal);
+    for(const side of [-1,1])screw(scope,side*.028,.094,z,.005);
+    ring(scope,0,.169,z,.041,.034,.022,dark,'z',24);
+  }
   ring(scope,0,.169,-.15,.034,.025,.24,dark,'z',32);
   ring(scope,0,.169,-.28,.046,.029,.071,dark,'z',32);
   ring(scope,0,.169,-.012,.039,.03,.05,dark,'z',32);
@@ -300,26 +312,40 @@ export function createWeaponRig(owner = {}) {
     const a=i/12*Math.PI*2;
     detail(scope,Math.cos(a)*.019,.216,-.15+Math.sin(a)*.019,.004,.016,.004,dark).rotation.y=-a;
   }
+
   const reflex = new THREE.Group();weapon.add(reflex);
-  rounded(reflex,0,.109,-.10,.071,.022,.106,metal);
+  rounded(reflex,0,.094,-.105,.072,.030,.108,metal);
+  profile(reflex,[[-.152,.098],[-.142,.146],[-.068,.146],[-.058,.098]],.052,dark,{bevel:.002});
+  for(const side of [-1,1]){
+    rounded(reflex,side*.024,.124,-.112,.010,.042,.068,metal);
+    screw(reflex,side*.037,.094,-.082,.0045);
+    screw(reflex,side*.037,.094,-.128,.0045);
+  }
   ring(reflex,0,.166,-.127,.034,.025,.065,dark,'z',24);
   ring(reflex,0,.166,-.09,.035,.026,.009,edge,'z',24);
   cylinder(reflex,0,.166,-.105,.025,.002,lens,'z',24);
   cylinder(reflex,.038,.16,-.12,.011,.013,edge,'x',16);
-  screw(reflex,-.034,.107,-.118,.0045);
   const redDot = new THREE.MeshBasicMaterial({color:0xffab78,toneMapped:false});
   redDot.name='weapon-optic-emitter';ownedMaterials.add(redDot);
   cylinder(reflex,0,.166,-.103,.0017,.001,redDot,'z',10);
+
   const compactOptic = new THREE.Group();weapon.add(compactOptic);
-  rounded(compactOptic,0,.108,-.117,.061,.022,.075,dark);
+  // Picatinny rail clamp base + solid riser block joining receiver rail (.080) to sight hood (.138)
+  rounded(compactOptic,0,.093,-.122,.068,.028,.084,metal);
+  rounded(compactOptic,0,.118,-.122,.062,.036,.068,dark);
+  for(const side of [-1,1]){
+    rounded(compactOptic,side*.031,.112,-.122,.008,.048,.058,metal);
+    screw(compactOptic,side*.035,.093,-.102,.0045);
+    screw(compactOptic,side*.035,.093,-.142,.0045);
+  }
   const frame = new THREE.Shape();
-  frame.moveTo(-.035,.133);frame.lineTo(-.034,.191);frame.lineTo(-.023,.205);frame.lineTo(.023,.205);frame.lineTo(.034,.191);frame.lineTo(.035,.133);frame.closePath();
+  frame.moveTo(-.035,.131);frame.lineTo(-.034,.191);frame.lineTo(-.023,.205);frame.lineTo(.023,.205);frame.lineTo(.034,.191);frame.lineTo(.035,.131);frame.closePath();
   const window = new THREE.Path();
   window.moveTo(-.025,.142);window.lineTo(.025,.142);window.lineTo(.024,.189);window.lineTo(.017,.195);window.lineTo(-.017,.195);window.lineTo(-.024,.189);window.closePath();frame.holes.push(window);
-  mesh(compactOptic,new THREE.ExtrudeGeometry(frame,{depth:.042,bevelSize:.002,bevelThickness:.002,bevelSegments:1}),dark,0,0,-.143);
+  mesh(compactOptic,new THREE.ExtrudeGeometry(frame,{depth:.046,bevelSize:.002,bevelThickness:.002,bevelSegments:1}),dark,0,0,-.145);
   mesh(compactOptic,new THREE.ShapeGeometry(new THREE.Shape(window.getPoints())),lens,0,0,-.126);
   cylinder(compactOptic,0,.166,-.122,.0017,.001,redDot,'z',10);
-  for(const side of [-1,1])screw(compactOptic,side*.033,.144,-.123,.0045);
+  for(const side of [-1,1])screw(compactOptic,side*.033,.138,-.123,.0045);
 
   // Continuous fabric sleeves, elastic cuffs and genuinely curved glove fingers.
   const leftArm=new THREE.Group();leftArm.name='left-articulated-forearm';weapon.add(leftArm);
@@ -402,7 +428,11 @@ export function createWeaponRig(owner = {}) {
   ellipsoid(heldScanner,[.018,.078,-.008],[.005,.005,.005],stimGlow);
   for(let i=0;i<3;i++){
     const a=i*Math.PI*2/3;
-    rounded(heldScanner,Math.cos(a)*.024,-.032,Math.sin(a)*.024,.007,.046,.009,polymer);
+    curve(heldScanner,[
+      [Math.cos(a)*.011,-.014,Math.sin(a)*.011],
+      [Math.cos(a)*.022,-.034,Math.sin(a)*.022],
+      [Math.cos(a)*.033,-.054,Math.sin(a)*.033],
+    ],.0042,polymer,6,6);
   }
 
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);

@@ -1060,16 +1060,18 @@ export class GameRenderer {
       // 3-legged tactical tripod + armored core + rotating radar dish & antenna
       for (let i = 0; i < 3; i++) {
         const a = i * (Math.PI * 2 / 3);
+        const legGroup = new THREE.Group();
+        legGroup.rotation.y = -a;
         const leg = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
-        leg.position.set(Math.cos(a) * 0.22, 0.22, Math.sin(a) * 0.22);
+        leg.position.set(0.21, 0.22, 0);
         leg.scale.set(0.024, 0.48, 0.024);
-        leg.rotation.z = -Math.cos(a) * 0.48;
-        leg.rotation.x = Math.sin(a) * 0.48;
-        group.add(leg);
+        leg.rotation.z = 0.52;
+        legGroup.add(leg);
         const foot = new THREE.Mesh(this.geo.cylinder, this.materials.darkConcrete);
-        foot.position.set(Math.cos(a) * 0.33, 0.02, Math.sin(a) * 0.33);
+        foot.position.set(0.33, 0.02, 0);
         foot.scale.set(0.055, 0.03, 0.055);
-        group.add(foot);
+        legGroup.add(foot);
+        group.add(legGroup);
       }
       const core = new THREE.Mesh(this.geo.cylinder, this.grenadeMaterial);
       core.position.y = 0.44;

@@ -60,8 +60,18 @@
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 ОЧК · 0/0/0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden">
       <div class="scoreboard-head"><h2>ТАБЛИЦА МАТЧА</h2><span id="scoreboard-tickets">600 : 600</span></div>
-      <div class="score-row score-header"><span>БОЕЦ</span><span>КЛАСС</span><span>У / П / А</span><span>ОЧКИ</span></div>
-      <div id="score-rows"></div>
+      <div class="scoreboard-columns">
+        <div class="result-team-col friendly-team">
+          <div class="result-team-head"><span>ВАША КОМАНДА (СОЮЗНИКИ)</span><small id="score-ally-total">0 ОЧК.</small></div>
+          <div class="score-row score-header"><span>БОЕЦ</span><span>КЛАСС</span><span>У / П / А</span><span>ОЧКИ</span></div>
+          <div id="score-rows-ally" class="result-rows"></div>
+        </div>
+        <div class="result-team-col enemy-team">
+          <div class="result-team-head"><span>КОМАНДА ПРОТИВНИКА</span><small id="score-enemy-total">0 ОЧК.</small></div>
+          <div class="score-row score-header"><span>БОЕЦ</span><span>КЛАСС</span><span>У / П / А</span><span>ОЧКИ</span></div>
+          <div id="score-rows-enemy" class="result-rows"></div>
+        </div>
+      </div>
       <small>Удерживай TAB · Сортировка по боевым очкам (Убийства / Потери / Ассисты)</small>
     </div>
   </section>
