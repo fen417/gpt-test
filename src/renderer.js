@@ -146,6 +146,7 @@ export class GameRenderer {
     this.viewProjection = new THREE.Matrix4();
     this.soldierBounds = new THREE.Sphere(new THREE.Vector3(), 2.5);
     this.flagBounds = new THREE.Sphere(new THREE.Vector3(), 4.5);
+    this.effectBounds = new THREE.Sphere(new THREE.Vector3(), 12);
     this.surfaceCache = new Map();
     this.soldierMaterials = new Map();
     this.random = seeded();
@@ -278,6 +279,53 @@ export class GameRenderer {
     });
     this.shellMaterial = material(0xb9954c, .32, .82);
     this.sparkMaterial = new THREE.MeshBasicMaterial({ color: 0xffc475 });
+    this.effectBatches = {};
+    for (const [type, geometry, mat] of [['spark', this.geo.sphere, this.sparkMaterial], ['shell', this.geo.shell, this.shellMaterial]]) {
+      const batch = new THREE.InstancedMesh(geometry, mat, 160);
+      batch.name = `pooled-${type}`;
+      batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      batch.count = 0;
+      batch.frustumCulled = false;
+      this.effectBatches[type] = batch;
+      this.worldRoot.add(batch);
+    }
+    const smokeGeometry = new THREE.PlaneGeometry(1, 1);
+    smokeGeometry.setAttribute('instanceAlpha', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
+    smokeGeometry.setAttribute('instanceRotation', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
+    const smokeMaterial = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, fog: true,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: this.smokeTexture } }]),
+      vertexShader: `
+        attribute float instanceAlpha; attribute float instanceRotation;
+        varying vec2 smokeUv; varying vec4 smokeColor;
+        #include <fog_pars_vertex>
+        void main() {
+          smokeUv = uv; smokeColor = vec4(instanceColor, instanceAlpha);
+          vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.,0.,0.,1.);
+          float c = cos(instanceRotation), s = sin(instanceRotation);
+          vec2 p = mat2(c,s,-s,c) * position.xy;
+          mvPosition.xy += p * vec2(length(instanceMatrix[0].xyz),length(instanceMatrix[1].xyz));
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: `
+        uniform sampler2D map; varying vec2 smokeUv; varying vec4 smokeColor;
+        #include <fog_pars_fragment>
+        void main() {
+          gl_FragColor = texture2D(map,smokeUv) * smokeColor;
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+          #include <fog_fragment>
+        }`,
+    });
+    const smokeBatch = new THREE.InstancedMesh(smokeGeometry, smokeMaterial, 160);
+    smokeBatch.name = 'sorted-smoke-billboards'; smokeBatch.count = 0; smokeBatch.frustumCulled = false;
+    smokeBatch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    smokeBatch.setColorAt(0, new THREE.Color(0xffffff));
+    smokeBatch.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    this.effectBatches.smoke = smokeBatch;
+    this.smokeOrder = [];
+    this.worldRoot.add(smokeBatch);
     this.scene.traverse(optimizeLighting);
     this.warmup();
     this.resize();
@@ -403,31 +451,42 @@ export class GameRenderer {
     const map = getMap(mapId);
     if (this.map === map) return;
     this.clearVehicles();
+    this.clearMapDynamics();
     this.map = map;
     this.scene.fog.density = map.fogDensity ?? .0034;
-    this.staticRoot?.removeFromParent();
+    // A cached map is never a child of the live world unless it is selected.
+    for (const cached of this.worlds.values()) cached.root.removeFromParent();
     let world = this.worlds.get(map.id);
     if (!world) {
-      const existing = new Set(this.scene.children);
+      const liveScene = this.scene;
+      const root = new THREE.Group();
+      root.name = `map-${map.id}`;
       const random = this.random;
       this.random = seeded();
       this.flags = new Map();
-      this.buildWorld();
-      this.mergeStaticWorld(existing);
-      this.random = random;
-      const root = new THREE.Group();
-      for (const object of [...this.scene.children]) if (!existing.has(object)) root.add(object);
+      this.portWater = null;
+      // Builders target an isolated container, never the live scene. No scene
+      // child-diff or reparenting heuristic can leave geometry from another map.
+      this.scene = root;
+      try {
+        this.buildWorld();
+        this.mergeStaticWorld(new Set());
+      } finally {
+        this.scene = liveScene;
+        this.random = random;
+      }
       root.updateMatrixWorld(true);
       root.traverse(object => {
         optimizeLighting(object);
         object.matrixAutoUpdate = false;
         object.matrixWorldAutoUpdate = false;
       });
-      world = { root, flags: this.flags };
+      world = { root, flags: this.flags, water: this.portWater };
       this.worlds.set(map.id, world);
     }
     this.staticRoot = world.root;
     this.flags = world.flags;
+    this.portWater = world.water;
     for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }
     this.worldRoot.add(this.staticRoot);
     if (this.lowQuality !== undefined) this.staticRoot.traverse(object => {
@@ -437,6 +496,24 @@ export class GameRenderer {
     });
     this.staticMenuShadows = false;
     this.cameraPlayerId = null;
+  }
+
+  clearMapDynamics() {
+    for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
+    this.soldiers.clear();
+    for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
+    this.grenadeMeshes.clear();
+    for (const item of this.gadgetDeployables) { item.group.removeFromParent(); item.ringMat.dispose(); }
+    this.gadgetDeployables.length = 0;
+    for (const effect of this.effects) {
+      if (effect.type === 'light') effect.mesh.intensity = 0;
+      else { effect.mesh.removeFromParent(); this.effectPools[effect.type].push(effect); }
+    }
+    this.effects.length = 0;
+    for (const batch of Object.values(this.effectBatches || {})) batch.count = 0;
+    this.seenEvents.clear();
+    this.lastShot = -1;
+    this.throwTimer = this.gadgetTimer = 0;
   }
 
   buildWorld() {
@@ -791,6 +868,7 @@ export class GameRenderer {
     const rig = cloneSoldierRig(template, { ...player, weaponId });
     rig.weaponId = weaponId;
     rig.stepIndex = this.soldiers.size;
+    rig.distant.traverse(object => { object.castShadow = false; });
     return rig;
   }
 
@@ -915,8 +993,10 @@ export class GameRenderer {
       soldier.initialized = true;
       this.soldierBounds.center.copy(group.position);
       this.soldierBounds.center.y += .9;
+      const distSq = local ? (player.x - local.x) ** 2 + (player.z - local.z) ** 2 : 0;
+      const shadowVisible = !this.lowQuality && distSq < 48 * 48 && shadowFrustum?.intersectsSphere(this.soldierBounds);
       const visible = externalScene || ((alive || soldier.deathAge < 3.6) &&
-        (this.viewFrustum.intersectsSphere(this.soldierBounds) || shadowFrustum?.intersectsSphere(this.soldierBounds)));
+        (this.viewFrustum.intersectsSphere(this.soldierBounds) || shadowVisible));
       if (!visible) {
         if (!externalScene) group.removeFromParent();
         continue;
@@ -932,17 +1012,18 @@ export class GameRenderer {
         continue;
       }
       const crouched = player.crouching || player.crouch;
-      const distSq = local ? (player.x - local.x) ** 2 + (player.z - local.z) ** 2 : 0;
-      const distant = !externalScene && local && distSq > distantLimitSq;
+      const distant = !externalScene && local && !crouched && distSq > distantLimitSq;
       if (soldier.body) {
         soldier.body.visible = !distant;
         soldier.body.castShadow = !this.lowQuality && distSq < 48 * 48;
       }
       if (!distant) {
         const mustReset = reset || respawned || returning || soldier.distant.visible;
-        const halfRate = this.lowQuality && !externalScene && distSq > 26 * 26 && !mustReset;
-        if (!halfRate || ((this.frameCount + (soldier.stepIndex || 0)) & 1) === 0) {
-          animateSoldier(soldier, { dt: halfRate ? dt * 2 : dt, player, reset: mustReset });
+        const reducedRate = !externalScene && this.camera.fov > 35 && distSq > 30 * 30;
+        soldier.animationDt = (soldier.animationDt || 0) + dt;
+        if (!reducedRate || mustReset || soldier.animationDt >= 1 / 30) {
+          animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset });
+          soldier.animationDt = 0;
         }
       } else soldier.flash.visible = false;
       soldier.pose.visible = !distant;
@@ -997,7 +1078,6 @@ export class GameRenderer {
           const shell = effect.mesh;
           this.weaponRig.bolt.getWorldPosition(shell.position);
           shell.rotation.set(0, 0, Math.PI / 2);
-          this.worldRoot.add(shell);
           Object.assign(effect, { age: 0, life: 1.1, vx: Math.cos(yaw) * 2.9, vy: .85 + this.random() * .7, vz: -Math.sin(yaw) * 2.9, spin: 8 + this.random() * 8 });
           this.effects.push(effect);
           if (!this.lowQuality && !this.integratedGpu && this.wallStow < .3 && (event.shotSeq ?? event.id) % 2 === 0) {
@@ -1006,6 +1086,8 @@ export class GameRenderer {
           }
         }
         const range = getWeapon(player?.classId, player?.weaponId).range || 200;
+        this.effectBounds.center.set(tx, ty, tz);
+        if (!this.viewFrustum.intersectsSphere(this.effectBounds)) continue;
         const impact = event.impact === undefined && length < range - 1 ? (event.hit ? 'flesh' : 'concrete') : event.impact;
         if (impact === 'metal') {
           for (let i = 0; i < (this.lowQuality || this.integratedGpu ? 1 : 4); i++) this.spark(tx, ty, tz);
@@ -1017,6 +1099,9 @@ export class GameRenderer {
       }
       if (event.type === 'explosion') {
         const x = event.x || 0, y = event.y ?? 0.6, z = event.z || 0;
+        if (state.time - event.time > .6 || this.camera.position.distanceToSquared(this.scratchPosition.set(x,y,z)) > 180 ** 2) continue;
+        this.effectBounds.center.set(x,y,z);
+        if (!this.viewFrustum.intersectsSphere(this.effectBounds)) continue;
         const count = this.lowQuality || this.integratedGpu ? 8 : 13;
         for (let i = 0; i < count; i++) this.smoke(x + (this.random() - 0.5) * 2, y + this.random() * 2, z + (this.random() - 0.5) * 2, 1.1 + this.random() * 1.4, 2.5 + this.random() * 2, i < 3 ? 0xffb668 : 0x535953);
         this.blastFlash(x, y + 1, z);
@@ -1061,7 +1146,7 @@ export class GameRenderer {
     const sprite = effect.mesh;
     sprite.material.color.setHex(color);
     sprite.material.rotation = this.random() * Math.PI;
-    sprite.position.set(x, y, z); sprite.scale.setScalar(size); this.worldRoot.add(sprite);
+    sprite.position.set(x, y, z); sprite.scale.setScalar(size);
     Object.assign(effect, { age: 0, life, size, vx: (this.random() - 0.5) * 0.6, vz: (this.random() - 0.5) * 0.6 });
     this.effects.push(effect);
   }
@@ -1071,12 +1156,14 @@ export class GameRenderer {
     const effect = this.effectPools.spark.pop() ?? { mesh: new THREE.Mesh(this.geo.sphere, this.sparkMaterial), type: 'spark' };
     const { mesh } = effect;
     mesh.rotation.set(0, 0, 0);
-    mesh.scale.setScalar(.014 * force); mesh.position.set(x, y, z); this.worldRoot.add(mesh);
+    mesh.scale.setScalar(.014 * force); mesh.position.set(x, y, z);
     Object.assign(effect, { age: 0, life: .2 + this.random() * .2, vx: (this.random() - .5) * 4 * force, vy: (1 + this.random() * 2) * force, vz: (this.random() - .5) * 4 * force });
     this.effects.push(effect);
   }
 
   updateEffects(dt) {
+    for (const batch of Object.values(this.effectBatches)) batch.count = 0;
+    this.smokeOrder.length = 0;
     for (let i = this.effects.length - 1; i >= 0; i--) {
       const effect = this.effects[i]; effect.age += dt;
       if (effect.age >= effect.life) {
@@ -1103,13 +1190,39 @@ export class GameRenderer {
       } else if (effect.type === 'smoke') {
         effect.mesh.position.x += effect.vx * dt; effect.mesh.position.z += effect.vz * dt; effect.mesh.position.y += dt * 0.8;
         effect.mesh.scale.setScalar(effect.size * (1 + effect.age * 1.5)); effect.mesh.material.opacity = alpha * 0.55;
+        const p = effect.mesh.position, view = this.camera.matrixWorldInverse.elements;
+        effect.sortDepth = view[2]*p.x + view[6]*p.y + view[10]*p.z + view[14];
+        this.smokeOrder.push(effect);
       } else if (effect.type === 'spark' || effect.type === 'shell') {
         effect.vy -= dt * 9.8; effect.mesh.position.x += effect.vx * dt; effect.mesh.position.y += effect.vy * dt; effect.mesh.position.z += effect.vz * dt;
         effect.mesh.rotation.x += dt * (effect.spin || 9); effect.mesh.rotation.z += dt * (effect.spin || 6);
         if (effect.mesh.position.y < .03) { effect.mesh.position.y = .03; effect.vy = Math.abs(effect.vy) * .25; effect.vx *= .72; effect.vz *= .72; }
         if (effect.type === 'spark') effect.mesh.scale.setScalar(.025 * alpha);
       } else if (effect.type === 'light') effect.mesh.intensity = alpha * 18;
+      const batch = this.effectBatches[effect.type];
+      if (batch && effect.type !== 'smoke' && batch.count < batch.instanceMatrix.count) {
+        effect.mesh.updateMatrix();
+        batch.setMatrixAt(batch.count++, effect.mesh.matrix);
+      }
     }
+    // Back-to-front ordering preserves alpha compositing while all puffs share
+    // one draw call. Sorting at most 140 records is cheaper than 140 submissions.
+    this.smokeOrder.sort((a,b) => a.sortDepth - b.sortDepth);
+    const smoke = this.effectBatches.smoke;
+    for (const effect of this.smokeOrder) {
+      if (smoke.count >= smoke.instanceMatrix.count) break;
+      const index = smoke.count++, sprite = effect.mesh;
+      sprite.updateMatrix(); smoke.setMatrixAt(index, sprite.matrix);
+      smoke.setColorAt(index, sprite.material.color);
+      smoke.geometry.attributes.instanceAlpha.setX(index, sprite.material.opacity);
+      smoke.geometry.attributes.instanceRotation.setX(index, sprite.material.rotation);
+    }
+    if (smoke.count) {
+      smoke.instanceColor.needsUpdate = true;
+      smoke.geometry.attributes.instanceAlpha.needsUpdate = true;
+      smoke.geometry.attributes.instanceRotation.needsUpdate = true;
+    }
+    for (const batch of Object.values(this.effectBatches)) if (batch.count) batch.instanceMatrix.needsUpdate = true;
   }
 
   createGrenadeMesh() {
@@ -1656,7 +1769,7 @@ export class GameRenderer {
         this.lastShot = player.shotSeq;
       }
       const aimFov = player.classId === 'recon'
-        ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / 4))
+        ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / (player.weaponId === 'sv98' ? clamp(Number(view.scopeZoom) || 8, 6, 12) : 4)))
         : baseFov - 23;
       const fov = lerp(baseFov + this.sprintBlend * 6, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {

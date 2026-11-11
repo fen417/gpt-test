@@ -15,6 +15,7 @@ let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let fireTap=false, recoilPitch=0, recoilYaw=0;
+let scopeZoom=8;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
@@ -508,11 +509,17 @@ window.addEventListener('beforeunload',event=>{
 document.addEventListener('pointerlockerror',()=>{if(active){show('pause');toast('Браузер не разрешил захват мыши. Нажми «Продолжить» ещё раз.');}});
 document.addEventListener('mousemove',event=>{
   if(!locked&&!(unlocked&&!unlockedPaused&&active&&aim))return;
-  const aimScale = aim ? (local()?.classId === 'recon' ? .35 : .65) : 1;
+  const aimScale = aim ? (local()?.classId === 'recon' ? (local()?.weaponId==='sv98' ? .35*4/scopeZoom : .35) : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
 });
 let lastFireClick=0;
+document.addEventListener('wheel',event=>{
+  if(!active||!aim||!local()?.alive||local()?.weaponId!=='sv98'||
+    (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
+  event.preventDefault();
+  scopeZoom=Math.max(6,Math.min(12,scopeZoom-Math.sign(event.deltaY)));
+},{passive:false});
 document.addEventListener('mousedown',event=>{if(event.button===0&&active)lastFireClick=performance.now();if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
@@ -1081,9 +1088,10 @@ function frame(now){
     }else{multiplayer.sendInput(lastInput);pulses.clear();fireTap=false;}
   }
   const currentPlayer=local();
-  renderer.render(active?state:null,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,brightness,shake:cameraShake,gfx,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+  renderer.render(active?state:null,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
+  text('scope-zoom',currentPlayer?.weaponId==='sv98'?`${scopeZoom}× · КОЛЕСО — ЗУМ`:'');
   document.body.classList.toggle('scoped',scoped);
   audio.update?.(dt,{state,local:local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}

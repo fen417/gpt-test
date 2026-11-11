@@ -176,3 +176,5 @@ body.team-1 .score-row.local{background:#a57b5f33}
 .operation-options .map-choice{grid-column:1/-1}
 body:has(.menu:not(.hidden)){overflow-y:auto}
 .vehicle-prompt{position:absolute;left:50%;top:56%;transform:translateX(-50%);padding:7px 11px;background:#0b1d25dd;border:1px solid #9ac6ce55;color:#e5e6d7;font-size:10px;letter-spacing:1px;text-align:center;white-space:pre-wrap}
+
+#scope-zoom{position:absolute;top:calc(50% + 23vmin);left:50%;transform:translateX(-50%);color:#c5cbb1;font:11px monospace;text-shadow:0 1px 3px #000;letter-spacing:1px}

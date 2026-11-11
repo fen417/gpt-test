@@ -123,6 +123,18 @@ export class Simulation {
   constructor({ bots=23, difficulty='regular', mapId, random=Math.random }={}) {
     this.map=getMap(mapId);
     this.colliders=this.map.boxes.map(withBounds);
+    // Static broad phase: movement queries touch nearby cells, not every
+    // warehouse/container on the map for every actor and axis each tick.
+    this.collisionCell=16;
+    this.collisionSize=Math.ceil(this.map.size/this.collisionCell);
+    this.collisionBins=Array.from({length:this.collisionSize**2},()=>[]);
+    const bin=value=>Math.max(0,Math.min(this.collisionSize-1,Math.floor((value+this.map.size/2)/this.collisionCell)));
+    for(const box of this.colliders)for(let z=bin(box.minZ);z<=bin(box.maxZ);z++)
+      for(let x=bin(box.minX);x<=bin(box.maxX);x++)this.collisionBins[z*this.collisionSize+x].push(box);
+    this.colliders.forEach((box,index)=>{box.collisionIndex=index;});
+    this.rayCandidates=[];
+    this.rayVisited=new Uint32Array(this.colliders.length);
+    this.rayVisit=0;
     this.grenadeColliders=this.map.boxes.map(box=>withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12}));
     this.random=random;this.time=0;this.players=new Map();this.maxTickets=600;this.tickets=[600,600];
     this.difficulty=typeof difficulty==='string'&&Object.hasOwn(DIFFICULTIES,difficulty)?difficulty:'regular';
@@ -219,12 +231,46 @@ export class Simulation {
   collides(x,z,y=this.groundAt(x,z),radius=PLAYER_RADIUS){
     const limit=this.map.size/2-2;
     if(Math.abs(x)>limit||Math.abs(z)>limit||x<(this.map.shoreX??-Infinity)+radius)return true;
-    for(let i=0;i<this.colliders.length;i++){
-      const b=this.colliders[i];
+    const origin=this.map.size/2,cell=this.collisionCell,size=this.collisionSize;
+    const minX=Math.max(0,Math.floor((x-radius+origin)/cell)),maxX=Math.min(size-1,Math.floor((x+radius+origin)/cell));
+    const minZ=Math.max(0,Math.floor((z-radius+origin)/cell)),maxZ=Math.min(size-1,Math.floor((z+radius+origin)/cell));
+    for(let bz=minZ;bz<=maxZ;bz++)for(let bx=minX;bx<=maxX;bx++)for(const b of this.collisionBins[bz*size+bx]){
       if(b.overhead&&y+EYE_HEIGHT<=b.minY)continue;
       if(y<b.h&&x>b.minX-radius&&x<b.maxX+radius&&z>b.minZ-radius&&z<b.maxZ+radius)return true;
     }
     return false;
+  }
+  // Walk only grid cells crossed by a ray. Exact rayBox remains the narrow
+  // phase, including roofs and raised geometry; the grid never decides a hit.
+  rayBoxes(origin,direction,maximum){
+    const size=this.collisionSize,cell=this.collisionCell,offset=this.map.size/2;
+    let x=Math.floor((origin.x+offset)/cell),z=Math.floor((origin.z+offset)/cell);
+    if(x<0||z<0||x>=size||z>=size)return this.colliders;
+    const result=this.rayCandidates;result.length=0;
+    this.rayVisit=(this.rayVisit+1)>>>0;
+    if(!this.rayVisit){this.rayVisited.fill(0);this.rayVisit=1;}
+    const visit=this.rayVisit,seen=this.rayVisited;
+    const add=(bx,bz)=>{
+      if(bx<0||bz<0||bx>=size||bz>=size)return;
+      for(const box of this.collisionBins[bz*size+bx])if(seen[box.collisionIndex]!==visit){
+        seen[box.collisionIndex]=visit;result.push(box);
+      }
+    };
+    const sx=Math.sign(direction.x),sz=Math.sign(direction.z);
+    const deltaX=sx?cell/Math.abs(direction.x):Infinity,deltaZ=sz?cell/Math.abs(direction.z):Infinity;
+    let nextX=sx?((x+(sx>0?1:0))*cell-offset-origin.x)/direction.x:Infinity;
+    let nextZ=sz?((z+(sz>0?1:0))*cell-offset-origin.z)/direction.z:Infinity;
+    while(x>=0&&z>=0&&x<size&&z<size){
+      add(x,z);
+      if(Math.min(nextX,nextZ)>maximum)break;
+      if(Math.abs(nextX-nextZ)<1e-9){
+        // Include both sides of an exact corner, not only the diagonal cell.
+        add(x+sx,z);add(x,z+sz);
+        x+=sx;z+=sz;nextX+=deltaX;nextZ+=deltaZ;
+      }else if(nextX<nextZ){x+=sx;nextX+=deltaX;}
+      else{z+=sz;nextZ+=deltaZ;}
+    }
+    return result;
   }
   lineClear(a,b){
     const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
@@ -233,8 +279,7 @@ export class Simulation {
     rayDir.x=dx/length;rayDir.y=dy/length;rayDir.z=dz/length;
     if(this.map.terrain?.raycast(a,rayDir,length)<length-.1)return false;
     const minX=Math.min(a.x,b.x),maxX=Math.max(a.x,b.x),minZ=Math.min(a.z,b.z),maxZ=Math.max(a.z,b.z);
-    for(let i=0;i<this.colliders.length;i++){
-      const box=this.colliders[i];
+    for(const box of this.rayBoxes(a,rayDir,length)){
       if(box.maxX<minX||box.minX>maxX||box.maxZ<minZ||box.minZ>maxZ)continue;
       if(rayBox(a,rayDir,box,length)<length-.1)return false;
     }
@@ -471,7 +516,7 @@ export class Simulation {
     const terrain=this.map.terrain;
     const ground=terrain?terrain.raycast(origin,direction,c.range):(direction.y<0?-origin.y/direction.y:Infinity);
     if(ground>=0&&ground<closest){closest=ground;impact='ground';}
-    for(const box of this.colliders){
+    for(const box of this.rayBoxes(origin,direction,closest)){
       const distance=rayBox(origin,direction,box,closest);
       if(distance<closest){closest=distance;impact=impactMaterial(box.kind);}
     }
@@ -482,7 +527,7 @@ export class Simulation {
     }
     for(const other of this.players.values()){
       if(other===p||!other.alive||other.team===p.team)continue;
-      const crouch=!other.vehicleId&&other.input.crouch,headY=other.y+(crouch?1.06:1.58);
+      const crouch=!other.vehicleId&&other.input.crouch,headY=other.y+(crouch?1.06:EYE_HEIGHT);
       const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.15);
       const body=rayCapsule(origin,direction,other.x,other.z,other.y+.26,other.y+(crouch?.79:1.25),.24);
       const hit=Math.min(head,body);

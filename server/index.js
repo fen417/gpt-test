@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
 import { PROTOCOL_VERSION } from '../shared/world.js';
+import { packSnapshot } from '../shared/snapshot-codec.js';
 
 const port=process.env.PORT===undefined?8080:Number(process.env.PORT);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist');
@@ -29,7 +30,20 @@ const server=http.createServer(async(req,res)=>{
 });
 const wss=new WebSocketServer({server,maxPayload:8192});
 const clients=new Map();
-const send=(ws,data)=>{if(ws.readyState===WebSocket.OPEN&&ws.bufferedAmount<262144)ws.send(JSON.stringify(data));};
+const packetCache=new WeakMap();
+const send=(ws,data)=>{
+  if(ws.readyState!==WebSocket.OPEN||ws.bufferedAmount>32768)return false;
+  let packet;
+  if(data.type==='snapshot'){
+    const state=data.state,after=state.time<(ws.stateTime??-1)?0:(ws.eventCursor||0);
+    let cache=packetCache.get(state);
+    if(!cache){cache=new Map();packetCache.set(state,cache);}
+    if(!cache.has(after))cache.set(after,JSON.stringify({type:'snapshot',state:packSnapshot(state,after)}));
+    packet=cache.get(after);
+    ws.stateTime=state.time;ws.eventCursor=Math.max(after,state.events?.at(-1)?.id||0);
+  }else packet=JSON.stringify(data);
+  ws.send(packet);return true;
+};
 
 wss.on('connection',(ws)=>{
   if(clients.size>=maxPlayers){send(ws,{type:'error',message:'Сервер заполнен'});ws.close(1013,'Server full');return;}

@@ -16,6 +16,9 @@ const THIGH = .402;
 const SHIN = .365;
 const ANKLE_HEIGHT = .109;
 const WAIST = .98;
+// Eye line in the ready stance matches the 1.65 m first-person camera.
+// Extend the torso above the belt, keeping feet and limb lengths unchanged.
+const UPPER_BODY_LIFT = .14;
 const THROW_TIME = .78;
 const TAU = Math.PI * 2;
 
@@ -519,6 +522,15 @@ function makeDistant(group, c, classId) {
   }
   round(distant, c.steel, .125, 1.232, -.357, .07, .083, .6);
   const mesh = new THREE.Mesh(bake(distant), null);
+  // Distant mesh has no crouched-ready pelvis offset; match its silhouette
+  // to the standing animated model instead of changing height at the LOD cut.
+  const distantPositions = mesh.geometry.attributes.position;
+  for (let i = 0; i < distantPositions.count; i++) {
+    const y = distantPositions.getY(i);
+    distantPositions.setY(i, y + (UPPER_BODY_LIFT - .075) * smoothstep(y, .96, 1.21));
+  }
+  mesh.geometry.computeVertexNormals();
+  mesh.geometry.computeBoundingSphere();
   mesh.castShadow = mesh.receiveShadow = true;
   distant.add(mesh);
   distant.visible = false;
@@ -543,6 +555,25 @@ export function createSoldierRig(owner, player) {
     legs.push(leg); knees.push(knee); ankles.push(ankle);
   }
   const { rifle, flash, magazine } = makeRifle(spine, c, classId, weaponId);
+  for (const child of spine.children) {
+    if (child.isBone) child.position.y += UPPER_BODY_LIFT;
+    else if (child.isMesh) {
+      // These are torso/gear parts. Clone shared primitives before shaping.
+      const source = child.geometry;
+      child.updateMatrix();
+      const geo = source.clone().applyMatrix4(child.matrix);
+      const positions = geo.attributes.position;
+      for (let i = 0; i < positions.count; i++) {
+        const y = positions.getY(i);
+        positions.setY(i, y + UPPER_BODY_LIFT * smoothstep(y, .96, 1.21));
+      }
+      geo.computeVertexNormals();
+      child.geometry = geo;
+      if (child.userData.owned) source.dispose();
+      child.userData.owned = true;
+      child.position.set(0,0,0); child.rotation.set(0,0,0); child.scale.set(1,1,1);
+    }
+  }
   // The chest pivots at the waist: re-express its children relative to it.
   spine.position.y = WAIST;
   for (const child of spine.children) child.position.y -= WAIST;
@@ -608,9 +639,9 @@ const poseInverse = new THREE.Matrix4();
 const stockOffset = new THREE.Vector3(0, -.008, .295);
 const stockScratch = new THREE.Vector3();
 const handTarget = new THREE.Vector3();
-const pouchTarget = new THREE.Vector3(-.098, 1.14 - WAIST, -.225);
-const throwBack = new THREE.Vector3(-.17, 1.67 - WAIST, .13);
-const throwFront = new THREE.Vector3(-.1, 1.52 - WAIST, -.5);
+const pouchTarget = new THREE.Vector3(-.098, 1.14 + UPPER_BODY_LIFT - WAIST, -.225);
+const throwBack = new THREE.Vector3(-.17, 1.67 + UPPER_BODY_LIFT - WAIST, .13);
+const throwFront = new THREE.Vector3(-.1, 1.52 + UPPER_BODY_LIFT - WAIST, -.5);
 const throwPoint = new THREE.Vector3();
 const handMagazine = new THREE.Vector3();
 const nominal = new THREE.Vector3();
@@ -831,7 +862,7 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
   rig.rifle.rotation.set(riflePitch + rig.recoil * .085, -.025 + sprint * .19 + reload * .24 + throwWeight * .3, strideSway * sprint - reload * .18 + throwWeight * .35, 'YXZ');
   // Rotate the rifle around the stock so both grips travel with the weapon.
   stockScratch.copy(stockOffset).applyQuaternion(rig.rifle.quaternion);
-  rig.rifle.position.set(.126, 1.277 - WAIST + motion.aim * .052 - sprint * .075 - throwWeight * .07, -.012 + rig.recoil * .027).sub(stockScratch);
+  rig.rifle.position.set(.126, 1.277 + UPPER_BODY_LIFT - WAIST + motion.aim * .052 - sprint * .075 - throwWeight * .07, -.012 + rig.recoil * .027).sub(stockScratch);
   rig.head.rotation.set(
     clamp(look * .8 - bodyPitch * .85 - reload * .3 + rig.flinch * .3 + idle * Math.sin(t * .23) * .07, -.9, .95),
     idle * Math.sin(t * .37 + 1.1) * .38 + lerp(0, .045, sprint) - crouch * .025 - spineY * .25,
@@ -907,7 +938,7 @@ export function animateSoldier(rig, { dt, player, reset = false }) {
   const stridePhase = motion.phase * TAU;
   const strideTwist = Math.sin(stridePhase) * (.05 + motion.sprint * .05) * gaitWeight * (1 - motion.crouch * .5);
   const breathing = Math.sin(motion.time * 2.4) * .004;
-  const bodyHeight = lerp(-.075 - motion.sprint * .06, -.435, motion.crouch);
+  const bodyHeight = lerp(-.075 - motion.sprint * .06, -.675, motion.crouch);
   const bodyBob = Math.cos(stridePhase * 2) * .018 * gaitWeight + breathing - motion.land * .09;
   rig.pose.rotation.set(
     -.02 - motion.sprint * .11 - motion.crouch * .12 - motion.land * .06,

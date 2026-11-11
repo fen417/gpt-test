@@ -1,6 +1,7 @@
 ﻿import Peer from 'peerjs';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
 import { DEFAULT_MAP_ID, getMap, PROTOCOL_VERSION, getWeapon } from '../shared/world.js';
+import { packSnapshot, unpackSnapshot } from '../shared/snapshot-codec.js';
 
 const ROOM_PREFIX = 'gpt-test-';
 const MAX_HUMANS = 16;
@@ -76,6 +77,7 @@ export class Multiplayer {
     this._mapId = DEFAULT_MAP_ID;
     this._remoteMapId = DEFAULT_MAP_ID;
     this._difficulty = 'regular';
+    this._wireCache = new WeakMap();
   }
 
   get mode() { return this._mode; }
@@ -131,8 +133,24 @@ export class Multiplayer {
 
   _safeSend(connection, message, expendable = false) {
     if (!connection?.open) return false;
-    if (expendable && (connection.bufferSize > 2 || connection.dataChannel?.bufferedAmount > 192000)) return false;
-    try { connection.send(message); return true; } catch (error) {
+    if ((expendable || message.type === 'input') && (connection.bufferSize > 0 || connection.dataChannel?.bufferedAmount > 32768)) return false;
+    let cursor;
+    if (message.type === 'snapshot') {
+      const state = message.state;
+      const after = state.time < (connection._stateTime ?? -1) ? 0 : (connection._eventCursor || 0);
+      let cache = this._wireCache.get(state);
+      if (!cache) { cache = new Map(); this._wireCache.set(state, cache); }
+      // Serialize once for all peers at the same event cursor. PeerJS binary
+      // then only frames this string instead of traversing the state per peer.
+      if (!cache.has(after)) cache.set(after, JSON.stringify({ type: 'snapshot', state: packSnapshot(state, after) }));
+      message = cache.get(after);
+      cursor = { time: state.time, event: Math.max(after, state.events?.at(-1)?.id || 0) };
+    }
+    try {
+      connection.send(message);
+      if (cursor) { connection._stateTime = cursor.time; connection._eventCursor = cursor.event; }
+      return true;
+    } catch (error) {
       this._diagnose('send-failed', connection, error);
       return false;
     }
@@ -225,13 +243,16 @@ export class Multiplayer {
       this._tickTimer = setInterval(() => {
         if (!this._active(generation)) return;
         const now = performance.now();
-        accumulator += Math.min((now - previous) / 1000, 0.2);
+        // Discard excessive debt: a busy render frame must not cause a spiral
+        // of simulation work and several obsolete snapshots in the same turn.
+        accumulator = Math.min(accumulator + (now - previous) / 1000, STEP * 3);
         previous = now;
+        let broadcast = false;
         while (accumulator >= STEP) {
           accumulator -= STEP;
           steps++;
           if (this._phase === 'lobby') {
-            if (steps % 15 === 0) this._broadcastSnapshot(true);
+            if (steps % 15 === 0) broadcast = true;
             continue;
           }
           this._flushHostInput();
@@ -255,9 +276,10 @@ export class Multiplayer {
             }
           }
           if (steps % 3 === 0) {
-            this._broadcastSnapshot(true);
+            broadcast = true;
           }
         }
+        if (broadcast) this._broadcastSnapshot(true);
       }, 1000 / 60);
       this._broadcastSnapshot();
       this.onStatus(lobby ? `Лобби ${code} · ожидание игроков` : `Комната ${code} · вы — хозяин`);
@@ -462,7 +484,12 @@ export class Multiplayer {
         this._pending.add(cancel);
         connection.on('open', sendJoin);
         connection.on('data', message => {
+          if (typeof message === 'string') {
+            if (message.length > 512000) return;
+            try { message = JSON.parse(message); } catch { return; }
+          }
           if (!this._active(generation) || !message || typeof message !== 'object') return;
+          if (message.type === 'snapshot') message.state = unpackSnapshot(message.state);
           if (message.type === 'welcome' && typeof message.id === 'string') {
             if(message.protocol!==PROTOCOL_VERSION){finish(new Error('У хозяина старая версия карты. Обновите страницы и создайте новую комнату.'));return;}
             welcomed = true;
@@ -528,6 +555,7 @@ export class Multiplayer {
           let message;
           try { message = JSON.parse(event.data); } catch { return; }
           if (!message || typeof message !== 'object') return;
+          if (message.type === 'snapshot') message.state = unpackSnapshot(message.state);
           if (message.type === 'welcome' && typeof message.id === 'string') {
             if(message.protocol!==PROTOCOL_VERSION){finish(new Error('Сервер использует старую версию карты. Обновите сервер и клиент до одной версии.'));return;}
             welcomed = true;
@@ -568,14 +596,13 @@ export class Multiplayer {
     this._inputTimer = setInterval(() => {
       if (!this._active(generation) || !this._nextInput) return;
       const input = this._nextInput;
-      this._nextInput = null;
-      this._send({ type: 'input', input });
+      if (this._send({ type: 'input', input })) this._nextInput = null;
     }, 1000 / 30);
   }
 
   _send(message) {
     if (this._mode === 'peer') return this._safeSend(this._connection, message);
-    if (this._mode === 'server' && this._socket?.readyState === WebSocket.OPEN && this._socket.bufferedAmount < 192000) {
+    if (this._mode === 'server' && this._socket?.readyState === WebSocket.OPEN && this._socket.bufferedAmount < 32768) {
       this._socket.send(JSON.stringify(message));
       return true;
     }

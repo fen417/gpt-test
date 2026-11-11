@@ -157,15 +157,15 @@ export function createSurfaceMaterials(renderer, { useBump = true } = {}) {
   };
 }
 
-// Quadrant sectors balance frustum culling against draw call count.
+// Local sectors keep a large quarry's props from sharing one map-wide bound.
 export function mapSector(matrix) {
   const position = matrix.elements;
-  return `${position[12] < 0 ? 0 : 1},${position[14] < 0 ? 0 : 1}`;
+  return `${Math.floor(position[12] / 96)},${Math.floor(position[14] / 96)}`;
 }
 
 export function addSectorInstances(scene, geometry, material, matrices, castShadow = false) {
   if (!matrices.length) return;
-  if (matrices.length <= 256) {
+  if (matrices.length <= 64) {
     const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
     mesh.castShadow = castShadow;
     matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
