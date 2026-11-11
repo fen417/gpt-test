@@ -11,6 +11,17 @@ const advance=(sim,seconds)=>{for(let n=0;n<seconds*20;n++)sim.step(.05);};
 test('spawn points and capture centers are outside solid geometry',()=>{
   const sim=make();for(const point of [...MAP.spawns,...MAP.points])assert.equal(sim.collides(point.x,point.z),false,JSON.stringify(point));
   assert.equal(MAP.points.length,5);assert(MAP.size>=360);
+  const crossStreets=[-110,-40,0,40,110];
+  for(const box of MAP.boxes){
+    if(['building','factory','warehouse','wall','pillar','container'].includes(box.kind)){
+      const overlapsAvenue=Math.abs(box.x)-box.w/2<12;
+      assert.equal(overlapsAvenue,false,`structure ${box.id} (${box.kind}) at (${box.x},${box.z}) overlaps main avenue`);
+      for(const streetZ of crossStreets){
+        const overlapsCross=Math.abs(box.z-streetZ)-box.d/2<7.5;
+        assert.equal(overlapsCross,false,`structure ${box.id} (${box.kind}) at (${box.x},${box.z}) overlaps cross street z=${streetZ}`);
+      }
+    }
+  }
   for(const start of MAP.spawns)for(const target of MAP.points){const path=sim.pathfind(start,target),last=path.at(-1);assert(last&&Math.hypot(last.x-target.x,last.z-target.z)<sim.gridCell,'every objective must be reachable from both bases');let previous=start;for(const step of path){assert(sim.lineClear({...previous,y:.8},{...step,y:.8}),'navigation must respect actual wall and cover geometry');previous=step;}}
 });
 test('untrusted input is bounded and non-finite values cannot corrupt simulation',()=>{
@@ -83,6 +94,25 @@ test('spawn protection blocks damage for two seconds and ends on firing',()=>{
 });
 test('bots navigate and capture during a running round',()=>{
   const sim=new Simulation({bots:8,random:()=>.5});advance(sim,55);assert(sim.snapshot().players.some(p=>Math.abs(p.z)<100));assert(sim.points.some(p=>p.owner!==-1));
+  // Verify bots capturing the same objective spread out instead of stacking on one pixel
+  const pointC=sim.points.find(p=>p.id==='C');
+  const squad=[...sim.players.values()].filter(p=>p.team===0).slice(0,4);
+  for(const [idx,bot] of squad.entries()){
+    bot.alive=true;bot.hp=100;bot.x=-3+idx*2;bot.z=10;bot.botObjective=pointC;
+    bot.botGoal=sim.pickObjectiveSpot(bot,pointC);
+    bot.botPath=sim.pathfind(bot,bot.botGoal);
+    bot.nextThink=10;
+  }
+  // Hide enemy bots far away so squad captures peacefully
+  for(const bot of sim.players.values())if(bot.team===1){bot.x=0;bot.z=-160;bot.nextThink=99;}
+  advance(sim,6);
+  for(let i=0;i<squad.length;i++){
+    assert(Math.hypot(squad[i].x-pointC.x,squad[i].z-pointC.z)<12,'bot stays within capture radius');
+    assert(Math.hypot(squad[i].x-pointC.x,squad[i].z-pointC.z)>1.5,'bot does not stand on exact flag center pixel');
+    for(let j=i+1;j<squad.length;j++){
+      assert(Math.hypot(squad[i].x-squad[j].x,squad[i].z-squad[j].z)>1.4,'bots maintain separation while capturing');
+    }
+  }
 });
 test('a full bot round remains finite, navigates the map, and reaches a winner',()=>{
   let seed=1;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};

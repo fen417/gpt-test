@@ -21,57 +21,112 @@ const warehouse=(id,x,z,w,d,h,color='#8c9188')=>{
   for(const dx of [-w/2+2,w/2-2])for(const dz of [-d/2+2,d/2-2])add(x+dx,z+dz,.9,.9,h,'pillar','#515c5b');
 };
 // Base blocks, peripheral streets, and the main north-south avenue.
+// Roads: Main avenue x in [-12, 12]; Cross streets z in [-110, -40, 0, 40, 110] (width 15, i.e. z ± 7.5).
+// All buildings are placed strictly inside city blocks, leaving streets and intersections clear.
 for(const z of [-145,145]){
-  add(-82,z,76,28,14,'warehouse','#747e7b');
-  add(84,z,76,28,17,'factory','#8f8c7e');
+  add(-82,z,72,26,14,'warehouse','#747e7b');
+  add(84,z,72,26,17,'factory','#8f8c7e');
+  // Spawn protection command bunkers & side depots near HQ (0, ±150)
+  add(-26,z,16,12,6,'building','#7d8581');
+  add(26,z,16,12,6,'building','#7d8581');
 }
-for(const x of [-145,145])for(const z of [-77,0,77])add(x,z,30,38,15+(z===0?5:0),'building',x<0?'#85816f':'#747f7a');
-add(-66,-8,38,40,17,'factory','#8e8677');
-add(65,4,40,38,19,'factory','#7b8985');
-add(-101,35,35,19,11,'warehouse','#9d8b73');
-add(102,-33,32,18,12,'warehouse','#9a917d');
-add(-35,-72,23,35,12,'building','#85867b');
-add(31,76,20,32,14,'building','#78827b');
-// Enterable warehouses: actual wall colliders below, decorative roofs above.
-warehouse('rail-hangar',72,-78,60,42,10,'#8d9389');
-warehouse('port-depot',-78,78,64,44,10,'#8c897b');
-warehouse('repair-bay',88,78,46,38,8,'#738884');
-// Container rows preserve broad infantry flanks around both yards.
+// Outer West & East perimeter industrial blocks (strictly between cross streets)
+for(const x of [-146,146]){
+  const tone=x<0?'#85816f':'#747f7a';
+  add(x,-75,28,36,15,'building',tone);
+  add(x,-20,26,16,18,'building',tone);
+  add(x,20,26,16,18,'building',tone);
+  add(x,75,28,36,15,'building',tone);
+}
+// Central blocks flanking Plaza C (z in [-32..-9] and [+9..+32], completely clear of z=0 and z=±40 streets)
+add(-64,-21,36,18,17,'factory','#8e8677');
+add(64,-21,36,18,18,'factory','#7b8985');
+add(-64,21,36,18,16,'factory','#868173');
+add(64,21,36,18,19,'factory','#778581');
+add(-104,21,28,16,11,'warehouse','#9d8b73');
+add(104,-21,28,16,12,'warehouse','#9a917d');
+add(-104,-21,24,14,10,'warehouse','#888b7f');
+add(104,21,24,14,10,'warehouse','#838c86');
+// Inner tactical buildings overlooking Central Avenue and Plaza C
+add(-27,-21,16,14,12,'building','#85867b');
+add(27,21,16,14,12,'building','#78827b');
+add(-27,21,14,12,9,'warehouse','#8a8779');
+add(27,-21,14,12,9,'warehouse','#7d8882');
+// Mid-sector support buildings between Avenue and Warehouses (z = ±75 block)
+add(-32,-75,18,28,12,'building','#85867b');
+add(30,75,18,28,13,'building','#78827b');
+add(-30,75,16,20,9,'warehouse','#898578');
+add(28,-75,16,20,9,'warehouse','#7c8782');
+// Enterable warehouses in the z = ±75 blocks (completely clear of z = ±40 and z = ±110 streets)
+warehouse('rail-hangar',72,-75,56,36,10,'#8d9389');
+warehouse('port-depot',-78,75,58,36,10,'#8c897b');
+warehouse('repair-bay',86,75,46,34,9,'#738884');
+// Container Yard A (-88, -75) — multi-lane shipping container maze inside z in [-98..-52]
+for(const [x,z,w,d,c]of [
+  [-114,-90,18,5,'#5c7c7b'],[-114,-62,18,5,'#68827d'],[-62,-90,16,5,'#5c7c7b'],[-62,-62,16,5,'#68827d'],
+  [-104,-75,5,14,'#7b6d54'],[-72,-75,5,14,'#607d7c'],[-88,-94,14,4.5,'#6b8280'],[-88,-56,14,4.5,'#7b6d54'],
+  // Port D (-78, 75) & Repair E (86, 75) outer container stacks (strictly inside z in [52..98])
+  [118,62,5,16,'#837656'],[118,88,5,16,'#687f7c'],[54,60,5,12,'#837656'],[54,90,5,12,'#687f7c'],
+  [-116,60,5,14,'#837656'],[-116,90,5,14,'#607d7c'],[-44,60,5,12,'#837656'],[-44,90,5,12,'#607d7c'],
+  [114,-90,5,14,'#607d7c'],[114,-60,5,14,'#7b6d54'],
+  // Roadside & courtyard cargo containers (clear of avenue center and cross-street lanes)
+  [-46,-96,12,4.5,'#607d7c'],[46,-96,12,4.5,'#7b6d54'],[-46,96,12,4.5,'#837656'],[46,96,12,4.5,'#607d7c'],
+  [-86,-126,14,4.8,'#607d7c'],[86,-126,14,4.8,'#7b6d54'],[-86,126,14,4.8,'#837656'],[86,126,14,4.8,'#607d7c'],
+])add(x,z,w,d,2.8,'container',c);
+// Interior cover inside enterable warehouses (leaves a wide central navigation lane)
+for(const [cx,cz]of [[72,-75],[-78,75],[86,75]])for(const sign of [-1,1]){
+  add(cx+sign*14,cz-8,6,3,1.35,'crate','#9c8968');
+  add(cx+sign*14,cz+8,6,3,1.35,'crate','#9c8968');
+  add(cx+sign*11,cz,2.2,4.5,1.2,'barrier','#a5a38e');
+}
+// Central Plaza C (0, 0) fortification ring — tactical cover around the flag without blocking roads or nav cells
 for(const [x,z,w,d]of [
-  [-116,-94,20,5],[-116,-70,20,5],[-62,-94,16,5],[-62,-70,16,5],
-  [-104,-109,5,12],[-78,-110,5,12],[-104,-55,5,12],[-78,-55,5,12],
-  [119,64,5,20],[119,89,5,15],[61,63,5,16],[61,94,5,12],
-  [-112,61,5,12],[-112,92,5,12],[-45,62,5,12],[-45,94,5,12],
-])add(x,z,w,d,2.8,'container',z<0?'#607d7c':'#837656');
-// Interior cover leaves a clear straight spine through each warehouse.
-for(const [cx,cz]of [[72,-78],[-78,78],[88,78]])for(const sign of [-1,1]){
-  add(cx+sign*14,cz-8,6,3,1.3,'crate','#9c8968');
-  add(cx+sign*14,cz+8,6,3,1.3,'crate','#9c8968');
+  [-9,-9,5,1.2],[9,9,5,1.2],[-9,9,5,1.2],[9,-9,5,1.2],
+  [-15,-9,1.4,5],[15,9,1.4,5],[-9,15,5,1.4],[9,-15,5,1.4],
+  [-20,12,3,6],[20,-12,3,6],[-20,-12,3,6],[20,12,3,6],
+])add(x,z,w,d,1.2,'barrier','#aaa38e');
+// Main North-South Avenue cover islands, jersey barriers & supply drops
+for(const z of [-132,-120,-96,-80,-62,-50,-26,26,50,62,80,96,120,132]){
+  add(-11,z,2.4,6,1.15,'barrier','#a5a38e');
+  add(11,z+3,2.4,6,1.15,'barrier','#a5a38e');
 }
-// Roadside concrete islands break long sightlines without blocking the road.
-for(const z of [-122,-98,-54,-24,25,54,101,125]){
-  add(-13,z,3,7,1.15,'barrier','#a5a38e');
-  add(13,z+5,3,7,1.15,'barrier','#a5a38e');
+for(const z of [-88,-56,-20,20,56,88]){
+  add(z>0?-8.5:8.5,z,3,3,1.4,'crate','#9c8968');
 }
-for(const [x,z]of [[-27,-40],[28,-40],[-29,40],[28,40],[-52,-110],[52,110],[-100,-40],[103,40]])add(x,z,7,1.2,1.1,'barrier','#a7a28f');
-for(const [x,z,w,d]of [[-8,-9,5,1.2],[8,9,5,1.2],[-20,13,3,6],[20,-13,3,6]])add(x,z,w,d,1.1,'barrier','#aaa38e');
-for(const [x,z]of [[-55,-42],[53,40],[-118,8],[116,-9],[-30,-118],[31,118],[-72,-25],[72,29],[-105,112],[105,-113]])add(x,z,3,3,1.35,'crate','#9f8a67');
-for(const [x,z]of [[-117,-126],[116,125],[-118,125],[117,-125]])add(x,z,10,8,4,'warehouse','#8a9387');
+// Cross-street tactical barriers & checkpoints along z = -110, -40, 0, 40, 110
+for(const [x,z]of [
+  [-26,-40],[26,-40],[-52,-40],[52,-40],[-84,-40],[84,-40],[-118,-40],[118,-40],
+  [-26,40],[26,40],[-52,40],[52,40],[-84,40],[84,40],[-118,40],[118,40],
+  [-28,0],[28,0],[-52,0],[52,0],[-84,0],[84,0],[-116,0],[116,0],
+  [-32,-110],[32,-110],[-64,-110],[64,-110],[-98,-110],[98,-110],
+  [-32,110],[32,110],[-64,110],[64,110],[-98,110],[98,110],
+])add(x,z+(x%2===0?4.2:-4.2),6.5,1.2,1.15,'barrier','#a7a28f');
+// Sidewalk & alley cover crates, sandbag barriers, and industrial equipment across all sectors
+for(const [x,z,w,d,h,kind]of [
+  [-88,-65,3.2,3.2,1.4,'crate'],[-79,-83,3.2,3.2,1.4,'crate'],[-97,-83,2.4,4.2,1.2,'barrier'],
+  [-50,-52,3.2,3.2,1.4,'crate'],[50,-52,3.2,3.2,1.4,'crate'],[-50,52,3.2,3.2,1.4,'crate'],[50,52,3.2,3.2,1.4,'crate'],
+  [-44,-21,3,5,1.25,'barrier'],[44,-21,3,5,1.25,'barrier'],[-44,21,3,5,1.25,'barrier'],[44,21,3,5,1.25,'barrier'],
+  [-84,-21,3.4,3.4,1.45,'crate'],[84,-21,3.4,3.4,1.45,'crate'],[-84,21,3.4,3.4,1.45,'crate'],[84,21,3.4,3.4,1.45,'crate'],
+  [-124,-52,3.2,3.2,1.4,'crate'],[124,-52,3.2,3.2,1.4,'crate'],[-124,52,3.2,3.2,1.4,'crate'],[124,52,3.2,3.2,1.4,'crate'],
+  [-16,136,6,1.4,1.2,'barrier'],[16,136,6,1.4,1.2,'barrier'],[-16,-136,6,1.4,1.2,'barrier'],[16,-136,6,1.4,1.2,'barrier'],
+  [-42,-126,3.5,3.5,1.4,'crate'],[42,-126,3.5,3.5,1.4,'crate'],[-42,126,3.5,3.5,1.4,'crate'],[42,126,3.5,3.5,1.4,'crate'],
+  [-118,-126,12,9,4.5,'warehouse'],[118,126,12,9,4.5,'warehouse'],[-118,126,12,9,4.5,'warehouse'],[118,-126,12,9,4.5,'warehouse'],
+])add(x,z,w,d,h,kind,kind==='crate'?'#9f8a67':kind==='barrier'?'#a6a18e':'#8a9387');
 export const MAP={
   size:360,name:'Портовый район «Рубеж»',boxes,structures,
   districts:[
-    {id:'yard',name:'КОНТЕЙНЕРНЫЙ ДВОР',x:-88,z:-82},
-    {id:'rail',name:'ЖЕЛЕЗНОДОРОЖНЫЙ СКЛАД',x:72,z:-78},
+    {id:'yard',name:'КОНТЕЙНЕРНЫЙ ДВОР',x:-88,z:-75},
+    {id:'rail',name:'ЖЕЛЕЗНОДОРОЖНЫЙ СКЛАД',x:72,z:-75},
     {id:'plaza',name:'ПРОМЫШЛЕННАЯ ПЛОЩАДЬ',x:0,z:0},
-    {id:'port',name:'ПОРТОВЫЙ ТЕРМИНАЛ',x:-78,z:78},
-    {id:'repair',name:'РЕМОНТНОЕ ДЕПО',x:86,z:78},
+    {id:'port',name:'ПОРТОВЫЙ ТЕРМИНАЛ',x:-78,z:75},
+    {id:'repair',name:'РЕМОНТНОЕ ДЕПО',x:86,z:75},
   ],
   points:[
-    {id:'A',name:'КОНТЕЙНЕРЫ',x:-88,z:-82},
-    {id:'B',name:'Ж/Д СКЛАД',x:72,z:-78},
+    {id:'A',name:'КОНТЕЙНЕРЫ',x:-88,z:-75},
+    {id:'B',name:'Ж/Д СКЛАД',x:72,z:-75},
     {id:'C',name:'ПЛОЩАДЬ',x:0,z:0},
-    {id:'D',name:'ПОРТ',x:-78,z:78},
-    {id:'E',name:'ДЕПО',x:86,z:78},
+    {id:'D',name:'ПОРТ',x:-78,z:75},
+    {id:'E',name:'ДЕПО',x:86,z:75},
   ],
   spawns:[{x:0,z:150},{x:0,z:-150}],
 };

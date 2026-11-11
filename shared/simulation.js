@@ -108,7 +108,7 @@ export class Simulation {
       if(MAP.boxes.some(b=>Math.abs(wx-b.x)<b.w/2+clearance&&Math.abs(wz-b.z)<b.d/2+clearance))this.blocked[z*this.gridSize+x]=1;
     }
     for(let n=0;n<clamp(Math.floor(bots),0,31);n++){
-      const p=this.addPlayer(`bot-${n}`,names[n%names.length],n%2,classKeys[Math.floor(n/2)%4]);p.bot=true;p.nextThink=0;p.botPath=[];
+      const p=this.addPlayer(`bot-${n}`,names[n%names.length],n%2,classKeys[Math.floor(n/2)%4]);p.bot=true;p.botSlot=n;p.nextThink=0;p.botPath=[];
     }
   }
   event(type,data={}) { this.events.push({id:++this.eventId,type,time:this.time,...data}); }
@@ -127,7 +127,7 @@ export class Simulation {
     const point=this.points.find(q=>q.id===pointId&&q.owner===p.team&&!q.contested);
     const base=point||MAP.spawns[p.team];let x=base.x,z=base.z;
     for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz,0)){x=tx;z=tz;break;}}
-    Object.assign(p,{x,y:0,z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:CLASSES[p.classId].mag,reserve:CLASSES[p.classId].reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
+    Object.assign(p,{x,y:0,z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:CLASSES[p.classId].mag,reserve:CLASSES[p.classId].reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
     Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false});
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
@@ -243,6 +243,35 @@ export class Simulation {
     }
     const result=[];for(let cur=found;cur!==source&&cur!==-1;cur=prev[cur])result.push({x:this.gridOrigin+(cur%size+.5)*this.gridCell,z:this.gridOrigin+(Math.floor(cur/size)+.5)*this.gridCell});return result.reverse();
   }
+  pickObjectiveSpot(p,point){
+    const slot=p.botSlot??0;
+    const baseAngle=slot*2.3999632+this.random()*Math.PI*2;
+    const radii=[4.2,6.4,8.2,3.0];
+    let bestSpot={x:point.x,z:point.z},bestScore=-Infinity;
+    for(let i=0;i<12;i++){
+      const angle=baseAngle+i*(Math.PI*2/12);
+      const r=radii[i%radii.length]+(this.random()-.5)*1.2;
+      const tx=point.x+Math.cos(angle)*r,tz=point.z+Math.sin(angle)*r;
+      if(Math.hypot(tx-point.x,tz-point.z)>=CAPTURE_RADIUS-1.4)continue;
+      if(this.collides(tx,tz,0,PLAYER_RADIUS+.35)||this.blocked[this.gridIndex(tx,tz)])continue;
+      let minAlly=Infinity;
+      for(const ally of this.players.values()){
+        if(ally===p||!ally.alive||ally.team!==p.team)continue;
+        const ref=ally.botGoal||ally;
+        const d=Math.hypot(tx-ref.x,tz-ref.z);
+        if(d<minAlly)minAlly=d;
+      }
+      const coverBonus=this.collides(tx+Math.cos(angle)*1.6,tz+Math.sin(angle)*1.6,0,PLAYER_RADIUS)?2.5:0;
+      const score=Math.min(minAlly,8)+coverBonus+(this.random()-.5)*.4;
+      if(score>bestScore){bestScore=score;bestSpot={x:tx,z:tz};}
+    }
+    const enemyBase=MAP.spawns[1-p.team]??{x:0,z:0};
+    const outwardYaw=Math.atan2(-(bestSpot.x-point.x),-(bestSpot.z-point.z));
+    const frontYaw=Math.atan2(-(enemyBase.x-bestSpot.x),-(enemyBase.z-bestSpot.z));
+    p.botWatchYaw=frontYaw+angleDifference(outwardYaw,frontYaw)*.45+((slot%3)-1)*.35;
+    p.botHoldCrouch=(slot+Math.floor(this.time))%3===0;
+    return bestSpot;
+  }
   thinkBot(p,dt){
     if(!p.alive)return;
     p.nextThink-=dt;const settings=this.botSettings;
@@ -291,15 +320,47 @@ export class Simulation {
           const score = dist(p, point) + (point.owner === p.team ? 220 : 0) + this.random() * 25 + assigned * 12;
           if (score < bestScore) { bestObjective = point; bestScore = score; }
         }
-        p.botObjective=bestObjective;p.botPath=this.pathfind(p,bestObjective);p.nextThink=3+this.random()*2;
+        const sameObjective=p.botObjective?.id===bestObjective?.id;
+        const insideZone=bestObjective&&dist(p,bestObjective)<CAPTURE_RADIUS-1.5;
+        p.botObjective=bestObjective;
+        if(bestObjective){
+          if(!sameObjective||!p.botGoal||!insideZone||this.random()<.35){
+            p.botGoal=this.pickObjectiveSpot(p,bestObjective);
+            p.botPath=this.pathfind(p,p.botGoal);
+          }else{
+            p.botWatchYaw=(p.botWatchYaw??p.yaw)+((p.botSlot??0)%2?1:-1)*(.45+this.random()*.5);
+          }
+        }
+        p.nextThink=3+this.random()*2;
       }
+      const goal=p.botGoal||p.botObjective;
       while(p.botPath.length&&dist(p,p.botPath[0])<1.4)p.botPath.shift();
-      const next=p.botPath[0]||p.botObjective;
-      if(next&&dist(p,next)>1.4){
-        const wantedYaw=Math.atan2(-(next.x-p.x),-(next.z-p.z));
+      const next=p.botPath[0]||goal;
+      let sepX=0,sepZ=0;
+      for(const ally of this.players.values()){
+        if(ally===p||!ally.alive)continue;
+        const ax=p.x-ally.x,az=p.z-ally.z,d2=ax*ax+az*az;
+        if(d2<4.84&&d2>1e-6){
+          const d=Math.sqrt(d2),push=(2.2-d)/2.2;
+          sepX+=(ax/d)*push;sepZ+=(az/d)*push;
+        }
+      }
+      if(next&&dist(p,next)>1.35){
+        const moveX=(next.x-p.x)+sepX*1.8,moveZ=(next.z-p.z)+sepZ*1.8;
+        const wantedYaw=Math.atan2(-moveX,-moveZ);
         input.yaw=p.yaw+clamp(angleDifference(wantedYaw,p.yaw),-settings.turnSpeed*dt,settings.turnSpeed*dt);
-        const facing=Math.abs(angleDifference(wantedYaw,input.yaw));input.forward=facing<.6?1:facing<1.1?.4:0;input.sprint=facing<.3;
-      }else input.yaw=p.yaw+dt*.5;
+        const facing=Math.abs(angleDifference(wantedYaw,input.yaw));input.forward=facing<.6?1:facing<1.1?.4:0;input.sprint=facing<.3&&dist(p,goal||next)>7;
+      }else{
+        const glance=Math.sin(this.time*1.1+(p.botSlot??0)*1.7)*.38;
+        const wantedYaw=(p.botWatchYaw??p.yaw)+glance;
+        input.yaw=p.yaw+clamp(angleDifference(wantedYaw,p.yaw),-settings.turnSpeed*.7*dt,settings.turnSpeed*.7*dt);
+        input.crouch=Boolean(p.botHoldCrouch);
+        if(Math.hypot(sepX,sepZ)>.15){
+          const sin=Math.sin(input.yaw),cos=Math.cos(input.yaw);
+          input.forward=clamp((-sin*sepX-cos*sepZ)*.7,-.5,.5);
+          input.strafe=clamp((cos*sepX-sin*sepZ)*.7,-.5,.5);
+        }
+      }
     }
     if(p.ammo===0||(p.ammo<8&&!target))input.reload=true;
     if((p.hp<60||p.classId==='support')&&p.gadgetTime<=0)input.gadget=true;

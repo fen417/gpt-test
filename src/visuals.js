@@ -260,11 +260,20 @@ export function addDistrictDetails(owner, MAP) {
       const p = owner.box(scene, x, .035, z, .15 + random() * .4, .04, .1 + random() * .3, i % 2 ? m.edge : debrisMat, false); p.rotation.y = random() * Math.PI;
     }
   }
-  // Drain covers and oil stains add close-range detail without new obstacles.
+  // Drain covers, street lamps and bollards along the main avenue and cross streets.
   for (let i = -limit + 15; i < limit; i += 34) {
     const x = 10.5, z = i; if (blocked(x, z, .6)) continue;
     owner.box(scene, x, .068, z, .65, .025, 1.1, m.steel, false);
     for (let j = -.4; j < .5; j += .12) owner.box(scene, x, .085, z + j, .56, .012, .035, m.darkConcrete, false);
+  }
+  for (const z of [-130, -92, -58, -22, 22, 58, 92, 130]) {
+    for (const side of [-1, 1]) {
+      const lx = side * 12.8;
+      if (blocked(lx, z, .8)) continue;
+      owner.cylinder(scene, lx, 3.2, z, .09, 6.4, m.pole, 8);
+      owner.box(scene, lx - side * .65, 6.35, z, 1.4, .12, .22, m.steel, false);
+      owner.box(scene, lx - side * 1.1, 6.26, z, .45, .06, .18, m.glow, false);
+    }
   }
   // Tall vegetation stays outside the combat area; shallow weeds grow at walls.
   const grassMat = pairMaterials(
