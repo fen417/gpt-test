@@ -42,10 +42,17 @@ function optimizeLighting(object) {
 
 function detectIntegratedGpu(renderer) {
   try {
-    const gl = renderer.getContext();
+    let gl = renderer?.getContext?.();
+    if (!gl && typeof document !== 'undefined') {
+      const probe = document.createElement('canvas');
+      probe.width = probe.height = 1;
+      gl = probe.getContext('webgl2', { powerPreference: 'high-performance' })
+        || probe.getContext('webgl', { powerPreference: 'high-performance' });
+    }
+    if (!gl) return false;
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
-    const name = (debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '';
-    return /intel.*(uhd|hd graphics|iris)|llvmpipe|swiftshader|mesa|mali|adreno/i.test(name);
+    const name = `${(debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) || ''} ${gl.getParameter(gl.RENDERER) || ''} ${gl.getParameter(gl.VENDOR) || ''}`;
+    return /\bintel\b(?!.*arc)|uhd|hd\s*graphics|hd\s*\d{3,4}|iris|llvmpipe|swiftshader|mesa|mali|adreno|radeon\(tm\)\s*graphics|vega/i.test(name);
   } catch {
     return false;
   }
@@ -65,7 +72,8 @@ function canvasTexture(size, draw) {
   return texture;
 }
 
-function material(color, roughness = 0.85, metalness = 0.05, extra = {}) {
+function material(color, roughness = 0.85, metalness = 0.05, extra = {}, fast = false) {
+  if (fast) return new THREE.MeshLambertMaterial({ color, ...extra });
   const result = new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
   result.onBeforeCompile = boundedPointLights;
   return result;
@@ -76,13 +84,15 @@ export class GameRenderer {
     this.canvas = canvas;
     this.clock = 0;
     this.frameCount = 0;
+    this.smoothDt = 0.0166;
+    this.adaptiveScale = 1;
+    this.scaleCooldown = 0;
     this.soldiers = new Map();
     this.soldierTemplates = new Map();
     this.activeSoldiers = new Set();
     this.flags = new Map();
     this.grenadeMeshes = new Map();
     this.activeGrenades = new Set();
-    this.grenadeMaterial = material(0x485545, 0.7, 0.4, { emissive: 0xa96220, emissiveIntensity: 0.2 });
     this.effects = [];
     this.effectPools = { tracer: [], shell: [], smoke: [], spark: [] };
     this.seenEvents = new Set();
@@ -111,16 +121,25 @@ export class GameRenderer {
     this.surfaceCache = new Map();
     this.soldierMaterials = new Map();
     this.random = seeded();
+    const preDetectedIgpu = detectIntegratedGpu();
     try {
-      this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', alpha: false });
+      this.renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: !preDetectedIgpu,
+        stencil: false,
+        powerPreference: 'high-performance',
+        alpha: false,
+      });
     } catch (error) {
       onError?.(error);
       throw error;
     }
-    this.integratedGpu = detectIntegratedGpu(this.renderer);
-    this.renderer.setPixelRatio(this.integratedGpu ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = this.integratedGpu ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    this.integratedGpu = preDetectedIgpu || detectIntegratedGpu(this.renderer);
+    const fast = this.integratedGpu;
+    this.grenadeMaterial = material(0x485545, 0.7, 0.4, { emissive: 0xa96220, emissiveIntensity: 0.2 }, fast);
+    this.updatePixelRatio();
+    this.renderer.shadowMap.enabled = !fast;
+    this.renderer.shadowMap.type = fast ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -131,20 +150,22 @@ export class GameRenderer {
     this.camera = new THREE.PerspectiveCamera(85, 1, 0.045, 950);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
-    this.scene.add(new THREE.HemisphereLight(0xc3d9e9, 0x777060, 2.0));
-    this.scene.add(new THREE.AmbientLight(0x8e9eaa, 0.2));
-    this.sun = new THREE.DirectionalLight(0xffd7a4, 3.5);
+    this.scene.add(new THREE.HemisphereLight(0xc3d9e9, 0x777060, fast ? 2.35 : 2.0));
+    this.scene.add(new THREE.AmbientLight(0x8e9eaa, fast ? 0.38 : 0.2));
+    this.sun = new THREE.DirectionalLight(0xffd7a4, fast ? 3.2 : 3.5);
     this.sun.position.set(-90, 75, 65);
-    this.sun.castShadow = true;
+    this.sun.castShadow = !fast;
     this.sun.shadow.autoUpdate = false;
-    const shadowMapSize = this.integratedGpu ? 1024 : 2048;
+    const shadowMapSize = fast ? 1024 : 2048;
     this.sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
     Object.assign(this.sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 220 });
     this.sun.shadow.camera.updateProjectionMatrix();
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.04;
-    this.sun.shadow.needsUpdate = true;
-    this.renderer.shadowMap.needsUpdate = true;
+    if (!fast) {
+      this.sun.shadow.needsUpdate = true;
+      this.renderer.shadowMap.needsUpdate = true;
+    }
     this.scene.add(this.sun, this.sun.target);
     this.geo = {
       box: new THREE.BoxGeometry(1, 1, 1),
@@ -153,14 +174,14 @@ export class GameRenderer {
       rounded: new RoundedBoxGeometry(1, 1, 1, 1, 0.12),
       shell: new THREE.CylinderGeometry(.009, .009, .043, 6),
     };
-    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: !this.integratedGpu });
-    this.atmosphere = makeSky(this.scene, this.renderer);
+    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: !fast, fastMaterials: fast });
+    this.atmosphere = makeSky(this.scene, this.renderer, { useEnvironment: !fast });
     this.materials = {
-      concrete: this.surfaces.concrete, darkConcrete: material(0x414948), edge: material(0x929087),
-      asphalt: this.surfaces.asphalt, steel: material(0x323c3e, 0.55, 0.65), rust: material(0x735344, 0.8, 0.4),
-      roof: material(0x4e5655), window: material(0x23363e, 0.25, 0.4), marking: material(0xb5b1a0),
-      sand: material(0x8d8067), foliage: material(0x4c5b4c), pole: material(0x788185, 0.4, 0.75),
-      stripe: material(0x9b8a55), skyline: material(0x697476), crane: material(0x776f57, 0.8, 0.4),
+      concrete: this.surfaces.concrete, darkConcrete: material(0x414948, 0.85, 0.05, {}, fast), edge: material(0x929087, 0.85, 0.05, {}, fast),
+      asphalt: this.surfaces.asphalt, steel: material(0x323c3e, 0.55, 0.65, {}, fast), rust: material(0x735344, 0.8, 0.4, {}, fast),
+      roof: material(0x4e5655, 0.85, 0.05, {}, fast), window: material(0x23363e, 0.25, 0.4, {}, fast), marking: material(0xb5b1a0, 0.85, 0.05, {}, fast),
+      sand: material(0x8d8067, 0.85, 0.05, {}, fast), foliage: material(0x4c5b4c, 0.85, 0.05, {}, fast), pole: material(0x788185, 0.4, 0.75, {}, fast),
+      stripe: material(0x9b8a55, 0.85, 0.05, {}, fast), skyline: material(0x697476, 0.85, 0.05, {}, fast), crane: material(0x776f57, 0.8, 0.4, {}, fast),
       glow: new THREE.MeshBasicMaterial({ color: 0xffd8a1 }),
     };
     this.buildWorld();
@@ -180,8 +201,8 @@ export class GameRenderer {
     });
     this.buildWeapon();
     this.scene.traverse(object => { if (object.isLight) object.layers.enable(1); });
-    // Keep the light count constant (1 blast light) so shader programs stay cached and fast.
-    this.blastLights = Array.from({ length: 1 }, () => {
+    // On integrated GPUs, omit PointLights so NUM_POINT_LIGHTS is 0 in all shaders.
+    this.blastLights = fast ? [] : Array.from({ length: 1 }, () => {
       const mesh = new THREE.PointLight(0xffaa55, 0, 15, 2);
       this.scene.add(mesh);
       return { mesh, age: 0, life: 0.22, type: 'light' };
@@ -198,9 +219,9 @@ export class GameRenderer {
       }
       ctx.globalCompositeOperation = 'source-over';
     });
-    this.shellMaterial = material(0xb9954c, .32, .82);
+    this.shellMaterial = material(0xb9954c, .32, .82, {}, fast);
     this.sparkMaterial = new THREE.MeshBasicMaterial({ color: 0xffc475 });
-    this.scene.traverse(optimizeLighting);
+    if (!fast) this.scene.traverse(optimizeLighting);
     this.warmup();
     this.resize();
   }
@@ -213,7 +234,7 @@ export class GameRenderer {
         const key = `${team}:${classId}`;
         if (!this.soldierTemplates.has(key)) {
           const template = createSoldierRig(this, { id: key, team, classId, x: 0, y: 0, z: 0, shotSeq: 0 });
-          template.group.traverse(optimizeLighting);
+          if (!this.integratedGpu) template.group.traverse(optimizeLighting);
           this.soldierTemplates.set(key, template);
         }
       }
@@ -385,7 +406,7 @@ export class GameRenderer {
         for (let fx = -w / 2 + 1; fx < w / 2; fx += 7) this.box(this.scene, b.x + fx, h / 2, b.z + d / 2 + .07, .18, h, .2, this.materials.edge);
         for (let y = 3.9; y < h - 1; y += 3.1) this.box(this.scene, b.x, y, b.z + d / 2 + .05, w, .09, .12, this.materials.edge);
         if (w > 12) {
-          const sign = makeSign(b.kind === 'factory' ? 'SECTOR' : 'DEPOT', `${String(b.id || '').replace('obj-', '').padStart(2, '0')}  /  RESTRICTED`, Math.min(4.5, w * .22));
+          const sign = makeSign(b.kind === 'factory' ? 'SECTOR' : 'DEPOT', `${String(b.id || '').replace('obj-', '').padStart(2, '0')}  /  RESTRICTED`, Math.min(4.5, w * .22), this.integratedGpu);
           sign.position.set(b.x, Math.min(h - 1.5, 6), b.z + d / 2 + .16); this.scene.add(sign);
           this.box(this.scene, b.x, 3.45, b.z + d / 2 + .6, 5.5, .12, 1.25, this.materials.steel);
         }
@@ -414,7 +435,7 @@ export class GameRenderer {
         }
       }
     }
-    const litWindowMat = material(0xb5a27c, 0.6, 0.2, { emissive: 0x7c633c, emissiveIntensity: 0.45 });
+    const litWindowMat = material(0xb5a27c, 0.6, 0.2, { emissive: 0x7c633c, emissiveIntensity: 0.45 }, this.integratedGpu);
     for (const [matrices, mat] of [[frameMatrices, this.materials.edge], [windowMatrices, this.materials.window], [litMatrices, litWindowMat]]) {
       addSectorInstances(this.scene, this.geo.box, mat, matrices);
     }
@@ -430,7 +451,7 @@ export class GameRenderer {
     for (const point of MAP.points || []) this.makeFlag(point);
     addDistrictDetails(this, MAP);
     // Boundary fence posts and wire are outside playable ground.
-    const fenceMat = material(0x697674, 0.7, 0.45);
+    const fenceMat = material(0x697674, 0.7, 0.45, {}, this.integratedGpu);
     for (let i = -limit; i <= limit; i += 10) {
       for (const side of [-1, 1]) {
         this.cylinder(this.scene, i, 1.7, side * (limit + 1), 0.055, 3.4, fenceMat);
@@ -485,10 +506,12 @@ export class GameRenderer {
   makeFlag(point) {
     const group = new THREE.Group(); group.position.set(point.x, 0, point.z); this.scene.add(group);
     this.cylinder(group, 0, 2.4, 0, 0.045, 4.8, this.materials.pole);
-    const flagMaterial = new THREE.MeshStandardMaterial({ color: COLORS.neutral, side: THREE.DoubleSide, roughness: 0.95 });
+    const flagMaterial = this.integratedGpu
+      ? new THREE.MeshLambertMaterial({ color: COLORS.neutral, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ color: COLORS.neutral, side: THREE.DoubleSide, roughness: 0.95 });
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.85, 8, 1), flagMaterial);
     flag.position.set(0.8, 4.05, 0); group.add(flag);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(CAPTURE_RADIUS - 0.13, CAPTURE_RADIUS, 48), new THREE.MeshBasicMaterial({ color: COLORS.neutral, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(CAPTURE_RADIUS - 0.13, CAPTURE_RADIUS, 36), new THREE.MeshBasicMaterial({ color: COLORS.neutral, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.045; group.add(ring);
     const texture = canvasTexture(128, (ctx) => {
       ctx.fillStyle = 'rgba(12,23,28,.82)'; ctx.beginPath(); ctx.moveTo(64, 4); ctx.lineTo(118, 64); ctx.lineTo(64, 124); ctx.lineTo(10, 64); ctx.closePath(); ctx.fill();
@@ -512,10 +535,12 @@ export class GameRenderer {
     let template = this.soldierTemplates.get(key);
     if (!template) {
       template = createSoldierRig(this, player);
-      template.group.traverse(optimizeLighting);
+      if (!this.integratedGpu) template.group.traverse(optimizeLighting);
       this.soldierTemplates.set(key, template);
     }
-    return cloneSoldierRig(template, player);
+    const rig = cloneSoldierRig(template, player);
+    rig.stepIndex = this.soldiers.size;
+    return rig;
   }
 
   removeSoldier(soldier) {
@@ -600,10 +625,15 @@ export class GameRenderer {
       const distant = !externalScene && local && distSq > distantLimitSq;
       if (soldier.body) {
         soldier.body.visible = !distant;
-        soldier.body.castShadow = !this.lowQuality && distSq < 48 * 48;
+        soldier.body.castShadow = !this.lowQuality && !this.integratedGpu && distSq < 48 * 48;
       }
-      if (!distant) animateSoldier(soldier, { dt, player, reset: reset || respawned || returning || soldier.distant.visible });
-      else soldier.flash.visible = false;
+      if (!distant) {
+        const mustReset = reset || respawned || returning || soldier.distant.visible;
+        const halfRate = !externalScene && distSq > 26 * 26 && !mustReset;
+        if (!halfRate || ((this.frameCount + (soldier.stepIndex || 0)) & 1) === 0) {
+          animateSoldier(soldier, { dt: halfRate ? dt * 2 : dt, player, reset: mustReset });
+        }
+      } else soldier.flash.visible = false;
       soldier.pose.visible = !distant;
       soldier.distant.visible = !!distant;
       soldier.marker.material.color.setHex(player.team === localTeam ? COLORS.friendly : COLORS.enemy);
@@ -681,6 +711,7 @@ export class GameRenderer {
   }
 
   blastFlash(x, y, z) {
+    if (!this.blastLights.length) return;
     const light = this.blastLights.find(effect => effect.mesh.intensity === 0);
     if (light) this.effects.push(light);
     const effect = light ?? this.blastLights[0];
@@ -779,6 +810,21 @@ export class GameRenderer {
     for (const [id, mesh] of this.grenadeMeshes) if (!active.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
   }
 
+  updatePixelRatio() {
+    const dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 1.5);
+    const base = this.integratedGpu
+      ? (this.lowQuality ? 0.62 : 0.75)
+      : (this.lowQuality ? 0.75 : dpr);
+    const ratio = clamp(base * (this.adaptiveScale || 1), 0.52, 1.5);
+    if (this.currentPixelRatio !== ratio) {
+      this.currentPixelRatio = ratio;
+      this.renderer.setPixelRatio(ratio);
+      if (this.viewportWidth && this.viewportHeight) {
+        this.renderer.setSize(this.viewportWidth, this.viewportHeight, false);
+      }
+    }
+  }
+
   resize() {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
@@ -790,7 +836,7 @@ export class GameRenderer {
   drawScene(menu = false) {
     this.frameCount++;
     if (menu) {
-      if (!this.staticMenuShadows) {
+      if (!this.staticMenuShadows && this.renderer.shadowMap.enabled) {
         this.staticMenuShadows = true;
         this.sun.shadow.needsUpdate = true;
         this.renderer.shadowMap.needsUpdate = true;
@@ -806,18 +852,34 @@ export class GameRenderer {
   }
 
   render(state, localId, dt, view = {}) {
-    dt = Math.min(dt || 0.016, 0.1); this.clock += dt;
+    const rawDt = dt || 0.016;
+    dt = Math.min(rawDt, 0.1); this.clock += dt;
     this.scoped = false;
+    if (rawDt > 0.004 && rawDt < 0.09) {
+      this.smoothDt = lerp(this.smoothDt, rawDt, 0.08);
+      if (this.scaleCooldown > 0) this.scaleCooldown -= dt;
+      else if (this.smoothDt > 0.021 && this.adaptiveScale > 0.72) {
+        this.adaptiveScale = Math.max(0.72, Number((this.adaptiveScale - 0.07).toFixed(2)));
+        this.scaleCooldown = 0.85;
+        this.updatePixelRatio();
+      } else if (this.smoothDt < 0.0167 && this.adaptiveScale < 1) {
+        this.adaptiveScale = Math.min(1, Number((this.adaptiveScale + 0.04).toFixed(2)));
+        this.scaleCooldown = 1.6;
+        this.updatePixelRatio();
+      }
+    }
     const baseFov = clamp(Number(view.fov) || 85, 65, 105), shake = view.shake !== false;
     this.renderer.toneMappingExposure = 1.06 * clamp(Number(view.brightness) || 1, .6, 1.5);
     const low = view.quality === 'low';
     if (this.lowQuality !== low) {
       this.lowQuality = low;
-      this.renderer.shadowMap.enabled = !low;
-      this.sun.shadow.needsUpdate = true;
-      this.renderer.shadowMap.needsUpdate = true;
-      const ratio = low || this.integratedGpu ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
-      this.renderer.setPixelRatio(ratio);
+      const shadows = !low && !this.integratedGpu;
+      this.renderer.shadowMap.enabled = shadows;
+      if (shadows) {
+        this.sun.shadow.needsUpdate = true;
+        this.renderer.shadowMap.needsUpdate = true;
+      }
+      this.updatePixelRatio();
       this.resize();
     }
     if (!state?.players) {
@@ -839,7 +901,30 @@ export class GameRenderer {
     }
     const player = state.players.find(p => p.id === localId);
     const isAlive = player?.alive !== false;
-    if (player) {
+    if (player && !isAlive) {
+      const focusX = view.deployTarget?.x ?? player.x ?? 0;
+      const focusZ = view.deployTarget?.z ?? player.z ?? 0;
+      const orbit = this.clock * 0.08;
+      const desiredX = focusX + Math.sin(orbit) * 32;
+      const desiredY = 46;
+      const desiredZ = focusZ + Math.cos(orbit) * 32;
+      if (this.cameraAlive !== false) {
+        this.camera.position.set(player.x, 4, player.z + 6);
+      }
+      const pan = 1 - Math.exp(-dt * 4.5);
+      this.camera.position.x = lerp(this.camera.position.x, desiredX, pan);
+      this.camera.position.y = lerp(this.camera.position.y, desiredY, pan);
+      this.camera.position.z = lerp(this.camera.position.z, desiredZ, pan);
+      this.camera.lookAt(focusX, 1.5, focusZ);
+      this.cameraPlayerId = localId;
+      this.cameraAlive = false;
+      this.weapon.visible = false;
+      if (Math.abs(this.camera.fov - 65) > 0.1 || this.camera.near !== 0.5) {
+        this.camera.fov = 65;
+        this.camera.near = 0.5;
+        this.camera.updateProjectionMatrix();
+      }
+    } else if (player) {
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
       const crouching = view.crouch ?? player.crouching ?? player.crouch;
       const height = isAlive ? (crouching ? 1.05 : 1.65) : 0.5;
@@ -936,7 +1021,7 @@ export class GameRenderer {
     this.drawScene();
   }
 
-  getStats() { return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries }; }
+  getStats() { return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu }; }
 
   project(x, y, z) {
     const position = this.scratchPosition.set(x, y, z).project(this.camera);

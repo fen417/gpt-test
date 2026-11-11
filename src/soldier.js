@@ -25,10 +25,11 @@ function geometry() {
   shapes ??= {
     box: new THREE.BoxGeometry(1, 1, 1),
     round: new RoundedBoxGeometry(1, 1, 1, 1, .14),
-    sphere: new THREE.SphereGeometry(1, 12, 9),
-    low: new THREE.SphereGeometry(1, 8, 6),
-    cyl: new THREE.CylinderGeometry(1, 1, 1, 10),
-    fine: new THREE.CylinderGeometry(1, 1, 1, 16),
+    sphere: new THREE.SphereGeometry(1, 10, 7),
+    low: new THREE.SphereGeometry(1, 7, 5),
+    cyl: new THREE.CylinderGeometry(1, 1, 1, 8),
+    fine: new THREE.CylinderGeometry(1, 1, 1, 12),
+    shadow: new THREE.CircleGeometry(.34, 12),
   };
   return shapes;
 }
@@ -79,7 +80,11 @@ function soldierMaterial(owner) {
       c.fillRect(x + random() * w, random() * H, 1 + random() * 2, 1 + random() * 2);
     }
   }
-  const map = new THREE.CanvasTexture(color); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
+  const map = new THREE.CanvasTexture(color); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = owner.integratedGpu ? 1 : 4;
+  if (owner.integratedGpu) {
+    owner.soldierAtlas = new THREE.MeshLambertMaterial({ name: 'soldier atlas', map, vertexColors: true });
+    return owner.soldierAtlas;
+  }
   const rm = new THREE.CanvasTexture(surface);
   owner.soldierAtlas = new THREE.MeshStandardMaterial({ name: 'soldier atlas', map, roughnessMap: rm, metalnessMap: rm, roughness: 1, metalness: 1, vertexColors: true });
   return owner.soldierAtlas;
@@ -101,7 +106,7 @@ const along = (p, look, x, y, z, radius, length, fine) => tube(p, look, x, y, z,
 
 // Tapered elliptical sections with continuous normals for fabric and armour.
 // `blend` gives each ring a weight toward the parent bone for soft joints.
-function volume(parent, look, sections, segments = 14, blend = null) {
+function volume(parent, look, sections, segments = 10, blend = null) {
   const positions = [], uv = [], indices = [];
   for (const [ring, [y, width, depth, offset = 0]] of sections.entries()) {
     for (let i = 0; i <= segments; i++) {
@@ -425,10 +430,16 @@ export function createSoldierRig(owner, player) {
   marker.position.y = 1.95;
   marker.castShadow = false;
   group.add(marker);
+  owner.contactShadowMat ??= new THREE.MeshBasicMaterial({ color: 0x0b1012, transparent: true, opacity: .32, depthWrite: false });
+  const contactShadow = new THREE.Mesh(geometry().shadow, owner.contactShadowMat);
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = .02;
+  contactShadow.castShadow = false;
+  group.add(contactShadow);
   const rig = {
     group, pose, spine, body, distant, head, legs, arms, knees, elbows, ankles, wrists, rifle, magazine, marker, flash,
     team: player.team, classId, lastX: player.x, lastZ: player.z, initialized: false, deathAge: 0, alive: true,
-    recoil: 0, flinch: 0, flinchSide: 0, lastShot: player.shotSeq, seed: 0,
+    recoil: 0, flinch: 0, flinchSide: 0, lastShot: player.shotSeq, seed: 0, stepIndex: 0,
   };
   updateSoldierArms(rig);
   return rig;
@@ -444,7 +455,7 @@ export function cloneSoldierRig(template, player) {
     nodes.set(source, copy);
     source.children.forEach((child, index) => pair(child, copy.children[index]));
   })(template.group, group);
-  const rig = { ...template, group, lastX: player.x, lastZ: player.z, lastShot: player.shotSeq, motion: null, death: null, seed: (cloneSeed++ * 2.39996) % TAU };
+  const rig = { ...template, group, lastX: player.x, lastZ: player.z, lastShot: player.shotSeq, motion: null, death: null, stepIndex: cloneSeed, seed: (cloneSeed++ * 2.39996) % TAU };
   for (const key of RIG_NODES) rig[key] = nodes.get(template[key]);
   for (const key of RIG_LISTS) rig[key] = template[key].map(node => nodes.get(node));
   rig.marker.material = rig.marker.material.clone();

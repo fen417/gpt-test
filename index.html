@@ -52,7 +52,7 @@
     <div id="room-badge" class="room-badge"></div><div id="location-label" class="location-label"></div><div id="killfeed" class="killfeed"></div><div class="compass"><span id="compass-direction">N</span><div class="compass-rule">┊ · · ┊ · · ┊ <b id="compass-degrees">000°</b> ┊ · · ┊ · · ┊</div></div>
     <div id="world-markers"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
     <div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
-    <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="360" height="360"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
+    <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
     <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span>G · ГРАНАТА</span><span>R · ПЕРЕЗАРЯДКА</span></div>
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 / 0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden"><h2>СОСТАВ КОМАНД</h2><div id="score-rows"></div><small>Удерживай TAB · Убийства / Потери</small></div>
@@ -71,7 +71,74 @@
       <label>Звуки боя <input id="effects-volume" type="range" min="0" max="1" step="0.05" value="0.7" /></label>
     </div>
     <p class="controls-help">WASD — движение · Shift — бег · C — присесть<br>Пробел — прыжок · R — перезарядка · Q — способность<br>G — граната · Tab — счёт · Esc — меню</p><button id="leave" class="outline-button">Покинуть бой</button></div></section>
-  <section id="death" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">СВЯЗЬ ПРЕРВАНА</div><h2>Ты выбыл из боя</h2><p id="death-countdown">Подготовка к высадке…</p><label class="field-label" for="spawn-point">ТОЧКА ВОЗРОЖДЕНИЯ</label><select id="spawn-point"><option value="">База команды</option></select><button id="respawn" class="deploy-button">ВЕРНУТЬСЯ В БОЙ <span>→</span></button><button id="death-leave" class="outline-button">В главное меню</button></div></section>
+  <section id="death" class="overlay deploy-overlay hidden" aria-label="Тактический экран дислокации">
+    <div class="deploy-hud">
+      <header class="deploy-topbar">
+        <div class="deploy-topbar-left">
+          <div class="eyebrow"><span></span> ТАКТИЧЕСКАЯ ДИСЛОКАЦИЯ // СЕКТОР 09</div>
+          <div id="death-killer" class="death-killer">ВЫВЕДЕН ИЗ СТРОЯ · ОЖИДАНИЕ КООРДИНАТ ВЫСАДКИ</div>
+        </div>
+        <div class="deploy-topbar-tickets">
+          <div class="deploy-ticket friendly"><small>СОЮЗНИКИ</small><strong id="deploy-tickets-blue">300</strong></div>
+          <div class="deploy-vs">◆</div>
+          <div class="deploy-ticket enemy"><strong id="deploy-tickets-orange">300</strong><small>ПРОТИВНИК</small></div>
+        </div>
+      </header>
+      <div class="deploy-main">
+        <div class="deploy-map-panel">
+          <div class="deploy-panel-header">
+            <span>ОПЕРАТИВНАЯ КАРТА СЕКТОРА · КЛИКНИ ПО ТОЧКЕ ДЛЯ ВЫБОРА СПАВНА</span>
+            <span id="deploy-selected-label" class="deploy-selected-label">ТОЧКА: БАЗА КОМАНДЫ</span>
+          </div>
+          <div class="deploy-map-frame">
+            <canvas id="deploy-map" width="480" height="480" aria-label="Интерактивная карта дислокации"></canvas>
+            <div class="deploy-map-legend">
+              <span><i class="legend-dot ally"></i> Союзники</span>
+              <span><i class="legend-dot point-ally"></i> Точка спавна</span>
+              <span><i class="legend-dot point-enemy"></i> Вражеский сектор</span>
+              <span><i class="legend-dot skull"></i> Место гибели</span>
+            </div>
+          </div>
+        </div>
+        <aside class="deploy-sidebar">
+          <div class="deploy-box">
+            <div class="deploy-box-title"><span>01 // ТОЧКА ВЫСАДКИ</span><small id="deploy-allies-count">СОЮЗНИКОВ В БОЮ: 0</small></div>
+            <div id="deploy-spawn-list" class="deploy-spawn-list" role="listbox" aria-label="Доступные точки возрождения"></div>
+            <label class="sr-only" for="spawn-point">ТОЧКА ВОЗРОЖДЕНИЯ</label>
+            <select id="spawn-point" class="sr-only"><option value="">База команды</option></select>
+          </div>
+          <div class="deploy-box">
+            <div class="deploy-box-title"><span>02 // СМЕНА КЛАССА И ЭКИПИРОВКИ</span><small>КЛАВИШИ 1–4</small></div>
+            <div id="deploy-classes" class="deploy-classes">
+              <button type="button" class="deploy-class-btn active" data-deploy-class="assault" aria-pressed="true"><kbd>1</kbd><span>⌖</span><b>Штурмовик</b><small>AR-416</small></button>
+              <button type="button" class="deploy-class-btn" data-deploy-class="medic" aria-pressed="false"><kbd>2</kbd><span>✚</span><b>Медик</b><small>MCX-9</small></button>
+              <button type="button" class="deploy-class-btn" data-deploy-class="support" aria-pressed="false"><kbd>3</kbd><span>▥</span><b>Поддержка</b><small>MG-36</small></button>
+              <button type="button" class="deploy-class-btn" data-deploy-class="recon" aria-pressed="false"><kbd>4</kbd><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
+            </div>
+            <div class="deploy-loadout">
+              <div class="deploy-loadout-head">
+                <div><strong id="deploy-weapon-name">AR-416</strong><span id="deploy-weapon-type">ШТУРМОВАЯ ВИНТОВКА</span></div>
+                <div class="deploy-loadout-tags"><span id="deploy-ammo-tag">30 / 150 ПАТР.</span><span id="deploy-gadget-tag">Q · СТИМУЛЯТОР</span></div>
+              </div>
+              <div class="deploy-stat-bars">
+                <div><span>УРОН</span><i><b id="stat-dmg" style="width:48%"></b></i></div>
+                <div><span>ТЕМП</span><i><b id="stat-rof" style="width:78%"></b></i></div>
+                <div><span>ДАЛЬНОСТЬ</span><i><b id="stat-rng" style="width:65%"></b></i></div>
+              </div>
+            </div>
+          </div>
+          <div class="deploy-box deploy-actions">
+            <div class="deploy-countdown-wrap">
+              <span class="deploy-status-dot" id="deploy-status-dot"></span>
+              <p id="death-countdown">Подготовка к высадке…</p>
+            </div>
+            <button id="respawn" class="deploy-button"><span>ДИСЛОКАЦИЯ [ПРОБЕЛ]</span><span>→</span></button>
+            <button id="death-leave" class="outline-button">В главное меню</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
   <section id="result" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">ОПЕРАЦИЯ ЗАВЕРШЕНА</div><h2 id="result-title">Сектор удержан</h2><p id="result-stats"></p><button id="play-again" class="deploy-button">НОВАЯ ОПЕРАЦИЯ <span>→</span></button><button id="result-leave" class="outline-button">В главное меню</button></div></section>
   <div id="toast" class="toast hidden" role="status"></div>
   <script type="module" src="/src/main.js"></script>

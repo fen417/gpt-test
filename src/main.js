@@ -15,6 +15,7 @@ let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let fireTap=false, recoilPitch=0, recoilYaw=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],seen=new Set(),toastTimer;
+let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null;
 let sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
@@ -41,12 +42,64 @@ function clearControls(){keys.clear();pulses.clear();fire=false;fireTap=false;ai
 function aimAngles(){
   return { yaw:yaw+recoilYaw, pitch:Math.max(-1.45,Math.min(1.45,pitch+recoilPitch)) };
 }
+function selectClass(classId,playClick=false){
+  if(!CLASSES[classId])return;
+  selectedClass=classId;
+  for(const b of document.querySelectorAll('[data-class]')){const chosen=b.dataset.class===classId;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen));}
+  for(const b of document.querySelectorAll('[data-deploy-class]')){const chosen=b.dataset.deployClass===classId;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen));}
+  const c=CLASSES[classId];
+  text('class-weapon',`${c.weapon} · ${weaponTypes[classId]}`);
+  text('deploy-weapon-name',c.weapon);
+  text('deploy-weapon-type',weaponTypes[classId]);
+  text('deploy-ammo-tag',`${c.mag} / ${c.reserve} ПАТР.`);
+  text('deploy-gadget-tag',`Q · ${gadgetNames[classId]}`);
+  $('stat-dmg').style.width=`${Math.min(100,Math.round(c.damage/65*100))}%`;
+  $('stat-rof').style.width=`${Math.min(100,Math.round((1/c.interval)/13*100))}%`;
+  $('stat-rng').style.width=`${Math.min(100,Math.round(c.range/240*100))}%`;
+  if(playClick)audio.click();
+}
+function spawnPointAvailable(player,pointId){
+  if(!pointId)return true;
+  const p=state?.points?.find(q=>q.id===pointId);
+  return !!(p&&p.owner===player?.team&&!p.contested);
+}
+function selectSpawnPoint(pointId,playClick=false){
+  const player=local();
+  if(pointId&&player&&!spawnPointAvailable(player,pointId)){
+    toast(`Точка ${pointId} недоступна для высадки`);
+    return false;
+  }
+  selectedSpawn=pointId||'';
+  const selectEl=$('spawn-point');
+  if(selectEl)selectEl.value=selectedSpawn;
+  const point=MAP.points.find(p=>p.id===selectedSpawn);
+  text('deploy-selected-label',point?`ТОЧКА: ${point.id} · ${point.name}`:'ТОЧКА: БАЗА КОМАНДЫ');
+  if(playClick)audio.click();
+  return true;
+}
+function getDeployTarget(player){
+  if(!player)return null;
+  if(selectedSpawn){
+    const pt=MAP.points.find(p=>p.id===selectedSpawn);
+    if(pt)return {x:pt.x,z:pt.z};
+  }
+  const base=MAP.spawns[player.team]??MAP.spawns[0];
+  return {x:base.x,z:base.z};
+}
 function receive(next){
-  if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;show('result',false);show('death',false);toast('Новая операция началась');}
+  if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast('Новая операция началась');}
   state=next;const player=local();
   if(!active||!player)return;
   if(player.alive&&!wasAlive){yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;show('death',false);if(active&&!locked&&!unlocked)show('pause');}
-  if(!player.alive&&wasAlive){clearControls();document.exitPointerLock?.();show('pause',false);show('death');}
+  if(!player.alive&&wasAlive){
+    lastDeathPos={x:player.x,z:player.z};
+    if(!spawnPointAvailable(player,selectedSpawn)){
+      const owned=state.points.filter(p=>p.owner===player.team&&!p.contested).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z));
+      selectSpawnPoint(owned[0]?.id||'');
+    }else selectSpawnPoint(selectedSpawn);
+    clearControls();document.exitPointerLock?.();show('pause',false);show('death');
+    updateDeployScreen(player,performance.now());
+  }
   if(player.hp<lastHp){damageUntil=performance.now()+350;}
   lastHp=player.hp;wasAlive=player.alive;
   for(const event of state.events??[]){
@@ -63,7 +116,13 @@ function receive(next){
         $('hitmarker').classList.toggle('headshot',!!event.headshot);
       }
     }
-    if(event.type==='kill'){feed.push({...event,expires:performance.now()+6500});if(event.killerId===localId){hitUntil=performance.now()+300;toast(`Цель устранена · ${event.victim}`);}}
+    if(event.type==='kill'){
+      feed.push({...event,expires:performance.now()+6500});
+      if(event.killerId===localId){hitUntil=performance.now()+300;toast(`Цель устранена · ${event.victim}`);}
+      if(event.victimId===localId){
+        text('death-killer',`ВЫВЕДЕН ИЗ СТРОЯ · ПРОТИВНИК: ${event.killer} [${event.weapon||'ГРАНАТА'}]`);
+      }
+    }
     if(event.type==='capture'&&state.points.some(p=>p.id===event.pointId))toast(`Точка ${event.pointId} ${event.team===player.team?'захвачена вашим отрядом':'под контролем противника'}`);
     if(event.type==='gadget'&&event.playerId===localId)toast(`${gadgetNames[player.classId]} · Активировано`);
   }
@@ -101,13 +160,23 @@ $('host').addEventListener('click',async()=>{if(busy)return;const opts=prepare('
 $('join-toggle').addEventListener('click',()=>{show('join-form',$('join-form').classList.contains('hidden'));$('room-code').focus();});
 $('join-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const code=$('room-code').value.trim();if(!code)return;const opts=prepare('peer');setBusy(true);try{room=code.toUpperCase();await multiplayer.join({code,...opts});enter();}catch(error){status(error.message,true);setBusy(false);}});
 $('server-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const url=$('server-url').value.trim();if(!url)return;const opts=prepare('server');setBusy(true);try{await multiplayer.connect({url,...opts});enter();}catch(error){status(error.message,true);setBusy(false);}});
-for(const button of document.querySelectorAll('[data-class]'))button.addEventListener('click',()=>{selectedClass=button.dataset.class;for(const b of document.querySelectorAll('[data-class]')){const chosen=b===button;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen));}text('class-weapon',`${CLASSES[selectedClass].weapon} · ${weaponTypes[selectedClass]}`);audio.click();});
+for(const button of document.querySelectorAll('[data-class]'))button.addEventListener('click',()=>selectClass(button.dataset.class,true));
+for(const button of document.querySelectorAll('[data-deploy-class]'))button.addEventListener('click',()=>selectClass(button.dataset.deployClass,true));
+$('spawn-point').addEventListener('change',event=>selectSpawnPoint(event.target.value,true));
 $('resume').addEventListener('click',()=>{if(!active){show('pause',false);return;}audio.unlock();requestControl();});
 $('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подготовь обзор и звук перед высадкой.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause');});
 $('unlocked').addEventListener('click',()=>{unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
 for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>leave());
 $('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else{leave();toast('Создай новую комнату для следующей операции.');}});
-$('respawn').addEventListener('click',()=>{if(!local()||local().respawnIn>0)return;if(simulation){simulation.respawn(localId,selectedClass,$('spawn-point').value);receive(simulation.snapshot());}else multiplayer.respawn(selectedClass,$('spawn-point').value);requestControl();if(!simulation)toast('Ожидаем подтверждения высадки…');});
+function triggerRespawn(){
+  const p=local();if(!p||p.alive||p.respawnIn>0)return;
+  const targetPoint=spawnPointAvailable(p,selectedSpawn)?selectedSpawn:'';
+  selectSpawnPoint(targetPoint);
+  if(simulation){simulation.respawn(localId,selectedClass,targetPoint);receive(simulation.snapshot());}
+  else multiplayer.respawn(selectedClass,targetPoint);
+  requestControl();if(!simulation)toast('Ожидаем подтверждения высадки…');
+}
+$('respawn').addEventListener('click',triggerRespawn);
 $('sensitivity').value=read('sensitivity','0.8');sensitivity=Number($('sensitivity').value);
 $('sensitivity').addEventListener('input',event=>{sensitivity=Number(event.target.value);save('sensitivity',sensitivity);});
 $('quality').value=read('quality','high');quality=$('quality').value;
@@ -135,6 +204,11 @@ document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(ev
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{
   if(!active){if(event.code==='Escape')show('pause',false);return;}
+  if(!local()?.alive&&!finished&&!$('death').classList.contains('hidden')){
+    const classKeys={Digit1:'assault',Digit2:'medic',Digit3:'support',Digit4:'recon'};
+    if(classKeys[event.code]){event.preventDefault();selectClass(classKeys[event.code],true);return;}
+    if((event.code==='Space'||event.code==='Enter')&&!event.repeat){event.preventDefault();triggerRespawn();return;}
+  }
   if(event.code==='Escape'&&unlocked){unlockedPaused=!unlockedPaused;show('pause',unlockedPaused);clearControls();return;}
   if(event.code==='Tab'){event.preventDefault();show('scoreboard');return;}
   if(!locked&&!(unlocked&&!unlockedPaused))return;
@@ -152,17 +226,227 @@ const mapBackground=document.createElement('canvas');
 const mapSize=minimapCanvas.width,mapScale=mapSize/MAP.size,mapHalf=MAP.size/2;
 mapBackground.width=mapBackground.height=mapSize;
 {
-  const c=mapBackground.getContext('2d'),s=mapSize,scale=mapScale,half=mapHalf;
+  const c=mapBackground.getContext('2d'),s=mapSize,scale=mapScale,half=mapHalf,step=s/10;
   c.fillStyle='#15262c';c.fillRect(0,0,s,s);c.strokeStyle='#5d7b802b';c.lineWidth=1;
-  for(let n=0;n<10;n++){c.beginPath();c.moveTo(n*36,0);c.lineTo(n*36,s);c.moveTo(0,n*36);c.lineTo(s,n*36);c.stroke();}
+  for(let n=0;n<10;n++){c.beginPath();c.moveTo(n*step,0);c.lineTo(n*step,s);c.moveTo(0,n*step);c.lineTo(s,n*step);c.stroke();}
   c.fillStyle='#73817c77';for(const b of MAP.boxes)c.fillRect((b.x-b.w/2+half)*scale,(b.z-b.d/2+half)*scale,b.w*scale,b.d*scale);
 }
 function minimap(player){
   const c=mapctx,scale=mapScale,half=mapHalf;
   c.drawImage(mapBackground,0,0);
-  for(const p of state.points){const x=(p.x+half)*scale,z=(p.z+half)*scale;c.fillStyle=p.owner===-1?'#ced1bb':p.owner===player.team?'#79c5d2':'#e6b273';c.strokeStyle=c.fillStyle;c.globalAlpha=.15;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();c.globalAlpha=1;c.font='bold 19px sans-serif';c.textAlign='center';c.fillText(p.id,x,z+6);}
-  for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=friend?'#79c5d2':'#e6b273';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?3:4,0,Math.PI*2);c.fill();}
-  c.save();c.translate((player.x+half)*scale,(player.z+half)*scale);c.rotate(-yaw);c.fillStyle='#f0f4e9';c.beginPath();c.moveTo(0,-8);c.lineTo(5,6);c.lineTo(0,3);c.lineTo(-5,6);c.closePath();c.fill();c.restore();
+  c.font='bold 10px sans-serif';c.textAlign='center';
+  for(const p of state.points){const x=(p.x+half)*scale,z=(p.z+half)*scale;c.fillStyle=p.owner===-1?'#ced1bb':p.owner===player.team?'#79c5d2':'#e6b273';c.strokeStyle=c.fillStyle;c.globalAlpha=.15;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();c.globalAlpha=1;c.fillText(p.id,x,z+3.5);}
+  for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=friend?'#79c5d2':'#e6b273';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?1.8:2.3,0,Math.PI*2);c.fill();}
+  c.save();c.translate((player.x+half)*scale,(player.z+half)*scale);c.rotate(-yaw);c.fillStyle='#f0f4e9';c.beginPath();c.moveTo(0,-4.5);c.lineTo(3,3.5);c.lineTo(0,1.8);c.lineTo(-3,3.5);c.closePath();c.fill();c.restore();
+}
+const deployCanvas=$('deploy-map');
+const deployCtx=deployCanvas.getContext('2d');
+const deployMapBg=document.createElement('canvas');
+const deploySize=deployCanvas.width,deployScale=deploySize/MAP.size,deployHalf=MAP.size/2;
+deployMapBg.width=deployMapBg.height=deploySize;
+{
+  const c=deployMapBg.getContext('2d'),s=deploySize,scale=deployScale,half=deployHalf;
+  c.fillStyle='#0c1a20';c.fillRect(0,0,s,s);
+  c.fillStyle='#122c36';c.fillRect(0,0,18*scale,s);
+  c.fillStyle='#16272e';
+  const crossStreets=MAP.size>250?[-110,-40,0,40,110]:[0];
+  c.fillRect((half-12)*scale,0,24*scale,s);
+  for(const z of crossStreets)c.fillRect(0,(z+half-7.5)*scale,s,15*scale);
+  const cols=['A','B','C','D','E','F'],cell=s/6;
+  c.strokeStyle='#79c5d21c';c.lineWidth=1;c.font='600 10px sans-serif';c.fillStyle='#6f8e9588';
+  for(let i=0;i<6;i++){
+    const pos=i*cell;
+    c.beginPath();c.moveTo(pos,0);c.lineTo(pos,s);c.moveTo(0,pos);c.lineTo(s,pos);c.stroke();
+    c.fillText(cols[i],pos+6,13);
+    c.fillText(String(i+1),5,pos+24);
+  }
+  for(const b of MAP.boxes){
+    const x=(b.x-b.w/2+half)*scale,z=(b.z-b.d/2+half)*scale,w=b.w*scale,d=b.d*scale;
+    c.fillStyle=b.kind==='wall'||b.kind==='barrier'?'#879693aa':String(b.kind).includes('container')?'#597578aa':'#41565baa';
+    c.fillRect(x,z,w,d);
+    if(b.h>4){c.strokeStyle='#a5babd44';c.lineWidth=1;c.strokeRect(x+.5,z+.5,Math.max(1,w-1),Math.max(1,d-1));}
+  }
+  for(const st of MAP.structures||[]){
+    const x=(st.x-st.w/2+half)*scale,z=(st.z-st.d/2+half)*scale,w=st.w*scale,d=st.d*scale;
+    c.fillStyle='#5c747838';c.fillRect(x,z,w,d);
+    c.strokeStyle='#9ab5b866';c.setLineDash([4,3]);c.strokeRect(x,z,w,d);c.setLineDash([]);
+  }
+}
+function pickDeploySpawnAt(clientX,clientY){
+  const player=local();if(!player||!state)return null;
+  const rect=deployCanvas.getBoundingClientRect();
+  const mx=(clientX-rect.left)*(deploySize/rect.width);
+  const my=(clientY-rect.top)*(deploySize/rect.height);
+  const base=MAP.spawns[player.team]??MAP.spawns[0];
+  const bx=(base.x+deployHalf)*deployScale,bz=(base.z+deployHalf)*deployScale;
+  if(Math.hypot(mx-bx,my-bz)<=24)return {id:'',available:true};
+  for(const p of state.points){
+    const px=(p.x+deployHalf)*deployScale,pz=(p.z+deployHalf)*deployScale;
+    if(Math.hypot(mx-px,my-pz)<=24){
+      return {id:p.id,available:p.owner===player.team&&!p.contested};
+    }
+  }
+  return null;
+}
+deployCanvas.addEventListener('mousemove',event=>{
+  const picked=pickDeploySpawnAt(event.clientX,event.clientY);
+  hoveredSpawn=picked?picked.id:null;
+  deployCanvas.style.cursor=picked?(picked.available?'pointer':'not-allowed'):'crosshair';
+});
+deployCanvas.addEventListener('mouseleave',()=>{hoveredSpawn=null;});
+deployCanvas.addEventListener('click',event=>{
+  const picked=pickDeploySpawnAt(event.clientX,event.clientY);
+  if(picked!==null)selectSpawnPoint(picked.id,true);
+});
+deployCanvas.addEventListener('dblclick',event=>{
+  const picked=pickDeploySpawnAt(event.clientX,event.clientY);
+  if(picked&&picked.available&&selectSpawnPoint(picked.id,false))triggerRespawn();
+});
+function drawDeployMap(player,now){
+  const c=deployCtx,scale=deployScale,half=deployHalf,pulse=(Math.sin(now*0.006)+1)*0.5;
+  c.drawImage(deployMapBg,0,0);
+  for(const team of [0,1]){
+    const base=MAP.spawns[team],friend=team===player.team;
+    const x=(base.x+half)*scale,z=(base.z+half)*scale;
+    c.save();
+    c.fillStyle=friend?'#133942cc':'#3d2916cc';
+    c.strokeStyle=friend?'#79c5d2':'#e6b273';
+    c.lineWidth=1.6;
+    c.fillRect(x-13,z-10,26,20);
+    c.strokeRect(x-13,z-10,26,20);
+    c.fillStyle=friend?'#79c5d2':'#e6b273';
+    c.font='700 9px sans-serif';c.textAlign='center';c.textBaseline='middle';
+    c.fillText(friend?'ШТАБ':'ВРАГ',x,z);
+    c.restore();
+    if(friend&&(selectedSpawn===''||hoveredSpawn==='')){
+      c.save();
+      c.strokeStyle='#79c5d2';c.lineWidth=selectedSpawn===''?2:1;
+      const r=18+pulse*3;
+      c.strokeRect(x-r,z-r*.78,r*2,r*1.56);
+      c.restore();
+    }
+  }
+  for(const p of state.points){
+    const x=(p.x+half)*scale,z=(p.z+half)*scale;
+    const friend=p.owner===player.team,enemy=p.owner!==-1&&!friend;
+    const color=friend?'#79c5d2':enemy?'#e6b273':'#ced1bb';
+    c.save();
+    c.fillStyle=color;c.strokeStyle=color;
+    c.globalAlpha=.14;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();
+    c.globalAlpha=.45;c.lineWidth=1.2;c.stroke();
+    if(Math.abs(p.progress)>0.02&&Math.abs(p.progress)<0.99){
+      c.globalAlpha=.9;c.lineWidth=2.4;c.beginPath();
+      c.arc(x,z,CAPTURE_RADIUS*scale+3,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.abs(p.progress));
+      c.stroke();
+    }
+    if(p.contested){
+      c.globalAlpha=.35+pulse*.45;c.strokeStyle='#ff8e63';c.lineWidth=2;
+      c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale+5+pulse*3,0,Math.PI*2);c.stroke();
+    }
+    c.globalAlpha=1;
+    c.translate(x,z);c.rotate(Math.PI/4);
+    c.fillStyle=friend?'#133a44e6':enemy?'#422c17e6':'#253033e6';
+    c.strokeStyle=color;c.lineWidth=1.8;
+    c.fillRect(-9,-9,18,18);c.strokeRect(-9,-9,18,18);
+    c.rotate(-Math.PI/4);
+    c.fillStyle='#f3f6ee';c.font='700 11px sans-serif';c.textAlign='center';c.textBaseline='middle';
+    c.fillText(p.id,0,0.5);
+    c.fillStyle=color;c.font='600 8px sans-serif';
+    c.fillText(p.name,0,19);
+    c.restore();
+    if(selectedSpawn===p.id||hoveredSpawn===p.id){
+      c.save();
+      c.strokeStyle=friend&&!p.contested?'#79c5d2':'#e6b273';
+      c.lineWidth=selectedSpawn===p.id?2:1.2;
+      const r=16+pulse*3;
+      for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+        c.beginPath();
+        c.moveTo(x+sx*r,z+sz*(r-6));c.lineTo(x+sx*r,z+sz*r);c.lineTo(x+sx*(r-6),z+sz*r);
+        c.stroke();
+      }
+      c.restore();
+    }
+  }
+  for(const p of state.players){
+    if(!p.alive||p.id===localId)continue;
+    const friend=p.team===player.team;
+    if(!friend&&!p.spotted)continue;
+    const x=(p.x+half)*scale,z=(p.z+half)*scale;
+    c.save();
+    c.translate(x,z);
+    if(friend){
+      c.fillStyle='#79c5d233';c.beginPath();c.arc(0,0,7,0,Math.PI*2);c.fill();
+      c.rotate(-(p.yaw||0));
+      c.fillStyle='#79c5d2';c.strokeStyle='#08181f';c.lineWidth=1.2;
+      c.beginPath();c.moveTo(0,-6.2);c.lineTo(4.4,4.8);c.lineTo(0,2.2);c.lineTo(-4.4,4.8);c.closePath();
+      c.fill();c.stroke();
+    }else{
+      c.rotate(Math.PI/4);
+      c.fillStyle='#e6b273';c.strokeStyle='#181008';c.lineWidth=1;
+      c.fillRect(-3.5,-3.5,7,7);c.strokeRect(-3.5,-3.5,7,7);
+    }
+    c.restore();
+  }
+  if(lastDeathPos){
+    const dx=(lastDeathPos.x+half)*scale,dz=(lastDeathPos.z+half)*scale;
+    c.save();
+    c.strokeStyle='#f06b59';c.lineWidth=2.2;
+    c.beginPath();c.moveTo(dx-5,dz-5);c.lineTo(dx+5,dz+5);c.moveTo(dx+5,dz-5);c.lineTo(dx-5,dz+5);c.stroke();
+    c.strokeStyle='#f06b5966';c.lineWidth=1.2;
+    c.beginPath();c.arc(dx,dz,8+pulse*2.5,0,Math.PI*2);c.stroke();
+    c.restore();
+  }
+}
+function updateDeployScreen(player,now){
+  text('deploy-tickets-blue',Math.ceil(state.tickets[player.team]));
+  text('deploy-tickets-orange',Math.ceil(state.tickets[1-player.team]));
+  const ready=player.respawnIn<=0;
+  text('death-countdown',ready?'ГОТОВ К ВЫСАДКЕ · ВЫБЕРИ СЕКТОР И НАЖМИ ДИСЛОКАЦИЯ':`ПОДГОТОВКА ВЫСАДКИ · ${Math.ceil(player.respawnIn)} С`);
+  $('respawn').disabled=!ready;
+  $('deploy-status-dot').classList.toggle('ready',ready);
+  if(selectedSpawn&&!spawnPointAvailable(player,selectedSpawn))selectSpawnPoint('');
+  const options=state.points.filter(p=>p.owner===player.team&&!p.contested);
+  const signature=options.map(p=>p.id).join('');
+  const selectEl=$('spawn-point');
+  if(selectEl.dataset.signature!==signature){
+    selectEl.dataset.signature=signature;
+    selectEl.replaceChildren(new Option('База команды',''),...options.map(p=>new Option(`${p.id} · ${p.name}`,p.id)));
+    selectEl.value=selectedSpawn;
+  }
+  const allies=state.players.filter(p=>p.alive&&p.team===player.team&&p.id!==localId);
+  text('deploy-allies-count',`СОЮЗНИКОВ В БОЮ: ${allies.length}`);
+  const listSig=`${selectedSpawn}:`+state.points.map(p=>{
+    const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
+    return `${p.id}:${p.owner}:${p.contested?1:0}:${near}`;
+  }).join('|');
+  const listEl=$('deploy-spawn-list');
+  if(listEl.dataset.signature!==listSig){
+    listEl.dataset.signature=listSig;
+    const items=[
+      {id:'',badge:'HQ',name:'ШТАБ КОМАНДЫ',sub:'Основная база',tag:'ДОСТУПНО',available:true,hq:true},
+      ...state.points.map(p=>{
+        const friend=p.owner===player.team,enemy=p.owner!==-1&&!friend;
+        const available=friend&&!p.contested;
+        const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
+        const tag=p.contested?'ОСПАРИВАЕТСЯ':available?'ДОСТУПНО':enemy?'ВРАГ':'НЕЙТРАЛЬНО';
+        return {id:p.id,badge:p.id,name:p.name,sub:`Союзников рядом: ${near}`,tag,available,enemy,contested:p.contested};
+      }),
+    ];
+    listEl.replaceChildren(...items.map(item=>{
+      const btn=document.createElement('button');
+      btn.type='button';
+      btn.className=`spawn-item${item.hq?' hq':''}${selectedSpawn===item.id?' selected':''}${!item.available?' locked':''}${item.enemy?' enemy-owned':''}${item.contested?' contested':''}`;
+      const left=document.createElement('div'),badge=document.createElement('span'),badgeInner=document.createElement('i'),info=document.createElement('div'),title=document.createElement('b'),sub=document.createElement('small'),tag=document.createElement('span');
+      left.className='spawn-item-left';badge.className='spawn-badge';badgeInner.textContent=item.badge;badge.append(badgeInner);
+      info.className='spawn-info';title.textContent=item.name;sub.textContent=item.sub;info.append(title,sub);
+      left.append(badge,info);tag.className='spawn-tag';tag.textContent=item.tag;
+      btn.append(left,tag);
+      btn.addEventListener('click',()=>selectSpawnPoint(item.id,true));
+      btn.addEventListener('dblclick',()=>{if(item.available&&selectSpawnPoint(item.id,false))triggerRespawn();});
+      return btn;
+    }));
+  }
+  drawDeployMap(player,now);
 }
 function hud(now){
   const player=local();if(!player)return;
@@ -191,10 +475,14 @@ function hud(now){
   const crosshair=$('crosshair');
   const spread=player.spread??CLASSES[player.classId].spread*.66;
   const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
-  crosshair.style.setProperty('--spread-gap',`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`);
+  const gap=`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`;
+  if(crosshair.dataset.gap!==gap){crosshair.dataset.gap=gap;crosshair.style.setProperty('--spread-gap',gap);}
   crosshair.classList.toggle('aim',aim);crosshair.style.opacity=player.reloading||!player.alive?'0':'';
-  $('hitmarker').style.opacity=now<hitUntil?'1':'0';$('damage-flash').style.opacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
-  if(!player.alive){text('death-countdown',player.respawnIn>0?`Возвращение в бой через ${Math.ceil(player.respawnIn)} с`:'Выбери точку и возвращайся в бой');$('respawn').disabled=player.respawnIn>0;const options=state.points.filter(p=>p.owner===player.team&&!p.contested),signature=options.map(p=>p.id).join('');if($('spawn-point').dataset.signature!==signature){$('spawn-point').dataset.signature=signature;$('spawn-point').replaceChildren(new Option('База команды',''),...options.map(p=>new Option(`${p.id} · ${p.name}`,p.id)));}}
+  $('hitmarker').style.opacity=now<hitUntil?'1':'0';
+  const dmgOpacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
+  const dmgEl=$('damage-flash');
+  if(dmgEl.dataset.opacity!==dmgOpacity){dmgEl.dataset.opacity=dmgOpacity;dmgEl.style.opacity=dmgOpacity;}
+  if(!player.alive)updateDeployScreen(player,now);
   if(!$('scoreboard').classList.contains('hidden')){
     const sorted=[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||b.kills-a.kills);
     const scoreSig=sorted.map(p=>`${p.id}:${p.alive?1:0}:${p.kills}:${p.deaths}:${p.classId}`).join('|');
@@ -213,7 +501,8 @@ function markers(){
     const display=position.visible?'flex':'none';
     if(marker.style.display!==display)marker.style.display=display;
     if(!position.visible)continue;
-    marker.style.transform=`translate3d(${position.x}px,${position.y}px,0) translate(-50%,-50%)`;
+    const x=Math.round(position.x*2)/2,y=Math.round(position.y*2)/2,posKey=`${x},${y}`;
+    if(marker.dataset.pos!==posKey){marker.dataset.pos=posKey;marker.style.transform=`translate3d(${x}px,${y}px,0) translate(-50%,-50%)`;}
     const style=`world-marker ${point.owner===-1?'':point.owner===player.team?'friendly':'enemy'}`;
     if(marker.className!==style)marker.className=style;
     const distance=`${Math.round(Math.hypot(point.x-player.x,point.z-player.z))} м`;
@@ -238,7 +527,8 @@ function frame(now){
       if(steps){receive(simulation.snapshot());pulses.clear();fireTap=false;}
     }else{multiplayer.sendInput(lastInput);pulses.clear();fireTap=false;}
   }
-  renderer.render(active?state:null,localId,dt,{...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,brightness,shake:cameraShake});
+  const currentPlayer=local();
+  renderer.render(active?state:null,localId,dt,{...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,brightness,shake:cameraShake,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
   document.body.classList.toggle('scoped',scoped);
@@ -249,5 +539,5 @@ try{
   renderer=new GameRenderer(canvas);renderer.resize();window.addEventListener('resize',()=>renderer.resize());
   if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';}
   for(const p of MAP.points){const objective=document.createElement('div');objective.id=`objective-${p.id}`;objective.className='objective';const label=document.createElement('span');label.textContent=p.id;objective.append(label);$('objective-strip').append(objective);const marker=document.createElement('div');marker.id=`marker-${p.id}`;marker.className='world-marker';const letter=document.createElement('b'),distance=document.createElement('span');letter.textContent=p.id;marker.append(letter,distance);$('world-markers').append(marker);}
-  text('class-weapon',`${CLASSES.assault.weapon} · ${weaponTypes.assault}`);audio.setMode?.('menu');status('Сектор готов. Выбери класс и вступай в бой.');requestAnimationFrame(frame);
+  selectClass(selectedClass,false);audio.setMode?.('menu');status('Сектор готов. Выбери класс и вступай в бой.');requestAnimationFrame(frame);
 }catch(error){console.error(error);status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);$('solo').disabled=true;$('host').disabled=true;}

@@ -7,7 +7,13 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 export function createWeaponRig(owner = {}) {
   const weapon = new THREE.Group(); weapon.name = 'S09-first-person-rig';
   const ownedGeometries = new Set(), ownedMaterials = new Set(), ownedTextures = new Set();
+  const isIntegrated = !!owner.integratedGpu;
   const mat = (name, color, roughness=.7, metalness=.2, extra={}) => {
+    if (isIntegrated) {
+      const { bumpMap: _b, bumpScale: _s, ...rest } = extra;
+      const m = new THREE.MeshLambertMaterial({ color, opacity: 1, transparent: false, depthTest: true, depthWrite: true, ...rest });
+      m.name = name; ownedMaterials.add(m); return m;
+    }
     const m = new THREE.MeshStandardMaterial({color,roughness,metalness,opacity:1,transparent:false,depthTest:true,depthWrite:true,...extra});
     m.name=name;ownedMaterials.add(m);return m;
   };
@@ -56,21 +62,22 @@ export function createWeaponRig(owner = {}) {
   const label=mat('weapon-engraved-markings',0xabb0a8,.75,.3);
   const lens=mat('lens-coated-glass',0x527780,.12,.22,{transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide});
   const unitBox=new RoundedBoxGeometry(1,1,1,1,.09);ownedGeometries.add(unitBox);
-  const unitSphere=new THREE.SphereGeometry(1,24,16);ownedGeometries.add(unitSphere);
+  const unitSphere=new THREE.SphereGeometry(1,12,8);ownedGeometries.add(unitSphere);
   const detailBox = new THREE.BoxGeometry(1,1,1);
   function mesh(parent,geometry,material,x=0,y=0,z=0){ownedGeometries.add(geometry);const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=false;m.receiveShadow=false;parent.add(m);return m;}
   function rounded(parent,x,y,z,w,h,d,material){const m=mesh(parent,unitBox,material,x,y,z);m.scale.set(w,h,d);return m;}
   function detail(parent,x,y,z,w,h,d,material){const m=mesh(parent,detailBox,material,x,y,z);m.scale.set(w,h,d);return m;}
   function ellipsoid(parent,center,scale,material){const m=mesh(parent,unitSphere,material,...center);m.scale.set(...scale);return m;}
-  function cylinder(parent,x,y,z,r,h,material,axis='z',segments=20){const g=new THREE.CylinderGeometry(r,r,h,segments);if(axis==='z')g.rotateX(Math.PI/2);if(axis==='x')g.rotateZ(Math.PI/2);return mesh(parent,g,material,x,y,z);}
-  function ring(parent,x,y,z,outer,inner,length,material,axis='z',segments=24){const points=[new THREE.Vector2(outer,-length/2),new THREE.Vector2(outer,length/2),new THREE.Vector2(inner,length/2),new THREE.Vector2(inner,-length/2),new THREE.Vector2(outer,-length/2)];const g=new THREE.LatheGeometry(points,segments);if(axis==='z')g.rotateX(Math.PI/2);if(axis==='x')g.rotateZ(Math.PI/2);return mesh(parent,g,material,x,y,z);}
+  function cylinder(parent,x,y,z,r,h,material,axis='z',segments=12){const g=new THREE.CylinderGeometry(r,r,h,Math.min(segments,14));if(axis==='z')g.rotateX(Math.PI/2);if(axis==='x')g.rotateZ(Math.PI/2);return mesh(parent,g,material,x,y,z);}
+  function ring(parent,x,y,z,outer,inner,length,material,axis='z',segments=16){const points=[new THREE.Vector2(outer,-length/2),new THREE.Vector2(outer,length/2),new THREE.Vector2(inner,length/2),new THREE.Vector2(inner,-length/2),new THREE.Vector2(outer,-length/2)];const g=new THREE.LatheGeometry(points,Math.min(segments,16));if(axis==='z')g.rotateX(Math.PI/2);if(axis==='x')g.rotateZ(Math.PI/2);return mesh(parent,g,material,x,y,z);}
   function shapePath(points){const s=new THREE.Shape();points.forEach(([z,y],i)=>i?s.lineTo(-z,y):s.moveTo(-z,y));s.closePath();return s;}
   function profile(parent,points,width,material,{x=0,holes=[],bevel=.0025}={}){
     const shape=shapePath(points);for(const points of holes){const p=new THREE.Path();points.forEach(([z,y],i)=>i?p.lineTo(-z,y):p.moveTo(-z,y));p.closePath();shape.holes.push(p);}
-    const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:bevel>0,bevelSegments:2,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:8});g.rotateY(Math.PI/2);g.translate(x-width/2,0,0);return mesh(parent,g,material);
+    const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:bevel>0,bevelSegments:1,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:4});g.rotateY(Math.PI/2);g.translate(x-width/2,0,0);return mesh(parent,g,material);
   }
-  function curve(parent,points,radius,material,segments=16,radial=10){const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));return mesh(parent,new THREE.TubeGeometry(path,segments,radius,radial,false),material);}
-  function loft(parent,points,radii,material,{segments=48,radial=24,ellipse=[1,1],folds=0}={}){
+  function curve(parent,points,radius,material,segments=10,radial=6){const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));return mesh(parent,new THREE.TubeGeometry(path,Math.min(segments,12),radius,Math.min(radial,6),false),material);}
+  function loft(parent,points,radii,material,{segments=20,radial=12,ellipse=[1,1],folds=0}={}){
+    segments = Math.min(segments, 22); radial = Math.min(radial, 12);
     const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p))),frames=path.computeFrenetFrames(segments,false),positions=[],uv=[],indices=[];
     for(let i=0;i<=segments;i++){const t=i/segments,p=path.getPointAt(t),u=t*(radii.length-1),j=Math.min(radii.length-2,Math.floor(u)),base=THREE.MathUtils.lerp(radii[j],radii[j+1],u-j),r=base*(1+folds*Math.sin(t*75)*Math.sin(Math.PI*t));
       for(let k=0;k<=radial;k++){const a=k/radial*Math.PI*2,c=Math.cos(a)*r*ellipse[0],s=Math.sin(a)*r*ellipse[1];positions.push(p.x+frames.normals[i].x*c+frames.binormals[i].x*s,p.y+frames.normals[i].y*c+frames.binormals[i].y*s,p.z+frames.normals[i].z*c+frames.binormals[i].z*s);uv.push(k/radial,t*3);}
@@ -300,7 +307,7 @@ export function createWeaponRig(owner = {}) {
   const muzzleFlash=new THREE.Group();weapon.add(muzzleFlash);muzzleFlash.visible=false;
   const flashShape=new THREE.Shape();for(let i=0;i<12;i++){const a=i/12*Math.PI*2,r=i%2?.018:.062;const x=Math.cos(a)*r,y=Math.sin(a)*r;i?flashShape.lineTo(x,y):flashShape.moveTo(x,y);}flashShape.closePath();
   for(const angle of [0,Math.PI/2]){const f=mesh(muzzleFlash,new THREE.ShapeGeometry(flashShape),flashMaterial,0,0,-.045);f.rotation.y=angle*.25;}
-  const flashLight=new THREE.PointLight(0xffc176,0,3.5,2);weapon.add(flashLight);
+  const flashLight={position:new THREE.Vector3(),intensity:0};
 
   // Merge each rigid island by material. Articulated groups remain independent.
   function batch(group){
