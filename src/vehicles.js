@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 
 const upAxis = new THREE.Vector3(0, 1, 0);
 const turretHeading = new THREE.Quaternion();
@@ -153,8 +153,10 @@ function buildHumvee(body, materials) {
       tube('steel',.035,side*.978,1.26,-1.34,side*.965,1.8,-1.11);
       tube('paint',.038,side*.978,1.25,1.43,side*.965,1.8,1.39);
       prism('steel',side*.973,1.54,.06,.055,.46,.086);
-      prism('glass',side*.975,1.54,-.53,.022,.35,1.01);
-      prism('glass',side*.975,1.54,.73,.022,.35,1.16);
+      const windows = HUMVEE_SIDE_WINDOWS;
+      for (const window of [windows.front, windows.rear]) {
+        prism('glass',side*windows.x,windows.y,window.z,.022,windows.height,window.width);
+      }
       for(const z of [-.52,.71]){
         round('canvas',side*.55,.91,z,.42,.15,.44);
         round('canvas',side*.55,1.16,z+.25,.41,.54,.116,-.12);

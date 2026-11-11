@@ -25,6 +25,12 @@ export const VEHICLE_TYPES = {
   },
 };
 
+export const HUMVEE_SIDE_WINDOWS = {
+  x: .975, y: 1.54, height: .35,
+  front: { z: -.53, width: 1.01 },
+  rear: { z: .73, width: 1.16 },
+};
+
 export const VEHICLE_BOARD_RANGE = 3.5;
 export const TURRET_MIN_PITCH = -.25;
 export const TURRET_MAX_PITCH = .85;
@@ -41,6 +47,22 @@ export function vehicleLocalPoint(vehicle, x, z) {
 export function getVehicleSeatPose(vehicle, index) {
   const seat = VEHICLE_TYPES[vehicle.type]?.seats[index];
   return seat && { ...vehicleLocalPoint(vehicle, seat.x, seat.z), y: (vehicle.y ?? 0) + seat.height };
+}
+
+export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
+  const seat = VEHICLE_TYPES[vehicle.type]?.seats[seatIndex];
+  if (seat?.role !== 'passenger') return false;
+  if (vehicle.type === 'atv') return true;
+  // Fire out of the side window on this seat’s side of the cabin.
+  const angle = yaw - vehicle.yaw;
+  const outward = -Math.sin(angle) * Math.sign(seat.x);
+  if (outward <= 0) return false;
+  const windows = HUMVEE_SIDE_WINDOWS;
+  const window = seat.z < 0 ? windows.front : windows.rear;
+  const distance = (windows.x - Math.abs(seat.x)) / outward;
+  const z = seat.z - Math.cos(angle) * distance;
+  const y = seat.height + Math.tan(pitch) * distance;
+  return Math.abs(z - window.z) <= window.width / 2 && Math.abs(y - windows.y) <= windows.height / 2;
 }
 
 export function getVehicleBoardingSeat(player, vehicles) {

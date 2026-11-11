@@ -1,6 +1,7 @@
-import { VEHICLE_BOARD_RANGE, VEHICLE_TYPES, getVehicleSeatPose } from './vehicles.js';
+import { VEHICLE_BOARD_RANGE, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose } from './vehicles.js';
 
 const routeGraphs = new WeakMap();
+const BASE_RANGE = 55;
 const vehiclePreferences = ['specialist', 'driver', 'crew', null, null, null];
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const yawToward = (a, b) => Math.atan2(a.x - b.x, a.z - b.z);
@@ -39,13 +40,17 @@ function roadGraph(sim, type) {
       b.neighbors.push(a);
     }
   }
-  const graph = { nodes, radius, objectives: routes.objectives };
+  const landmarks = (sim.map.landmarks ?? []).flatMap(site => {
+    const parking = nodes.get(routes.stops?.[site.name]);
+    return parking ? [{ site, parking }] : [];
+  });
+  const graph = { nodes, radius, objectives: routes.objectives, landmarks };
   graphs.set(type, graph);
   return graph;
 }
 
-function planJourney(sim, p, vehicle, avoidNodeId) {
-  const { nodes, radius, objectives } = roadGraph(sim, vehicle.type);
+function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
+  const { nodes, radius, objectives, landmarks } = roadGraph(sim, vehicle.type);
   const entries = [...nodes.values()].filter(node => node.id !== avoidNodeId && node.neighbors.length && distance(vehicle, node) < 48)
     .sort((a, b) => distance(vehicle, a) - distance(vehicle, b))
     .filter(node => roadClear(sim, vehicle, node, radius)).slice(0, 4);
@@ -76,6 +81,7 @@ function planJourney(sim, p, vehicle, avoidNodeId) {
 
   let destination = null, bestScore = Infinity;
   for (const point of sim.points) {
+    if (point.id === avoidDestinationId) continue;
     const stop = nodes.get(objectives[point.id]);
     if (!stop || !costs.has(stop) || distance(vehicle, stop) < 22) continue;
     let alliedDrivers = 0;
@@ -84,7 +90,7 @@ function planJourney(sim, p, vehicle, avoidNodeId) {
         && ally.botJourney?.destination === point.id) alliedDrivers++;
     }
     const score = costs.get(stop) + (point.owner === p.team && !point.contested ? 100 : 0)
-      + alliedDrivers * 85 + sim.random() * 28;
+      + alliedDrivers * 85 - (p.botObjective?.id === point.id ? 50 : 0) + sim.random() * 28;
     if (score < bestScore) {
       bestScore = score;
       destination = point;
@@ -92,10 +98,24 @@ function planJourney(sim, p, vehicle, avoidNodeId) {
   }
   if (!destination) return null;
 
+  let parking = nodes.get(objectives[destination.id]);
+  // A nearby landmark can serve as covered access to the same combat objective.
+  if (!destination.contested && sim.random() < .32) {
+    const directCost = costs.get(parking);
+    const sideStop = landmarks
+      .filter(({ site, parking: stop }) => {
+        const walk = distance(site, destination);
+        return distance(vehicle, stop) > 30 && walk < 235 && walk + 32 < distance(vehicle, destination)
+          && costs.get(stop) < directCost + 220;
+      })
+      .sort((a, b) => costs.get(a.parking) - costs.get(b.parking))[0];
+    if (sideStop) parking = sideStop.parking;
+  }
   const path = [];
-  for (let node = nodes.get(objectives[destination.id]); node; node = previous.get(node)) path.push(node);
+  for (let node = parking; node; node = previous.get(node)) path.push(node);
   path.reverse();
-  return { destination: destination.id, path, startedAt: sim.time, blockedAt: null, reversingUntil: 0, trips: 1 };
+  return { destination: destination.id, path, startedAt: sim.time, avoidDestinationId,
+    timeLimit: Math.max(48, costs.get(parking) / 9 + 20), blockedAt: null, reversingUntil: 0 };
 }
 
 function vehiclePreference(p) {
@@ -104,9 +124,17 @@ function vehiclePreference(p) {
 }
 
 export function shouldSpawnVehicleBotAtBase(sim, p) {
-  return Boolean(sim.map.vehicleRoutes && vehiclePreference(p) === 'specialist'
-    && sim.vehicles?.some(v => v.team === p.team && v.hp >= v.maxHp * .22 && v.seats[0] === null
-      && distance(v, sim.map.spawns[p.team]) < 45));
+  if (!sim.map.vehicleRoutes || vehiclePreference(p) !== 'specialist') return false;
+  let available = 1;
+  for (const ally of sim.players.values()) {
+    if (ally.bot && ally.alive && ally.team === p.team && !ally.vehicleId
+      && distance(ally, sim.map.spawns[p.team]) < BASE_RANGE) available++;
+  }
+  return sim.vehicles.some(vehicle => {
+    if (!canBoard(p, vehicle) || !atBase(sim, vehicle)) return false;
+    const needed = departureCrew(vehicle) - vehicle.seats.filter(Boolean).length;
+    return needed > 0 && (vehicle.seats[0] ? needed === 1 : available >= needed);
+  });
 }
 
 function resetControls(p) {
@@ -126,11 +154,13 @@ function resetControls(p) {
 }
 
 function stopRiding(sim, p, destinationId) {
-  if (!sim.dismountVehicle(p)) return;
+  if (!sim.dismountVehicle(p)) return false;
   p.botJourney = null;
   p.botBoarding = null;
   p.botVehicleSince = null;
   p.botDriverSeenAt = null;
+  p.botStopSince = null;
+  p.botBoardedFrom = null;
   p.botVehicleRetryAt = sim.time + 18 + sim.random() * 20;
   p.botPath = [];
   p.botGoal = null;
@@ -144,36 +174,95 @@ function stopRiding(sim, p, destinationId) {
     p.botPath = sim.pathfind(p, p.botGoal);
     p.nextThink = 4;
   }
+  return true;
 }
 
-function findBoardingTarget(sim, p) {
+function atBase(sim, vehicle) {
+  return distance(vehicle, sim.map.spawns[vehicle.team]) < BASE_RANGE;
+}
+
+function departureCrew(vehicle) {
+  return vehicle.type === 'humvee' ? 3 : 2;
+}
+
+function reservationsFor(sim, vehicle, candidate) {
+  const seats = new Set();
+  for (const ally of sim.players.values()) {
+    const booking = ally.botBoarding;
+    if (ally !== candidate && ally.alive && ally.team === candidate.team && !ally.vehicleId
+      && booking?.vehicleId === vehicle.id && booking.expires > sim.time
+      && vehicle.seats[booking.seat] === null) seats.add(booking.seat);
+  }
+  return seats;
+}
+
+function canBoard(p, vehicle) {
+  return vehicle.team === p.team && vehicle.hp >= vehicle.maxHp * .22 && Math.abs(vehicle.speed) <= 2.5;
+}
+
+function booking(sim, vehicle, seat) {
+  return { vehicleId: vehicle.id, seat, path: null, expires: sim.time + 12 };
+}
+
+function findBaseBoardingTarget(sim, p) {
+  const base = sim.map.spawns[p.team];
+  let available = 0, bots = 0;
+  for (const ally of sim.players.values()) {
+    if (!ally.bot || ally.team !== p.team) continue;
+    bots++;
+    if (ally.alive && !ally.vehicleId && (ally.hp >= 70 || sim.time - ally.lastHurt >= 2) && distance(ally, base) < BASE_RANGE &&
+      (ally.botBoarding?.expires ?? 0) <= sim.time && sim.time >= (ally.botVehicleRetryAt ?? 0)) available++;
+  }
+  const infantry = bots >= 8 ? 2 : bots >= 3 ? 1 : 0;
+  let candidate = null, candidateScore = Infinity, crew = null, crewScore = Infinity, demand = 0;
+  for (const vehicle of sim.vehicles) {
+    if (!canBoard(p, vehicle) || !atBase(sim, vehicle)) continue;
+    const reserved = reservationsFor(sim, vehicle, p);
+    const length = distance(p, vehicle);
+    const driver = vehicle.seats[0] || reserved.has(0);
+    const needed = departureCrew(vehicle) - vehicle.seats.filter(Boolean).length - reserved.size;
+    if (driver && needed > 0) {
+      demand += needed;
+      const seat = vehicle.seats.findIndex((rider, index) => index > 0 && rider === null && !reserved.has(index));
+      const score = length + (vehicle.seats[0] ? 0 : 8) - (seat === 1 && vehicle.type === 'humvee' ? 5 : 0);
+      if (seat >= 0 && length < BASE_RANGE && score < crewScore) {
+        crew = booking(sim, vehicle, seat);
+        crewScore = score;
+      }
+    } else if (!driver && length < BASE_RANGE && needed > 0) {
+      const score = length - (vehicle.type === 'humvee' ? 11 : 0);
+      if (available >= needed + infantry && score < candidateScore) {
+        candidate = { vehicle, needed };
+        candidateScore = score;
+      }
+    }
+  }
+  if (crew) return crew;
+  if (candidate && available >= candidate.needed + infantry + demand) return booking(sim, candidate.vehicle, 0);
+  return null;
+}
+
+function findFieldBoardingTarget(sim, p) {
   const preference = vehiclePreference(p);
-  const specialist = preference === 'specialist';
-  if (!specialist && sim.time > 5 && sim.random() > .72) return null;
+  if (!preference) return null;
   let choice = null, bestScore = Infinity;
   for (const vehicle of sim.vehicles) {
-    if (vehicle.team !== p.team || vehicle.hp < vehicle.maxHp * .22 || Math.abs(vehicle.speed) > 2.5) continue;
+    if (!canBoard(p, vehicle) || atBase(sim, vehicle)) continue;
+    const driver = sim.players.get(vehicle.seats[0]);
+    const stop = driver?.botJourney;
+    if (stop?.arrivedAt != null && (sim.time - stop.arrivedAt < 1.25 || stop.onward
+      || vehiclePreference(driver) !== 'specialist')) continue;
     const length = distance(p, vehicle);
-    if (length > (specialist ? 48 : 36)) continue;
-    const reserved = new Set();
-    for (const ally of sim.players.values()) {
-      if (ally !== p && ally.alive && ally.botBoarding?.vehicleId === vehicle.id) reserved.add(ally.botBoarding.seat);
-    }
-    const available = index => vehicle.seats[index] === null && !reserved.has(index);
-    let seat = -1, penalty = 0;
-    if (available(0)) seat = 0;
-    else if (vehicle.type === 'humvee' && available(1)) {
-      seat = 1;
-      penalty = preference === 'crew' ? -12 : 14;
-    } else if (preference === 'crew' && vehicle.seats.slice(1).every(rider => rider === null)) {
-      seat = vehicle.seats.findIndex((rider, index) => index > 0 && available(index));
-      penalty = 18;
-    }
+    if (length > (preference === 'specialist' ? 48 : 36)) continue;
+    const reserved = reservationsFor(sim, vehicle, p);
+    const free = index => vehicle.seats[index] === null && !reserved.has(index);
+    const seat = free(0) ? 0
+      : vehicle.seats.findIndex((rider, index) => index > 0 && free(index));
     if (seat < 0) continue;
-    const score = length + penalty;
+    const score = length + (preference === 'crew' && seat > 0 ? -12 : seat > 0 ? 9 : 0);
     if (score < bestScore) {
       bestScore = score;
-      choice = { vehicleId: vehicle.id, seat, path: null, expires: sim.time + (specialist ? 12 : 9) };
+      choice = booking(sim, vehicle, seat);
     }
   }
   return choice;
@@ -190,7 +279,10 @@ function approachVehicle(sim, p, dt) {
   if (distance(p, vehicle) <= VEHICLE_BOARD_RANGE && sim.mountVehicle(p, vehicle, boarding.seat)) {
     p.botBoarding = null;
     p.botVehicleSince = sim.time;
+    p.botBoardedFrom = { x: vehicle.x, z: vehicle.z };
+    p.botStopSince = null;
     p.botDriverSeenAt = null;
+    p.botVehicleReactAt = sim.time + .28;
     resetControls(p);
     return true;
   }
@@ -233,11 +325,15 @@ function steeringClear(sim, vehicle, throttle, steer, dt) {
 function drive(sim, p, vehicle, dt) {
   p.input.yaw = vehicle.yaw;
   p.input.pitch = 0;
-  if (sim.time - p.botVehicleSince < 2.6 && [...sim.players.values()].some(ally =>
-    ally.alive && ally.botBoarding?.vehicleId === vehicle.id && ally.botBoarding.seat > 0)) return;
+  if (atBase(sim, vehicle) && vehicle.seats.filter(Boolean).length < departureCrew(vehicle)) {
+    // Let an understaffed crew fall back to infantry rather than depart shorthanded.
+    if ((sim.time - p.botVehicleSince > 15 || vehicle.hp < vehicle.maxHp * .22)
+      && Math.abs(vehicle.speed) < 1.3) stopRiding(sim, p);
+    return;
+  }
   if (!p.botJourney) p.botJourney = planJourney(sim, p, vehicle);
   const journey = p.botJourney;
-  if (!journey || vehicle.hp < vehicle.maxHp * .22 || sim.time - journey.startedAt > 48) {
+  if (!journey || vehicle.hp < vehicle.maxHp * .22 || sim.time - journey.startedAt > journey.timeLimit) {
     if (Math.abs(vehicle.speed) < 1.3) stopRiding(sim, p);
     return;
   }
@@ -246,10 +342,13 @@ function drive(sim, p, vehicle, dt) {
   const remaining = distance(vehicle, next);
   if (journey.path.length === 1 && remaining < 3.6) {
     if (Math.abs(vehicle.speed) >= 1.3) return;
-    const patrol = journey.trips === 1 && vehicle.hp > vehicle.maxHp * .6 && vehiclePreference(p) === 'specialist';
-    const onward = patrol ? planJourney(sim, p, vehicle) : null;
-    if (onward) p.botJourney = { ...onward, trips: journey.trips + 1 };
-    else stopRiding(sim, p, journey.destination);
+    journey.arrivedAt ??= sim.time;
+    const canCollect = !journey.onward && vehicle.hp > vehicle.maxHp * .6 && vehiclePreference(p) === 'specialist';
+    if (canCollect && sim.time - journey.arrivedAt < 6.5) return;
+    const onward = canCollect && vehicle.seats.slice(1).some(Boolean)
+      ? planJourney(sim, p, vehicle, undefined, journey.destination) : null;
+    if (onward) p.botJourney = { ...onward, onward: true };
+    else if (sim.time - journey.arrivedAt >= 1.25) stopRiding(sim, p, journey.destination);
     return;
   }
 
@@ -262,10 +361,10 @@ function drive(sim, p, vehicle, dt) {
   }
   const stalledFor = sim.time - Math.min(journey.lastProgressAt, journey.blockedAt ?? Infinity);
   if (stalledFor > 4 && speed < 1.3 && !journey.replanned) {
-    const alternate = planJourney(sim, p, vehicle, next.id);
+    const alternate = planJourney(sim, p, vehicle, next.id, journey.avoidDestinationId);
     journey.replanned = true;
     if (alternate) {
-      p.botJourney = { ...alternate, startedAt: journey.startedAt, replanned: true, trips: journey.trips };
+      p.botJourney = { ...alternate, startedAt: journey.startedAt, replanned: true, onward: journey.onward };
       return;
     }
   }
@@ -291,28 +390,74 @@ function drive(sim, p, vehicle, dt) {
   p.input.strafe = steer;
 }
 
-function aimTurret(sim, p, vehicle, dt) {
-  const seat = getVehicleSeatPose(vehicle, 1);
-  let target = null, best = sim.botSettings.awareness * 1.35;
+function aimCrew(sim, p, vehicle, dt) {
+  const seat = getVehicleSeatPose(vehicle, p.vehicleSeat);
+  const spec = VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
+  const gunner = spec.role === 'gunner';
+  let target = null, best = sim.botSettings.awareness * (gunner ? 1.35 : 1);
   for (const enemy of sim.players.values()) {
     if (!enemy.alive || enemy.team === p.team || sim.time < enemy.invulnerableUntil) continue;
     const length = distance(seat, enemy);
     if (length >= best) continue;
-    const aim = { x: enemy.x, y: enemy.y + (enemy.input.crouch ? .72 : 1.08), z: enemy.z };
+    const crouched = !enemy.vehicleId && enemy.input.crouch;
+    const aim = { x: enemy.x, y: enemy.y + (crouched ? .72 : 1.08), z: enemy.z };
+    const yaw = yawToward(seat, aim), pitch = Math.atan2(aim.y - seat.y, length);
+    if (!gunner && !canFirePassengerWeapon(vehicle, p.vehicleSeat, yaw, pitch)) continue;
     if (!sim.lineClear(seat, aim)) continue;
-    target = aim;
+    target = { id: enemy.id, yaw, pitch };
     best = length;
   }
-  if (!target) p.botVehicleReactAt = sim.time + .32;
+  const targetId = target?.id ?? null;
+  if (targetId !== (p.botTargetId ?? null)) {
+    p.botTargetId = targetId;
+    p.botVehicleReactAt = sim.time + sim.botSettings.reaction * .65;
+  }
   const phase = sim.time * 1.6 + (p.botSlot ?? 0) * .75;
   const error = sim.botSettings.aimError;
-  const wantedYaw = target ? yawToward(seat, target) + Math.sin(phase) * error : vehicle.yaw + Math.sin(phase * .45) * 1.45;
-  const wantedPitch = target ? Math.atan2(target.y - seat.y, best) : -.03;
+  const restingYaw = !gunner && vehicle.type === 'humvee' ? vehicle.yaw - Math.sign(spec.x) * Math.PI / 2 : vehicle.yaw;
+  const wantedYaw = target ? target.yaw + Math.sin(phase) * error : restingYaw + Math.sin(phase * .45) * (gunner ? 1.45 : .28);
+  const wantedPitch = target?.pitch ?? -.03;
   const turn = sim.botSettings.turnSpeed * dt;
   p.input.yaw += clamp(angleDifference(wantedYaw, p.yaw), -turn, turn);
   p.input.pitch += clamp(wantedPitch - p.pitch, -turn, turn);
   p.input.fire = Boolean(target) && sim.time >= (p.botVehicleReactAt ?? 0)
-    && (phase % 3.2) < 2.05 && Math.abs(angleDifference(wantedYaw, p.input.yaw)) < .12;
+    && (phase % 3.2) < (gunner ? 2.05 : 1.25) && Math.abs(angleDifference(wantedYaw, p.input.yaw)) < .12
+    && (gunner || canFirePassengerWeapon(vehicle, p.vehicleSeat, p.input.yaw, p.input.pitch));
+  if (!gunner) {
+    p.input.aim = Boolean(target);
+    p.input.reload = p.ammo === 0 || (p.ammo < 5 && !target);
+  }
+}
+
+function nearbyInterest(sim, vehicle) {
+  const { nodes, objectives, landmarks } = roadGraph(sim, vehicle.type);
+  const near = (point, parking) => distance(vehicle, point) < 22 || (parking && distance(vehicle, parking) < 10);
+  const point = sim.points.find(p => near(p, nodes.get(objectives[p.id])));
+  if (point) return point.id;
+  const landmark = landmarks.find(({ site, parking }) => near(site, parking));
+  if (landmark) return sim.points.reduce((best, point) =>
+    distance(point, landmark.site) < distance(best, landmark.site) ? point : best, sim.points[0])?.id;
+  return null;
+}
+
+function ride(sim, p, vehicle, dt) {
+  const driver = sim.players.get(vehicle.seats[0]);
+  const emptySince = driver?.alive ? sim.time : (p.botDriverSeenAt ?? p.botVehicleSince);
+  p.botDriverSeenAt = emptySince;
+  p.botBoardedFrom ??= { x: vehicle.x, z: vehicle.z };
+  if (Math.abs(vehicle.speed) < 1.3) {
+    p.botStopSince ??= sim.time;
+    const destination = driver?.botJourney;
+    if (destination?.arrivedAt != null && p.botVehicleSince <= destination.arrivedAt
+      && sim.time - destination.arrivedAt >= .4 && stopRiding(sim, p, destination.destination)) return;
+    if (!destination && sim.time - p.botStopSince > 1 && distance(vehicle, p.botBoardedFrom) > 28 && !atBase(sim, vehicle)) {
+      const interest = nearbyInterest(sim, vehicle);
+      if (interest && stopRiding(sim, p, interest)) return;
+    }
+    if ((vehicle.hp < vehicle.maxHp * .22 || sim.time - emptySince > 4.5 || sim.time - p.botVehicleSince > 78)
+      && stopRiding(sim, p)) return;
+  } else p.botStopSince = null;
+  aimCrew(sim, p, vehicle, dt);
 }
 
 export function thinkVehicleBot(sim, p, dt) {
@@ -322,32 +467,30 @@ export function thinkVehicleBot(sim, p, dt) {
     resetControls(p);
     p.botVehicleSince ??= sim.time;
     if (p.vehicleSeat === 0) drive(sim, p, vehicle, dt);
-    else {
-      const driver = sim.players.get(vehicle.seats[0]);
-      const emptySince = driver?.alive ? sim.time : (p.botDriverSeenAt ?? p.botVehicleSince);
-      p.botDriverSeenAt = emptySince;
-      if (Math.abs(vehicle.speed) < 1.3 && (vehicle.hp < vehicle.maxHp * .22 || sim.time - emptySince > 3.5
-        || sim.time - p.botVehicleSince > 55)) stopRiding(sim, p);
-      else if (vehicle.type === 'humvee' && p.vehicleSeat === 1) aimTurret(sim, p, vehicle, dt);
-      else p.input.yaw = vehicle.yaw;
-    }
+    else ride(sim, p, vehicle, dt);
     return true;
   }
 
   if (p.botVehicleSince != null) {
     p.botVehicleSince = null;
     p.botDriverSeenAt = null;
+    p.botStopSince = null;
+    p.botBoardedFrom = null;
     p.botJourney = null;
     p.botVehicleRetryAt = sim.time + 12;
   }
-  if (!vehiclePreference(p)) return false;
   if (p.hp < 70 && sim.time - p.lastHurt < 2) {
     p.botBoarding = null;
     return false;
   }
-  if (!p.botBoarding && sim.time >= (p.botVehicleRetryAt ?? 0)) {
-    p.botBoarding = findBoardingTarget(sim, p);
-    p.botVehicleRetryAt = sim.time + 7 + sim.random() * 6;
+  if (p.botBoarding) return approachVehicle(sim, p, dt);
+  if (sim.time < (p.botVehicleRetryAt ?? 0)) return false;
+  const atFriendlyBase = distance(p, sim.map.spawns[p.team]) < BASE_RANGE;
+  if (atFriendlyBase) {
+    p.botBoarding = findBaseBoardingTarget(sim, p);
+  } else if (vehiclePreference(p)) {
+    p.botBoarding = findFieldBoardingTarget(sim, p);
+    p.botVehicleRetryAt = sim.time + 5 + sim.random() * 6;
   }
   return p.botBoarding ? approachVehicle(sim, p, dt) : false;
 }

@@ -1,6 +1,6 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
-import { createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
+import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -83,7 +83,7 @@ function rayCapsule(origin, direction, x, z, bottom, top, radius) {
 function weaponSpread(player) {
   const weapon = getWeapon(player.classId, player.weaponId), input = player.input;
   const movement = clamp(player.moveSpeed / weapon.speed, 0, 1);
-  return weapon.spread * (input.aim ? .24 : .66) * (input.crouch ? .81 : 1)
+  return weapon.spread * (input.aim ? .24 : .66) * (input.crouch && !player.vehicleId ? .81 : 1)
     * (1 + movement * (input.aim ? .85 : 1.3)) * (player.grounded ? 1 : 2)
     * (1 + player.bloom) * (player.bot ? 1.45 : 1);
 }
@@ -302,6 +302,9 @@ export class Simulation {
           const seat=(oldSeat+n)%vehicle.seats.length;
           if(vehicle.seats[seat]!==null)continue;
           vehicle.seats[oldSeat]=null;vehicle.seats[seat]=p.id;p.vehicleSeat=seat;
+          if(VEHICLE_TYPES[vehicle.type].seats[seat].role!=='passenger'){
+            p.reloading=false;p.reloadTime=0;
+          }
           this.event('vehicleEnter',{playerId:p.id,vehicleId:vehicle.id,seat});
           break;
         }
@@ -425,19 +428,19 @@ export class Simulation {
       this.event('kill',{killer:attacker?.name||'Окружение',victim:victim.name,killerId:attacker?.id,victimId:victim.id,weapon:meta.weapon||(attacker?getWeapon(attacker.classId,attacker.weaponId).weapon:'ГРАНАТА'),team:attacker?.team,headshot:!!meta.headshot});
     }
   }
-  shoot(p){
+  shoot(p,vehicle=null){
     const c=getWeapon(p.classId,p.weaponId),input=p.input;if(p.cooldown>0||p.reloading||p.ammo<=0)return;
     p.invulnerableUntil=0;
     p.ammo--;p.shotSeq++;p.cooldown+=c.interval;
     const eye=input.crouch?1.05:EYE_HEIGHT;
-    const origin={x:p.x,y:p.y+eye,z:p.z};
+    const origin=vehicle?getVehicleSeatPose(vehicle,p.vehicleSeat):{x:p.x,y:p.y+eye,z:p.z};
     const angle = this.random() * Math.PI * 2;
     const radius = Math.sqrt(this.random()) * weaponSpread(p);
     const yaw = p.yaw + Math.cos(angle) * radius;
     const pitch = p.pitch + Math.sin(angle) * radius;
     p.lastShotAt = this.time;
     p.bloom = Math.min(1.25, p.bloom + (input.aim ? .16 : .23));
-    this.traceShot(p,c,origin,yaw,pitch);
+    this.traceShot(p,c,origin,yaw,pitch,vehicle);
   }
   shootTurret(p,vehicle,dt){
     if(!p.input.fire||vehicle.overheated||vehicle.gunCooldown>0)return;
@@ -452,7 +455,7 @@ export class Simulation {
     origin.y-=.105;
     this.traceShot(p,TURRET_WEAPON,origin,yaw,pitch,vehicle);
   }
-  traceShot(p,c,origin,yaw,pitch,mounted=null){
+  traceShot(p,c,origin,yaw,pitch,firingVehicle=null){
     const direction={x:-Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
     let closest=c.range,target=null,vehicle=null,headshot=false,impact=null;
     const terrain=this.map.terrain;
@@ -463,13 +466,13 @@ export class Simulation {
       if(distance<closest){closest=distance;impact=impactMaterial(box.kind);}
     }
     for(const v of this.vehicles){
-      if(v===mounted||(v.hp<=0&&!(v.wreckTime>0)))continue;
+      if(v===firingVehicle||(v.hp<=0&&!(v.wreckTime>0)))continue;
       const distance=rayVehicle(origin,direction,v,closest);
       if(distance<closest){closest=distance;vehicle=v;impact='metal';}
     }
     for(const other of this.players.values()){
       if(other===p||!other.alive||other.team===p.team)continue;
-      const crouch=other.input.crouch,headY=other.y+(crouch?1.06:1.58);
+      const crouch=!other.vehicleId&&other.input.crouch,headY=other.y+(crouch?1.06:1.58);
       const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.15);
       const body=rayCapsule(origin,direction,other.x,other.z,other.y+.26,other.y+(crouch?.79:1.25),.24);
       const hit=Math.min(head,body);
@@ -478,10 +481,28 @@ export class Simulation {
     const hit = !!target && this.time >= target.invulnerableUntil;
     if(target)impact=hit?'flesh':'shield';
     const vehicleHit=vehicle?.hp>0&&vehicle.team!==p.team;
-    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq:mounted?.gunSeq??p.shotSeq,x:origin.x,y:origin.y,z:origin.z,tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,hit,headshot:hit&&headshot,impact,vehicleHit,...(mounted?{vehicleId:mounted.id,mounted:true}:{})});
+    const mounted=c===TURRET_WEAPON;
+    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq:mounted?firingVehicle.gunSeq:p.shotSeq,x:origin.x,y:origin.y,z:origin.z,tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,hit,headshot:hit&&headshot,impact,vehicleHit,...(firingVehicle?{vehicleId:firingVehicle.id,mounted}:{})});
     const falloff=clamp(1-Math.max(0,closest-35)/300,.65,1);
     if(hit)this.damage(target,c.damage*falloff*(headshot?2:1),p,{headshot,weapon:c.weapon});
     if(vehicleHit)this.damageVehicle(vehicle,c.damage*falloff,p,'bullet');
+  }
+  updateReload(p,weapon,dt){
+    if(p.reloading){
+      p.reloadTime-=dt;
+      if(p.reloadTime<=0){
+        const amount=Math.min(weapon.mag-p.ammo,p.reserve);
+        p.ammo+=amount;p.reserve-=amount;p.reloading=false;
+      }
+    }
+    if(p.input.reload||p.ammo===0)this.startReload(p);
+  }
+  firePersonalWeapon(p,weapon,pressed,firing,vehicle=null){
+    if(!firing)return;
+    if(p.bot||!weapon.semiAuto||pressed)this.shoot(p,vehicle);
+    if(pressed&&p.ammo===0&&p.reserve===0&&!p.reloading&&p.cooldown<=0){
+      this.event('dryFire',{playerId:p.id,classId:p.classId,x:p.x,z:p.z});
+    }
   }
   startReload(p){
     const weapon = getWeapon(p.classId, p.weaponId);
@@ -786,15 +807,18 @@ export class Simulation {
       p.gadgetTime=Math.max(0,p.gadgetTime-dt);p.grenadeCooldown=Math.max(0,(p.grenadeCooldown||0)-dt);
       if(p.vehicleId){
         const vehicle=this.vehicles.find(v=>v.id===p.vehicleId);
-        if(VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat].role==='gunner'){
+        const seat=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
+        if(seat.role==='gunner'){
           p.pitch=vehicle.aimPitch;
           this.shootTurret(p,vehicle,dt);
+        }else if(seat.role==='passenger'){
+          this.updateReload(p,c,dt);
+          this.firePersonalWeapon(p,c,pressed,firing&&canFirePassengerWeapon(vehicle,p.vehicleSeat,p.yaw,p.pitch),vehicle);
         }
         if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
         continue;
       }
-      if(p.reloading){p.reloadTime-=dt;if(p.reloadTime<=0){const amount=Math.min(c.mag-p.ammo,p.reserve);p.ammo+=amount;p.reserve-=amount;p.reloading=false;}}
-      if(i.reload||p.ammo===0)this.startReload(p);
+      this.updateReload(p,c,dt);
       const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.55:i.aim?.7:1);
       const dx=(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
       const dz=(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
@@ -812,10 +836,7 @@ export class Simulation {
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
       if(p.vy<=0)for(const box of this.colliders)if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+PLAYER_RADIUS*.6&&Math.abs(p.z-box.z)<box.d/2+PLAYER_RADIUS*.6)floor=Math.max(floor,box.h);
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
-      if(firing&&(p.bot||!c.semiAuto||pressed))this.shoot(p);
-      if(pressed&&firing&&p.ammo===0&&p.reserve===0&&!p.reloading&&p.cooldown<=0){
-        this.event('dryFire',{playerId:p.id,classId:p.classId,x:p.x,z:p.z});
-      }
+      this.firePersonalWeapon(p,c,pressed,firing);
       if(i.gadget)this.gadget(p);
       if(i.grenade&&!p.grenadeHeld)this.throwGrenade(p);p.grenadeHeld=i.grenade;
       if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
@@ -895,7 +916,7 @@ export class Simulation {
         id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
         hp:p.hp,alive:p.alive,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
-        shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:p.input.crouch,sprint:p.input.sprint&&p.moveSpeed>wep.speed,
+        shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:!p.vehicleId&&p.input.crouch,sprint:!p.vehicleId&&p.input.sprint&&p.moveSpeed>wep.speed,
         aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
         gadgetCooldown:p.gadgetTime,grenades:p.grenades,spotted:p.spottedUntil>this.time,
         vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,

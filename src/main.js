@@ -4,7 +4,7 @@ import {Simulation} from '../shared/simulation.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,defaultWeaponId,getWeapon,CAPTURE_RADIUS} from '../shared/world.js';
 import {Multiplayer} from './network.js';
 import {CombatAudio} from './audio.js';
-import {VEHICLE_TYPES,TURRET_WEAPON,getVehicleBoardingSeat} from '../shared/vehicles.js';
+import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
 
 const $=id=>document.getElementById(id);
 const show=(id,visible=true)=>$(id).classList.toggle('hidden',!visible);
@@ -927,7 +927,12 @@ function updateVehicleHud(player){
   if(!seat)return null;
   const canExit=Math.abs(vehicle.speed)<=4.5;
   const swap=canExit&&vehicle.seats.includes(null);
-  text('vehicle-prompt',canExit?key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':''):'СБАВЬТЕ СКОРОСТЬ ДЛЯ ВЫХОДА');
+  const look=aimAngles();
+  const canFire=canFirePassengerWeapon(vehicle,player.vehicleSeat,look.yaw,look.pitch);
+  const controls=canExit?key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':''):'СБАВЬТЕ СКОРОСТЬ ДЛЯ ВЫХОДА';
+  const windowHint=seat.role==='passenger'&&!canFire?'\nПОВЕРНИТЕСЬ К БОКОВОМУ ОКНУ ДЛЯ СТРЕЛЬБЫ':'';
+  text('vehicle-prompt',controls+windowHint);
+  if(seat.role==='passenger')return {role:seat.role,canFire};
   text('weapon-name',VEHICLE_TYPES[vehicle.type].name.toUpperCase()+' · '+seat.name.toUpperCase());
   const hp=Math.ceil(vehicle.hp/vehicle.maxHp*100);
   text('ammo',seat.role==='gunner'?Math.round(vehicle.heat*100)+'%':Math.round(Math.abs(vehicle.speed)*3.6));
@@ -939,6 +944,7 @@ function hud(now){
   const player=local();if(!player)return;
   const weapon=getWeapon(player.classId,player.weaponId);
   const mounted=updateVehicleHud(player);
+  const personalWeapon=!mounted||mounted.role==='passenger';
   const heading=(((-yaw*180/Math.PI)%360)+360)%360;const cardinal=['N','NE','E','SE','S','SW','W','NW'][Math.round(heading/45)%8];text('compass-direction',cardinal);text('compass-degrees',`${String(Math.round(heading)).padStart(3,'0')}°`);
   const districts=currentMap.landmarks?currentMap.districts:currentMap.points;
   const nearest=districts.reduce((best,p)=>Math.hypot(player.x-p.x,player.z-p.z)<Math.hypot(player.x-best.x,player.z-best.z)?p:best,districts[0]);
@@ -948,7 +954,7 @@ function hud(now){
   const maxT=state.maxTickets||600;
   text('tickets-blue',Math.ceil(state.tickets[player.team]));text('tickets-orange',Math.ceil(state.tickets[1-player.team]));$('blue-bar').style.width=`${(state.tickets[player.team]/maxT)*100}%`;$('orange-bar').style.width=`${(state.tickets[1-player.team]/maxT)*100}%`;
   const seconds=Math.floor(state.time);text('match-time',`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`);
-  text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;if(!mounted){text('ammo',player.ammo);text('reserve',player.reserve);text('weapon-name',weapon.name||weapon.weapon);text('ammo-status',player.reloading?'ПЕРЕЗАРЯДКА…':player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');}
+  text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;if(personalWeapon){text('ammo',player.ammo);text('reserve',player.reserve);text('weapon-name',weapon.name||weapon.weapon);text('ammo-status',player.reloading?'ПЕРЕЗАРЯДКА…':player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');}
   text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
@@ -1000,7 +1006,9 @@ function hud(now){
   const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
   const gap=`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`;
   if(crosshair.dataset.gap!==gap){crosshair.dataset.gap=gap;crosshair.style.setProperty('--spread-gap',gap);}
-  crosshair.classList.toggle('aim',aim&&!mounted);crosshair.style.opacity=(!player.alive||(mounted?mounted.role!=='gunner':player.reloading))?'0':'';
+  const showCrosshair=player.alive&&(mounted?.role==='gunner'||(personalWeapon&&!player.reloading&&(!mounted||mounted.canFire)));
+  crosshair.classList.toggle('aim',aim&&personalWeapon);
+  crosshair.style.opacity=showCrosshair?'':'0';
   $('hitmarker').style.opacity=now<hitUntil?'1':'0';
   const dmgOpacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
   const dmgEl=$('damage-flash');
@@ -1065,7 +1073,7 @@ function frame(now){
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
   document.body.classList.toggle('scoped',scoped);
-  audio.update?.(dt,{state,local:local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&!currentPlayer?.vehicleId,locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
+  audio.update?.(dt,{state,local:local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
 }
 try{

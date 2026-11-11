@@ -7,7 +7,7 @@ import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign, addSecto
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
 import { drawFlagBanner } from './logos.js';
-import { TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { canFirePassengerWeapon, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicles.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
@@ -137,6 +137,7 @@ export class GameRenderer {
     this.landDip = 0;
     this.previousGrounded = true;
     this.cameraAnchor = new THREE.Vector3();
+    this.vehicleSeatAnchor = new THREE.Vector3();
     this.cameraPlayerId = null;
     this.cameraAlive = null;
     this.scratchPosition = new THREE.Vector3();
@@ -1047,7 +1048,7 @@ export class GameRenderer {
         if (length > 7 && (event.shotSeq ?? event.id) % 3 === 0) {
           this.tracer(x, y, z, tx, ty, tz, length);
         }
-        if (own && this.weapon.visible) {
+        if (own && this.weapon.visible && !event.mounted) {
           const yaw = player?.yaw || 0;
           const effect = this.effectPools.shell.pop() ?? { mesh: new THREE.Mesh(this.geo.shell, this.shellMaterial), type: 'shell' };
           const shell = effect.mesh;
@@ -1528,6 +1529,23 @@ export class GameRenderer {
     drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);
   }
 
+  placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
+    const humvee = vehicle.type === 'humvee';
+    rig.body.updateWorldMatrix(true, false);
+    this.camera.position.set(seat.x, seat.height, seat.z).applyMatrix4(rig.body.matrixWorld);
+    if (humvee) {
+      this.vehicleSeatAnchor.set(seat.x, seat.height, seat.z).applyMatrix4(rig.group.matrixWorld);
+      this.camera.position.lerp(this.vehicleSeatAnchor, .28);
+    }
+    if (shake) this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012, Math.abs(vehicle.speed) * .001) * (humvee ? .65 : 1);
+    const gunner = seat.role === 'gunner';
+    const roll = shake && !gunner ? rig.body.rotation.z * (humvee ? .62 : 1) : 0;
+    this.camera.rotation.set(gunner ? clamp(pitch, TURRET_MIN_PITCH, TURRET_MAX_PITCH) : pitch, yaw, roll, 'YXZ');
+    this.cameraPlayerId = null;
+    this.cameraAlive = true;
+    this.updateSunShadow(vehicle.x, vehicle.z);
+  }
+
   render(state, localId, dt, view = {}) {
     this.setMap(state?.mapId ?? view.mapId);
     const rawDt = dt || 0.016;
@@ -1595,6 +1613,8 @@ export class GameRenderer {
     const player = state.players.find(p => p.id === localId);
     const isAlive = player?.alive !== false;
     const mounted = this.updateVehicles(state, player, dt, view);
+    const seat = mounted && VEHICLE_TYPES[mounted.vehicle.type].seats[player.vehicleSeat];
+    const passenger = seat?.role === 'passenger';
     if (player && !isAlive) {
       const focusX = view.deployTarget?.x ?? player.x ?? 0;
       const focusZ = view.deployTarget?.z ?? player.z ?? 0;
@@ -1620,18 +1640,8 @@ export class GameRenderer {
         this.camera.updateProjectionMatrix();
       }
       this.updateSunShadow(focusX, focusZ);
-    } else if (mounted) {
-      const { vehicle, rig } = mounted;
-      const seat = VEHICLE_TYPES[vehicle.type].seats[player.vehicleSeat];
-      const yaw = view.yaw ?? player.yaw;
-      const pitch = view.pitch ?? player.pitch;
-      rig.body.updateWorldMatrix(true, false);
-      this.camera.position.set(seat.x, seat.height, seat.z).applyMatrix4(rig.body.matrixWorld);
-      if (shake) this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012,Math.abs(vehicle.speed)*.001);
-      this.camera.rotation.set(seat.role === 'gunner' ? clamp(pitch,TURRET_MIN_PITCH,TURRET_MAX_PITCH) : pitch,
-        yaw,shake&&seat.role!=='gunner' ? rig.body.rotation.z : 0,'YXZ');
-      this.cameraPlayerId = null;
-      this.cameraAlive = true;
+    } else if (mounted && !passenger) {
+      this.placeVehicleCamera(mounted, seat, view.yaw ?? player.yaw, view.pitch ?? player.pitch, shake);
       this.weapon.visible = false;
       this.wallStow = this.aimAmount = this.sprintBlend = 0;
       if (Math.abs(this.camera.fov - baseFov) > .03 || this.camera.near !== .045) {
@@ -1639,13 +1649,17 @@ export class GameRenderer {
         this.camera.near = .045;
         this.camera.updateProjectionMatrix();
       }
-      this.updateSunShadow(vehicle.x, vehicle.z);
     } else if (player) {
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
-      const crouching = view.crouch ?? player.crouching ?? player.crouch;
+      const crouching = !passenger && (view.crouch ?? player.crouching ?? player.crouch);
       const height = isAlive ? (crouching ? 1.05 : 1.65) : 0.5;
-      const coverDistance = distanceToCover({ x: player.x, y: (player.y || 0) + height, z: player.z }, { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, this.map.boxes, 1.6);
-      this.wallStow = lerp(this.wallStow, clamp((1.45 - coverDistance) / 1.05, 0, 1), 1 - Math.exp(-dt * 14));
+      const passengerCanFire = passenger && canFirePassengerWeapon(mounted.vehicle, player.vehicleSeat, yaw, pitch);
+      const coverDistance = passenger ? 1.6 : distanceToCover(
+        { x: player.x, y: (player.y || 0) + height, z: player.z },
+        { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, this.map.boxes, 1.6,
+      );
+      const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
+      this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
       this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !player.reloading && this.throwTimer <= 0 && this.gadgetTimer <= 0 && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       const weapon = getWeapon(player.classId, player.weaponId);
@@ -1657,12 +1671,12 @@ export class GameRenderer {
       this.wasReloading = !!player.reloading;
       const reloadPhase = player.reloading ? clamp((this.clock - (this.reloadStarted ?? this.clock)) / weapon.reload, 0, 1) : 1;
       const reloadMotion = Math.sin(reloadPhase * Math.PI) * this.reloadAmount;
-      const moving = clamp(Number(view.move) || 0, 0, 1);
+      const moving = passenger ? 0 : clamp(Number(view.move) || 0, 0, 1);
       const grounded = player.grounded !== false;
       const sprint = view.sprint && !view.aim && moving > .1 && !player.reloading;
       this.handlingMove = lerp(this.handlingMove, grounded ? moving : 0, 1 - Math.exp(-dt * 9));
       this.sprintBlend = lerp(this.sprintBlend, sprint ? 1 : 0, 1 - Math.exp(-dt * 11));
-      this.strafeBlend = lerp(this.strafeBlend, Number(view.strafe) || 0, 1 - Math.exp(-dt * 9));
+      this.strafeBlend = lerp(this.strafeBlend, passenger ? 0 : Number(view.strafe) || 0, 1 - Math.exp(-dt * 9));
       if (grounded && !this.previousGrounded) this.landDip = .09;
       this.previousGrounded = grounded;
       this.landDip *= Math.exp(-dt * 12);
@@ -1672,18 +1686,23 @@ export class GameRenderer {
       const target = this.scratchPosition.set(player.x, player.y || 0, player.z);
       // Smooth authoritative 20 Hz movement without delaying mouse look. A
       // respawn/teleport must never drag the camera across the entire map.
-      if (this.cameraPlayerId !== localId || this.cameraAlive !== isAlive || this.cameraAnchor.distanceToSquared(target) > 64) {
-        this.cameraAnchor.copy(target);
-        this.lastYaw = yaw; this.lastPitch = pitch;
-      } else this.cameraAnchor.lerp(target, 1 - Math.exp(-dt * 28));
-      this.cameraPlayerId = localId; this.cameraAlive = isAlive;
-      this.camera.position.set(this.cameraAnchor.x, this.cameraAnchor.y + height + (shake ? Math.sin(cycle * 2) * .016 * bob - this.landDip * .4 : 0), this.cameraAnchor.z);
+      if (passenger) {
+        this.placeVehicleCamera(mounted, seat, yaw, pitch, shake);
+      } else {
+        if (this.cameraPlayerId !== localId || this.cameraAlive !== isAlive || this.cameraAnchor.distanceToSquared(target) > 64) {
+          this.cameraAnchor.copy(target);
+          this.lastYaw = yaw; this.lastPitch = pitch;
+        } else this.cameraAnchor.lerp(target, 1 - Math.exp(-dt * 28));
+        this.cameraPlayerId = localId; this.cameraAlive = isAlive;
+        this.camera.position.set(this.cameraAnchor.x, this.cameraAnchor.y + height + (shake ? Math.sin(cycle * 2) * .016 * bob - this.landDip * .4 : 0), this.cameraAnchor.z);
+        this.camera.rotation.set(pitch, yaw, shake ? Math.sin(cycle) * .003 * bob - this.strafeBlend * .005 : 0, 'YXZ');
+        this.updateSunShadow(this.cameraAnchor.x, this.cameraAnchor.z);
+      }
       this.kick = Math.max(view.recoil || 0, this.kick * Math.exp(-dt * 16));
       if (player.shotSeq !== undefined && player.shotSeq !== this.lastShot) {
         if (this.lastShot !== -1) this.kick = 1;
         this.lastShot = player.shotSeq;
       }
-      this.camera.rotation.set(pitch, yaw, shake ? Math.sin(cycle) * .003 * bob - this.strafeBlend * .005 : 0, 'YXZ');
       const aimFov = player.classId === 'recon'
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / 4))
         : baseFov - 23;
@@ -1723,7 +1742,6 @@ export class GameRenderer {
         -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018 - actionTilt * .36,
       );
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
-      this.updateSunShadow(this.cameraAnchor.x, this.cameraAnchor.z);
     }
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
