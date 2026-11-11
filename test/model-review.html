@@ -5,7 +5,7 @@
 <label for="model">МОДЕЛЬ</label><select id="model"><option value="soldier">Боец</option><option value="weapon">Оружие и руки</option></select>
 <label for="class">КЛАСС</label><select id="class"><option value="assault">Штурмовик</option><option value="medic">Медик</option><option value="support">Поддержка</option><option value="recon">Разведчик</option></select>
 <label for="team">ФОРМА</label><select id="team"><option value="0">Олива</option><option value="1">Койот</option></select>
-<label for="pose">ПОЗА</label><select id="pose"><option value="idle">Ожидание</option><option value="walk">Ходьба</option><option value="run">Бег</option><option value="crouch">Присесть</option><option value="fire">Стрельба</option></select>
+<label for="pose">ПОЗА</label><select id="pose"><option value="idle">Ожидание</option><option value="walk">Ходьба</option><option value="run">Бег</option><option value="strafe">Стрейф</option><option value="crouch">Присесть</option><option value="fire">Стрельба</option><option value="reload">Перезарядка</option><option value="throw">Бросок гранаты</option><option value="death">Падение</option></select>
 <div class="buttons"><button id="front">Спереди</button><button id="side">Сбоку</button><button id="back">Сзади</button><button id="detail">Крупный план</button></div><button id="turn">ВРАЩЕНИЕ ВКЛ.</button><p><a href="/">Вернуться к игре →</a></p></aside><div id="metrics"></div><footer>Локальный просмотр · те же геометрия, материалы и суставы, что в бою</footer>
 <script type="module">
 import * as THREE from 'three';
@@ -45,8 +45,15 @@ $('turn').onclick=()=>{autoTurn=!autoTurn;$('turn').textContent=autoTurn?'ВРА
 function resize(){const w=window.innerWidth,h=window.innerHeight;webgl.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();choose();
 function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,(now-last)/1000);last=now;time+=dt;frames++;statsClock+=dt;const pair=cache.get(selectedKey),pose=$('pose').value;
   if($('model').value==='soldier'){
-    const speed=pose==='run'?7:pose==='walk'?3.8:0;pair.player.x=time*speed;pair.player.sprint=pose==='run';pair.player.crouch=pose==='crouch';pair.player.shotSeq=pose==='fire'?Math.floor(time*8):0;
-    owner.clock=time;owner.updateSoldiers({time,players:[{id:'observer',x:pair.player.x,y:0,z:3,team:pair.player.team},pair.player]},'observer',dt);soldier.group.position.set(0,0,0);soldier.group.rotation.y=autoTurn?time*.22:0;weapon.visible=false;
+    const speed=pose==='run'?7:pose==='walk'?3.8:pose==='strafe'?3.6:0;
+    pair.player.x=pose==='strafe'?Math.sin(time*1.8)*2.5:0;
+    pair.player.z=pose==='run'||pose==='walk'?-time*speed:0;
+    pair.player.sprint=pose==='run';pair.player.crouch=pose==='crouch';
+    pair.player.reloading=pose==='reload';pair.player.reloadProgress=pose==='reload'?(time/2.2)%1:0;
+    pair.player.alive=pose!=='death'||(time%3.2)<.35;
+    if(pose==='throw'&&(soldier.throwAge===undefined||soldier.throwAge>1.4))soldier.throwAge=0;
+    pair.player.shotSeq=pose==='fire'?Math.floor(time*8):0;
+    owner.clock=time;owner.updateSoldiers({time,players:[{id:'observer',x:pair.player.x,y:0,z:pair.player.z+3,team:pair.player.team},pair.player]},'observer',dt);soldier.group.position.set(0,soldier.group.position.y,0);soldier.group.rotation.y=autoTurn?time*.22:0;weapon.visible=false;
   }else{soldier.group.visible=false;weapon.visible=true;weapon.rotation.y=autoTurn?Math.sin(time*.25)*.65:0;}
   controls.update();webgl.render(scene,camera);
   if(statsClock>1){fps=Math.round(frames/statsClock);frames=0;statsClock=0;const stats=webgl.info.render;$('metrics').textContent=`${fps} FPS\n${stats.calls} draw calls\n${stats.triangles.toLocaleString()} triangles`;document.body.dataset.ready='true';document.body.dataset.triangles=stats.triangles;}

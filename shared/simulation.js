@@ -13,6 +13,9 @@ const withBounds = box => ({
 });
 const colliders = MAP.boxes.map(withBounds);
 const grenadeColliders = MAP.boxes.map(box => withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12}));
+const rayDir = { x: 0, y: 0, z: 0 };
+const scratchEye = { x: 0, y: 0, z: 0 };
+const scratchTarget = { x: 0, y: 0, z: 0 };
 
 export function sanitizeInput(input = {}) {
   if(!input||typeof input!=='object')input={};
@@ -129,17 +132,24 @@ export class Simulation {
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   collides(x,z,y=0,radius=PLAYER_RADIUS){
-    return Math.abs(x)>MAP.size/2-2||Math.abs(z)>MAP.size/2-2||MAP.boxes.some(b=>y<b.h&&Math.abs(x-b.x)<b.w/2+radius&&Math.abs(z-b.z)<b.d/2+radius);
+    const limit=MAP.size/2-2;
+    if(Math.abs(x)>limit||Math.abs(z)>limit)return true;
+    for(let i=0;i<colliders.length;i++){
+      const b=colliders[i];
+      if(y<b.h&&x>b.minX-radius&&x<b.maxX+radius&&z>b.minZ-radius&&z<b.maxZ+radius)return true;
+    }
+    return false;
   }
   lineClear(a,b){
     const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
     const length=Math.hypot(dx,dy,dz);
     if(length<.1)return true;
-    const direction={x:dx/length,y:dy/length,z:dz/length};
+    rayDir.x=dx/length;rayDir.y=dy/length;rayDir.z=dz/length;
     const minX=Math.min(a.x,b.x),maxX=Math.max(a.x,b.x),minZ=Math.min(a.z,b.z),maxZ=Math.max(a.z,b.z);
-    for(const box of colliders){
+    for(let i=0;i<colliders.length;i++){
+      const box=colliders[i];
       if(box.maxX<minX||box.minX>maxX||box.maxZ<minZ||box.minZ>maxZ)continue;
-      if(rayBox(a,direction,box,length)<length-.1)return false;
+      if(rayBox(a,rayDir,box,length)<length-.1)return false;
     }
     return true;
   }
@@ -237,17 +247,22 @@ export class Simulation {
     if(!p.alive)return;
     p.nextThink-=dt;const settings=this.botSettings;
     let target=null,bestSquared=settings.awareness**2;
-    const eye={x:p.x,y:p.y+1.65,z:p.z};
+    scratchEye.x=p.x;scratchEye.y=p.y+1.65;scratchEye.z=p.z;
     const recentlyHurt=this.time-p.lastHurt<1.5;
     for(const other of this.players.values())if(other.alive&&other.team!==p.team){
       const dx=other.x-p.x,dz=other.z-p.z,distanceSquared=dx*dx+dz*dz;
       if(distanceSquared>=bestSquared||this.time<other.invulnerableUntil)continue;
       const aware=distanceSquared<100||recentlyHurt||other.id===p.botTargetId||Math.abs(angleDifference(Math.atan2(-dx,-dz),p.yaw))<1.9;
-      if(aware&&this.lineClear(eye,{x:other.x,y:other.y+(other.input.crouch?.75:1.1),z:other.z})){
-        target=other;bestSquared=distanceSquared;
+      if(aware){
+        scratchTarget.x=other.x;scratchTarget.y=other.y+(other.input.crouch?.75:1.1);scratchTarget.z=other.z;
+        if(this.lineClear(scratchEye,scratchTarget)){
+          target=other;bestSquared=distanceSquared;
+        }
       }
     }
-    const input=sanitizeInput();
+    const input=p.input;
+    input.forward=0;input.strafe=0;input.sprint=false;input.crouch=false;input.jump=false;
+    input.fire=false;input.aim=false;input.reload=false;input.gadget=false;input.grenade=false;
     if(target){
       const best=Math.sqrt(bestSquared);
       if(p.botTargetId!==target.id){p.botTargetId=target.id;p.botReactAt=this.time+settings.reaction+this.random()*settings.reactionVariance;p.botBurstAt=p.botReactAt;p.botAimPhase=this.random()*Math.PI*2;}
@@ -256,7 +271,7 @@ export class Simulation {
       // Error grows with distance, leaving visible near-misses rather than laser aim.
       const error=settings.aimError*(.65+best/settings.awareness);
       const wantedYaw=Math.atan2(-dx,-dz)+Math.sin(phase)*error;
-      const wantedPitch=Math.atan2(target.y+(target.input.crouch?.65:1.05)-eye.y,Math.hypot(dx,dz))+Math.cos(phase*.83)*error*.5;
+      const wantedPitch=Math.atan2(target.y+(target.input.crouch?.65:1.05)-scratchEye.y,Math.hypot(dx,dz))+Math.cos(phase*.83)*error*.5;
       input.yaw=p.yaw+clamp(angleDifference(wantedYaw,p.yaw),-settings.turnSpeed*dt,settings.turnSpeed*dt);
       input.pitch=p.pitch+clamp(wantedPitch-p.pitch,-dt*1.6,dt*1.6);input.aim=true;
       const cycle=settings.burst+settings.pause,burstPhase=(this.time-p.botBurstAt)%cycle;
@@ -288,11 +303,12 @@ export class Simulation {
     }
     if(p.ammo===0||(p.ammo<8&&!target))input.reload=true;
     if((p.hp<60||p.classId==='support')&&p.gadgetTime<=0)input.gadget=true;
-    p.input=input;
+    input.yaw=finite(input.yaw)%(Math.PI*2);
+    input.pitch=clamp(finite(input.pitch),-1.45,1.45);
   }
   step(rawDt){
     const dt=clamp(finite(rawDt),0,.1);if(!dt)return;this.time+=dt;
-    this.events=this.events.filter(e=>this.time-e.time<1.2);
+    while(this.events.length&&this.time-this.events[0].time>=1.2)this.events.shift();
     if(this.winner!==null)return;
     // Spread route planning across ticks when many bots spawn together.
     this.botPathBudget=2;

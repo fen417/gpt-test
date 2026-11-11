@@ -67,7 +67,7 @@ function receive(next){
     if(event.type==='capture'&&state.points.some(p=>p.id===event.pointId))toast(`Точка ${event.pointId} ${event.team===player.team?'захвачена вашим отрядом':'под контролем противника'}`);
     if(event.type==='gadget'&&event.playerId===localId)toast(`${gadgetNames[player.classId]} · Активировано`);
   }
-  if(seen.size>1500)seen=new Set([...seen].slice(-700));
+  while(seen.size>900)seen.delete(seen.keys().next().value);
   audio.events(state,player);
   if(state.winner!==null&&state.winner!==undefined&&!finished){finished=true;clearControls();document.exitPointerLock?.();show('pause',false);show('death',false);text('result-title',state.winner===player.team?'Сектор удержан':'Сектор потерян');text('result-stats',`${player.kills} устранений · ${player.deaths} потерь · ${Math.floor(state.time/60)} мин боя`);show('result');}
 }
@@ -174,8 +174,20 @@ function hud(now){
   text('kd',`${player.kills} У / ${player.deaths} П`);text('gadget-label',`Q · ${gadgetNames[player.classId]}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
-  $('capture-notice').replaceChildren();if(nearby&&player.alive){const strong=document.createElement('span'),small=document.createElement('small'),track=document.createElement('div'),fill=document.createElement('i');strong.textContent=`${nearby.id} · ${nearby.contested?'ТОЧКА ОСПАРИВАЕТСЯ':nearby.owner===player.team?'УДЕРЖАНИЕ ПОЗИЦИИ':'ЗАХВАТ ТОЧКИ'}`;small.textContent=`${nearby.name} · ${Math.round(Math.abs(nearby.progress)*100)}%`;track.className='capture-track';fill.style.width=`${Math.abs(nearby.progress)*100}%`;track.append(fill);$('capture-notice').append(strong,small,track);}
-  feed=feed.filter(e=>e.expires>now).slice(-5);$('killfeed').replaceChildren(...feed.map(e=>{const row=document.createElement('div'),a=document.createElement('b'),b=document.createElement('em');row.classList.toggle('enemy-kill',e.team!==player.team);a.textContent=e.killer;b.textContent=e.victim;row.append(a,document.createTextNode(`  [${e.weapon||'ГРАНАТА'}]  `),b);return row;}));
+  const capPct=nearby?Math.round(Math.abs(nearby.progress)*100):0;
+  const capSig=nearby&&player.alive?`${nearby.id}:${nearby.contested}:${nearby.owner===player.team}:${capPct}`:'';
+  const capEl=$('capture-notice');
+  if(capEl.dataset.signature!==capSig){
+    capEl.dataset.signature=capSig;capEl.replaceChildren();
+    if(nearby&&player.alive){const strong=document.createElement('span'),small=document.createElement('small'),track=document.createElement('div'),fill=document.createElement('i');strong.textContent=`${nearby.id} · ${nearby.contested?'ТОЧКА ОСПАРИВАЕТСЯ':nearby.owner===player.team?'УДЕРЖАНИЕ ПОЗИЦИИ':'ЗАХВАТ ТОЧКИ'}`;small.textContent=`${nearby.name} · ${capPct}%`;track.className='capture-track';fill.style.width=`${capPct}%`;track.append(fill);capEl.append(strong,small,track);}
+  }
+  feed=feed.filter(e=>e.expires>now).slice(-5);
+  const feedSig=feed.map(e=>e.id).join(',');
+  const feedEl=$('killfeed');
+  if(feedEl.dataset.signature!==feedSig){
+    feedEl.dataset.signature=feedSig;
+    feedEl.replaceChildren(...feed.map(e=>{const row=document.createElement('div'),a=document.createElement('b'),b=document.createElement('em');row.classList.toggle('enemy-kill',e.team!==player.team);a.textContent=e.killer;b.textContent=e.victim;row.append(a,document.createTextNode(`  [${e.weapon||'ГРАНАТА'}]  `),b);return row;}));
+  }
   const crosshair=$('crosshair');
   const spread=player.spread??CLASSES[player.classId].spread*.66;
   const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
@@ -183,7 +195,15 @@ function hud(now){
   crosshair.classList.toggle('aim',aim);crosshair.style.opacity=player.reloading||!player.alive?'0':'';
   $('hitmarker').style.opacity=now<hitUntil?'1':'0';$('damage-flash').style.opacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
   if(!player.alive){text('death-countdown',player.respawnIn>0?`Возвращение в бой через ${Math.ceil(player.respawnIn)} с`:'Выбери точку и возвращайся в бой');$('respawn').disabled=player.respawnIn>0;const options=state.points.filter(p=>p.owner===player.team&&!p.contested),signature=options.map(p=>p.id).join('');if($('spawn-point').dataset.signature!==signature){$('spawn-point').dataset.signature=signature;$('spawn-point').replaceChildren(new Option('База команды',''),...options.map(p=>new Option(`${p.id} · ${p.name}`,p.id)));}}
-  if(!$('scoreboard').classList.contains('hidden')){$('score-rows').replaceChildren(...[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||b.kills-a.kills).map(p=>{const row=document.createElement('div');row.className=`score-row team${p.team===player.team?0:1}${p.id===localId?' local':''}`;for(const value of [`${p.alive?'●':'×'} ${p.name}${p.bot?' [AI]':''}`,CLASSES[p.classId].name,`${p.kills} / ${p.deaths}`]){const span=document.createElement('span');span.textContent=value;row.append(span);}return row;}));}
+  if(!$('scoreboard').classList.contains('hidden')){
+    const sorted=[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||b.kills-a.kills);
+    const scoreSig=sorted.map(p=>`${p.id}:${p.alive?1:0}:${p.kills}:${p.deaths}:${p.classId}`).join('|');
+    const scoreEl=$('score-rows');
+    if(scoreEl.dataset.signature!==scoreSig){
+      scoreEl.dataset.signature=scoreSig;
+      scoreEl.replaceChildren(...sorted.map(p=>{const row=document.createElement('div');row.className=`score-row team${p.team===player.team?0:1}${p.id===localId?' local':''}`;for(const value of [`${p.alive?'●':'×'} ${p.name}${p.bot?' [AI]':''}`,CLASSES[p.classId].name,`${p.kills} / ${p.deaths}`]){const span=document.createElement('span');span.textContent=value;row.append(span);}return row;}));
+    }
+  }
   minimap(player);
 }
 function markers(){
@@ -213,7 +233,8 @@ function frame(now){
     if(simulation){
       simulation.setInput(localId,lastInput);accumulator+=dt;
       let steps=0;
-      while(accumulator>=1/60&&steps<6){simulation.step(1/60);accumulator-=1/60;steps++;}
+      while(accumulator>=1/60&&steps<4){simulation.step(1/60);accumulator-=1/60;steps++;}
+      if(accumulator>1/60)accumulator=1/60;
       if(steps){receive(simulation.snapshot());pulses.clear();fireTap=false;}
     }else{multiplayer.sendInput(lastInput);pulses.clear();fireTap=false;}
   }
@@ -226,6 +247,7 @@ function frame(now){
 }
 try{
   renderer=new GameRenderer(canvas);renderer.resize();window.addEventListener('resize',()=>renderer.resize());
+  if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';}
   for(const p of MAP.points){const objective=document.createElement('div');objective.id=`objective-${p.id}`;objective.className='objective';const label=document.createElement('span');label.textContent=p.id;objective.append(label);$('objective-strip').append(objective);const marker=document.createElement('div');marker.id=`marker-${p.id}`;marker.className='world-marker';const letter=document.createElement('b'),distance=document.createElement('span');letter.textContent=p.id;marker.append(letter,distance);$('world-markers').append(marker);}
   text('class-weapon',`${CLASSES.assault.weapon} · ${weaponTypes.assault}`);audio.setMode?.('menu');status('Сектор готов. Выбери класс и вступай в бой.');requestAnimationFrame(frame);
 }catch(error){console.error(error);status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);$('solo').disabled=true;$('host').disabled=true;}
