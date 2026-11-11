@@ -1,9 +1,10 @@
 ﻿import * as THREE from 'three';
+import { addPortGround } from './port-visuals.js';
 import { addQuarryGround } from './quarry-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
-import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
+import { createSurfaceMaterials, makeSky, addWarehouseDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
 import { drawFlagBanner } from './logos.js';
@@ -439,59 +440,24 @@ export class GameRenderer {
   }
 
   buildWorld() {
-    const random = this.random;
-    const size = this.map.size || 200;
-    const span = size + (this.map.terrain ? 256 : 250);
-    const segments = this.map.terrain ? span / this.map.terrain.cell : 1;
-    const groundGeometry = new THREE.PlaneGeometry(span, span, segments, segments);
-    const guv = groundGeometry.attributes.uv;
-    for (let i = 0; i < guv.count; i++) guv.setXY(i, guv.getX(i) * span / 9, guv.getY(i) * span / 9);
-    const ground = new THREE.Mesh(groundGeometry, this.surfaces.ground);
-    ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.scene.add(ground);
-    if (this.map.roads) addQuarryGround(this, this.map, ground);
+    const size = this.map.size;
+    if (this.map.shoreX !== undefined) addPortGround(this, this.map);
     else {
-      // Painted service roads use clean depth separation and polygonOffset to prevent shadow/depth z-fighting.
-      const crossStreets = size > 250 ? [-110, -40, 0, 40, 110] : [0];
-      // End the avenue at each crossing instead of stacking asphalt surfaces.
-      const roadEdge = size / 2 + 5;
-      const road = (x, z, w, d) => {
-        const m = this.box(this.scene, x, .035, z, w, .07, d, this.materials.asphalt, false);
-        m.receiveShadow = true;
-        return m;
-      };
-      let avenueStart = -roadEdge;
-      for (const z of crossStreets) {
-        const avenueEnd = z - 7.5;
-        road(0, (avenueStart + avenueEnd) / 2, 24, avenueEnd - avenueStart);
-        road(0, z, size + 10, 15);
-        avenueStart = z + 7.5;
-      }
-      road(0, (avenueStart + roadEdge) / 2, 24, roadEdge - avenueStart);
-      // Raised concrete sidewalks along the main avenue and cross streets
-      for (const side of [-1, 1]) {
-        let curbStart = -roadEdge;
-        for (const z of crossStreets) {
-          const curbEnd = z - 7.8;
-          this.box(this.scene, side * 12.6, .075, (curbStart + curbEnd) / 2, 1.2, .15, curbEnd - curbStart, this.materials.edge, false);
-          curbStart = z + 7.8;
-        }
-        this.box(this.scene, side * 12.6, .075, (curbStart + roadEdge) / 2, 1.2, .15, roadEdge - curbStart, this.materials.edge, false);
-      }
-      for (let i = -size / 2 + 8; i < size / 2; i += 10) {
-        if (crossStreets.every(z => Math.abs(i - z) > 9)) {
-          const mark = this.box(this.scene, 0, 0.048, i, 0.16, 0.09, 4.8, this.materials.marking, false);
-          mark.receiveShadow = true;
-        }
-        for (const z of crossStreets) if (Math.abs(i) > 15) {
-          const mark = this.box(this.scene, i, 0.048, z, 4.8, 0.09, 0.16, this.materials.marking, false);
-          mark.receiveShadow = true;
-        }
-      }
+      const span = size + 256, segments = span / this.map.terrain.cell;
+      const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
+      const uv = geometry.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * span / 9, uv.getY(i) * span / 9);
+      const ground = new THREE.Mesh(geometry, this.surfaces.ground);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      this.scene.add(ground);
+      addQuarryGround(this, this.map, ground);
+      addWarehouseDetails(this, this.map.structures);
     }
     const windowMatrices = [], litMatrices = [], frameMatrices = [];
     const dummy = new THREE.Object3D();
     for (const b of this.map.boxes || []) {
-      if (b.kind === 'rock' || b.kind === 'pump-manifold') continue;
+      if (b.kind === 'rock' || b.kind === 'pump-manifold' || b.kind.startsWith('port-')) continue;
       const elevation = b.baseY ?? 0;
       const parent = elevation ? new THREE.Group() : this.scene;
       if (elevation) { parent.position.y = elevation; this.scene.add(parent); }
@@ -721,44 +687,21 @@ export class GameRenderer {
     for (const [matrices, mat] of [[frameMatrices, this.materials.edge], [windowMatrices, this.materials.window], [litMatrices, litWindowMat]]) {
       addSectorInstances(this.scene, this.geo.box, mat, matrices);
     }
+    for (const point of this.map.points) this.makeFlag(point);
     const limit = size / 2;
-    if (!this.map.roads) {
-      // The non-playable port skyline encloses the battlefield.
-      for (let i = 0; i < 18; i++) {
-        const angle = (i / 18) * Math.PI * 2;
-        const x = Math.sin(angle) * (limit + 35 + random() * 30), z = Math.cos(angle) * (limit + 35 + random() * 30);
-        const height = 12 + random() * 28;
-        this.box(this.scene, x, height / 2 - 0.3, z, 12 + random() * 15, height, 10 + random() * 20, this.materials.skyline, false);
-      }
-      for (let i = 0; i < 3; i++) this.crane(-limit - 20 + i * 45, -limit - 28, i * 0.5);
-    }
-    for (const point of this.map.points || []) this.makeFlag(point);
-    addDistrictDetails(this, this.map);
-    // Boundary fence posts and wire are outside playable ground.
+    const west = this.map.shoreX ?? -limit - 1;
     const fenceMat = material(0x697674, 0.7, 0.45, {}, this.integratedGpu);
-    for (let i = -limit; i <= limit; i += 10) {
-      for (const side of [-1, 1]) {
-        this.cylinder(this.scene, i, 1.7, side * (limit + 1), 0.055, 3.4, fenceMat);
-        this.cylinder(this.scene, side * (limit + 1), 1.7, i, 0.055, 3.4, fenceMat);
-      }
+    for (let x = west; x <= limit; x += 10) for (const side of [-1, 1]) {
+      this.cylinder(this.scene, x, 1.7, side * (limit + 1), .055, 3.4, fenceMat);
     }
-    for (const side of [-1, 1]) for (const y of [0.7, 1.7, 2.7]) {
-      this.box(this.scene, 0, y, side * (limit + 1), size, 0.025, 0.025, fenceMat, false);
-      this.box(this.scene, side * (limit + 1), y, 0, 0.025, 0.025, size, fenceMat, false);
+    const sides = this.map.shoreX === undefined ? [-1, 1] : [1];
+    for (let z = -limit; z <= limit; z += 10) for (const side of sides) {
+      this.cylinder(this.scene, side * (limit + 1), 1.7, z, .055, 3.4, fenceMat);
     }
-  }
-
-  crane(x, z, angle) {
-    const group = new THREE.Group(); group.position.set(x, 0, z); group.rotation.y = angle; this.scene.add(group);
-    const mat = this.materials.crane;
-    for (const side of [-1, 1]) this.box(group, side * 3, 13, 0, 0.6, 26, 0.6, mat, false);
-    for (let y = 3; y < 26; y += 4) {
-      const bar = this.box(group, 0, y, 0, 6.5, 0.35, 0.5, mat, false); bar.rotation.z = (y % 8 < 4 ? -1 : 1) * 0.45;
+    for (const y of [.7, 1.7, 2.7]) {
+      for (const side of [-1, 1]) this.box(this.scene, (west + limit) / 2, y, side * (limit + 1), limit - west, .025, .025, fenceMat, false);
+      for (const side of sides) this.box(this.scene, side * (limit + 1), y, 0, .025, .025, size, fenceMat, false);
     }
-    this.box(group, 8, 26, 0, 30, 0.9, 1.3, mat, false);
-    this.box(group, -6, 24.8, 0, 3, 2.5, 3, this.materials.darkConcrete, false);
-    this.box(group, 18, 18, 0, 0.06, 15, 0.06, this.materials.steel, false);
-    this.box(group, 18, 10.5, 0, 0.6, 0.3, 0.6, this.materials.steel, false);
   }
 
   mergeStaticWorld(existing) {
@@ -1551,6 +1494,9 @@ export class GameRenderer {
     const rawDt = dt || 0.016;
     dt = Math.min(rawDt, 0.1); this.clock += dt;
     this.scoped = false;
+    if (this.map.shoreX !== undefined && this.portWater) {
+      this.portWater.offset.set((this.clock * .011) % 1, (this.clock * .017) % 1);
+    }
     const low = view.quality === 'low';
     if (this.lowQuality !== low) {
       this.applyQuality(low);
@@ -1580,8 +1526,14 @@ export class GameRenderer {
       this.cameraPlayerId = null;
       if (this.vehicleRigs.size) this.clearVehicles();
       const angle = this.clock * 0.012, radius = this.map.terrain ? this.map.size * .29 : 130;
-      this.camera.position.set(Math.sin(angle + 0.9) * radius, (this.map.terrain ? 94 : 58) + Math.sin(this.clock * .025) * 8, Math.cos(angle + 0.9) * radius);
-      this.camera.lookAt(0, 3, -12); this.weapon.visible = false;
+      if (this.map.shoreX !== undefined) {
+        this.camera.position.set(-136 + Math.sin(angle - .6) * 86, 68 + Math.sin(this.clock * .025) * 7, 26 + Math.cos(angle - .6) * 122);
+        this.camera.lookAt(-73, 4, 4);
+      } else {
+        this.camera.position.set(Math.sin(angle + .9) * radius, 94 + Math.sin(this.clock * .025) * 8, Math.cos(angle + .9) * radius);
+        this.camera.lookAt(0, 3, -12);
+      }
+      this.weapon.visible = false;
       this.atmosphere.sky.position.copy(this.camera.position);
       if (this.camera.fov !== 70 || this.camera.near !== 2) {
         this.camera.fov = 70;

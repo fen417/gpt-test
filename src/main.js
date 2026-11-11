@@ -592,10 +592,11 @@ let mapScale,mapHalf;
 mapBackground.width=mapBackground.height=mapSize;
 function drawMinimapBackground(){
   const c=mapBackground.getContext('2d'),s=mapSize,scale=mapScale,half=mapHalf,step=s/10;
-  c.fillStyle='#15262c';c.fillRect(0,0,s,s);drawMapRelief(c,scale,half);c.strokeStyle='#5d7b802b';c.lineWidth=1;
+  c.fillStyle='#15262c';c.fillRect(0,0,s,s);drawHarborChart(c,scale,half);drawMapRelief(c,scale,half);c.strokeStyle='#5d7b802b';c.lineWidth=1;
   for(let n=0;n<10;n++){c.beginPath();c.moveTo(n*step,0);c.lineTo(n*step,s);c.moveTo(0,n*step);c.lineTo(s,n*step);c.stroke();}
   drawMapRoads(c,scale,half);
   for(const b of currentMap.boxes){
+    if(b.overhead)continue;
     c.fillStyle=b.kind==='tree'?'#4e7452aa':b.kind==='truck'||b.kind==='car'?'#987654aa':'#73817c77';
     c.fillRect((b.x-b.w/2+half)*scale,(b.z-b.d/2+half)*scale,b.w*scale,b.d*scale);
   }
@@ -622,12 +623,8 @@ deployMapBg.width=deployMapBg.height=deploySize;
 function drawDeployBackground(){
   const c=deployMapBg.getContext('2d'),s=deploySize,scale=deployScale,half=deployHalf;
   c.fillStyle='#0c1a20';c.fillRect(0,0,s,s);
-  if(currentMap.roads){drawMapRelief(c,scale,half);drawMapRoads(c,scale,half);}
-  else{
-    c.fillStyle='#122c36';c.fillRect(0,0,18*scale,s);
-    c.fillStyle='#16272e';c.fillRect((half-12)*scale,0,24*scale,s);
-    for(const z of [-110,-40,0,40,110])c.fillRect(0,(z+half-7.5)*scale,s,15*scale);
-  }
+  drawHarborChart(c,scale,half);
+  drawMapRelief(c,scale,half);drawMapRoads(c,scale,half);
   const cols=['A','B','C','D','E','F'],cell=s/6;
   c.strokeStyle='#79c5d21c';c.lineWidth=1;c.font='600 10px sans-serif';c.fillStyle='#6f8e9588';
   for(let i=0;i<6;i++){
@@ -637,6 +634,7 @@ function drawDeployBackground(){
     c.fillText(String(i+1),5,pos+24);
   }
   for(const b of currentMap.boxes){
+    if(b.overhead)continue;
     const x=(b.x-b.w/2+half)*scale,z=(b.z-b.d/2+half)*scale,w=b.w*scale,d=b.d*scale;
     if(b.kind==='tree'){
       c.fillStyle='#4a754ecc';
@@ -655,6 +653,20 @@ function drawDeployBackground(){
     const x=(st.x-st.w/2+half)*scale,z=(st.z-st.d/2+half)*scale,w=st.w*scale,d=st.d*scale;
     c.fillStyle='#5c747838';c.fillRect(x,z,w,d);
     c.strokeStyle='#9ab5b866';c.setLineDash([4,3]);c.strokeRect(x,z,w,d);c.setLineDash([]);
+  }
+}
+function drawHarborChart(c,scale,half){
+  if(currentMap.shoreX===undefined)return;
+  const quay=(currentMap.shoreX+half)*scale,size=half*2*scale;
+  c.fillStyle='#143743';c.fillRect(0,0,quay,size);
+  c.strokeStyle='#6caaa488';c.beginPath();c.moveTo(quay,0);c.lineTo(quay,size);c.stroke();
+  const ship=currentMap.ship;
+  c.fillStyle='#496d76';
+  c.fillRect((ship.x-ship.w/2+half)*scale,(ship.z-ship.d/2+half)*scale,ship.w*scale,ship.d*scale);
+  c.strokeStyle='#9eb5b340';
+  for(const track of currentMap.railTracks){
+    const x=(track+half)*scale;
+    c.beginPath();c.moveTo(x,0);c.lineTo(x,size);c.stroke();
   }
 }
 function drawMapRelief(c,scale,half){

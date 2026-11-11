@@ -89,6 +89,7 @@ function weaponSpread(player) {
 }
 
 function impactMaterial(kind) {
+  if (kind.startsWith('port-')) return kind==='port-wall'?'concrete':'metal';
   if (kind === 'crate' || kind === 'tree' || kind === 'tent') return 'wood';
   if (kind === 'container' || kind === 'pillar' || kind === 'warehouse' || kind === 'truck' || kind === 'car' || kind === 'fueltank' || kind === 'generator' || kind === 'kiosk') return 'metal';
   return 'concrete';
@@ -135,7 +136,15 @@ export class Simulation {
     this.pathQueue=new Int32Array(this.blocked.length);
     const clearance=this.gridCell/2+PLAYER_RADIUS+.1;
     const gridIndex=position=>(position-this.gridOrigin)/this.gridCell-.5;
+    if(this.map.shoreX!==undefined){
+      const dryColumn=Math.ceil(gridIndex(this.map.shoreX+PLAYER_RADIUS));
+      for(let row=0;row<this.gridSize;row++){
+        const offset=row*this.gridSize;
+        this.blocked.fill(1,offset,offset+dryColumn);
+      }
+    }
     for(const box of this.colliders){
+      if(box.overhead)continue;
       const minX=Math.max(0,Math.floor(gridIndex(box.minX-clearance))+1);
       const maxX=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxX+clearance)));
       const minZ=Math.max(0,Math.floor(gridIndex(box.minZ-clearance))+1);
@@ -209,9 +218,10 @@ export class Simulation {
   createMapVehicle(spawn){return {...createVehicle(spawn),y:this.groundAt(spawn.x,spawn.z)};}
   collides(x,z,y=this.groundAt(x,z),radius=PLAYER_RADIUS){
     const limit=this.map.size/2-2;
-    if(Math.abs(x)>limit||Math.abs(z)>limit)return true;
+    if(Math.abs(x)>limit||Math.abs(z)>limit||x<(this.map.shoreX??-Infinity)+radius)return true;
     for(let i=0;i<this.colliders.length;i++){
       const b=this.colliders[i];
+      if(b.overhead&&y+EYE_HEIGHT<=b.minY)continue;
       if(y<b.h&&x>b.minX-radius&&x<b.maxX+radius&&z>b.minZ-radius&&z<b.maxZ+radius)return true;
     }
     return false;
@@ -849,7 +859,7 @@ export class Simulation {
       for(const box of this.grenadeColliders){const distance=rayBox(grenade,direction,box,length);if(distance<nearest){nearest=distance;hit=box;}}
       if(hit){
         const travel=Math.max(0,nearest-.02);grenade.x+=direction.x*travel;grenade.y+=direction.y*travel;grenade.z+=direction.z*travel;
-        const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.abs(grenade.y-hit.h)]];
+        const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.min(Math.abs(grenade.y-hit.h),Math.abs(grenade.y-hit.minY))]];
         const axis=faces.sort((a,b)=>a[1]-b[1])[0][0];grenade[`v${axis}`]*=-.35;
       }else if(this.collides(grenade.x+delta.x,grenade.z+delta.z,grenade.y+delta.y,.12)){grenade.vx*=-.35;grenade.vz*=-.35;}
       else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
