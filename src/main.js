@@ -15,7 +15,7 @@ let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let fireTap=false, recoilPitch=0, recoilYaw=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],seen=new Set(),toastTimer;
-let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null;
+let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
 let sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
@@ -47,6 +47,7 @@ function selectClass(classId,playClick=false){
   selectedClass=classId;
   for(const b of document.querySelectorAll('[data-class]')){const chosen=b.dataset.class===classId;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen));}
   for(const b of document.querySelectorAll('[data-deploy-class]')){const chosen=b.dataset.deployClass===classId;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen));}
+  for(const b of document.querySelectorAll('[data-lobby-class]')){const chosen=b.dataset.lobbyClass===classId;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen));}
   const c=CLASSES[classId];
   text('class-weapon',`${c.weapon} · ${weaponTypes[classId]}`);
   text('deploy-weapon-name',c.weapon);
@@ -56,6 +57,7 @@ function selectClass(classId,playClick=false){
   $('stat-dmg').style.width=`${Math.min(100,Math.round(c.damage/65*100))}%`;
   $('stat-rof').style.width=`${Math.min(100,Math.round((1/c.interval)/13*100))}%`;
   $('stat-rng').style.width=`${Math.min(100,Math.round(c.range/240*100))}%`;
+  if(inLobby)multiplayer.setLobbyLoadout({classId});
   if(playClick)audio.click();
 }
 function spawnPointAvailable(player,pointId){
@@ -86,7 +88,83 @@ function getDeployTarget(player){
   const base=MAP.spawns[player.team]??MAP.spawns[0];
   return {x:base.x,z:base.z};
 }
+function updateLobby(){
+  if(!state)return;
+  const code=state.roomCode||room||'------';
+  text('lobby-code',code);
+  const humans=state.players.filter(p=>!p.bot);
+  const bots=state.players.filter(p=>p.bot);
+  const isHost=mode==='host';
+  text('lobby-role-badge',isHost?'ХОСТ КОМАНТЫ':'УЧАСТНИК');
+  text('lobby-status',`В комнате: ${humans.length} игр. · Ботов: ${bots.length} · Сложность: ${difficultyNames[state.difficulty]??'ОБЫЧНЫЕ БОЙЦЫ'}`);
+  show('lobby-host-controls',isHost);
+  show('lobby-start',isHost);
+  text('lobby-wait-note',isHost?'Когда все игроки подключатся и выберут сторону, нажмите «Начать матч». К начатому бою также можно будет подключиться по коду.':'Ожидание запуска операции хостом комнаты… Вы можете выбрать команду и класс.');
+  for(const team of [0,1]){
+    const teamHumans=humans.filter(p=>p.team===team);
+    const teamBots=bots.filter(p=>p.team===team);
+    text(`lobby-team${team}-count`,`${teamHumans.length} игр.${teamBots.length?` + ${teamBots.length} AI`:''}`);
+    const container=$(`lobby-team-${team}`);
+    const sig=teamHumans.map(p=>`${p.id}:${p.name}:${p.classId}`).join('|')+`:bots:${teamBots.length}`;
+    if(container.dataset.signature!==sig){
+      container.dataset.signature=sig;
+      const rows=teamHumans.map(p=>{
+        const row=document.createElement('div');
+        row.className=`lobby-player-row${p.id===localId?' is-local':''}`;
+        const left=document.createElement('span');
+        left.textContent=p.name+(p.id===localId?' (Вы)':'');
+        const meta=document.createElement('div');
+        meta.className='lobby-player-meta';
+        if(p.id===(state.hostId||'host')){
+          const h=document.createElement('span');
+          h.className='lobby-host-tag';
+          h.textContent='ХОСТ';
+          meta.append(h);
+        }
+        const cls=document.createElement('span');
+        cls.textContent=CLASSES[p.classId]?.name??p.classId;
+        meta.append(cls);
+        row.append(left,meta);
+        return row;
+      });
+      if(teamBots.length>0){
+        const botRow=document.createElement('div');
+        botRow.className='lobby-player-row is-bot';
+        const left=document.createElement('span');
+        left.textContent=`Боты поддержки [AI × ${teamBots.length}]`;
+        const right=document.createElement('span');
+        right.textContent='АВТОБАЛАНС';
+        botRow.append(left,right);
+        rows.push(botRow);
+      }
+      container.replaceChildren(...rows);
+    }
+  }
+}
+function enterLobby(){
+  inLobby=true;active=false;setBusy(false);
+  document.exitPointerLock?.();
+  show('menu',false);show('hud',false);show('pause',false);show('death',false);show('result',false);show('lobby',true);
+  document.body.classList.remove('in-battle');
+  $('lobby-difficulty').value=state?.difficulty||$('difficulty').value;
+  $('lobby-population').value=String(state?.botCount??$('population').value);
+  updateLobby();
+}
 function receive(next){
+  if(next.lobby){
+    state=next;
+    if(!inLobby)enterLobby();
+    else updateLobby();
+    return;
+  }
+  if(inLobby&&!next.lobby){
+    inLobby=false;
+    show('lobby',false);
+    state=next;
+    enter();
+    toast('Хост запустил операцию! В бой!');
+    return;
+  }
   if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast('Новая операция началась');}
   state=next;const player=local();
   if(!active||!player)return;
@@ -133,54 +211,63 @@ function receive(next){
 const multiplayer=new Multiplayer({onState:receive,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 
 function prepare(which){
-  clearControls();simulation=null;state=null;localId=null;mode=which;room='';seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
+  clearControls();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
   const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,bots:Number($('population').value),difficulty:$('difficulty').value};
 }
 function enter(){
-  active=true;setBusy(false);show('menu',false);show('hud');show('pause',false);show('death',false);show('result',false);document.body.style.overflow='hidden';
+  inLobby=false;active=true;setBusy(false);show('menu',false);show('lobby',false);show('hud');show('pause',false);show('death',false);show('result',false);document.body.style.overflow='hidden';
   document.body.classList.add('in-battle');audio.setMode?.('battle');
   text('pause-title','Бой продолжается');text('pause-description','Вернись в сектор. Твой отряд ждёт.');$('resume').firstChild.textContent='ПРОДОЛЖИТЬ ';show('unlocked');show('leave');
   if(state)receive(state);
-  text('room-badge',mode==='solo'?`БОЙ С БОТАМИ · ${state.players.filter(p=>p.bot).length} · ${difficultyNames[state.difficulty]??difficultyNames[$('difficulty').value]}`:mode==='host'?`КОМНАТА ${room} · ТЫ ХОСТ`:mode==='peer'?`КОМНАТА ${room}`:'ВЫДЕЛЕННЫЙ СЕРВЕР');
-  requestControl();
+  text('room-badge',mode==='solo'?`БОЙ С БОТАМИ · ${state?.players?.filter(p=>p.bot).length??0} · ${difficultyNames[state?.difficulty]??difficultyNames[$('difficulty').value]}`:mode==='host'?`КОМНАТА ${room} · ТЫ ХОСТ`:mode==='peer'?`КОМНАТА ${room}`:'ВЫДЕЛЕННЫЙ СЕРВЕР');
+  requestControl(true);
 }
-async function requestControl(){
-  if(!active||!local()?.alive||finished)return;
+async function requestControl(allowPendingSpawn=false){
+  if(!active||inLobby||(!local()?.alive&&!allowPendingSpawn)||finished)return;
   if(unlocked){unlockedPaused=false;show('pause',false);return;}
-  try{await canvas.requestPointerLock();}catch{show('pause');toast('Нажми «Продолжить», чтобы включить управление мышью.');}
+  try{await canvas.requestPointerLock();}catch{if(local()?.alive)show('pause');toast('Нажми «Продолжить», чтобы включить управление мышью.');}
 }
 function leave(resetStatus=true){
-  active=false;clearControls();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','pause','death','result'])show(id,false);document.body.style.overflow='';
+  active=false;inLobby=false;clearControls();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
   document.body.classList.remove('in-battle');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов. Выбери класс и вступай в бой.');
 }
 function solo(){if(busy)return;multiplayer.close();const opts=prepare('solo');simulation=new Simulation({bots:opts.bots,difficulty:opts.difficulty});localId='local';simulation.addPlayer(localId,opts.name,0,opts.classId);state=simulation.snapshot();enter();}
 $('solo').addEventListener('click',solo);
-$('host').addEventListener('click',async()=>{if(busy)return;const opts=prepare('host');setBusy(true);try{room=await multiplayer.host(opts);enter();toast(`Код комнаты: ${room}. Передай другу. Оставь эту вкладку открытой.`);}catch(error){status(error.message,true);setBusy(false);}});
+$('host').addEventListener('click',async()=>{if(busy)return;const opts=prepare('host');setBusy(true);try{room=await multiplayer.host({...opts,lobby:true});enterLobby();toast(`Лобби комнаты ${room} создано. Пригласи игроков и нажми «Начать матч».`);}catch(error){status(error.message,true);setBusy(false);}});
 $('join-toggle').addEventListener('click',()=>{show('join-form',$('join-form').classList.contains('hidden'));$('room-code').focus();});
-$('join-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const code=$('room-code').value.trim();if(!code)return;const opts=prepare('peer');setBusy(true);try{room=code.toUpperCase();await multiplayer.join({code,...opts});enter();}catch(error){status(error.message,true);setBusy(false);}});
+$('join-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const code=$('room-code').value.trim();if(!code)return;const opts=prepare('peer');setBusy(true);try{room=code.toUpperCase();await multiplayer.join({code,...opts});if(multiplayer.phase==='lobby'||state?.lobby){enterLobby();toast(`Вы вошли в лобби комнаты ${room}`);}else{enter();toast(`Подключено к идущему матчу · Комната ${room}`);}}catch(error){status(error.message,true);setBusy(false);}});
 $('server-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const url=$('server-url').value.trim();if(!url)return;const opts=prepare('server');setBusy(true);try{await multiplayer.connect({url,...opts});enter();}catch(error){status(error.message,true);setBusy(false);}});
 for(const button of document.querySelectorAll('[data-class]'))button.addEventListener('click',()=>selectClass(button.dataset.class,true));
 for(const button of document.querySelectorAll('[data-deploy-class]'))button.addEventListener('click',()=>selectClass(button.dataset.deployClass,true));
+for(const button of document.querySelectorAll('[data-lobby-class]'))button.addEventListener('click',()=>selectClass(button.dataset.lobbyClass,true));
+$('lobby-switch-team').addEventListener('click',()=>{const p=local();if(!p)return;audio.click();multiplayer.setLobbyLoadout({classId:selectedClass,team:1-p.team});});
+$('lobby-difficulty').addEventListener('change',event=>{multiplayer.updateLobbySettings({difficulty:event.target.value,bots:Number($('lobby-population').value)});});
+$('lobby-population').addEventListener('change',event=>{multiplayer.updateLobbySettings({bots:Number(event.target.value),difficulty:$('lobby-difficulty').value});});
+$('lobby-copy').addEventListener('click',async()=>{const code=state?.roomCode||room;if(!code)return;try{await navigator.clipboard.writeText(code);toast(`Код ${code} скопирован в буфер обмена`);}catch{toast(`Код комнаты: ${code}`);}});
+$('lobby-start').addEventListener('click',()=>{if(mode!=='host')return;audio.click();multiplayer.startMatch({bots:Number($('lobby-population').value),difficulty:$('lobby-difficulty').value});enter();toast(`Матч в комнате ${room} начался!`);});
+$('lobby-leave').addEventListener('click',()=>leave());
 $('spawn-point').addEventListener('change',event=>selectSpawnPoint(event.target.value,true));
 $('resume').addEventListener('click',()=>{if(!active){show('pause',false);return;}audio.unlock();requestControl();});
 $('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подготовь обзор и звук перед высадкой.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause');});
 $('unlocked').addEventListener('click',()=>{unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
 for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>leave());
-$('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else{leave();toast('Создай новую комнату для следующей операции.');}});
+$('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(mode==='host'){multiplayer.startMatch({bots:Number($('lobby-population').value),difficulty:$('lobby-difficulty').value});enter();}else{leave();toast('Создай новую комнату для следующей операции.');}});
 function triggerRespawn(){
   const p=local();if(!p||p.alive||p.respawnIn>0)return;
   const targetPoint=spawnPointAvailable(p,selectedSpawn)?selectedSpawn:'';
   selectSpawnPoint(targetPoint);
+  yaw=p.team===0?0:Math.PI;pitch=0;recoilPitch=0;recoilYaw=0;
   if(simulation){simulation.respawn(localId,selectedClass,targetPoint);receive(simulation.snapshot());}
   else multiplayer.respawn(selectedClass,targetPoint);
-  requestControl();if(!simulation)toast('Ожидаем подтверждения высадки…');
+  requestControl(true);if(!simulation)toast('Дислокация подтверждена…');
 }
 $('respawn').addEventListener('click',triggerRespawn);
 $('sensitivity').value=read('sensitivity','0.8');sensitivity=Number($('sensitivity').value);
 $('sensitivity').addEventListener('input',event=>{sensitivity=Number(event.target.value);save('sensitivity',sensitivity);});
 $('quality').value=read('quality','high');quality=$('quality').value;
-$('quality').addEventListener('change',event=>{quality=event.target.value;save('quality',quality);});
+document.body.classList.toggle('low-quality',quality==='low');
+$('quality').addEventListener('change',event=>{quality=event.target.value;document.body.classList.toggle('low-quality',quality==='low');save('quality',quality);});
 $('volume').value=read('volume','0.5');audio.volume=Number($('volume').value);
 $('volume').addEventListener('input',event=>{audio.volume=Number(event.target.value);save('volume',audio.volume);});
 for(const [id,fallback,min,max,assign] of [['fov',85,70,100,value=>fov=value],['brightness',1,.8,1.3,value=>brightness=value],['music-volume',.45,0,1,value=>{musicVolume=value;setMusic();}],['effects-volume',.7,0,1,value=>{effectsVolume=value;audio.setEffectsVolume?.(value);}]]){
@@ -537,7 +624,7 @@ function frame(now){
 }
 try{
   renderer=new GameRenderer(canvas);renderer.resize();window.addEventListener('resize',()=>renderer.resize());
-  if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';}
+  if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';document.body.classList.toggle('low-quality',true);}
   for(const p of MAP.points){const objective=document.createElement('div');objective.id=`objective-${p.id}`;objective.className='objective';const label=document.createElement('span');label.textContent=p.id;objective.append(label);$('objective-strip').append(objective);const marker=document.createElement('div');marker.id=`marker-${p.id}`;marker.className='world-marker';const letter=document.createElement('b'),distance=document.createElement('span');letter.textContent=p.id;marker.append(letter,distance);$('world-markers').append(marker);}
   selectClass(selectedClass,false);audio.setMode?.('menu');status('Сектор готов. Выбери класс и вступай в бой.');requestAnimationFrame(frame);
 }catch(error){console.error(error);status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);$('solo').disabled=true;$('host').disabled=true;}

@@ -7,15 +7,15 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 export function createWeaponRig(owner = {}) {
   const weapon = new THREE.Group(); weapon.name = 'S09-first-person-rig';
   const ownedGeometries = new Set(), ownedMaterials = new Set(), ownedTextures = new Set();
-  const isIntegrated = !!owner.integratedGpu;
   const mat = (name, color, roughness=.7, metalness=.2, extra={}) => {
-    if (isIntegrated) {
-      const { bumpMap: _b, bumpScale: _s, ...rest } = extra;
-      const m = new THREE.MeshLambertMaterial({ color, opacity: 1, transparent: false, depthTest: true, depthWrite: true, ...rest });
-      m.name = name; ownedMaterials.add(m); return m;
-    }
-    const m = new THREE.MeshStandardMaterial({color,roughness,metalness,opacity:1,transparent:false,depthTest:true,depthWrite:true,...extra});
-    m.name=name;ownedMaterials.add(m);return m;
+    const { bumpMap: _b, bumpScale: _s, ...rest } = extra;
+    const highMat = new THREE.MeshStandardMaterial({color,roughness,metalness,opacity:1,transparent:false,depthTest:true,depthWrite:true,...extra});
+    const lowMat = new THREE.MeshLambertMaterial({ color, opacity: 1, transparent: false, depthTest: true, depthWrite: true, ...rest });
+    highMat.name = name; lowMat.name = `${name}-low`;
+    highMat.userData.lowMaterial = lowMat;
+    lowMat.userData.highMaterial = highMat;
+    ownedMaterials.add(highMat); ownedMaterials.add(lowMat);
+    return owner.lowQuality ? lowMat : highMat;
   };
   function surfaceGrain(name, directional, repeat) {
     const size = 64, pixels = new Uint8Array(size * size * 4);
@@ -55,8 +55,8 @@ export function createWeaponRig(owner = {}) {
   const leather=mat('glove-leather-palms',0x343d35,.88,.03);
   const seam=mat('glove-stitched-seams',0x7c8170,.97,0);
   const knuckle=mat('glove-knuckle-protection',0x323d37,.76,.08);
-  const cloth=owner.surfaces?.cloth?.clone?.()||mat('sleeve-ripstop-cloth',0x68745c,.98,0);
-  cloth.name='sleeve-ripstop-cloth';cloth.color.setHex(0x68745c);cloth.roughness=.98;cloth.metalness=0;cloth.opacity=1;cloth.transparent=false;cloth.depthTest=true;cloth.depthWrite=true;ownedMaterials.add(cloth);
+  const clothMap = owner.surfaces?.maps?.cloth || null;
+  const cloth = mat('sleeve-ripstop-cloth', 0x68745c, .98, 0, clothMap ? { map: clothMap } : {});
   const cuff=mat('sleeve-elastic-cuff',0x384638,.99,0);
   const brass=mat('weapon-brass-details',0xb89b59,.45,.77);
   const label=mat('weapon-engraved-markings',0xabb0a8,.75,.3);

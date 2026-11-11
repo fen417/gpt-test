@@ -62,7 +62,7 @@
       <div class="settings-section">ОБЗОР И ИЗОБРАЖЕНИЕ</div>
       <label>Чувствительность <input id="sensitivity" type="range" min="0.3" max="2" value="0.8" step="0.05" /></label>
       <label>Угол обзора <input id="fov" type="range" min="70" max="100" value="85" step="1" /></label>
-      <label>Графика <select id="quality"><option value="high">Высокая</option><option value="low">Экономичная</option></select></label>
+      <label>Графика <select id="quality"><option value="high">Максимальная</option><option value="low">Экономичная</option></select></label>
       <label>Яркость <input id="brightness" type="range" min="0.8" max="1.3" value="1" step="0.05" /></label>
       <label>Качание камеры <input id="camera-shake" type="checkbox" checked /></label>
       <div class="settings-section">ЗВУК И МУЗЫКА</div>
@@ -134,6 +134,80 @@
             </div>
             <button id="respawn" class="deploy-button"><span>ДИСЛОКАЦИЯ [ПРОБЕЛ]</span><span>→</span></button>
             <button id="death-leave" class="outline-button">В главное меню</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+  <section id="lobby" class="overlay lobby-overlay hidden" aria-label="Лобби мультиплеера">
+    <div class="lobby-card">
+      <header class="lobby-header">
+        <div>
+          <div class="eyebrow"><span></span> СЕТЕВОЕ ЛОББИ // СЕКТОР 09</div>
+          <h2 id="lobby-title">СБОР БОЕВОЙ ГРУППЫ</h2>
+          <p id="lobby-status" class="lobby-sub">Ожидание подключения бойцов…</p>
+        </div>
+        <div class="lobby-code-box">
+          <small>КОД КОМНАТЫ</small>
+          <div class="lobby-code-row">
+            <strong id="lobby-code">------</strong>
+            <button type="button" id="lobby-copy" class="small-button">КОПИРОВАТЬ</button>
+          </div>
+          <span class="lobby-join-hint">Другие игроки также смогут войти по этому коду во время боя</span>
+        </div>
+      </header>
+      <div class="lobby-grid">
+        <div class="lobby-teams">
+          <div class="lobby-team friendly-team">
+            <div class="lobby-team-head">
+              <span>ОТРЯД «АЛЬФА» · СОЮЗНИКИ</span>
+              <small id="lobby-team0-count">0 бойцов</small>
+            </div>
+            <div id="lobby-team-0" class="lobby-roster"></div>
+          </div>
+          <div class="lobby-team enemy-team">
+            <div class="lobby-team-head">
+              <span>ОТРЯД «БРАВО» · ПРОТИВНИК</span>
+              <small id="lobby-team1-count">0 бойцов</small>
+            </div>
+            <div id="lobby-team-1" class="lobby-roster"></div>
+          </div>
+        </div>
+        <aside class="lobby-sidebar">
+          <div class="deploy-box">
+            <div class="deploy-box-title"><span>ВАША СТОРОНА И СПЕЦИАЛИЗАЦИЯ</span><small id="lobby-role-badge">ХОСТ КОМНАТЫ</small></div>
+            <button type="button" id="lobby-switch-team" class="outline-button lobby-team-btn">СМЕНИТЬ КОМАНДУ ⇄</button>
+            <div class="deploy-classes lobby-classes">
+              <button type="button" class="deploy-class-btn active" data-lobby-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>AR-416</small></button>
+              <button type="button" class="deploy-class-btn" data-lobby-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>MCX-9</small></button>
+              <button type="button" class="deploy-class-btn" data-lobby-class="support" aria-pressed="false"><span>▥</span><b>Поддержка</b><small>MG-36</small></button>
+              <button type="button" class="deploy-class-btn" data-lobby-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
+            </div>
+          </div>
+          <div id="lobby-host-controls" class="deploy-box">
+            <div class="deploy-box-title"><span>ПАРАМЕТРЫ ОПЕРАЦИИ</span><small>НАСТРОЙКИ ХОСТА</small></div>
+            <div class="operation-options lobby-options">
+              <label for="lobby-difficulty">СЛОЖНОСТЬ БОТОВ
+                <select id="lobby-difficulty">
+                  <option value="recruit">Новобранцы</option>
+                  <option value="regular" selected>Обычные бойцы</option>
+                  <option value="veteran">Ветераны</option>
+                </select>
+              </label>
+              <label for="lobby-population">БОТЫ В МАТЧЕ
+                <select id="lobby-population">
+                  <option value="0">Без ботов (только игроки)</option>
+                  <option value="15">16 бойцов с ботами</option>
+                  <option value="23" selected>24 бойца с ботами</option>
+                  <option value="31">32 бойца с ботами</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="deploy-box deploy-actions">
+            <p id="lobby-wait-note" class="lobby-wait-note">Когда все игроки будут готовы, начните операцию.</p>
+            <button type="button" id="lobby-start" class="deploy-button"><span>НАЧАТЬ МАТЧ</span><span>↗</span></button>
+            <button type="button" id="lobby-leave" class="outline-button">Покинуть комнату</button>
           </div>
         </aside>
       </div>

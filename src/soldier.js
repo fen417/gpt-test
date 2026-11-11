@@ -80,13 +80,13 @@ function soldierMaterial(owner) {
       c.fillRect(x + random() * w, random() * H, 1 + random() * 2, 1 + random() * 2);
     }
   }
-  const map = new THREE.CanvasTexture(color); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = owner.integratedGpu ? 1 : 4;
-  if (owner.integratedGpu) {
-    owner.soldierAtlas = new THREE.MeshLambertMaterial({ name: 'soldier atlas', map, vertexColors: true });
-    return owner.soldierAtlas;
-  }
+  const map = new THREE.CanvasTexture(color); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
   const rm = new THREE.CanvasTexture(surface);
-  owner.soldierAtlas = new THREE.MeshStandardMaterial({ name: 'soldier atlas', map, roughnessMap: rm, metalnessMap: rm, roughness: 1, metalness: 1, vertexColors: true });
+  const highMat = new THREE.MeshStandardMaterial({ name: 'soldier atlas', map, roughnessMap: rm, metalnessMap: rm, roughness: 1, metalness: 1, vertexColors: true });
+  const lowMat = new THREE.MeshLambertMaterial({ name: 'soldier atlas low', map, vertexColors: true });
+  highMat.userData.lowMaterial = lowMat;
+  lowMat.userData.highMaterial = highMat;
+  owner.soldierAtlas = owner.lowQuality ? lowMat : highMat;
   return owner.soldierAtlas;
 }
 

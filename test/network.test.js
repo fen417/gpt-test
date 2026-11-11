@@ -224,3 +224,116 @@ test('two real WebSocket sessions receive a shared authoritative match and playe
     server.kill();
   }
 });
+
+test('host lobby waits for players, supports team/class switching, starts match, and allows join-in-progress and online respawn on capture points', async () => {
+  let hostState;
+  let guest1State;
+  let guest2State;
+  let guest1Id;
+  let guest2Id;
+
+  const hostPeer = new EventEmitter();
+  hostPeer.destroy = () => {};
+
+  const createLinkedPair = (peerName) => {
+    const clientConn = new EventEmitter();
+    const hostConn = new EventEmitter();
+    clientConn.open = true;
+    hostConn.open = true;
+    hostConn.peer = peerName;
+    clientConn.send = msg => queueMicrotask(() => hostConn.emit('data', structuredClone(msg)));
+    hostConn.send = msg => queueMicrotask(() => clientConn.emit('data', structuredClone(msg)));
+    clientConn.close = () => { clientConn.open = false; hostConn.open = false; clientConn.emit('close'); hostConn.emit('close'); };
+    hostConn.close = clientConn.close;
+    return { clientConn, hostConn };
+  };
+
+  const hostSession = new Multiplayer({ onState: s => { hostState = s; } });
+  hostSession._openPeer = async () => { hostSession._peer = hostPeer; return hostPeer; };
+
+  const guest1Session = new Multiplayer({ onState: s => { guest1State = s; }, onIdentity: id => { guest1Id = id; } });
+  const guest2Session = new Multiplayer({ onState: s => { guest2State = s; }, onIdentity: id => { guest2Id = id; } });
+
+  const makeGuestPeer = (peerName) => {
+    const p = new EventEmitter();
+    p.destroy = () => {};
+    p.connect = () => {
+      const { clientConn, hostConn } = createLinkedPair(peerName);
+      hostPeer.emit('connection', hostConn);
+      queueMicrotask(() => { hostConn.emit('open'); clientConn.emit('open'); });
+      return clientConn;
+    };
+    return p;
+  };
+
+  guest1Session._openPeer = async () => { const p = makeGuestPeer('guest-1'); guest1Session._peer = p; return p; };
+  guest2Session._openPeer = async () => { const p = makeGuestPeer('guest-2'); guest2Session._peer = p; return p; };
+
+  const flush = () => new Promise(resolve => setTimeout(resolve, 25));
+
+  try {
+    const code = await hostSession.host({ name: 'Commander', classId: 'assault', bots: 4, difficulty: 'regular', lobby: true });
+    assert.equal(hostSession.phase, 'lobby');
+    assert.equal(hostState.lobby, true);
+    assert.equal(hostState.time, 0);
+
+    await guest1Session.join({ code, name: 'SquadMate', classId: 'medic' });
+    await flush();
+    assert.equal(guest1Session.phase, 'lobby');
+    assert.equal(guest1State.lobby, true);
+    assert.ok(guest1State.players.some(p => p.id === guest1Id && p.classId === 'medic'));
+
+    // Switch team and class in lobby
+    guest1Session.setLobbyLoadout({ classId: 'recon', team: 0 });
+    await flush();
+    const g1InLobby = hostState.players.find(p => p.id === guest1Id);
+    assert.equal(g1InLobby.classId, 'recon');
+    assert.equal(g1InLobby.team, 0);
+
+    // Host starts the match
+    assert.equal(hostSession.startMatch({ bots: 2, difficulty: 'veteran' }), true);
+    await flush();
+    assert.equal(hostSession.phase, 'battle');
+    assert.equal(hostState.lobby, false);
+    assert.equal(guest1Session.phase, 'battle');
+    assert.equal(guest1State.lobby, false);
+    assert.equal(guest1State.difficulty, 'veteran');
+
+    // Advance battle time and have Guest 2 join in progress!
+    for (let i = 0; i < 45; i++) hostSession._simulation.step(0.05);
+    hostSession._broadcastSnapshot();
+    await flush();
+    assert.ok(hostState.time >= 1.9);
+
+    await guest2Session.join({ code, name: 'LateJoiner', classId: 'support' });
+    await flush();
+    assert.equal(guest2Session.phase, 'battle');
+    assert.equal(guest2State.lobby, false);
+    assert.ok(guest2State.time >= 1.9);
+    assert.ok(guest2State.players.some(p => p.id === guest2Id && p.name === 'LateJoiner'));
+
+    // Verify online respawn on a captured point with class change for Guest 1
+    const pointC = hostSession._simulation.points.find(p => p.id === 'C');
+    const g1Sim = hostSession._simulation.players.get(guest1Id);
+    pointC.owner = g1Sim.team;
+    pointC.progress = g1Sim.team === 0 ? -1 : 1;
+    pointC.contested = false;
+    g1Sim.alive = false;
+    g1Sim.hp = 0;
+    g1Sim.respawnIn = 0;
+    hostSession._broadcastSnapshot();
+    await flush();
+    assert.equal(guest1State.players.find(p => p.id === guest1Id).alive, false);
+
+    guest1Session.respawn('support', 'C');
+    await flush();
+    const g1Respawned = guest1State.players.find(p => p.id === guest1Id);
+    assert.equal(g1Respawned.alive, true);
+    assert.equal(g1Respawned.classId, 'support');
+    assert.ok(Math.hypot(g1Respawned.x - pointC.x, g1Respawned.z - pointC.z) < 20);
+  } finally {
+    guest1Session.close();
+    guest2Session.close();
+    hostSession.close();
+  }
+});

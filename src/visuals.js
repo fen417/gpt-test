@@ -41,7 +41,36 @@ function stains(ctx, s, random, color = '45,40,30') {
   }
 }
 
-export function createSurfaceMaterials(renderer, { useBump = true, fastMaterials = false } = {}) {
+export function pairMaterials(highMat, lowMat) {
+  highMat.userData.lowMaterial = lowMat;
+  lowMat.userData.highMaterial = highMat;
+  return highMat;
+}
+
+export function clonePairedMaterial(source, color, emissive = null, emissiveIntensity = 0) {
+  const highSource = source.userData?.highMaterial || source;
+  const lowSource = source.userData?.lowMaterial;
+  const highClone = highSource.clone();
+  highClone.color.set(color);
+  if (emissive !== null) {
+    highClone.emissive = new THREE.Color(emissive);
+    highClone.emissiveIntensity = emissiveIntensity;
+  }
+  highClone.userData = { ...highSource.userData };
+  if (lowSource) {
+    const lowClone = lowSource.clone();
+    lowClone.color.set(color);
+    if (emissive !== null) {
+      lowClone.emissive = new THREE.Color(emissive);
+      lowClone.emissiveIntensity = emissiveIntensity;
+    }
+    lowClone.userData = { ...lowSource.userData };
+    pairMaterials(highClone, lowClone);
+  }
+  return highClone;
+}
+
+export function createSurfaceMaterials(renderer, { useBump = true } = {}) {
   const concrete = texture((ctx, s, random) => {
     ctx.fillStyle = '#b7b6ab'; ctx.fillRect(0, 0, s, s); grain(ctx, s, random, 18000, 0.12); stains(ctx, s, random);
     ctx.strokeStyle = 'rgba(50,55,48,.25)'; ctx.lineWidth = 1.5;
@@ -109,20 +138,20 @@ export function createSurfaceMaterials(renderer, { useBump = true, fastMaterials
     for (let i = 0; i < 450; i++) { const x = random() * s, y = random() * s; ctx.strokeStyle = `rgba(62,40,18,${random() * .17})`; ctx.lineWidth = .4 + random() * .8; ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x - 3, y + 10, x + 3, y + 24, x, y + 36 + random() * 50); ctx.stroke(); }
     grain(ctx, s, random, 9000, .09); stains(ctx, s, random);
   });
-  const anisotropy = fastMaterials ? 1 : Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  const anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   for (const map of [concrete, brick, metal, asphalt, ground, cloth, wood]) map.anisotropy = anisotropy;
   const make = (map, color, tile, roughness = .9, metalness = 0, bump = .05) => {
-    const mat = fastMaterials
-      ? new THREE.MeshLambertMaterial({ map, color })
-      : new THREE.MeshStandardMaterial({
-          map, color, roughness, metalness,
-          bumpMap: useBump ? map : null,
-          bumpScale: useBump ? bump : 0,
-        });
-    mat.userData.tileSize = tile;
-    mat.userData.bumpMap = map;
-    mat.userData.bumpScale = bump;
-    return mat;
+    const highMat = new THREE.MeshStandardMaterial({
+      map, color, roughness, metalness,
+      bumpMap: useBump ? map : null,
+      bumpScale: useBump ? bump : 0,
+    });
+    const lowMat = new THREE.MeshLambertMaterial({ map, color });
+    highMat.userData.tileSize = tile;
+    highMat.userData.bumpMap = map;
+    highMat.userData.bumpScale = bump;
+    lowMat.userData.tileSize = tile;
+    return pairMaterials(highMat, lowMat);
   };
   return {
     concrete: make(concrete, 0x969b92, 4, .96, 0, .07), brick: make(brick, 0xc3bca8, 3, .96, 0, .08),
@@ -163,7 +192,7 @@ export function addSectorInstances(scene, geometry, material, matrices, castShad
   }
 }
 
-export function makeSky(scene, renderer, { useEnvironment = true } = {}) {
+export function makeSky(scene, renderer) {
   const uniforms = { sunDirection: { value: new THREE.Vector3(-.65, .42, .5).normalize() } };
   const proceduralShader = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false, uniforms,
@@ -184,19 +213,14 @@ export function makeSky(scene, renderer, { useEnvironment = true } = {}) {
   const environmentScene = new THREE.Scene();
   const envMesh = new THREE.Mesh(new THREE.SphereGeometry(100, 24, 12), proceduralShader);
   environmentScene.add(envMesh);
-  const cubeTarget = new THREE.WebGLCubeRenderTarget(useEnvironment ? 256 : 128);
+  const cubeTarget = new THREE.WebGLCubeRenderTarget(256);
   cubeTarget.texture.colorSpace = THREE.SRGBColorSpace;
   new THREE.CubeCamera(0.1, 200, cubeTarget).update(renderer, environmentScene);
-  let pmremTarget = null;
-  if (useEnvironment) {
-    const generator = new THREE.PMREMGenerator(renderer);
-    pmremTarget = generator.fromCubemap(cubeTarget.texture);
-    scene.environment = pmremTarget.texture;
-    scene.environmentIntensity = .45;
-    generator.dispose();
-  } else {
-    scene.environment = null;
-  }
+  const generator = new THREE.PMREMGenerator(renderer);
+  const pmremTarget = generator.fromCubemap(cubeTarget.texture);
+  scene.environment = pmremTarget.texture;
+  scene.environmentIntensity = .45;
+  generator.dispose();
   envMesh.geometry.dispose();
   proceduralShader.dispose();
 
@@ -206,26 +230,27 @@ export function makeSky(scene, renderer, { useEnvironment = true } = {}) {
     vertexShader: 'varying vec3 direction; void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_Position.z=gl_Position.w;}',
     fragmentShader: 'varying vec3 direction; uniform samplerCube skyMap; void main(){gl_FragColor=textureCube(skyMap,direction);}',
   });
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 16, 10), bakedShader);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 20, 12), bakedShader);
   sky.renderOrder = 1000; sky.frustumCulled = false; sky.userData.noBatch = true; scene.add(sky);
   const target = {
-    texture: pmremTarget ? pmremTarget.texture : cubeTarget.texture,
-    dispose() { pmremTarget?.dispose(); cubeTarget.dispose(); },
+    texture: pmremTarget.texture,
+    dispose() { pmremTarget.dispose(); cubeTarget.dispose(); },
   };
-  return { sky, target };
+  return { sky, target, envTexture: pmremTarget.texture };
 }
 
 export function addDistrictDetails(owner, MAP) {
   const { scene, materials: m, surfaces, random } = owner; const size = MAP.size || 200, limit = size / 2;
-  const fast = !!owner.integratedGpu;
   const blocked = (x, z, margin = 1) => (MAP.boxes || []).some(b => Math.abs(x - b.x) < b.w / 2 + margin && Math.abs(z - b.z) < b.d / 2 + margin);
-  const puddleMaterial = fast
-    ? new THREE.MeshLambertMaterial({ color: 0x5d7279, transparent: true, opacity: .55, depthWrite: false })
-    : new THREE.MeshStandardMaterial({ color: 0x52666d, roughness: .1, metalness: .3, transparent: true, opacity: .58, depthWrite: false });
+  const puddleMaterial = pairMaterials(
+    new THREE.MeshStandardMaterial({ color: 0x52666d, roughness: .1, metalness: .3, transparent: true, opacity: .58, depthWrite: false }),
+    new THREE.MeshLambertMaterial({ color: 0x5d7279, transparent: true, opacity: .55, depthWrite: false }),
+  );
   const debrisMat = m.rust;
-  const waterMat = fast
-    ? new THREE.MeshLambertMaterial({ color: 0x486772 })
-    : new THREE.MeshStandardMaterial({ color: 0x405e68, roughness: .15, metalness: .32 });
+  const waterMat = pairMaterials(
+    new THREE.MeshStandardMaterial({ color: 0x405e68, roughness: .15, metalness: .32 }),
+    new THREE.MeshLambertMaterial({ color: 0x486772 }),
+  );
   const water = new THREE.Mesh(new THREE.PlaneGeometry(170, size + 300, 1, 1), waterMat);
   water.rotation.x = -Math.PI / 2; water.position.set(-limit - 95, .018, 0); scene.add(water);
   const circleGeo = new THREE.CircleGeometry(1, 10);
@@ -246,12 +271,12 @@ export function addDistrictDetails(owner, MAP) {
     for (let j = -.4; j < .5; j += .12) owner.box(scene, x, .085, z + j, .56, .012, .035, m.darkConcrete, false);
   }
   // Tall vegetation stays outside the combat area; shallow weeds grow at walls.
-  const grassMat = fast
-    ? new THREE.MeshLambertMaterial({ color: 0x657651, side: THREE.DoubleSide })
-    : new THREE.MeshStandardMaterial({ color: 0x657651, roughness: 1, side: THREE.DoubleSide });
+  const grassMat = pairMaterials(
+    new THREE.MeshStandardMaterial({ color: 0x657651, roughness: 1, side: THREE.DoubleSide }),
+    new THREE.MeshLambertMaterial({ color: 0x657651, side: THREE.DoubleSide }),
+  );
   const grassGeo = new THREE.PlaneGeometry(.18, 1); const grassMatrices = []; const dummy = new THREE.Object3D();
-  const grassCount = fast ? 360 : 900;
-  for (let i = 0; i < grassCount; i++) {
+  for (let i = 0; i < 650; i++) {
     const side = i % 4; let x, z;
     if (side < 2) { x = (random() - .5) * (size + 25); z = (side === 0 ? -1 : 1) * (limit + 3 + random() * 17); } else { x = (side === 2 ? -1 : 1) * (limit + 3 + random() * 17); z = (random() - .5) * (size + 25); }
     const h = .3 + random() * .8; dummy.position.set(x, h / 2, z); dummy.scale.set(.6 + random(), h, 1); dummy.rotation.set(0, random() * Math.PI, random() * .2); dummy.updateMatrix(); grassMatrices.push(dummy.matrix.clone());
@@ -266,16 +291,14 @@ export function addDistrictDetails(owner, MAP) {
     dummy.position.set(x, h / 2, z); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, h, 1); dummy.updateMatrix(); treeTrunks.push(dummy.matrix.clone());
     for (let j = 0; j < 3; j++) { dummy.position.set(x + (random() - .5) * 2, h * .78 + j * .8, z + (random() - .5) * 2); dummy.scale.set(2 + random() * 1.5, 2 + random() * 1.3, 2 + random() * 1.5); dummy.rotation.set(random(), random(), random()); dummy.updateMatrix(); treeCrowns.push(dummy.matrix.clone()); }
   }
-  const crownMat = fast
-    ? new THREE.MeshLambertMaterial({ color: 0x526c4e })
-    : new THREE.MeshStandardMaterial({ color: 0x526c4e, roughness: 1 });
+  const crownMat = pairMaterials(
+    new THREE.MeshStandardMaterial({ color: 0x526c4e, roughness: 1 }),
+    new THREE.MeshLambertMaterial({ color: 0x526c4e }),
+  );
   addSectorInstances(scene, new THREE.IcosahedronGeometry(1, 0), crownMat, treeCrowns, false);
   addSectorInstances(scene, new THREE.CylinderGeometry(.2, .35, 1, 6), m.rust, treeTrunks, false);
-  const warehouseRoofMat = surfaces.metal.clone(); warehouseRoofMat.color.set(0x65787b);
-  const warehouseFloorMat = surfaces.concrete.clone();
-  warehouseFloorMat.color.set(0xa59f90);
-  warehouseFloorMat.emissive = new THREE.Color(0xffd9a2);
-  warehouseFloorMat.emissiveIntensity = 0.06;
+  const warehouseRoofMat = clonePairedMaterial(surfaces.metal, 0x65787b);
+  const warehouseFloorMat = clonePairedMaterial(surfaces.concrete, 0xa59f90, 0xffd9a2, 0.06);
   for (const structure of MAP.structures || []) {
     const { x, z, w, d, h } = structure;
     if (structure.roof !== false) {
@@ -294,8 +317,8 @@ export function addDistrictDetails(owner, MAP) {
 }
 
 const signCache = new Map();
-export function makeSign(text, subtext = '', width = 3.2, fast = false) {
-  const key = `${text}:${subtext}:${fast ? 1 : 0}`;
+export function makeSign(text, subtext = '', width = 3.2) {
+  const key = `${text}:${subtext}`;
   let mat = signCache.get(key);
   if (!mat) {
     const map = texture((ctx, s) => {
@@ -304,9 +327,10 @@ export function makeSign(text, subtext = '', width = 3.2, fast = false) {
       ctx.font = '19px Arial'; ctx.fillText(subtext, s / 2, s * .68);
       ctx.fillStyle = '#c8a35b'; for (let x = 15; x < s - 15; x += 20) { ctx.beginPath(); ctx.moveTo(x, s - 32); ctx.lineTo(x + 10, s - 32); ctx.lineTo(x + 20, s - 15); ctx.lineTo(x + 10, s - 15); ctx.fill(); }
     }, 1, 256);
-    mat = fast
-      ? new THREE.MeshLambertMaterial({ map })
-      : new THREE.MeshStandardMaterial({ map, roughness: .8, metalness: .1 });
+    mat = pairMaterials(
+      new THREE.MeshStandardMaterial({ map, roughness: .8, metalness: .1 }),
+      new THREE.MeshLambertMaterial({ map }),
+    );
     signCache.set(key, mat);
   }
   return new THREE.Mesh(new THREE.PlaneGeometry(width, width * .48), mat);

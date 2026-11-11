@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation } from '../shared/simulation.js';
-import { PROTOCOL_VERSION } from '../shared/world.js';
+import { MAP, PROTOCOL_VERSION } from '../shared/world.js';
 
 const port=process.env.PORT===undefined?8080:Number(process.env.PORT);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist');
@@ -45,7 +45,16 @@ wss.on('connection',(ws)=>{
       const player=simulation.addPlayer(client.id,client.name,undefined,client.classId);client.joined=true;client.team=player.team;
       send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
     }else if(message.type==='input'&&client.joined){client.lastInput=now;client.lastControls=message.input;simulation.setInput(client.id,message.input);}
-    else if(message.type==='respawn'&&client.joined){if(simulation.respawn(client.id,message.classId,message.pointId))client.classId=simulation.players.get(client.id).classId;}
+    else if(message.type==='respawn'&&client.joined){
+      const validPoint=MAP.points.some(p=>p.id===message.pointId)?message.pointId:undefined;
+      if(simulation.respawn(client.id,message.classId,validPoint)){
+        const spawned=simulation.players.get(client.id);
+        client.classId=spawned.classId;
+        client.lastControls={yaw:spawned.yaw,pitch:spawned.pitch};
+        const packet={type:'snapshot',state:simulation.snapshot()};
+        for(const [sock,c] of clients)if(c.joined)send(sock,packet);
+      }
+    }
     else if(message.type==='ping'){send(ws,{type:'pong',time:message.time});}
   });
   ws.on('close',()=>{simulation.removePlayer(client.id);clients.delete(ws);});
