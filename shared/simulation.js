@@ -112,6 +112,20 @@ export class Simulation {
       const wep=CLASS_WEAPONS[cls]?.[Math.floor(n/8)%2]??defaultWeaponId(cls);
       const p=this.addPlayer(`bot-${n}`,names[n%names.length],n%2,cls,wep);p.bot=true;p.botSlot=n;p.nextThink=0;p.botPath=[];
     }
+    this.ready=true;
+  }
+  // Keep both teams within one player of each other by moving bots across the sides.
+  balanceTeams(){
+    if(!this.ready)return;
+    for(let guard=0;guard<40;guard++){
+      const count=[0,0],bots=[[],[]];
+      for(const q of this.players.values()){count[q.team]++;if(q.bot)bots[q.team].push(q);}
+      const big=count[0]>count[1]?0:1,small=1-big;
+      if(count[big]-count[small]<=1||!bots[big].length)return;
+      const mover=bots[big].find(q=>!q.alive)||bots[big][bots[big].length-1];
+      mover.team=small;mover.alive=false;mover.respawnIn=0;
+      this.respawn(mover.id);
+    }
   }
   event(type,data={}) { this.events.push({id:++this.eventId,type,time:this.time,...data}); }
   awardScore(player,amount,reason,extra={}) {
@@ -127,9 +141,9 @@ export class Simulation {
     const cls=validClass(classId)?classId:'assault';
     const wep=getWeapon(cls,weaponId).id??defaultWeaponId(cls);
     const p={id:String(id),name:String(name||'Боец').replace(/[<>\x00-\x1f]/g,'').slice(0,20),team,classId:cls,weaponId:wep,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,alive:false,ammo:0,reserve:0,kills:0,deaths:0,assists:0,score:0,damagers:new Map(),spottedBy:null,respawnIn:0,reloading:false,shotSeq:0,input:sanitizeInput(),cooldown:0,reloadTime:0,gadgetTime:0,grenades:2,vy:0,lastHurt:-100,bot:false};
-    this.players.set(p.id,p);this.respawn(p.id,cls,'',wep);return p;
+    this.players.set(p.id,p);this.respawn(p.id,cls,'',wep);this.balanceTeams();return p;
   }
-  removePlayer(id){this.players.delete(id);}
+  removePlayer(id){this.players.delete(id);this.balanceTeams();}
   setInput(id,input){const p=this.players.get(id);if(p&&!p.bot)p.input=sanitizeInput(input);}
   respawn(id,classId,pointId,weaponId){
     const p=this.players.get(id);if(!p || p.alive || p.respawnIn>0)return false;
@@ -488,7 +502,17 @@ export class Simulation {
         }
       }
     }
-    if(p.ammo===0||(p.ammo<6&&!target))input.reload=true;
+    // Stuck detection: if the bot wanted to walk but barely moved, back off sideways and re-plan.
+    if(!p.botProbeAt||this.time-p.botProbeAt>=.9){
+      if(p.botProbeAt&&(p.botMoveTime||0)>.55&&!target){
+        const moved=Math.hypot(p.x-p.botProbeX,p.z-p.botProbeZ);
+        if(moved<.9){p.botUnstuckUntil=this.time+.8;p.botUnstuckDir=this.random()<.5?-1:1;p.botPath=[];p.botGoal=null;p.nextThink=0;}
+      }
+      p.botProbeAt=this.time;p.botProbeX=p.x;p.botProbeZ=p.z;p.botMoveTime=0;
+    }
+    if(!target&&this.time<(p.botUnstuckUntil||0)){
+      input.forward=-.5;input.strafe=p.botUnstuckDir||1;input.sprint=false;input.jump=(this.time*4)%1<.3;
+    }else if(input.forward>.3)p.botMoveTime=(p.botMoveTime||0)+dt;    if(p.ammo===0||(p.ammo<6&&!target))input.reload=true;
     if(p.gadgetTime<=0&&this.time>=(p.nextGadgetAt||0)){
       const wep=getWeapon(p.classId,p.weaponId);
       const onPoint=Boolean(p.botObjective)&&dist(p,p.botObjective)<CAPTURE_RADIUS-1;

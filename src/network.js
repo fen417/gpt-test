@@ -1,4 +1,4 @@
-import Peer from 'peerjs';
+﻿import Peer from 'peerjs';
 import { Simulation } from '../shared/simulation.js';
 import { MAP, PROTOCOL_VERSION, getWeapon } from '../shared/world.js';
 
@@ -291,6 +291,7 @@ export class Multiplayer {
       player.alive = false;
       player.respawnIn = 0;
       this._simulation.respawn(id, nextClass, undefined, nextWeapon);
+      if (teamChanged) this._simulation.balanceTeams?.();
     }
     return true;
   }
