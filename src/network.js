@@ -10,8 +10,8 @@ const PULSE_ACTIONS = ['jump', 'fire', 'reload', 'gadget', 'grenade'];
 const noOp = () => {};
 
 export function normalizeRoomCode(value) {
-  const code = String(value ?? '').trim().replace(/^gpt-test-/i, '').toUpperCase();
-  if (!/^[A-Z0-9]{6}$/.test(code)) throw new Error('Код комнаты должен содержать 6 букв или цифр.');
+  const code = String(value ?? '').trim().replace(/^gpt-test-/i, '');
+  if (!/^\d{6}$/.test(code)) throw new Error('Код комнаты должен содержать 6 цифр.');
   return code;
 }
 
@@ -39,7 +39,7 @@ function playerClass(value) {
 
 function roomCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(6));
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const alphabet = '0123456789';
   return Array.from(bytes, n => alphabet[n % alphabet.length]).join('');
 }
 

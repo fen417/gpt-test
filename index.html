@@ -39,7 +39,7 @@
         <div class="solo-note">Мгновенный бой с ботами · Без регистрации</div>
         <div class="network-divider"><span>ИЛИ ИГРА С ДРУЗЬЯМИ</span></div>
         <div class="network-actions"><button id="host" class="outline-button">Создать комнату <span>+</span></button><button id="join-toggle" class="outline-button">Войти по коду <span>→</span></button></div>
-        <form id="join-form" class="hidden inline-form"><label class="sr-only" for="room-code">Код комнаты</label><input id="room-code" placeholder="КОД КОМНАТЫ" maxlength="6" autocomplete="off" /><button type="submit" class="outline-button">ВОЙТИ →</button></form>
+        <form id="join-form" class="hidden inline-form"><label class="sr-only" for="room-code">Код комнаты</label><input id="room-code" placeholder="КОД ИЗ 6 ЦИФР" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" /><button type="submit" class="outline-button">ВОЙТИ →</button></form>
         <details class="server-details"><summary>Выделенный сервер</summary><form id="server-form" class="inline-form"><label class="sr-only" for="server-url">Адрес сервера</label><input id="server-url" placeholder="wss://your-server.example" /><button class="outline-button">→</button></form></details>
         <p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p>
       </section>

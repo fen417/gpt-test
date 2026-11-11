@@ -7,10 +7,10 @@ import { Simulation } from '../shared/simulation.js';
 import { MAP } from '../shared/world.js';
 
 test('room codes accept copied PeerJS IDs and reject invalid destinations', () => {
-  assert.equal(normalizeRoomCode(' gpt-test-ab12cd '), 'AB12CD');
-  assert.equal(normalizeRoomCode('ABC234'), 'ABC234');
-  for (const invalid of ['', 'ABCDE', 'ABCDEFG', '../ABC', 'AB C12', 'https://example.com']) {
-    assert.throws(() => normalizeRoomCode(invalid), /6/);
+  assert.equal(normalizeRoomCode(' gpt-test-481209 '), '481209');
+  assert.equal(normalizeRoomCode('902341'), '902341');
+  for (const invalid of ['', '12345', '1234567', 'ABC234', '../123', '12 345', 'https://example.com']) {
+    assert.throws(() => normalizeRoomCode(invalid), /6 цифр/);
   }
 });
 
@@ -122,7 +122,7 @@ test('peer rooms select chunked binary transport for firefight snapshots larger 
   connection.close = () => { connection.open = false; connection.emit('close'); };
   const peer = new EventEmitter();
   peer.connect = (id, selectedOptions) => {
-    assert.equal(id, 'gpt-test-abc234');
+    assert.equal(id, 'gpt-test-482910');
     options = selectedOptions;
     queueMicrotask(() => connection.emit('open'));
     return connection;
@@ -131,7 +131,7 @@ test('peer rooms select chunked binary transport for firefight snapshots larger 
   const session = new Multiplayer({ onState: state => { received = state; } });
   session._openPeer = async () => { session._peer = peer; return peer; };
   try {
-    await session.join({ code: 'ABC234', name: 'Guest' });
+    await session.join({ code: '482910', name: 'Guest' });
     assert.equal(options.serialization, 'binary');
     assert.equal(options.reliable, true);
     assert.equal(received.events.length, largeState.events.length);
