@@ -837,14 +837,14 @@ export class GameRenderer {
     const swap = object => {
       const m = object.material;
       if (!m || Array.isArray(m)) return;
-      const next = low ? m.userData?.lowMaterial : m.userData?.highMaterial;
+      const next = low ? m._lowMaterial : m._highMaterial;
       if (next && next !== m) object.material = next;
     };
     this.scene.traverse(swap);
     for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(swap);
     for (const template of this.soldierTemplates.values()) template.group.traverse(swap);
     if (this.soldierAtlas) {
-      this.soldierAtlas = (low ? this.soldierAtlas.userData?.lowMaterial : this.soldierAtlas.userData?.highMaterial) || this.soldierAtlas;
+      this.soldierAtlas = (low ? this.soldierAtlas._lowMaterial : this.soldierAtlas._highMaterial) || this.soldierAtlas;
     }
     this.updatePixelRatio();
     this.resize();

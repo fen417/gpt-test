@@ -84,8 +84,8 @@ function soldierMaterial(owner) {
   const rm = new THREE.CanvasTexture(surface);
   const highMat = new THREE.MeshStandardMaterial({ name: 'soldier atlas', map, roughnessMap: rm, metalnessMap: rm, roughness: 1, metalness: 1, vertexColors: true });
   const lowMat = new THREE.MeshLambertMaterial({ name: 'soldier atlas low', map, vertexColors: true });
-  highMat.userData.lowMaterial = lowMat;
-  lowMat.userData.highMaterial = highMat;
+  highMat._lowMaterial = lowMat;
+  lowMat._highMaterial = highMat;
   owner.soldierAtlas = owner.lowQuality ? lowMat : highMat;
   return owner.soldierAtlas;
 }

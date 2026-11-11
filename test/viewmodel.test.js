@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {prepareViewModel,distanceToCover,drawWorldAndViewModel,VIEWMODEL_LAYER} from '../src/viewmodel.js';
+import {pairMaterials,clonePairedMaterial} from '../src/visuals.js';
 import {createSoldierRig,cloneSoldierRig,animateSoldier,soldierHit,soldierThrow,beginDeath,animateDeath} from '../src/soldier.js';
 
 test('opaque gun parts retain depth testing and depth writing within their own render layer',()=>{
@@ -54,4 +55,17 @@ test('soldier rig bakes into a single skinned mesh and animates locomotion, stra
   }finally{
     if(prevDoc===undefined)delete globalThis.document;else globalThis.document=prevDoc;
   }
+});
+
+test('paired high and low quality materials clone cleanly without circular userData serialization errors',()=>{
+  const high=new THREE.MeshStandardMaterial({color:0x8899aa,roughness:.9,metalness:.1});
+  const low=new THREE.MeshLambertMaterial({color:0x8899aa});
+  high.userData.tileSize=4;
+  low.userData.tileSize=4;
+  const paired=pairMaterials(high,low);
+  const cloned=clonePairedMaterial(paired,'#556677',0xffaa55,.25);
+  assert.ok(cloned.isMeshStandardMaterial);
+  assert.ok(cloned._lowMaterial?.isMeshLambertMaterial);
+  assert.equal(cloned._lowMaterial._highMaterial,cloned);
+  assert.equal(cloned.userData.tileSize,4);
 });

@@ -12,8 +12,8 @@ export function createWeaponRig(owner = {}) {
     const highMat = new THREE.MeshStandardMaterial({color,roughness,metalness,opacity:1,transparent:false,depthTest:true,depthWrite:true,...extra});
     const lowMat = new THREE.MeshLambertMaterial({ color, opacity: 1, transparent: false, depthTest: true, depthWrite: true, ...rest });
     highMat.name = name; lowMat.name = `${name}-low`;
-    highMat.userData.lowMaterial = lowMat;
-    lowMat.userData.highMaterial = highMat;
+    highMat._lowMaterial = lowMat;
+    lowMat._highMaterial = highMat;
     ownedMaterials.add(highMat); ownedMaterials.add(lowMat);
     return owner.lowQuality ? lowMat : highMat;
   };

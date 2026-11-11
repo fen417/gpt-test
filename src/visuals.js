@@ -42,21 +42,20 @@ function stains(ctx, s, random, color = '45,40,30') {
 }
 
 export function pairMaterials(highMat, lowMat) {
-  highMat.userData.lowMaterial = lowMat;
-  lowMat.userData.highMaterial = highMat;
+  highMat._lowMaterial = lowMat;
+  lowMat._highMaterial = highMat;
   return highMat;
 }
 
 export function clonePairedMaterial(source, color, emissive = null, emissiveIntensity = 0) {
-  const highSource = source.userData?.highMaterial || source;
-  const lowSource = source.userData?.lowMaterial;
+  const highSource = source._highMaterial || source;
+  const lowSource = source._lowMaterial;
   const highClone = highSource.clone();
   highClone.color.set(color);
   if (emissive !== null) {
     highClone.emissive = new THREE.Color(emissive);
     highClone.emissiveIntensity = emissiveIntensity;
   }
-  highClone.userData = { ...highSource.userData };
   if (lowSource) {
     const lowClone = lowSource.clone();
     lowClone.color.set(color);
@@ -64,7 +63,6 @@ export function clonePairedMaterial(source, color, emissive = null, emissiveInte
       lowClone.emissive = new THREE.Color(emissive);
       lowClone.emissiveIntensity = emissiveIntensity;
     }
-    lowClone.userData = { ...lowSource.userData };
     pairMaterials(highClone, lowClone);
   }
   return highClone;
@@ -148,8 +146,6 @@ export function createSurfaceMaterials(renderer, { useBump = true } = {}) {
     });
     const lowMat = new THREE.MeshLambertMaterial({ map, color });
     highMat.userData.tileSize = tile;
-    highMat.userData.bumpMap = map;
-    highMat.userData.bumpScale = bump;
     lowMat.userData.tileSize = tile;
     return pairMaterials(highMat, lowMat);
   };
