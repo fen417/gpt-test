@@ -1308,7 +1308,7 @@ export class GameRenderer {
       mesh.position.set(gx, gy, gz);
       mesh.rotation.set(this.clock * 9.5 + numId, this.clock * 6.2 + numId * 0.7, this.clock * 7.4);
       if (!this.lowQuality && ((this.frameCount + numId) % 3 === 0)) {
-        this.spawnSmoke(gx, gy, gz, 0.22);
+        this.smoke(gx, gy, gz, 0.2, 0.35, 0x8d9087);
       }
     }
     for (const [id, mesh] of this.grenadeMeshes) if (!active.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
