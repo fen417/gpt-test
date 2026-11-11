@@ -197,9 +197,24 @@ export function createSoldierRig(owner, player) {
   owner.rounded(distant,.125,1.232,-.357,.07,.083,.6,gear.steel);
   owner.batchActor(distant);
   distant.visible = false;
-  owner.scene.add(group);
   const rig = {group,pose,distant,head,legs,arms,knees,elbows,ankles,wrists,rifle,magazine,marker,uniform:gear.uniform,flash,team:player.team,classId:player.classId,lastX:player.x,lastZ:player.z,lastTime:0,targetSpeed:0,speed:0,walk:0,initialized:false,deathAge:0,alive:true,recoil:0,lastShot:player.shotSeq};
   updateSoldierArms(rig);
+  return rig;
+}
+
+export function cloneSoldierRig(template, player) {
+  const group = template.group.clone();
+  const nodes = new Map();
+  function pairNodes(source, clone) {
+    nodes.set(source, clone);
+    source.children.forEach((child, index) => pairNodes(child, clone.children[index]));
+  }
+  pairNodes(template.group, group);
+  const rig = { ...template, group, lastX: player.x, lastZ: player.z, lastShot: player.shotSeq };
+  for (const key of ['pose', 'distant', 'head', 'rifle', 'magazine', 'marker', 'flash']) rig[key] = nodes.get(template[key]);
+  for (const key of ['legs', 'arms', 'knees', 'elbows', 'ankles', 'wrists']) rig[key] = template[key].map(node => nodes.get(node));
+  rig.marker.material = rig.marker.material.clone();
+  rig.flash.material = rig.flash.material.clone();
   return rig;
 }
 

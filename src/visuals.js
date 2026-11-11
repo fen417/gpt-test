@@ -109,7 +109,7 @@ export function mapSector(matrix) {
   return `${Math.floor(position[12] / 64)},${Math.floor(position[14] / 64)}`;
 }
 
-export function addSectorInstances(scene, geometry, material, matrices) {
+export function addSectorInstances(scene, geometry, material, matrices, castShadow = false) {
   const sectors = new Map();
   for (const matrix of matrices) {
     const sector = mapSector(matrix);
@@ -118,6 +118,7 @@ export function addSectorInstances(scene, geometry, material, matrices) {
   }
   for (const instances of sectors.values()) {
     const mesh = new THREE.InstancedMesh(geometry, material, instances.length);
+    mesh.castShadow = castShadow;
     instances.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
     mesh.computeBoundingSphere();
     scene.add(mesh);
@@ -183,15 +184,16 @@ export function addDistrictDetails(owner, MAP) {
   }
   addSectorInstances(scene,grassGeo,grassMat,grassMatrices);
   const rockGeo=new THREE.DodecahedronGeometry(1,0),rockMat=surfaces.concrete;
-  const rocks=new THREE.InstancedMesh(rockGeo,rockMat,64);
-  for(let i=0;i<64;i++){const a=i/64*Math.PI*2,r=limit+8+random()*14;dummy.position.set(Math.sin(a)*r,.2,Math.cos(a)*r);dummy.rotation.set(random(),random(),random());dummy.scale.set(1+random()*2,.5+random(),1+random()*2);dummy.updateMatrix();rocks.setMatrixAt(i,dummy.matrix);}rocks.castShadow=true;scene.add(rocks);
-  const treeCrowns=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({color:0x526c4e,roughness:1}),120);
-  const treeTrunks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.2,.35,1,6),m.rust,40);
+  const rocks=[],treeCrowns=[],treeTrunks=[];
+  for(let i=0;i<64;i++){const a=i/64*Math.PI*2,r=limit+8+random()*14;dummy.position.set(Math.sin(a)*r,.2,Math.cos(a)*r);dummy.rotation.set(random(),random(),random());dummy.scale.set(1+random()*2,.5+random(),1+random()*2);dummy.updateMatrix();rocks.push(dummy.matrix.clone());}
+  addSectorInstances(scene,rockGeo,rockMat,rocks,true);
   for(let i=0;i<40;i++){
     const angle=(-.25+random()*.5)*Math.PI, r=limit+20+random()*32,x=Math.cos(angle)*r,z=Math.sin(angle)*r,h=5+random()*5;
-    dummy.position.set(x,h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(1,h,1);dummy.updateMatrix();treeTrunks.setMatrixAt(i,dummy.matrix);
-    for(let j=0;j<3;j++){dummy.position.set(x+(random()-.5)*2,h*.78+j*.8,z+(random()-.5)*2);dummy.scale.set(2+random()*1.5,2+random()*1.3,2+random()*1.5);dummy.rotation.set(random(),random(),random());dummy.updateMatrix();treeCrowns.setMatrixAt(i*3+j,dummy.matrix);}
-  }treeCrowns.castShadow=true;treeTrunks.castShadow=true;scene.add(treeCrowns,treeTrunks);
+    dummy.position.set(x,h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(1,h,1);dummy.updateMatrix();treeTrunks.push(dummy.matrix.clone());
+    for(let j=0;j<3;j++){dummy.position.set(x+(random()-.5)*2,h*.78+j*.8,z+(random()-.5)*2);dummy.scale.set(2+random()*1.5,2+random()*1.3,2+random()*1.5);dummy.rotation.set(random(),random(),random());dummy.updateMatrix();treeCrowns.push(dummy.matrix.clone());}
+  }
+  addSectorInstances(scene,new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({color:0x526c4e,roughness:1}),treeCrowns,true);
+  addSectorInstances(scene,new THREE.CylinderGeometry(.2,.35,1,6),m.rust,treeTrunks,true);
   for(const structure of MAP.structures||[]){
     const {x,z,w,d,h}=structure;
     if(structure.roof!==false){

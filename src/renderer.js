@@ -5,7 +5,7 @@ import { MAP, CLASSES, CAPTURE_RADIUS } from '../shared/world.js';
 import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign, addSectorInstances, mapSector } from './visuals.js';
 import {prepareViewModel,distanceToCover,drawWorldAndViewModel} from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
-import { createSoldierRig, animateSoldier } from './soldier.js';
+import { createSoldierRig, cloneSoldierRig, animateSoldier } from './soldier.js';
 
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
 const clamp = THREE.MathUtils.clamp;
@@ -15,7 +15,8 @@ const lerp = THREE.MathUtils.lerp;
 // the stock shader produces zero, so it can skip attenuation and shading.
 const pointVector = 'vec3 lVector = pointLight.position - geometryPosition;';
 const boundedLightParameters = THREE.ShaderChunk.lights_pars_begin.replace(pointVector, `${pointVector}
-    if (pointLight.distance > 0.0 && dot(lVector, lVector) >= pointLight.distance * pointLight.distance) {
+    if (all(equal(pointLight.color, vec3(0.0))) ||
+        (pointLight.distance > 0.0 && dot(lVector, lVector) >= pointLight.distance * pointLight.distance)) {
       light.direction = vec3(0.0);
       light.color = vec3(0.0);
       light.visible = false;
@@ -61,9 +62,14 @@ export class GameRenderer {
     this.canvas = canvas;
     this.clock = 0;
     this.soldiers = new Map();
+    this.soldierTemplates = new Map();
+    this.activeSoldiers = new Set();
     this.flags = new Map();
     this.grenadeMeshes = new Map();
+    this.activeGrenades = new Set();
+    this.grenadeMaterial = material(0x485545, 0.7, 0.4, { emissive: 0xa96220, emissiveIntensity: 0.2 });
     this.effects = [];
+    this.effectPools = { tracer: [], shell: [], smoke: [], spark: [] };
     this.seenEvents = new Set();
     this.lastShot = -1;
     this.kick = 0;
@@ -85,7 +91,7 @@ export class GameRenderer {
     this.scratchPosition = new THREE.Vector3();
     this.viewFrustum = new THREE.Frustum();
     this.viewProjection = new THREE.Matrix4();
-    this.lightBounds = new THREE.Sphere();
+    this.soldierBounds = new THREE.Sphere(new THREE.Vector3(), 2.5);
     this.surfaceCache = new Map();
     this.soldierMaterials = new Map();
     this.random = seeded();
@@ -114,6 +120,7 @@ export class GameRenderer {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     Object.assign(this.sun.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 1, far: 250 });
+    this.sun.shadow.camera.updateProjectionMatrix();
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
@@ -137,17 +144,25 @@ export class GameRenderer {
     this.mergeStaticWorld();
     this.worldRoot = new THREE.Group();
     for (const object of [...this.scene.children]) {
-      if (object.isPointLight) object.userData.lightsWeapon = true;
       if (!object.isLight && object !== this.camera && object !== this.sun.target) this.worldRoot.add(object);
     }
     this.scene.add(this.worldRoot);
     this.scene.updateMatrixWorld(true);
     this.scene.matrixAutoUpdate = false;
     this.worldRoot.traverse(object => {
-      if (object !== this.atmosphere.sky) object.matrixAutoUpdate = false;
+      if (object !== this.atmosphere.sky) {
+        object.matrixAutoUpdate = false;
+        object.matrixWorldAutoUpdate = false;
+      }
     });
     this.buildWeapon();
     this.scene.traverse(object=>{if(object.isLight)object.layers.enable(1);});
+    // Keep the light count constant as grenades detonate so programs stay cached.
+    this.blastLights = Array.from({ length: 3 }, () => {
+      const mesh = new THREE.PointLight(0xffaa55, 0, 15, 2);
+      this.scene.add(mesh);
+      return { mesh, age: 0, life: 0.22, type: 'light' };
+    });
     this.scene.traverse(optimizeLighting);
     this.wallStow=0;
     this.smokeTexture = canvasTexture(64, (ctx, size) => {
@@ -423,24 +438,35 @@ export class GameRenderer {
   }
 
   makeSoldier(player) {
-    const soldier=createSoldierRig(this,player);
-    soldier.group.traverse(optimizeLighting);
-    this.worldRoot.add(soldier.group);
-    return soldier;
+    const key = `${player.team}:${player.classId}`;
+    let template = this.soldierTemplates.get(key);
+    if (!template) {
+      template = createSoldierRig(this, player);
+      template.group.traverse(optimizeLighting);
+      this.soldierTemplates.set(key, template);
+    }
+    return cloneSoldierRig(template, player);
   }
 
   removeSoldier(soldier) {
     soldier.group.removeFromParent();
-    soldier.group.traverse(object => {
-      if (object.geometry?.userData.actorOwned) object.geometry.dispose();
-    });
     soldier.flash.material.dispose();
     soldier.marker.material.dispose();
   }
 
   updateSoldiers(state, localId, dt) {
-    const active = new Set();
+    const active = this.activeSoldiers;
+    active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
+    const blend = 1 - Math.exp(-dt * 18);
+    const corpseBlend = 1 - Math.exp(-dt * 6);
+    let shadowFrustum = null;
+    if (this.renderer.shadowMap.enabled) {
+      this.sun.updateMatrixWorld();
+      this.sun.target.updateMatrixWorld();
+      this.sun.shadow.updateMatrices(this.sun);
+      shadowFrustum = this.sun.shadow.getFrustum();
+    }
     for (const player of state.players) {
       if (player.id === localId) continue;
       active.add(player.id);
@@ -453,28 +479,54 @@ export class GameRenderer {
         soldier = this.makeSoldier(player);
         this.soldiers.set(player.id, soldier);
       }
-      if(player.alive===false){
-        soldier.deathAge+=dt;soldier.group.visible=soldier.deathAge<3.6;soldier.marker.visible=false;soldier.flash.visible=false;
-        soldier.group.rotation.x=lerp(soldier.group.rotation.x,-1.45,1-Math.exp(-dt*6));
-        soldier.group.position.y=lerp(soldier.group.position.y,(player.y||0)+.23,1-Math.exp(-dt*6));
-        soldier.legs[0].rotation.x=.3;soldier.legs[1].rotation.x=-.2;soldier.alive=false;continue;
+      const { group } = soldier;
+      const alive = player.alive !== false;
+      const target = this.scratchPosition.set(player.x, player.y || 0, player.z);
+      const reset = !soldier.initialized || group.position.distanceToSquared(target) > 25;
+      if (alive) {
+        if (!soldier.alive) {
+          group.rotation.x = 0;
+          soldier.deathAge = 0;
+        }
+        const interpolation = reset || !soldier.alive ? 1 : blend;
+        group.position.lerp(target, interpolation);
+        const yawDifference = (player.yaw || 0) - group.rotation.y;
+        group.rotation.y += Math.atan2(Math.sin(yawDifference), Math.cos(yawDifference)) * interpolation;
+      } else {
+        if (!soldier.initialized) group.position.copy(target);
+        soldier.deathAge += dt;
+        group.rotation.x = lerp(group.rotation.x, -1.45, corpseBlend);
+        group.position.y = lerp(group.position.y, target.y + .23, corpseBlend);
       }
-      soldier.group.visible=true;
-      if(!soldier.alive){soldier.initialized=false;soldier.group.rotation.x=0;soldier.deathAge=0;soldier.alive=true;}
-      const target=this.scratchPosition.set(player.x,player.y||0,player.z);
-      const reset=!soldier.initialized||soldier.group.position.distanceToSquared(target)>25;
-      const blend=reset?1:1-Math.exp(-dt*18);
-      soldier.group.position.lerp(target,blend);
-      const yawDifference = Math.atan2(Math.sin((player.yaw || 0) - soldier.group.rotation.y), Math.cos((player.yaw || 0) - soldier.group.rotation.y));
-      soldier.group.rotation.y += yawDifference * blend;
+      const respawned = alive && !soldier.alive;
+      soldier.alive = alive;
+      soldier.initialized = true;
+      this.soldierBounds.center.copy(group.position);
+      this.soldierBounds.center.y += .9;
+      const visible = (alive || soldier.deathAge < 3.6) &&
+        (this.viewFrustum.intersectsSphere(this.soldierBounds) || shadowFrustum?.intersectsSphere(this.soldierBounds));
+      if (!visible) {
+        group.removeFromParent();
+        continue;
+      }
+      const returning = !group.parent;
+      if (returning) this.worldRoot.add(group);
+      group.visible = true;
+      if (!alive) {
+        soldier.marker.visible = false;
+        soldier.flash.visible = false;
+        soldier.legs[0].rotation.x = .3;
+        soldier.legs[1].rotation.x = -.2;
+        continue;
+      }
       const crouched = player.crouching || player.crouch;
       const distant=local&&Math.hypot(player.x-local.x,player.z-local.z)>(this.lowQuality?55:95);
-      if(!distant)animateSoldier(soldier,{dt,player,reset:reset||soldier.distant.visible});
+      if(!distant)animateSoldier(soldier,{dt,player,reset:reset||respawned||returning||soldier.distant.visible});
+      else soldier.flash.visible = false;
       soldier.pose.visible=!distant;soldier.distant.visible=!!distant;
       soldier.marker.material.color.setHex(player.team === localTeam ? COLORS.friendly : COLORS.enemy);
       soldier.marker.visible = player.team === localTeam;
       soldier.marker.position.y=(crouched?1.55:1.94)+Math.sin(this.clock*2)*.025;
-      soldier.initialized = true;
     }
     for (const [id, soldier] of this.soldiers) if (!active.has(id)) { this.removeSoldier(soldier); this.soldiers.delete(id); }
   }
@@ -499,19 +551,17 @@ export class GameRenderer {
         );
         if(distance>165**2||this.effects.length>=145)continue;
         if(length>7&&(event.shotSeq??event.id)%3===0){
-          const origin=new THREE.Vector3(x,y,z),direction=new THREE.Vector3(tx-x,ty-y,tz-z).multiplyScalar(1/length);
-          const geometry=new THREE.BufferGeometry().setFromPoints([origin,origin.clone().addScaledVector(direction,5)]);
-          const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:0xffca79,transparent:true,opacity:.75,blending:THREE.AdditiveBlending,depthWrite:false}));
-          line.frustumCulled=false;
-          this.worldRoot.add(line);
-          this.effects.push({mesh:line,age:0,life:clamp(length/950,.048,.19),type:'tracer',origin,direction,length,ownedGeometry:true,ownedMaterial:true});
+          this.tracer(x,y,z,tx,ty,tz,length);
         }
         if(own&&this.weapon.visible){
-          const yaw=player?.yaw||0,shell=new THREE.Mesh(this.geo.shell,this.shellMaterial);
+          const yaw=player?.yaw||0;
+          const effect = this.effectPools.shell.pop() ?? { mesh: new THREE.Mesh(this.geo.shell,this.shellMaterial), type: 'shell' };
+          const shell = effect.mesh;
           this.weaponRig.bolt.getWorldPosition(shell.position);
-          shell.rotation.z=Math.PI/2;
+          shell.rotation.set(0, 0, Math.PI / 2);
           this.worldRoot.add(shell);
-          this.effects.push({mesh:shell,age:0,life:1.1,type:'shell',vx:Math.cos(yaw)*2.9,vy:.85+this.random()*.7,vz:-Math.sin(yaw)*2.9,spin:8+this.random()*8});
+          Object.assign(effect, {age:0,life:1.1,vx:Math.cos(yaw)*2.9,vy:.85+this.random()*.7,vz:-Math.sin(yaw)*2.9,spin:8+this.random()*8});
+          this.effects.push(effect);
           if(!this.lowQuality&&this.wallStow<.3&&(event.shotSeq??event.id)%2===0){
             const muzzle=this.weaponRig.muzzleFlash.getWorldPosition(this.scratchPosition);
             this.smoke(muzzle.x,muzzle.y,muzzle.z,.13,.42,0xa4a79b);
@@ -530,41 +580,89 @@ export class GameRenderer {
       if (event.type === 'explosion') {
         const x = event.x || 0, y = event.y ?? 0.6, z = event.z || 0;
         for (let i = 0; i < 13; i++) this.smoke(x + (this.random() - 0.5) * 2, y + this.random() * 2, z + (this.random() - 0.5) * 2, 1.1 + this.random() * 1.4, 2.5 + this.random() * 2, i < 3 ? 0xffb668 : 0x535953);
-        const light = new THREE.PointLight(0xffaa55, 18, 15, 2); light.position.set(x, y + 1, z); this.scene.add(light); this.effects.push({ mesh: light, age: 0, life: 0.22, type: 'light' });
+        this.blastFlash(x, y + 1, z);
         for(let i=0;i<(this.lowQuality?6:16);i++)this.spark(x,y+.3,z,3);
       }
     }
     if (this.seenEvents.size > 1400) this.seenEvents = new Set([...this.seenEvents].slice(-700));
   }
 
+  blastFlash(x, y, z) {
+    const light = this.blastLights.find(effect => effect.mesh.intensity === 0);
+    if (light) this.effects.push(light);
+    const effect = light ?? this.blastLights.reduce((oldest, current) => current.age > oldest.age ? current : oldest);
+    effect.age = 0;
+    effect.mesh.position.set(x, y, z);
+    effect.mesh.intensity = 18;
+  }
+
+  tracer(x, y, z, tx, ty, tz, length) {
+    let effect = this.effectPools.tracer.pop();
+    if (!effect) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.boundingSphere = new THREE.Sphere();
+      const mesh = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+        color: 0xffca79, transparent: true, opacity: .75, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      effect = { mesh, type: 'tracer', origin: new THREE.Vector3(), direction: new THREE.Vector3() };
+    }
+    effect.age = 0;
+    effect.life = clamp(length / 950, .048, .19);
+    effect.length = length;
+    effect.origin.set(x, y, z);
+    effect.direction.set(tx - x, ty - y, tz - z).multiplyScalar(1 / length);
+    const bounds = effect.mesh.geometry.boundingSphere;
+    bounds.center.copy(effect.origin).addScaledVector(effect.direction, length / 2);
+    bounds.radius = length / 2 + .05;
+    this.worldRoot.add(effect.mesh);
+    this.effects.push(effect);
+  }
+
   smoke(x, y, z, size, life, color) {
     if (this.effects.length > 180) return;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, color, transparent: true, opacity: 0.6, depthWrite: false, rotation: this.random() * Math.PI }));
+    const effect = this.effectPools.smoke.pop() ?? {
+      mesh: new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, transparent: true, depthWrite: false })),
+      type: 'smoke',
+    };
+    const sprite = effect.mesh;
+    sprite.material.color.setHex(color);
+    sprite.material.rotation = this.random() * Math.PI;
     sprite.position.set(x, y, z); sprite.scale.setScalar(size); this.worldRoot.add(sprite);
-    this.effects.push({ mesh: sprite, age: 0, life, size, type: 'smoke', vx: (this.random() - 0.5) * 0.6, vz: (this.random() - 0.5) * 0.6,ownedMaterial:true });
+    Object.assign(effect, { age: 0, life, size, vx: (this.random() - 0.5) * 0.6, vz: (this.random() - 0.5) * 0.6 });
+    this.effects.push(effect);
   }
 
   spark(x,y,z,force=1){
     if(this.effects.length>180)return;
-    const mesh=new THREE.Mesh(this.geo.sphere,this.sparkMaterial);mesh.scale.setScalar(.014*force);mesh.position.set(x,y,z);this.worldRoot.add(mesh);
-    this.effects.push({mesh,age:0,life:.2+this.random()*.2,type:'spark',vx:(this.random()-.5)*4*force,vy:(1+this.random()*2)*force,vz:(this.random()-.5)*4*force});
+    const effect = this.effectPools.spark.pop() ?? { mesh: new THREE.Mesh(this.geo.sphere,this.sparkMaterial), type: 'spark' };
+    const { mesh } = effect;
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.setScalar(.014*force);mesh.position.set(x,y,z);this.worldRoot.add(mesh);
+    Object.assign(effect, {age:0,life:.2+this.random()*.2,vx:(this.random()-.5)*4*force,vy:(1+this.random()*2)*force,vz:(this.random()-.5)*4*force});
+    this.effects.push(effect);
   }
 
   updateEffects(dt) {
     for (let i = this.effects.length - 1; i >= 0; i--) {
       const effect = this.effects[i]; effect.age += dt;
       if (effect.age >= effect.life) {
-        effect.mesh.removeFromParent(); if(effect.ownedGeometry)effect.mesh.geometry?.dispose();if(effect.ownedMaterial)effect.mesh.material?.dispose(); this.effects.splice(i, 1); continue;
+        if (effect.type === 'light') effect.mesh.intensity = 0;
+        else {
+          effect.mesh.removeFromParent();
+          this.effectPools[effect.type].push(effect);
+        }
+        this.effects.splice(i, 1);
+        continue;
       }
       const alpha = 1 - effect.age / effect.life;
       if(effect.type==='tracer'){
         const head=Math.min(effect.length,4+effect.age/effect.life*effect.length);
         const tail=Math.max(.75,head-11);
         const positions=effect.mesh.geometry.attributes.position;
-        for(const [index,distance] of [[0,tail],[1,head]]){
-          const {origin,direction}=effect;
-          positions.setXYZ(index,origin.x+direction.x*distance,origin.y+direction.y*distance,origin.z+direction.z*distance);
-        }
+        const {origin,direction}=effect;
+        positions.setXYZ(0,origin.x+direction.x*tail,origin.y+direction.y*tail,origin.z+direction.z*tail);
+        positions.setXYZ(1,origin.x+direction.x*head,origin.y+direction.y*head,origin.z+direction.z*head);
         positions.needsUpdate=true;
         effect.mesh.material.opacity=alpha*.8;
       }else if (effect.type === 'smoke') {
@@ -576,23 +674,23 @@ export class GameRenderer {
         if(effect.mesh.position.y<.03){effect.mesh.position.y=.03;effect.vy=Math.abs(effect.vy)*.25;effect.vx*=.72;effect.vz*=.72;}
         if(effect.type==='spark')effect.mesh.scale.setScalar(.025*alpha);
       } else if (effect.type === 'light') effect.mesh.intensity = alpha * 18;
-      else effect.mesh.material.opacity = alpha;
     }
   }
 
   updateGrenades(state) {
-    const active = new Set();
+    const active = this.activeGrenades;
+    active.clear();
+    this.grenadeMaterial.emissiveIntensity = 0.1 + (Math.sin(this.clock * 12) + 1) * 0.6;
     for (const grenade of state.grenades || []) {
       active.add(grenade.id);
       let mesh = this.grenadeMeshes.get(grenade.id);
       if (!mesh) {
-        mesh = new THREE.Mesh(this.geo.sphere, material(0x485545, 0.7, 0.4, { emissive: 0xa96220, emissiveIntensity: 0.2 }));
+        mesh = new THREE.Mesh(this.geo.sphere, this.grenadeMaterial);
         mesh.scale.set(0.11, 0.15, 0.11); mesh.castShadow = true; this.worldRoot.add(mesh); this.grenadeMeshes.set(grenade.id, mesh);
       }
       mesh.visible = true; mesh.position.set(grenade.x, grenade.y, grenade.z); mesh.rotation.x = this.clock * 4;
-      mesh.material.emissiveIntensity = 0.1 + (Math.sin(this.clock * 12) + 1) * 0.6;
     }
-    for (const [id, mesh] of this.grenadeMeshes) if (!active.has(id)) { mesh.removeFromParent(); mesh.material.dispose(); this.grenadeMeshes.delete(id); }
+    for (const [id, mesh] of this.grenadeMeshes) if (!active.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
   }
 
   resize() {
@@ -608,21 +706,6 @@ export class GameRenderer {
       this.staticMenuShadows=menu;
       this.sun.shadow.autoUpdate=!menu;
       this.sun.shadow.needsUpdate=true;
-    }
-    this.camera.updateMatrixWorld();
-    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
-    this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
-    for(const light of this.scene.children){
-      if(!light.isPointLight||light.distance<=0)continue;
-      // Point lights contribute exactly zero beyond their cutoff sphere.
-      this.lightBounds.center.copy(light.position);
-      this.lightBounds.radius=light.distance;
-      if(this.viewFrustum.intersectsSphere(this.lightBounds))light.layers.enable(0);
-      else light.layers.disable(0);
-      if(light.userData.lightsWeapon){
-        if(this.camera.position.distanceToSquared(light.position)<(light.distance+2)**2)light.layers.enable(1);
-        else light.layers.disable(1);
-      }
     }
     drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
   }
@@ -699,7 +782,10 @@ export class GameRenderer {
         this.lastShot = player.shotSeq;
       }
       this.camera.rotation.set(pitch,yaw,shake?Math.sin(cycle)*.003*bob-this.strafeBlend*.005:0,'YXZ');
-      const fov = lerp(baseFov+this.sprintBlend*6,baseFov-(player.classId==='recon'?38:23),this.aimAmount);
+      const aimFov = player.classId === 'recon'
+        ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / 4))
+        : baseFov - 23;
+      const fov = lerp(baseFov+this.sprintBlend*6,aimFov,this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
         this.camera.near = .045;
@@ -735,6 +821,9 @@ export class GameRenderer {
       for (let i = 0; i < positions.count; i++) { const x = positions.getX(i) + 0.775; positions.setZ(i, Math.sin(this.clock * 3.5 + x * 4) * 0.09 * x); }
       positions.needsUpdate = true;
     }
+    this.camera.updateMatrixWorld();
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
     this.updateSoldiers(state, localId, dt); this.updateGrenades(state); this.processEvents(state, localId); this.updateEffects(dt);
     this.atmosphere.sky.position.copy(this.camera.position);
     this.drawScene();
@@ -750,12 +839,18 @@ export class GameRenderer {
 
   dispose() {
     const geometries = new Set(), materials = new Set(), textures = new Set();
-    this.scene.traverse(object => {
+    const collect = object => {
       if (object.geometry) geometries.add(object.geometry);
       for (const mat of object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : []) {
         materials.add(mat); for (const value of Object.values(mat)) if (value?.isTexture) textures.add(value);
       }
-    });
+    };
+    this.scene.traverse(collect);
+    for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(collect);
+    for (const soldier of this.soldierTemplates.values()) soldier.group.traverse(collect);
+    for (const pool of Object.values(this.effectPools)) for (const effect of pool) collect(effect.mesh);
+    textures.add(this.smokeTexture);
+    materials.add(this.grenadeMaterial);
     geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose()); this.atmosphere.target.dispose();this.renderer.dispose();
   }
 }

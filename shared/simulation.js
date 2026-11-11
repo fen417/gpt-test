@@ -124,7 +124,7 @@ export class Simulation {
     const point=this.points.find(q=>q.id===pointId&&q.owner===p.team&&!q.contested);
     const base=point||MAP.spawns[p.team];let x=base.x,z=base.z;
     for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz,0)){x=tx;z=tz;break;}}
-    Object.assign(p,{x,y:0,z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:CLASSES[p.classId].mag,reserve:CLASSES[p.classId].reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
+    Object.assign(p,{x,y:0,z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:CLASSES[p.classId].mag,reserve:CLASSES[p.classId].reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
     Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false});
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
@@ -216,6 +216,7 @@ export class Simulation {
   gridIndex(x,z){return clamp(Math.floor((z-this.gridOrigin)/this.gridCell),0,this.gridSize-1)*this.gridSize+clamp(Math.floor((x-this.gridOrigin)/this.gridCell),0,this.gridSize-1);}
   pathfind(start,goal){
     const source=this.gridIndex(start.x,start.z),target=this.gridIndex(goal.x,goal.z);
+    if(source===target)return [];
     const size=this.gridSize,queue=this.pathQueue,prev=this.pathPrevious;
     prev.fill(-1);prev[source]=source;queue[0]=source;
     const targetX=target%size,targetZ=Math.floor(target/size);
@@ -264,9 +265,18 @@ export class Simulation {
       if(best>32)input.forward=.3;
     }else{
       p.botTargetId=null;
-      if(p.nextThink<=0||!p.botPath?.length){
-        const choices=this.points.map(q=>({q,score:dist(p,q)+(q.owner===p.team?220:0)+this.random()*25+[...this.players.values()].filter(ally=>ally!==p&&ally.team===p.team&&ally.botObjective?.id===q.id).length*12})).sort((a,b)=>a.score-b.score);
-        p.botObjective=choices[0].q;p.botPath=this.pathfind(p,p.botObjective);p.nextThink=3+this.random()*2;
+      if(p.nextThink<=0&&this.botPathBudget>0){
+        this.botPathBudget--;
+        let bestObjective = null, bestScore = Infinity;
+        for (const point of this.points) {
+          let assigned = 0;
+          for (const ally of this.players.values()) {
+            if (ally !== p && ally.team === p.team && ally.botObjective?.id === point.id) assigned++;
+          }
+          const score = dist(p, point) + (point.owner === p.team ? 220 : 0) + this.random() * 25 + assigned * 12;
+          if (score < bestScore) { bestObjective = point; bestScore = score; }
+        }
+        p.botObjective=bestObjective;p.botPath=this.pathfind(p,bestObjective);p.nextThink=3+this.random()*2;
       }
       while(p.botPath.length&&dist(p,p.botPath[0])<1.4)p.botPath.shift();
       const next=p.botPath[0]||p.botObjective;
@@ -284,6 +294,8 @@ export class Simulation {
     const dt=clamp(finite(rawDt),0,.1);if(!dt)return;this.time+=dt;
     this.events=this.events.filter(e=>this.time-e.time<1.2);
     if(this.winner!==null)return;
+    // Spread route planning across ticks when many bots spawn together.
+    this.botPathBudget=2;
     for(const p of this.players.values()){
       if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if(p.bot&&p.respawnIn===0)this.respawn(p.id);continue;}
       if(p.bot)this.thinkBot(p,dt);
