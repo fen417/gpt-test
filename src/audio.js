@@ -11,10 +11,22 @@ const HARMONY = [
 ];
 const MELODY = [74,0,69,0,65,0,64,0,62,0,0,69,67,0,65,0,69,0,72,0,74,0,0,77,76,0,72,0,69,0,0,0];
 const WEAPONS = {
-  assault: {body:146,crack:5000,tail:.19,pitch:1,gain:.9},
-  medic: {body:184,crack:6400,tail:.13,pitch:1.16,gain:.73},
-  support: {body:112,crack:3900,tail:.26,pitch:.88,gain:1.03},
-  recon: {body:94,crack:7300,tail:.43,pitch:.77,gain:1.17},
+  assault: { crack: 5400, transient: .024, body: 151, bodyEnd: 63, report: .10, tail: .36, gain: .94, metal: 3450, echo: .25 },
+  medic:   { crack: 7700, transient: .016, body: 214, bodyEnd: 89, report: .066, tail: .23, gain: .79, metal: 4400, echo: .16 },
+  support: { crack: 4200, transient: .033, body: 116, bodyEnd: 45, report: .14, tail: .47, gain: 1.06, metal: 2400, echo: .32 },
+  recon:   { crack: 6700, transient: .039, body: 98, bodyEnd: 34, report: .19, tail: .72, gain: 1.14, metal: 2950, echo: .5 },
+};
+const HANDLING = {
+  release: [.033, 3400, 510], pull: [.105, 1250, 188], pouch: [.16, 790, 0],
+  seat: [.058, 1850, 205], tap: [.044, 2640, 300], bolt: [.075, 3600, 338],
+  lock: [.034, 4700, 480], cover: [.13, 1420, 165], feed: [.15, 2530, 0],
+  dry: [.022, 5600, 710], aim: [.070, 1750, 0], lower: [.096, 1050, 0],
+};
+const MAG_RELOAD = [[.27,'release'],[.42,'pull'],[.92,'pouch'],[1.6,'seat'],[1.68,'tap'],[1.75,'bolt'],[1.88,'lock']];
+const BELT_RELOAD = [[.34,'cover'],[.61,'pull'],[1.46,'pouch'],[2.18,'feed'],[2.51,'seat'],[2.78,'cover'],[2.89,'bolt'],[3.03,'lock']];
+const IMPACTS = {
+  metal: [5000, .13, 1040], wood: [1870, .075, 290], concrete: [3100, .086, 0],
+  ground: [1060, .072, 0], shield: [3800, .14, 1430],
 };
 
 export class CombatAudio {
@@ -25,7 +37,8 @@ export class CombatAudio {
     this._scheduler=null; this._nextMusic=0; this._musicStep=0; this._disposed=false;
     this._lastStateTime=-1; this._lastMovementTime=-1; this._lastPosition=null;
     this._stride=0; this._leftFoot=false; this._falling=false; this._aim=false;
-    this._heartbeat=0; this._distantAt=0; this._paused=false; this._critical=false;
+    this._heartbeat=0; this._distantAt=0; this._paused=false;
+    this._suppressedUntil=0; this._muffleTarget=18000;
   }
   get volume(){return this._volume;}
   set volume(v){this._volume=clamp(v);this._mix();}
@@ -92,7 +105,7 @@ export class CombatAudio {
   }
   setMode(mode){
     const next=mode==='battle'?'battle':'menu';if(next===this._mode)return;
-    this._mode=next;this._lastPosition=null;this._stride=0;this._falling=false;this._mix();
+    this._mode=next;this._lastPosition=null;this._stride=0;this._falling=false;this._suppressedUntil=0;this._mix();
     if(this.ctx&&this._enabled&&next==='battle'){
       this._tone(78,1.15,.13,{end:37,send:.3});this._noise(.9,.08,{cutoff:480,send:.35});
     }
@@ -134,7 +147,10 @@ export class CombatAudio {
     }
     const envelope=c.createGain(),peak=Math.max(EPSILON,gain),attack=Math.min(duration*.35,options.attack??.002);
     envelope.gain.setValueAtTime(EPSILON,time);envelope.gain.linearRampToValueAtTime(peak,time+attack);
-    if(options.sustain)envelope.gain.setValueAtTime(peak*.72,Math.max(time+attack,end-options.sustain));
+    if(options.decay){
+      const shoulder=Math.min(end-.002,time+attack+options.decay);
+      envelope.gain.exponentialRampToValueAtTime(Math.max(EPSILON,peak*(options.decayGain??.25)),shoulder);
+    }else if(options.sustain)envelope.gain.setValueAtTime(peak*.72,Math.max(time+attack,end-options.sustain));
     envelope.gain.exponentialRampToValueAtTime(EPSILON,end);output.connect(envelope);output=envelope;nodes.push(envelope);
     if(c.createStereoPanner&&options.pan){const p=c.createStereoPanner();p.pan.value=clamp(options.pan,-1,1);output.connect(p);output=p;nodes.push(p);}
     const bus=options.bus==='music'?'music':'effects';output.connect(bus==='music'?this._music:this._effects);
@@ -190,14 +206,73 @@ export class CombatAudio {
   }
   shot(distance=0,classId='assault',pan=0,isLocal=distance<1){
     if(!this.ctx||!this._enabled)return;
-    const w=WEAPONS[classId]||WEAPONS.assault,gain=w.gain/(1+distance*.042),time=this.ctx.currentTime+Math.min(.18,distance/600),cutoff=Math.max(500,w.crack/(1+distance*.04));
-    this._noise(.045,.36*gain,{time,filter:'bandpass',cutoff,q:.5,pan,rate:w.pitch});
-    this._noise(w.tail,.23*gain,{time:time+.008,color:'pink',cutoff,endCutoff:330,pan,send:.2+Math.min(.35,distance*.004)});
-    this._tone(w.body,.14,.19*gain,{time,type:'triangle',end:38,cutoff:1300,pan,send:.09});
-    if(isLocal){
-      this._noise(.026,.07,{time:time+.048,filter:'bandpass',cutoff:3400,q:1.8,pan:.3});
-      if(classId==='recon')this._noise(.11,.13,{time:time+.16,filter:'bandpass',cutoff:2100,pan:.4,send:.06});
-    }else if(distance>22)this._noise(.21,.095*gain,{time:time+.12,color:'pink',cutoff:850,pan:-pan*.4,send:.55});
+    if(!isLocal&&this._voices.size>=(distance<20?86:64))return;
+    const weapon=WEAPONS[classId]||WEAPONS.assault;
+    const variation=.94+Math.random()*.12;
+    const gain=weapon.gain*variation/(1+distance*.044);
+    const time=this.ctx.currentTime+Math.min(.23,distance/343);
+    const cutoff=Math.max(380,weapon.crack/(1+distance*.046));
+    const nearby=isLocal||distance<30;
+    // Pressure, the leading crack, and the reflection decay on different envelopes.
+    this._noise(weapon.report,.56*gain,{time,cutoff,q:.45,pan,rate:variation,
+      endCutoff:Math.max(180,cutoff*.29),attack:.0008,decay:.009,decayGain:.19,send:.16});
+    this._tone(weapon.body*variation,weapon.report+.025,.34*gain,{time,type:'triangle',end:weapon.bodyEnd,
+      cutoff:Math.min(1040,cutoff*.8),pan,attack:.001,decay:.025,decayGain:.32,send:.09});
+    if(nearby){
+      this._noise(weapon.transient,.31*gain,{time,filter:'bandpass',cutoff,q:.77,pan,rate:variation,
+        attack:.0005,decay:.004,decayGain:.14});
+    }
+    if(isLocal||this._voices.size<68){
+      this._noise(weapon.tail,.27*gain,{time:time+.017+Math.min(.07,distance*.001),color:'pink',
+        cutoff:Math.min(cutoff*.72,2200),endCutoff:170,pan:pan*.64,attack:.014,
+        decay:.065,decayGain:.36,send:weapon.echo+Math.min(.34,distance*.005)});
+    }
+    if(isLocal&&this._voices.size<98){
+      const cycle=classId==='recon'?.091:classId==='support'?.051:.029;
+      this._noise(.035,.082,{time:time+cycle,filter:'bandpass',cutoff:weapon.metal,q:1.65,pan:.26,attack:.001});
+      if(classId==='recon')this._mechanic('lock',time+.137,.31,.06);
+    }
+  }
+  _mechanic(kind,time,pan,gain){
+    const [duration,cutoff,resonance]=HANDLING[kind];
+    const cloth=kind==='pouch'||kind==='aim'||kind==='lower';
+    this._noise(duration,gain,{time,filter:'bandpass',cutoff,q:cloth?.7:1.45,pan,
+      color:cloth?'pink':'white',attack:cloth?.012:.001,decay:duration*.2,decayGain:.28,send:.04});
+    if(resonance&&this._voices.size<100){
+      this._tone(resonance,.038,gain*.56,{time:time+.002,type:'triangle',end:resonance*.52,
+        cutoff:resonance*4,pan,attack:.001});
+    }
+  }
+  _nearMiss(event,local){
+    const now=this.ctx.currentTime;
+    if(!local?.alive||event.team===local.team||now<this._suppressedUntil-.29||this._voices.size>=94)return;
+    const {x,y,z,tx,ty,tz}=event;
+    if(![x,y,z,tx,ty,tz].every(Number.isFinite))return;
+    const dx=tx-x,dy=ty-y,dz=tz-z,lengthSquared=dx*dx+dy*dy+dz*dz;
+    if(lengthSquared<16)return;
+    const eye=(local.y||0)+(local.crouch?1.12:1.58);
+    const along=((local.x-x)*dx+(eye-y)*dy+(local.z-z)*dz)/lengthSquared;
+    if(along<=.025||along>1)return;
+    const px=x+along*dx,py=y+along*dy,pz=z+along*dz;
+    const distance=Math.hypot(px-local.x,py-eye,pz-local.z);
+    if(distance>1.95)return;
+    const pan=this._position({x:px,z:pz},local).pan;
+    const gain=.155*(1-distance/2.35);
+    this._noise(.05,gain,{filter:'bandpass',cutoff:5200,endCutoff:1850,q:1.6,pan,
+      attack:.0007,decay:.009,decayGain:.29,send:.12});
+    this._tone(1420,.078,gain*.43,{end:340,pan,type:'sine'});
+    this._suppressedUntil=now+.49;
+  }
+  _impact(event,local){
+    const material=IMPACTS[event.impact];
+    if(!material||!local||this._voices.size>=78||!Number.isFinite(event.tx)||!Number.isFinite(event.tz))return;
+    const p=this._position({x:event.tx,z:event.tz},local);
+    if(p.distance>25)return;
+    const [cutoff,duration,ring]=material;
+    const time=this.ctx.currentTime+Math.min(.085,p.distance/343);
+    this._noise(duration,.085*p.gain,{time,filter:'bandpass',cutoff,q:1.3,pan:p.pan,
+      attack:.001,decay:.009,decayGain:.22,send:.13});
+    if(ring)this._tone(ring,duration*.85,.04*p.gain,{time:time+.002,end:ring*.76,pan:p.pan,send:.16});
   }
   _explosion(event,local){
     const p=this._position(event,local),t=this.ctx.currentTime+Math.min(.2,p.distance/500);
@@ -206,11 +281,24 @@ export class CombatAudio {
     this._noise(.14,.22*p.gain,{time:t,cutoff:6300/(1+p.distance*.06),pan:p.pan});
     for(let n=0;n<3;n++)this._noise(.13+n*.08,.07*p.gain,{time:t+.25+n*.17,filter:'bandpass',cutoff:1350+n*700,pan:clamp(p.pan+(n-1)*.3,-1,1),send:.4});
   }
-  _reload(event,local){
-    const p=this._position(event,local);if(p.distance>24)return;
-    const t=this.ctx.currentTime,gain=.13*p.gain;
-    for(const [delay,duration,cutoff,strength]of [[0,.065,2700,.6],[.23,.16,950,.8],[.86,.07,2300,.65],[1.32,.09,3100,1],[1.65,.055,4200,.85]])this._noise(duration,gain*strength,{time:t+delay,filter:'bandpass',cutoff,q:1.5,pan:p.distance<1?.26:p.pan,send:.035});
-    this._tone(135,.09,.035*p.gain,{time:t+1.3,end:78,type:'triangle',pan:p.pan});
+  _reload(event,local,player){
+    if(!player)return;
+    const own=player.id===local?.id;
+    const p=this._position({...event,x:event.x??player.x,z:event.z??player.z},local);
+    if(!own&&(p.distance>12||this._voices.size>55))return;
+    const elapsed=Number.isFinite(event.time)?Math.max(0,this._lastStateTime-event.time):0;
+    const start=this.ctx.currentTime-elapsed;
+    const gain=(own?.16:.068)*p.gain;
+    const belt=(event.classId||player.classId)==='support';
+    const expected=belt?3.1:2;
+    const scale=Number.isFinite(event.duration)?clamp(event.duration/expected,.7,1.35):1;
+    for(const [mark,kind] of belt?BELT_RELOAD:MAG_RELOAD){
+      const offset=mark*scale;
+      if(!own&&kind!=='seat'&&kind!=='lock')continue;
+      if(own&&!belt&&event.empty===false&&(kind==='bolt'||kind==='lock'))continue;
+      if(offset<elapsed-.06)continue;
+      this._mechanic(kind,Math.max(this.ctx.currentTime,start+offset),own?.24:p.pan,gain*(kind==='seat'?1.14:.8));
+    }
   }
   _step(strength,sprinting,crouching,local){
     const metal=local?.y>.55,pan=(this._leftFoot=!this._leftFoot)?-.17:.17,gain=strength*(crouching?.37:sprinting?1:.72);
@@ -228,11 +316,22 @@ export class CombatAudio {
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')continue;
       const own=local&&e.playerId===local.id;
       if(e.type==='shot'){
+        if(!own&&Number.isFinite(e.time)&&state.time-e.time>.22)continue;
         const p=this._position(e,local);
-        if(p.distance<130&&(this._voices.size<72||own||p.distance<20))this.shot(p.distance,state.players?.find(player=>player.id===e.playerId)?.classId||'assault',p.pan,own);
-        if(own&&e.hit){this._tone(1780,.035,.075,{end:1340});this._noise(.025,.045,{filter:'bandpass',cutoff:2500});}
+        if(p.distance<145){
+          const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
+          this.shot(p.distance,classId,p.pan,own);
+        }
+        if(!own)this._nearMiss(e,local);
+        this._impact(e,local);
+        if(own&&e.hit){
+          this._tone(e.headshot?2110:1780,.04,.082,{end:e.headshot?1740:1300});
+          this._noise(.024,.045,{filter:'bandpass',cutoff:e.headshot?3400:2500});
+        }
+      }else if(e.type==='dryFire'&&own){
+        this._mechanic('dry',this.ctx.currentTime,.21,.16);
       }else if(e.type==='explosion')this._explosion(e,local);
-      else if(e.type==='reload')this._reload(e,local);
+      else if(e.type==='reload')this._reload(e,local,own?local:state.players?.find(player=>player.id===e.playerId));
       else if(e.type==='damage'&&own){this._noise(.16,.16,{color:'pink',cutoff:1400});this._tone(76,.2,.13,{end:37});}
       else if(e.type==='kill'&&local&&e.killerId===local.id)[880,1174,1397].forEach((frequency,index)=>this._tone(frequency,.14,.055,{time:this.ctx.currentTime+index*.055,send:.12}));
       else if(e.type==='capture'&&local)(e.team===local.team?[587,740,880]:[440,370]).forEach((frequency,index)=>this._tone(frequency,.42,.09,{time:this.ctx.currentTime+index*.12,send:.3}));
@@ -248,9 +347,18 @@ export class CombatAudio {
     if(paused!==this._paused){this._paused=paused;this._mix();}
     if(!this.ctx||this.ctx.state!=='running'||!this._enabled)return;
     const now=this.ctx.currentTime,canMove=local?.alive&&locked&&!paused&&!inMenu;
-    if(aim!==this._aim&&canMove)this._noise(.1,.045,{filter:'bandpass',cutoff:1100,attack:.02,pan:.15});this._aim=aim;
+    if(aim!==this._aim&&canMove){
+      this._mechanic(aim?'aim':'lower',now,.18,.072);
+      if(aim)this._mechanic('tap',now+.039,.21,.035);
+    }
+    this._aim=aim;
     const critical=Boolean(local?.alive&&local.hp<30&&!inMenu);
-    if(critical!==this._critical){this._critical=critical;this._target(this._muffle.frequency,critical?5200:18000,.3);}
+    const suppressed=local?.alive&&!paused&&!inMenu&&now<this._suppressedUntil;
+    const muffle=critical?5200:suppressed?7900:18000;
+    if(muffle!==this._muffleTarget){
+      this._muffleTarget=muffle;
+      this._target(this._muffle.frequency,muffle,suppressed?.06:.26);
+    }
     if(critical&&!paused&&now>=this._heartbeat){this._tone(59,.16,.1,{end:38});this._tone(52,.13,.065,{time:now+.19,end:34});this._heartbeat=now+.9;}
     if(!canMove){this._lastPosition=null;this._stride=0;this._falling=false;}
     else if(state?.time!==this._lastMovementTime){

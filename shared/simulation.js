@@ -31,8 +31,42 @@ function rayBox(origin, direction, box, maximum) {
 function raySphere(origin, direction, center, radius) {
   const x=origin.x-center.x,y=origin.y-center.y,z=origin.z-center.z;
   const b=x*direction.x+y*direction.y+z*direction.z, c=x*x+y*y+z*z-radius*radius;
+  if(c<=0)return 0;
   const disc=b*b-c;if(disc<0)return Infinity;
   const t=-b-Math.sqrt(disc);return t>=0?t:Infinity;
+}
+
+function rayCapsule(origin, direction, x, z, bottom, top, radius) {
+  let nearest = Math.min(
+    raySphere(origin, direction, {x, y:bottom, z}, radius),
+    raySphere(origin, direction, {x, y:top, z}, radius),
+  );
+  const dx = origin.x - x, dz = origin.z - z;
+  const a = direction.x ** 2 + direction.z ** 2;
+  const b = dx * direction.x + dz * direction.z;
+  const c = dx ** 2 + dz ** 2 - radius ** 2;
+  if (c <= 0 && origin.y >= bottom && origin.y <= top) return 0;
+  const discriminant = b ** 2 - a * c;
+  if (a > 1e-8 && discriminant >= 0) {
+    const entry = (-b - Math.sqrt(discriminant)) / a;
+    const y = origin.y + direction.y * entry;
+    if (entry >= 0 && y >= bottom && y <= top) nearest = Math.min(nearest, entry);
+  }
+  return nearest;
+}
+
+function weaponSpread(player) {
+  const weapon = CLASSES[player.classId], input = player.input;
+  const movement = clamp(player.moveSpeed / weapon.speed, 0, 1);
+  return weapon.spread * (input.aim ? .24 : .66) * (input.crouch ? .81 : 1)
+    * (1 + movement * (input.aim ? .85 : 1.3)) * (player.grounded ? 1 : 2)
+    * (1 + player.bloom) * (player.bot ? 1.45 : 1);
+}
+
+function impactMaterial(kind) {
+  if (kind === 'crate') return 'wood';
+  if (kind === 'container' || kind === 'pillar' || kind === 'warehouse') return 'metal';
+  return 'concrete';
 }
 
 export class Simulation {
@@ -70,6 +104,7 @@ export class Simulation {
     const base=point||MAP.spawns[p.team];let x=base.x,z=base.z;
     for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz,0)){x=tx;z=tz;break;}}
     Object.assign(p,{x,y:0,z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:CLASSES[p.classId].mag,reserve:CLASSES[p.classId].reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
+    Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false});
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   collides(x,z,y=0,radius=PLAYER_RADIUS){
@@ -90,26 +125,45 @@ export class Simulation {
   shoot(p){
     const c=CLASSES[p.classId],input=p.input;if(p.cooldown>0||p.reloading||p.ammo<=0)return;
     p.invulnerableUntil=0;
-    p.ammo--;p.shotSeq++;p.cooldown=c.interval;
+    p.ammo--;p.shotSeq++;p.cooldown+=c.interval;
     const eye=input.crouch?1.05:EYE_HEIGHT;
     const origin={x:p.x,y:p.y+eye,z:p.z};
-    const spread=c.spread*(input.aim?.23:1)*(input.sprint?2:1)*(p.bot?2:1);
-    const yaw=p.yaw+(this.random()-.5)*spread,pitch=p.pitch+(this.random()-.5)*spread;
+    const angle = this.random() * Math.PI * 2;
+    const radius = Math.sqrt(this.random()) * weaponSpread(p);
+    const yaw = p.yaw + Math.cos(angle) * radius;
+    const pitch = p.pitch + Math.sin(angle) * radius;
+    p.lastShotAt = this.time;
+    p.bloom = Math.min(1.25, p.bloom + (input.aim ? .16 : .23));
     const direction={x:-Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
-    let closest=c.range,target=null,headshot=false;
-    for(const box of MAP.boxes)closest=Math.min(closest,rayBox(origin,direction,box,closest));
+    let closest=c.range,target=null,headshot=false,impact=null;
+    if (direction.y < 0) {
+      const ground = -origin.y / direction.y;
+      if (ground < closest) { closest = ground; impact = 'ground'; }
+    }
+    for(const box of MAP.boxes){
+      const distance=rayBox(origin,direction,box,closest);
+      if(distance<closest){closest=distance;impact=impactMaterial(box.kind);}
+    }
     for(const other of this.players.values()){
       if(other===p||!other.alive||other.team===p.team)continue;
-      const crouch=other.input.crouch,headY=other.y+(crouch?1.06:1.58),bodyY=other.y+(crouch?.62:.9);
-      const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.23);
-      const body=raySphere(origin,direction,{x:other.x,y:bodyY,z:other.z},crouch?.48:.61);
+      const crouch=other.input.crouch,headY=other.y+(crouch?1.06:1.58);
+      const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.15);
+      const body=rayCapsule(origin,direction,other.x,other.z,other.y+.26,other.y+(crouch?.79:1.25),.24);
       const hit=Math.min(head,body);
       if(hit<closest){closest=hit;target=other;headshot=head<body;}
     }
-    this.event('shot',{playerId:p.id,team:p.team,x:origin.x,y:origin.y,z:origin.z,tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,hit:!!target});
-    if(target){const falloff=clamp(1-Math.max(0,closest-35)/300,.65,1);this.damage(target,c.damage*falloff*(headshot?2:1),p);}
+    const hit = !!target && this.time >= target.invulnerableUntil;
+    if(target)impact=hit?'flesh':'shield';
+    this.event('shot',{playerId:p.id,classId:p.classId,team:p.team,shotSeq:p.shotSeq,x:origin.x,y:origin.y,z:origin.z,tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,hit,headshot:hit&&headshot,impact});
+    if(hit){const falloff=clamp(1-Math.max(0,closest-35)/300,.65,1);this.damage(target,c.damage*falloff*(headshot?2:1),p);}
   }
-  startReload(p){if(!p.reloading&&p.ammo<CLASSES[p.classId].mag&&p.reserve>0){p.reloading=true;p.reloadTime=p.classId==='support'?3.1:2;this.event('reload',{playerId:p.id});}}
+  startReload(p){
+    const weapon = CLASSES[p.classId];
+    if(p.reloading||p.ammo>=weapon.mag||p.reserve<=0)return;
+    p.reloading=true;
+    p.reloadTime=weapon.reload;
+    this.event('reload',{playerId:p.id,classId:p.classId,duration:weapon.reload,empty:p.ammo===0,x:p.x,z:p.z});
+  }
   gadget(p){
     if(p.gadgetTime>0)return;p.gadgetTime=12;let count=0;
     for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&dist(p,ally)<12){
@@ -188,18 +242,30 @@ export class Simulation {
       if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if(p.bot&&p.respawnIn===0)this.respawn(p.id);continue;}
       if(p.bot)this.thinkBot(p,dt);
       const i=p.input,c=CLASSES[p.classId];p.yaw=i.yaw;p.pitch=i.pitch;
-      p.cooldown=Math.max(0,p.cooldown-dt);p.gadgetTime=Math.max(0,p.gadgetTime-dt);p.grenadeCooldown=Math.max(0,(p.grenadeCooldown||0)-dt);
+      const pressed = i.fire && !p.fireHeld;
+      p.fireHeld = i.fire;
+      // Carry the fractional tick remainder through a burst so cadence stays on spec.
+      const firing = i.fire && !i.sprint;
+      const continuous = firing && (p.bot || !c.semiAuto) && !pressed && !p.reloading;
+      p.cooldown = Math.max(continuous ? -dt : 0, p.cooldown - dt);
+      p.bloom = Math.max(0, p.bloom - dt * (this.time - p.lastShotAt > .16 ? 3.6 : .4));
+      p.gadgetTime=Math.max(0,p.gadgetTime-dt);p.grenadeCooldown=Math.max(0,(p.grenadeCooldown||0)-dt);
       if(p.reloading){p.reloadTime-=dt;if(p.reloadTime<=0){const amount=Math.min(c.mag-p.ammo,p.reserve);p.ammo+=amount;p.reserve-=amount;p.reloading=false;}}
       if(i.reload||p.ammo===0)this.startReload(p);
       const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.55:i.aim?.7:1);
       const dx=(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
       const dz=(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
+      const oldX=p.x,oldZ=p.z;
       if(!this.collides(p.x+dx,p.z,p.y))p.x+=dx;if(!this.collides(p.x,p.z+dz,p.y))p.z+=dz;
+      p.moveSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/dt;
       if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=0;
       if(p.vy<=0)for(const box of MAP.boxes)if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+PLAYER_RADIUS*.6&&Math.abs(p.z-box.z)<box.d/2+PLAYER_RADIUS*.6)floor=Math.max(floor,box.h);
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
-      if(i.fire&&!i.sprint)this.shoot(p);
+      if(firing&&(p.bot||!c.semiAuto||pressed))this.shoot(p);
+      if(pressed&&firing&&p.ammo===0&&p.reserve===0&&!p.reloading&&p.cooldown<=0){
+        this.event('dryFire',{playerId:p.id,classId:p.classId,x:p.x,z:p.z});
+      }
       if(i.gadget)this.gadget(p);
       if(i.grenade&&!p.grenadeHeld)this.throwGrenade(p);p.grenadeHeld=i.grenade;
       if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
@@ -232,5 +298,19 @@ export class Simulation {
     if(this.tickets[0]<=0||this.tickets[1]<=0){this.winner=this.tickets[0]<=0?1:0;this.event('roundEnd',{winner:this.winner,reason:'tickets'});}
     else if(this.time>=480){const held=[this.points.filter(p=>p.owner===0).length,this.points.filter(p=>p.owner===1).length];this.winner=this.tickets[0]===this.tickets[1]?(held[0]>=held[1]?0:1):(this.tickets[0]>this.tickets[1]?0:1);this.event('roundEnd',{winner:this.winner,reason:'time'});}
   }
-  snapshot(){return {time:this.time,roundDuration:480,difficulty:this.difficulty,tickets:[...this.tickets],players:[...this.players.values()].map(p=>({id:p.id,name:p.name,team:p.team,classId:p.classId,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,hp:p.hp,alive:p.alive,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,respawnIn:p.respawnIn,reloading:p.reloading,shotSeq:p.shotSeq,crouch:p.input.crouch,sprint:p.input.sprint,bot:p.bot,protected:this.time<p.invulnerableUntil,gadgetCooldown:p.gadgetTime,grenades:p.grenades,spotted:p.spottedUntil>this.time})),points:this.points.map(p=>({...p})),events:this.events.map(e=>({...e})),grenades:this.grenades.map(g=>({id:g.id,x:g.x,y:g.y,z:g.z,team:g.team})),winner:this.winner};}
+  snapshot(){
+    const players=[...this.players.values()].map(p=>({
+      id:p.id,name:p.name,team:p.team,classId:p.classId,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
+      hp:p.hp,alive:p.alive,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,respawnIn:p.respawnIn,
+      reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/CLASSES[p.classId].reload,0,1):0,
+      shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:p.input.crouch,sprint:p.input.sprint&&p.moveSpeed>CLASSES[p.classId].speed,
+      aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
+      gadgetCooldown:p.gadgetTime,grenades:p.grenades,spotted:p.spottedUntil>this.time,
+    }));
+    return {
+      time:this.time,roundDuration:480,difficulty:this.difficulty,tickets:[...this.tickets],players,
+      points:this.points.map(p=>({...p})),events:this.events.map(e=>({...e})),
+      grenades:this.grenades.map(g=>({id:g.id,x:g.x,y:g.y,z:g.z,team:g.team})),winner:this.winner,
+    };
+  }
 }

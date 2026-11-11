@@ -1,10 +1,10 @@
 // The same geometry drives rendering, navigation, and server collision.
 export const PROTOCOL_VERSION=2;
 export const CLASSES = {
-  assault: { name: 'Штурмовик', weapon: 'AR-416', mag: 30, reserve: 150, damage: 27, interval: 0.105, spread: 0.012, speed: 6.3, range: 150 },
-  medic: { name: 'Медик', weapon: 'MCX-9', mag: 32, reserve: 160, damage: 23, interval: 0.082, spread: 0.016, speed: 6.5, range: 100 },
-  support: { name: 'Поддержка', weapon: 'MG-36', mag: 60, reserve: 240, damage: 25, interval: 0.115, spread: 0.021, speed: 5.8, range: 150 },
-  recon: { name: 'Разведчик', weapon: 'DMR-12', mag: 12, reserve: 60, damage: 62, interval: 0.5, spread: 0.004, speed: 6.1, range: 230 },
+  assault: { name: 'Штурмовик', weapon: 'AR-416', mag: 30, reserve: 150, damage: 27, interval: .105, spread: .012, recoil: .019, reload: 2, speed: 6.3, range: 150 },
+  medic: { name: 'Медик', weapon: 'MCX-9', mag: 32, reserve: 160, damage: 23, interval: .082, spread: .016, recoil: .012, reload: 2, speed: 6.5, range: 100 },
+  support: { name: 'Поддержка', weapon: 'MG-36', mag: 60, reserve: 240, damage: 25, interval: .115, spread: .021, recoil: .025, reload: 3.1, speed: 5.8, range: 150 },
+  recon: { name: 'Разведчик', weapon: 'DMR-12', mag: 12, reserve: 60, damage: 62, interval: .5, spread: .004, recoil: .043, reload: 2, semiAuto: true, speed: 6.1, range: 230 },
 };
 export const DIFFICULTIES = {
   recruit: { name: 'Новобранец', awareness: 43, reaction: .85, reactionVariance: .35, turnSpeed: 1.8, aimError: .031, burst: .28, pause: .95 },

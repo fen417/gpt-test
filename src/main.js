@@ -12,6 +12,7 @@ const audio=new CombatAudio();
 const canvas=$('game');
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
+let fireTap=false, recoilPitch=0, recoilYaw=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],seen=new Set(),toastTimer;
 let sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
@@ -36,18 +37,32 @@ document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('#mus
 document.addEventListener('keydown',event=>{if(!event.target.closest?.('#music-toggle'))unlockAudio();},{once:true});
 function local(){return state?.players.find(p=>p.id===localId);}
 function setBusy(value){busy=value;for(const id of ['solo','host','join-toggle'])$(id).disabled=value;}
-function clearControls(){keys.clear();pulses.clear();fire=false;aim=false;if(active&&localId){const neutral={yaw,pitch};simulation?.setInput(localId,neutral);multiplayer.clearInput(neutral);}}
+function clearControls(){keys.clear();pulses.clear();fire=false;fireTap=false;aim=false;recoilPitch=0;recoilYaw=0;if(active&&localId){const neutral={yaw,pitch};simulation?.setInput(localId,neutral);multiplayer.clearInput(neutral);}}
+function aimAngles(){
+  return { yaw:yaw+recoilYaw, pitch:Math.max(-1.45,Math.min(1.45,pitch+recoilPitch)) };
+}
 function receive(next){
   if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;show('result',false);show('death',false);toast('Новая операция началась');}
   state=next;const player=local();
   if(!active||!player)return;
-  if(player.alive&&!wasAlive){yaw=player.yaw;pitch=player.pitch;lastHp=player.hp;show('death',false);if(active&&!locked&&!unlocked)show('pause');}
+  if(player.alive&&!wasAlive){yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;show('death',false);if(active&&!locked&&!unlocked)show('pause');}
   if(!player.alive&&wasAlive){clearControls();document.exitPointerLock?.();show('pause',false);show('death');}
   if(player.hp<lastHp){damageUntil=performance.now()+350;}
   lastHp=player.hp;wasAlive=player.alive;
   for(const event of state.events??[]){
     if(seen.has(event.id))continue;seen.add(event.id);
-    if(event.type==='shot'&&event.playerId===localId&&event.hit)hitUntil=performance.now()+130;
+    if(event.type==='shot'&&event.playerId===localId){
+      const weapon=CLASSES[event.classId]??CLASSES[player.classId];
+      const impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
+      if(player.alive){
+        recoilPitch=Math.min(.12,recoilPitch+impulse);
+        recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin((event.shotSeq??event.id)*2.1)*impulse*.31));
+      }
+      if(event.hit){
+        hitUntil=performance.now()+(event.headshot?190:130);
+        $('hitmarker').classList.toggle('headshot',!!event.headshot);
+      }
+    }
     if(event.type==='kill'){feed.push({...event,expires:performance.now()+6500});if(event.killerId===localId){hitUntil=performance.now()+300;toast(`Цель устранена · ${event.victim}`);}}
     if(event.type==='capture'&&state.points.some(p=>p.id===event.pointId))toast(`Точка ${event.pointId} ${event.team===player.team?'захвачена вашим отрядом':'под контролем противника'}`);
     if(event.type==='gadget'&&event.playerId===localId)toast(`${gadgetNames[player.classId]} · Активировано`);
@@ -110,7 +125,7 @@ canvas.addEventListener('click',()=>{if(active&&!locked)requestControl();});
 document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===canvas;if(locked){show('pause',false);audio.unlock();}else{clearControls();if(active&&local()?.alive&&!finished)show('pause');}});
 document.addEventListener('pointerlockerror',()=>{if(active){show('pause');toast('Браузер не разрешил захват мыши. Нажми «Продолжить» ещё раз.');}});
 document.addEventListener('mousemove',event=>{if(!locked&&!(unlocked&&!unlockedPaused&&active&&aim))return;const factor=.0022*sensitivity*(aim?.65:1);yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));});
-document.addEventListener('mousedown',event=>{if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0)fire=true;if(event.button===2)aim=true;});
+document.addEventListener('mousedown',event=>{if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{
@@ -124,7 +139,7 @@ document.addEventListener('keydown',event=>{
 document.addEventListener('keyup',event=>{keys.delete(event.code);if(event.code==='Tab'){event.preventDefault();show('scoreboard',false);}});
 window.addEventListener('blur',clearControls);
 document.addEventListener('visibilitychange',()=>{clearControls();lastFrame=performance.now();accumulator=0;if(document.hidden)audio.ctx?.suspend?.();else if(audioStarted)unlockAudio();});
-function input(){const enabled=(locked||(unlocked&&!unlockedPaused))&&local()?.alive&&!finished;return {forward:enabled?Number(keys.has('KeyW'))-Number(keys.has('KeyS')):0,strafe:enabled?Number(keys.has('KeyD'))-Number(keys.has('KeyA')):0,yaw,pitch,sprint:enabled&&(keys.has('ShiftLeft')||keys.has('ShiftRight'))&&!aim,crouch:enabled&&(keys.has('KeyC')||keys.has('ControlLeft')),jump:enabled&&keys.has('Space'),fire:enabled&&fire,aim:enabled&&aim,reload:enabled&&pulses.has('KeyR'),gadget:enabled&&pulses.has('KeyQ'),grenade:enabled&&pulses.has('KeyG')};}
+function input(){const enabled=!!((locked||(unlocked&&!unlockedPaused))&&local()?.alive&&!finished), firing=enabled&&(fire||fireTap);return {forward:enabled?Number(keys.has('KeyW'))-Number(keys.has('KeyS')):0,strafe:enabled?Number(keys.has('KeyD'))-Number(keys.has('KeyA')):0,...aimAngles(),sprint:enabled&&(keys.has('ShiftLeft')||keys.has('ShiftRight'))&&!aim&&!firing,crouch:enabled&&(keys.has('KeyC')||keys.has('ControlLeft')),jump:enabled&&keys.has('Space'),fire:firing,aim:enabled&&aim,reload:enabled&&pulses.has('KeyR'),gadget:enabled&&pulses.has('KeyQ'),grenade:enabled&&pulses.has('KeyG')};}
 
 const mapctx=$('minimap').getContext('2d');
 function minimap(player){
@@ -147,7 +162,12 @@ function hud(now){
   const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
   $('capture-notice').replaceChildren();if(nearby&&player.alive){const strong=document.createElement('span'),small=document.createElement('small'),track=document.createElement('div'),fill=document.createElement('i');strong.textContent=`${nearby.id} · ${nearby.contested?'ТОЧКА ОСПАРИВАЕТСЯ':nearby.owner===player.team?'УДЕРЖАНИЕ ПОЗИЦИИ':'ЗАХВАТ ТОЧКИ'}`;small.textContent=`${nearby.name} · ${Math.round(Math.abs(nearby.progress)*100)}%`;track.className='capture-track';fill.style.width=`${Math.abs(nearby.progress)*100}%`;track.append(fill);$('capture-notice').append(strong,small,track);}
   feed=feed.filter(e=>e.expires>now).slice(-5);$('killfeed').replaceChildren(...feed.map(e=>{const row=document.createElement('div'),a=document.createElement('b'),b=document.createElement('em');row.classList.toggle('enemy-kill',e.team!==player.team);a.textContent=e.killer;b.textContent=e.victim;row.append(a,document.createTextNode(`  [${e.weapon||'ГРАНАТА'}]  `),b);return row;}));
-  $('crosshair').classList.toggle('aim',aim);$('crosshair').style.opacity=player.reloading?'0':'';$('hitmarker').style.opacity=now<hitUntil?'1':'0';$('damage-flash').style.opacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
+  const crosshair=$('crosshair');
+  const spread=player.spread??CLASSES[player.classId].spread*.66;
+  const projectedSpread=Math.tan(spread)*canvas.clientHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
+  crosshair.style.setProperty('--spread-gap',`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`);
+  crosshair.classList.toggle('aim',aim);crosshair.style.opacity=player.reloading||!player.alive?'0':'';
+  $('hitmarker').style.opacity=now<hitUntil?'1':'0';$('damage-flash').style.opacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
   if(!player.alive){text('death-countdown',player.respawnIn>0?`Возвращение в бой через ${Math.ceil(player.respawnIn)} с`:'Выбери точку и возвращайся в бой');$('respawn').disabled=player.respawnIn>0;const options=state.points.filter(p=>p.owner===player.team&&!p.contested),signature=options.map(p=>p.id).join('');if($('spawn-point').dataset.signature!==signature){$('spawn-point').dataset.signature=signature;$('spawn-point').replaceChildren(new Option('База команды',''),...options.map(p=>new Option(`${p.id} · ${p.name}`,p.id)));}}
   if(!$('scoreboard').classList.contains('hidden')){$('score-rows').replaceChildren(...[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||b.kills-a.kills).map(p=>{const row=document.createElement('div');row.className=`score-row team${p.team===player.team?0:1}${p.id===localId?' local':''}`;for(const value of [`${p.alive?'●':'×'} ${p.name}${p.bot?' [AI]':''}`,CLASSES[p.classId].name,`${p.kills} / ${p.deaths}`]){const span=document.createElement('span');span.textContent=value;row.append(span);}return row;}));}
   minimap(player);
@@ -156,8 +176,24 @@ function markers(){if(!renderer.project)return;const player=local();if(!player)r
 function frame(now){
   requestAnimationFrame(frame);const dt=Math.min((now-lastFrame)/1000,.08);lastFrame=now;frames++;fpsClock+=dt;
   if(fpsClock>=1){text('fps',`${Math.round(frames/fpsClock)} FPS`);fpsClock=0;frames=0;const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);canvas.dataset.renderStats=JSON.stringify(renderer.getStats?.()??{});}
-  if(active){if(locked||(unlocked&&!unlockedPaused)){yaw+=(Number(keys.has('ArrowLeft'))-Number(keys.has('ArrowRight')))*dt*1.7;pitch=Math.max(-1.45,Math.min(1.45,pitch+(Number(keys.has('ArrowUp'))-Number(keys.has('ArrowDown')))*dt*1.2));}lastInput=input();if(simulation){simulation.setInput(localId,lastInput);accumulator+=dt;let steps=0;while(accumulator>=1/60&&steps<6){simulation.step(1/60);accumulator-=1/60;steps++;}if(steps){receive(simulation.snapshot());pulses.clear();}}else{multiplayer.sendInput(lastInput);pulses.clear();}}
-  renderer.render(active?state:null,localId,dt,{yaw,pitch,aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,brightness,shake:cameraShake});
+  if(active){
+    recoilPitch*=Math.exp(-dt*8);recoilYaw*=Math.exp(-dt*10);
+    if(locked||(unlocked&&!unlockedPaused)){
+      yaw+=(Number(keys.has('ArrowLeft'))-Number(keys.has('ArrowRight')))*dt*1.7;
+      pitch=Math.max(-1.45,Math.min(1.45,pitch+(Number(keys.has('ArrowUp'))-Number(keys.has('ArrowDown')))*dt*1.2));
+    }
+    lastInput=input();
+    if(simulation){
+      simulation.setInput(localId,lastInput);accumulator+=dt;
+      let steps=0;
+      while(accumulator>=1/60&&steps<6){simulation.step(1/60);accumulator-=1/60;steps++;}
+      if(steps){receive(simulation.snapshot());pulses.clear();fireTap=false;}
+    }else{multiplayer.sendInput(lastInput);pulses.clear();fireTap=false;}
+  }
+  renderer.render(active?state:null,localId,dt,{...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,brightness,shake:cameraShake});
+  const scoped=active&&renderer.scoped;
+  show('scope-overlay',scoped);
+  document.body.classList.toggle('scoped',scoped);
   audio.update?.(dt,{state,local:local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim,locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
 }

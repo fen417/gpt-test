@@ -5,7 +5,7 @@ import { MAP, CLASSES, CAPTURE_RADIUS } from '../shared/world.js';
 import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign } from './visuals.js';
 import {prepareViewModel,distanceToCover,drawWorldAndViewModel} from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
-import { createSoldierRig, updateSoldierArms } from './soldier.js';
+import { createSoldierRig, animateSoldier } from './soldier.js';
 
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
 const clamp = THREE.MathUtils.clamp;
@@ -46,6 +46,12 @@ export class GameRenderer {
     this.swayY = 0;
     this.lastYaw = 0;
     this.lastPitch = 0;
+    this.handlingCycle = 0;
+    this.handlingMove = 0;
+    this.sprintBlend = 0;
+    this.strafeBlend = 0;
+    this.landDip = 0;
+    this.previousGrounded = true;
     this.cameraAnchor = new THREE.Vector3();
     this.cameraPlayerId = null;
     this.cameraAlive = null;
@@ -410,32 +416,15 @@ export class GameRenderer {
       }
       soldier.group.visible=true;
       if(!soldier.alive){soldier.initialized=false;soldier.group.rotation.x=0;soldier.deathAge=0;soldier.alive=true;}
-      const blend = soldier.initialized ? 1 - Math.exp(-dt * 18) : 1;
-      const distance = Math.hypot(player.x - soldier.lastX, player.z - soldier.lastZ);
-      if(state.time!==soldier.lastTime){
-        const elapsed=state.time-soldier.lastTime;
-        soldier.targetSpeed=elapsed>0&&elapsed<.5?Math.min(12,distance/elapsed):0;
-        soldier.lastTime=state.time;soldier.lastX=player.x;soldier.lastZ=player.z;
-      }
-      soldier.speed=lerp(soldier.speed,soldier.targetSpeed,1-Math.exp(-dt*10));soldier.walk+=soldier.speed*dt*2.6;
-      const move=clamp(soldier.speed/4,0,1),run=player.sprint?1:0;
-      soldier.group.position.lerp(this.scratchPosition.set(player.x, player.y || 0, player.z), blend);
+      const target=this.scratchPosition.set(player.x,player.y||0,player.z);
+      const reset=!soldier.initialized||soldier.group.position.distanceToSquared(target)>25;
+      const blend=reset?1:1-Math.exp(-dt*18);
+      soldier.group.position.lerp(target,blend);
       const yawDifference = Math.atan2(Math.sin((player.yaw || 0) - soldier.group.rotation.y), Math.cos((player.yaw || 0) - soldier.group.rotation.y));
       soldier.group.rotation.y += yawDifference * blend;
       const crouched = player.crouching || player.crouch;
-      soldier.pose.position.y=lerp(soldier.pose.position.y,crouched?-.34:0,blend);
-      soldier.head.rotation.x=(player.pitch||0)*.7;
-      if(player.shotSeq!==soldier.lastShot){soldier.recoil=1;soldier.lastShot=player.shotSeq;}
-      soldier.recoil*=Math.exp(-dt*18);soldier.rifle.rotation.x=(player.pitch||0)*.7+soldier.recoil*.08;
-      soldier.rifle.position.z=-.32+soldier.recoil*.025;soldier.flash.visible=soldier.recoil>.5;
-      for(let i=0;i<2;i++){
-        const phase=soldier.walk+i*Math.PI,swing=Math.sin(phase)*move*(run?.85:.55);
-        soldier.legs[i].rotation.x=swing+(crouched?-.65:0);
-        soldier.knees[i].rotation.x=Math.max(0,-Math.sin(phase))*.65*move+(crouched?1.1:0);
-      }
-      updateSoldierArms(soldier);
-      soldier.pose.rotation.z=Math.sin(soldier.walk)*.025*move;
       const distant=local&&Math.hypot(player.x-local.x,player.z-local.z)>(this.lowQuality?55:95);
+      if(!distant)animateSoldier(soldier,{dt,player,reset:reset||soldier.distant.visible});
       soldier.pose.visible=!distant;soldier.distant.visible=!!distant;
       soldier.marker.material.color.setHex(player.team === localTeam ? COLORS.friendly : COLORS.enemy);
       soldier.marker.visible = player.team === localTeam;
@@ -456,19 +445,41 @@ export class GameRenderer {
         const tx = event.tx ?? x - Math.sin(player?.yaw || 0) * 60;
         const ty = event.ty ?? y + Math.sin(player?.pitch || 0) * 60;
         const tz = event.tz ?? z - Math.cos(player?.yaw || 0) * 60;
-        const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, y, z), new THREE.Vector3(tx, ty, tz)]);
-        const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xffd99b, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
-        this.scene.add(line); this.effects.push({ mesh: line, age: 0, life: 0.065, type: 'tracer', ownedGeometry:true, ownedMaterial:true });
-        if (event.playerId === localId) {
-          this.kick = Math.max(this.kick, 1);
-          const yaw=player?.yaw||0,shell=new THREE.Mesh(this.geo.shell,this.shellMaterial);
-          shell.position.set(x+Math.cos(yaw)*.25,y-.1,z-Math.sin(yaw)*.25);shell.rotation.z=Math.PI/2;this.scene.add(shell);
-          this.effects.push({mesh:shell,age:0,life:1.25,type:'shell',vx:Math.cos(yaw)*2.4,vy:1.2+this.random(),vz:-Math.sin(yaw)*2.4,spin:8+this.random()*8});
+        const length=Math.hypot(tx-x,ty-y,tz-z);
+        const own=event.playerId===localId;
+        if(!own&&state.time-event.time>.27)continue;
+        const distance=Math.min(
+          this.camera.position.distanceToSquared(this.scratchPosition.set(x,y,z)),
+          this.camera.position.distanceToSquared(this.scratchPosition.set(tx,ty,tz)),
+        );
+        if(distance>165**2||this.effects.length>=145)continue;
+        if(length>7&&(event.shotSeq??event.id)%3===0){
+          const origin=new THREE.Vector3(x,y,z),direction=new THREE.Vector3(tx-x,ty-y,tz-z).multiplyScalar(1/length);
+          const geometry=new THREE.BufferGeometry().setFromPoints([origin,origin.clone().addScaledVector(direction,5)]);
+          const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:0xffca79,transparent:true,opacity:.75,blending:THREE.AdditiveBlending,depthWrite:false}));
+          line.frustumCulled=false;
+          this.scene.add(line);
+          this.effects.push({mesh:line,age:0,life:clamp(length/950,.048,.19),type:'tracer',origin,direction,length,ownedGeometry:true,ownedMaterial:true});
         }
-        const length=Math.hypot(tx-x,ty-y,tz-z),range=CLASSES[player?.classId]?.range||200;
-        if(this.effects.length<120&&length<range-1){
-          this.smoke(tx,ty,tz,event.hit?.2:.35,event.hit?.35:.8,event.hit?0x7d665b:0xaca998);
-          if(!event.hit&&!this.lowQuality)for(let i=0;i<2;i++)this.spark(tx,ty,tz);
+        if(own&&this.weapon.visible){
+          const yaw=player?.yaw||0,shell=new THREE.Mesh(this.geo.shell,this.shellMaterial);
+          this.weaponRig.bolt.getWorldPosition(shell.position);
+          shell.rotation.z=Math.PI/2;
+          this.scene.add(shell);
+          this.effects.push({mesh:shell,age:0,life:1.1,type:'shell',vx:Math.cos(yaw)*2.9,vy:.85+this.random()*.7,vz:-Math.sin(yaw)*2.9,spin:8+this.random()*8});
+          if(!this.lowQuality&&this.wallStow<.3&&(event.shotSeq??event.id)%2===0){
+            const muzzle=this.weaponRig.muzzleFlash.getWorldPosition(this.scratchPosition);
+            this.smoke(muzzle.x,muzzle.y,muzzle.z,.13,.42,0xa4a79b);
+          }
+        }
+        const range=CLASSES[player?.classId]?.range||200;
+        const impact=event.impact===undefined&&length<range-1?(event.hit?'flesh':'concrete'):event.impact;
+        if(impact==='metal'){
+          for(let i=0;i<(this.lowQuality?1:4);i++)this.spark(tx,ty,tz);
+          this.smoke(tx,ty,tz,.18,.32,0x92968e);
+        }else if(impact){
+          const colors={wood:0xb59b75,concrete:0xb9b2a0,ground:0x9a8666,flesh:0x827065,shield:0x8bc5ca};
+          this.smoke(tx,ty,tz,impact==='flesh'?.14:.28,impact==='shield'?.25:.57,colors[impact]??colors.concrete);
         }
       }
       if (event.type === 'explosion') {
@@ -501,7 +512,17 @@ export class GameRenderer {
         this.scene.remove(effect.mesh); if(effect.ownedGeometry)effect.mesh.geometry?.dispose();if(effect.ownedMaterial)effect.mesh.material?.dispose(); this.effects.splice(i, 1); continue;
       }
       const alpha = 1 - effect.age / effect.life;
-      if (effect.type === 'smoke') {
+      if(effect.type==='tracer'){
+        const head=Math.min(effect.length,4+effect.age/effect.life*effect.length);
+        const tail=Math.max(.75,head-11);
+        const positions=effect.mesh.geometry.attributes.position;
+        for(const [index,distance] of [[0,tail],[1,head]]){
+          const {origin,direction}=effect;
+          positions.setXYZ(index,origin.x+direction.x*distance,origin.y+direction.y*distance,origin.z+direction.z*distance);
+        }
+        positions.needsUpdate=true;
+        effect.mesh.material.opacity=alpha*.8;
+      }else if (effect.type === 'smoke') {
         effect.mesh.position.x += effect.vx * dt; effect.mesh.position.z += effect.vz * dt; effect.mesh.position.y += dt * 0.8;
         effect.mesh.scale.setScalar(effect.size * (1 + effect.age * 1.5)); effect.mesh.material.opacity = alpha * 0.55;
       } else if(effect.type==='spark'||effect.type==='shell'){
@@ -539,6 +560,7 @@ export class GameRenderer {
 
   render(state, localId, dt, view = {}) {
     dt = Math.min(dt || 0.016, 0.1); this.clock += dt;
+    this.scoped=false;
     const baseFov=clamp(Number(view.fov)||85,65,105),shake=view.shake!==false;
     this.renderer.toneMappingExposure=1.06*clamp(Number(view.brightness)||1,.6,1.5);
     const low = view.quality === 'low';
@@ -570,16 +592,29 @@ export class GameRenderer {
       const height = isAlive ? (crouching ? 1.05 : 1.65) : 0.5;
       const coverDistance=distanceToCover({x:player.x,y:(player.y||0)+height,z:player.z},{x:-Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)},MAP.boxes,1.6);
       this.wallStow=lerp(this.wallStow,clamp((1.45-coverDistance)/1.05,0,1),1-Math.exp(-dt*14));
-      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && this.wallStow<.2 ? 1 : 0, 1 - Math.exp(-dt * 15));
-      this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 8));
-      if(player.reloading&&!this.wasReloading)this.reloadStarted=this.clock;
+      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !player.reloading && this.wallStow<.2 ? 1 : 0, 1 - Math.exp(-dt * 15));
+      this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
+      const weapon=CLASSES[player.classId]??CLASSES.assault;
+      const observedReload=Number.isFinite(player.reloadProgress)?player.reloadProgress:null;
+      if(player.reloading&&(!this.wasReloading||this.lastReloadProgress!==observedReload)){
+        if(!this.wasReloading||observedReload!==null)this.reloadStarted=this.clock-(observedReload??0)*weapon.reload;
+        this.lastReloadProgress=observedReload;
+      }
       this.wasReloading=!!player.reloading;
-      const reloadPhase=player.reloading?clamp((this.clock-(this.reloadStarted||this.clock))/(player.classId==='support'?3.1:2),0,1):1;
+      const reloadPhase=player.reloading?clamp((this.clock-(this.reloadStarted??this.clock))/weapon.reload,0,1):1;
       const reloadMotion=Math.sin(reloadPhase*Math.PI)*this.reloadAmount;
-      const moving = view.move ? 1 : 0;
-      const sprint = view.sprint && !view.aim;
-      const bob = moving * (1 - this.aimAmount * 0.8);
-      const cycle = this.clock * (sprint ? 13 : 9);
+      const moving=clamp(Number(view.move)||0,0,1);
+      const grounded=player.grounded!==false;
+      const sprint=view.sprint&&!view.aim&&moving>.1&&!player.reloading;
+      this.handlingMove=lerp(this.handlingMove,grounded?moving:0,1-Math.exp(-dt*9));
+      this.sprintBlend=lerp(this.sprintBlend,sprint?1:0,1-Math.exp(-dt*11));
+      this.strafeBlend=lerp(this.strafeBlend,Number(view.strafe)||0,1-Math.exp(-dt*9));
+      if(grounded&&!this.previousGrounded)this.landDip=.09;
+      this.previousGrounded=grounded;
+      this.landDip*=Math.exp(-dt*12);
+      this.handlingCycle+=dt*lerp(crouching?7:10,15,this.sprintBlend);
+      const cycle=this.handlingCycle;
+      const bob=this.handlingMove*(1-this.aimAmount*.84)*(crouching?.65:1);
       const target = this.scratchPosition.set(player.x, player.y || 0, player.z);
       // Smooth authoritative 20 Hz movement without delaying mouse look. A
       // respawn/teleport must never drag the camera across the entire map.
@@ -588,14 +623,14 @@ export class GameRenderer {
         this.lastYaw = yaw; this.lastPitch = pitch;
       } else this.cameraAnchor.lerp(target, 1 - Math.exp(-dt * 28));
       this.cameraPlayerId = localId; this.cameraAlive = isAlive;
-      this.camera.position.set(this.cameraAnchor.x, this.cameraAnchor.y + height + (shake?Math.sin(cycle * 2) * 0.018 * bob:0), this.cameraAnchor.z);
+      this.camera.position.set(this.cameraAnchor.x, this.cameraAnchor.y + height + (shake?Math.sin(cycle * 2) * .016 * bob-this.landDip*.4:0), this.cameraAnchor.z);
       this.kick = Math.max(view.recoil || 0, this.kick * Math.exp(-dt * 16));
       if (player.shotSeq !== undefined && player.shotSeq !== this.lastShot) {
         if (this.lastShot !== -1) this.kick = 1;
         this.lastShot = player.shotSeq;
       }
-      this.camera.rotation.set(pitch + (shake?this.kick * 0.008:0), yaw, moving&&shake ? Math.sin(cycle) * 0.0018 : 0, 'YXZ');
-      const fov = lerp(sprint ? baseFov+6 : baseFov, baseFov-(player.classId==='recon'?38:23), this.aimAmount);
+      this.camera.rotation.set(pitch,yaw,shake?Math.sin(cycle)*.003*bob-this.strafeBlend*.005:0,'YXZ');
+      const fov = lerp(baseFov+this.sprintBlend*6,baseFov-(player.classId==='recon'?38:23),this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
         this.camera.near = .045;
@@ -604,14 +639,20 @@ export class GameRenderer {
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
-      this.weapon.visible = isAlive;
-      this.weaponRig.update({ classId: player.classId, aim: this.aimAmount, reloadMotion, kick: this.kick, clock: this.clock });
+      this.scoped=isAlive&&player.classId==='recon'&&this.aimAmount>=.92;
+      this.weapon.visible=isAlive&&!this.scoped;
+      this.weaponRig.update({classId:player.classId,aim:this.aimAmount,reloadMotion,reloadPhase,reloadEmpty:player.ammo===0,kick:this.kick,clock:this.clock});
+      const kick=this.kick*clamp(weapon.recoil/.019,.7,1.65);
       this.weapon.position.set(
-        lerp(0.26, 0, this.aimAmount) + Math.sin(cycle) * 0.012 * bob - this.swayX,
-        lerp(-0.23, -0.167, this.aimAmount) + Math.abs(Math.cos(cycle)) * 0.012 * bob - this.swayY - reloadMotion * 0.12,
-        lerp(-0.42, -0.32, this.aimAmount) + this.kick * 0.045 + reloadMotion * 0.08,
+        lerp(.26,0,this.aimAmount)+Math.sin(cycle)*.015*bob-this.swayX+this.sprintBlend*.035,
+        lerp(-.23,-.167,this.aimAmount)+Math.cos(cycle*2)*.01*bob-this.swayY-reloadMotion*.10-this.sprintBlend*.07-this.landDip*.75,
+        lerp(-.42,-.32,this.aimAmount)+kick*.056+reloadMotion*.06,
       );
-      this.weapon.rotation.set(this.kick * 0.045 - reloadMotion * 0.45, reloadMotion * -0.18 + (sprint ? 0.2 : 0), reloadMotion * -0.5 + (sprint ? 0.14 : 0));
+      this.weapon.rotation.set(
+        kick*.062-reloadMotion*.39-this.sprintBlend*.25+Math.cos(cycle)*bob*.022,
+        -reloadMotion*.22+this.sprintBlend*.34+this.strafeBlend*.028*(1-this.aimAmount),
+        -reloadMotion*.47+this.sprintBlend*.24+Math.sin(cycle)*bob*.018,
+      );
       this.weapon.position.y-=this.wallStow*.28;this.weapon.position.z+=this.wallStow*.18;this.weapon.rotation.x-=this.wallStow*.85;
       this.sun.position.set(this.cameraAnchor.x-90,75,this.cameraAnchor.z+65);this.sun.target.position.set(this.cameraAnchor.x,0,this.cameraAnchor.z);
     }
