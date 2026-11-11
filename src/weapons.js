@@ -209,7 +209,15 @@ export function createWeaponRig(owner = {}) {
     curve(rifleFeed,[[side*.036,-.13,-.094-i*.022],[side*.037,-.23,-.108-i*.022],[side*.036,-.301,-.133-i*.022]],.0032,metal,10,8);
   }
   // AK-12M deep curved ribbed magazine with ammo inspection window
-  profile(akFeed,[[-.158,-.090],[-.074,-.090],[-.068,-.175],[-.092,-.278],[-.138,-.358],[-.218,-.332],[-.182,-.242],[-.158,-.165]],.069,bakelite,{bevel:.005});
+  const akMagazine = profile(akFeed,[[-.158,-.090],[-.074,-.090],[-.068,-.175],[-.092,-.278],[-.138,-.358],[-.218,-.332],[-.182,-.242],[-.158,-.165]],.069,bakelite,{bevel:.005});
+  // Taper the top inside the receiver so the two bevels have separate surfaces.
+  const neck = akMagazine.geometry.getAttribute('position');
+  for(let i=0;i<neck.count;i++){
+    const height=neck.getY(i);
+    const taper=THREE.MathUtils.smoothstep(height,-.165,-.09);
+    neck.setX(i,neck.getX(i)*(1-.32*taper));
+  }
+  akMagazine.geometry.computeVertexNormals();
   profile(akFeed,[[-.220,-.325],[-.136,-.352],[-.130,-.368],[-.224,-.342]],.078,dark,{bevel:.002});
   for(const side of [-1,1])for(let i=0;i<5;i++){
     rounded(akFeed,side*.036,-.145-i*.038,-.118-i*.012,.004,.012,.052,dark).rotation.x=.28;

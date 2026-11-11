@@ -236,6 +236,10 @@ export function makeSky(scene, renderer) {
 }
 
 export function addDistrictDetails(owner, MAP) {
+  if (MAP.roads) {
+    addWarehouseDetails(owner, MAP.structures);
+    return;
+  }
   const { scene, materials: m, surfaces, random } = owner; const size = MAP.size || 200, limit = size / 2;
   const blocked = (x, z, margin = 1) => (MAP.boxes || []).some(b => Math.abs(x - b.x) < b.w / 2 + margin && Math.abs(z - b.z) < b.d / 2 + margin);
   const puddleMaterial = pairMaterials(
@@ -313,12 +317,17 @@ export function addDistrictDetails(owner, MAP) {
   );
   addSectorInstances(scene, new THREE.IcosahedronGeometry(1, 0), crownMat, treeCrowns, false);
   addSectorInstances(scene, new THREE.CylinderGeometry(.2, .35, 1, 6), m.rust, treeTrunks, false);
+  addWarehouseDetails(owner, MAP.structures);
+}
+
+function addWarehouseDetails(owner, structures = []) {
+  const { scene, materials: m, surfaces } = owner;
   const warehouseRoofMat = clonePairedMaterial(surfaces.metal, 0x65787b);
   const warehouseFloorMat = clonePairedMaterial(surfaces.concrete, 0xa59f90, 0xffd9a2, 0.06);
   for (const mat of [warehouseFloorMat, warehouseFloorMat._lowMaterial]) {
     if (mat) { mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -1; }
   }
-  for (const structure of MAP.structures || []) {
+  for (const structure of structures) {
     const { x, z, w, d, h } = structure;
     if (structure.roof !== false) {
       owner.box(scene, x, h + .15, z, w + .8, .26, d + .8, warehouseRoofMat);

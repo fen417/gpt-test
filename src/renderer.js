@@ -1,11 +1,14 @@
 ﻿import * as THREE from 'three';
+import { addQuarryGround } from './quarry-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { MAP, CLASSES, CLASS_WEAPONS, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
+import { getMap, CLASSES, CLASS_WEAPONS, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
 import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
 import { drawFlagBanner } from './logos.js';
+import { TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicles.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
   soldierHit, soldierThrow, beginDeath, animateDeath,
@@ -110,6 +113,7 @@ export class GameRenderer {
     this.flags = new Map();
     this.grenadeMeshes = new Map();
     this.activeGrenades = new Set();
+    this.vehicleRigs = new Map();
     this.gadgetDeployables = [];
     this.throwTimer = 0;
     this.throwDuration = 0.68;
@@ -244,21 +248,12 @@ export class GameRenderer {
       stripe: material(0xc49a38, 0.65, 0.2), skyline: material(0x697476), crane: material(0x776f57, 0.8, 0.4),
       glow: new THREE.MeshBasicMaterial({ color: 0xffd8a1 }),
     };
-    this.buildWorld();
-    this.mergeStaticWorld();
     this.worldRoot = new THREE.Group();
-    for (const object of [...this.scene.children]) {
-      if (!object.isLight && object !== this.camera && object !== this.sun.target) this.worldRoot.add(object);
-    }
+    this.worldRoot.add(this.atmosphere.sky);
     this.scene.add(this.worldRoot);
-    this.scene.updateMatrixWorld(true);
+    this.worlds = new Map();
+    this.setMap();
     this.scene.matrixAutoUpdate = false;
-    this.worldRoot.traverse(object => {
-      if (object !== this.atmosphere.sky) {
-        object.matrixAutoUpdate = false;
-        object.matrixWorldAutoUpdate = false;
-      }
-    });
     this.buildWeapon();
     this.scene.traverse(object => { if (object.isLight) object.layers.enable(1); });
     // Keep the light count constant (1 blast light) so shader programs stay cached and fast.
@@ -402,54 +397,98 @@ export class GameRenderer {
     }
   }
 
+  setMap(mapId) {
+    const map = getMap(mapId);
+    if (this.map === map) return;
+    this.clearVehicles();
+    this.map = map;
+    this.scene.fog.density = map.fogDensity ?? .0034;
+    this.staticRoot?.removeFromParent();
+    let world = this.worlds.get(map.id);
+    if (!world) {
+      const existing = new Set(this.scene.children);
+      const random = this.random;
+      this.random = seeded();
+      this.flags = new Map();
+      this.buildWorld();
+      this.mergeStaticWorld(existing);
+      this.random = random;
+      const root = new THREE.Group();
+      for (const object of [...this.scene.children]) if (!existing.has(object)) root.add(object);
+      root.updateMatrixWorld(true);
+      root.traverse(object => {
+        optimizeLighting(object);
+        object.matrixAutoUpdate = false;
+        object.matrixWorldAutoUpdate = false;
+      });
+      world = { root, flags: this.flags };
+      this.worlds.set(map.id, world);
+    }
+    this.staticRoot = world.root;
+    this.flags = world.flags;
+    for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }
+    this.worldRoot.add(this.staticRoot);
+    if (this.lowQuality !== undefined) this.staticRoot.traverse(object => {
+      const mat = object.material;
+      const next = this.lowQuality ? mat?._lowMaterial : mat?._highMaterial;
+      if (next) object.material = next;
+    });
+    this.staticMenuShadows = false;
+    this.cameraPlayerId = null;
+  }
+
   buildWorld() {
     const random = this.random;
-    const size = MAP.size || 200;
+    const size = this.map.size || 200;
     const groundGeometry = new THREE.PlaneGeometry(size + 250, size + 250);
     const guv = groundGeometry.attributes.uv;
     for (let i = 0; i < guv.count; i++) guv.setXY(i, guv.getX(i) * (size + 250) / 9, guv.getY(i) * (size + 250) / 9);
     const ground = new THREE.Mesh(groundGeometry, this.surfaces.ground);
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.scene.add(ground);
-    // Painted service roads use clean depth separation and polygonOffset to prevent shadow/depth z-fighting.
-    const crossStreets = size > 250 ? [-110, -40, 0, 40, 110] : [0];
-    // End the avenue at each crossing instead of stacking asphalt surfaces.
-    const roadEdge = size / 2 + 5;
-    const road = (x, z, w, d) => {
-      const m = this.box(this.scene, x, .035, z, w, .07, d, this.materials.asphalt, false);
-      m.receiveShadow = true;
-      return m;
-    };
-    let avenueStart = -roadEdge;
-    for (const z of crossStreets) {
-      const avenueEnd = z - 7.5;
-      road(0, (avenueStart + avenueEnd) / 2, 24, avenueEnd - avenueStart);
-      road(0, z, size + 10, 15);
-      avenueStart = z + 7.5;
-    }
-    road(0, (avenueStart + roadEdge) / 2, 24, roadEdge - avenueStart);
-    // Raised concrete sidewalks along the main avenue and cross streets
-    for (const side of [-1, 1]) {
-      let curbStart = -roadEdge;
+    if (this.map.roads) addQuarryGround(this, this.map, ground);
+    else {
+      // Painted service roads use clean depth separation and polygonOffset to prevent shadow/depth z-fighting.
+      const crossStreets = size > 250 ? [-110, -40, 0, 40, 110] : [0];
+      // End the avenue at each crossing instead of stacking asphalt surfaces.
+      const roadEdge = size / 2 + 5;
+      const road = (x, z, w, d) => {
+        const m = this.box(this.scene, x, .035, z, w, .07, d, this.materials.asphalt, false);
+        m.receiveShadow = true;
+        return m;
+      };
+      let avenueStart = -roadEdge;
       for (const z of crossStreets) {
-        const curbEnd = z - 7.8;
-        this.box(this.scene, side * 12.6, .075, (curbStart + curbEnd) / 2, 1.2, .15, curbEnd - curbStart, this.materials.edge, false);
-        curbStart = z + 7.8;
+        const avenueEnd = z - 7.5;
+        road(0, (avenueStart + avenueEnd) / 2, 24, avenueEnd - avenueStart);
+        road(0, z, size + 10, 15);
+        avenueStart = z + 7.5;
       }
-      this.box(this.scene, side * 12.6, .075, (curbStart + roadEdge) / 2, 1.2, .15, roadEdge - curbStart, this.materials.edge, false);
-    }
-    for (let i = -size / 2 + 8; i < size / 2; i += 10) {
-      if (crossStreets.every(z => Math.abs(i - z) > 9)) {
-        const mark = this.box(this.scene, 0, 0.048, i, 0.16, 0.09, 4.8, this.materials.marking, false);
-        mark.receiveShadow = true;
+      road(0, (avenueStart + roadEdge) / 2, 24, roadEdge - avenueStart);
+      // Raised concrete sidewalks along the main avenue and cross streets
+      for (const side of [-1, 1]) {
+        let curbStart = -roadEdge;
+        for (const z of crossStreets) {
+          const curbEnd = z - 7.8;
+          this.box(this.scene, side * 12.6, .075, (curbStart + curbEnd) / 2, 1.2, .15, curbEnd - curbStart, this.materials.edge, false);
+          curbStart = z + 7.8;
+        }
+        this.box(this.scene, side * 12.6, .075, (curbStart + roadEdge) / 2, 1.2, .15, roadEdge - curbStart, this.materials.edge, false);
       }
-      for (const z of crossStreets) if (Math.abs(i) > 15) {
-        const mark = this.box(this.scene, i, 0.048, z, 4.8, 0.09, 0.16, this.materials.marking, false);
-        mark.receiveShadow = true;
+      for (let i = -size / 2 + 8; i < size / 2; i += 10) {
+        if (crossStreets.every(z => Math.abs(i - z) > 9)) {
+          const mark = this.box(this.scene, 0, 0.048, i, 0.16, 0.09, 4.8, this.materials.marking, false);
+          mark.receiveShadow = true;
+        }
+        for (const z of crossStreets) if (Math.abs(i) > 15) {
+          const mark = this.box(this.scene, i, 0.048, z, 4.8, 0.09, 0.16, this.materials.marking, false);
+          mark.receiveShadow = true;
+        }
       }
     }
     const windowMatrices = [], litMatrices = [], frameMatrices = [];
     const dummy = new THREE.Object3D();
-    for (const b of MAP.boxes || []) {
+    for (const b of this.map.boxes || []) {
+      if (b.kind === 'rock') continue;
       const h = b.h ?? 3, w = b.w ?? 4, d = b.d ?? 4;
       const specialProp = ['truck', 'car', 'tent', 'tree', 'sandbags', 'fueltank', 'generator', 'kiosk'].includes(b.kind);
       const building = h > 5 && !['wall', 'pillar'].includes(b.kind) && !specialProp;
@@ -676,17 +715,19 @@ export class GameRenderer {
     for (const [matrices, mat] of [[frameMatrices, this.materials.edge], [windowMatrices, this.materials.window], [litMatrices, litWindowMat]]) {
       addSectorInstances(this.scene, this.geo.box, mat, matrices);
     }
-    // The non-playable port skyline encloses the battlefield.
     const limit = size / 2;
-    for (let i = 0; i < 18; i++) {
-      const angle = (i / 18) * Math.PI * 2;
-      const x = Math.sin(angle) * (limit + 35 + random() * 30), z = Math.cos(angle) * (limit + 35 + random() * 30);
-      const height = 12 + random() * 28;
-      this.box(this.scene, x, height / 2 - 0.3, z, 12 + random() * 15, height, 10 + random() * 20, this.materials.skyline, false);
+    if (!this.map.roads) {
+      // The non-playable port skyline encloses the battlefield.
+      for (let i = 0; i < 18; i++) {
+        const angle = (i / 18) * Math.PI * 2;
+        const x = Math.sin(angle) * (limit + 35 + random() * 30), z = Math.cos(angle) * (limit + 35 + random() * 30);
+        const height = 12 + random() * 28;
+        this.box(this.scene, x, height / 2 - 0.3, z, 12 + random() * 15, height, 10 + random() * 20, this.materials.skyline, false);
+      }
+      for (let i = 0; i < 3; i++) this.crane(-limit - 20 + i * 45, -limit - 28, i * 0.5);
     }
-    for (let i = 0; i < 3; i++) this.crane(-limit - 20 + i * 45, -limit - 28, i * 0.5);
-    for (const point of MAP.points || []) this.makeFlag(point);
-    addDistrictDetails(this, MAP);
+    for (const point of this.map.points || []) this.makeFlag(point);
+    addDistrictDetails(this, this.map);
     // Boundary fence posts and wire are outside playable ground.
     const fenceMat = material(0x697674, 0.7, 0.45, {}, this.integratedGpu);
     for (let i = -limit; i <= limit; i += 10) {
@@ -714,12 +755,12 @@ export class GameRenderer {
     this.box(group, 18, 10.5, 0, 0.6, 0.3, 0.6, this.materials.steel, false);
   }
 
-  mergeStaticWorld() {
+  mergeStaticWorld(existing) {
     // Batch immutable map details by material, keeping animated flags separate.
     this.scene.updateMatrixWorld(true);
     const dynamic = new Set([...this.flags.values()].map(f => f.group));
     const batches = new Map();
-    this.scene.traverse(object => {
+    for (const root of this.scene.children) if (!existing.has(root)) root.traverse(object => {
       if (!object.isMesh || object.isInstancedMesh || object.userData.noBatch || Array.isArray(object.material)) return;
       for (let node = object; node; node = node.parent) if (dynamic.has(node) || node === this.camera) return;
       const sector = object.material.transparent ? 'transparent' : mapSector(object.matrixWorld);
@@ -803,6 +844,57 @@ export class GameRenderer {
     soldier.marker.material.dispose();
   }
 
+  clearVehicles() {
+    for (const rig of this.vehicleRigs.values()) disposeVehicleRig(rig);
+    this.vehicleRigs.clear();
+  }
+
+  updateVehicles(state, player, dt, view) {
+    const active = new Set();
+    const blend = 1 - Math.exp(-dt * 22);
+    let mounted = null;
+    for (const vehicle of state.vehicles ?? []) {
+      active.add(vehicle.id);
+      let rig = this.vehicleRigs.get(vehicle.id);
+      const local = player?.vehicleId === vehicle.id && player.alive !== false;
+      const distance = player ? Math.hypot(vehicle.x - player.x, vehicle.z - player.z) : 0;
+      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > 190)) {
+        if (rig) {
+          rig.group.visible = false;
+          rig.initialized = false;
+          rig.gunSeq = undefined;
+        }
+        continue;
+      }
+      if (!rig) {
+        rig = createVehicleRig(vehicle.type, material, TEAM_COLORS);
+        rig.group.traverse(object => {
+          optimizeLighting(object);
+          if (object.material) object.material = this.getQualityMaterial(object.material);
+        });
+        this.vehicleRigs.set(vehicle.id, rig);
+        this.worldRoot.add(rig.group);
+      }
+      rig.group.visible = true;
+      updateVehicleRig(rig, vehicle, player, dt, blend, view, this.lowQuality);
+      if (local) mounted = { vehicle, rig };
+      const damaged = vehicle.hp < vehicle.maxHp * .33;
+      if (damaged && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
+        rig.nextSmoke = this.clock + (vehicle.hp > 0 ? .35 : .16);
+        const atv = vehicle.type === 'atv', z = atv ? -.79 : -1.74;
+        this.smoke(vehicle.x + Math.sin(vehicle.yaw)*z, atv ? .88 : 1.20,
+          vehicle.z + Math.cos(vehicle.yaw)*z, local ? .19 : vehicle.hp > 0 ? .34 : .68,
+          local ? .62 : 1.6, 0x50504a);
+      }
+    }
+    for (const [id, rig] of this.vehicleRigs) {
+      if (active.has(id)) continue;
+      disposeVehicleRig(rig);
+      this.vehicleRigs.delete(id);
+    }
+    return mounted;
+  }
+
   updateSoldiers(state, localId, dt) {
     const active = this.activeSoldiers;
     active.clear();
@@ -820,6 +912,14 @@ export class GameRenderer {
     for (const player of state.players) {
       if (player.id === localId) continue;
       active.add(player.id);
+      if (player.vehicleId && player.alive !== false) {
+        const soldier = this.soldiers.get(player.id);
+        if (soldier) {
+          soldier.group.removeFromParent();
+          soldier.initialized = false;
+        }
+        continue;
+      }
       const weaponId = player.weaponId || defaultWeaponId(player.classId);
       let soldier = this.soldiers.get(player.id);
       if (soldier && (soldier.classId !== player.classId || soldier.team !== player.team || soldier.weaponId !== weaponId)) {
@@ -1417,6 +1517,7 @@ export class GameRenderer {
   }
 
   render(state, localId, dt, view = {}) {
+    this.setMap(state?.mapId ?? view.mapId);
     const rawDt = dt || 0.016;
     dt = Math.min(rawDt, 0.1); this.clock += dt;
     this.scoped = false;
@@ -1447,7 +1548,8 @@ export class GameRenderer {
     this.renderer.toneMappingExposure = 1.06 * clamp(Number(view.brightness) || 1, .6, 1.5);
     if (!state?.players) {
       this.cameraPlayerId = null;
-      const angle = this.clock * 0.012, radius = Math.min(MAP.size * .36, 130);
+      if (this.vehicleRigs.size) this.clearVehicles();
+      const angle = this.clock * 0.012, radius = Math.min(this.map.size * .36, 130);
       this.camera.position.set(Math.sin(angle + 0.9) * radius, 58 + Math.sin(this.clock * .025) * 8, Math.cos(angle + 0.9) * radius);
       this.camera.lookAt(0, 3, -12); this.weapon.visible = false;
       this.atmosphere.sky.position.copy(this.camera.position);
@@ -1480,6 +1582,7 @@ export class GameRenderer {
     const gadgetPhase = this.gadgetTimer > 0 ? 1 - this.gadgetTimer / this.gadgetDuration : 0;
     const player = state.players.find(p => p.id === localId);
     const isAlive = player?.alive !== false;
+    const mounted = this.updateVehicles(state, player, dt, view);
     if (player && !isAlive) {
       const focusX = view.deployTarget?.x ?? player.x ?? 0;
       const focusZ = view.deployTarget?.z ?? player.z ?? 0;
@@ -1504,11 +1607,31 @@ export class GameRenderer {
         this.camera.updateProjectionMatrix();
       }
       this.updateSunShadow(focusX, focusZ);
+    } else if (mounted) {
+      const { vehicle, rig } = mounted;
+      const seat = VEHICLE_TYPES[vehicle.type].seats[player.vehicleSeat];
+      const yaw = view.yaw ?? player.yaw;
+      const pitch = view.pitch ?? player.pitch;
+      rig.body.updateWorldMatrix(true, false);
+      this.camera.position.set(seat.x, seat.height, seat.z).applyMatrix4(rig.body.matrixWorld);
+      if (shake) this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012,Math.abs(vehicle.speed)*.001);
+      this.camera.rotation.set(seat.role === 'gunner' ? clamp(pitch,TURRET_MIN_PITCH,TURRET_MAX_PITCH) : pitch,
+        yaw,shake ? rig.body.rotation.z : 0,'YXZ');
+      this.cameraPlayerId = null;
+      this.cameraAlive = true;
+      this.weapon.visible = false;
+      this.wallStow = this.aimAmount = this.sprintBlend = 0;
+      if (Math.abs(this.camera.fov - baseFov) > .03 || this.camera.near !== .045) {
+        this.camera.fov = baseFov;
+        this.camera.near = .045;
+        this.camera.updateProjectionMatrix();
+      }
+      this.updateSunShadow(vehicle.x, vehicle.z);
     } else if (player) {
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
       const crouching = view.crouch ?? player.crouching ?? player.crouch;
       const height = isAlive ? (crouching ? 1.05 : 1.65) : 0.5;
-      const coverDistance = distanceToCover({ x: player.x, y: (player.y || 0) + height, z: player.z }, { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, MAP.boxes, 1.6);
+      const coverDistance = distanceToCover({ x: player.x, y: (player.y || 0) + height, z: player.z }, { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, this.map.boxes, 1.6);
       this.wallStow = lerp(this.wallStow, clamp((1.45 - coverDistance) / 1.05, 0, 1), 1 - Math.exp(-dt * 14));
       this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !player.reloading && this.throwTimer <= 0 && this.gadgetTimer <= 0 && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
@@ -1651,6 +1774,7 @@ export class GameRenderer {
   }
 
   dispose() {
+    this.clearVehicles();
     const geometries = new Set(), materials = new Set(), textures = new Set();
     const collect = object => {
       if (object.geometry) geometries.add(object.geometry);
@@ -1659,6 +1783,7 @@ export class GameRenderer {
       }
     };
     this.scene.traverse(collect);
+    for (const world of this.worlds.values()) if (!world.root.parent) world.root.traverse(collect);
     for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(collect);
     for (const soldier of this.soldierTemplates.values()) soldier.group.traverse(collect);
     for (const pool of Object.values(this.effectPools)) for (const effect of pool) collect(effect.mesh);

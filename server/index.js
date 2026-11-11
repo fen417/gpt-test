@@ -4,19 +4,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { Simulation } from '../shared/simulation.js';
-import { MAP, PROTOCOL_VERSION } from '../shared/world.js';
+import { Simulation, sanitizeInput } from '../shared/simulation.js';
+import { PROTOCOL_VERSION } from '../shared/world.js';
 
 const port=process.env.PORT===undefined?8080:Number(process.env.PORT);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist');
 const maxPlayers=Math.min(32,Math.max(2,Number(process.env.MAX_PLAYERS)||16));
 const botCount=Math.min(31,Math.max(0,Number(process.env.BOTS??23)||0));
 const difficulty=process.env.DIFFICULTY||'regular';
-let simulation=new Simulation({bots:botCount,difficulty});
+const mapId=process.env.MAP_ID;
+let simulation=new Simulation({bots:botCount,difficulty,mapId});
 let roundResetAt=0;
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp','.woff2':'font/woff2'};
 const server=http.createServer(async(req,res)=>{
-  if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({ok:true,players:clients.size,bots:botCount,difficulty:simulation.difficulty,time:simulation.time}));return;}
+  if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({ok:true,players:clients.size,bots:botCount,mapId:simulation.map.id,difficulty:simulation.difficulty,time:simulation.time}));return;}
   try{
     const url=new URL(req.url,'http://localhost');
     const requested=decodeURIComponent(url.pathname)==='/'?'index.html':decodeURIComponent(url.pathname).replace(/^\/+/, '');
@@ -33,7 +34,7 @@ const send=(ws,data)=>{if(ws.readyState===WebSocket.OPEN&&ws.bufferedAmount<2621
 wss.on('connection',(ws)=>{
   if(clients.size>=maxPlayers){send(ws,{type:'error',message:'Сервер заполнен'});ws.close(1013,'Server full');return;}
   const client={id:randomUUID(),joined:false,messages:0,window:Date.now(),lastSeen:Date.now(),connectedAt:Date.now(),lastInput:0};clients.set(ws,client);
-  send(ws,{type:'hello',protocol:PROTOCOL_VERSION,map:'Портовый район «Рубеж»',difficulty:simulation.difficulty});
+  send(ws,{type:'hello',protocol:PROTOCOL_VERSION,map:simulation.map.name,mapId:simulation.map.id,difficulty:simulation.difficulty});
   ws.on('message',(raw)=>{
     const now=Date.now();client.lastSeen=now;if(now-client.window>1000){client.window=now;client.messages=0;}
     if(++client.messages>100){ws.close(1008,'Rate limit');return;}
@@ -44,13 +45,13 @@ wss.on('connection',(ws)=>{
       client.name=typeof message.name==='string'?message.name:'Боец';client.classId=typeof message.classId==='string'?message.classId:'assault';client.weaponId=typeof message.weaponId==='string'?message.weaponId:'';
       const player=simulation.addPlayer(client.id,client.name,undefined,client.classId,client.weaponId);client.joined=true;client.team=player.team;client.weaponId=player.weaponId;
       send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
-    }else if(message.type==='input'&&client.joined){client.lastInput=now;client.lastControls=message.input;simulation.setInput(client.id,message.input);}
+    }else if(message.type==='input'&&client.joined){client.lastInput=now;const input=sanitizeInput(message.input);client.interact||=input.interact;client.switchSeat||=input.switchSeat;client.lastControls=input;}
     else if(message.type==='respawn'&&client.joined){
-      const validPoint=MAP.points.some(p=>p.id===message.pointId)?message.pointId:undefined;
+      const validPoint=simulation.map.points.some(p=>p.id===message.pointId)?message.pointId:undefined;
       if(simulation.respawn(client.id,message.classId,validPoint,message.weaponId)){
         const spawned=simulation.players.get(client.id);
         client.classId=spawned.classId;client.weaponId=spawned.weaponId;
-        client.lastControls={yaw:spawned.yaw,pitch:spawned.pitch};
+        client.lastControls={yaw:spawned.yaw,pitch:spawned.pitch};client.interact=false;client.switchSeat=false;
         const packet={type:'snapshot',state:simulation.snapshot()};
         for(const [sock,c] of clients)if(c.joined)send(sock,packet);
       }
@@ -64,10 +65,18 @@ wss.on('connection',(ws)=>{
 let previous=performance.now(),broadcastClock=0;
 const loop=setInterval(()=>{
   const now=performance.now(),dt=Math.min(.1,(now-previous)/1000);previous=now;
-  for(const c of clients.values())if(c.joined&&Date.now()-c.lastInput>350)simulation.setInput(c.id,{...c.lastControls,forward:0,strafe:0,fire:false,sprint:false,jump:false,reload:false,grenade:false,gadget:false});
+  for(const c of clients.values()){
+    if(!c.joined)continue;
+    const controls=c.lastControls??simulation.players.get(c.id)?.input;
+    if(!controls)continue;
+    simulation.setInput(c.id,Date.now()-c.lastInput>350
+      ?{yaw:controls.yaw,pitch:controls.pitch}
+      :{...controls,interact:c.interact,switchSeat:c.switchSeat});
+    c.interact=false;c.switchSeat=false;
+  }
   simulation.step(dt);broadcastClock+=dt;
   if(broadcastClock>=1/20){broadcastClock%=1/20;const packet={type:'snapshot',state:simulation.snapshot()};for(const [ws,c]of clients)if(c.joined)send(ws,packet);}
-  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount,difficulty});for(const [ws,c]of clients)if(c.joined){simulation.addPlayer(c.id,c.name,c.team,c.classId);send(ws,{type:'roundReset'});}roundResetAt=0;}}
+  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount,difficulty,mapId});for(const [ws,c]of clients)if(c.joined){const p=simulation.addPlayer(c.id,c.name,c.team,c.classId,c.weaponId);c.lastControls={yaw:p.yaw,pitch:p.pitch};c.lastInput=0;send(ws,{type:'roundReset'});}roundResetAt=0;}}
   for(const [ws,c]of clients)if(Date.now()-c.lastSeen>120000||(!c.joined&&Date.now()-c.connectedAt>10000))ws.close(1001,'Connection timed out');
 },1000/60);
 server.listen(port,'0.0.0.0',()=>console.log(`RUBEZH server: http://localhost:${server.address().port} — WebSocket ws://localhost:${server.address().port} — ${botCount} bots`));

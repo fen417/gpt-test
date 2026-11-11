@@ -14,6 +14,7 @@ const WEAPONS = {
   assault: { crack: 5400, transient: .024, body: 151, bodyEnd: 63, report: .10, tail: .36, gain: .94, metal: 3450, echo: .25 },
   medic:   { crack: 7700, transient: .016, body: 214, bodyEnd: 89, report: .066, tail: .23, gain: .79, metal: 4400, echo: .16 },
   support: { crack: 4200, transient: .033, body: 116, bodyEnd: 45, report: .14, tail: .47, gain: 1.06, metal: 2400, echo: .32 },
+  turret:  { crack: 4800, transient: .036, body: 93, bodyEnd: 38, report: .15, tail: .53, gain: 1.16, metal: 2600, echo: .38 },
   recon:   { crack: 6700, transient: .039, body: 98, bodyEnd: 34, report: .19, tail: .72, gain: 1.14, metal: 2950, echo: .5 },
 };
 const HANDLING = {
@@ -37,7 +38,7 @@ export class CombatAudio {
     this._scheduler=null; this._nextMusic=0; this._musicStep=0; this._disposed=false;
     this._lastStateTime=-1; this._lastMovementTime=-1; this._lastPosition=null;
     this._stride=0; this._leftFoot=false; this._falling=false; this._aim=false;
-    this._heartbeat=0; this._distantAt=0; this._paused=false;
+    this._heartbeat=0; this._distantAt=0; this._nextGust=0; this._paused=false;
     this._suppressedUntil=0; this._muffleTarget=18000;
   }
   get volume(){return this._volume;}
@@ -134,7 +135,7 @@ export class CombatAudio {
       const filter=this.ctx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=frequency;filter.Q.value=.45;
       const volume=this.ctx.createGain();volume.gain.value=gain;source.connect(filter).connect(volume);let output=volume;
       if(this.ctx.createStereoPanner){const p=this.ctx.createStereoPanner();p.pan.value=pan;volume.connect(p);output=p;}
-      output.connect(this._ambient);source.start(0,Math.random()*2);this._ambientSources.push({source,nodes:[filter,volume,output]});
+      output.connect(this._ambient);source.start(0,Math.random()*2);this._ambientSources.push({source,filter,volume,nodes:[filter,volume,output]});
     }
   }
   _voice(source,duration,gain,options={}){
@@ -320,14 +321,21 @@ export class CombatAudio {
         const p=this._position(e,local);
         if(p.distance<145){
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
-          this.shot(p.distance,classId,p.pan,own);
+          this.shot(p.distance,e.mounted?'turret':classId,p.pan,own);
         }
         if(!own)this._nearMiss(e,local);
         this._impact(e,local);
-        if(own&&e.hit){
+        if(own&&(e.hit||e.vehicleHit)){
           this._tone(e.headshot?2110:1780,.04,.082,{end:e.headshot?1740:1300});
           this._noise(.024,.045,{filter:'bandpass',cutoff:e.headshot?3400:2500});
         }
+      }else if((e.type==='vehicleEnter'||e.type==='vehicleExit')&&own){
+        const time=this.ctx.currentTime;
+        const vehicle=state.vehicles?.find(v=>v.id===e.vehicleId);
+        const closed=vehicle?.type==='humvee'&&e.seat!==1;
+        this._mechanic('seat',time,.28,.16);
+        this._noise(closed?.16:.07,closed?.13:.075,{time,color:'pink',cutoff:closed?440:940,send:.08});
+        if(e.type==='vehicleEnter'&&e.seat===0)this._tone(closed?28:43,.32,.10,{time:time+.05,type:'triangle',end:closed?49:67});
       }else if(e.type==='dryFire'&&own){
         this._mechanic('dry',this.ctx.currentTime,.21,.16);
       }else if(e.type==='explosion')this._explosion(e,local);
@@ -360,7 +368,8 @@ export class CombatAudio {
       this._target(this._muffle.frequency,muffle,suppressed?.06:.26);
     }
     if(critical&&!paused&&now>=this._heartbeat){this._tone(59,.16,.1,{end:38});this._tone(52,.13,.065,{time:now+.19,end:34});this._heartbeat=now+.9;}
-    if(!canMove){this._lastPosition=null;this._stride=0;this._falling=false;}
+    this._updateEngine(state,local,inMenu||paused);
+    if(!canMove||local.vehicleId){this._lastPosition=null;this._stride=0;this._falling=false;}
     else if(state?.time!==this._lastMovementTime){
       this._lastMovementTime=state?.time;
       if(this._lastPosition){
@@ -374,9 +383,70 @@ export class CombatAudio {
       }
       this._lastPosition={x:local.x,y:local.y,z:local.z};
     }
-    if(!inMenu&&!paused&&now>this._distantAt){this._distantAt=now+9+Math.random()*10;this._noise(2.5,.035,{color:'pink',cutoff:170,attack:.6,pan:Math.random()*1.5-.75,send:.5});}
+    this._updateAmbience(state,local,inMenu||paused);
     if(local?.alive&&local.ammo<=5&&local.ammo!==this._lastAmmo&&this._lastAmmo>local.ammo)this._tone(1700,.022,.035,{type:'square',cutoff:2900});
     this._lastAmmo=local?.ammo;
+  }
+  _updateAmbience(state,local,silent){
+    const now=this.ctx.currentTime,quarry=state?.mapId==='quarry'&&!silent;
+    if(now>=this._nextGust||quarry!==this._quarryAmbience){
+      this._quarryAmbience=quarry;
+      this._nextGust=now+.4;
+      const gust=quarry?.55+.27*Math.sin(now*.59)+.18*Math.sin(now*.22):.55;
+      const [air,ridge]=this._ambientSources;
+      this._target(air.filter.frequency,quarry?205+gust*180:310,.8);
+      this._target(air.volume.gain,quarry?.2+gust*.25:.16,.9);
+      this._target(ridge.filter.frequency,quarry?710+gust*540:620,1.2);
+      this._target(ridge.volume.gain,quarry?.14+gust*.22:.085,1);
+    }
+    if(silent||now<=this._distantAt)return;
+    this._distantAt=now+9+Math.random()*10;
+    const crusher=quarry&&state.points?.find(p=>p.id==='D');
+    if(crusher){
+      const position=this._position(crusher,local);
+      const level=.022+.045/(1+position.distance/95);
+      this._noise(3.1,level,{color:'pink',cutoff:230,attack:.7,pan:position.pan,send:.37});
+      for(let i=0;i<3;i++)this._tone(162-i*16,.36,level*.65,{time:now+.35+i*.62,type:'triangle',end:84,cutoff:520,pan:position.pan,send:.44});
+    }else{
+      this._noise(2.5,.035,{color:'pink',cutoff:170,attack:.6,pan:Math.random()*1.5-.75,send:.5});
+    }
+  }
+  _updateEngine(state,local,silent){
+    let source=null,distance=45;
+    if(local?.alive&&!silent)for(const vehicle of state?.vehicles??[]){
+      if(vehicle.hp<=0||!vehicle.seats[0])continue;
+      const offset=vehicle.id===local.vehicleId?0:Math.hypot(vehicle.x-local.x,vehicle.z-local.z);
+      if(offset<distance){source=vehicle;distance=offset;}
+    }
+    if(!source){
+      if(this._engine)this._target(this._engine.output.gain,0,.12);
+      return;
+    }
+    if(!this._engine){
+      const c=this.ctx;
+      const output=this._node(c.createGain());output.gain.value=0;
+      const pan=c.createStereoPanner?this._node(c.createStereoPanner()):null;
+      if(pan)output.connect(pan).connect(this._effects);else output.connect(this._effects);
+      const filter=this._node(c.createBiquadFilter());filter.type='lowpass';filter.Q.value=.8;filter.connect(output);
+      const sources=[this._node(c.createOscillator()),this._node(c.createOscillator())];
+      sources[0].type='sawtooth';sources[1].type='triangle';
+      for(const oscillator of sources){oscillator.connect(filter);oscillator.start();}
+      const rolling=this._node(c.createBufferSource());
+      rolling.buffer=this._noiseBuffer('pink');rolling.loop=true;
+      const road=this._node(c.createBiquadFilter());road.type='bandpass';road.frequency.value=860;road.Q.value=.6;
+      const tires=this._node(c.createGain());tires.gain.value=0;
+      rolling.connect(road).connect(tires).connect(output);rolling.start();
+      this._engine={output,pan,filter,tires,sources:[...sources,rolling]};
+    }
+    const engine=this._engine;
+    const speed=Math.abs(source.speed);
+    const rpm=(source.type==='atv'?48:32)+speed*(source.type==='atv'?3.8:2.7);
+    this._target(engine.sources[0].frequency,rpm,.1);
+    this._target(engine.sources[1].frequency,rpm*1.49,.1);
+    this._target(engine.filter.frequency,105+speed*13,.12);
+    this._target(engine.tires.gain,Math.min(.48,speed*.024),.14);
+    if(engine.pan)this._target(engine.pan.pan,source.id===local.vehicleId?0:this._position(source,local).pan,.12);
+    this._target(engine.output.gain,(.10+speed*.003)/(1+distance*.24),.1);
   }
   click(){if(!this.ctx||!this._enabled)return;this._tone(860,.035,.065,{end:610});this._noise(.018,.028,{filter:'highpass',cutoff:3800});}
   getStats(){
@@ -394,6 +464,7 @@ export class CombatAudio {
     this._disposed=true;clearInterval(this._scheduler);this._scheduler=null;
     for(const voice of this._voices){voice.source.onended=null;try{voice.source.stop();}catch{}for(const node of voice.nodes){try{node.disconnect();}catch{}}}
     this._voices.clear();
+    if(this._engine){for(const source of this._engine.sources)try{source.stop();}catch{}this._engine=null;}
     for(const {source,nodes}of this._ambientSources){try{source.stop();source.disconnect();}catch{}for(const node of nodes){try{node.disconnect();}catch{}}}
     this._ambientSources=[];for(const node of this._nodes){try{node.disconnect();}catch{}}this._nodes=[];this._buffers.clear();
     if(this.ctx&&this.ctx.state!=='closed')this.ctx.close().catch(()=>{});

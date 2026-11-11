@@ -1,4 +1,7 @@
-﻿import { MAP, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
+﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
+
+import { createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
+import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -11,8 +14,6 @@ const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
 const withBounds = box => ({
   ...box,minX:box.x-box.w/2,maxX:box.x+box.w/2,minZ:box.z-box.d/2,maxZ:box.z+box.d/2,
 });
-const colliders = MAP.boxes.map(withBounds);
-const grenadeColliders = MAP.boxes.map(box => withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12}));
 const rayDir = { x: 0, y: 0, z: 0 };
 const scratchEye = { x: 0, y: 0, z: 0 };
 const scratchTarget = { x: 0, y: 0, z: 0 };
@@ -25,6 +26,7 @@ export function sanitizeInput(input = {}) {
     sprint:input.sprint===true,crouch:input.crouch===true,jump:input.jump===true,
     fire:input.fire===true,aim:input.aim===true,reload:input.reload===true,
     gadget:input.gadget===true,grenade:input.grenade===true,
+    interact:input.interact===true,switchSeat:input.switchSeat===true,
   };
 }
 
@@ -91,21 +93,53 @@ function impactMaterial(kind) {
   return 'concrete';
 }
 
+function footprint(vehicle, x=vehicle.x, z=vehicle.z, yaw=vehicle.yaw) {
+  const { width, length, height } = VEHICLE_TYPES[vehicle.type];
+  return { x, z, w:width/2, d:length/2, h:height, cos:Math.cos(yaw), sin:Math.sin(yaw) };
+}
+
+function overlaps(a,b) {
+  const dx=b.x-a.x,dz=b.z-a.z;
+  const c=Math.abs(a.cos*b.cos+a.sin*b.sin),s=Math.abs(a.cos*b.sin-a.sin*b.cos);
+  return Math.abs(dx*a.cos-dz*a.sin)<a.w+b.w*c+b.d*s
+    && Math.abs(dx*a.sin+dz*a.cos)<a.d+b.w*s+b.d*c
+    && Math.abs(dx*b.cos-dz*b.sin)<b.w+a.w*c+a.d*s
+    && Math.abs(dx*b.sin+dz*b.cos)<b.d+a.w*s+a.d*c;
+}
+
+function rayVehicle(origin,direction,vehicle,maximum){
+  const {x,z,w,d,h,cos,sin}=footprint(vehicle);
+  const dx=origin.x-x,dz=origin.z-z;
+  return rayBox(
+    {x:dx*cos-dz*sin,y:origin.y,z:dx*sin+dz*cos},
+    {x:direction.x*cos-direction.z*sin,y:direction.y,z:direction.x*sin+direction.z*cos},
+    {minX:-w,maxX:w,minZ:-d,maxZ:d,h}, maximum,
+  );
+}
+
 export class Simulation {
-  constructor({ bots=23, difficulty='regular', random=Math.random }={}) {
+  constructor({ bots=23, difficulty='regular', mapId, random=Math.random }={}) {
+    this.map=getMap(mapId);
+    this.colliders=this.map.boxes.map(withBounds);
+    this.grenadeColliders=this.map.boxes.map(box=>withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12}));
     this.random=random;this.time=0;this.players=new Map();this.maxTickets=600;this.tickets=[600,600];
     this.difficulty=typeof difficulty==='string'&&Object.hasOwn(DIFFICULTIES,difficulty)?difficulty:'regular';
     this.botSettings=DIFFICULTIES[this.difficulty];
-    this.points=MAP.points.map(p=>({...p,owner:-1,progress:0,contested:false}));
+    this.vehicles=(this.map?.vehicleSpawns??[]).map(createVehicle);
+    this.points=this.map.points.map(p=>({...p,owner:-1,progress:0,contested:false}));
     this.events=[];this.eventId=0;this.winner=null;this.grenades=[];this.ticketClock=0;
-    this.gridCell=4;this.gridSize=Math.ceil(MAP.size/this.gridCell);this.gridOrigin=-MAP.size/2;
+    this.gridCell=4;this.gridSize=Math.ceil(this.map.size/this.gridCell);this.gridOrigin=-this.map.size/2;
     this.blocked=new Uint8Array(this.gridSize*this.gridSize);
     this.pathPrevious=new Int32Array(this.blocked.length);
     this.pathQueue=new Int32Array(this.blocked.length);
-    for(let z=0;z<this.gridSize;z++)for(let x=0;x<this.gridSize;x++){
-      const wx=this.gridOrigin+(x+.5)*this.gridCell,wz=this.gridOrigin+(z+.5)*this.gridCell;
-      const clearance=this.gridCell/2+PLAYER_RADIUS+.1;
-      if(MAP.boxes.some(b=>Math.abs(wx-b.x)<b.w/2+clearance&&Math.abs(wz-b.z)<b.d/2+clearance))this.blocked[z*this.gridSize+x]=1;
+    const clearance=this.gridCell/2+PLAYER_RADIUS+.1;
+    const gridIndex=position=>(position-this.gridOrigin)/this.gridCell-.5;
+    for(const box of this.colliders){
+      const minX=Math.max(0,Math.floor(gridIndex(box.minX-clearance))+1);
+      const maxX=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxX+clearance)));
+      const minZ=Math.max(0,Math.floor(gridIndex(box.minZ-clearance))+1);
+      const maxZ=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxZ+clearance)));
+      if(minX<maxX)for(let z=minZ;z<maxZ;z++)this.blocked.fill(1,z*this.gridSize+minX,z*this.gridSize+maxX);
     }
     for(let n=0;n<clamp(Math.floor(bots),0,31);n++){
       const cls=classKeys[Math.floor(n/2)%4];
@@ -123,6 +157,7 @@ export class Simulation {
       const big=count[0]>count[1]?0:1,small=1-big;
       if(count[big]-count[small]<=1||!bots[big].length)return;
       const mover=bots[big].find(q=>!q.alive)||bots[big][bots[big].length-1];
+      this.dismountVehicle(mover,true);
       mover.team=small;mover.alive=false;mover.respawnIn=0;
       this.respawn(mover.id);
     }
@@ -143,7 +178,11 @@ export class Simulation {
     const p={id:String(id),name:String(name||'Боец').replace(/[<>\x00-\x1f]/g,'').slice(0,20),team,classId:cls,weaponId:wep,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,alive:false,ammo:0,reserve:0,kills:0,deaths:0,assists:0,score:0,damagers:new Map(),spottedBy:null,respawnIn:0,reloading:false,shotSeq:0,input:sanitizeInput(),cooldown:0,reloadTime:0,gadgetTime:0,grenades:2,vy:0,lastHurt:-100,bot:false};
     this.players.set(p.id,p);this.respawn(p.id,cls,'',wep);this.balanceTeams();return p;
   }
-  removePlayer(id){this.players.delete(id);this.balanceTeams();}
+  removePlayer(id){
+    const p=this.players.get(id);
+    if(p)this.dismountVehicle(p,true);
+    this.players.delete(id);this.balanceTeams();
+  }
   setInput(id,input){const p=this.players.get(id);if(p&&!p.bot)p.input=sanitizeInput(input);}
   respawn(id,classId,pointId,weaponId){
     const p=this.players.get(id);if(!p || p.alive || p.respawnIn>0)return false;
@@ -155,20 +194,21 @@ export class Simulation {
     if(weaponId)p.weaponId=getWeapon(p.classId,weaponId).id??defaultWeaponId(p.classId);
     else p.weaponId=getWeapon(p.classId,p.weaponId).id??defaultWeaponId(p.classId);
     const wep=getWeapon(p.classId,p.weaponId);
-    if(p.bot&&!pointId){const safe=this.points.filter(q=>q.owner===p.team&&!q.contested&&![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,q)<25)).sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z));pointId=safe[0]?.id;}
+    if(p.bot&&!pointId&&!shouldSpawnVehicleBotAtBase(this,p)){const safe=this.points.filter(q=>q.owner===p.team&&!q.contested&&![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,q)<25)).sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z));pointId=safe[0]?.id;}
     const point=this.points.find(q=>q.id===pointId&&q.owner===p.team&&!q.contested);
-    const base=point||MAP.spawns[p.team];let x=base.x,z=base.z;
-    for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz,0)){x=tx;z=tz;break;}}
+    const base=point||this.map.spawns[p.team];let x=base.x,z=base.z;
+    for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz,0)&&!this.vehicleAt(tx,tz,0)){x=tx;z=tz;break;}}
     p.damagers=new Map();p.spottedBy=null;
     Object.assign(p,{x,y:0,z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:wep.mag,reserve:wep.reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
-    Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false});
+    Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false,vehicleId:null,vehicleSeat:null,interactHeld:false,switchSeatHeld:false});
+    if(p.bot)Object.assign(p,{botJourney:null,botBoarding:null,botVehicleSince:null,botDriverSeenAt:null,botVehicleRetryAt:0,botVehicleReactAt:0});
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   collides(x,z,y=0,radius=PLAYER_RADIUS){
-    const limit=MAP.size/2-2;
+    const limit=this.map.size/2-2;
     if(Math.abs(x)>limit||Math.abs(z)>limit)return true;
-    for(let i=0;i<colliders.length;i++){
-      const b=colliders[i];
+    for(let i=0;i<this.colliders.length;i++){
+      const b=this.colliders[i];
       if(y<b.h&&x>b.minX-radius&&x<b.maxX+radius&&z>b.minZ-radius&&z<b.maxZ+radius)return true;
     }
     return false;
@@ -179,12 +219,151 @@ export class Simulation {
     if(length<.1)return true;
     rayDir.x=dx/length;rayDir.y=dy/length;rayDir.z=dz/length;
     const minX=Math.min(a.x,b.x),maxX=Math.max(a.x,b.x),minZ=Math.min(a.z,b.z),maxZ=Math.max(a.z,b.z);
-    for(let i=0;i<colliders.length;i++){
-      const box=colliders[i];
+    for(let i=0;i<this.colliders.length;i++){
+      const box=this.colliders[i];
       if(box.maxX<minX||box.minX>maxX||box.maxZ<minZ||box.minZ>maxZ)continue;
       if(rayBox(a,rayDir,box,length)<length-.1)return false;
     }
     return true;
+  }
+  vehicleCollides(vehicle,x,z,yaw){
+    const body=footprint(vehicle,x,z,yaw);
+    const c=Math.abs(body.cos),s=Math.abs(body.sin);
+    const dx=body.w*c+body.d*s,dz=body.w*s+body.d*c;
+    const limit=this.map.size/2-2;
+    if(Math.abs(x)+dx>limit||Math.abs(z)+dz>limit)return true;
+    for(const box of this.map.boxes){
+      if(Math.abs(box.x-x)>=dx+box.w/2||Math.abs(box.z-z)>=dz+box.d/2)continue;
+      if(overlaps(body,{x:box.x,z:box.z,w:box.w/2,d:box.d/2,cos:1,sin:0}))return true;
+    }
+    return this.vehicles.some(other=>other!==vehicle&&(other.hp>0||other.wreckTime>0)&&overlaps(body,footprint(other)));
+  }
+  vehicleAt(x,z,y,radius=PLAYER_RADIUS){
+    return this.vehicles.some(v=>{
+      if(v.hp<=0&&!(v.wreckTime>0))return false;
+      const body=footprint(v),dx=x-v.x,dz=z-v.z;
+      return y<body.h && Math.abs(dx*body.cos-dz*body.sin)<body.w+radius
+        && Math.abs(dx*body.sin+dz*body.cos)<body.d+radius;
+    });
+  }
+  syncVehicleSeat(p,vehicle){
+    const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);
+    Object.assign(p,{x:pose.x,z:pose.z,y:pose.y-EYE_HEIGHT,vy:0,grounded:true,moveSpeed:Math.abs(vehicle.speed)});
+  }
+  mountVehicle(p,vehicle,seat){
+    if(!p.alive||p.vehicleId||vehicle.hp<=0||vehicle.seats[seat]!==null||
+      Math.abs(vehicle.speed)>3||Math.abs(p.y)>.8||dist(p,vehicle)>VEHICLE_BOARD_RANGE||
+      (vehicle.team!==p.team&&vehicle.seats.some(Boolean)))return false;
+    if(!this.lineClear({x:p.x,y:p.y+1.25,z:p.z},{x:vehicle.x,y:1.25,z:vehicle.z}))return false;
+    vehicle.team=p.team;
+    vehicle.seats[seat]=p.id;
+    Object.assign(p,{vehicleId:vehicle.id,vehicleSeat:seat,reloading:false,reloadTime:0,invulnerableUntil:0});
+    this.syncVehicleSeat(p,vehicle);
+    this.event('vehicleEnter',{playerId:p.id,vehicleId:vehicle.id,seat});
+    return true;
+  }
+  dismountVehicle(p,force=false){
+    if(!p.vehicleId)return false;
+    const vehicle=this.vehicles.find(v=>v.id===p.vehicleId),seat=p.vehicleSeat;
+    if(vehicle){
+      if(!force&&Math.abs(vehicle.speed)>4.5)return false;
+      const spec=VEHICLE_TYPES[vehicle.type],position=spec.seats[seat];
+      const side=position.x<=0?-1:1, width=spec.width/2+.68, length=spec.length/2+.72;
+      const offsets=[[side*width,position.z],[-side*width,position.z],[0,length],[0,-length],[side*width,length],[-side*width,length]];
+      const exit=offsets.map(([x,z])=>vehicleLocalPoint(vehicle,x,z)).find(({x,z})=>
+        !this.collides(x,z)&&!this.vehicleAt(x,z,0)&&this.lineClear({x:p.x,y:.95,z:p.z},{x,y:.95,z}));
+      if(!force&&!exit)return false;
+      if(exit){p.x=exit.x;p.z=exit.z;}
+      vehicle.seats[seat]=null;
+      this.event('vehicleExit',{playerId:p.id,vehicleId:vehicle.id,seat});
+    }
+    Object.assign(p,{vehicleId:null,vehicleSeat:null,y:0,vy:0,moveSpeed:0});
+    return true;
+  }
+  updateVehicleActions(p){
+    const {interact,switchSeat}=p.input;
+    if(interact&&!p.interactHeld){
+      if(p.vehicleId)this.dismountVehicle(p);
+      else{
+        const boarding=getVehicleBoardingSeat(p,this.vehicles);
+        if(boarding)this.mountVehicle(p,boarding.vehicle,boarding.seat);
+      }
+    }
+    if(switchSeat&&!p.switchSeatHeld&&p.vehicleId){
+      const vehicle=this.vehicles.find(v=>v.id===p.vehicleId);
+      const oldSeat=p.vehicleSeat;
+      if(Math.abs(vehicle.speed)<4.5){
+        for(let n=1;n<vehicle.seats.length;n++){
+          const seat=(oldSeat+n)%vehicle.seats.length;
+          if(vehicle.seats[seat]!==null)continue;
+          vehicle.seats[oldSeat]=null;vehicle.seats[seat]=p.id;p.vehicleSeat=seat;
+          this.event('vehicleEnter',{playerId:p.id,vehicleId:vehicle.id,seat});
+          break;
+        }
+      }
+    }
+    p.interactHeld=interact;p.switchSeatHeld=switchSeat;
+  }
+  updateVehicles(dt){
+    for(const vehicle of this.vehicles){
+      if(vehicle.hp<=0){
+        vehicle.wreckTime=Math.max(0,vehicle.wreckTime-dt);
+        vehicle.respawnIn=Math.max(0,vehicle.respawnIn-dt);
+        const home=vehicle.home;
+        if(vehicle.respawnIn<=0&&!this.vehicleCollides(vehicle,home.x,home.z,home.yaw)&&
+          ![...this.players.values()].some(p=>p.alive&&dist(p,home)<2.8)){
+          Object.assign(vehicle,createVehicle(home));
+        }
+        continue;
+      }
+      const spec=VEHICLE_TYPES[vehicle.type],driver=this.players.get(vehicle.seats[0]);
+      const throttle=driver?.input.forward??0, steering=driver?.input.strafe??0;
+      vehicle.steer=steering;
+      const target=throttle>=0?throttle*spec.maxSpeed:throttle*spec.reverseSpeed;
+      const slowing=vehicle.speed!==0&&(Math.sign(target)!==Math.sign(vehicle.speed)||Math.abs(target)<Math.abs(vehicle.speed));
+      const acceleration=slowing?spec.brake:spec.acceleration;
+      vehicle.speed+=clamp(target-vehicle.speed,-acceleration*dt,acceleration*dt);
+      const turn=steering*spec.turnRate*Math.min(1,Math.abs(vehicle.speed)/4)
+        *(1-.46*Math.abs(vehicle.speed)/spec.maxSpeed)*Math.sign(vehicle.speed);
+      const substeps=Math.max(1,Math.ceil(Math.abs(vehicle.speed)*dt/.4));
+      const movement=vehicle.speed*dt/substeps;
+      for(let n=0;movement!==0&&n<substeps;n++){
+        const yaw=angleDifference(vehicle.yaw-turn*dt/substeps,0);
+        const x=vehicle.x-Math.sin(yaw)*movement,z=vehicle.z-Math.cos(yaw)*movement;
+        if(this.vehicleCollides(vehicle,x,z,yaw)){vehicle.speed=0;break;}
+        Object.assign(vehicle,{x,z,yaw});
+      }
+      for(const id of vehicle.seats){
+        const passenger=this.players.get(id);
+        if(passenger)this.syncVehicleSeat(passenger,vehicle);
+      }
+      const gunner=spec.seats[1].role==='gunner'?this.players.get(vehicle.seats[1]):null;
+      vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown-dt);
+      vehicle.heat=Math.max(0,vehicle.heat-dt*(vehicle.overheated?.28:.26));
+      if(vehicle.overheated&&vehicle.heat<=.3)vehicle.overheated=false;
+      if(gunner?.alive){
+        vehicle.aimYaw=gunner.input.yaw;
+        vehicle.aimPitch=clamp(gunner.input.pitch,TURRET_WEAPON.minPitch,TURRET_WEAPON.maxPitch);
+      }else{
+        vehicle.aimYaw=vehicle.yaw;vehicle.aimPitch=0;
+      }
+    }
+  }
+  damageVehicle(vehicle,amount,attacker,kind){
+    if(vehicle.hp<=0||this.winner!==null||attacker?.team===vehicle.team)return;
+    const spec=VEHICLE_TYPES[vehicle.type];
+    vehicle.hp=Math.max(0,vehicle.hp-amount*(kind==='blast'?spec.blastArmor:spec.bulletArmor));
+    if(vehicle.hp>0)return;
+    vehicle.speed=0;vehicle.steer=0;vehicle.respawnIn=spec.respawn;vehicle.wreckTime=8;
+    for(const id of [...vehicle.seats]){
+      const passenger=this.players.get(id);
+      if(!passenger)continue;
+      this.dismountVehicle(passenger,true);
+      this.damage(passenger,200,attacker,{weapon:'ВЗРЫВ ТЕХНИКИ'});
+    }
+    this.event('vehicleDestroyed',{vehicleId:vehicle.id,vehicleType:vehicle.type,attackerId:attacker?.id,x:vehicle.x,y:.65,z:vehicle.z});
+    this.event('explosion',{x:vehicle.x,y:.65,z:vehicle.z,vehicleId:vehicle.id});
+    if(attacker)this.awardScore(attacker,100,'УНИЧТОЖЕНИЕ ТЕХНИКИ',{kind:'vehicle'});
   }
   damage(victim,amount,attacker,meta={}){
     if(!victim.alive||this.winner!==null||this.time<victim.invulnerableUntil)return;
@@ -200,6 +379,7 @@ export class Simulation {
       victim.damagers.set(attacker.id,{amount:prev.amount+dealt,time:this.time});
     }
     if(victim.hp<=0){
+      this.dismountVehicle(victim,true);
       victim.alive=false;victim.deaths++;victim.respawnIn=4;victim.reloading=false;
       this.tickets[victim.team]=Math.max(0,this.tickets[victim.team]-1);
       if(attacker&&attacker.team!==victim.team){
@@ -252,15 +432,36 @@ export class Simulation {
     const pitch = p.pitch + Math.sin(angle) * radius;
     p.lastShotAt = this.time;
     p.bloom = Math.min(1.25, p.bloom + (input.aim ? .16 : .23));
+    this.traceShot(p,c,origin,yaw,pitch);
+  }
+  shootTurret(p,vehicle,dt){
+    if(!p.input.fire||vehicle.overheated||vehicle.gunCooldown>0)return;
+    vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown)+TURRET_WEAPON.interval;
+    vehicle.heat=Math.min(1,vehicle.heat+.072);
+    if(vehicle.heat>=1)vehicle.overheated=true;
+    vehicle.gunSeq++;
+    const spread=TURRET_WEAPON.spread*(1+vehicle.heat*.6+Math.abs(vehicle.speed)*.034);
+    const angle=this.random()*Math.PI*2, radius=Math.sqrt(this.random())*spread;
+    const yaw=vehicle.aimYaw+Math.cos(angle)*radius,pitch=vehicle.aimPitch+Math.sin(angle)*radius;
+    const origin=getVehicleSeatPose(vehicle,1);
+    origin.y-=.105;
+    this.traceShot(p,TURRET_WEAPON,origin,yaw,pitch,vehicle);
+  }
+  traceShot(p,c,origin,yaw,pitch,mounted=null){
     const direction={x:-Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
-    let closest=c.range,target=null,headshot=false,impact=null;
+    let closest=c.range,target=null,vehicle=null,headshot=false,impact=null;
     if (direction.y < 0) {
       const ground = -origin.y / direction.y;
       if (ground < closest) { closest = ground; impact = 'ground'; }
     }
-    for(const box of colliders){
+    for(const box of this.colliders){
       const distance=rayBox(origin,direction,box,closest);
       if(distance<closest){closest=distance;impact=impactMaterial(box.kind);}
+    }
+    for(const v of this.vehicles){
+      if(v===mounted||(v.hp<=0&&!(v.wreckTime>0)))continue;
+      const distance=rayVehicle(origin,direction,v,closest);
+      if(distance<closest){closest=distance;vehicle=v;impact='metal';}
     }
     for(const other of this.players.values()){
       if(other===p||!other.alive||other.team===p.team)continue;
@@ -268,12 +469,15 @@ export class Simulation {
       const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.15);
       const body=rayCapsule(origin,direction,other.x,other.z,other.y+.26,other.y+(crouch?.79:1.25),.24);
       const hit=Math.min(head,body);
-      if(hit<closest){closest=hit;target=other;headshot=head<body;}
+      if(hit<closest){closest=hit;target=other;headshot=head<body;vehicle=null;}
     }
     const hit = !!target && this.time >= target.invulnerableUntil;
     if(target)impact=hit?'flesh':'shield';
-    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq:p.shotSeq,x:origin.x,y:origin.y,z:origin.z,tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,hit,headshot:hit&&headshot,impact});
-    if(hit){const falloff=clamp(1-Math.max(0,closest-35)/300,.65,1);this.damage(target,c.damage*falloff*(headshot?2:1),p,{headshot,weapon:c.weapon});}
+    const vehicleHit=vehicle?.hp>0&&vehicle.team!==p.team;
+    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq:mounted?.gunSeq??p.shotSeq,x:origin.x,y:origin.y,z:origin.z,tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,hit,headshot:hit&&headshot,impact,vehicleHit,...(mounted?{vehicleId:mounted.id,mounted:true}:{})});
+    const falloff=clamp(1-Math.max(0,closest-35)/300,.65,1);
+    if(hit)this.damage(target,c.damage*falloff*(headshot?2:1),p,{headshot,weapon:c.weapon});
+    if(vehicleHit)this.damageVehicle(vehicle,c.damage*falloff,p,'bullet');
   }
   startReload(p){
     const weapon = getWeapon(p.classId, p.weaponId);
@@ -371,7 +575,7 @@ export class Simulation {
       const score=Math.min(minAlly,8)+coverBonus+(this.random()-.5)*.4;
       if(score>bestScore){bestScore=score;bestSpot={x:tx,z:tz};}
     }
-    const enemyBase=MAP.spawns[1-p.team]??{x:0,z:0};
+    const enemyBase=this.map.spawns[1-p.team]??{x:0,z:0};
     const outwardYaw=Math.atan2(-(bestSpot.x-point.x),-(bestSpot.z-point.z));
     const frontYaw=Math.atan2(-(enemyBase.x-bestSpot.x),-(enemyBase.z-bestSpot.z));
     p.botWatchYaw=frontYaw+angleDifference(outwardYaw,frontYaw)*.45+((slot%3)-1)*.35;
@@ -386,6 +590,7 @@ export class Simulation {
   }
   thinkBot(p,dt){
     if(!p.alive)return;
+    if(thinkVehicleBot(this,p,dt))return;
     p.nextThink-=dt;const settings=this.botSettings;
     let target=null,bestSquared=settings.awareness**2;
     scratchEye.x=p.x;scratchEye.y=p.y+1.65;scratchEye.z=p.z;
@@ -555,9 +760,17 @@ export class Simulation {
     if(this.winner!==null)return;
     // Spread route planning across ticks when many bots spawn together.
     this.botPathBudget=2;
+    if(this.vehicles.length){
+      for(const p of this.players.values()){
+        if(!p.alive)continue;
+        if(p.bot)this.thinkBot(p,dt);
+        this.updateVehicleActions(p);
+      }
+      this.updateVehicles(dt);
+    }
     for(const p of this.players.values()){
       if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if(p.bot&&p.respawnIn===0)this.respawn(p.id);continue;}
-      if(p.bot)this.thinkBot(p,dt);
+      if(p.bot&&!this.vehicles.length)this.thinkBot(p,dt);
       const i=p.input,c=getWeapon(p.classId,p.weaponId);p.yaw=i.yaw;p.pitch=i.pitch;
       const pressed = i.fire && !p.fireHeld;
       p.fireHeld = i.fire;
@@ -567,17 +780,28 @@ export class Simulation {
       p.cooldown = Math.max(continuous ? -dt : 0, p.cooldown - dt);
       p.bloom = Math.max(0, p.bloom - dt * (this.time - p.lastShotAt > .16 ? 3.6 : .4));
       p.gadgetTime=Math.max(0,p.gadgetTime-dt);p.grenadeCooldown=Math.max(0,(p.grenadeCooldown||0)-dt);
+      if(p.vehicleId){
+        const vehicle=this.vehicles.find(v=>v.id===p.vehicleId);
+        if(VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat].role==='gunner'){
+          p.pitch=vehicle.aimPitch;
+          this.shootTurret(p,vehicle,dt);
+        }
+        if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
+        continue;
+      }
       if(p.reloading){p.reloadTime-=dt;if(p.reloadTime<=0){const amount=Math.min(c.mag-p.ammo,p.reserve);p.ammo+=amount;p.reserve-=amount;p.reloading=false;}}
       if(i.reload||p.ammo===0)this.startReload(p);
       const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.55:i.aim?.7:1);
       const dx=(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
       const dz=(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
       const oldX=p.x,oldZ=p.z;
-      if(!this.collides(p.x+dx,p.z,p.y))p.x+=dx;if(!this.collides(p.x,p.z+dz,p.y))p.z+=dz;
+      const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
+      if(!this.collides(p.x+dx,p.z,p.y)&&(insideVehicle||!this.vehicleAt(p.x+dx,p.z,p.y)))p.x+=dx;
+      if(!this.collides(p.x,p.z+dz,p.y)&&(insideVehicle||!this.vehicleAt(p.x,p.z+dz,p.y)))p.z+=dz;
       p.moveSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/dt;
       if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=0;
-      if(p.vy<=0)for(const box of MAP.boxes)if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+PLAYER_RADIUS*.6&&Math.abs(p.z-box.z)<box.d/2+PLAYER_RADIUS*.6)floor=Math.max(floor,box.h);
+      if(p.vy<=0)for(const box of this.map.boxes)if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+PLAYER_RADIUS*.6&&Math.abs(p.z-box.z)<box.d/2+PLAYER_RADIUS*.6)floor=Math.max(floor,box.h);
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
       if(firing&&(p.bot||!c.semiAuto||pressed))this.shoot(p);
       if(pressed&&firing&&p.ammo===0&&p.reserve===0&&!p.reloading&&p.cooldown<=0){
@@ -592,7 +816,7 @@ export class Simulation {
       const delta={x:grenade.vx*dt,y:grenade.vy*dt,z:grenade.vz*dt},length=Math.hypot(delta.x,delta.y,delta.z);
       const direction=length>0?{x:delta.x/length,y:delta.y/length,z:delta.z/length}:{x:0,y:0,z:0};
       let nearest=length,hit=null;
-      for(const box of grenadeColliders){const distance=rayBox(grenade,direction,box,length);if(distance<nearest){nearest=distance;hit=box;}}
+      for(const box of this.grenadeColliders){const distance=rayBox(grenade,direction,box,length);if(distance<nearest){nearest=distance;hit=box;}}
       if(hit){
         const travel=Math.max(0,nearest-.02);grenade.x+=direction.x*travel;grenade.y+=direction.y*travel;grenade.z+=direction.z*travel;
         const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.abs(grenade.y-hit.h)]];
@@ -600,7 +824,23 @@ export class Simulation {
       }else if(this.collides(grenade.x+delta.x,grenade.z+delta.z,grenade.y+delta.y,.12)){grenade.vx*=-.35;grenade.vz*=-.35;}
       else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
       if(grenade.y<.15){grenade.y=.15;grenade.vy=Math.abs(grenade.vy)*.3;grenade.vx*=.92;grenade.vz*=.92;}
-      if(grenade.fuse<=0){this.event('explosion',{x:grenade.x,y:grenade.y,z:grenade.z});const owner=this.players.get(grenade.owner);for(const p of this.players.values())if(p.alive&&(p.team!==grenade.team||p.id===grenade.owner)){const d=Math.hypot(p.x-grenade.x,p.y+.8-grenade.y,p.z-grenade.z);if(d<10&&this.lineClear(grenade,{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,Math.max(0,140*(1-d/10)),owner,{weapon:'ГРАНАТА'});}}
+      if(grenade.fuse<=0){
+        this.event('explosion',{x:grenade.x,y:grenade.y,z:grenade.z});
+        const owner=this.players.get(grenade.owner);
+        for(const vehicle of this.vehicles){
+          if(vehicle.hp<=0||vehicle.team===grenade.team)continue;
+          const d=Math.hypot(dist(grenade,vehicle),grenade.y-.8);
+          if(d<10&&this.lineClear(grenade,{x:vehicle.x,y:.8,z:vehicle.z}))
+            this.damageVehicle(vehicle,245*(1-d/10),owner,'blast');
+        }
+        for(const p of this.players.values())if(p.alive&&(p.team!==grenade.team||p.id===grenade.owner)){
+          const d=Math.hypot(p.x-grenade.x,p.y+.8-grenade.y,p.z-grenade.z);
+          const mounted=this.vehicles.find(v=>v.id===p.vehicleId);
+          const enclosed=mounted?.type==='humvee'&&p.vehicleSeat!==1;
+          if(d<10&&this.lineClear(grenade,{x:p.x,y:p.y+.8,z:p.z}))
+            this.damage(p,140*(1-d/10)*(enclosed?.28:1),owner,{weapon:'ГРАНАТА'});
+        }
+      }
     }
     this.grenades=this.grenades.filter(g=>g.fuse>0);
     for(const point of this.points){
@@ -648,11 +888,13 @@ export class Simulation {
         shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:p.input.crouch,sprint:p.input.sprint&&p.moveSpeed>wep.speed,
         aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
         gadgetCooldown:p.gadgetTime,grenades:p.grenades,spotted:p.spottedUntil>this.time,
+        vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,
       };
     });
     return {
-      time:this.time,roundDuration:960,maxTickets:this.maxTickets,difficulty:this.difficulty,tickets:[...this.tickets],players,
+      time:this.time,mapId:this.map.id,roundDuration:960,maxTickets:this.maxTickets,difficulty:this.difficulty,tickets:[...this.tickets],players,
       points:this.points.map(p=>({...p})),events:this.events.map(e=>({...e})),
+      vehicles:this.vehicles.map(({home,gunCooldown,...v})=>({...v,seats:[...v.seats]})),
       grenades:this.grenades.map(g=>({id:g.id,x:g.x,y:g.y,z:g.z,team:g.team,ownerId:g.owner,fuse:g.fuse,yaw:g.yaw||0})),winner:this.winner,
     };
   }

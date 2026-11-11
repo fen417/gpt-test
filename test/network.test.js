@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { Multiplayer, normalizeRoomCode, sanitizeInput } from '../src/network.js';
 import { Simulation } from '../shared/simulation.js';
-import { MAP } from '../shared/world.js';
+import { MAP, PROTOCOL_VERSION } from '../shared/world.js';
 
 test('room codes accept copied PeerJS IDs and reject invalid destinations', () => {
   assert.equal(normalizeRoomCode(' gpt-test-481209 '), '481209');
@@ -114,8 +114,8 @@ test('peer rooms select chunked binary transport for firefight snapshots larger 
   connection.open = true;
   connection.send = message => {
     if (message.type === 'join') {
-      assert.equal(message.protocol,2);
-      connection.emit('data', { type: 'welcome', id: 'guest', protocol:2 });
+      assert.equal(message.protocol,PROTOCOL_VERSION);
+      connection.emit('data', { type: 'welcome', id: 'guest', protocol:PROTOCOL_VERSION });
       connection.emit('data', { type: 'snapshot', state: largeState });
     }
   };

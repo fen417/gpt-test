@@ -1,5 +1,7 @@
 ﻿// The same geometry drives rendering, navigation, and server collision.
-export const PROTOCOL_VERSION=3;
+import { QUARRY_MAP } from './quarry.js';
+
+export const PROTOCOL_VERSION=4;
 export const WEAPONS = {
   ar416: { id: 'ar416', classId: 'assault', name: 'AR-416', weapon: 'AR-416', type: 'ШТУРМОВАЯ ВИНТОВКА', mag: 30, reserve: 150, damage: 27, interval: .105, spread: .012, recoil: .019, reload: 2, speed: 6.3, range: 150 },
   ak12:  { id: 'ak12',  classId: 'assault', name: 'АК-12М', weapon: 'АК-12М', type: 'ТЯЖЁЛЫЙ АВТОМАТ',   mag: 30, reserve: 150, damage: 33, interval: .125, spread: .014, recoil: .024, reload: 2.15, speed: 6.15, range: 165 },
@@ -220,8 +222,9 @@ for(const [x,z,w,d,h,kind]of [
   [-42,-126,3.5,3.5,1.4,'crate'],[42,-126,3.5,3.5,1.4,'crate'],[-42,126,3.5,3.5,1.4,'crate'],[42,126,3.5,3.5,1.4,'crate'],
   [-118,-126,12,9,4.5,'warehouse'],[118,126,12,9,4.5,'warehouse'],[-118,126,12,9,4.5,'warehouse'],[118,-126,12,9,4.5,'warehouse'],
 ])add(x,z,w,d,h,kind,kind==='crate'?'#9f8a67':kind==='barrier'?'#a6a18e':'#8a9387');
+export const DEFAULT_MAP_ID='port';
 export const MAP={
-  size:360,name:'Портовый район «Рубеж»',boxes,structures,
+  id:DEFAULT_MAP_ID,size:360,name:'Портовый район «Рубеж»',boxes,structures,
   districts:[
     {id:'yard',name:'КОНТЕЙНЕРНЫЙ ДВОР',x:-88,z:-75},
     {id:'rail',name:'ЖЕЛЕЗНОДОРОЖНЫЙ СКЛАД',x:72,z:-75},
@@ -238,6 +241,10 @@ export const MAP={
   ],
   spawns:[{x:0,z:150},{x:0,z:-150}],
 };
+export const MAPS={ [DEFAULT_MAP_ID]:MAP, [QUARRY_MAP.id]:QUARRY_MAP };
+export function getMap(mapId){
+  return Object.hasOwn(MAPS,mapId)?MAPS[mapId]:MAP;
+}
 export const PLAYER_RADIUS=.4;
 export const EYE_HEIGHT=1.65;
 export const CAPTURE_RADIUS=12;

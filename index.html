@@ -13,13 +13,13 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu">
-    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> INFANTRY CONQUEST · ALPHA 0.04</span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
+    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST · ALPHA 0.05</span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
     <div class="menu-content">
       <section class="intro">
-        <div class="eyebrow"><span></span> ОПЕРАЦИЯ «ПОСЛЕДНИЙ РУБЕЖ»</div>
+        <div class="eyebrow"><span></span> ЗАХВАТ ТЕРРИТОРИИ</div>
         <h1>КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1>
-        <p class="lead">Порт, склады и заводские кварталы.<br>Пять рубежей. Один шанс удержать сектор.</p>
-        <div class="map-caption"><span class="cross-icon">⌖</span><div><strong>ПОРТОВЫЙ РАЙОН / СЕКТОР 09</strong><small>360 × 360 м · 5 позиций · Только пехота</small></div></div>
+        <p class="lead">Пять рубежей. Один шанс удержать сектор.</p>
+        <div class="map-caption"><span class="cross-icon">⌖</span><div><strong id="menu-map-name"></strong><small id="menu-map-info"></small></div></div>
         <div class="operation-stats"><div><strong>05</strong><span>КОНТРОЛЬНЫХ ТОЧЕК</span></div><div><strong>04</strong><span>БОЕВЫХ КЛАССА</span></div><div><strong>32</strong><span>БОЙЦА С БОТАМИ</span></div></div>
         <div class="now-playing"><span class="track-line"></span><span id="track-label">♫ AFTER THE RAIN · ORIGINAL SCORE</span></div>
       </section>
@@ -27,7 +27,7 @@
         <div class="panel-top"><span>ГОТОВНОСТЬ К ВЫСАДКЕ</span><span class="tag">01 / 03</span></div>
         <h2 id="deploy-title">Вступить в бой</h2>
         <label class="field-label" for="callsign">ПОЗЫВНОЙ</label><input id="callsign" maxlength="20" value="Rookie" autocomplete="nickname" spellcheck="false" />
-        <div class="operation-options"><label for="difficulty">СЛОЖНОСТЬ БОТОВ<select id="difficulty"><option value="recruit">Новобранцы</option><option value="regular" selected>Обычные бойцы</option><option value="veteran">Ветераны</option></select></label><label for="population">ПЛОТНОСТЬ БОЯ<select id="population"><option value="15">16 бойцов</option><option value="23" selected>24 бойца</option><option value="31">32 бойца</option></select></label></div>
+        <div class="operation-options"><label class="map-choice" for="map-select">КАРТА<select id="map-select"></select></label><label for="difficulty">СЛОЖНОСТЬ БОТОВ<select id="difficulty"><option value="recruit">Новобранцы</option><option value="regular" selected>Обычные бойцы</option><option value="veteran">Ветераны</option></select></label><label for="population">ПЛОТНОСТЬ БОЯ<select id="population"><option value="15">16 бойцов</option><option value="23" selected>24 бойца</option><option value="31">32 бойца</option></select></label></div>
         <div class="field-label class-label">СПЕЦИАЛИЗАЦИЯ <span id="class-weapon">AR-4 · ШТУРМОВАЯ ВИНТОВКА</span></div>
         <div id="classes" class="classes">
           <button class="class-card active" data-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>Боевая стимуляция</small></button>
@@ -46,7 +46,7 @@
         <p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p>
       </section>
     </div>
-    <footer class="menu-footer"><span><b>W A S D</b> ДВИЖЕНИЕ <b>МЫШЬ</b> ОБЗОР <b>ЛКМ / ПКМ</b> ОГОНЬ / ПРИЦЕЛ</span><span>ИГРА ДЛЯ ПК <span class="footer-dot">◆</span> БЕЗ ТЕХНИКИ</span></footer>
+    <footer class="menu-footer"><span><b>W A S D</b> ДВИЖЕНИЕ <b>МЫШЬ</b> ОБЗОР <b>ЛКМ / ПКМ</b> ОГОНЬ / ПРИЦЕЛ</span><span>ИГРА ДЛЯ ПК</span></footer>
   </main>
   <div id="scope-overlay" class="hidden" aria-hidden="true"></div>
   <section id="hud" class="hud hidden" aria-label="Информация о бое">
@@ -54,8 +54,8 @@
     <div id="room-badge" class="room-badge"></div><div id="location-label" class="location-label"></div><div id="killfeed" class="killfeed"></div><div class="compass"><span id="compass-direction">N</span><div class="compass-rule">┊ · · ┊ · · ┊ <b id="compass-degrees">000°</b> ┊ · · ┊ · · ┊</div></div>
     <div id="world-markers"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
     <div id="score-feed" class="score-feed" aria-live="polite"></div>
-    <div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
-    <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
+    <div id="vehicle-prompt" class="vehicle-prompt hidden"></div><div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
+    <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span id="minimap-name" class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
     <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 ОЧК · 0/0/0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden">
@@ -213,6 +213,7 @@
           <div id="lobby-host-controls" class="deploy-box">
             <div class="deploy-box-title"><span>ПАРАМЕТРЫ ОПЕРАЦИИ</span><small>НАСТРОЙКИ ХОСТА</small></div>
             <div class="operation-options lobby-options">
+              <label class="map-choice" for="lobby-map">КАРТА<select id="lobby-map"></select></label>
               <label for="lobby-difficulty">СЛОЖНОСТЬ БОТОВ
                 <select id="lobby-difficulty">
                   <option value="recruit">Новобранцы</option>

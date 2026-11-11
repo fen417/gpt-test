@@ -1,12 +1,12 @@
 ﻿import Peer from 'peerjs';
-import { Simulation } from '../shared/simulation.js';
-import { MAP, PROTOCOL_VERSION, getWeapon } from '../shared/world.js';
+import { Simulation, sanitizeInput } from '../shared/simulation.js';
+import { DEFAULT_MAP_ID, getMap, PROTOCOL_VERSION, getWeapon } from '../shared/world.js';
 
 const ROOM_PREFIX = 'gpt-test-';
 const MAX_HUMANS = 16;
 const STEP = 1 / 60;
 const CONNECT_TIMEOUT = 18000;
-const PULSE_ACTIONS = ['jump', 'fire', 'reload', 'gadget', 'grenade'];
+const PULSE_ACTIONS = ['jump', 'fire', 'reload', 'gadget', 'grenade', 'interact', 'switchSeat'];
 const noOp = () => {};
 
 export function normalizeRoomCode(value) {
@@ -15,19 +15,7 @@ export function normalizeRoomCode(value) {
   return code;
 }
 
-export function sanitizeInput(input = {}) {
-  if (!input || typeof input !== 'object') input = {};
-  const number = (key, min, max) => typeof input[key] === 'number' && Number.isFinite(input[key])
-    ? Math.max(min, Math.min(max, input[key])) : 0;
-  return {
-    forward: number('forward', -1, 1), strafe: number('strafe', -1, 1),
-    yaw: number('yaw', -Math.PI * 1000, Math.PI * 1000),
-    pitch: number('pitch', -1.5, 1.5),
-    sprint: input.sprint === true, crouch: input.crouch === true,
-    jump: input.jump === true, fire: input.fire === true, aim: input.aim === true,
-    reload: input.reload === true, gadget: input.gadget === true, grenade: input.grenade === true,
-  };
-}
+export { sanitizeInput };
 
 function playerName(value) {
   return String(value || 'Боец').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 24) || 'Боец';
@@ -85,6 +73,8 @@ export class Multiplayer {
     this._phase = 'battle';
     this._roomCode = '';
     this._botCount = 23;
+    this._mapId = DEFAULT_MAP_ID;
+    this._remoteMapId = DEFAULT_MAP_ID;
     this._difficulty = 'regular';
   }
 
@@ -210,7 +200,7 @@ export class Multiplayer {
     });
   }
 
-  async host({ name = 'Боец', classId = 'assault', weaponId, bots = 23, difficulty = 'regular', lobby = false } = {}) {
+  async host({ name = 'Боец', classId = 'assault', weaponId, bots = 23, difficulty = 'regular', mapId, lobby = false } = {}) {
     const generation = this._begin('host');
     const code = roomCode();
     this._roomCode = code;
@@ -221,7 +211,8 @@ export class Multiplayer {
       if (!this._active(generation)) throw new Error('Подключение отменено.');
       this._botCount = Math.max(0, Math.min(31, Math.floor(Number(bots) || 0)));
       this._difficulty = ['recruit','regular','veteran'].includes(difficulty) ? difficulty : 'regular';
-      this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
+      this._mapId = getMap(mapId).id;
+      this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
       this._localId = 'host';
       const cls = playerClass(classId);
       this._simulation.addPlayer(this._localId, playerName(name), 0, cls, playerWeapon(cls, weaponId));
@@ -246,7 +237,7 @@ export class Multiplayer {
           this._flushHostInput();
           for (const guest of this._connections.values()) {
             if (!guest.joined) continue;
-            const controls = { ...guest.lastControls };
+            const controls = { ...guest.lastControls, interact: false, switchSeat: false };
             if (now - guest.lastInput > 350) Object.assign(controls, { forward: 0, strafe: 0, sprint: false, jump: false, fire: false, reload: false, grenade: false, gadget: false });
             else for (const action of guest.actions) controls[action] = true;
             this._simulation.setInput(guest.id, controls);
@@ -257,7 +248,7 @@ export class Multiplayer {
             if (!roundResetAt) roundResetAt = now + 12000;
             if (now >= roundResetAt) {
               const humans = this._simulation.snapshot().players.filter(player => !player.bot);
-              this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
+              this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
               for (const player of humans) this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.weaponId);
               roundResetAt = 0;
               this.onStatus(`Комната ${code} · новый раунд`);
@@ -316,12 +307,13 @@ export class Multiplayer {
     return false;
   }
 
-  updateLobbySettings({ bots, difficulty } = {}) {
+  updateLobbySettings({ bots, difficulty, mapId } = {}) {
     if (this._mode !== 'host' || !this._simulation || this._phase !== 'lobby') return false;
     if (bots !== undefined) this._botCount = Math.max(0, Math.min(31, Math.floor(Number(bots) || 0)));
     if (difficulty !== undefined && ['recruit','regular','veteran'].includes(difficulty)) this._difficulty = difficulty;
+    if (mapId !== undefined) this._mapId = getMap(mapId).id;
     const humans = this._simulation.snapshot().players.filter(player => !player.bot);
-    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
+    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
     for (const player of humans) {
       this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.weaponId);
     }
@@ -329,12 +321,13 @@ export class Multiplayer {
     return true;
   }
 
-  startMatch({ bots, difficulty } = {}) {
+  startMatch({ bots, difficulty, mapId } = {}) {
     if (this._mode !== 'host' || !this._simulation) return false;
     if (bots !== undefined) this._botCount = Math.max(0, Math.min(31, Math.floor(Number(bots) || 0)));
     if (difficulty !== undefined && ['recruit','regular','veteran'].includes(difficulty)) this._difficulty = difficulty;
+    if (mapId !== undefined) this._mapId = getMap(mapId).id;
     const humans = this._simulation.snapshot().players.filter(player => !player.bot);
-    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
+    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
     for (const player of humans) {
       this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.weaponId);
     }
@@ -401,7 +394,7 @@ export class Multiplayer {
         for (const action of PULSE_ACTIONS) if (guest.lastControls[action]) guest.actions.add(action);
       } else if (guest.joined && message.type === 'respawn') {
         const cls = playerClass(message.classId);
-        if (this._simulation.respawn(guest.id, cls, MAP.points.some(p=>p.id===message.pointId) ? message.pointId : undefined, playerWeapon(cls, message.weaponId))) {
+        if (this._simulation.respawn(guest.id, cls, this._simulation.map.points.some(p=>p.id===message.pointId) ? message.pointId : undefined, playerWeapon(cls, message.weaponId))) {
           const state = this._buildSnapshot();
           const player = state.players.find(p => p.id === guest.id);
           guest.lastControls = sanitizeInput({ yaw: player?.yaw, pitch: player?.pitch });
@@ -536,7 +529,7 @@ export class Multiplayer {
           try { message = JSON.parse(event.data); } catch { return; }
           if (!message || typeof message !== 'object') return;
           if (message.type === 'welcome' && typeof message.id === 'string') {
-            if(message.protocol!==PROTOCOL_VERSION){finish(new Error('Сервер использует старую версию карты. Обновите сервер до версии 0.2.'));return;}
+            if(message.protocol!==PROTOCOL_VERSION){finish(new Error('Сервер использует старую версию карты. Обновите сервер и клиент до одной версии.'));return;}
             welcomed = true;
             this._localId = message.id;
             this.onIdentity(message.id);
@@ -566,7 +559,9 @@ export class Multiplayer {
   }
 
   _isSnapshot(state) {
-    return state && Array.isArray(state.players) && Array.isArray(state.points) && Array.isArray(state.tickets);
+    if (!state || !Array.isArray(state.players) || !Array.isArray(state.points) || !Array.isArray(state.tickets)) return false;
+    this._remoteMapId = getMap(state.mapId).id;
+    return true;
   }
 
   _startInputPump(generation) {
@@ -606,7 +601,7 @@ export class Multiplayer {
   _flushHostInput() {
     if (!this._simulation || !this._localId) return;
     const stale = performance.now()-this._lastHostInput>350;
-    const input = stale ? sanitizeInput({yaw:this._hostControls.yaw,pitch:this._hostControls.pitch}) : { ...this._hostControls };
+    const input = stale ? sanitizeInput({yaw:this._hostControls.yaw,pitch:this._hostControls.pitch}) : { ...this._hostControls, interact: false, switchSeat: false };
     if(!stale)for (const action of this._hostActions) input[action] = true;
     this._hostActions.clear();
     this._simulation.setInput(this._localId, input);
@@ -621,7 +616,7 @@ export class Multiplayer {
   respawn(classId = 'assault', pointId, weaponId) {
     const selectedClass = playerClass(classId);
     const selectedWeapon = playerWeapon(selectedClass, weaponId);
-    const selectedPoint = MAP.points.some(p=>p.id===pointId) ? pointId : undefined;
+    const selectedPoint = (this._simulation?.map ?? getMap(this._remoteMapId)).points.some(p=>p.id===pointId) ? pointId : undefined;
     if (this._mode === 'host' && this._simulation) {
       const accepted = this._simulation.respawn(this._localId, selectedClass, selectedPoint, selectedWeapon);
       if (accepted) {
