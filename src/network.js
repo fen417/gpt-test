@@ -1,6 +1,6 @@
 import Peer from 'peerjs';
 import { Simulation } from '../shared/simulation.js';
-import { MAP, PROTOCOL_VERSION } from '../shared/world.js';
+import { MAP, PROTOCOL_VERSION, getWeapon } from '../shared/world.js';
 
 const ROOM_PREFIX = 'gpt-test-';
 const MAX_HUMANS = 16;
@@ -35,6 +35,10 @@ function playerName(value) {
 
 function playerClass(value) {
   return ['assault', 'medic', 'support', 'recon'].includes(value) ? value : 'assault';
+}
+
+function playerWeapon(classId, weaponId) {
+  return getWeapon(playerClass(classId), weaponId).id;
 }
 
 function roomCode() {
@@ -197,7 +201,7 @@ export class Multiplayer {
     });
   }
 
-  async host({ name = 'Боец', classId = 'assault', bots = 23, difficulty = 'regular', lobby = false } = {}) {
+  async host({ name = 'Боец', classId = 'assault', weaponId, bots = 23, difficulty = 'regular', lobby = false } = {}) {
     const generation = this._begin('host');
     const code = roomCode();
     this._roomCode = code;
@@ -210,7 +214,8 @@ export class Multiplayer {
       this._difficulty = ['recruit','regular','veteran'].includes(difficulty) ? difficulty : 'regular';
       this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
       this._localId = 'host';
-      this._simulation.addPlayer(this._localId, playerName(name), 0, playerClass(classId));
+      const cls = playerClass(classId);
+      this._simulation.addPlayer(this._localId, playerName(name), 0, cls, playerWeapon(cls, weaponId));
       this.onIdentity(this._localId);
       peer.on('connection', connection => this._acceptGuest(connection, generation));
       let previous = performance.now();
@@ -244,7 +249,7 @@ export class Multiplayer {
             if (now >= roundResetAt) {
               const humans = this._simulation.snapshot().players.filter(player => !player.bot);
               this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
-              for (const player of humans) this._simulation.addPlayer(player.id, player.name, player.team, player.classId);
+              for (const player of humans) this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.weaponId);
               roundResetAt = 0;
               this.onStatus(`Комната ${code} · новый раунд`);
             }
@@ -263,34 +268,38 @@ export class Multiplayer {
     }
   }
 
-  _applyPlayerLoadout(id, { classId, team } = {}) {
+  _applyPlayerLoadout(id, { classId, weaponId, team } = {}) {
     if (!this._simulation) return false;
     const player = this._simulation.players.get(id);
     if (!player) return false;
     const nextClass = classId !== undefined ? playerClass(classId) : player.classId;
+    const nextWeapon = playerWeapon(nextClass, weaponId ?? player.weaponId);
     const teamChanged = (team === 0 || team === 1) && player.team !== team;
     if (team === 0 || team === 1) player.team = team;
     player.classId = nextClass;
+    player.weaponId = nextWeapon;
     if (teamChanged || this._phase === 'lobby') {
       player.alive = false;
       player.respawnIn = 0;
-      this._simulation.respawn(id, nextClass);
+      this._simulation.respawn(id, nextClass, undefined, nextWeapon);
     }
     return true;
   }
 
-  setLobbyLoadout({ classId, team } = {}) {
+  setLobbyLoadout({ classId, weaponId, team } = {}) {
     if (this._mode === 'host' && this._simulation) {
-      if (this._applyPlayerLoadout(this._localId, { classId, team })) {
+      if (this._applyPlayerLoadout(this._localId, { classId, weaponId, team })) {
         this._broadcastSnapshot();
         return true;
       }
       return false;
     }
     if (this._mode === 'peer') {
+      const nextClass = classId !== undefined ? playerClass(classId) : undefined;
       return this._send({
         type: 'lobbyLoadout',
-        classId: classId !== undefined ? playerClass(classId) : undefined,
+        classId: nextClass,
+        weaponId: weaponId !== undefined ? playerWeapon(nextClass || 'assault', weaponId) : undefined,
         team: (team === 0 || team === 1) ? team : undefined,
       });
     }
@@ -304,7 +313,7 @@ export class Multiplayer {
     const humans = this._simulation.snapshot().players.filter(player => !player.bot);
     this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
     for (const player of humans) {
-      this._simulation.addPlayer(player.id, player.name, player.team, player.classId);
+      this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.weaponId);
     }
     this._broadcastSnapshot();
     return true;
@@ -317,7 +326,7 @@ export class Multiplayer {
     const humans = this._simulation.snapshot().players.filter(player => !player.bot);
     this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty });
     for (const player of humans) {
-      this._simulation.addPlayer(player.id, player.name, player.team, player.classId);
+      this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.weaponId);
     }
     const hostPlayer = this._simulation.players.get(this._localId);
     this._hostControls = sanitizeInput({ yaw: hostPlayer?.yaw ?? 0, pitch: hostPlayer?.pitch ?? 0 });
@@ -363,14 +372,15 @@ export class Multiplayer {
         if (!guest.joined) {
           guest.joined = true;
           this._clearTimeout(joinTimer);
-          const added = this._simulation.addPlayer(guest.id, playerName(message.name), undefined, playerClass(message.classId));
+          const cls = playerClass(message.classId);
+          const added = this._simulation.addPlayer(guest.id, playerName(message.name), undefined, cls, playerWeapon(cls, message.weaponId));
           guest.lastControls = sanitizeInput({ yaw: added?.yaw ?? 0, pitch: added?.pitch ?? 0 });
         }
         this._safeSend(connection, { type: 'welcome', id: guest.id, protocol: PROTOCOL_VERSION, lobby: this._phase === 'lobby' });
         this._broadcastSnapshot();
         this.onStatus(`Комната открыта · игроков: ${1 + [...this._connections.values()].filter(g => g.joined).length}`);
       } else if (guest.joined && message.type === 'lobbyLoadout') {
-        if (this._applyPlayerLoadout(guest.id, { classId: message.classId, team: message.team })) {
+        if (this._applyPlayerLoadout(guest.id, { classId: message.classId, weaponId: message.weaponId, team: message.team })) {
           const gp = this._simulation.players.get(guest.id);
           guest.lastControls = sanitizeInput({ yaw: gp?.yaw ?? 0, pitch: gp?.pitch ?? 0 });
           this._broadcastSnapshot();
@@ -380,7 +390,8 @@ export class Multiplayer {
         guest.lastControls = sanitizeInput(message.input);
         for (const action of PULSE_ACTIONS) if (guest.lastControls[action]) guest.actions.add(action);
       } else if (guest.joined && message.type === 'respawn') {
-        if (this._simulation.respawn(guest.id, playerClass(message.classId), MAP.points.some(p=>p.id===message.pointId) ? message.pointId : undefined)) {
+        const cls = playerClass(message.classId);
+        if (this._simulation.respawn(guest.id, cls, MAP.points.some(p=>p.id===message.pointId) ? message.pointId : undefined, playerWeapon(cls, message.weaponId))) {
           const state = this._buildSnapshot();
           const player = state.players.find(p => p.id === guest.id);
           guest.lastControls = sanitizeInput({ yaw: player?.yaw, pitch: player?.pitch });
@@ -409,7 +420,7 @@ export class Multiplayer {
     });
   }
 
-  async join({ code, name = 'Боец', classId = 'assault' } = {}) {
+  async join({ code, name = 'Боец', classId = 'assault', weaponId } = {}) {
     const normalizedCode = normalizeRoomCode(code);
     const generation = this._begin('peer');
     this.onStatus(`Подключаемся к комнате ${normalizedCode}…`);
@@ -423,10 +434,12 @@ export class Multiplayer {
       const connection = peer.connect(ROOM_PREFIX + normalizedCode.toLowerCase(), { serialization: 'binary', reliable: true });
       this._connection = connection;
       this._roomCode = normalizedCode;
+      const cls = playerClass(classId);
+      const wep = playerWeapon(cls, weaponId);
       await new Promise((resolve, reject) => {
         let welcomed = false;
         let settled = false;
-        const sendJoin = () => this._safeSend(connection, { type: 'join', name: playerName(name), classId: playerClass(classId), protocol: PROTOCOL_VERSION });
+        const sendJoin = () => this._safeSend(connection, { type: 'join', name: playerName(name), classId: cls, weaponId: wep, protocol: PROTOCOL_VERSION });
         const retryTimer = setInterval(() => {
           if (!settled && !welcomed && connection.open) sendJoin();
         }, 800);
@@ -595,11 +608,12 @@ export class Multiplayer {
     else this._send({type:'input',input});
   }
 
-  respawn(classId = 'assault', pointId) {
+  respawn(classId = 'assault', pointId, weaponId) {
     const selectedClass = playerClass(classId);
+    const selectedWeapon = playerWeapon(selectedClass, weaponId);
     const selectedPoint = MAP.points.some(p=>p.id===pointId) ? pointId : undefined;
     if (this._mode === 'host' && this._simulation) {
-      const accepted = this._simulation.respawn(this._localId, selectedClass, selectedPoint);
+      const accepted = this._simulation.respawn(this._localId, selectedClass, selectedPoint, selectedWeapon);
       if (accepted) {
         const state = this._buildSnapshot();
         const player = state.players.find(p => p.id === this._localId);
@@ -612,7 +626,7 @@ export class Multiplayer {
       }
       return accepted;
     }
-    return this._send({ type: 'respawn', classId: selectedClass, pointId: selectedPoint });
+    return this._send({ type: 'respawn', classId: selectedClass, pointId: selectedPoint, weaponId: selectedWeapon });
   }
 
   close(reason) {

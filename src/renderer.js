@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { MAP, CLASSES, CAPTURE_RADIUS } from '../shared/world.js';
+import { MAP, CLASSES, CLASS_WEAPONS, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
 import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
@@ -94,6 +94,11 @@ export class GameRenderer {
     this.flags = new Map();
     this.grenadeMeshes = new Map();
     this.activeGrenades = new Set();
+    this.gadgetDeployables = [];
+    this.throwTimer = 0;
+    this.throwDuration = 0.56;
+    this.gadgetTimer = 0;
+    this.gadgetDuration = 0.65;
     this.effects = [];
     this.effectPools = { tracer: [], shell: [], smoke: [], spark: [] };
     this.seenEvents = new Set();
@@ -135,7 +140,8 @@ export class GameRenderer {
       throw error;
     }
     this.integratedGpu = detectIntegratedGpu(this.renderer);
-    this.grenadeMaterial = material(0x485545, 0.7, 0.4, { emissive: 0xa96220, emissiveIntensity: 0.2 });
+    this.grenadeMaterial = material(0x4b5842, 0.72, 0.32);
+    this.grenadeLedMaterial = material(0xff3b28, 0.25, 0.1, { emissive: 0xff3b28, emissiveIntensity: 1.4 });
     this.updatePixelRatio();
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = this.integratedGpu ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
@@ -245,11 +251,13 @@ export class GameRenderer {
   warmup() {
     for (const team of [0, 1]) {
       for (const classId of Object.keys(CLASSES)) {
-        const key = `${team}:${classId}`;
-        if (!this.soldierTemplates.has(key)) {
-          const template = createSoldierRig(this, { id: key, team, classId, x: 0, y: 0, z: 0, shotSeq: 0 });
-          if (!this.integratedGpu) template.group.traverse(optimizeLighting);
-          this.soldierTemplates.set(key, template);
+        for (const weaponId of (CLASS_WEAPONS[classId] || [defaultWeaponId(classId)])) {
+          const key = `${team}:${classId}:${weaponId}`;
+          if (!this.soldierTemplates.has(key)) {
+            const template = createSoldierRig(this, { id: key, team, classId, weaponId, x: 0, y: 0, z: 0, shotSeq: 0 });
+            if (!this.integratedGpu) template.group.traverse(optimizeLighting);
+            this.soldierTemplates.set(key, template);
+          }
         }
       }
     }
@@ -261,7 +269,7 @@ export class GameRenderer {
     });
     for (let i = 0; i < 32; i++) this.effectPools.spark.push({ mesh: new THREE.Mesh(this.geo.sphere, this.sparkMaterial), type: 'spark' });
 
-    const sampleSoldier = this.soldierTemplates.get('0:assault')?.group;
+    const sampleSoldier = this.soldierTemplates.get('0:assault:ar416')?.group;
     const sampleTracer = this.effectPools.tracer[0]?.mesh;
     const sampleSmoke = this.effectPools.smoke[0]?.mesh;
     const sampleSpark = this.effectPools.spark[0]?.mesh;
@@ -707,14 +715,16 @@ export class GameRenderer {
   }
 
   makeSoldier(player) {
-    const key = `${player.team}:${player.classId}`;
+    const weaponId = player.weaponId || defaultWeaponId(player.classId);
+    const key = `${player.team}:${player.classId}:${weaponId}`;
     let template = this.soldierTemplates.get(key);
     if (!template) {
-      template = createSoldierRig(this, player);
+      template = createSoldierRig(this, { ...player, weaponId });
       if (!this.integratedGpu) template.group.traverse(optimizeLighting);
       this.soldierTemplates.set(key, template);
     }
-    const rig = cloneSoldierRig(template, player);
+    const rig = cloneSoldierRig(template, { ...player, weaponId });
+    rig.weaponId = weaponId;
     rig.stepIndex = this.soldiers.size;
     return rig;
   }
@@ -742,8 +752,9 @@ export class GameRenderer {
     for (const player of state.players) {
       if (player.id === localId) continue;
       active.add(player.id);
+      const weaponId = player.weaponId || defaultWeaponId(player.classId);
       let soldier = this.soldiers.get(player.id);
-      if (soldier && (soldier.classId !== player.classId || soldier.team !== player.team)) {
+      if (soldier && (soldier.classId !== player.classId || soldier.team !== player.team || soldier.weaponId !== weaponId)) {
         this.removeSoldier(soldier);
         soldier = null;
       }
@@ -828,8 +839,15 @@ export class GameRenderer {
         soldierHit(this.soldiers.get(event.playerId), event.x ?? 0, event.z ?? 0);
         continue;
       }
-      if (event.type === 'grenade' && event.playerId !== localId) {
-        soldierThrow(this.soldiers.get(event.playerId));
+      if (event.type === 'grenade') {
+        if (event.playerId === localId) this.throwTimer = this.throwDuration;
+        else soldierThrow(this.soldiers.get(event.playerId));
+        continue;
+      }
+      if (event.type === 'gadget') {
+        if (event.playerId === localId) this.gadgetTimer = this.gadgetDuration;
+        else soldierThrow(this.soldiers.get(event.playerId));
+        this.spawnGadgetDeployable(event, state);
         continue;
       }
       if (event.type === 'shot') {
@@ -863,7 +881,7 @@ export class GameRenderer {
             this.smoke(muzzle.x, muzzle.y, muzzle.z, .13, .42, 0xa4a79b);
           }
         }
-        const range = CLASSES[player?.classId]?.range || 200;
+        const range = getWeapon(player?.classId, player?.weaponId).range || 200;
         const impact = event.impact === undefined && length < range - 1 ? (event.hit ? 'flesh' : 'concrete') : event.impact;
         if (impact === 'metal') {
           for (let i = 0; i < (this.lowQuality || this.integratedGpu ? 1 : 4); i++) this.spark(tx, ty, tz);
@@ -970,18 +988,261 @@ export class GameRenderer {
     }
   }
 
-  updateGrenades(state) {
+  createGrenadeMesh() {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(this.geo.cylinder, this.grenadeMaterial);
+    body.scale.set(0.088, 0.125, 0.088);
+    body.castShadow = !this.lowQuality;
+    group.add(body);
+    for (const dy of [-0.056, 0.056]) {
+      const cap = new THREE.Mesh(this.geo.sphere, this.grenadeMaterial);
+      cap.position.y = dy;
+      cap.scale.set(0.086, 0.052, 0.086);
+      group.add(cap);
+    }
+    for (const ry of [-0.036, 0, 0.036]) {
+      const rib = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
+      rib.position.y = ry;
+      rib.scale.set(0.094, 0.012, 0.094);
+      group.add(rib);
+    }
+    const band = new THREE.Mesh(this.geo.cylinder, this.materials.stripe);
+    band.position.y = 0.022;
+    band.scale.set(0.095, 0.015, 0.095);
+    group.add(band);
+    const neck = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
+    neck.position.y = 0.088;
+    neck.scale.set(0.038, 0.038, 0.038);
+    group.add(neck);
+    const fuze = new THREE.Mesh(this.geo.box, this.materials.steel);
+    fuze.position.set(0, 0.112, -0.008);
+    fuze.scale.set(0.055, 0.034, 0.068);
+    group.add(fuze);
+    const spoon = new THREE.Mesh(this.geo.box, this.materials.steel);
+    spoon.position.set(0, 0.035, 0.072);
+    spoon.rotation.x = 0.16;
+    spoon.scale.set(0.026, 0.135, 0.014);
+    group.add(spoon);
+    const led = new THREE.Mesh(this.geo.sphere, this.grenadeLedMaterial);
+    led.position.set(0, 0.134, 0);
+    led.scale.setScalar(0.022);
+    group.add(led);
+    return group;
+  }
+
+  spawnGadgetDeployable(event, state) {
+    const player = state.players?.find(p => p.id === event.playerId);
+    const classId = event.classId || player?.classId || 'assault';
+    const team = event.team ?? player?.team ?? 0;
+    const yaw = player?.yaw || 0;
+    const forward = classId === 'assault' ? 0.35 : 1.05;
+    const x = (event.x ?? player?.x ?? 0) - Math.sin(yaw) * forward;
+    const z = (event.z ?? player?.z ?? 0) - Math.cos(yaw) * forward;
+    const y = Math.max(0, player?.y || 0);
+    const group = new THREE.Group();
+    group.position.set(x, y, z);
+    group.rotation.y = yaw;
+
+    const teamMat = material(TEAM_COLORS[team] ?? COLORS.friendly, 0.35, 0.3, {
+      emissive: TEAM_COLORS[team] ?? COLORS.friendly,
+      emissiveIntensity: 0.55,
+    });
+    let ringColor = TEAM_COLORS[team] ?? COLORS.friendly;
+    let maxRadius = 4.2;
+    let life = 6.5;
+    let rotor = null;
+
+    if (classId === 'recon') {
+      life = 8.0;
+      maxRadius = 15.5;
+      ringColor = TEAM_COLORS[team] ?? 0x5bd9e8;
+      // 3-legged tactical tripod + armored core + rotating radar dish & antenna
+      for (let i = 0; i < 3; i++) {
+        const a = i * (Math.PI * 2 / 3);
+        const leg = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
+        leg.position.set(Math.cos(a) * 0.22, 0.22, Math.sin(a) * 0.22);
+        leg.scale.set(0.024, 0.48, 0.024);
+        leg.rotation.z = -Math.cos(a) * 0.48;
+        leg.rotation.x = Math.sin(a) * 0.48;
+        group.add(leg);
+        const foot = new THREE.Mesh(this.geo.cylinder, this.materials.darkConcrete);
+        foot.position.set(Math.cos(a) * 0.33, 0.02, Math.sin(a) * 0.33);
+        foot.scale.set(0.055, 0.03, 0.055);
+        group.add(foot);
+      }
+      const core = new THREE.Mesh(this.geo.cylinder, this.grenadeMaterial);
+      core.position.y = 0.44;
+      core.scale.set(0.14, 0.24, 0.14);
+      group.add(core);
+      const collar = new THREE.Mesh(this.geo.cylinder, teamMat);
+      collar.position.y = 0.52;
+      collar.scale.set(0.15, 0.04, 0.15);
+      group.add(collar);
+      rotor = new THREE.Group();
+      rotor.position.y = 0.64;
+      const head = new THREE.Mesh(this.geo.box, this.materials.steel);
+      head.scale.set(0.26, 0.12, 0.16);
+      rotor.add(head);
+      const dish = new THREE.Mesh(this.geo.cylinder, teamMat);
+      dish.position.set(0, 0.02, -0.09);
+      dish.rotation.x = Math.PI / 2;
+      dish.scale.set(0.11, 0.025, 0.11);
+      rotor.add(dish);
+      const antenna = new THREE.Mesh(this.geo.cylinder, this.materials.pole);
+      antenna.position.set(0.09, 0.22, 0.03);
+      antenna.scale.set(0.012, 0.36, 0.012);
+      rotor.add(antenna);
+      const tip = new THREE.Mesh(this.geo.sphere, teamMat);
+      tip.position.set(0.09, 0.41, 0.03);
+      tip.scale.setScalar(0.032);
+      rotor.add(tip);
+      group.add(rotor);
+    } else if (classId === 'medic') {
+      life = 6.5;
+      maxRadius = 4.6;
+      ringColor = 0x52e088;
+      const whiteMat = material(0xe4e8e2, 0.65, 0.12);
+      const redMat = material(0xd93832, 0.45, 0.1, { emissive: 0x991815, emissiveIntensity: 0.35 });
+      const greenMat = material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 });
+      const base = new THREE.Mesh(this.geo.rounded, whiteMat);
+      base.position.y = 0.11;
+      base.scale.set(0.52, 0.20, 0.38);
+      group.add(base);
+      const band = new THREE.Mesh(this.geo.box, this.grenadeMaterial);
+      band.position.y = 0.11;
+      band.scale.set(0.54, 0.06, 0.40);
+      group.add(band);
+      const cross1 = new THREE.Mesh(this.geo.box, redMat);
+      cross1.position.y = 0.215;
+      cross1.scale.set(0.22, 0.02, 0.065);
+      group.add(cross1);
+      const cross2 = new THREE.Mesh(this.geo.box, redMat);
+      cross2.position.y = 0.215;
+      cross2.scale.set(0.065, 0.02, 0.22);
+      group.add(cross2);
+      for (const lx of [-0.15, 0.15]) {
+        const latch = new THREE.Mesh(this.geo.box, this.materials.steel);
+        latch.position.set(lx, 0.12, -0.195);
+        latch.scale.set(0.055, 0.08, 0.025);
+        group.add(latch);
+      }
+      for (const vx of [-0.18, 0.18]) {
+        const vial = new THREE.Mesh(this.geo.cylinder, greenMat);
+        vial.position.set(vx, 0.22, 0);
+        vial.scale.set(0.026, 0.05, 0.026);
+        group.add(vial);
+      }
+    } else if (classId === 'support') {
+      life = 6.5;
+      maxRadius = 4.6;
+      ringColor = 0xf2b84b;
+      const box = new THREE.Mesh(this.geo.rounded, this.grenadeMaterial);
+      box.position.y = 0.14;
+      box.scale.set(0.58, 0.26, 0.38);
+      group.add(box);
+      const lid = new THREE.Mesh(this.geo.box, this.materials.steel);
+      lid.position.set(0, 0.32, 0.17);
+      lid.rotation.x = -0.65;
+      lid.scale.set(0.58, 0.04, 0.34);
+      group.add(lid);
+      const stripe = new THREE.Mesh(this.geo.box, this.materials.stripe);
+      stripe.position.set(0, 0.15, -0.195);
+      stripe.scale.set(0.46, 0.045, 0.015);
+      group.add(stripe);
+      for (let i = 0; i < 7; i++) {
+        const rx = -0.18 + i * 0.06;
+        const cartridge = new THREE.Mesh(this.geo.cylinder, this.shellMaterial);
+        cartridge.position.set(rx, 0.285, -0.02);
+        cartridge.rotation.x = Math.PI / 2;
+        cartridge.scale.set(0.022, 0.19, 0.022);
+        group.add(cartridge);
+      }
+    } else {
+      life = 3.2;
+      maxRadius = 2.4;
+      ringColor = 0x5bd9e8;
+      const body = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
+      body.position.y = 0.05;
+      body.rotation.z = Math.PI / 2 - 0.25;
+      body.scale.set(0.032, 0.22, 0.032);
+      group.add(body);
+      const serum = new THREE.Mesh(this.geo.cylinder, teamMat);
+      serum.position.y = 0.058;
+      serum.rotation.z = Math.PI / 2 - 0.25;
+      serum.scale.set(0.036, 0.09, 0.036);
+      group.add(serum);
+    }
+
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: ringColor,
+      transparent: true,
+      opacity: 0.48,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.82, 1.0, 32), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.04;
+    group.add(ring);
+
+    this.worldRoot.add(group);
+    this.gadgetDeployables.push({ group, ring, ringMat, teamMat, rotor, age: 0, life, maxRadius, classId });
+  }
+
+  updateGadgets(dt) {
+    for (let i = this.gadgetDeployables.length - 1; i >= 0; i--) {
+      const item = this.gadgetDeployables[i];
+      item.age += dt;
+      if (item.age >= item.life) {
+        item.group.removeFromParent();
+        item.ring.geometry.dispose();
+        item.ringMat.dispose();
+        this.gadgetDeployables.splice(i, 1);
+        continue;
+      }
+      if (item.rotor) {
+        item.rotor.rotation.y += dt * 3.8;
+      }
+      const fade = 1 - Math.max(0, (item.age - (item.life - 0.8)) / 0.8);
+      const pulse = (item.age * (item.classId === 'recon' ? 0.85 : 1.15)) % 1;
+      const radius = lerp(0.45, item.maxRadius, pulse);
+      item.ring.scale.setScalar(radius);
+      item.ringMat.opacity = (1 - pulse) * 0.46 * fade;
+    }
+  }
+
+  updateGrenades(state, localId) {
     const active = this.activeGrenades;
     active.clear();
-    this.grenadeMaterial.emissiveIntensity = 0.1 + (Math.sin(this.clock * 12) + 1) * 0.6;
+    const localPlayer = state.players?.find(p => p.id === localId);
+    this.grenadeLedMaterial.emissiveIntensity = 0.4 + (Math.sin(this.clock * 22) + 1) * 1.15;
     for (const grenade of state.grenades || []) {
       active.add(grenade.id);
       let mesh = this.grenadeMeshes.get(grenade.id);
       if (!mesh) {
-        mesh = new THREE.Mesh(this.geo.sphere, this.grenadeMaterial);
-        mesh.scale.set(0.11, 0.15, 0.11); mesh.castShadow = !this.lowQuality; this.worldRoot.add(mesh); this.grenadeMeshes.set(grenade.id, mesh);
+        mesh = this.createGrenadeMesh();
+        this.worldRoot.add(mesh);
+        this.grenadeMeshes.set(grenade.id, mesh);
       }
-      mesh.visible = true; mesh.position.set(grenade.x, grenade.y, grenade.z); mesh.rotation.x = this.clock * 4;
+      const fuse = grenade.fuse ?? 1.0;
+      const age = clamp(2.15 - fuse, 0, 2.15);
+      const ownFresh = grenade.ownerId === localId && localPlayer && age < 0.35;
+      if (ownFresh && age < 0.11) {
+        mesh.visible = false;
+        continue;
+      }
+      mesh.visible = true;
+      let gx = grenade.x, gy = grenade.y, gz = grenade.z;
+      if (ownFresh) {
+        const releaseBlend = 1 - clamp((age - 0.11) / 0.24, 0, 1);
+        const yaw = localPlayer.yaw || 0;
+        const rightX = Math.cos(yaw), rightZ = -Math.sin(yaw);
+        gx -= rightX * 0.24 * releaseBlend;
+        gy -= 0.14 * releaseBlend;
+        gz -= rightZ * 0.24 * releaseBlend;
+      }
+      mesh.position.set(gx, gy, gz);
+      mesh.rotation.set(this.clock * 9.5 + grenade.id, this.clock * 6.2 + grenade.id * 0.7, this.clock * 7.4);
     }
     for (const [id, mesh] of this.grenadeMeshes) if (!active.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
   }
@@ -1109,9 +1370,23 @@ export class GameRenderer {
       this.updateSunShadow(0, 0);
       for (const soldier of this.soldiers.values()) soldier.group.visible = false;
       for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
+      this.updateGadgets(dt);
       this.updateEffects(dt);
       this.drawScene(true); return;
     }
+    for (const event of state.events || []) {
+      if (event.playerId === localId) {
+        const key = event.id ?? `${event.type}:${event.playerId}:${event.time}:${event.x}:${event.z}`;
+        if (!this.seenEvents.has(key)) {
+          if (event.type === 'grenade') this.throwTimer = this.throwDuration;
+          else if (event.type === 'gadget') this.gadgetTimer = this.gadgetDuration;
+        }
+      }
+    }
+    this.throwTimer = Math.max(0, this.throwTimer - dt);
+    this.gadgetTimer = Math.max(0, this.gadgetTimer - dt);
+    const throwPhase = this.throwTimer > 0 ? 1 - this.throwTimer / this.throwDuration : 0;
+    const gadgetPhase = this.gadgetTimer > 0 ? 1 - this.gadgetTimer / this.gadgetDuration : 0;
     const player = state.players.find(p => p.id === localId);
     const isAlive = player?.alive !== false;
     if (player && !isAlive) {
@@ -1144,9 +1419,9 @@ export class GameRenderer {
       const height = isAlive ? (crouching ? 1.05 : 1.65) : 0.5;
       const coverDistance = distanceToCover({ x: player.x, y: (player.y || 0) + height, z: player.z }, { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, MAP.boxes, 1.6);
       this.wallStow = lerp(this.wallStow, clamp((1.45 - coverDistance) / 1.05, 0, 1), 1 - Math.exp(-dt * 14));
-      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !player.reloading && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
+      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !player.reloading && this.throwTimer <= 0 && this.gadgetTimer <= 0 && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
-      const weapon = CLASSES[player.classId] ?? CLASSES.assault;
+      const weapon = getWeapon(player.classId, player.weaponId);
       const observedReload = Number.isFinite(player.reloadProgress) ? player.reloadProgress : null;
       if (player.reloading && (!this.wasReloading || this.lastReloadProgress !== observedReload)) {
         if (!this.wasReloading || observedReload !== null) this.reloadStarted = this.clock - (observedReload ?? 0) * weapon.reload;
@@ -1196,17 +1471,29 @@ export class GameRenderer {
       this.lastYaw = yaw; this.lastPitch = pitch;
       this.scoped = isAlive && player.classId === 'recon' && this.aimAmount >= .92;
       this.weapon.visible = isAlive && !this.scoped;
-      this.weaponRig.update({ classId: player.classId, aim: this.aimAmount, reloadMotion, reloadPhase, reloadEmpty: player.ammo === 0, kick: this.kick, clock: this.clock });
+      this.weaponRig.update({
+        classId: player.classId,
+        weaponId: player.weaponId || defaultWeaponId(player.classId),
+        aim: this.aimAmount,
+        reloadMotion,
+        reloadPhase,
+        reloadEmpty: player.ammo === 0,
+        kick: this.kick,
+        clock: this.clock,
+        throwPhase,
+        gadgetPhase,
+      });
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
+      const actionTilt = Math.sin(Math.max(throwPhase, gadgetPhase) * Math.PI);
       this.weapon.position.set(
-        lerp(.26, 0, this.aimAmount) + Math.sin(cycle) * .015 * bob - this.swayX + this.sprintBlend * .035,
-        lerp(-.23, -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * bob - this.swayY - reloadMotion * .10 - this.sprintBlend * .07 - this.landDip * .75,
-        lerp(-.42, -.32, this.aimAmount) + kick * .056 + reloadMotion * .06,
+        lerp(.26, 0, this.aimAmount) + Math.sin(cycle) * .015 * bob - this.swayX + this.sprintBlend * .035 + actionTilt * .055,
+        lerp(-.23, -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * bob - this.swayY - reloadMotion * .10 - this.sprintBlend * .07 - this.landDip * .75 - actionTilt * .065,
+        lerp(-.42, -.32, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04,
       );
       this.weapon.rotation.set(
-        kick * .062 - reloadMotion * .39 - this.sprintBlend * .25 + Math.cos(cycle) * bob * .022,
-        -reloadMotion * .22 + this.sprintBlend * .34 + this.strafeBlend * .028 * (1 - this.aimAmount),
-        -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018,
+        kick * .062 - reloadMotion * .39 - this.sprintBlend * .25 + Math.cos(cycle) * bob * .022 - actionTilt * .18,
+        -reloadMotion * .22 + this.sprintBlend * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
+        -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018 - actionTilt * .36,
       );
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
       this.updateSunShadow(this.cameraAnchor.x, this.cameraAnchor.z);
@@ -1226,7 +1513,7 @@ export class GameRenderer {
         positions.needsUpdate = true;
       }
     }
-    this.updateSoldiers(state, localId, dt); this.updateGrenades(state); this.processEvents(state, localId); this.updateEffects(dt);
+    this.updateSoldiers(state, localId, dt); this.updateGrenades(state, localId); this.processEvents(state, localId); this.updateGadgets(dt); this.updateEffects(dt);
     this.atmosphere.sky.position.copy(this.camera.position);
     this.drawScene();
   }

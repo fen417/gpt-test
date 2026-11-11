@@ -98,10 +98,12 @@ export function createWeaponRig(owner = {}) {
 
   const glyphs = {
     '0':'111101101101111','1':'010110010010111','2':'111001111100111',
-    '3':'111001111001111','4':'101101111001001','6':'111100111101111',
+    '3':'111001111001111','4':'101101111001001','5':'111100111001111',
+    '6':'111100111101111','7':'111001001001001','8':'111101111101111',
     '9':'111101111001111', A:'010101111101101', C:'111100100100111',
-    D:'110101101101110', G:'111100101101111', M:'101111111101101',
-    R:'110101110101101', S:'111100111001111', X:'101101010101101',
+    D:'110101101101110', G:'111100101101111', K:'101101110101101',
+    M:'101111111101101', P:'111101111100100', R:'110101110101101',
+    S:'111100111001111', V:'101101101101010', X:'101101010101101',
   };
   function engraving(parent, text, z, y, size=.00245) {
     for (const [letter, character] of [...text].entries()) {
@@ -118,6 +120,9 @@ export function createWeaponRig(owner = {}) {
   // The ejection window is a real opening, backed by the bolt in a deep cavity.
   const bolt=new THREE.Group();bolt.position.set(0,0,-.02);weapon.add(bolt);
   cylinder(bolt,0,.022,-.065,.024,.155,edge,'z',24);
+  const boltHandleKnob=new THREE.Group();bolt.add(boltHandleKnob);boltHandleKnob.visible=false;
+  cylinder(boltHandleKnob,.045,.022,-.045,.006,.042,metal,'x',10);
+  ellipsoid(boltHandleKnob,[.068,.022,-.045],[.013,.013,.013],dark);
   profile(receiver,[[-.165,-.003],[-.165,.049],[.08,.049],[.094,.025],[.094,-.017],[-.11,-.022]],.007,metal,{x:-.044});
   profile(receiver,[[-.205,.048],[-.195,.058],[.057,.058],[.079,.047],[.044,.041],[-.186,.041]],.006,edge,{x:-.042,bevel:.001});
   profile(receiver,[[-.209,-.021],[-.171,-.02],[-.158,-.037],[-.181,-.065],[-.209,-.055]],.009,anodized,{x:-.043,bevel:.002});
@@ -141,7 +146,9 @@ export function createWeaponRig(owner = {}) {
   rail(receiver,-.205,.078,.083,.073);
   // Opaque recessed-looking inlays remain sharp at the close first-person angle.
   engraving(receiver,'S09',.060,.036,.003);
-  const weaponLabels = Object.fromEntries(Object.entries({assault:'AR416',medic:'MCX9',support:'MG36',recon:'DMR12'}).map(([name,mark]) => {
+  const weaponLabels = Object.fromEntries(Object.entries({
+    ar416:'AR416', ak12:'AK12M', mcx9:'MCX9', vk45:'VK45', mg36:'MG36', pkp:'PKP76', dmr12:'DMR12', sv98:'SV98M',
+  }).map(([name,mark]) => {
     const stamp = new THREE.Group();
     stamp.name = `${name}-receiver-engraving`;
     receiver.add(stamp);
@@ -188,19 +195,72 @@ export function createWeaponRig(owner = {}) {
   ring(receiver,-.043,-.09,.388,.014,.009,.007,dark,'x',20);
 
   const magazine=new THREE.Group();magazine.name='removable-curved-magazine';weapon.add(magazine);
-  const rifleFeed = new THREE.Group(), compactFeed = new THREE.Group(), marksmanFeed = new THREE.Group();
-  magazine.add(rifleFeed,compactFeed,marksmanFeed);
+  const rifleFeed = new THREE.Group(), compactFeed = new THREE.Group(), marksmanFeed = new THREE.Group(), akFeed = new THREE.Group(), vkFeed = new THREE.Group();
+  magazine.add(rifleFeed,compactFeed,marksmanFeed,akFeed,vkFeed);
+  const bakelite=mat('weapon-bakelite-plum',0x6b3e2e,.68,.12,{bumpMap:polymerGrain,bumpScale:.00022});
+  const oliveMetal=mat('weapon-olive-ordnance',0x46543e,.62,.35);
+  const medWhite=mat('gadget-med-case',0xd6dbd4,.55,.1);
+  const medRed=mat('gadget-med-cross',0xc8322b,.5,.1);
+  const stimGlow=new THREE.MeshBasicMaterial({name:'gadget-stim-glow',color:0x5bd9e8,toneMapped:false});ownedMaterials.add(stimGlow);
+  const warnYellow=mat('gadget-warn-yellow',0xd4a438,.55,.2);
   profile(rifleFeed,[[-.155,-.092],[-.077,-.092],[-.071,-.181],[-.087,-.272],[-.116,-.337],[-.192,-.321],[-.17,-.24],[-.155,-.168]],.067,polymer,{bevel:.005});
   profile(rifleFeed,[[-.194,-.314],[-.115,-.331],[-.11,-.347],[-.197,-.33]],.076,dark,{bevel:.002});
   for(const side of [-1,1])for(let i=0;i<3;i++){
     curve(rifleFeed,[[side*.036,-.13,-.094-i*.022],[side*.037,-.23,-.108-i*.022],[side*.036,-.301,-.133-i*.022]],.0032,metal,10,8);
   }
+  // AK-12M deep curved ribbed magazine with ammo inspection window
+  profile(akFeed,[[-.158,-.090],[-.074,-.090],[-.068,-.175],[-.092,-.278],[-.138,-.358],[-.218,-.332],[-.182,-.242],[-.158,-.165]],.069,bakelite,{bevel:.005});
+  profile(akFeed,[[-.220,-.325],[-.136,-.352],[-.130,-.368],[-.224,-.342]],.078,dark,{bevel:.002});
+  for(const side of [-1,1])for(let i=0;i<5;i++){
+    rounded(akFeed,side*.036,-.145-i*.038,-.118-i*.012,.004,.012,.052,dark).rotation.x=.28;
+  }
   profile(compactFeed,[[-.138,-.091],[-.093,-.091],[-.098,-.336],[-.15,-.336]],.049,dark,{bevel:.003});
   rounded(compactFeed,0,-.338,-.124,.063,.018,.068,polymer);
   for(const side of [-1,1])for(let y=-.15;y>-.315;y-=.033)detail(compactFeed,side*.026,y,-.124,.003,.004,.037,edge);
+  // VK-45 extended 40-round forward-angled magazine
+  profile(vkFeed,[[-.162,-.091],[-.114,-.091],[-.082,-.395],[-.136,-.402]],.052,dark,{bevel:.003});
+  rounded(vkFeed,0,-.402,-.108,.066,.024,.074,polymer);
+  for(const side of [-1,1])for(let i=0;i<6;i++)detail(vkFeed,side*.028,-.14-i*.042,-.135+i*.005,.003,.006,.036,brass);
   profile(marksmanFeed,[[-.163,-.091],[-.067,-.091],[-.063,-.209],[-.158,-.226]],.076,metal,{bevel:.004});
   profile(marksmanFeed,[[-.161,-.216],[-.062,-.200],[-.061,-.214],[-.162,-.233]],.082,dark,{bevel:.002});
   for(const side of [-1,1])for(const z of [-.146,-.116,-.084])detail(marksmanFeed,side*.04,-.164,z,.003,.066,.009,dark);
+
+  // Secondary weapon structural assemblies (AK-12M, VK-45, PKP Pecheneg, SV-98M)
+  const akVariant=new THREE.Group();weapon.add(akVariant);akVariant.visible=false;
+  cylinder(akVariant,0,.056,-.38,.015,.31,dark,'z',16);
+  rounded(akVariant,0,.058,-.37,.036,.028,.24,polymer);
+  profile(akVariant,[[-.53,.012],[-.555,.064],[-.585,.064],[-.565,.012]],.026,metal,{bevel:.002});
+  ring(akVariant,0,.015,-.645,.022,.012,.068,dark,'z',20);
+  for(const z of [-.63,-.655])rounded(akVariant,0,.015,z,.048,.024,.012,metal);
+  ring(akVariant,0,.076,-.595,.022,.017,.018,dark,'z',18);
+
+  const vkVariant=new THREE.Group();weapon.add(vkVariant);vkVariant.visible=false;
+  // KRISS Super V vertical recoil vector lower receiver housing + rectangular offset suppressor
+  profile(vkVariant,[[-.245,-.022],[-.115,-.022],[-.085,-.225],[-.185,-.238],[-.255,-.135]],.079,polymer,{bevel:.004});
+  for(const side of [-1,1]){
+    rounded(vkVariant,side*.043,-.11,-.175,.006,.12,.075,metal);
+    for(const y of [-.07,-.11,-.15])screw(vkVariant,side*.046,y,-.175,.0045);
+  }
+  rounded(vkVariant,0,-.012,-.52,.054,.078,.21,dark);
+  for(const z of [-.44,-.52,-.59])rounded(vkVariant,0,-.012,z,.058,.082,.012,metal);
+  cylinder(vkVariant,0,.015,-.63,.012,.012,edge,'z',16);
+
+  const pkpVariant=new THREE.Group();weapon.add(pkpVariant);pkpVariant.visible=false;
+  // Forced-air ribbed barrel cooling jacket & heavy carry handle
+  cylinder(pkpVariant,0,.022,-.71,.026,.34,dark,'z',18);
+  for(let z=-.57;z>-.85;z-=.045)rounded(pkpVariant,0,.028,z,.054,.038,.022,metal);
+  curve(pkpVariant,[[0,.065,-.28],[0,.135,-.31],[0,.135,-.42],[0,.065,-.45]],.007,metal,12,8);
+  cylinder(pkpVariant,.025,.135,-.365,.016,.095,bakelite,'z',12);
+
+  const svVariant=new THREE.Group();weapon.add(svVariant);svVariant.visible=false;
+  // SV-98M heavy rectangular 3-chamber sniper brake, fluted barrel & folding bipod
+  rounded(svVariant,0,.015,-.955,.046,.038,.092,dark);
+  for(const z of [-.925,-.955,-.985])rounded(svVariant,0,.015,z,.05,.022,.014,edge);
+  for(const side of [-1,1]){
+    const leg=new THREE.Group();leg.position.set(side*.032,-.032,-.62);leg.rotation.z=side*.22;leg.rotation.x=.18;svVariant.add(leg);
+    cylinder(leg,0,-.085,0,.007,.19,metal,'y',10);
+    rounded(leg,0,-.18,0,.024,.014,.032,rubber);
+  }
   const supportAttachment=new THREE.Group();weapon.add(supportAttachment);supportAttachment.visible=false;
   for(const side of [-1,1]){
     const leg=new THREE.Group();leg.position.set(side*.035,-.04,-.535);leg.rotation.z=side*.16;supportAttachment.add(leg);
@@ -288,6 +348,63 @@ export function createWeaponRig(owner = {}) {
   finger(leftHand,[[-.067,-.068,-.383],[-.082,-.034,-.395],[-.071,.012,-.42],[-.047,.031,-.438]].map(lp),.015);
   ellipsoid(leftHand,lp([-.073,-.017,-.407]),[.018,.022,.023],knuckle);
   curve(leftHand,[[-.07,-.092,-.375],[-.077,-.098,-.411],[-.072,-.087,-.464]].map(lp),.0018,seam,16,6);
+
+  // Detailed first-person held grenade & class gadgets attached to leftHand
+  const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
+  heldGrenade.position.set(.042,.038,-.062);heldGrenade.visible=false;
+  cylinder(heldGrenade,0,0,0,.025,.062,oliveMetal,'y',16);
+  ellipsoid(heldGrenade,[0,.028,0],[.025,.018,.025],oliveMetal);
+  ellipsoid(heldGrenade,[0,-.028,0],[.023,.016,.023],oliveMetal);
+  for(const y of [-.020,-.007,.007,.020])ring(heldGrenade,0,y,0,.027,.023,.005,anodized,'y',16);
+  for(let i=0;i<6;i++){
+    const a=i*Math.PI/3;
+    rounded(heldGrenade,Math.cos(a)*.0245,0,Math.sin(a)*.0245,.004,.054,.004,anodized);
+  }
+  cylinder(heldGrenade,0,.013,0,.0262,.007,warnYellow,'y',16);
+  cylinder(heldGrenade,0,.043,0,.013,.018,metal,'y',14);
+  rounded(heldGrenade,0,.055,-.002,.018,.014,.022,metal);
+  curve(heldGrenade,[[0,.059,.008],[.016,.054,.016],[.029,.022,.018],[.027,-.018,.014]],.0032,metal,12,6);
+  ring(heldGrenade,-.016,.054,-.006,.012,.009,.003,brass,'x',14);
+  ellipsoid(heldGrenade,[0,.063,0],[.004,.004,.004],medRed);
+
+  const heldStim=new THREE.Group();heldStim.name='held-stim';leftHand.add(heldStim);
+  heldStim.position.set(.042,.036,-.060);heldStim.rotation.set(.25,0,-.2);heldStim.visible=false;
+  cylinder(heldStim,0,0,0,.013,.096,polymer,'y',14);
+  cylinder(heldStim,0,-.018,0,.0145,.026,anodized,'y',14);
+  cylinder(heldStim,0,.018,0,.0105,.038,stimGlow,'y',14);
+  cylinder(heldStim,0,.044,0,.013,.016,brass,'y',14);
+  cylinder(heldStim,0,-.052,0,.008,.014,medRed,'y',12);
+
+  const heldMedkit=new THREE.Group();heldMedkit.name='held-medkit';leftHand.add(heldMedkit);
+  heldMedkit.position.set(.048,.034,-.066);heldMedkit.rotation.set(.15,.2,-.1);heldMedkit.visible=false;
+  rounded(heldMedkit,0,0,0,.088,.062,.038,medWhite);
+  rounded(heldMedkit,0,0,0,.090,.012,.040,oliveMetal);
+  rounded(heldMedkit,0,0,-.020,.028,.009,.006,medRed);
+  rounded(heldMedkit,0,0,-.020,.009,.028,.006,medRed);
+  for(const sx of [-.026,.026])rounded(heldMedkit,sx,.024,0,.010,.016,.042,metal);
+
+  const heldAmmo=new THREE.Group();heldAmmo.name='held-ammo';leftHand.add(heldAmmo);
+  heldAmmo.position.set(.048,.032,-.066);heldAmmo.rotation.set(.12,.18,-.08);heldAmmo.visible=false;
+  rounded(heldAmmo,0,0,0,.092,.066,.046,oliveMetal);
+  rounded(heldAmmo,0,.026,0,.096,.014,.050,anodized);
+  for(let i=0;i<5;i++){
+    const rx=-.028+i*.014;
+    cylinder(heldAmmo,rx,.038,-.006,.0042,.028,brass,'y',10);
+    cylinder(heldAmmo,rx,.056,-.006,.0032,.012,worn,'y',10);
+  }
+
+  const heldScanner=new THREE.Group();heldScanner.name='held-scanner';leftHand.add(heldScanner);
+  heldScanner.position.set(.046,.038,-.064);heldScanner.rotation.set(.18,.12,-.1);heldScanner.visible=false;
+  cylinder(heldScanner,0,0,0,.030,.044,anodized,'y',14);
+  cylinder(heldScanner,0,.022,0,.034,.008,metal,'y',14);
+  ellipsoid(heldScanner,[0,.028,0],[.022,.010,.022],stimGlow);
+  cylinder(heldScanner,.018,.048,-.008,.0035,.056,metal,'y',10);
+  ellipsoid(heldScanner,[.018,.078,-.008],[.005,.005,.005],stimGlow);
+  for(let i=0;i<3;i++){
+    const a=i*Math.PI*2/3;
+    rounded(heldScanner,Math.cos(a)*.024,-.032,Math.sin(a)*.024,.007,.046,.009,polymer);
+  }
+
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
   ellipsoid(rightHand,[.048,-.174,.092],[.037,.064,.045],glove);
   ellipsoid(rightHand,[.027,-.178,.071],[.029,.057,.035],leather);
@@ -315,14 +432,22 @@ export function createWeaponRig(owner = {}) {
     const materials=new Map();for(const child of group.children)if(child.isMesh&&!Array.isArray(child.material)){if(!materials.has(child.material))materials.set(child.material,[]);materials.get(child.material).push(child);}
     for(const [material,meshes]of materials){if(meshes.length<2)continue;const parts=meshes.map(m=>{m.updateMatrix();const g=m.geometry.clone().applyMatrix4(m.matrix);const n=g.index?g.toNonIndexed():g; if(n!==g)g.dispose();return n;});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!geometry)continue;ownedGeometries.add(geometry);const merged=new THREE.Mesh(geometry,material);merged.name=`batched-${material.name}`;group.add(merged);for(const m of meshes)m.removeFromParent();}
   }
-  for(const island of [receiver,handguard,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand])batch(island);
+  for(const island of [receiver,handguard,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand])batch(island);
   // Dispose unreferenced source buffers after batching, retaining reused shapes.
   const liveGeometry=new Set();weapon.traverse(o=>{if(o.geometry)liveGeometry.add(o.geometry);});for(const geometry of ownedGeometries)if(!liveGeometry.has(geometry)){geometry.dispose();ownedGeometries.delete(geometry);}
   const loadouts = {
-    assault:{guard:.36,barrel:.19,width:1,finish:0x626859,handZ:-.423,grasp:[-.052,-.236,-.124]},
-    medic:{guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.378,grasp:[-.045,-.237,-.123]},
-    support:{guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.092,-.203,-.111]},
-    recon:{guard:.432,barrel:.266,width:.99,finish:0x766f59,handZ:-.456,grasp:[-.056,-.176,-.112]},
+    ar416:{classId:'assault',guard:.36,barrel:.19,width:1,finish:0x626859,handZ:-.423,grasp:[-.052,-.236,-.124]},
+    ak12:{classId:'assault',guard:.34,barrel:.21,width:1.04,finish:0x3f433e,handZ:-.415,grasp:[-.052,-.242,-.128]},
+    mcx9:{classId:'medic',guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.378,grasp:[-.045,-.237,-.123]},
+    vk45:{classId:'medic',guard:.225,barrel:.095,width:.98,finish:0x52575c,handZ:-.368,grasp:[-.046,-.242,-.142]},
+    mg36:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.092,-.203,-.111]},
+    pkp:{classId:'support',guard:.425,barrel:.285,width:1.22,finish:0x484d45,handZ:-.458,grasp:[-.096,-.208,-.114]},
+    dmr12:{classId:'recon',guard:.432,barrel:.266,width:.99,finish:0x766f59,handZ:-.456,grasp:[-.056,-.176,-.112]},
+    sv98:{classId:'recon',guard:.465,barrel:.310,width:1.03,finish:0x4d6147,handZ:-.468,grasp:[-.056,-.182,-.114]},
+    assault:{classId:'assault',guard:.36,barrel:.19,width:1,finish:0x626859,handZ:-.423,grasp:[-.052,-.236,-.124]},
+    medic:{classId:'medic',guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.378,grasp:[-.045,-.237,-.123]},
+    support:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.092,-.203,-.111]},
+    recon:{classId:'recon',guard:.432,barrel:.266,width:.99,finish:0x766f59,handZ:-.456,grasp:[-.056,-.176,-.112]},
   };
   const reloadKeys = [
     {time:0,       x:0,     y:0,     z:0,    pitch:0,     roll:0},
@@ -343,11 +468,11 @@ export function createWeaponRig(owner = {}) {
   const armRotation = new THREE.Quaternion().setFromUnitVectors(armAxis,armDirection.normalize());
   const armScale = new THREE.Vector3(1,1,1);
   const restArmInverse = new THREE.Matrix4().compose(shoulder,armRotation,armScale).invert();
-  const wristDirection = new THREE.Vector3(), palmTarget = new THREE.Vector3(), gripTarget = new THREE.Vector3(), palmOffset = new THREE.Vector3();
+  const wristDirection = new THREE.Vector3(), palmTarget = new THREE.Vector3(), gripTarget = new THREE.Vector3(), palmOffset = new THREE.Vector3(), actionTarget = new THREE.Vector3();
   const chargeGrip = new THREE.Vector3(-.076,.019,.044);
   leftArm.matrixAutoUpdate = false;
 
-  function poseReload(loadout, support, phase, amount, charging) {
+  function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0) {
     const feed = support ? beltBox : magazine;
     let next = 1;
     while (next < reloadKeys.length - 1 && phase > reloadKeys[next].time) next++;
@@ -363,7 +488,58 @@ export function createWeaponRig(owner = {}) {
     gripTarget.set(...loadout.grasp).applyQuaternion(feed.quaternion).add(feed.position);
     palmTarget.set(-.035,-.08,loadout.handZ).lerp(gripTarget,grip);
     palmTarget.lerp(chargeGrip,charging);
-    leftHand.rotation.set(-.92*grip+feed.rotation.x*grip+charging*.7,.42*grip+charging*.3,.27*grip+feed.rotation.z*grip);
+    let rotX = -.92*grip+feed.rotation.x*grip+charging*.7;
+    let rotY = .42*grip+charging*.3;
+    let rotZ = .27*grip+feed.rotation.z*grip;
+
+    heldGrenade.visible = false;
+    heldStim.visible = false;
+    heldMedkit.visible = false;
+    heldAmmo.visible = false;
+    heldScanner.visible = false;
+
+    if (throwPhase > 0 && throwPhase < 1) {
+      const windup = THREE.MathUtils.smoothstep(throwPhase, 0, .34);
+      const release = THREE.MathUtils.smoothstep(throwPhase, .34, .66);
+      const recover = THREE.MathUtils.smoothstep(throwPhase, .66, 1);
+      const weight = windup * (1 - recover);
+      const throwArc = Math.sin(release * Math.PI);
+      actionTarget.set(
+        -.145 + release * .115,
+        .075 + throwArc * .085 - release * .03,
+        -.275 - release * .265
+      );
+      palmTarget.lerp(actionTarget, weight);
+      rotX = THREE.MathUtils.lerp(rotX, .65 - release * 1.35, weight);
+      rotY = THREE.MathUtils.lerp(rotY, -.38 + release * .52, weight);
+      rotZ = THREE.MathUtils.lerp(rotZ, -.45 + release * .65, weight);
+      heldGrenade.visible = throwPhase < .56;
+    } else if (gadgetPhase > 0 && gadgetPhase < 1) {
+      const raise = THREE.MathUtils.smoothstep(gadgetPhase, 0, .32);
+      const act = THREE.MathUtils.smoothstep(gadgetPhase, .32, .68);
+      const recover = THREE.MathUtils.smoothstep(gadgetPhase, .68, 1);
+      const weight = raise * (1 - recover);
+      if (classId === 'assault') {
+        const inject = Math.sin(act * Math.PI);
+        actionTarget.set(-.13 + inject * .055, .04 - inject * .11, -.28 + inject * .06);
+        rotX = THREE.MathUtils.lerp(rotX, .55 + inject * .45, weight);
+        rotY = THREE.MathUtils.lerp(rotY, -.35, weight);
+        rotZ = THREE.MathUtils.lerp(rotZ, -.52 - inject * .25, weight);
+        heldStim.visible = gadgetPhase < .86;
+      } else {
+        const toss = Math.sin(act * Math.PI);
+        actionTarget.set(-.12 + act * .08, .03 + toss * .05 - act * .04, -.29 - act * .22);
+        rotX = THREE.MathUtils.lerp(rotX, .42 - act * .95, weight);
+        rotY = THREE.MathUtils.lerp(rotY, -.28 + act * .35, weight);
+        rotZ = THREE.MathUtils.lerp(rotZ, -.32 + act * .42, weight);
+        if (classId === 'medic') heldMedkit.visible = gadgetPhase < .62;
+        else if (classId === 'support') heldAmmo.visible = gadgetPhase < .62;
+        else if (classId === 'recon') heldScanner.visible = gadgetPhase < .62;
+      }
+      palmTarget.lerp(actionTarget, weight);
+    }
+
+    leftHand.rotation.set(rotX, rotY, rotZ);
     palmOffset.copy(palmLocal).applyQuaternion(leftHand.quaternion);
     leftHand.position.copy(palmTarget).sub(palmOffset);
 
@@ -375,12 +551,16 @@ export function createWeaponRig(owner = {}) {
     leftArm.matrixWorldNeedsUpdate = true;
   }
 
-  let previousClass = '';
-  function update({classId='assault',aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0}={}){
-    if (!Object.hasOwn(loadouts,classId)) classId = 'assault';
-    const loadout = loadouts[classId], support = classId === 'support', recon = classId === 'recon';
-    if (classId !== previousClass) {
-      previousClass = classId;
+  const defaultByClass = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
+  let previousKey = '';
+  function update({classId='assault',weaponId='',aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0}={}){
+    if (!Object.hasOwn(defaultByClass,classId)) classId = 'assault';
+    const key = weaponId && Object.hasOwn(loadouts, weaponId) ? weaponId : defaultByClass[classId];
+    const loadout = loadouts[key];
+    const support = classId === 'support', recon = classId === 'recon';
+    const isAk = key === 'ak12', isVk = key === 'vk45', isPkp = key === 'pkp', isSv = key === 'sv98';
+    if (key !== previousKey) {
+      previousKey = key;
       const end = -.225-loadout.guard-loadout.barrel;
       handguard.scale.set(loadout.width,1,loadout.guard/hgLength);
       anodized.color.setHex(loadout.finish);
@@ -389,22 +569,29 @@ export function createWeaponRig(owner = {}) {
       barrelSleeve.position.set(0,.015,-.225-loadout.guard+.015);
       muzzle.position.set(0,.015,end);
       suppressor.position.set(0,.015,end-.035);
-      muzzle.visible = !recon;
+      muzzle.visible = !recon && !isVk;
       supportAttachment.visible = support;
+      akVariant.visible = isAk;
+      vkVariant.visible = isVk;
+      pkpVariant.visible = isPkp;
+      svVariant.visible = isSv;
+      boltHandleKnob.visible = isSv;
       magazine.visible = !support;
-      rifleFeed.visible = classId === 'assault';
-      compactFeed.visible = classId === 'medic';
+      rifleFeed.visible = classId === 'assault' && !isAk;
+      akFeed.visible = isAk;
+      compactFeed.visible = classId === 'medic' && !isVk;
+      vkFeed.visible = isVk;
       marksmanFeed.visible = recon;
       reflex.visible = classId === 'assault';
       compactOptic.visible = classId === 'medic';
       ironSights.visible = support;
-      for (const [name, stamp] of Object.entries(weaponLabels)) stamp.visible = name === classId;
+      for (const [name, stamp] of Object.entries(weaponLabels)) stamp.visible = name === key;
       frontSight.position.z = -.225-loadout.guard+.035;
-      weapon.userData.muzzleZ = end-(recon?.215:.084);
+      weapon.userData.muzzleZ = end-(recon||isVk?.215:.084);
       for (const feed of [magazine,beltBox]) { feed.position.set(0,0,0);feed.rotation.set(0,0,0); }
     }
     scope.visible = recon && aim < .92;
-    suppressor.visible = recon;
+    suppressor.visible = recon || isVk;
     muzzleFlash.position.set(0,.015,weapon.userData.muzzleZ);
     flashLight.position.copy(muzzleFlash.position);
     const hasPhase = Number.isFinite(reloadPhase);
@@ -414,7 +601,7 @@ export function createWeaponRig(owner = {}) {
     const charging=support||reloadEmpty
       ? THREE.MathUtils.smoothstep(phase,chargeStart,chargePeak)*(1-THREE.MathUtils.smoothstep(phase,chargePeak,chargeEnd))
       : 0;
-    poseReload(loadout,support,phase,amount,charging);
+    poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase);
     bolt.position.z = -.02+kick*.036+charging*.045;
     muzzleFlash.visible = kick > .65;
     muzzleFlash.rotation.z = clock*43;
@@ -427,5 +614,5 @@ export function createWeaponRig(owner = {}) {
     for(const texture of ownedTextures)texture.dispose();
   }
   update();weapon.position.set(.26,-.23,-.42);
-  return {weapon,handguard,bolt,barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,muzzleFlash,flashLight,flashMaterial,update,dispose};
+  return {weapon,handguard,bolt,barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,heldStim,heldMedkit,heldAmmo,heldScanner,muzzleFlash,flashLight,flashMaterial,update,dispose};
 }

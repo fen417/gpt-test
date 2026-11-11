@@ -13,7 +13,7 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu">
-    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> INFANTRY CONQUEST · ALPHA 0.2</span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
+    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> INFANTRY CONQUEST · ALPHA 0.03</span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
     <div class="menu-content">
       <section class="intro">
         <div class="eyebrow"><span></span> ОПЕРАЦИЯ «ПОСЛЕДНИЙ РУБЕЖ»</div>
@@ -35,6 +35,8 @@
           <button class="class-card" data-class="support" aria-pressed="false"><span>▥</span><b>Поддержка</b><small>Пополнение патронов</small></button>
           <button class="class-card" data-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>Обнаружение противника</small></button>
         </div>
+        <div class="field-label weapon-select-label">ОРУЖИЕ КЛАССА</div>
+        <div id="menu-weapons" class="weapon-picker" role="group" aria-label="Выбор оружия"></div>
         <button id="solo" class="deploy-button"><span>НА ПОЛЕ БОЯ</span><span>↗</span></button>
         <div class="solo-note">Мгновенный бой с ботами · Без регистрации</div>
         <div class="network-divider"><span>ИЛИ ИГРА С ДРУЗЬЯМИ</span></div>
@@ -53,7 +55,7 @@
     <div id="world-markers"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
     <div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
     <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
-    <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span>G · ГРАНАТА</span><span>R · ПЕРЕЗАРЯДКА</span></div>
+    <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 / 0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden"><h2>СОСТАВ КОМАНД</h2><div id="score-rows"></div><small>Удерживай TAB · Убийства / Потери</small></div>
   </section>
@@ -69,8 +71,10 @@
       <label>Общая громкость <input id="volume" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
       <label>Музыка меню <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.45" /></label>
       <label>Звуки боя <input id="effects-volume" type="range" min="0" max="1" step="0.05" value="0.7" /></label>
+      <div class="settings-section keybinds-header"><span>УПРАВЛЕНИЕ И КЛАВИШИ</span><button type="button" id="reset-binds" class="small-button">СБРОС</button></div>
+      <div id="keybinds-grid" class="keybinds-grid" role="group" aria-label="Переназначение клавиш"></div>
     </div>
-    <p class="controls-help">WASD — движение · Shift — бег · C — присесть<br>Пробел — прыжок · R — перезарядка · Q — способность<br>G — граната · Tab — счёт · Esc — меню</p><button id="leave" class="outline-button">Покинуть бой</button></div></section>
+    <p id="controls-help" class="controls-help">WASD — движение · Shift — бег · C — присесть<br>Пробел — прыжок · R — перезарядка · Q — способность<br>G — граната · Tab — счёт · Esc — меню</p><button id="leave" class="outline-button">Покинуть бой</button></div></section>
   <section id="death" class="overlay deploy-overlay hidden" aria-label="Тактический экран дислокации">
     <div class="deploy-hud">
       <header class="deploy-topbar">
@@ -115,6 +119,7 @@
               <button type="button" class="deploy-class-btn" data-deploy-class="support" aria-pressed="false"><kbd>3</kbd><span>▥</span><b>Поддержка</b><small>MG-36</small></button>
               <button type="button" class="deploy-class-btn" data-deploy-class="recon" aria-pressed="false"><kbd>4</kbd><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
             </div>
+            <div id="deploy-weapons" class="weapon-picker compact" role="group" aria-label="Выбор оружия для высадки"></div>
             <div class="deploy-loadout">
               <div class="deploy-loadout-head">
                 <div><strong id="deploy-weapon-name">AR-416</strong><span id="deploy-weapon-type">ШТУРМОВАЯ ВИНТОВКА</span></div>
@@ -183,6 +188,7 @@
               <button type="button" class="deploy-class-btn" data-lobby-class="support" aria-pressed="false"><span>▥</span><b>Поддержка</b><small>MG-36</small></button>
               <button type="button" class="deploy-class-btn" data-lobby-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
             </div>
+            <div id="lobby-weapons" class="weapon-picker compact" role="group" aria-label="Выбор оружия в лобби"></div>
           </div>
           <div id="lobby-host-controls" class="deploy-box">
             <div class="deploy-box-title"><span>ПАРАМЕТРЫ ОПЕРАЦИИ</span><small>НАСТРОЙКИ ХОСТА</small></div>

@@ -41,15 +41,15 @@ wss.on('connection',(ws)=>{
     if(!message||typeof message!=='object')return;
     if(message.type==='join'&&!client.joined){
       if(message.protocol!==PROTOCOL_VERSION){send(ws,{type:'error',message:'Версия игры устарела. Обновите страницу и подключитесь снова.'});ws.close(1008,'Protocol version mismatch');return;}
-      client.name=typeof message.name==='string'?message.name:'Боец';client.classId=typeof message.classId==='string'?message.classId:'assault';
-      const player=simulation.addPlayer(client.id,client.name,undefined,client.classId);client.joined=true;client.team=player.team;
+      client.name=typeof message.name==='string'?message.name:'Боец';client.classId=typeof message.classId==='string'?message.classId:'assault';client.weaponId=typeof message.weaponId==='string'?message.weaponId:'';
+      const player=simulation.addPlayer(client.id,client.name,undefined,client.classId,client.weaponId);client.joined=true;client.team=player.team;client.weaponId=player.weaponId;
       send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
     }else if(message.type==='input'&&client.joined){client.lastInput=now;client.lastControls=message.input;simulation.setInput(client.id,message.input);}
     else if(message.type==='respawn'&&client.joined){
       const validPoint=MAP.points.some(p=>p.id===message.pointId)?message.pointId:undefined;
-      if(simulation.respawn(client.id,message.classId,validPoint)){
+      if(simulation.respawn(client.id,message.classId,validPoint,message.weaponId)){
         const spawned=simulation.players.get(client.id);
-        client.classId=spawned.classId;
+        client.classId=spawned.classId;client.weaponId=spawned.weaponId;
         client.lastControls={yaw:spawned.yaw,pitch:spawned.pitch};
         const packet={type:'snapshot',state:simulation.snapshot()};
         for(const [sock,c] of clients)if(c.joined)send(sock,packet);

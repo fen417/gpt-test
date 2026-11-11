@@ -269,42 +269,63 @@ function makeLeg(pose, c, side) {
   return { leg, knee, ankle };
 }
 
-function makeRifle(spine, c, classId) {
+function makeRifle(spine, c, classId, weaponId = '') {
   const rifle = bone('rifle', .125, 1.24 - WAIST, -.32);
   spine.add(rifle);
   const magazine = bone('magazine', 0, -.087, -.076);
   rifle.add(magazine);
   const recon = classId === 'recon', medic = classId === 'medic', support = classId === 'support';
-  const muzzle = recon ? -.8 : medic ? -.46 : support ? -.7 : -.6;
+  const isAk = weaponId === 'ak12', isVk = weaponId === 'vk45', isPkp = weaponId === 'pkp', isSv = weaponId === 'sv98';
+  const muzzle = isSv ? -.88 : recon ? -.8 : isVk ? -.52 : medic ? -.46 : isPkp ? -.76 : support ? -.7 : -.6;
   // Receiver, rail, trigger group and stock.
   round(rifle, c.steel, 0, 0, -.055, .066, .095, .36);
   round(rifle, c.steel, 0, .056, -.08, .04, .018, .32);
   round(rifle, c.steel, 0, -.06, -.075, .055, .04, .09);
+  if (isVk) {
+    // KRISS Super V vertical recoil vector housing in front of trigger
+    round(rifle, c.polymer, 0, -.09, -.095, .062, .145, .095, .15);
+  }
   round(rifle, c.polymer, 0, -.065, .1, .042, .11, .058, .35);
   round(rifle, c.steel, 0, -.06, .035, .012, .012, .07);
   along(rifle, c.steel, 0, .0, .19, .02, .12);
   round(rifle, c.polymer, 0, -.012, .26, medic ? .036 : .058, .09, .16);
   round(rifle, c.rubber, 0, -.018, .345, .062, .12, .022);
   if (recon) round(rifle, c.polymer, 0, .048, .25, .04, .03, .12);
-  // Handguard and barrel per class.
+  // Handguard and barrel per class & weapon variant.
   const guardLength = medic ? .2 : recon ? .34 : support ? .34 : .27;
   round(rifle, c.polymer, 0, .008, -.17 - guardLength / 2, .068, .07, guardLength);
   round(rifle, c.steel, 0, .046, -.17 - guardLength / 2, .03, .012, guardLength * .92);
+  if (isAk) {
+    // Upper AK gas tube and slanted gas block
+    along(rifle, c.steel, 0, .052, -.17 - guardLength * .55, .013, guardLength * .95);
+    round(rifle, c.steel, 0, .035, -.17 - guardLength - .02, .026, .055, .035, -.35);
+  }
   const barrelStart = -.17 - guardLength;
-  along(rifle, c.steel, 0, .013, (barrelStart + muzzle) / 2, support ? .017 : .013, Math.abs(muzzle - barrelStart) + .02);
-  if (recon) along(rifle, c.polymer, 0, .013, muzzle + .02, .022, .17, true);
-  else along(rifle, c.steel, 0, .013, muzzle + .02, .018, .055);
+  along(rifle, c.steel, 0, .013, (barrelStart + muzzle) / 2, isPkp ? .024 : support ? .017 : .013, Math.abs(muzzle - barrelStart) + .02);
+  if (isSv) {
+    // Rectangular multi-chamber sniper muzzle brake
+    round(rifle, c.steel, 0, .013, muzzle + .02, .036, .034, .085);
+  } else if (recon || isVk) {
+    along(rifle, c.polymer, 0, .013, muzzle + .02, .022, .17, true);
+  } else if (isAk) {
+    along(rifle, c.steel, 0, .013, muzzle + .02, .021, .078);
+  } else {
+    along(rifle, c.steel, 0, .013, muzzle + .02, .018, .055);
+  }
   if (!recon) round(rifle, c.steel, 0, .068, barrelStart + .03, .014, .04, .02);
   if (classId === 'assault') round(rifle, c.polymer, 0, -.06, -.3, .034, .075, .04);
   if (support || recon) for (const side of [-1, 1]) along(rifle, c.steel, side * .022, -.035, barrelStart + .12, .007, .24);
-  if (support) round(rifle, c.steel, 0, .1, -.06, .028, .02, .16);
+  if (support) {
+    round(rifle, c.steel, 0, .1, -.06, .028, .02, .16);
+    if (isPkp) round(rifle, c.steel, 0, .095, -.28, .035, .045, .14);
+  }
   // Optics.
   if (recon) {
-    along(rifle, c.polymer, 0, .108, -.1, .026, .2, true);
-    along(rifle, c.polymer, 0, .108, -.215, .034, .05, true);
+    along(rifle, c.polymer, 0, .108, -.1, .026, isSv ? .26 : .2, true);
+    along(rifle, c.polymer, 0, .108, isSv ? -.245 : -.215, .034, .05, true);
     along(rifle, c.polymer, 0, .108, .02, .031, .045, true);
     for (const z of [-.16, -.04]) round(rifle, c.steel, 0, .078, z, .022, .04, .022);
-    along(rifle, c.visor, 0, .108, -.242, .028, .006, true);
+    along(rifle, c.visor, 0, .108, isSv ? -.272 : -.242, .028, .006, true);
   } else if (support) {
     round(rifle, c.steel, 0, .085, .02, .02, .03, .02);
   } else {
@@ -313,12 +334,13 @@ function makeRifle(spine, c, classId) {
   }
   // Magazine on its own bone so reloads can pull it out.
   if (support) {
-    round(magazine, c.armor, 0, -.03, .0, .118, .13, .12);
+    round(magazine, c.armor, 0, -.03, .0, isPkp ? .132 : .118, isPkp ? .145 : .13, .12);
     round(magazine, c.web, 0, -.03, -.061, .1, .1, .006);
-  } else if (medic) round(magazine, c.polymer, 0, -.05, 0, .04, .15, .05, .06);
-  else {
+  } else if (medic) {
+    round(magazine, c.polymer, 0, isVk ? -.075 : -.05, 0, .04, isVk ? .21 : .15, .05, isVk ? .22 : .06);
+  } else {
     round(magazine, c.polymer, 0, -.02, 0, .05, .09, .08, .08);
-    round(magazine, c.polymer, 0, -.095, -.014, .05, recon ? .05 : .08, .078, .26);
+    round(magazine, isAk ? c.accent : c.polymer, 0, -.095, -.014, .05, recon ? .05 : isAk ? .095 : .08, .078, isAk ? .34 : .26);
   }
   const flash = new THREE.Mesh(new THREE.ConeGeometry(.06, .18, 6), new THREE.MeshBasicMaterial({ name: 'muzzle flash', color: 0xffd997, transparent: true, opacity: .9, depthWrite: false }));
   flash.geometry.userData.actorOwned = true;
@@ -391,7 +413,7 @@ function makeDistant(group, c) {
 }
 
 export function createSoldierRig(owner, player) {
-  const team = player.team ? 1 : 0, classId = player.classId;
+  const team = player.team ? 1 : 0, classId = player.classId, weaponId = player.weaponId || '';
   const c = palette(team), material = soldierMaterial(owner);
   const group = new THREE.Group();
   const pose = bone('pelvis'); group.add(pose);
@@ -407,7 +429,7 @@ export function createSoldierRig(owner, player) {
     arms.push(arm); elbows.push(elbow); wrists.push(wrist);
     legs.push(leg); knees.push(knee); ankles.push(ankle);
   }
-  const { rifle, flash, magazine } = makeRifle(spine, c, classId);
+  const { rifle, flash, magazine } = makeRifle(spine, c, classId, weaponId);
   // The chest pivots at the waist: re-express its children relative to it.
   spine.position.y = WAIST;
   for (const child of spine.children) child.position.y -= WAIST;
@@ -438,7 +460,7 @@ export function createSoldierRig(owner, player) {
   group.add(contactShadow);
   const rig = {
     group, pose, spine, body, distant, head, legs, arms, knees, elbows, ankles, wrists, rifle, magazine, marker, flash,
-    team: player.team, classId, lastX: player.x, lastZ: player.z, initialized: false, deathAge: 0, alive: true,
+    team: player.team, classId, weaponId, lastX: player.x, lastZ: player.z, initialized: false, deathAge: 0, alive: true,
     recoil: 0, flinch: 0, flinchSide: 0, lastShot: player.shotSeq, seed: 0, stepIndex: 0,
   };
   updateSoldierArms(rig);
@@ -576,62 +598,60 @@ function resetLocomotion(rig, position, yaw, crouched) {
 }
 
 function animateFeet(motion, position, yaw, dt, distance) {
-  const moving = motion.speed > .22;
   const { feet, sprint, crouch, air } = motion;
-  // Feet follow the hips, which turn toward the direction of travel.
   const legYaw = yaw + motion.hipYaw;
-  const jog = smoothstep(motion.speed, .3, 5.8);
-  const standingStride = lerp(lerp(.6, 2.55, jog), 3.9, sprint);
-  const crouchedStride = lerp(.55, 1.48, smoothstep(motion.speed, .25, 3));
-  const stride = lerp(standingStride, crouchedStride, crouch);
-  const stance = lerp(lerp(lerp(.66, .39, jog), .27, sprint), .59, crouch);
-  const lift = lerp(lerp(.11, .19, sprint), .078, crouch);
-  const speed = Math.hypot(motion.vx, motion.vz);
-  const directionX = speed > .001 ? motion.vx / speed : -Math.sin(yaw);
-  const directionZ = speed > .001 ? motion.vz / speed : -Math.cos(yaw);
-  if (moving && air < .5) motion.phase = (motion.phase + distance / stride) % 1;
   const cos = Math.cos(yaw), sin = Math.sin(yaw);
+  const forwardSpeed = -motion.vx * sin - motion.vz * cos;
+  const lateralSpeed = motion.vx * cos - motion.vz * sin;
+  const speed = Math.hypot(forwardSpeed, lateralSpeed);
+  const moving = speed > .16;
+  const jog = smoothstep(speed, .2, 5.8);
+  const standingStride = lerp(lerp(.9, 2.25, jog), 3.1, sprint);
+  const crouchedStride = lerp(.72, 1.45, smoothstep(speed, .2, 3));
+  const stride = lerp(standingStride, crouchedStride, crouch);
+  if (moving && air < .5) motion.phase = (motion.phase + distance / stride) % 1;
+  const moveBlend = smoothstep(speed, .12, 2.1);
+  const dirX = speed > .05 ? lateralSpeed / speed : 0;
+  const dirZ = speed > .05 ? -forwardSpeed / speed : 0;
+  const maxLift = lerp(lerp(.11, .19, sprint), .075, crouch);
+  const ampZ = lerp(.21, .31, sprint) * (1 - crouch * .32) * moveBlend;
+  const ampX = lerp(.135, .175, sprint) * (1 - crouch * .28) * moveBlend;
+  const footResp = 1 - Math.exp(-dt * 26);
+
   for (let i = 0; i < feet.length; i++) {
     const foot = feet[i], side = i === 0 ? -1 : 1;
     const toeYaw = legYaw - side * .08;
-    restingFoot(nominal, position, legYaw, side, crouch);
     const phase = (motion.phase + i * .5) % 1;
-    if (air > .5) {
-      const tuck = i === 0 ? .105 : .18;
-      foot.planted.lerp(nominal, 1 - Math.exp(-dt * 17));
-      foot.yaw += nearestAngle(foot.yaw, toeYaw) * (1 - Math.exp(-dt * 12));
-      foot.lift = lerp(foot.lift, tuck, 1 - Math.exp(-dt * 14));
-      foot.swinging = false;
-      foot.settle = 1;
-    } else if (moving) {
-      const swinging = phase >= stance;
-      if (swinging && !foot.swinging) {
-        // This location stays fixed in world space through the next stance.
-        const lead = stride * (1 - phase + stance * .48);
-        nominal.x += directionX * lead;
-        nominal.z += directionZ * lead;
-        startStep(foot, nominal, toeYaw);
-      }
-      if (swinging) moveStep(foot, (phase - stance) / (1 - stance), lift);
-      else if (foot.swinging) moveStep(foot, 1, lift);
-      else foot.lift = lerp(foot.lift, 0, 1 - Math.exp(-dt * 22));
-      foot.swinging = swinging;
-      foot.settle = 1;
-    } else {
-      const outOfPlace = foot.planted.distanceToSquared(nominal) > .019;
-      const turning = Math.abs(nearestAngle(foot.yaw, toeYaw)) > .38;
-      if (foot.swinging || (foot.settle >= 1 && feet[1 - i].settle >= 1 && (outOfPlace || turning))) {
-        startStep(foot, nominal, toeYaw);
-        foot.settle = 0;
-      }
-      foot.swinging = false;
-      if (foot.settle < 1) {
-        foot.settle = Math.min(1, foot.settle + dt / .22);
-        moveStep(foot, foot.settle, .068);
-      } else foot.lift = lerp(foot.lift, 0, 1 - Math.exp(-dt * 18));
-    }
-    const dx = foot.planted.x - position.x, dz = foot.planted.z - position.z;
-    foot.local.set(cos * dx - sin * dz, ANKLE_HEIGHT + foot.lift, sin * dx + cos * dz);
+    const angle = phase * TAU;
+    const baseX = side * (.104 + .016 * crouch);
+    const baseZ = side * -.024;
+    const swing = -Math.cos(angle);
+    const offsetZ = dirZ * swing * ampZ;
+    let offsetX = dirX * swing * ampX;
+    // Prevent legs from crossing over the centerline during fast strafing
+    if (side < 0 && offsetX > .052) offsetX = .052;
+    if (side > 0 && offsetX < -.052) offsetX = -.052;
+
+    const targetLift = air > .5
+      ? (i === 0 ? .105 : .18)
+      : Math.max(0, Math.sin(angle)) * maxLift * moveBlend;
+    foot.lift = lerp(foot.lift, targetLift, 1 - Math.exp(-dt * 24));
+    foot.swinging = moving && Math.sin(angle) > 0;
+    foot.settle = 1;
+    foot.yaw = toeYaw;
+
+    const targetLocalX = baseX + offsetX;
+    const targetLocalZ = baseZ + offsetZ;
+    foot.local.set(
+      lerp(foot.local.x || baseX, targetLocalX, footResp),
+      ANKLE_HEIGHT + foot.lift,
+      lerp(foot.local.z || baseZ, targetLocalZ, footResp),
+    );
+    foot.planted.set(
+      position.x + foot.local.x * cos + foot.local.z * sin,
+      0,
+      position.z - foot.local.x * sin + foot.local.z * cos,
+    );
   }
 }
 
@@ -742,7 +762,7 @@ export function animateSoldier(rig, { dt, player, reset = false }) {
   const motion = fresh ? resetLocomotion(rig, position, yaw, crouched) : existing;
   const dx = position.x - motion.x, dz = position.z - motion.z;
   const distance = Math.hypot(dx, dz);
-  const response = 1 - Math.exp(-dt * 12);
+  const response = 1 - Math.exp(-dt * 22);
   motion.x = position.x;
   motion.z = position.z;
   motion.time += dt;
@@ -762,14 +782,14 @@ export function animateSoldier(rig, { dt, player, reset = false }) {
   const forwardSpeed = -motion.vx * sin - motion.vz * cos;
   const lateralSpeed = motion.vx * cos - motion.vz * sin;
   let heading = 0;
-  if (motion.speed > .6) {
+  if (motion.speed > .35) {
     heading = Math.atan2(lateralSpeed, forwardSpeed);
     if (heading > Math.PI / 2) heading -= Math.PI;
     else if (heading < -Math.PI / 2) heading += Math.PI;
   }
-  const hipTarget = clamp(-heading, -.62, .62) * gaitWeight * (1 - motion.crouch * .35);
-  motion.hipYaw = fresh ? hipTarget : lerp(motion.hipYaw, hipTarget, 1 - Math.exp(-dt * 7));
-  motion.lean = lerp(motion.lean, clamp(-lateralSpeed * .012, -.07, .07) * (1 - motion.crouch * .5), 1 - Math.exp(-dt * 6));
+  const hipTarget = clamp(-heading, -.45, .45) * gaitWeight * (1 - motion.crouch * .35);
+  motion.hipYaw = fresh ? hipTarget : lerp(motion.hipYaw, hipTarget, 1 - Math.exp(-dt * 16));
+  motion.lean = lerp(motion.lean, clamp(-lateralSpeed * .01, -.055, .055) * (1 - motion.crouch * .5), 1 - Math.exp(-dt * 14));
   animateFeet(motion, position, yaw, dt, distance);
   const stridePhase = motion.phase * TAU;
   const strideTwist = Math.sin(stridePhase) * (.05 + motion.sprint * .05) * gaitWeight * (1 - motion.crouch * .5);
