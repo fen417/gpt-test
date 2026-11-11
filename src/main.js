@@ -199,9 +199,9 @@ function selectClass(classId,playClick=false){
   const weaponId=currentWeaponId(classId);
   const w=getWeapon(classId,weaponId);
   renderWeaponPickers(classId);
-  text('class-weapon',`${w.name} · ${weaponTypes[classId]}`);
-  text('deploy-weapon-name',w.name);
-  text('deploy-weapon-type',weaponTypes[classId]);
+  text('class-weapon',`${w.name||w.weapon} · ${w.type||weaponTypes[classId]}`);
+  text('deploy-weapon-name',w.name||w.weapon);
+  text('deploy-weapon-type',w.type||weaponTypes[classId]);
   text('deploy-ammo-tag',`${w.mag} / ${w.reserve} ПАТР.`);
   text('deploy-gadget-tag',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[classId]}`);
   $('stat-dmg').style.width=`${Math.min(100,Math.round(w.damage/95*100))}%`;
@@ -751,7 +751,7 @@ function hud(now){
   const nearest=MAP.points.reduce((best,p)=>Math.hypot(player.x-p.x,player.z-p.z)<Math.hypot(player.x-best.x,player.z-best.z)?p:best,MAP.points[0]);text('location-label',nearest?`${nearest.name} / СЕКТОР ${nearest.id}`:'SECTOR 09');text('protection-label',player.protected?'◇ ЗАЩИТА ПОСЛЕ ВЫСАДКИ':'');
   text('tickets-blue',Math.ceil(state.tickets[player.team]));text('tickets-orange',Math.ceil(state.tickets[1-player.team]));$('blue-bar').style.width=`${state.tickets[player.team]/3}%`;$('orange-bar').style.width=`${state.tickets[1-player.team]/3}%`;
   const seconds=Math.floor(state.time);text('match-time',`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`);
-  text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;text('ammo',player.ammo);text('reserve',player.reserve);text('weapon-name',weapon.name);text('ammo-status',player.reloading?'ПЕРЕЗАРЯДКА…':player.ammo===0?'НЕТ ПАТРОНОВ':weapon.semi?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
+  text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;text('ammo',player.ammo);text('reserve',player.reserve);text('weapon-name',weapon.name||weapon.weapon);text('ammo-status',player.reloading?'ПЕРЕЗАРЯДКА…':player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
   text('kd',`${player.kills} У / ${player.deaths} П`);text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
