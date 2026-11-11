@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { smoothRingSeams } from './character-geometry.js';
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
 // its own depth pass by GameRenderer; no material is allowed to see through it.
@@ -51,10 +52,18 @@ export function createWeaponRig(owner = {}) {
   const anodized=mat('weapon-handguard-anodized',0x5d6355,.62,.48,{bumpMap:metalGrain,bumpScale:.00019});
   const worn=mat('weapon-worn-bevels',0x898474,.54,.52);
   const rubber=mat('weapon-rubber',0x1e2826,.97,.01);
-  const glove=mat('glove-tactical-fabric',0x535c4c,.97,.01);
-  const leather=mat('glove-leather-palms',0x343d35,.88,.03);
-  const seam=mat('glove-stitched-seams',0x7c8170,.97,0);
-  const knuckle=mat('glove-knuckle-protection',0x323d37,.76,.08);
+  const fabricGrain = surfaceGrain('glove-woven-fabric', true, [5, 7]);
+  // A fine diffuse weave remains readable on the Lambert/low quality path.
+  const fabricPixels = fabricGrain.image.data;
+  for(let y=0;y<64;y++)for(let x=0;x<64;x++){
+    const i=(y*64+x)*4, weave=((x%4<2)===(y%4<2))?8:-8;
+    const value=218+Math.round((fabricPixels[i]-132)*.42)+weave;
+    fabricPixels[i]=fabricPixels[i+1]=fabricPixels[i+2]=value;
+  }
+  const glove=mat('glove-tactical-fabric',0x84785d,.96,0,{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.00035});
+  const leather=mat('glove-leather-palms',0x424437,.88,0,{bumpMap:polymerGrain,bumpScale:.00032});
+  const seam=mat('glove-stitched-seams',0x969078,.97,0);
+  const knuckle=mat('glove-knuckle-protection',0x353b32,.84,.02,{bumpMap:polymerGrain,bumpScale:.00018});
   const clothMap = owner.surfaces?.maps?.cloth || null;
   const cloth = mat('sleeve-ripstop-cloth', 0x68745c, .98, 0, clothMap ? { map: clothMap } : {});
   const cuff=mat('sleeve-elastic-cuff',0x384638,.99,0);
@@ -62,7 +71,7 @@ export function createWeaponRig(owner = {}) {
   const label=mat('weapon-engraved-markings',0xabb0a8,.75,.3);
   const lens=mat('lens-coated-glass',0x527780,.12,.22,{transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide});
   const unitBox=new RoundedBoxGeometry(1,1,1,1,.09);ownedGeometries.add(unitBox);
-  const unitSphere=new THREE.SphereGeometry(1,12,8);ownedGeometries.add(unitSphere);
+  const unitSphere=new THREE.SphereGeometry(1,18,12);ownedGeometries.add(unitSphere);
   const detailBox = new THREE.BoxGeometry(1,1,1);
   function mesh(parent,geometry,material,x=0,y=0,z=0){ownedGeometries.add(geometry);const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=false;m.receiveShadow=false;parent.add(m);return m;}
   function rounded(parent,x,y,z,w,h,d,material){const m=mesh(parent,unitBox,material,x,y,z);m.scale.set(w,h,d);return m;}
@@ -76,16 +85,23 @@ export function createWeaponRig(owner = {}) {
     const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:bevel>0,bevelSegments:1,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:4});g.rotateY(Math.PI/2);g.translate(x-width/2,0,0);return mesh(parent,g,material);
   }
   function curve(parent,points,radius,material,segments=10,radial=6){const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));return mesh(parent,new THREE.TubeGeometry(path,Math.min(segments,12),radius,Math.min(radial,6),false),material);}
-  function loft(parent,points,radii,material,{segments=20,radial=12,ellipse=[1,1],folds=0}={}){
-    segments = Math.min(segments, 22); radial = Math.min(radial, 12);
+  function loft(parent,points,radii,material,{segments=20,radial=12,ellipse=[1,1],folds=0,widthAxis=null}={}){
+    segments = Math.min(segments, 32); radial = Math.min(radial, 18);
     const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p))),frames=path.computeFrenetFrames(segments,false),positions=[],uv=[],indices=[];
-    for(let i=0;i<=segments;i++){const t=i/segments,p=path.getPointAt(t),u=t*(radii.length-1),j=Math.min(radii.length-2,Math.floor(u)),base=THREE.MathUtils.lerp(radii[j],radii[j+1],u-j),r=base*(1+folds*Math.sin(t*75)*Math.sin(Math.PI*t));
-      for(let k=0;k<=radial;k++){const a=k/radial*Math.PI*2,c=Math.cos(a)*r*ellipse[0],s=Math.sin(a)*r*ellipse[1];positions.push(p.x+frames.normals[i].x*c+frames.binormals[i].x*s,p.y+frames.normals[i].y*c+frames.binormals[i].y*s,p.z+frames.normals[i].z*c+frames.binormals[i].z*s);uv.push(k/radial,t*3);}
+    if(widthAxis)for(let i=0;i<=segments;i++){
+      const tangent=frames.tangents[i],normal=frames.normals[i];
+      normal.set(...widthAxis).addScaledVector(tangent,-normal.dot(tangent)).normalize();
+      frames.binormals[i].crossVectors(tangent,normal).normalize();
+    }
+    for(let i=0;i<=segments;i++){const t=i/segments,p=path.getPointAt(t),u=t*(radii.length-1),j=Math.min(radii.length-2,Math.floor(u)),base=THREE.MathUtils.lerp(radii[j],radii[j+1],u-j);
+      for(let k=0;k<=radial;k++){const a=k/radial*Math.PI*2;
+        const r=base*(1+folds*Math.sin(Math.PI*t)*(Math.sin(t*37+a*2)*.65+Math.sin(t*21-a*3)*.35));
+        const c=Math.cos(a)*r*ellipse[0],s=Math.sin(a)*r*ellipse[1];positions.push(p.x+frames.normals[i].x*c+frames.binormals[i].x*s,p.y+frames.normals[i].y*c+frames.binormals[i].y*s,p.z+frames.normals[i].z*c+frames.binormals[i].z*s);uv.push(k/radial,t*3);}
     }
     for(let i=0;i<segments;i++)for(let k=0;k<radial;k++){const a=i*(radial+1)+k,b=a+radial+1;indices.push(a,a+1,b,b,a+1,b+1);}
     const front=positions.length/3;positions.push(...path.getPointAt(0).toArray());uv.push(.5,0);const back=positions.length/3;positions.push(...path.getPointAt(1).toArray());uv.push(.5,1);
     for(let k=0;k<radial;k++){indices.push(front,k+1,k);const a=segments*(radial+1)+k;indices.push(back,a,a+1);}
-    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();return mesh(parent,g,material);
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();smoothRingSeams(g,segments+1,radial);return mesh(parent,g,material);
   }
   function screw(parent,x,y,z,r=.006){cylinder(parent,x,y,z,r,.004,edge,'x',12);const slot=detail(parent,x+(x>0?.0025:-.0025),y,z,.0015,r*.32,r*1.25,dark);slot.rotation.x=.55;}
   function rail(parent,z0,z1,y=.093,width=.066){
@@ -355,33 +371,51 @@ export function createWeaponRig(owner = {}) {
   cylinder(compactOptic,0,.166,-.122,.0017,.001,redDot,'z',10);
   for(const side of [-1,1])screw(compactOptic,side*.033,.138,-.123,.0045);
 
-  // Continuous fabric sleeves, elastic cuffs and genuinely curved glove fingers.
+  // Tailored sleeves: elbow volume, tapered wrists and oblique tension folds.
   const leftArm=new THREE.Group();leftArm.name='left-articulated-forearm';weapon.add(leftArm);
-  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.095,.086,.067,.045],cloth,{segments:64,radial:24,ellipse:[1.13,.89],folds:.065});
+  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.092,.09,.083,.071,.06,.047,.041],cloth,{segments:32,radial:18,ellipse:[1.1,.88],folds:.105});
   loft(leftArm,[[-.108,-.129,-.311],[-.095,-.119,-.34],[-.083,-.108,-.361]],[.049,.047,.044],cuff,{segments:14,radial:24,ellipse:[1.07,.92],folds:.07});
   curve(leftArm,[[-.385,-.406,.23],[-.268,-.262,.04],[-.167,-.148,-.18],[-.086,-.071,-.338]],.0018,seam,32,6);
-  for(let i=0;i<3;i++)curve(leftArm,[[-.206-i*.014,-.197-i*.012,-.123+i*.022],[-.17-i*.014,-.154-i*.012,-.16+i*.022],[-.135-i*.014,-.153-i*.012,-.167+i*.022]],.003,cloth,8,8);
+  for(let i=0;i<3;i++)curve(leftArm,[[-.206-i*.014,-.197-i*.012,-.123+i*.022],[-.17-i*.014,-.154-i*.012,-.16+i*.022],[-.135-i*.014,-.153-i*.012,-.167+i*.022]],.0025,cloth,8,6);
+  loft(leftArm,[[-.18,-.157,-.161],[-.144,-.129,-.224],[-.115,-.105,-.28]],[.021,.03,.022],cloth,{segments:12,radial:10,ellipse:[1,.16],widthAxis:[1,0,0]});
+  const leftTab=rounded(leftArm,-.108,-.077,-.327,.039,.008,.024,cuff);leftTab.rotation.z=-.35;
+  for(let i=0;i<6;i++)detail(leftArm,-.123+i*.005,-.071,-.325,.002,.0015,.009,seam);
   const rightArm=new THREE.Group();weapon.add(rightArm);
-  loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.105,.091,.068,.046],cloth,{segments:64,radial:24,ellipse:[1.1,.9],folds:.055});
+  loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.097,.094,.084,.073,.058,.047,.04],cloth,{segments:32,radial:18,ellipse:[1.08,.9],folds:.09});
   loft(rightArm,[[.089,-.23,.151],[.074,-.212,.129],[.062,-.198,.112]],[.052,.049,.044],cuff,{segments:14,radial:24,ellipse:[1.06,.94],folds:.06});
   curve(rightArm,[[.323,-.441,.42],[.247,-.324,.29],[.161,-.226,.172],[.102,-.181,.112]],.0018,seam,32,6);
+  const rightTab=rounded(rightArm,.101,-.196,.14,.026,.013,.035,cuff);rightTab.rotation.z=.3;
   const leftHand=new THREE.Group();leftHand.name='left-support-glove';leftHand.position.set(-.018,-.075,-.36);weapon.add(leftHand);
   const leftBase=leftHand.position.clone(), lp=p=>[p[0]-leftBase.x,p[1]-leftBase.y,p[2]-leftBase.z];
   function finger(parent, points, radius, segments=18) {
-    return loft(parent,points,[radius*1.06,radius,radius*.86,radius*.45],glove,{segments,radial:10,ellipse:[1,.9]});
+    // Separate phalange volumes with shallow joint constrictions and a round tip.
+    return loft(parent,points,[radius*.94,radius*1.06,radius*.95,radius*.86,
+      radius*.96,radius*.81,radius*.83,radius*.68,radius*.18],glove,{segments:Math.max(24,segments),radial:14,ellipse:[1,.88]});
   }
-  ellipsoid(leftHand,lp([-.035,-.08,-.423]),[.051,.034,.068],glove);
-  ellipsoid(leftHand,lp([-.025,-.093,-.426]),[.047,.018,.057],leather);
+  loft(leftHand,[[-.083,-.108,-.361],[-.058,-.089,-.389],[-.035,-.08,-.429],[-.032,-.077,-.471]].map(lp),
+    [.024,.03,.035,.035,.029,.019],glove,{segments:28,radial:18,ellipse:[1.35,.64],widthAxis:[1,0,0]});
+  // Leather heel and thenar pad connect the thumb to the palm, with a slimmer back.
+  ellipsoid(leftHand,lp([-.045,-.096,-.399]),[.03,.016,.033],leather);
+  ellipsoid(leftHand,lp([-.064,-.067,-.394]),[.023,.022,.031],glove);
+  loft(leftHand,[[-.054,-.108,-.389],[-.031,-.103,-.424],[-.027,-.096,-.462]].map(lp),
+    [.019,.032,.03,.017],leather,{segments:18,radial:12,ellipse:[1,.18],widthAxis:[1,0,0]});
   for(let i=0;i<4;i++){
     const z=-.477+i*.028,r=i===3?.011:.0128;
     const points=[[-.06,-.071,z],[-.021,-.102,z-.002],[.026,-.094,z-.002],[.056,-.058,z],[.059,-.021,z+.003],[.044,.005,z+.006]];
     finger(leftHand,points.map(lp),r);
-    ellipsoid(leftHand,lp([.039,-.077,z]),[.016,.018,.016],knuckle);
+    ellipsoid(leftHand,lp([.041,-.077,z]),[.013,.012,.011],knuckle);
+    ellipsoid(leftHand,lp([.058,-.035,z+.001]),[.009,.012,.01],leather);
     for(const [x,y]of [[-.016,-.105],[.056,-.041]])curve(leftHand,[[x-.006,y-.003,z-.01],[x,y-.006,z],[x+.006,y-.003,z+.01]].map(lp),.0012,seam,6,6);
   }
   finger(leftHand,[[-.067,-.068,-.383],[-.082,-.034,-.395],[-.071,.012,-.42],[-.047,.031,-.438]].map(lp),.015);
   ellipsoid(leftHand,lp([-.073,-.017,-.407]),[.018,.022,.023],knuckle);
   curve(leftHand,[[-.07,-.092,-.375],[-.077,-.098,-.411],[-.072,-.087,-.464]].map(lp),.0018,seam,16,6);
+  for(let i=0;i<4;i++){
+    const z=-.461+i*.023;
+    const pad=rounded(leftHand,...lp([-.063,-.081,z]),.014,.01,.017,knuckle);pad.rotation.z=-.3;
+  }
+  curve(leftHand,[[-.074,-.091,-.376],[-.064,-.114,-.369],[-.039,-.11,-.381]].map(lp),.004,knuckle,10,6);
+  for(let i=0;i<7;i++)ellipsoid(leftHand,lp([-.073+i*.002,-.099,-.402-i*.007]),[.0012,.0012,.0025],seam);
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
@@ -444,19 +478,27 @@ export function createWeaponRig(owner = {}) {
   }
 
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
-  ellipsoid(rightHand,[.048,-.174,.092],[.037,.064,.045],glove);
-  ellipsoid(rightHand,[.027,-.178,.071],[.029,.057,.035],leather);
+  loft(rightHand,[[.064,-.208,.116],[.056,-.184,.111],[.054,-.153,.105],[.051,-.128,.091]],
+    [.025,.029,.034,.033,.025,.017],glove,{segments:28,radial:18,ellipse:[1,.77],widthAxis:[1,0,0]});
+  ellipsoid(rightHand,[.032,-.176,.084],[.018,.044,.028],leather);
+  ellipsoid(rightHand,[.038,-.13,.116],[.026,.025,.025],glove);
   for(let i=0;i<3;i++){
     const y=-.156-i*.03;
     finger(rightHand,[[.059,y,.114],[.067,y-.005,.074],[.045,y-.008,.036],[.006,y-.005,.027],[-.028,y,.043],[-.032,y+.005,.064]],.012);
-    ellipsoid(rightHand,[.062,y-.002,.048],[.015,.016,.018],knuckle);
+    ellipsoid(rightHand,[.065,y-.002,.061],[.009,.011,.014],knuckle);
+    ellipsoid(rightHand,[-.02,y,.041],[.01,.008,.011],leather);
     curve(rightHand,[[.051,y-.013,.041],[.063,y-.014,.049],[.068,y-.011,.061]],.0012,seam,6,6);
   }
   // Index finger reaches the trigger rather than becoming a fourth grip block.
   finger(rightHand,[[.06,-.13,.096],[.069,-.107,.057],[.049,-.092,.019],[.021,-.091,.006],[.014,-.102,.012]],.012,22);
   finger(rightHand,[[.057,-.12,.12],[.022,-.108,.139],[-.014,-.108,.122],[-.03,-.124,.091]],.016);
   curve(rightHand,[[.071,-.143,.12],[.077,-.176,.116],[.066,-.214,.104]],.0018,seam,16,6);
-  for(const [y,z]of [[-.15,.123],[-.18,.12],[-.211,.11]])ellipsoid(rightHand,[.076,y,z],[.013,.013,.016],knuckle);
+  for(const [y,z]of [[-.144,.112],[-.172,.12],[-.199,.117]]){
+    const pad=rounded(rightHand,.082,y,z,.008,.018,.022,knuckle);pad.rotation.y=-.18;
+    for(let n=0;n<3;n++)detail(rightHand,.087,y-.005+n*.005,z,.0015,.0018,.012,leather);
+  }
+  curve(rightHand,[[.071,-.131,.129],[.079,-.165,.136],[.068,-.197,.137]],.0015,seam,12,6);
+  const wristStrap=rounded(rightHand,.069,-.204,.139,.046,.014,.011,knuckle);wristStrap.rotation.z=.23;
 
   const flashMaterial=new THREE.MeshBasicMaterial({name:'muzzle-flash',color:0xffd08a,transparent:true,opacity:.92,depthTest:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});ownedMaterials.add(flashMaterial);
   const muzzleFlash=new THREE.Group();weapon.add(muzzleFlash);muzzleFlash.visible=false;
@@ -591,7 +633,18 @@ export function createWeaponRig(owner = {}) {
 
   const defaultByClass = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
   let previousKey = '';
-  function update({classId='assault',weaponId='',aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0}={}){
+  let previousTeam = -1;
+  function update({classId='assault',weaponId='',team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0}={}){
+    team = team ? 1 : 0;
+    if(team !== previousTeam){
+      previousTeam = team;
+      for(const [material, color] of [[cloth,team?0xc1ab85:0x849783],[glove,team?0x84785d:0x5f6755],
+        [cuff,team?0x605942:0x384638]]){
+        material.color.setHex(color);
+        material._lowMaterial?.color.setHex(color);
+        material._highMaterial?.color.setHex(color);
+      }
+    }
     if (!Object.hasOwn(defaultByClass,classId)) classId = 'assault';
     const key = weaponId && Object.hasOwn(loadouts, weaponId) ? weaponId : defaultByClass[classId];
     const loadout = loadouts[key];

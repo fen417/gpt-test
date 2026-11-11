@@ -1671,6 +1671,7 @@ export class GameRenderer {
       this.weapon.visible = isAlive && !this.scoped;
       this.weaponRig.update({
         classId: player.classId,
+        team: player.team,
         weaponId: player.weaponId || defaultWeaponId(player.classId),
         aim: this.aimAmount,
         reloadMotion,

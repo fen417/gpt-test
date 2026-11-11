@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { drawTeamEmblem } from './logos.js';
+import { tailoredGeometry } from './character-geometry.js';
 
 // Every soldier is ONE skinned mesh (one draw call + one shadow call) driven by
 // a small bone hierarchy. Parts are painted with vertex colours over a shared
@@ -29,7 +30,7 @@ function geometry() {
   shapes ??= {
     box: new THREE.BoxGeometry(1, 1, 1),
     round: new RoundedBoxGeometry(1, 1, 1, 1, .14),
-    sphere: new THREE.SphereGeometry(1, 10, 7),
+    sphere: new THREE.SphereGeometry(1, 14, 10),
     low: new THREE.SphereGeometry(1, 7, 5),
     cyl: new THREE.CylinderGeometry(1, 1, 1, 8),
     fine: new THREE.CylinderGeometry(1, 1, 1, 12),
@@ -46,7 +47,7 @@ function palette(team) {
     web: paint(team ? 0x524b37 : 0x303d34),
     shell: paint(team ? 0x796c51 : 0x48594c, 2),
     rubber: paint(0x232928),
-    glove: paint(team ? 0x5d5242 : 0x2f3631),
+    glove: paint(team ? 0x84785d : 0x5f6755),
     boot: paint(team ? 0x6b5a43 : 0x2c2d29),
     sole: paint(0x1d1f1e),
     steel: paint(0x30383a, 3),
@@ -121,28 +122,43 @@ const along = (p, look, x, y, z, radius, length, fine) => tube(p, look, x, y, z,
 
 // Tapered elliptical sections with continuous normals for fabric and armour.
 // `blend` gives each ring a weight toward the parent bone for soft joints.
-function volume(parent, look, sections, segments = 10, blend = null) {
-  const positions = [], uv = [], indices = [];
-  for (const [ring, [y, width, depth, offset = 0]] of sections.entries()) {
-    for (let i = 0; i <= segments; i++) {
-      const angle = i * TAU / segments;
-      positions.push(Math.cos(angle) * width, y, offset + Math.sin(angle) * depth);
-      uv.push(i / segments, ring / (sections.length - 1));
-      if (i < segments && ring < sections.length - 1) {
-        const a = ring * (segments + 1) + i, b = a + segments + 1;
-        indices.push(a, b, a + 1, a + 1, b, b + 1);
-      }
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
+function volume(parent, look, sections, segments = 14, blend = null, cut = {}) {
+  const geo = tailoredGeometry(sections, segments, cut);
   const mesh = shape(parent, geo, look, 0, 0, 0, 1, 1, 1);
   mesh.userData.owned = true;
   if (blend) { mesh.userData.blend = blend; mesh.userData.ring = segments + 1; }
   return mesh;
+}
+
+function cord(parent, look, points, radius = .003, segments = 10) {
+  const path = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
+  const geo = new THREE.TubeGeometry(path, segments, radius, 5, false);
+  const mesh = shape(parent, geo, look, 0, 0, 0, 1, 1, 1);
+  mesh.userData.owned = true;
+  return mesh;
+}
+
+// Clipped corners and bevels give hard equipment a manufactured silhouette.
+function panel(parent, look, x, y, z, w, h, d, bevel = .008) {
+  const outline = new THREE.Shape();
+  const points = [[-.5,-.4],[-.4,-.5],[.4,-.5],[.5,-.4],[.5,.27],[.28,.5],[-.28,.5],[-.5,.27]];
+  points.forEach(([px, py], i) => i ? outline.lineTo(px * w, py * h) : outline.moveTo(px * w, py * h));
+  outline.closePath();
+  const geo = new THREE.ExtrudeGeometry(outline, { depth: d, bevelEnabled: true, bevelThickness: bevel,
+    bevelSize: bevel, bevelSegments: 2, steps: 1, curveSegments: 1 });
+  geo.translate(0, 0, -d / 2);
+  const mesh = shape(parent, geo, look, x, y, z, 1, 1, 1);
+  mesh.userData.owned = true;
+  return mesh;
+}
+
+function pouch(parent, c, x, y, z, w, h, d) {
+  const body = volume(parent, c.armor, [[-h/2,w*.32,d*.3],[-h*.43,w*.48,d*.46],
+    [0,w*.5,d*.5],[h*.35,w*.46,d*.46],[h*.5,w*.36,d*.32]], 12, null, { square: .65, folds: .035, caps: true });
+  body.position.set(x, y, z);
+  round(parent, c.web, x, y+h*.3, z-d*.48, w*.84, h*.16, .009);
+  cord(parent, c.web, [[x-w*.37,y+h*.33,z-d*.5],[x-w*.38,y-h*.32,z-d*.51],
+    [x,y-h*.42,z-d*.5],[x+w*.38,y-h*.32,z-d*.51],[x+w*.37,y+h*.33,z-d*.5]], .0018, 10);
 }
 
 function bone(name, x = 0, y = 0, z = 0) {
@@ -198,10 +214,15 @@ function bake(root, bones) {
 function makeHead(head, c, classId, team) {
   // Neck and face, softly attached to the chest.
   volume(head, c.skin, [[-.14, .052, .05], [-.09, .05, .05], [-.04, .052, .054], [-.01, .055, .058]], 10, [.85, .35, 0, 0]);
-  ball(head, c.skin, 0, .004, -.008, .088, .118, .094);
-  ball(head, c.skin, 0, -.058, -.042, .07, .052, .064);
-  round(head, c.skin, 0, -.004, -.1, .022, .042, .03, -.25);
-  round(head, c.skin, 0, .036, -.088, .13, .02, .024);
+  volume(head, c.skin, [[-.101,.025,.031,-.04],[-.084,.051,.055,-.026],[-.047,.068,.071,-.015],
+    [.003,.08,.082,-.005],[.057,.083,.081,.002],[.1,.072,.069,.004],[.124,.018,.024,.006]], 18, null, { square: .88 });
+  ball(head, c.skin, 0, -.008, -.091, .014, .029, .024);
+  ball(head, c.skin, 0, -.028, -.103, .019, .012, .014);
+  cord(head, c.scarf, [[-.025,-.066,-.08],[0,-.068,-.086],[.025,-.066,-.08]], .002);
+  for (const side of [-1, 1]) {
+    ball(head, c.skin, side*.049, -.016, -.07, .027, .031, .021);
+    cord(head, c.web, [[side*.095,.033,.021],[side*.076,-.055,-.022],[side*.037,-.09,-.06]], .005);
+  }
   for (const side of [-1, 1]) ball(head, c.skin, side * .088, -.004, .008, .016, .03, .022);
   if (team) {
     // Shemagh wrapped over the lower face.
@@ -229,7 +250,12 @@ function makeHead(head, c, classId, team) {
   for (const side of [-1, 1]) {
     round(head, c.accent, side * .116, .06, .012, .016, .026, .14);
     round(head, c.web, side * .1, .14, .0, .016, .07, .03, 0, 0, side * .5);
+    for (const z of [-.036, .001, .038]) block(head, c.polymer, side*.126, .058, z, .01, .012, .018);
   }
+  panel(head, c.polymer, 0, .105, -.117, .038, .047, .008, .003);
+  round(head, c.web, 0, .11, .116, .07, .043, .025);
+  cord(head, c.rubber, [[-.116,-.016,-.005],[-.123,-.043,-.061],[-.072,-.055,-.102]], .0035);
+  ball(head, c.rubber, -.065, -.054, -.104, .012, .007, .008);
   if (classId === 'medic') {
     block(head, c.white, 0, .14, -.096, .045, .045, .01, .5);
     block(head, c.red, 0, .141, -.1, .036, .011, .006, .5);
@@ -241,7 +267,9 @@ function makeArm(spine, c, side, classId) {
   const arm = bone(side < 0 ? 'arm.L' : 'arm.R', side * .207, 1.39, 0);
   const elbow = bone('elbow', 0, -UPPER_ARM, 0), wrist = bone('wrist', 0, -FOREARM, 0);
   spine.add(arm); arm.add(elbow); elbow.add(wrist);
-  volume(arm, c.uniform, [[-.297, .054, .054], [-.22, .061, .066], [-.1, .074, .077], [-.03, .072, .07], [.027, .052, .05], [.05, .026, .026]], 12, [0, 0, 0, .2, .6, .85]);
+  volume(arm, c.uniform, [[-.297,.048,.05],[-.255,.055,.058],[-.21,.057,.062],[-.16,.065,.07],
+    [-.1,.073,.077],[-.03,.075,.074],[.027,.055,.054],[.05,.026,.026]], 16, [0,0,0,0,0,.2,.6,.85], {folds:.07});
+  pouch(arm,c,side*.061,-.105,.014,.035,.097,.092);
   round(arm, c.patch, side * .067, -.115, 0, .018, .081, .082);
   block(arm, c.logo, side * .0785, -.115, 0, .004, .066, .066);
   if (classId === 'medic') {
@@ -249,15 +277,49 @@ function makeArm(spine, c, side, classId) {
     block(arm, c.red, side * .078, -.07, 0, .006, .03, .01);
     block(arm, c.red, side * .078, -.07, 0, .006, .01, .03);
   } else shape(arm, geometry().cyl, c.web, 0, -.2, 0, .066, .022, .072);
-  volume(elbow, c.uniform, [[-.253, .039, .041], [-.21, .046, .048], [-.13, .053, .059], [-.04, .056, .063], [.025, .05, .052]], 12, [0, 0, 0, .25, .55]);
-  round(elbow, c.armor, 0, -.037, .052, .095, .13, .043);
+  volume(elbow, c.uniform, [[-.264,.032,.035],[-.235,.037,.039],[-.21,.044,.046],[-.17,.049,.054],
+    [-.13,.053,.059],[-.075,.055,.061],[-.04,.054,.06],[.025,.05,.052]], 16, [0,0,0,0,0,.12,.25,.55], {folds:.085});
+  panel(elbow, c.armor, 0, -.037, .052, .075, .1, .022, .006);
   shape(elbow, geometry().cyl, c.glove, 0, -.215, 0, .046, .07, .05);
-  if (side < 0) round(elbow, c.rubber, 0, -.17, 0, .1, .022, .104);
-  // Gloved hand gripping along the weapon.
-  ball(wrist, c.glove, 0, -.004, -.008, .043, .058, .044);
-  round(wrist, c.rubber, side * .028, .0, -.01, .022, .062, .055);
-  ball(wrist, c.glove, side * .03, .004, -.042, .021, .036, .02);
-  for (let n = 0; n < 4; n++) round(wrist, c.glove, (n - 1.5) * .018, -.02, -.045, .017, .046, .018);
+  if (side < 0) {
+    tube(elbow, c.rubber, 0, -.215, 0, .044, .019);
+    panel(elbow, c.steel, 0, -.215, .047, .03, .027, .008, .003);
+    block(elbow, c.visor, 0, -.215, .054, .022, .02, .003);
+  }
+  // Metacarpal fan, opposed thumb and individual curled fingers. The hand
+  // stays on the original wrist bone so the grip IK and reloads still agree.
+  if (side > 0) {
+    const palm=volume(wrist,c.glove,[[-.067,.018,.017,.012],[-.046,.022,.025,.011],
+      [-.018,.025,.026,.007],[.011,.024,.022,.004],[.028,.016,.015]],16,null,{caps:true});
+    palm.position.x=.025;
+    const pad=panel(wrist,c.rubber,.047,-.019,.008,.039,.053,.006,.004);
+    pad.rotation.y=Math.PI/2;
+    for(let n=0;n<3;n++){
+      const y=-.015-n*.021;
+      cord(wrist,c.glove,[[.038,y,.02],[.045,y,-.005],[.024,y,-.032],
+        [-.009,y,-.035],[-.024,y,-.015]],.008,12);
+      ball(wrist,c.glove,-.024,y,-.015,.007,.008,.007);
+    }
+    // Index finger reaches forward into the trigger guard; thumb opposes it.
+    cord(wrist,c.glove,[[.035,.012,.007],[.035,.022,-.033],[.021,.015,-.061],[.009,.007,-.063]],.0075,12);
+    ball(wrist,c.glove,.019,.015,.022,.018,.022,.019);
+    cord(wrist,c.glove,[[.025,.021,.026],[.001,.022,.031],[-.024,.005,.012],[-.025,-.008,-.006]],.009,12);
+  } else {
+  volume(wrist,c.glove,[[.024,.026,.026],[.003,.032,.026],[-.025,.041,.025,-.002],
+    [-.05,.039,.024,-.009],[-.063,.031,.019,-.018]].reverse(),16,null,{caps:true});
+  panel(wrist,c.rubber,0,-.025,.025,.051,.04,.005,.004);
+  for(let n=0;n<4;n++){
+    const x=(n-1.5)*.018, short=n===0||n===3;
+    const y=-.051+(short?.006:0);
+    cord(wrist,c.glove,[[x,y,.012],[x,y-.017,-.006],[x,y-.012,-.032],
+      [x,y+.008,-.044],[x,y+.021,-.033]],short?.0075:.0085,12);
+    ball(wrist,c.rubber,x,y,.018,.007,.01,.004);
+    ball(wrist,c.glove,x,y+.021,-.033,.007,.008,.006);
+  }
+  ball(wrist,c.glove,-side*.026,-.01,-.013,.018,.026,.022);
+  cord(wrist,c.glove,[[-side*.032,.002,-.006],[-side*.044,-.012,-.026],
+    [-side*.028,-.028,-.047],[-side*.011,-.026,-.049]],.010,12);
+  }
   return { arm, elbow, wrist };
 }
 
@@ -265,15 +327,19 @@ function makeLeg(pose, c, side) {
   const leg = bone(side < 0 ? 'leg.L' : 'leg.R', side * .097, .92, 0);
   const knee = bone('knee', 0, -THIGH, 0), ankle = bone('ankle', 0, -SHIN, 0);
   pose.add(leg); leg.add(knee); knee.add(ankle);
-  volume(leg, c.uniform, [[-.411, .066, .072], [-.32, .073, .081], [-.18, .094, .103], [-.08, .096, .111], [.014, .083, .09]], 12, [0, 0, 0, .15, .55]);
-  round(leg, c.uniform, side * .092, -.2, .004, .045, .15, .12);
+  volume(leg,c.uniform,[[-.411,.058,.068],[-.36,.062,.074],[-.3,.074,.082],[-.22,.083,.094],
+    [-.13,.089,.103],[-.06,.091,.104],[.014,.083,.09]],16,[0,0,0,0,0,.15,.55],{folds:.055});
+  pouch(leg,c,side*.086,-.2,.004,.047,.15,.12);
   round(leg, c.web, side * .101, -.128, .004, .028, .036, .126);
   if (side > 0) {
     round(leg, c.polymer, side * .108, -.1, .04, .045, .15, .075, -.1);
     shape(leg, geometry().cyl, c.web, 0, -.2, .0, .1, .024, .108);
   } else round(leg, c.armor, side * .1, -.07, .045, .04, .09, .085);
-  volume(knee, c.uniform, [[-.37, .043, .052], [-.29, .052, .061], [-.2, .066, .076], [-.09, .064, .075], [.042, .06, .071]], 12, [0, 0, 0, .2, .5]);
-  ball(knee, c.shell, 0, -.04, -.074, .066, .082, .028);
+  volume(knee,c.uniform,[[-.37,.041,.049],[-.32,.047,.054],[-.27,.051,.059],[-.2,.06,.069],
+    [-.14,.063,.074],[-.09,.06,.07],[-.025,.057,.066],[.042,.058,.068]],16,[0,0,0,0,0,.1,.3,.5],{folds:.075});
+  panel(knee,c.rubber,0,-.04,-.068,.105,.132,.014,.007);
+  panel(knee,c.shell,0,-.04,-.084,.081,.105,.012,.006);
+  for(const y of [-.065,-.035]) round(knee,c.web,0,y,-.096,.055,.004,.004);
   round(knee, c.web, 0, -.044, .022, .132, .03, .116);
   // Boot: shaft, foot, toe cap, heel and sole.
   volume(ankle, c.boot, [[-.07, .058, .068, .005], [-.01, .055, .062], [.05, .053, .058], [.09, .056, .061]], 10);
@@ -281,7 +347,12 @@ function makeLeg(pose, c, side) {
   ball(ankle, c.boot, 0, -.064, -.17, .058, .042, .046);
   round(ankle, c.sole, 0, -.094, -.062, .142, .03, .296);
   round(ankle, c.sole, 0, -.084, .06, .12, .036, .07);
-  for (let n = 0; n < 3; n++) block(ankle, c.accent, 0, -.004 - n * .011, -.054 - n * .022, .072, .008, .01);
+  for(let n=0;n<5;n++){
+    const y=.04-n*.018,z=-.058-n*.012;
+    cord(ankle,c.web,[[-.028,y,z],[.028,y-.013,z-.008]],.0025,3);
+    cord(ankle,c.web,[[.028,y,z],[-.028,y-.013,z-.008]],.0025,3);
+  }
+  for(const x of [-.057,.057])for(const z of [-.17,-.12,-.07,.02])block(ankle,c.boot,x,-.099,z,.018,.014,.023);
   return { leg, knee, ankle };
 }
 
@@ -369,32 +440,51 @@ function makeRifle(spine, c, classId, weaponId = '') {
 }
 
 function makeTorso(pose, spine, c, classId) {
-  volume(spine, c.uniform, [[.84, .123, .085], [.93, .178, .121], [1.06, .159, .108], [1.21, .176, .123], [1.34, .217, .128], [1.42, .182, .102], [1.465, .088, .064]], 14, [1, .9, .3, 0, 0, 0, 0]);
-  volume(spine, c.armor, [[1.01, .155, .104, -.037], [1.09, .181, .141, -.032], [1.29, .183, .146, -.026], [1.383, .135, .11, -.032], [1.405, .09, .069, -.014]], 14, [.3, 0, 0, 0, 0]);
-  round(pose, c.web, 0, .966, 0, .339, .052, .238);
-  round(pose, c.accent, 0, .965, -.131, .075, .045, .025);
-  round(pose, c.web, .1, .925, .128, .11, .11, .065);
+  volume(spine,c.uniform,[[.84,.117,.082],[.9,.155,.105],[.96,.164,.113],[1.035,.148,.104],
+    [1.12,.151,.108],[1.24,.177,.118],[1.34,.205,.119],[1.4,.187,.098],[1.44,.126,.074],[1.465,.067,.056]],
+    20,[1,.95,.75,.35,.1,0,0,0,0,0],{folds:.035,square:.9});
+  // Independent front/back SAPI bags, rather than an oval armoured barrel.
+  volume(spine,c.web,[[1.04,.156,.114],[1.075,.166,.124],[1.18,.177,.128],[1.22,.176,.125]],16,null,{square:.78});
+  panel(spine,c.armor,0,1.235,-.121,.265,.302,.048,.013);
+  panel(spine,c.armor,0,1.25,.114,.256,.29,.036,.012);
+  volume(pose,c.web,[[.939,.161,.115],[.981,.162,.116]],20,null,{square:.82});
+  panel(pose,c.accent,0,.961,-.123,.048,.03,.013,.003);
+  pouch(pose,c,.1,.915,.128,.10,.12,.065);
   tube(pose, c.armor, -.17, .93, -.05, .034, .09);
   for (const side of [-1, 1]) {
-    round(spine, c.web, side * .111, 1.362, -.008, .047, .091, .272, 0, 0, side * .11);
-    round(spine, c.armor, side * .175, 1.078, .027, .058, .139, .112);
+    cord(spine,c.web,[[side*.094,1.32,-.139],[side*.135,1.405,-.084],
+      [side*.137,1.424,.021],[side*.104,1.34,.127]],.018,14);
+    panel(spine,c.polymer,side*.106,1.36,-.115,.031,.038,.015,.004);
+    pouch(spine,c,side*.17,1.078,.027,.058,.139,.112);
+    for(let row=0;row<3;row++){
+      cord(spine,c.armor,[[side*.13,1.085+row*.031,-.088],[side*.176,1.085+row*.031,-.025],
+        [side*.168,1.085+row*.031,.067]],.005,7);
+    }
   }
   for (let n = 0; n < 3; n++) {
     const x = (n - 1) * .092;
-    round(spine, c.armor, x, 1.14, -.168, .084, .145, .079);
-    round(spine, c.web, x, 1.19, -.208, .081, .045, .015);
-    block(spine, c.accent, x, 1.171, -.218, .027, .038, .013);
+    pouch(spine,c,x,1.14,-.181,.078,.14,.064);
+    round(spine,c.polymer,x,1.21,-.181,.057,.022,.043);
+    cord(spine,c.web,[[x-.025,1.17,-.213],[x,1.228,-.186],[x+.025,1.17,-.213]],.003,8);
   }
-  for (let n = 0; n < 4; n++) block(spine, c.web, 0, 1.246 + n * .025, -.171, .244 - n * .012, .011, .014);
-  round(spine, c.patch, .118, 1.322, -.145, .065, .027, .014);
-  block(spine, c.logo, -.118, 1.31, -.152, .075, .075, .006);
-  round(spine, c.rubber, -.147, 1.238, -.157, .047, .115, .054);
-  tube(spine, c.rubber, -.149, 1.371, -.16, .007, .17);
+  for(let row=0;row<3;row++)for(let col=0;col<5;col++)
+    block(spine,c.web,(col-2)*.042,1.254+row*.026,-.161,.032,.009,.006);
+  round(spine,c.patch,.077,1.335,-.153,.056,.021,.007);
+  block(spine,c.logo,-.073,1.32,-.158,.054,.054,.004);
+  pouch(spine,c,-.17,1.235,-.123,.052,.108,.061);
+  round(spine,c.rubber,-.17,1.29,-.123,.035,.026,.041);
+  tube(spine,c.rubber,-.179,1.374,-.12,.004,.16);
+  cord(spine,c.rubber,[[-.16,1.291,-.143],[-.178,1.335,-.133],[-.142,1.396,-.08],[-.115,1.421,.017]],.003,12);
+  panel(spine,c.rubber,-.112,1.355,-.134,.027,.041,.013,.004);
   // Class-specific load.
   const depth = classId === 'support' ? .19 : classId === 'medic' ? .16 : classId === 'recon' ? .09 : .116;
   const height = classId === 'support' ? .38 : .335;
-  round(spine, c.armor, 0, 1.205, .159 + depth / 2 - .058, .258, height, depth);
-  round(spine, c.web, 0, 1.145, .159 + depth - .058 + .02, .207, .138, .039);
+  const pack=volume(spine,c.armor,[[1.205-height*.5,.08,depth*.28],[1.205-height*.42,.119,depth*.46],
+    [1.205,.129,depth*.5],[1.205+height*.36,.113,depth*.46],[1.205+height*.5,.072,depth*.26]],16,null,{square:.72,folds:.025,caps:true});
+  pack.position.z=.101+depth/2;
+  pouch(spine,c,0,1.145,.121+depth,.207,.138,.039);
+  cord(spine,c.web,[[-.055,1.205+height*.43,.16],[0,1.205+height*.55,.17],[.055,1.205+height*.43,.16]],.009,8);
+  cord(spine,c.rubber,[[.075,1.37,.18],[.144,1.43,.05],[.134,1.37,-.103],[.145,1.25,-.13]],.004,12);
   for (const x of [-.074, .074]) block(spine, c.web, x, 1.217, .183 + depth - .058 + .02, .026, .248, .018);
   block(spine, c.logo, 0, 1.145, .121 + depth + .0195 + .003, .105, .105, .006);
   if (classId === 'medic') {
@@ -411,14 +501,19 @@ function makeTorso(pose, spine, c, classId) {
   }
 }
 
-function makeDistant(group, c) {
+function makeDistant(group, c, classId) {
   const distant = new THREE.Group(); group.add(distant);
   const low = geometry().low;
-  shape(distant, low, c.armor, 0, 1.19, 0, .213, .326, .151);
+  volume(distant,c.uniform,[[.86,.13,.09],[1.03,.15,.11],[1.31,.203,.123],[1.44,.126,.075]],8);
+  panel(distant,c.armor,0,1.235,-.119,.265,.302,.048,.006);
+  round(distant,c.armor,0,1.2,.18,.23,classId==='support'?.38:.32,classId==='support'?.19:.13);
+  round(distant,c.web,0,1.13,-.174,.26,.135,.073);
   shape(distant, low, c.skin, 0, 1.56, -.01, .09, .11, .09);
-  shape(distant, low, c.shell, 0, 1.64, 0, .126, .1, .124);
+  shape(distant, low, classId==='recon'?c.uniform:c.shell, 0, 1.64, 0, .126, .1, .124);
+  if(classId==='recon')shape(distant,geometry().cyl,c.uniform,0,1.61,0,.18,.01,.18);
   for (const side of [-1, 1]) {
-    shape(distant, low, c.uniform, side * .103, .525, 0, .095, .424, .104);
+    const trouser=volume(distant,c.uniform,[[.15,.047,.053],[.37,.06,.07],[.57,.066,.074],[.82,.09,.1],[.94,.079,.09]],8);
+    trouser.position.x=side*.103;
     shape(distant, low, c.boot, side * .103, .086, -.059, .068, .082, .141);
     shape(distant, low, c.uniform, side * .192, 1.193, -.128, .075, .196, .083, .96);
   }
@@ -462,7 +557,7 @@ export function createSoldierRig(owner, player) {
   group.add(body);
   group.updateMatrixWorld(true);
   body.bind(new THREE.Skeleton(bones));
-  const { distant, mesh: distantMesh } = makeDistant(group, c);
+  const { distant, mesh: distantMesh } = makeDistant(group, c, classId);
   distantMesh.material = material;
 
   const marker = new THREE.Mesh(new THREE.OctahedronGeometry(.059), new THREE.MeshBasicMaterial({ color: 0x5bd9e8 }));
