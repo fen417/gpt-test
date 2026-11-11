@@ -471,7 +471,18 @@ document.addEventListener('keydown',event=>{
   if(!active){if(event.code==='Escape')show('pause',false);return;}
   if(!local()?.alive&&!finished&&!$('death').classList.contains('hidden')){
     const classKeys={Digit1:'assault',Digit2:'medic',Digit3:'support',Digit4:'recon'};
-    if(classKeys[event.code]){event.preventDefault();selectClass(classKeys[event.code],true);return;}
+    if(classKeys[event.code]){
+      event.preventDefault();
+      const targetClass=classKeys[event.code];
+      if(selectedClass===targetClass){
+        const list=CLASS_WEAPONS[targetClass]||[];
+        const nextIdx=(list.indexOf(currentWeaponId(targetClass))+1)%list.length;
+        if(list[nextIdx])selectWeapon(list[nextIdx],true);
+      }else{
+        selectClass(targetClass,true);
+      }
+      return;
+    }
     if((event.code==='Space'||event.code==='Enter'||isBound('jump',event.code))&&!event.repeat){event.preventDefault();triggerRespawn();return;}
   }
   if(event.code==='Escape'&&unlocked){unlockedPaused=!unlockedPaused;show('pause',unlockedPaused);clearControls();return;}
