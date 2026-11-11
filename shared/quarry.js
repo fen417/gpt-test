@@ -1,3 +1,6 @@
+import { makeTerrain } from './terrain.js';
+
+const size = 896;
 const boxes = [];
 const structures = [];
 
@@ -20,7 +23,7 @@ function hangar(x, z, w, d, h) {
 }
 
 const nodes = Object.entries({
-  'north-humvee': [-15, -267], 'north-atv': [15, -267],
+  'north-humvee': [-15, -347], 'north-atv': [15, -347],
   'north-west-gate': [-15, -219], 'north-east-gate': [15, -219], 'north-junction': [0, -190],
   'north-west-switch': [-110, -190], 'north-east-switch': [112, -190],
   'north-approach': [0, -112], 'north-inlet': [-44, -77], 'north-outlet': [44, -77],
@@ -33,7 +36,11 @@ const nodes = Object.entries({
   'east-ring-north': [44, -25], 'east-ring-south': [44, 27], 'south-inlet': [-44, 77],
   'south-outlet': [44, 77], 'south-approach': [0, 114], 'south-junction': [0, 190],
   'south-west-gate': [-15, 219], 'south-east-gate': [15, 219],
-  'south-atv': [-15, 267], 'south-humvee': [15, 267],
+  'south-atv': [-15, 347], 'south-humvee': [15, 347],
+  'west-cut': [-226, -28], 'west-drain': [-300, -28], 'pump-turn': [-360, -28],
+  'pump-parking': [-355, -15], 'west-haul-south': [-353, 210], 'west-haul-return': [-276, 289], 'west-return-gate': [-45, 289],
+  'east-cut': [224, -13], 'east-climb': [281, -13], 'terrace-turn': [350, -13],
+  'terrace-parking': [355, 3], 'east-haul-north': [352, -203], 'east-haul-return': [269, -286], 'east-return-gate': [45, -286],
   'depot-parking': [-164, -84], 'relay-parking': [122, -92], 'pit-parking': [-12, 10],
   'crusher-parking': [-141, 102], 'hangar-parking': [184, 106],
 }).map(([id, [x, z]]) => ({ id, x, z }));
@@ -48,6 +55,9 @@ const tracks = [
   ['north-approach', 'north-outlet', 'east-ring-north', 'east-ring-south', 'south-outlet', 'south-approach'],
   ['west-bend', 'west-ring-north'], ['east-lower-bend', 'east-ring-south'],
   ['north-outlet', 'relay', 'east-top'], ['south-inlet', 'crusher'],
+  ['west-bend', 'west-cut', 'west-drain', 'pump-turn', 'west-haul-south', 'west-haul-return', 'west-return-gate', 'south-west-gate'],
+  ['east-upper-bend', 'east-cut', 'east-climb', 'terrace-turn', 'east-haul-north', 'east-haul-return', 'east-return-gate', 'north-east-gate'],
+  ['pump-turn', 'pump-parking'], ['terrace-turn', 'terrace-parking'],
   ['west-depot', 'depot-parking'], ['relay', 'relay-parking'], ['pit', 'pit-parking'],
   ['crusher', 'crusher-parking'], ['east-hangar', 'hangar-parking'],
 ];
@@ -76,19 +86,19 @@ for (const team of [0, 1]) {
     const { x, z } = nodeById.get(id);
     vehicleSpawns.push({ id, type, team, x, z, yaw: team === 0 ? 0 : Math.PI });
   }
-  add(0, sign * 292, 52, 2.1, 3.1, 'wall', '#aaa08a');
-  add(-33, sign * 262, 18, 25, 8, 'warehouse', '#837b68');
-  add(33, sign * 262, 18, 25, 8, 'warehouse', '#837b68');
-  add(0, sign * 255, 9, 3.2, 2.9, 'truck', '#6f775d');
-  add(0, sign * 234, 8, 5.6, 3, 'tent', '#777756');
+  add(0, sign * 372, 52, 2.1, 3.1, 'wall', '#aaa08a');
+  add(-33, sign * 342, 18, 25, 8, 'warehouse', '#837b68');
+  add(33, sign * 342, 18, 25, 8, 'warehouse', '#837b68');
+  add(37, sign * 335, 9, 3.2, 2.9, 'truck', '#6f775d');
+  add(37, sign * 306, 8, 5.6, 3, 'tent', '#777756');
   for (const side of [-1, 1]) {
-    add(side * 31, sign * 237, 11, 1.3, 1.15, 'sandbags', '#a29675');
-    add(side * 45, sign * 248, 2.3, 3.2, 2.2, 'generator', '#a78a4e');
-    add(side * 38, sign * 218, 3, 5, 2.8, 'kiosk', '#798481');
+    add(side * 31, sign * 317, 11, 1.3, 1.15, 'sandbags', '#a29675');
+    add(side * 45, sign * 328, 2.3, 3.2, 2.2, 'generator', '#a78a4e');
+    add(side * 38, sign * 298, 3, 5, 2.8, 'kiosk', '#798481');
   }
 }
 
-// The five capture areas stay close to the haul road but leave its driving lane open.
+// The capture areas stay close to the haul road but leave its driving lane open.
 add(-135, -115, 27, 15, 9, 'warehouse', '#837966');
 add(-142, -84, 13, 5, 2.8, 'container', '#87694d');
 add(-125, -92, 5, 7, 1.35, 'crate', '#a38b64');
@@ -111,6 +121,50 @@ add(-110, 119, 6.6, 3.3, 2.8, 'fueltank', '#8b8b79');
 hangar(151, 106, 24, 31, 8);
 add(131, 113, 8, 3.7, 2.8, 'container', '#806a56');
 add(156, 135, 7.5, 1.5, 1.15, 'sandbags', '#a29676');
+
+// Pump house at the bottom of the western cut, and the loading yard on the high bench.
+add(-319, 12, 17, 14, 7, 'building', '#888274');
+add(-340, 18, 8, 4.6, 2.9, 'fueltank', '#746d5c');
+add(-321, -4, 8, 3, 1.2, 'barrier', '#ad9c7e');
+add(-337, 30, 10, 4, 2.8, 'container', '#6c7c73');
+add(350, 39, 24, 14, 8.2, 'warehouse', '#9b866e');
+add(325, 29, 9, 4, 2.8, 'container', '#8f654e');
+add(328, 8, 1.5, 8, 1.2, 'barrier', '#b6a486');
+add(363, 18, 4, 5, 2.5, 'generator', '#a89453');
+
+// Low cover between the pump room and the gravel lane.
+add(-334, -10, 8, 2.8, 1.32, 'pump-manifold', '#8b7356');
+add(-331, 4, 1.2, 6.2, 1.35, 'barrier', '#ac9a7c');
+add(-351, 14, 4, 1.4, 1.1, 'sandbags', '#9c8c70');
+
+// The unloading canopy leaves a central passage between two low concrete bays.
+const loadingCanopy = { id: 'quarry-loading-canopy', x: 342, z: 19, w: 12, d: 10, h: 4.2, roof: true };
+structures.push(loadingCanopy);
+for (const side of [-1, 1]) {
+  const x = loadingCanopy.x + side * loadingCanopy.w / 2;
+  for (const end of [-1, 1]) {
+    add(x, loadingCanopy.z + end * loadingCanopy.d / 2, .32, .32, loadingCanopy.h, 'pillar', '#65645c');
+  }
+  add(x, loadingCanopy.z, .7, 6.8, 1.12, 'barrier', '#b2a189');
+}
+add(340, 6, 3.2, 2.2, 1.25, 'crate', '#997b55');
+
+const landmarks = [
+  { name: 'ВОДООТЛИВ', x: -343, z: -4 },
+  { name: 'ВЕРХНЯЯ ТЕРРАСА', x: 341, z: 19 },
+  { name: 'НАБЛЮДАТЕЛЬНЫЙ ГРЕБЕНЬ', x: -124, z: -318 },
+  { name: 'ГРЯДА ОТВАЛОВ', x: 135, z: 322 },
+  { name: 'СТАРАЯ ВЕСОВАЯ', x: -302, z: 196 },
+  { name: 'КАРЬЕРНЫЙ УСТУП', x: 307, z: 212 },
+];
+add(-129, -327, 5, 4.8, 3.4, 'kiosk', '#7b827b');
+add(-121, -310, 10, 1.6, 1.1, 'sandbags', '#9b8e73');
+add(134, 326, 9, 3, 2.8, 'container', '#987859');
+add(149, 313, 7, 2.1, 1.1, 'barrier', '#aa9677');
+add(-296, 206, 10, 7, 3.7, 'building', '#8d806a');
+add(-319, 191, 10, 3, 3.1, 'truck', '#776c51');
+add(307, 221, 12, 5, 2.8, 'container', '#79765f');
+add(316, 207, 4.5, 5, 2.1, 'generator', '#a38b52');
 
 // Large shelves break the sight lines between the extraction yards. Smaller boulders are infantry cover.
 const rockColors = ['#756c59', '#867962', '#938068', '#a18e70'];
@@ -144,23 +198,39 @@ function random() {
   seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
   return seed / 0x100000000;
 }
-for (let i = 0, placed = 0; i < 360 && placed < 94; i++) {
-  const x = Math.round((random() - .5) * 545), z = Math.round((random() - .5) * 524);
+for (let i = 0, placed = 0; i < 570 && placed < 145; i++) {
+  const x = Math.round((random() - .5) * 793), z = Math.round((random() - .5) * 792);
   const w = 2.6 + random() * 4.4, d = 2.4 + random() * 4.3;
   const margin = Math.hypot(w, d) / 2 + 3;
   if (Math.abs(x) < 53 && Math.abs(z) > 207) continue;
-  if (points.some(p => Math.hypot(p.x - x, p.z - z) < 17 + margin) || closeToRoad(x, z, margin)) continue;
+  if ([...points, ...landmarks].some(p => Math.hypot(p.x - x, p.z - z) < 17 + margin) || closeToRoad(x, z, margin)) continue;
   if (boxes.some(b => Math.abs(x - b.x) < (w + b.w) / 2 + 5 && Math.abs(z - b.z) < (d + b.d) / 2 + 5)) continue;
   placed++;
   if (i % 9 === 0 && Math.abs(x) > 53) add(x, z, 2.2, 2.2, 4.6, 'tree', '#647051');
   else add(x, z, w, d, 1.1 + random() * 2, 'rock', rockColors[i % rockColors.length]);
 }
 
+const terrain = makeTerrain(size, [
+  { x: 0, z: 0, rx: 94, rz: 104, height: -15, flat: .44 },
+  { x: -344, z: -8, rx: 102, rz: 103, height: -12, flat: .29 },
+  { x: 341, z: 13, rx: 111, rz: 114, height: 24, flat: .33 },
+  { x: -122, z: -320, rx: 95, rz: 61, height: 16, flat: .25, angle: .28 },
+  { x: -305, z: 198, rx: 72, rz: 84, height: 6, flat: .24 },
+  { x: 309, z: 216, rx: 94, rz: 108, height: 20, flat: .33, angle: -.30 },
+  { x: 137, z: 321, rx: 90, rz: 63, height: 10, flat: .20, angle: .42 },
+  { x: 213, z: 343, rx: 67, rz: 43, height: 5, flat: .12, angle: -.51 },
+  { x: 101, z: 367, rx: 48, rz: 45, height: 4, flat: .10 },
+]);
+
+for (const box of boxes) box.baseY = terrain.heightAt(box.x, box.z);
+loadingCanopy.baseY = terrain.heightAt(loadingCanopy.x, loadingCanopy.z);
+for (const point of points) point.y = terrain.heightAt(point.x, point.z);
+
 export const QUARRY_MAP = {
-  id: 'quarry', name: 'Карьер «Перевал»', size: 640, fogDensity: .0024,
+  id: 'quarry', name: 'Карьер «Перевал»', size, fogDensity: .00195, terrain,
   boxes, structures, roads, points,
-  districts: points.map(({ id, name, x, z }) => ({ id, name, x, z })),
-  spawns: [{ x: 0, z: 278 }, { x: 0, z: -278 }],
+  districts: [...points, ...landmarks], landmarks,
+  spawns: [{ x: 0, z: 358 }, { x: 0, z: -358 }],
   vehicleSpawns,
   vehicleRoutes: {
     nodes, edges,

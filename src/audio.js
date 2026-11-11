@@ -375,13 +375,14 @@ export class CombatAudio {
       if(this._lastPosition){
         const distance=Math.hypot(local.x-this._lastPosition.x,local.z-this._lastPosition.z),vertical=local.y-this._lastPosition.y;
         if(distance<5)this._stride+=distance;
-        if(vertical>.08&&!this._falling&&this._lastPosition.y<.05)this._noise(.18,.08,{filter:'bandpass',cutoff:750,pan:-.12});
-        if(vertical<-.035)this._falling=true;
-        if(this._falling&&vertical>=-.012){this._step(1.5,false,false,local);this._noise(.2,.075,{cutoff:650});this._falling=false;this._stride=0;}
+        const onGround=local.grounded??Math.abs(vertical)<.04;
+        if(!onGround&&this._lastPosition.grounded&&vertical>.035)this._noise(.18,.08,{filter:'bandpass',cutoff:750,pan:-.12});
+        if(!onGround&&vertical<-.035)this._falling=true;
+        if(this._falling&&onGround){this._step(1.5,false,false,local);this._noise(.2,.075,{cutoff:650});this._falling=false;this._stride=0;}
         const strideLength=sprinting?2.45:crouching?1.55:2.05;
-        if(this._stride>=strideLength&&Math.abs(vertical)<.04){this._step(1,sprinting,crouching,local);this._stride%=strideLength;}
+        if(this._stride>=strideLength&&onGround){this._step(1,sprinting,crouching,local);this._stride%=strideLength;}
       }
-      this._lastPosition={x:local.x,y:local.y,z:local.z};
+      this._lastPosition={x:local.x,y:local.y,z:local.z,grounded:local.grounded??true};
     }
     this._updateAmbience(state,local,inMenu||paused);
     if(local?.alive&&local.ammo<=5&&local.ammo!==this._lastAmmo&&this._lastAmmo>local.ammo)this._tone(1700,.022,.035,{type:'square',cutoff:2900});

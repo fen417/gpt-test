@@ -3,6 +3,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 
+const upAxis = new THREE.Vector3(0, 1, 0);
+const turretHeading = new THREE.Quaternion();
 const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
 const roundedGeometry = new RoundedBoxGeometry(1, 1, 1, 1, .13);
 const cylinderGeometry = new THREE.CylinderGeometry(1, 1, 1, 16);
@@ -319,18 +321,32 @@ export function createVehicleRig(type, material, teamColors) {
   return {group,body,wheels,controls,turret,riders,paintMeshes,driverGloves,gunnerGloves,materials,materialsToDispose,teamColors};
 }
 
-export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality) {
+export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality, terrain) {
   const {group,body,controls,wheels,turret,riders,paintMeshes,materials,teamColors}=rig;
   const reset = !rig.initialized || Math.hypot(group.position.x-vehicle.x,group.position.z-vehicle.z)>8;
   const t=reset?1:blend;
   group.position.x=THREE.MathUtils.lerp(group.position.x,vehicle.x,t);
   group.position.z=THREE.MathUtils.lerp(group.position.z,vehicle.z,t);
+  group.position.y=THREE.MathUtils.lerp(group.position.y,vehicle.y??0,t);
   const angle=vehicle.yaw-group.rotation.y;
   group.rotation.y+=Math.atan2(Math.sin(angle),Math.cos(angle))*t;
   rig.initialized=true;
   const wrecked=vehicle.hp<=0;
   const steer=wrecked?0:vehicle.steer??0;
-  body.rotation.z=THREE.MathUtils.lerp(body.rotation.z,steer*vehicle.speed*.0018,t);
+  let pitch = 0, roll = 0;
+  if (terrain) {
+    const { x, z } = group.position, sin = Math.sin(group.rotation.y), cos = Math.cos(group.rotation.y);
+    const { length, width } = VEHICLE_TYPES[vehicle.type];
+    const longitudinal = length * .35, lateral = width * .45;
+    const front = terrain.heightAt(x - sin * longitudinal, z - cos * longitudinal);
+    const rear = terrain.heightAt(x + sin * longitudinal, z + cos * longitudinal);
+    const right = terrain.heightAt(x + cos * lateral, z - sin * lateral);
+    const left = terrain.heightAt(x - cos * lateral, z + sin * lateral);
+    pitch = Math.atan2(front - rear, longitudinal * 2);
+    roll = Math.atan2(right - left, lateral * 2);
+  }
+  body.rotation.x=THREE.MathUtils.lerp(body.rotation.x,pitch,t);
+  body.rotation.z=THREE.MathUtils.lerp(body.rotation.z,roll+steer*vehicle.speed*.0018,t);
   controls.rotation.z=THREE.MathUtils.lerp(controls.rotation.z,steer*(vehicle.type==='atv'?-.16:-.9),t);
   for(const wheel of wheels){
     if(wheel.front)wheel.carrier.rotation.y=THREE.MathUtils.lerp(wheel.carrier.rotation.y,-steer*.41,t);
@@ -346,8 +362,10 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality)
     const localGunner=localSeat===1;
     rig.gunnerGloves.visible=!wrecked&&localGunner;
     const target=(localGunner?(view.yaw??player.yaw):vehicle.aimYaw)-group.rotation.y;
-    const delta=target-turret.turret.rotation.y;
-    turret.turret.rotation.y+=Math.atan2(Math.sin(delta),Math.cos(delta))*(localGunner?1:t);
+    const delta=target-(rig.turretYaw??target);
+    rig.turretYaw=(rig.turretYaw??target)+Math.atan2(Math.sin(delta),Math.cos(delta))*(localGunner?1:t);
+    turretHeading.setFromAxisAngle(upAxis,rig.turretYaw);
+    turret.turret.quaternion.copy(body.quaternion).invert().multiply(turretHeading);
     turret.gun.rotation.x=THREE.MathUtils.lerp(turret.gun.rotation.x,
       localGunner?THREE.MathUtils.clamp(view.pitch??player.pitch,TURRET_MIN_PITCH,TURRET_MAX_PITCH):vehicle.aimPitch,localGunner?1:t);
     if(rig.gunSeq!==undefined&&rig.gunSeq!==vehicle.gunSeq)rig.flashTime=.055;
@@ -355,7 +373,7 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality)
     rig.flashTime=Math.max(0,(rig.flashTime??0)-dt);
     turret.flash.visible=!wrecked&&rig.flashTime>0;
     turret.gun.position.z=turret.flash.visible?.024:0;
-    riders[1].rotation.y=turret.turret.rotation.y;
+    riders[1].rotation.y=rig.turretYaw;
   }
   if(rig.team!==vehicle.team){
     const badge=materials.badge;

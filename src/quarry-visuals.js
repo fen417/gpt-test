@@ -1,6 +1,26 @@
 import * as THREE from 'three';
 import { clonePairedMaterial, makeSign, pairMaterials } from './visuals.js';
 
+function shapeQuarrySurface(geometry, map, lift = 0, tint = false) {
+  const positions = geometry.attributes.position;
+  const colors = tint ? new Float32Array(positions.count * 3) : null;
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i), z = -positions.getY(i);
+    const y = map.terrain.heightAt(x, z);
+    positions.setZ(i, y + lift);
+    if (!colors) continue;
+    const grade = Math.hypot(map.terrain.heightAt(x + 2, z) - map.terrain.heightAt(x - 2, z),
+      map.terrain.heightAt(x, z + 2) - map.terrain.heightAt(x, z - 2)) / 4;
+    const shale = Math.min(.8, grade * 1.25) * (.82 + .18 * Math.cos(y * 2.4));
+    const basin = Math.max(0, -y / 16);
+    colors[i * 3] = 1 - shale * .22 - basin * .15;
+    colors[i * 3 + 1] = 1 - shale * .33 - basin * .12;
+    colors[i * 3 + 2] = 1 - shale * .44 - basin * .035;
+  }
+  if (colors) geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+}
+
 function gravelRoads(owner, map) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 2048;
@@ -29,13 +49,14 @@ function gravelRoads(owner, map) {
     material.alphaMap = mask;
     material.alphaTest = .45;
   }
-  const geometry = new THREE.PlaneGeometry(map.size, map.size);
+  const segments = map.size / map.terrain.cell;
+  const geometry = new THREE.PlaneGeometry(map.size, map.size, segments, segments);
+  shapeQuarrySurface(geometry, map, .045);
   const uv = geometry.attributes.uv;
   geometry.setAttribute('uv1', uv.clone());
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * map.size / 8, uv.getY(i) * map.size / 8);
   const road = new THREE.Mesh(geometry, gravel);
   road.rotation.x = -Math.PI / 2;
-  road.position.y = .034;
   road.receiveShadow = true;
   owner.scene.add(road);
 }
@@ -43,15 +64,15 @@ function gravelRoads(owner, map) {
 function quarryCliffs(owner, map) {
   const positions = [], colors = [], uvs = [];
   const outline = [[-.5, -.41], [-.41, -.5], [.41, -.5], [.5, -.41], [.5, .41], [.41, .5], [-.41, .5], [-.5, .41]];
-  function rock(x, z, w, d, h, color) {
+  function rock(x, z, w, d, h, color, baseY = 0) {
     const [r, g, bColor] = new THREE.Color(color).toArray();
     const profile = [[-.07, 1, .73], [.13, .993, .88], [.43, .98, 1.06], [.55, .98, .84], [.83, .96, .96], [.97, .86, 1.10]];
     const slant = outline.map(() => (owner.random() - .5) * .065);
-    const rings = profile.map(([height, scale]) => outline.map(([vx, vz], i) => [
-      x + vx * w * scale,
-      h * (height + slant[i]),
-      z + vz * d * scale,
-    ]));
+    const rings = profile.map(([height, scale], level) => outline.map(([vx, vz], i) => {
+      const px = x + vx * w * scale, pz = z + vz * d * scale;
+      const py = baseY + h * (height + slant[i]);
+      return [px, level === 0 ? Math.min(py, map.terrain.heightAt(px, pz) - .12) : py, pz];
+    }));
     function triangle(a, b, c, intensity, uAxis, vAxis) {
       positions.push(...a, ...b, ...c);
       for (const vertex of [a, b, c]) {
@@ -74,17 +95,18 @@ function quarryCliffs(owner, map) {
     for (let i = 1; i < cap.length - 1; i++) triangle(cap[0], cap[i + 1], cap[i], 1.15, 0, 2);
   }
   for (const box of map.boxes) {
-    if (box.kind === 'rock') rock(box.x, box.z, box.w, box.d, box.h, box.color);
+    if (box.kind === 'rock') rock(box.x, box.z, box.w, box.d, box.h, box.color, box.baseY);
   }
   const limit = map.size / 2;
   const tones = [0x7e7460, 0x948574, 0x8a7963];
   for (const side of [-1, 1]) {
-    for (let i = -6; i <= 6; i++) {
+    const rows = Math.ceil(limit / 55);
+    for (let i = -rows; i <= rows; i++) {
       const offset = i * 55 + (owner.random() - .5) * 16;
       const distance = limit + 43 + owner.random() * 22;
       const height = 20 + owner.random() * 22;
-      rock(side * distance, offset, 44 + owner.random() * 18, 62, height, tones[(i + 6) % tones.length]);
-      if (Math.abs(i) > 1) rock(offset, side * distance, 62, 52, height * .8, tones[(i + 7) % tones.length]);
+      rock(side * distance, offset, 44 + owner.random() * 18, 62, height, tones[(i + rows) % tones.length]);
+      if (Math.abs(i) > 1) rock(offset, side * distance, 62, 52, height * .8, tones[(i + rows + 1) % tones.length]);
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -115,11 +137,47 @@ function quarryCliffs(owner, map) {
   owner.scene.add(mesh);
 }
 
+function addPumpManifold(owner, box) {
+  const { x, z, w, d, baseY } = box;
+  const { scene, materials } = owner;
+  owner.box(scene, x, baseY + .3, z, w, .6, d, materials.concrete);
+  for (const side of [-1, 1]) {
+    const end = x + side * (w / 2 - .25);
+    owner.box(scene, end, baseY + .91, z, .42, .66, d - .12, materials.darkConcrete);
+    owner.box(scene, end, baseY + 1.25, z, .44, .10, d - .08, materials.edge);
+  }
+  for (const offset of [-.75, 0, .75]) {
+    const pipe = owner.cylinder(scene, x, baseY + 1.03, z + offset, .235, w - .38, materials.rust);
+    pipe.rotation.z = Math.PI / 2;
+    for (const joint of [-2.2, 0, 2.2]) {
+      const flange = owner.cylinder(scene, x + joint, baseY + 1.03, z + offset, .285, .14, materials.steel);
+      flange.rotation.z = Math.PI / 2;
+    }
+  }
+}
+
 export function addQuarryGround(owner, map, ground) {
-  if (ground) ground.material = clonePairedMaterial(owner.surfaces.ground, 0xc4ae87);
+  ground.material = clonePairedMaterial(owner.surfaces.ground, 0xc4ae87);
+  ground.material.vertexColors = true;
+  if (ground.material._lowMaterial) ground.material._lowMaterial.vertexColors = true;
+  shapeQuarrySurface(ground.geometry, map, 0, true);
   gravelRoads(owner, map);
   quarryCliffs(owner, map);
+  for (const box of map.boxes) if (box.kind === 'pump-manifold') addPumpManifold(owner, box);
 
+  const siteSigns = [
+    { x: -344, z: 4, name: 'ВОДООТЛИВ', note: 'НАСОСНАЯ СТАНЦИЯ' },
+    { x: 342, z: 31, name: 'ТЕРРАСА', note: 'ВЕРХНИЙ ГОРИЗОНТ' },
+    { x: -299, z: 201, name: 'ВЕСОВАЯ', note: 'КОНТРОЛЬ ГРУЗА' },
+  ];
+  for (const { x, z, name, note } of siteSigns) {
+    const y = map.terrain.heightAt(x, z);
+    const sign = makeSign(name, note, 3.3);
+    sign.position.set(x, y + 2.25, z);
+    sign.rotation.y = Math.PI;
+    owner.scene.add(sign);
+    for (const side of [-1, 1]) owner.cylinder(owner.scene, x + side * 1.15, y + 1.05, z, .075, 2.1, owner.materials.steel);
+  }
   for (const pad of map.vehicleSpawns) {
     for (const side of [-1, 1]) {
       owner.box(owner.scene, pad.x + side * 2.6, .052, pad.z, .17, .008, 7.2, owner.materials.marking, false);
@@ -128,7 +186,7 @@ export function addQuarryGround(owner, map, ground) {
   }
   for (const side of [-1, 1]) {
     const sign = makeSign('ПЕРЕВАЛ', 'ПАРК ТЕХНИКИ', 4);
-    sign.position.set(0, 2.35, side * 290.89);
+    sign.position.set(0, 2.35, side * 370.89);
     sign.rotation.y = side === 1 ? Math.PI : 0;
     owner.scene.add(sign);
   }

@@ -592,7 +592,7 @@ let mapScale,mapHalf;
 mapBackground.width=mapBackground.height=mapSize;
 function drawMinimapBackground(){
   const c=mapBackground.getContext('2d'),s=mapSize,scale=mapScale,half=mapHalf,step=s/10;
-  c.fillStyle='#15262c';c.fillRect(0,0,s,s);c.strokeStyle='#5d7b802b';c.lineWidth=1;
+  c.fillStyle='#15262c';c.fillRect(0,0,s,s);drawMapRelief(c,scale,half);c.strokeStyle='#5d7b802b';c.lineWidth=1;
   for(let n=0;n<10;n++){c.beginPath();c.moveTo(n*step,0);c.lineTo(n*step,s);c.moveTo(0,n*step);c.lineTo(s,n*step);c.stroke();}
   drawMapRoads(c,scale,half);
   for(const b of currentMap.boxes){
@@ -622,7 +622,7 @@ deployMapBg.width=deployMapBg.height=deploySize;
 function drawDeployBackground(){
   const c=deployMapBg.getContext('2d'),s=deploySize,scale=deployScale,half=deployHalf;
   c.fillStyle='#0c1a20';c.fillRect(0,0,s,s);
-  if(currentMap.roads)drawMapRoads(c,scale,half);
+  if(currentMap.roads){drawMapRelief(c,scale,half);drawMapRoads(c,scale,half);}
   else{
     c.fillStyle='#122c36';c.fillRect(0,0,18*scale,s);
     c.fillStyle='#16272e';c.fillRect((half-12)*scale,0,24*scale,s);
@@ -647,11 +647,29 @@ function drawDeployBackground(){
     c.fillRect(x,z,w,d);
     if(b.h>4){c.strokeStyle='#a5babd44';c.lineWidth=1;c.strokeRect(x+.5,z+.5,Math.max(1,w-1),Math.max(1,d-1));}
   }
+  c.font='600 9px sans-serif';c.fillStyle='#bdc7b8';c.textAlign='center';
+  for(const site of currentMap.landmarks??[]){
+    c.fillText(site.name,(site.x+half)*scale,(site.z+half)*scale-7);
+  }
   for(const st of currentMap.structures||[]){
     const x=(st.x-st.w/2+half)*scale,z=(st.z-st.d/2+half)*scale,w=st.w*scale,d=st.d*scale;
     c.fillStyle='#5c747838';c.fillRect(x,z,w,d);
     c.strokeStyle='#9ab5b866';c.setLineDash([4,3]);c.strokeRect(x,z,w,d);c.setLineDash([]);
   }
+}
+function drawMapRelief(c,scale,half){
+  const terrain=currentMap.terrain;
+  if(!terrain)return;
+  const step=8;
+  for(let z=-half;z<half;z+=step)for(let x=-half;x<half;x+=step){
+    const y=terrain.heightAt(x+step/2,z+step/2);
+    if(Math.abs(y)<.3)continue;
+    const band=Math.floor(Math.abs(y)/4);
+    c.globalAlpha=Math.min(.5,.12+band*.055);
+    c.fillStyle=y<0?(band%2?'#27606d':'#35717c'):(band%2?'#8f7455':'#aa8a61');
+    c.fillRect((x+half)*scale,(z+half)*scale,step*scale+.3,step*scale+.3);
+  }
+  c.globalAlpha=1;
 }
 function drawMapRoads(c,scale,half){
   c.fillStyle='#70695455';
@@ -681,6 +699,7 @@ function initializeMapPickers(){
   const update=()=>{
     const map=getMap($('map-select').value);
     text('menu-map-name',map.name.toUpperCase());
+    text('menu-map-points',String(map.points.length).padStart(2,'0'));
     text('menu-map-info',map.size+' × '+map.size+' м · '+map.points.length+' позиций'+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':''));
     save('map',map.id);
   };
@@ -901,7 +920,7 @@ function updateVehicleHud(player){
   const vehicles=state.vehicles??[];
   const vehicle=vehicles.find(v=>v.id===player.vehicleId);
   const key=formatKeyCode(keybinds.interact);
-  const nearby=!vehicle&&player.alive&&Math.abs(player.y)<=.8&&getVehicleBoardingSeat(player,vehicles);
+  const nearby=!vehicle&&player.alive&&Math.abs(player.y-(currentMap.terrain?.heightAt(player.x,player.z)??0))<=.8&&getVehicleBoardingSeat(player,vehicles);
   const seat=VEHICLE_TYPES[vehicle?.type]?.seats[player.vehicleSeat];
   show('vehicle-prompt',!!(nearby||seat));
   if(nearby)text('vehicle-prompt',key+' · СЕСТЬ В ТЕХНИКУ — '+VEHICLE_TYPES[nearby.vehicle.type].name.toUpperCase());
@@ -921,7 +940,11 @@ function hud(now){
   const weapon=getWeapon(player.classId,player.weaponId);
   const mounted=updateVehicleHud(player);
   const heading=(((-yaw*180/Math.PI)%360)+360)%360;const cardinal=['N','NE','E','SE','S','SW','W','NW'][Math.round(heading/45)%8];text('compass-direction',cardinal);text('compass-degrees',`${String(Math.round(heading)).padStart(3,'0')}°`);
-  const nearest=currentMap.points.reduce((best,p)=>Math.hypot(player.x-p.x,player.z-p.z)<Math.hypot(player.x-best.x,player.z-best.z)?p:best,currentMap.points[0]);text('location-label',nearest?`${nearest.name} / СЕКТОР ${nearest.id}`:'SECTOR 09');text('protection-label',player.protected?'◇ ЗАЩИТА ПОСЛЕ ВЫСАДКИ':'');
+  const districts=currentMap.landmarks?currentMap.districts:currentMap.points;
+  const nearest=districts.reduce((best,p)=>Math.hypot(player.x-p.x,player.z-p.z)<Math.hypot(player.x-best.x,player.z-best.z)?p:best,districts[0]);
+  const captureId=nearest?.id;
+  text('location-label',nearest?nearest.name+(captureId?' / СЕКТОР '+captureId:''):'SECTOR 09');
+  text('protection-label',player.protected?'◇ ЗАЩИТА ПОСЛЕ ВЫСАДКИ':'');
   const maxT=state.maxTickets||600;
   text('tickets-blue',Math.ceil(state.tickets[player.team]));text('tickets-orange',Math.ceil(state.tickets[1-player.team]));$('blue-bar').style.width=`${(state.tickets[player.team]/maxT)*100}%`;$('orange-bar').style.width=`${(state.tickets[1-player.team]/maxT)*100}%`;
   const seconds=Math.floor(state.time);text('match-time',`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`);
@@ -1004,7 +1027,7 @@ function hud(now){
 function markers(){
   const player=local();if(!player)return;
   for(const point of state.points){
-    const marker=$(`marker-${point.id}`),position=renderer.project(point.x,5,point.z);
+    const marker=$(`marker-${point.id}`),position=renderer.project(point.x,(point.y??0)+5,point.z);
     const display=position.visible?'flex':'none';
     if(marker.style.display!==display)marker.style.display=display;
     if(!position.visible)continue;

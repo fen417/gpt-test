@@ -16,7 +16,7 @@ function roadClear(sim, a, b, radius) {
   const steps = Math.max(1, Math.ceil(distance(a, b) / 1.2));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    if (sim.collides(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, 0, radius)) return false;
+    if (sim.collides(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, undefined, radius)) return false;
   }
   return true;
 }

@@ -440,9 +440,11 @@ export class GameRenderer {
   buildWorld() {
     const random = this.random;
     const size = this.map.size || 200;
-    const groundGeometry = new THREE.PlaneGeometry(size + 250, size + 250);
+    const span = size + (this.map.terrain ? 256 : 250);
+    const segments = this.map.terrain ? span / this.map.terrain.cell : 1;
+    const groundGeometry = new THREE.PlaneGeometry(span, span, segments, segments);
     const guv = groundGeometry.attributes.uv;
-    for (let i = 0; i < guv.count; i++) guv.setXY(i, guv.getX(i) * (size + 250) / 9, guv.getY(i) * (size + 250) / 9);
+    for (let i = 0; i < guv.count; i++) guv.setXY(i, guv.getX(i) * span / 9, guv.getY(i) * span / 9);
     const ground = new THREE.Mesh(groundGeometry, this.surfaces.ground);
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.scene.add(ground);
     if (this.map.roads) addQuarryGround(this, this.map, ground);
@@ -488,7 +490,10 @@ export class GameRenderer {
     const windowMatrices = [], litMatrices = [], frameMatrices = [];
     const dummy = new THREE.Object3D();
     for (const b of this.map.boxes || []) {
-      if (b.kind === 'rock') continue;
+      if (b.kind === 'rock' || b.kind === 'pump-manifold') continue;
+      const elevation = b.baseY ?? 0;
+      const parent = elevation ? new THREE.Group() : this.scene;
+      if (elevation) { parent.position.y = elevation; this.scene.add(parent); }
       const h = b.h ?? 3, w = b.w ?? 4, d = b.d ?? 4;
       const specialProp = ['truck', 'car', 'tent', 'tree', 'sandbags', 'fueltank', 'generator', 'kiosk'].includes(b.kind);
       const building = h > 5 && !['wall', 'pillar'].includes(b.kind) && !specialProp;
@@ -497,19 +502,19 @@ export class GameRenderer {
       const color = b.color || '#969b92', cacheKey = `${surface.uuid}:${color}`;
       if (!this.surfaceCache.has(cacheKey)) { this.surfaceCache.set(cacheKey, clonePairedMaterial(surface, color)); }
       const mat = b.kind === 'pillar' ? this.materials.steel : this.surfaceCache.get(cacheKey);
-      if (!specialProp) this.box(this.scene, b.x, h / 2, b.z, w, h, d, mat);
+      if (!specialProp) this.box(parent, b.x, h / 2, b.z, w, h, d, mat);
       if (b.kind === 'wall') {
-        this.box(this.scene, b.x, h + 0.05, b.z, w + .08, .16, d + .08, this.materials.edge);
+        this.box(parent, b.x, h + 0.05, b.z, w + .08, .16, d + .08, this.materials.edge);
       } else if (b.kind === 'pillar') {
-        this.box(this.scene, b.x, .12, b.z, w + .25, .24, d + .25, this.materials.rust);
+        this.box(parent, b.x, .12, b.z, w + .25, .24, d + .25, this.materials.rust);
       } else if (b.kind === 'tree') {
         // Concrete planter box, soil bed, textured trunk, branches, and multi-layered foliage canopy
-        this.box(this.scene, b.x, 0.28, b.z, w, 0.56, d, this.materials.edge);
-        this.box(this.scene, b.x, 0.58, b.z, w + 0.12, 0.08, d + 0.12, this.materials.darkConcrete);
-        this.box(this.scene, b.x, 0.59, b.z, w - 0.22, 0.08, d - 0.22, this.materials.rust, false);
-        this.cylinder(this.scene, b.x, 2.0, b.z, 0.24, 3.0, this.materials.rust, 8);
+        this.box(parent, b.x, 0.28, b.z, w, 0.56, d, this.materials.edge);
+        this.box(parent, b.x, 0.58, b.z, w + 0.12, 0.08, d + 0.12, this.materials.darkConcrete);
+        this.box(parent, b.x, 0.59, b.z, w - 0.22, 0.08, d - 0.22, this.materials.rust, false);
+        this.cylinder(parent, b.x, 2.0, b.z, 0.24, 3.0, this.materials.rust, 8);
         for (const side of [-1, 1]) {
-          const branch = this.cylinder(this.scene, b.x + side * 0.38, 2.9, b.z + side * 0.18, 0.09, 1.1, this.materials.rust, 6);
+          const branch = this.cylinder(parent, b.x + side * 0.38, 2.9, b.z + side * 0.18, 0.09, 1.1, this.materials.rust, 6);
           branch.rotation.z = -side * 0.55;
         }
         const crownPositions = [
@@ -523,7 +528,7 @@ export class GameRenderer {
           canopy.position.set(b.x + ox, oy, b.z + oz);
           canopy.scale.set(sx, sy, sz);
           canopy.castShadow = true; canopy.receiveShadow = true;
-          this.scene.add(canopy);
+          parent.add(canopy);
         }
       } else if (b.kind === 'truck') {
         const alongX = w > d;
@@ -533,27 +538,27 @@ export class GameRenderer {
         const cabOffset = dir * (len / 2 - cabLen / 2 - 0.1);
         const cargoOffset = -dir * (len / 2 - cargoLen / 2 - 0.05);
         // Chassis & undercarriage
-        this.box(this.scene, b.x, 0.58, b.z, alongX ? len * 0.94 : wid * 0.82, 0.36, alongX ? wid * 0.82 : len * 0.94, this.materials.darkConcrete);
+        this.box(parent, b.x, 0.58, b.z, alongX ? len * 0.94 : wid * 0.82, 0.36, alongX ? wid * 0.82 : len * 0.94, this.materials.darkConcrete);
         // Cargo box body + roof trim + side ribs
         const cx = alongX ? b.x + cargoOffset : b.x;
         const cz = alongX ? b.z : b.z + cargoOffset;
-        this.rounded(this.scene, cx, 1.92, cz, alongX ? cargoLen : wid * 0.96, 2.35, alongX ? wid * 0.96 : cargoLen, mat);
-        this.box(this.scene, cx, 3.12, cz, alongX ? cargoLen + 0.08 : wid, 0.08, alongX ? wid : cargoLen + 0.08, this.materials.edge);
+        this.rounded(parent, cx, 1.92, cz, alongX ? cargoLen : wid * 0.96, 2.35, alongX ? wid * 0.96 : cargoLen, mat);
+        this.box(parent, cx, 3.12, cz, alongX ? cargoLen + 0.08 : wid, 0.08, alongX ? wid : cargoLen + 0.08, this.materials.edge);
         // Truck cab + windshield + grille + bumper
         const kx = alongX ? b.x + cabOffset : b.x;
         const kz = alongX ? b.z : b.z + cabOffset;
-        this.rounded(this.scene, kx, 1.55, kz, alongX ? cabLen : wid * 0.9, 1.75, alongX ? wid * 0.9 : cabLen, this.materials.steel);
-        this.box(this.scene, kx, 1.82, kz, alongX ? cabLen * 0.65 : wid * 0.93, 0.58, alongX ? wid * 0.93 : cabLen * 0.65, this.materials.glass);
+        this.rounded(parent, kx, 1.55, kz, alongX ? cabLen : wid * 0.9, 1.75, alongX ? wid * 0.9 : cabLen, this.materials.steel);
+        this.box(parent, kx, 1.82, kz, alongX ? cabLen * 0.65 : wid * 0.93, 0.58, alongX ? wid * 0.93 : cabLen * 0.65, this.materials.glass);
         const frontX = alongX ? b.x + dir * (len / 2 - 0.06) : b.x;
         const frontZ = alongX ? b.z : b.z + dir * (len / 2 - 0.06);
-        this.box(this.scene, frontX, 0.55, frontZ, alongX ? 0.18 : wid * 0.96, 0.34, alongX ? wid * 0.96 : 0.18, this.materials.darkConcrete);
-        this.box(this.scene, frontX, 1.15, frontZ, alongX ? 0.14 : wid * 0.62, 0.55, alongX ? wid * 0.62 : 0.14, this.materials.edge);
+        this.box(parent, frontX, 0.55, frontZ, alongX ? 0.18 : wid * 0.96, 0.34, alongX ? wid * 0.96 : 0.18, this.materials.darkConcrete);
+        this.box(parent, frontX, 1.15, frontZ, alongX ? 0.14 : wid * 0.62, 0.55, alongX ? wid * 0.62 : 0.14, this.materials.edge);
         // 6 Wheels
         for (const axle of [-len * 0.36, -len * 0.12, len * 0.32]) {
           for (const side of [-1, 1]) {
             const wx = alongX ? b.x + axle : b.x + side * (wid * 0.46);
             const wz = alongX ? b.z + side * (wid * 0.46) : b.z + axle;
-            const wheel = this.cylinder(this.scene, wx, 0.48, wz, 0.48, 0.34, this.materials.tire, 12);
+            const wheel = this.cylinder(parent, wx, 0.48, wz, 0.48, 0.34, this.materials.tire, 12);
             if (alongX) wheel.rotation.x = Math.PI / 2; else wheel.rotation.z = Math.PI / 2;
           }
         }
@@ -561,23 +566,23 @@ export class GameRenderer {
         const alongX = w > d;
         const len = Math.max(w, d), wid = Math.min(w, d);
         // Lower body hull
-        this.rounded(this.scene, b.x, 0.68, b.z, alongX ? len * 0.96 : wid * 0.94, 0.68, alongX ? wid * 0.94 : len * 0.96, mat);
+        this.rounded(parent, b.x, 0.68, b.z, alongX ? len * 0.96 : wid * 0.94, 0.68, alongX ? wid * 0.94 : len * 0.96, mat);
         // Cabin greenhouse + windows
-        this.rounded(this.scene, b.x, 1.28, b.z, alongX ? len * 0.54 : wid * 0.84, 0.62, alongX ? wid * 0.84 : len * 0.54, mat);
-        this.box(this.scene, b.x, 1.28, b.z, alongX ? len * 0.56 : wid * 0.87, 0.44, alongX ? wid * 0.87 : len * 0.56, this.materials.glass);
+        this.rounded(parent, b.x, 1.28, b.z, alongX ? len * 0.54 : wid * 0.84, 0.62, alongX ? wid * 0.84 : len * 0.54, mat);
+        this.box(parent, b.x, 1.28, b.z, alongX ? len * 0.56 : wid * 0.87, 0.44, alongX ? wid * 0.87 : len * 0.56, this.materials.glass);
         // Bumpers & lights
         for (const end of [-1, 1]) {
           const ex = alongX ? b.x + end * (len * 0.48) : b.x;
           const ez = alongX ? b.z : b.z + end * (len * 0.48);
-          this.box(this.scene, ex, 0.44, ez, alongX ? 0.16 : wid * 0.96, 0.24, alongX ? wid * 0.96 : 0.16, this.materials.darkConcrete);
-          this.box(this.scene, ex, 0.74, ez, alongX ? 0.12 : wid * 0.76, 0.14, alongX ? wid * 0.76 : 0.12, end > 0 ? this.materials.glow : this.materials.tailLight, false);
+          this.box(parent, ex, 0.44, ez, alongX ? 0.16 : wid * 0.96, 0.24, alongX ? wid * 0.96 : 0.16, this.materials.darkConcrete);
+          this.box(parent, ex, 0.74, ez, alongX ? 0.12 : wid * 0.76, 0.14, alongX ? wid * 0.76 : 0.12, end > 0 ? this.materials.glow : this.materials.tailLight, false);
         }
         // 4 Wheels
         for (const axle of [-len * 0.3, len * 0.3]) {
           for (const side of [-1, 1]) {
             const wx = alongX ? b.x + axle : b.x + side * (wid * 0.45);
             const wz = alongX ? b.z + side * (wid * 0.45) : b.z + axle;
-            const wheel = this.cylinder(this.scene, wx, 0.34, wz, 0.34, 0.26, this.materials.tire, 10);
+            const wheel = this.cylinder(parent, wx, 0.34, wz, 0.34, 0.26, this.materials.tire, 10);
             if (alongX) wheel.rotation.x = Math.PI / 2; else wheel.rotation.z = Math.PI / 2;
           }
         }
@@ -585,20 +590,20 @@ export class GameRenderer {
         const wallH = h * 0.62, rise = h * 0.42;
         const alongX = w > d;
         const span = alongX ? d : w, length = alongX ? w : d;
-        this.box(this.scene, b.x, wallH / 2, b.z, w * 0.94, wallH, d * 0.94, mat);
+        this.box(parent, b.x, wallH / 2, b.z, w * 0.94, wallH, d * 0.94, mat);
         const half = span / 2, slope = Math.atan2(rise, half), panelW = Math.hypot(half, rise) + 0.25;
         for (const side of [-1, 1]) {
           const rx = alongX ? b.x : b.x + side * (half / 2);
           const rz = alongX ? b.z + side * (half / 2) : b.z;
-          const roof = this.box(this.scene, rx, wallH + rise / 2, rz, alongX ? length + 0.3 : panelW, 0.12, alongX ? panelW : length + 0.3, mat);
+          const roof = this.box(parent, rx, wallH + rise / 2, rz, alongX ? length + 0.3 : panelW, 0.12, alongX ? panelW : length + 0.3, mat);
           if (alongX) roof.rotation.x = side * slope; else roof.rotation.z = -side * slope;
         }
         // External support ribs & sandbag skirt
         for (let offset = -length * 0.38; offset <= length * 0.39; offset += length * 0.38) {
-          this.box(this.scene, alongX ? b.x + offset : b.x, wallH / 2, alongX ? b.z : b.z + offset, alongX ? 0.12 : w * 0.98, wallH + 0.05, alongX ? d * 0.98 : 0.12, this.materials.steel);
+          this.box(parent, alongX ? b.x + offset : b.x, wallH / 2, alongX ? b.z : b.z + offset, alongX ? 0.12 : w * 0.98, wallH + 0.05, alongX ? d * 0.98 : 0.12, this.materials.steel);
         }
         for (const side of [-1, 1]) {
-          this.rounded(this.scene, alongX ? b.x : b.x + side * (w * 0.48), 0.26, alongX ? b.z + side * (d * 0.48) : b.z, alongX ? w * 0.88 : 0.45, 0.5, alongX ? 0.45 : d * 0.88, this.materials.sand);
+          this.rounded(parent, alongX ? b.x : b.x + side * (w * 0.48), 0.26, alongX ? b.z + side * (d * 0.48) : b.z, alongX ? w * 0.88 : 0.45, 0.5, alongX ? 0.45 : d * 0.88, this.materials.sand);
         }
       } else if (b.kind === 'sandbags') {
         const alongX = w > d;
@@ -612,59 +617,59 @@ export class GameRenderer {
             const offset = -length / 2 + (c + 0.5) * bagLen + shift * (c < cols - 1 ? 1 : -1);
             const bx = alongX ? b.x + offset : b.x;
             const bz = alongX ? b.z : b.z + offset;
-            this.rounded(this.scene, bx, y, bz, alongX ? bagLen * 0.92 : thick * (0.95 - row * 0.08), 0.38, alongX ? thick * (0.95 - row * 0.08) : bagLen * 0.92, this.materials.sand);
+            this.rounded(parent, bx, y, bz, alongX ? bagLen * 0.92 : thick * (0.95 - row * 0.08), 0.38, alongX ? thick * (0.95 - row * 0.08) : bagLen * 0.92, this.materials.sand);
           }
         }
-        this.box(this.scene, b.x, h - 0.04, b.z, w * 0.92, 0.08, d * 0.92, this.surfaces.wood);
+        this.box(parent, b.x, h - 0.04, b.z, w * 0.92, 0.08, d * 0.92, this.surfaces.wood);
       } else if (b.kind === 'fueltank') {
         const alongX = w > d;
         const len = Math.max(w, d), rad = Math.min(w, d) * 0.46;
         for (const s of [-len * 0.28, len * 0.28]) {
-          this.box(this.scene, alongX ? b.x + s : b.x, 0.45, alongX ? b.z : b.z + s, alongX ? 0.65 : rad * 1.9, 0.9, alongX ? rad * 1.9 : 0.65, this.materials.darkConcrete);
+          this.box(parent, alongX ? b.x + s : b.x, 0.45, alongX ? b.z : b.z + s, alongX ? 0.65 : rad * 1.9, 0.9, alongX ? rad * 1.9 : 0.65, this.materials.darkConcrete);
         }
-        const tank = this.cylinder(this.scene, b.x, 0.85 + rad, b.z, rad, len * 0.92, mat, 14);
+        const tank = this.cylinder(parent, b.x, 0.85 + rad, b.z, rad, len * 0.92, mat, 14);
         if (alongX) tank.rotation.z = Math.PI / 2; else tank.rotation.x = Math.PI / 2;
-        const stripe = this.cylinder(this.scene, b.x, 0.85 + rad, b.z, rad + 0.02, len * 0.18, this.materials.stripe, 14);
+        const stripe = this.cylinder(parent, b.x, 0.85 + rad, b.z, rad + 0.02, len * 0.18, this.materials.stripe, 14);
         if (alongX) stripe.rotation.z = Math.PI / 2; else stripe.rotation.x = Math.PI / 2;
-        this.cylinder(this.scene, b.x, 0.85 + rad * 2 + 0.2, b.z, 0.28, 0.4, this.materials.steel, 8);
+        this.cylinder(parent, b.x, 0.85 + rad * 2 + 0.2, b.z, 0.28, 0.4, this.materials.steel, 8);
       } else if (b.kind === 'generator') {
-        this.box(this.scene, b.x, 0.28, b.z, w + 0.16, 0.26, d + 0.16, this.materials.darkConcrete);
-        this.rounded(this.scene, b.x, 1.25, b.z, w * 0.92, 1.75, d * 0.88, mat);
-        this.box(this.scene, b.x, 1.35, b.z, w * 0.96, 0.75, d * 0.55, this.materials.darkConcrete);
-        this.cylinder(this.scene, b.x + w * 0.3, 2.45, b.z - d * 0.28, 0.11, 0.95, this.materials.rust, 8);
+        this.box(parent, b.x, 0.28, b.z, w + 0.16, 0.26, d + 0.16, this.materials.darkConcrete);
+        this.rounded(parent, b.x, 1.25, b.z, w * 0.92, 1.75, d * 0.88, mat);
+        this.box(parent, b.x, 1.35, b.z, w * 0.96, 0.75, d * 0.55, this.materials.darkConcrete);
+        this.cylinder(parent, b.x + w * 0.3, 2.45, b.z - d * 0.28, 0.11, 0.95, this.materials.rust, 8);
         // Telescopic floodlight mast
-        this.cylinder(this.scene, b.x - w * 0.25, 3.9, b.z + d * 0.25, 0.07, 4.2, this.materials.pole, 8);
-        this.box(this.scene, b.x - w * 0.25, 6.0, b.z + d * 0.25, 1.3, 0.18, 0.28, this.materials.steel, false);
-        this.box(this.scene, b.x - w * 0.25, 5.95, b.z + d * 0.25, 1.15, 0.14, 0.34, this.materials.glow, false);
+        this.cylinder(parent, b.x - w * 0.25, 3.9, b.z + d * 0.25, 0.07, 4.2, this.materials.pole, 8);
+        this.box(parent, b.x - w * 0.25, 6.0, b.z + d * 0.25, 1.3, 0.18, 0.28, this.materials.steel, false);
+        this.box(parent, b.x - w * 0.25, 5.95, b.z + d * 0.25, 1.15, 0.14, 0.34, this.materials.glow, false);
       } else if (b.kind === 'kiosk') {
-        this.box(this.scene, b.x, 0.65, b.z, w, 1.3, d, mat);
-        this.box(this.scene, b.x, 1.22, b.z, w + 0.04, 0.16, d + 0.04, this.materials.stripe);
-        this.box(this.scene, b.x, 1.95, b.z, w * 0.92, 1.3, d * 0.92, this.materials.glass);
+        this.box(parent, b.x, 0.65, b.z, w, 1.3, d, mat);
+        this.box(parent, b.x, 1.22, b.z, w + 0.04, 0.16, d + 0.04, this.materials.stripe);
+        this.box(parent, b.x, 1.95, b.z, w * 0.92, 1.3, d * 0.92, this.materials.glass);
         for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-          this.box(this.scene, b.x + sx * (w * 0.45), 1.95, b.z + sz * (d * 0.45), 0.14, 1.35, 0.14, this.materials.steel);
+          this.box(parent, b.x + sx * (w * 0.45), 1.95, b.z + sz * (d * 0.45), 0.14, 1.35, 0.14, this.materials.steel);
         }
-        this.box(this.scene, b.x, h - 0.12, b.z, w + 0.36, 0.24, d + 0.36, this.materials.edge);
+        this.box(parent, b.x, h - 0.12, b.z, w + 0.36, 0.24, d + 0.36, this.materials.edge);
       } else if (building) {
-        this.box(this.scene, b.x, h + 0.13, b.z, w + 0.3, 0.26, d + 0.3, this.materials.edge);
-        this.box(this.scene, b.x, 0.45, b.z, w + 0.12, 0.9, d + 0.12, this.materials.darkConcrete);
+        this.box(parent, b.x, h + 0.13, b.z, w + 0.3, 0.26, d + 0.3, this.materials.edge);
+        this.box(parent, b.x, 0.45, b.z, w + 0.12, 0.9, d + 0.12, this.materials.darkConcrete);
         if (b.kind === 'warehouse') {
           const rise = Math.min(2.6, w * .1), half = w / 2, slope = Math.atan2(rise, half);
-          for (const side of [-1, 1]) { const roof = this.box(this.scene, b.x + side * w / 4, h + rise / 2 + .12, b.z, Math.hypot(half, rise) + .3, .14, d + .6, this.surfaces.metal); roof.rotation.z = -side * slope; }
+          for (const side of [-1, 1]) { const roof = this.box(parent, b.x + side * w / 4, h + rise / 2 + .12, b.z, Math.hypot(half, rise) + .3, .14, d + .6, this.surfaces.metal); roof.rotation.z = -side * slope; }
         } else if (b.kind === 'factory') {
-          this.cylinder(this.scene, b.x + w * .28, h + 4, b.z - d * .25, .48, 8, this.surfaces.brick, 14);
-          this.cylinder(this.scene, b.x + w * .28, h + 8.05, b.z - d * .25, .58, .25, this.materials.steel, 14);
-          const tank = this.cylinder(this.scene, b.x - w * .22, h + 1.8, b.z + d * .2, 1.2, 3.3, this.materials.edge, 16);
-          this.cylinder(this.scene, tank.position.x, h + 3.5, tank.position.z, 1.28, .16, this.materials.steel, 16);
+          this.cylinder(parent, b.x + w * .28, h + 4, b.z - d * .25, .48, 8, this.surfaces.brick, 14);
+          this.cylinder(parent, b.x + w * .28, h + 8.05, b.z - d * .25, .58, .25, this.materials.steel, 14);
+          const tank = this.cylinder(parent, b.x - w * .22, h + 1.8, b.z + d * .2, 1.2, 3.3, this.materials.edge, 16);
+          this.cylinder(parent, tank.position.x, h + 3.5, tank.position.z, 1.28, .16, this.materials.steel, 16);
         }
         for (let y = 2.8; y < h - 0.9; y += 3.1) {
           for (const face of [-1, 1]) {
             for (let x = -w / 2 + 1.5; x < w / 2 - 0.7; x += 2.7) {
-              dummy.position.set(b.x + x, y, b.z + face * (d / 2 + 0.095)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.3, 1.55, 0.045); dummy.updateMatrix();
+              dummy.position.set(b.x + x, y + elevation, b.z + face * (d / 2 + 0.095)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.3, 1.55, 0.045); dummy.updateMatrix();
               (random() > 0.88 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
               dummy.position.z = b.z + face * (d / 2 + .04); dummy.scale.set(1.5, 1.75, .055); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
             for (let z = -d / 2 + 1.5; z < d / 2 - 0.7; z += 2.7) {
-              dummy.position.set(b.x + face * (w / 2 + 0.095), y, b.z + z); dummy.rotation.set(0, 0, 0); dummy.scale.set(0.045, 1.55, 1.3); dummy.updateMatrix();
+              dummy.position.set(b.x + face * (w / 2 + 0.095), y + elevation, b.z + z); dummy.rotation.set(0, 0, 0); dummy.scale.set(0.045, 1.55, 1.3); dummy.updateMatrix();
               (random() > 0.9 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
               dummy.position.x = b.x + face * (w / 2 + .04); dummy.scale.set(.055, 1.75, 1.5); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
@@ -673,41 +678,41 @@ export class GameRenderer {
         const vents = Math.min(3, Math.floor(w * d / 70));
         for (let i = 0; i < vents; i++) {
           const vx = b.x + (random() - 0.5) * w * 0.55, vz = b.z + (random() - 0.5) * d * 0.55;
-          this.box(this.scene, vx, h + 0.7, vz, 1.7, 1.1, 1.5, this.materials.steel);
-          this.cylinder(this.scene, vx + 0.3, h + 1.7, vz, 0.19, 1.2, this.materials.rust);
+          this.box(parent, vx, h + 0.7, vz, 1.7, 1.1, 1.5, this.materials.steel);
+          this.cylinder(parent, vx + 0.3, h + 1.7, vz, 0.19, 1.2, this.materials.rust);
         }
         // Drainpipes and a concrete loading-door trim add depth at street level.
-        this.cylinder(this.scene, b.x + w / 2 - 0.2, h / 2, b.z - d / 2 - 0.12, 0.075, h, this.materials.rust);
+        this.cylinder(parent, b.x + w / 2 - 0.2, h / 2, b.z - d / 2 - 0.12, 0.075, h, this.materials.rust);
         // Facade pilasters, weathered service signage and a shallow loading canopy.
-        for (let fx = -w / 2 + 1; fx < w / 2; fx += 7) this.box(this.scene, b.x + fx, h / 2, b.z + d / 2 + .07, .18, h, .2, this.materials.edge);
-        for (let y = 3.9; y < h - 1; y += 3.1) this.box(this.scene, b.x, y, b.z + d / 2 + .05, w, .09, .12, this.materials.edge);
+        for (let fx = -w / 2 + 1; fx < w / 2; fx += 7) this.box(parent, b.x + fx, h / 2, b.z + d / 2 + .07, .18, h, .2, this.materials.edge);
+        for (let y = 3.9; y < h - 1; y += 3.1) this.box(parent, b.x, y, b.z + d / 2 + .05, w, .09, .12, this.materials.edge);
         if (w > 12) {
           const sign = makeSign(b.kind === 'factory' ? 'SECTOR' : 'DEPOT', `${String(b.id || '').replace('obj-', '').padStart(2, '0')}  /  RESTRICTED`, Math.min(4.5, w * .22), this.integratedGpu);
-          sign.position.set(b.x, Math.min(h - 1.5, 6), b.z + d / 2 + .16); this.scene.add(sign);
-          this.box(this.scene, b.x, 3.45, b.z + d / 2 + .6, 5.5, .12, 1.25, this.materials.steel);
+          sign.position.set(b.x, Math.min(h - 1.5, 6), b.z + d / 2 + .16); parent.add(sign);
+          this.box(parent, b.x, 3.45, b.z + d / 2 + .6, 5.5, .12, 1.25, this.materials.steel);
         }
         if (w > 8) {
-          this.box(this.scene, b.x, 1.45, b.z + d / 2 + 0.035, Math.min(4.1, w * 0.4), 2.9, 0.06, this.materials.steel);
-          for (let y = 0.3; y < 2.8; y += 0.27) this.box(this.scene, b.x, y, b.z + d / 2 + 0.075, Math.min(4.1, w * 0.4), 0.035, 0.03, this.materials.edge, false);
+          this.box(parent, b.x, 1.45, b.z + d / 2 + 0.035, Math.min(4.1, w * 0.4), 2.9, 0.06, this.materials.steel);
+          for (let y = 0.3; y < 2.8; y += 0.27) this.box(parent, b.x, y, b.z + d / 2 + 0.075, Math.min(4.1, w * 0.4), 0.035, 0.03, this.materials.edge, false);
         }
       } else if (container) {
         for (let x = -w / 2 + 0.25; x < w / 2; x += 0.6) {
-          for (const side of [-1, 1]) this.box(this.scene, b.x + x, h / 2, b.z + side * (d / 2 + 0.02), 0.065, h * 0.92, 0.05, mat, false);
+          for (const side of [-1, 1]) this.box(parent, b.x + x, h / 2, b.z + side * (d / 2 + 0.02), 0.065, h * 0.92, 0.05, mat, false);
         }
-        this.box(this.scene, b.x, h + 0.025, b.z, w + 0.05, 0.05, d + 0.05, this.materials.steel, false);
+        this.box(parent, b.x, h + 0.025, b.z, w + 0.05, 0.05, d + 0.05, this.materials.steel, false);
         for (const side of [-1, 1]) {
-          if (w > d) this.cylinder(this.scene, b.x + w / 2 + .035, h / 2, b.z + side * d * .22, .035, h * .88, this.materials.pole);
-          else this.cylinder(this.scene, b.x + side * w * .22, h / 2, b.z + d / 2 + .035, .035, h * .88, this.materials.pole);
+          if (w > d) this.cylinder(parent, b.x + w / 2 + .035, h / 2, b.z + side * d * .22, .035, h * .88, this.materials.pole);
+          else this.cylinder(parent, b.x + side * w * .22, h / 2, b.z + d / 2 + .035, .035, h * .88, this.materials.pole);
         }
       } else if (b.kind === 'crate') {
         for (const side of [-1, 1]) {
-          this.box(this.scene, b.x + side * w * .33, h / 2, b.z, .09, h + .025, d + .035, this.materials.steel);
-          this.box(this.scene, b.x, h * .2, b.z + side * (d / 2 + .013), w + .03, .12, .045, this.materials.rust);
+          this.box(parent, b.x + side * w * .33, h / 2, b.z, .09, h + .025, d + .035, this.materials.steel);
+          this.box(parent, b.x, h * .2, b.z + side * (d / 2 + .013), w + .03, .12, .045, this.materials.rust);
         }
       } else {
-        this.box(this.scene, b.x, h - 0.035, b.z, w + 0.08, 0.16, d + 0.08, this.materials.edge);
+        this.box(parent, b.x, h - 0.035, b.z, w + 0.08, 0.16, d + 0.08, this.materials.edge);
         if (h < 2) {
-          this.box(this.scene, b.x, h * 0.65, b.z + d / 2 + 0.015, w * 0.85, Math.min(0.14, h * 0.15), 0.02, this.materials.stripe, false);
+          this.box(parent, b.x, h * 0.65, b.z + d / 2 + 0.015, w * 0.85, Math.min(0.14, h * 0.15), 0.02, this.materials.stripe, false);
         }
       }
     }
@@ -782,7 +787,7 @@ export class GameRenderer {
   }
 
   makeFlag(point) {
-    const group = new THREE.Group(); group.position.set(point.x, 0, point.z); this.scene.add(group);
+    const group = new THREE.Group(); group.position.set(point.x, point.y ?? 0, point.z); this.scene.add(group);
     this.cylinder(group, 0, 2.4, 0, 0.045, 4.8, this.materials.pole);
     const flagMaterial = pairMaterials(
       new THREE.MeshStandardMaterial({ color: COLORS.neutral, side: THREE.DoubleSide, roughness: 0.95 }),
@@ -805,7 +810,14 @@ export class GameRenderer {
     const teamFlag = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.85, 8, 1), teamFlagMaterial);
     teamFlag.position.set(0.8, FLAG_LOW, 0); teamFlag.visible = false; group.add(teamFlag);
     const ring = new THREE.Mesh(new THREE.RingGeometry(CAPTURE_RADIUS - 0.13, CAPTURE_RADIUS, 36), new THREE.MeshBasicMaterial({ color: COLORS.neutral, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.045; group.add(ring);
+    if (this.map.terrain) {
+      const vertices = ring.geometry.attributes.position;
+      for (let i = 0; i < vertices.count; i++) {
+        const height = this.map.terrain.heightAt(point.x + vertices.getX(i), point.z - vertices.getY(i));
+        vertices.setZ(i, height - (point.y ?? 0));
+      }
+    }
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; group.add(ring);
     const texture = canvasTexture(128, (ctx) => {
       ctx.fillStyle = 'rgba(12,23,28,.82)'; ctx.beginPath(); ctx.moveTo(64, 4); ctx.lineTo(118, 64); ctx.lineTo(64, 124); ctx.lineTo(10, 64); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = '#d7e1df'; ctx.lineWidth = 3; ctx.stroke();
@@ -876,13 +888,13 @@ export class GameRenderer {
         this.worldRoot.add(rig.group);
       }
       rig.group.visible = true;
-      updateVehicleRig(rig, vehicle, player, dt, blend, view, this.lowQuality);
+      updateVehicleRig(rig, vehicle, player, dt, blend, view, this.lowQuality, this.map.terrain);
       if (local) mounted = { vehicle, rig };
       const damaged = vehicle.hp < vehicle.maxHp * .33;
       if (damaged && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
         rig.nextSmoke = this.clock + (vehicle.hp > 0 ? .35 : .16);
         const atv = vehicle.type === 'atv', z = atv ? -.79 : -1.74;
-        this.smoke(vehicle.x + Math.sin(vehicle.yaw)*z, atv ? .88 : 1.20,
+        this.smoke(vehicle.x + Math.sin(vehicle.yaw)*z, (vehicle.y ?? 0) + (atv ? .88 : 1.20),
           vehicle.z + Math.cos(vehicle.yaw)*z, local ? .19 : vehicle.hp > 0 ? .34 : .68,
           local ? .62 : 1.6, 0x50504a);
       }
@@ -1549,8 +1561,8 @@ export class GameRenderer {
     if (!state?.players) {
       this.cameraPlayerId = null;
       if (this.vehicleRigs.size) this.clearVehicles();
-      const angle = this.clock * 0.012, radius = Math.min(this.map.size * .36, 130);
-      this.camera.position.set(Math.sin(angle + 0.9) * radius, 58 + Math.sin(this.clock * .025) * 8, Math.cos(angle + 0.9) * radius);
+      const angle = this.clock * 0.012, radius = this.map.terrain ? this.map.size * .29 : 130;
+      this.camera.position.set(Math.sin(angle + 0.9) * radius, (this.map.terrain ? 94 : 58) + Math.sin(this.clock * .025) * 8, Math.cos(angle + 0.9) * radius);
       this.camera.lookAt(0, 3, -12); this.weapon.visible = false;
       this.atmosphere.sky.position.copy(this.camera.position);
       if (this.camera.fov !== 70 || this.camera.near !== 2) {
@@ -1588,16 +1600,17 @@ export class GameRenderer {
       const focusZ = view.deployTarget?.z ?? player.z ?? 0;
       const orbit = this.clock * 0.08;
       const desiredX = focusX + Math.sin(orbit) * 32;
-      const desiredY = 46;
+      const ground = this.map.terrain?.heightAt(focusX, focusZ) ?? 0;
+      const desiredY = ground + 46;
       const desiredZ = focusZ + Math.cos(orbit) * 32;
       if (this.cameraAlive !== false) {
-        this.camera.position.set(player.x, 4, player.z + 6);
+        this.camera.position.set(player.x, (player.y ?? 0) + 4, player.z + 6);
       }
       const pan = 1 - Math.exp(-dt * 4.5);
       this.camera.position.x = lerp(this.camera.position.x, desiredX, pan);
       this.camera.position.y = lerp(this.camera.position.y, desiredY, pan);
       this.camera.position.z = lerp(this.camera.position.z, desiredZ, pan);
-      this.camera.lookAt(focusX, 1.5, focusZ);
+      this.camera.lookAt(focusX, ground + 1.5, focusZ);
       this.cameraPlayerId = localId;
       this.cameraAlive = false;
       this.weapon.visible = false;
@@ -1616,7 +1629,7 @@ export class GameRenderer {
       this.camera.position.set(seat.x, seat.height, seat.z).applyMatrix4(rig.body.matrixWorld);
       if (shake) this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012,Math.abs(vehicle.speed)*.001);
       this.camera.rotation.set(seat.role === 'gunner' ? clamp(pitch,TURRET_MIN_PITCH,TURRET_MAX_PITCH) : pitch,
-        yaw,shake ? rig.body.rotation.z : 0,'YXZ');
+        yaw,shake&&seat.role!=='gunner' ? rig.body.rotation.z : 0,'YXZ');
       this.cameraPlayerId = null;
       this.cameraAlive = true;
       this.weapon.visible = false;
@@ -1750,7 +1763,7 @@ export class GameRenderer {
         mesh.updateMatrix();
         mesh.matrixWorld.multiplyMatrices(flag.group.matrixWorld, mesh.matrix);
       }
-      this.flagBounds.center.set(point.x, 3, point.z);
+      this.flagBounds.center.set(point.x, (point.y ?? 0) + 3, point.z);
       if (this.camera.position.distanceToSquared(this.flagBounds.center) < 95 * 95 && this.viewFrustum.intersectsSphere(this.flagBounds)) {
         for (const mesh of [flag.flag, flag.teamFlag]) {
           if (!mesh.visible) continue;

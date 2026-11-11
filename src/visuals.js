@@ -328,17 +328,19 @@ function addWarehouseDetails(owner, structures = []) {
     if (mat) { mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -1; }
   }
   for (const structure of structures) {
-    const { x, z, w, d, h } = structure;
+    const { x, z, w, d, h, baseY = 0 } = structure;
+    const parent = baseY ? new THREE.Group() : scene;
+    if (baseY) { parent.position.y = baseY; scene.add(parent); }
     if (structure.roof !== false) {
-      owner.box(scene, x, h + .15, z, w + .8, .26, d + .8, warehouseRoofMat);
-      owner.box(scene, x, h - 1, z, .25, 1.3, d + .4, m.steel);
+      owner.box(parent, x, h + .15, z, w + .8, .26, d + .8, warehouseRoofMat);
+      owner.box(parent, x, h - 1, z, .25, 1.3, d + .4, m.steel);
       for (let rz = -d / 2; rz <= d / 2; rz += 6) {
-        owner.box(scene, x, h - .8, z + rz, w, .2, .2, m.steel);
-        for (const side of [-1, 1]) { const beam = owner.box(scene, x + side * w / 4, h - 1.2, z + rz, w / 2, .12, .12, m.rust); beam.rotation.z = side * .1; }
+        owner.box(parent, x, h - .8, z + rz, w, .2, .2, m.steel);
+        for (const side of [-1, 1]) { const beam = owner.box(parent, x + side * w / 4, h - 1.2, z + rz, w / 2, .12, .12, m.rust); beam.rotation.z = side * .1; }
       }
-      const floor = owner.box(scene, x, .045, z, w, .08, d, warehouseFloorMat, false); floor.receiveShadow = true;
+      const floor = owner.box(parent, x, .045, z, w, .08, d, warehouseFloorMat, false); floor.receiveShadow = true;
       for (const side of [-1, 1]) {
-        owner.box(scene, x + side * w * .26, h - 1.5, z, .13, .08, Math.max(1, d - 3), m.glow, false);
+        owner.box(parent, x + side * w * .26, h - 1.5, z, .13, .08, Math.max(1, d - 3), m.glow, false);
       }
     }
   }

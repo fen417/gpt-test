@@ -40,7 +40,7 @@ export function vehicleLocalPoint(vehicle, x, z) {
 
 export function getVehicleSeatPose(vehicle, index) {
   const seat = VEHICLE_TYPES[vehicle.type]?.seats[index];
-  return seat && { ...vehicleLocalPoint(vehicle, seat.x, seat.z), y: seat.height };
+  return seat && { ...vehicleLocalPoint(vehicle, seat.x, seat.z), y: (vehicle.y ?? 0) + seat.height };
 }
 
 export function getVehicleBoardingSeat(player, vehicles) {

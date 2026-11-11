@@ -18,7 +18,7 @@ export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   for(const box of boxes){
     if(Math.abs(origin.x-box.x)>box.w/2+closest||Math.abs(origin.z-box.z)>box.d/2+closest)continue;
     let near=0,far=closest;
-    for(const [axis,min,max]of [['x',box.x-box.w/2,box.x+box.w/2],['y',0,box.h],['z',box.z-box.d/2,box.z+box.d/2]]){
+    for(const [axis,min,max]of [['x',box.x-box.w/2,box.x+box.w/2],['y',box.baseY??0,(box.baseY??0)+box.h],['z',box.z-box.d/2,box.z+box.d/2]]){
       const component=direction[axis];
       if(Math.abs(component)<1e-8){if(origin[axis]<min||origin[axis]>max){far=-1;break;}continue;}
       let a=(min-origin[axis])/component,b=(max-origin[axis])/component;
