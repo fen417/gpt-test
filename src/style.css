@@ -10,7 +10,16 @@
 #scope-overlay::before{width:58vmin;height:1px}
 #scope-overlay::after{width:1px;height:58vmin}
 .scoped #crosshair{opacity:0!important}
-.killfeed .enemy-kill b{color:#e6b273}.killfeed .enemy-kill em{color:#79c5d2}
+.killfeed .enemy-kill b{color:var(--orange)}.killfeed .enemy-kill em{color:var(--cyan)}
+body.team-1{--cyan:#e6b273;--orange:#79c5d2}
+.menu,.lobby-overlay{--cyan:#79c5d2;--orange:#e6b273}
+body.team-1 .legend-dot.point-ally{background:#52391e}
+body.team-1 .legend-dot.point-enemy{background:#1c4d57}
+body.team-1 .spawn-item.selected{background:linear-gradient(90deg,rgba(140,94,45,.38),rgba(57,38,20,.25))}
+body.team-1 .objective.owned0{background:#79592d66}
+body.team-1 .objective.owned1{background:#32687566}
+body.team-1 .score-row.local{background:#a57b5f33}
+.enemy-team .lobby-player-row.is-local{background:#66492d55}
 .deploy-overlay{backdrop-filter:none;background:radial-gradient(circle at 38% 52%,rgba(8,21,28,.38),rgba(5,13,18,.88));padding:18px 26px}
 .deploy-hud{width:min(1260px,100%);height:min(820px,95dvh);display:flex;flex-direction:column;gap:14px}
 .deploy-topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:linear-gradient(90deg,rgba(11,26,34,.92),rgba(15,34,43,.78));border:1px solid var(--border);border-left:3px solid var(--orange)}

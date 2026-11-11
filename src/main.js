@@ -167,6 +167,7 @@ function receive(next){
   }
   if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast('Новая операция началась');}
   state=next;const player=local();
+  if(player)document.body.classList.toggle('team-1',player.team===1);
   if(!active||!player)return;
   if(player.alive&&!wasAlive){yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;show('death',false);if(active&&!locked&&!unlocked)show('pause');}
   if(!player.alive&&wasAlive){
@@ -229,7 +230,7 @@ async function requestControl(allowPendingSpawn=false){
 }
 function leave(resetStatus=true){
   active=false;inLobby=false;clearControls();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
-  document.body.classList.remove('in-battle');audio.setMode?.('menu');
+  document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов. Выбери класс и вступай в бой.');
 }
 function solo(){if(busy)return;multiplayer.close();const opts=prepare('solo');simulation=new Simulation({bots:opts.bots,difficulty:opts.difficulty});localId='local';simulation.addPlayer(localId,opts.name,0,opts.classId);state=simulation.snapshot();enter();}
@@ -308,6 +309,8 @@ window.addEventListener('blur',clearControls);
 document.addEventListener('visibilitychange',()=>{clearControls();lastFrame=performance.now();accumulator=0;fpsClock=0;frames=0;if(document.hidden)audio.ctx?.suspend?.();else if(audioStarted)unlockAudio();});
 function input(){const enabled=!!((locked||(unlocked&&!unlockedPaused))&&local()?.alive&&!finished), firing=enabled&&(fire||fireTap);return {forward:enabled?Number(keys.has('KeyW'))-Number(keys.has('KeyS')):0,strafe:enabled?Number(keys.has('KeyD'))-Number(keys.has('KeyA')):0,...aimAngles(),sprint:enabled&&(keys.has('ShiftLeft')||keys.has('ShiftRight'))&&!aim&&!firing,crouch:enabled&&(keys.has('KeyC')||keys.has('ControlLeft')),jump:enabled&&keys.has('Space'),fire:firing,aim:enabled&&aim,reload:enabled&&pulses.has('KeyR'),gadget:enabled&&pulses.has('KeyQ'),grenade:enabled&&pulses.has('KeyG')};}
 
+const TEAM_HEX=['#79c5d2','#e6b273'];
+const TEAM_BG=['#133a44e6','#422c17e6'];
 const minimapCanvas=$('minimap');
 const mapctx=minimapCanvas.getContext('2d');
 const mapBackground=document.createElement('canvas');
@@ -317,15 +320,18 @@ mapBackground.width=mapBackground.height=mapSize;
   const c=mapBackground.getContext('2d'),s=mapSize,scale=mapScale,half=mapHalf,step=s/10;
   c.fillStyle='#15262c';c.fillRect(0,0,s,s);c.strokeStyle='#5d7b802b';c.lineWidth=1;
   for(let n=0;n<10;n++){c.beginPath();c.moveTo(n*step,0);c.lineTo(n*step,s);c.moveTo(0,n*step);c.lineTo(s,n*step);c.stroke();}
-  c.fillStyle='#73817c77';for(const b of MAP.boxes)c.fillRect((b.x-b.w/2+half)*scale,(b.z-b.d/2+half)*scale,b.w*scale,b.d*scale);
+  for(const b of MAP.boxes){
+    c.fillStyle=b.kind==='tree'?'#4e7452aa':b.kind==='truck'||b.kind==='car'?'#987654aa':'#73817c77';
+    c.fillRect((b.x-b.w/2+half)*scale,(b.z-b.d/2+half)*scale,b.w*scale,b.d*scale);
+  }
 }
 function minimap(player){
   const c=mapctx,scale=mapScale,half=mapHalf;
   c.drawImage(mapBackground,0,0);
   c.font='bold 10px sans-serif';c.textAlign='center';
-  for(const p of state.points){const x=(p.x+half)*scale,z=(p.z+half)*scale;c.fillStyle=p.owner===-1?'#ced1bb':p.owner===player.team?'#79c5d2':'#e6b273';c.strokeStyle=c.fillStyle;c.globalAlpha=.15;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();c.globalAlpha=1;c.fillText(p.id,x,z+3.5);}
-  for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=friend?'#79c5d2':'#e6b273';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?1.8:2.3,0,Math.PI*2);c.fill();}
-  c.save();c.translate((player.x+half)*scale,(player.z+half)*scale);c.rotate(-yaw);c.fillStyle='#f0f4e9';c.beginPath();c.moveTo(0,-4.5);c.lineTo(3,3.5);c.lineTo(0,1.8);c.lineTo(-3,3.5);c.closePath();c.fill();c.restore();
+  for(const p of state.points){const x=(p.x+half)*scale,z=(p.z+half)*scale;c.fillStyle=p.owner===-1?'#ced1bb':TEAM_HEX[p.owner]??'#ced1bb';c.strokeStyle=c.fillStyle;c.globalAlpha=.15;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();c.globalAlpha=1;c.fillText(p.id,x,z+3.5);}
+  for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=TEAM_HEX[p.team]??'#79c5d2';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?1.8:2.3,0,Math.PI*2);c.fill();}
+  c.save();c.translate((player.x+half)*scale,(player.z+half)*scale);c.rotate(-yaw);c.fillStyle=TEAM_HEX[player.team]??'#f0f4e9';c.strokeStyle='#f0f4e9';c.lineWidth=.8;c.beginPath();c.moveTo(0,-4.5);c.lineTo(3,3.5);c.lineTo(0,1.8);c.lineTo(-3,3.5);c.closePath();c.fill();c.stroke();c.restore();
 }
 const deployCanvas=$('deploy-map');
 const deployCtx=deployCanvas.getContext('2d');
@@ -350,7 +356,12 @@ deployMapBg.width=deployMapBg.height=deploySize;
   }
   for(const b of MAP.boxes){
     const x=(b.x-b.w/2+half)*scale,z=(b.z-b.d/2+half)*scale,w=b.w*scale,d=b.d*scale;
-    c.fillStyle=b.kind==='wall'||b.kind==='barrier'?'#879693aa':String(b.kind).includes('container')?'#597578aa':'#41565baa';
+    if(b.kind==='tree'){
+      c.fillStyle='#4a754ecc';
+      c.beginPath();c.arc((b.x+half)*scale,(b.z+half)*scale,Math.max(2.6,w*.95),0,Math.PI*2);c.fill();
+      continue;
+    }
+    c.fillStyle=b.kind==='wall'||b.kind==='barrier'||b.kind==='sandbags'?'#879693aa':b.kind==='truck'||b.kind==='car'?'#9c7a54bb':b.kind==='tent'?'#5c7860bb':String(b.kind).includes('container')||b.kind==='fueltank'?'#597578aa':'#41565baa';
     c.fillRect(x,z,w,d);
     if(b.h>4){c.strokeStyle='#a5babd44';c.lineWidth=1;c.strokeRect(x+.5,z+.5,Math.max(1,w-1),Math.max(1,d-1));}
   }
@@ -392,23 +403,24 @@ deployCanvas.addEventListener('dblclick',event=>{
 });
 function drawDeployMap(player,now){
   const c=deployCtx,scale=deployScale,half=deployHalf,pulse=(Math.sin(now*0.006)+1)*0.5;
+  const allyColor=TEAM_HEX[player.team]??'#79c5d2',enemyColor=TEAM_HEX[1-player.team]??'#e6b273';
   c.drawImage(deployMapBg,0,0);
   for(const team of [0,1]){
-    const base=MAP.spawns[team],friend=team===player.team;
+    const base=MAP.spawns[team],friend=team===player.team,tColor=TEAM_HEX[team];
     const x=(base.x+half)*scale,z=(base.z+half)*scale;
     c.save();
-    c.fillStyle=friend?'#133942cc':'#3d2916cc';
-    c.strokeStyle=friend?'#79c5d2':'#e6b273';
+    c.fillStyle=TEAM_BG[team];
+    c.strokeStyle=tColor;
     c.lineWidth=1.6;
     c.fillRect(x-13,z-10,26,20);
     c.strokeRect(x-13,z-10,26,20);
-    c.fillStyle=friend?'#79c5d2':'#e6b273';
+    c.fillStyle=tColor;
     c.font='700 9px sans-serif';c.textAlign='center';c.textBaseline='middle';
     c.fillText(friend?'ШТАБ':'ВРАГ',x,z);
     c.restore();
     if(friend&&(selectedSpawn===''||hoveredSpawn==='')){
       c.save();
-      c.strokeStyle='#79c5d2';c.lineWidth=selectedSpawn===''?2:1;
+      c.strokeStyle=allyColor;c.lineWidth=selectedSpawn===''?2:1;
       const r=18+pulse*3;
       c.strokeRect(x-r,z-r*.78,r*2,r*1.56);
       c.restore();
@@ -417,7 +429,7 @@ function drawDeployMap(player,now){
   for(const p of state.points){
     const x=(p.x+half)*scale,z=(p.z+half)*scale;
     const friend=p.owner===player.team,enemy=p.owner!==-1&&!friend;
-    const color=friend?'#79c5d2':enemy?'#e6b273':'#ced1bb';
+    const color=p.owner===-1?'#ced1bb':TEAM_HEX[p.owner]??'#ced1bb';
     c.save();
     c.fillStyle=color;c.strokeStyle=color;
     c.globalAlpha=.14;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();
@@ -433,7 +445,7 @@ function drawDeployMap(player,now){
     }
     c.globalAlpha=1;
     c.translate(x,z);c.rotate(Math.PI/4);
-    c.fillStyle=friend?'#133a44e6':enemy?'#422c17e6':'#253033e6';
+    c.fillStyle=p.owner===-1?'#253033e6':TEAM_BG[p.owner]??'#253033e6';
     c.strokeStyle=color;c.lineWidth=1.8;
     c.fillRect(-9,-9,18,18);c.strokeRect(-9,-9,18,18);
     c.rotate(-Math.PI/4);
@@ -444,7 +456,7 @@ function drawDeployMap(player,now){
     c.restore();
     if(selectedSpawn===p.id||hoveredSpawn===p.id){
       c.save();
-      c.strokeStyle=friend&&!p.contested?'#79c5d2':'#e6b273';
+      c.strokeStyle=friend&&!p.contested?allyColor:enemyColor;
       c.lineWidth=selectedSpawn===p.id?2:1.2;
       const r=16+pulse*3;
       for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
@@ -460,17 +472,18 @@ function drawDeployMap(player,now){
     const friend=p.team===player.team;
     if(!friend&&!p.spotted)continue;
     const x=(p.x+half)*scale,z=(p.z+half)*scale;
+    const pColor=TEAM_HEX[p.team]??allyColor;
     c.save();
     c.translate(x,z);
     if(friend){
-      c.fillStyle='#79c5d233';c.beginPath();c.arc(0,0,7,0,Math.PI*2);c.fill();
+      c.fillStyle=`${pColor}33`;c.beginPath();c.arc(0,0,7,0,Math.PI*2);c.fill();
       c.rotate(-(p.yaw||0));
-      c.fillStyle='#79c5d2';c.strokeStyle='#08181f';c.lineWidth=1.2;
+      c.fillStyle=pColor;c.strokeStyle='#08181f';c.lineWidth=1.2;
       c.beginPath();c.moveTo(0,-6.2);c.lineTo(4.4,4.8);c.lineTo(0,2.2);c.lineTo(-4.4,4.8);c.closePath();
       c.fill();c.stroke();
     }else{
       c.rotate(Math.PI/4);
-      c.fillStyle='#e6b273';c.strokeStyle='#181008';c.lineWidth=1;
+      c.fillStyle=pColor;c.strokeStyle='#181008';c.lineWidth=1;
       c.fillRect(-3.5,-3.5,7,7);c.strokeRect(-3.5,-3.5,7,7);
     }
     c.restore();

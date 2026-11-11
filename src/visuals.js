@@ -239,8 +239,8 @@ export function addDistrictDetails(owner, MAP) {
   const { scene, materials: m, surfaces, random } = owner; const size = MAP.size || 200, limit = size / 2;
   const blocked = (x, z, margin = 1) => (MAP.boxes || []).some(b => Math.abs(x - b.x) < b.w / 2 + margin && Math.abs(z - b.z) < b.d / 2 + margin);
   const puddleMaterial = pairMaterials(
-    new THREE.MeshStandardMaterial({ color: 0x52666d, roughness: .1, metalness: .3, transparent: true, opacity: .58, depthWrite: false }),
-    new THREE.MeshLambertMaterial({ color: 0x5d7279, transparent: true, opacity: .55, depthWrite: false }),
+    new THREE.MeshStandardMaterial({ color: 0x52666d, roughness: .1, metalness: .3, transparent: true, opacity: .58, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+    new THREE.MeshLambertMaterial({ color: 0x5d7279, transparent: true, opacity: .55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
   );
   const debrisMat = m.rust;
   const waterMat = pairMaterials(
@@ -248,23 +248,34 @@ export function addDistrictDetails(owner, MAP) {
     new THREE.MeshLambertMaterial({ color: 0x486772 }),
   );
   const water = new THREE.Mesh(new THREE.PlaneGeometry(170, size + 300, 1, 1), waterMat);
-  water.rotation.x = -Math.PI / 2; water.position.set(-limit - 95, .018, 0); scene.add(water);
+  water.rotation.x = -Math.PI / 2; water.position.set(-limit - 95, .025, 0); scene.add(water);
   const circleGeo = new THREE.CircleGeometry(1, 10);
   for (let i = 0; i < 85; i++) {
     const x = (random() - .5) * (size - 22), z = (random() - .5) * (size - 22);
     if (blocked(x, z, 1)) continue;
     if (i % 3 === 0) {
       const onRoad = Math.abs(x) < 15 || [-110, -40, 0, 40, 110].some(street => Math.abs(z - street) < 10);
-      const puddle = new THREE.Mesh(circleGeo, puddleMaterial); puddle.position.set(x, onRoad ? .075 : .018, z); puddle.rotation.x = -Math.PI / 2; puddle.rotation.z = random() * Math.PI; puddle.scale.set(1 + random() * 4, .4 + random() * 1.5, 1); scene.add(puddle);
+      const puddle = new THREE.Mesh(circleGeo, puddleMaterial); puddle.position.set(x, onRoad ? .082 : .025, z); puddle.rotation.x = -Math.PI / 2; puddle.rotation.z = random() * Math.PI; puddle.scale.set(1 + random() * 4, .4 + random() * 1.5, 1); scene.add(puddle);
     } else {
-      const p = owner.box(scene, x, .035, z, .15 + random() * .4, .04, .1 + random() * .3, i % 2 ? m.edge : debrisMat, false); p.rotation.y = random() * Math.PI;
+      const p = owner.box(scene, x, .042, z, .15 + random() * .4, .04, .1 + random() * .3, i % 2 ? m.edge : debrisMat, false); p.rotation.y = random() * Math.PI;
     }
+  }
+  // Decorative oil drum clusters and wooden pallets near courtyards
+  const barrelMat = clonePairedMaterial(surfaces.metal, 0x3b5861);
+  const hazardBarrelMat = clonePairedMaterial(surfaces.metal, 0x9b5a34);
+  for (let i = 0; i < 36; i++) {
+    const x = (random() - .5) * (size - 34), z = (random() - .5) * (size - 34);
+    if (Math.abs(x) < 15.5 || [-110, -40, 0, 40, 110].some(s => Math.abs(z - s) < 10.5)) continue;
+    if (blocked(x, z, 2.2)) continue;
+    owner.box(scene, x, .06, z, 1.3, .12, 1.3, surfaces.wood, false);
+    owner.cylinder(scene, x - .28, .56, z - .22, .27, .88, i % 2 ? barrelMat : hazardBarrelMat, 10);
+    owner.cylinder(scene, x + .28, .56, z + .18, .27, .88, i % 3 ? hazardBarrelMat : m.rust, 10);
   }
   // Drain covers, street lamps and bollards along the main avenue and cross streets.
   for (let i = -limit + 15; i < limit; i += 34) {
     const x = 10.5, z = i; if (blocked(x, z, .6)) continue;
-    owner.box(scene, x, .068, z, .65, .025, 1.1, m.steel, false);
-    for (let j = -.4; j < .5; j += .12) owner.box(scene, x, .085, z + j, .56, .012, .035, m.darkConcrete, false);
+    owner.box(scene, x, .076, z, .65, .025, 1.1, m.steel, false);
+    for (let j = -.4; j < .5; j += .12) owner.box(scene, x, .092, z + j, .56, .012, .035, m.darkConcrete, false);
   }
   for (const z of [-130, -92, -58, -22, 22, 58, 92, 130]) {
     for (const side of [-1, 1]) {
@@ -304,6 +315,9 @@ export function addDistrictDetails(owner, MAP) {
   addSectorInstances(scene, new THREE.CylinderGeometry(.2, .35, 1, 6), m.rust, treeTrunks, false);
   const warehouseRoofMat = clonePairedMaterial(surfaces.metal, 0x65787b);
   const warehouseFloorMat = clonePairedMaterial(surfaces.concrete, 0xa59f90, 0xffd9a2, 0.06);
+  for (const mat of [warehouseFloorMat, warehouseFloorMat._lowMaterial]) {
+    if (mat) { mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -1; }
+  }
   for (const structure of MAP.structures || []) {
     const { x, z, w, d, h } = structure;
     if (structure.roof !== false) {
@@ -313,7 +327,7 @@ export function addDistrictDetails(owner, MAP) {
         owner.box(scene, x, h - .8, z + rz, w, .2, .2, m.steel);
         for (const side of [-1, 1]) { const beam = owner.box(scene, x + side * w / 4, h - 1.2, z + rz, w / 2, .12, .12, m.rust); beam.rotation.z = side * .1; }
       }
-      const floor = owner.box(scene, x, .069, z, w, .034, d, warehouseFloorMat, false); floor.receiveShadow = true;
+      const floor = owner.box(scene, x, .045, z, w, .08, d, warehouseFloorMat, false); floor.receiveShadow = true;
       for (const side of [-1, 1]) {
         owner.box(scene, x + side * w * .26, h - 1.5, z, .13, .08, Math.max(1, d - 3), m.glow, false);
       }

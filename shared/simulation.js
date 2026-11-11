@@ -86,8 +86,8 @@ function weaponSpread(player) {
 }
 
 function impactMaterial(kind) {
-  if (kind === 'crate') return 'wood';
-  if (kind === 'container' || kind === 'pillar' || kind === 'warehouse') return 'metal';
+  if (kind === 'crate' || kind === 'tree' || kind === 'tent') return 'wood';
+  if (kind === 'container' || kind === 'pillar' || kind === 'warehouse' || kind === 'truck' || kind === 'car' || kind === 'fueltank' || kind === 'generator' || kind === 'kiosk') return 'metal';
   return 'concrete';
 }
 

@@ -11,6 +11,7 @@ import {
 } from './soldier.js';
 
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
+const TEAM_COLORS = [0x5bd9e8, 0xf0a15d];
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
@@ -152,18 +153,28 @@ export class GameRenderer {
     this.ambientLight = new THREE.AmbientLight(0x8e9eaa, 0.2);
     this.scene.add(this.hemiLight, this.ambientLight);
     this.sun = new THREE.DirectionalLight(0xffd7a4, 3.5);
-    this.sun.position.set(-90, 75, 65);
+    this.sunOffset = new THREE.Vector3(-90, 75, 65);
+    this.sunForward = this.sunOffset.clone().negate().normalize();
+    this.sunRight = new THREE.Vector3().crossVectors(this.sunForward, new THREE.Vector3(0, 1, 0)).normalize();
+    this.sunUp = new THREE.Vector3().crossVectors(this.sunRight, this.sunForward).normalize();
+    this.shadowMapSize = 2048;
+    this.shadowExtent = 72;
+    this.sun.position.copy(this.sunOffset);
     this.sun.castShadow = true;
     this.sun.shadow.autoUpdate = false;
-    const shadowMapSize = this.integratedGpu ? 1024 : 2048;
-    this.sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
-    Object.assign(this.sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 220 });
+    this.sun.shadow.mapSize.set(this.shadowMapSize, this.shadowMapSize);
+    Object.assign(this.sun.shadow.camera, {
+      left: -this.shadowExtent, right: this.shadowExtent,
+      top: this.shadowExtent, bottom: -this.shadowExtent,
+      near: 15, far: 220,
+    });
     this.sun.shadow.camera.updateProjectionMatrix();
-    this.sun.shadow.bias = -0.0005;
-    this.sun.shadow.normalBias = 0.04;
+    this.sun.shadow.bias = -0.0003;
+    this.sun.shadow.normalBias = 0.05;
     this.sun.shadow.needsUpdate = true;
     this.renderer.shadowMap.needsUpdate = true;
     this.scene.add(this.sun, this.sun.target);
+    this.updateSunShadow(0, 0);
     this.geo = {
       box: new THREE.BoxGeometry(1, 1, 1),
       cylinder: new THREE.CylinderGeometry(1, 1, 1, 10),
@@ -172,13 +183,19 @@ export class GameRenderer {
       shell: new THREE.CylinderGeometry(.009, .009, .043, 6),
     };
     this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true });
+    for (const m of [this.surfaces.asphalt, this.surfaces.asphalt._lowMaterial]) {
+      if (m) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
+    }
     this.atmosphere = makeSky(this.scene, this.renderer);
     this.materials = {
       concrete: this.surfaces.concrete, darkConcrete: material(0x414948), edge: material(0x929087),
       asphalt: this.surfaces.asphalt, steel: material(0x323c3e, 0.55, 0.65), rust: material(0x735344, 0.8, 0.4),
-      roof: material(0x4e5655), window: material(0x23363e, 0.25, 0.4), marking: material(0xb5b1a0),
-      sand: material(0x8d8067), foliage: material(0x4c5b4c), pole: material(0x788185, 0.4, 0.75),
-      stripe: material(0x9b8a55), skyline: material(0x697476), crane: material(0x776f57, 0.8, 0.4),
+      roof: material(0x4e5655), window: material(0x23363e, 0.25, 0.4),
+      marking: material(0xb5b1a0, 0.85, 0.05, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+      sand: material(0x9c8e70, 0.95, 0.02), foliage: material(0x4c6444, 0.92, 0.02), foliageDark: material(0x3b5236, 0.95, 0.02),
+      tire: material(0x1e2223, 0.92, 0.05), glass: material(0x1c2f38, 0.18, 0.55), tailLight: material(0xb83228, 0.4, 0.2, { emissive: 0x6e1810, emissiveIntensity: 0.35 }),
+      pole: material(0x788185, 0.4, 0.75),
+      stripe: material(0xc49a38, 0.65, 0.2), skyline: material(0x697476), crane: material(0x776f57, 0.8, 0.4),
       glow: new THREE.MeshBasicMaterial({ color: 0xffd8a1 }),
     };
     this.buildWorld();
@@ -331,11 +348,15 @@ export class GameRenderer {
     for (let i = 0; i < guv.count; i++) guv.setXY(i, guv.getX(i) * (size + 250) / 9, guv.getY(i) * (size + 250) / 9);
     const ground = new THREE.Mesh(groundGeometry, this.surfaces.ground);
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.scene.add(ground);
-    // Painted service roads are flat: no invisible curb collision.
+    // Painted service roads use clean depth separation and polygonOffset to prevent shadow/depth z-fighting.
     const crossStreets = size > 250 ? [-110, -40, 0, 40, 110] : [0];
     // End the avenue at each crossing instead of stacking asphalt surfaces.
     const roadEdge = size / 2 + 5;
-    const road = (x, z, w, d) => this.box(this.scene, x, .048, z, w, .024, d, this.materials.asphalt, false);
+    const road = (x, z, w, d) => {
+      const m = this.box(this.scene, x, .035, z, w, .07, d, this.materials.asphalt, false);
+      m.receiveShadow = true;
+      return m;
+    };
     let avenueStart = -roadEdge;
     for (const z of crossStreets) {
       const avenueEnd = z - 7.5;
@@ -344,27 +365,184 @@ export class GameRenderer {
       avenueStart = z + 7.5;
     }
     road(0, (avenueStart + roadEdge) / 2, 24, roadEdge - avenueStart);
+    // Raised concrete sidewalks along the main avenue and cross streets
+    for (const side of [-1, 1]) {
+      let curbStart = -roadEdge;
+      for (const z of crossStreets) {
+        const curbEnd = z - 7.8;
+        this.box(this.scene, side * 12.6, .075, (curbStart + curbEnd) / 2, 1.2, .15, curbEnd - curbStart, this.materials.edge, false);
+        curbStart = z + 7.8;
+      }
+      this.box(this.scene, side * 12.6, .075, (curbStart + roadEdge) / 2, 1.2, .15, roadEdge - curbStart, this.materials.edge, false);
+    }
     for (let i = -size / 2 + 8; i < size / 2; i += 10) {
       if (crossStreets.every(z => Math.abs(i - z) > 9)) {
-        this.box(this.scene, 0, 0.068, i, 0.13, 0.009, 4.8, this.materials.marking, false);
+        const mark = this.box(this.scene, 0, 0.048, i, 0.16, 0.09, 4.8, this.materials.marking, false);
+        mark.receiveShadow = true;
       }
-      for (const z of crossStreets) if (Math.abs(i) > 15) this.box(this.scene, i, 0.068, z, 4.8, 0.009, 0.13, this.materials.marking, false);
+      for (const z of crossStreets) if (Math.abs(i) > 15) {
+        const mark = this.box(this.scene, i, 0.048, z, 4.8, 0.09, 0.16, this.materials.marking, false);
+        mark.receiveShadow = true;
+      }
     }
     const windowMatrices = [], litMatrices = [], frameMatrices = [];
     const dummy = new THREE.Object3D();
     for (const b of MAP.boxes || []) {
       const h = b.h ?? 3, w = b.w ?? 4, d = b.d ?? 4;
-      const building = h > 5 && !['wall', 'pillar'].includes(b.kind);
+      const specialProp = ['truck', 'car', 'tent', 'tree', 'sandbags', 'fueltank', 'generator', 'kiosk'].includes(b.kind);
+      const building = h > 5 && !['wall', 'pillar'].includes(b.kind) && !specialProp;
       const container = String(b.kind || '').includes('container');
-      const surface = b.kind === 'crate' ? this.surfaces.wood : container || b.kind === 'warehouse' ? this.surfaces.metal : b.kind === 'factory' || b.kind === 'wall' ? this.surfaces.brick : this.surfaces.concrete;
+      const surface = b.kind === 'crate' ? this.surfaces.wood : b.kind === 'tent' ? this.surfaces.cloth : container || b.kind === 'warehouse' || b.kind === 'truck' || b.kind === 'car' || b.kind === 'fueltank' || b.kind === 'generator' || b.kind === 'kiosk' ? this.surfaces.metal : b.kind === 'factory' || b.kind === 'wall' ? this.surfaces.brick : this.surfaces.concrete;
       const color = b.color || '#969b92', cacheKey = `${surface.uuid}:${color}`;
       if (!this.surfaceCache.has(cacheKey)) { this.surfaceCache.set(cacheKey, clonePairedMaterial(surface, color)); }
       const mat = b.kind === 'pillar' ? this.materials.steel : this.surfaceCache.get(cacheKey);
-      this.box(this.scene, b.x, h / 2, b.z, w, h, d, mat);
+      if (!specialProp) this.box(this.scene, b.x, h / 2, b.z, w, h, d, mat);
       if (b.kind === 'wall') {
         this.box(this.scene, b.x, h + 0.05, b.z, w + .08, .16, d + .08, this.materials.edge);
       } else if (b.kind === 'pillar') {
         this.box(this.scene, b.x, .12, b.z, w + .25, .24, d + .25, this.materials.rust);
+      } else if (b.kind === 'tree') {
+        // Concrete planter box, soil bed, textured trunk, branches, and multi-layered foliage canopy
+        this.box(this.scene, b.x, 0.28, b.z, w, 0.56, d, this.materials.edge);
+        this.box(this.scene, b.x, 0.58, b.z, w + 0.12, 0.08, d + 0.12, this.materials.darkConcrete);
+        this.box(this.scene, b.x, 0.59, b.z, w - 0.22, 0.08, d - 0.22, this.materials.rust, false);
+        this.cylinder(this.scene, b.x, 2.0, b.z, 0.24, 3.0, this.materials.rust, 8);
+        for (const side of [-1, 1]) {
+          const branch = this.cylinder(this.scene, b.x + side * 0.38, 2.9, b.z + side * 0.18, 0.09, 1.1, this.materials.rust, 6);
+          branch.rotation.z = -side * 0.55;
+        }
+        const crownPositions = [
+          [0, 3.65, 0, 1.45, 1.25, 1.45, this.materials.foliage],
+          [-0.65, 3.25, 0.45, 1.1, 0.95, 1.1, this.materials.foliageDark],
+          [0.68, 3.3, -0.42, 1.15, 0.98, 1.12, this.materials.foliageDark],
+          [0.15, 4.35, -0.2, 1.05, 0.9, 1.05, this.materials.foliage],
+        ];
+        for (const [ox, oy, oz, sx, sy, sz, fmat] of crownPositions) {
+          const canopy = new THREE.Mesh(this.geo.sphere, fmat);
+          canopy.position.set(b.x + ox, oy, b.z + oz);
+          canopy.scale.set(sx, sy, sz);
+          canopy.castShadow = true; canopy.receiveShadow = true;
+          this.scene.add(canopy);
+        }
+      } else if (b.kind === 'truck') {
+        const alongX = w > d;
+        const len = Math.max(w, d), wid = Math.min(w, d);
+        const dir = ((Math.round(b.x + b.z) & 1) === 0) ? 1 : -1;
+        const cabLen = len * 0.28, cargoLen = len * 0.68;
+        const cabOffset = dir * (len / 2 - cabLen / 2 - 0.1);
+        const cargoOffset = -dir * (len / 2 - cargoLen / 2 - 0.05);
+        // Chassis & undercarriage
+        this.box(this.scene, b.x, 0.58, b.z, alongX ? len * 0.94 : wid * 0.82, 0.36, alongX ? wid * 0.82 : len * 0.94, this.materials.darkConcrete);
+        // Cargo box body + roof trim + side ribs
+        const cx = alongX ? b.x + cargoOffset : b.x;
+        const cz = alongX ? b.z : b.z + cargoOffset;
+        this.rounded(this.scene, cx, 1.92, cz, alongX ? cargoLen : wid * 0.96, 2.35, alongX ? wid * 0.96 : cargoLen, mat);
+        this.box(this.scene, cx, 3.12, cz, alongX ? cargoLen + 0.08 : wid, 0.08, alongX ? wid : cargoLen + 0.08, this.materials.edge);
+        // Truck cab + windshield + grille + bumper
+        const kx = alongX ? b.x + cabOffset : b.x;
+        const kz = alongX ? b.z : b.z + cabOffset;
+        this.rounded(this.scene, kx, 1.55, kz, alongX ? cabLen : wid * 0.9, 1.75, alongX ? wid * 0.9 : cabLen, this.materials.steel);
+        this.box(this.scene, kx, 1.82, kz, alongX ? cabLen * 0.65 : wid * 0.93, 0.58, alongX ? wid * 0.93 : cabLen * 0.65, this.materials.glass);
+        const frontX = alongX ? b.x + dir * (len / 2 - 0.06) : b.x;
+        const frontZ = alongX ? b.z : b.z + dir * (len / 2 - 0.06);
+        this.box(this.scene, frontX, 0.55, frontZ, alongX ? 0.18 : wid * 0.96, 0.34, alongX ? wid * 0.96 : 0.18, this.materials.darkConcrete);
+        this.box(this.scene, frontX, 1.15, frontZ, alongX ? 0.14 : wid * 0.62, 0.55, alongX ? wid * 0.62 : 0.14, this.materials.edge);
+        // 6 Wheels
+        for (const axle of [-len * 0.36, -len * 0.12, len * 0.32]) {
+          for (const side of [-1, 1]) {
+            const wx = alongX ? b.x + axle : b.x + side * (wid * 0.46);
+            const wz = alongX ? b.z + side * (wid * 0.46) : b.z + axle;
+            const wheel = this.cylinder(this.scene, wx, 0.48, wz, 0.48, 0.34, this.materials.tire, 12);
+            if (alongX) wheel.rotation.x = Math.PI / 2; else wheel.rotation.z = Math.PI / 2;
+          }
+        }
+      } else if (b.kind === 'car') {
+        const alongX = w > d;
+        const len = Math.max(w, d), wid = Math.min(w, d);
+        // Lower body hull
+        this.rounded(this.scene, b.x, 0.68, b.z, alongX ? len * 0.96 : wid * 0.94, 0.68, alongX ? wid * 0.94 : len * 0.96, mat);
+        // Cabin greenhouse + windows
+        this.rounded(this.scene, b.x, 1.28, b.z, alongX ? len * 0.54 : wid * 0.84, 0.62, alongX ? wid * 0.84 : len * 0.54, mat);
+        this.box(this.scene, b.x, 1.28, b.z, alongX ? len * 0.56 : wid * 0.87, 0.44, alongX ? wid * 0.87 : len * 0.56, this.materials.glass);
+        // Bumpers & lights
+        for (const end of [-1, 1]) {
+          const ex = alongX ? b.x + end * (len * 0.48) : b.x;
+          const ez = alongX ? b.z : b.z + end * (len * 0.48);
+          this.box(this.scene, ex, 0.44, ez, alongX ? 0.16 : wid * 0.96, 0.24, alongX ? wid * 0.96 : 0.16, this.materials.darkConcrete);
+          this.box(this.scene, ex, 0.74, ez, alongX ? 0.12 : wid * 0.76, 0.14, alongX ? wid * 0.76 : 0.12, end > 0 ? this.materials.glow : this.materials.tailLight, false);
+        }
+        // 4 Wheels
+        for (const axle of [-len * 0.3, len * 0.3]) {
+          for (const side of [-1, 1]) {
+            const wx = alongX ? b.x + axle : b.x + side * (wid * 0.45);
+            const wz = alongX ? b.z + side * (wid * 0.45) : b.z + axle;
+            const wheel = this.cylinder(this.scene, wx, 0.34, wz, 0.34, 0.26, this.materials.tire, 10);
+            if (alongX) wheel.rotation.x = Math.PI / 2; else wheel.rotation.z = Math.PI / 2;
+          }
+        }
+      } else if (b.kind === 'tent') {
+        const wallH = h * 0.62, rise = h * 0.42;
+        const alongX = w > d;
+        const span = alongX ? d : w, length = alongX ? w : d;
+        this.box(this.scene, b.x, wallH / 2, b.z, w * 0.94, wallH, d * 0.94, mat);
+        const half = span / 2, slope = Math.atan2(rise, half), panelW = Math.hypot(half, rise) + 0.25;
+        for (const side of [-1, 1]) {
+          const rx = alongX ? b.x : b.x + side * (half / 2);
+          const rz = alongX ? b.z + side * (half / 2) : b.z;
+          const roof = this.box(this.scene, rx, wallH + rise / 2, rz, alongX ? length + 0.3 : panelW, 0.12, alongX ? panelW : length + 0.3, mat);
+          if (alongX) roof.rotation.x = side * slope; else roof.rotation.z = -side * slope;
+        }
+        // External support ribs & sandbag skirt
+        for (let offset = -length * 0.38; offset <= length * 0.39; offset += length * 0.38) {
+          this.box(this.scene, alongX ? b.x + offset : b.x, wallH / 2, alongX ? b.z : b.z + offset, alongX ? 0.12 : w * 0.98, wallH + 0.05, alongX ? d * 0.98 : 0.12, this.materials.steel);
+        }
+        for (const side of [-1, 1]) {
+          this.rounded(this.scene, alongX ? b.x : b.x + side * (w * 0.48), 0.26, alongX ? b.z + side * (d * 0.48) : b.z, alongX ? w * 0.88 : 0.45, 0.5, alongX ? 0.45 : d * 0.88, this.materials.sand);
+        }
+      } else if (b.kind === 'sandbags') {
+        const alongX = w > d;
+        const length = Math.max(w, d), thick = Math.min(w, d);
+        const cols = Math.max(2, Math.round(length / 1.1));
+        const bagLen = length / cols;
+        for (let row = 0; row < 3; row++) {
+          const y = 0.22 + row * 0.38;
+          for (let c = 0; c < cols; c++) {
+            const shift = (row % 2 === 1 && c === cols - 1) ? 0 : (row % 2) * (bagLen * 0.22);
+            const offset = -length / 2 + (c + 0.5) * bagLen + shift * (c < cols - 1 ? 1 : -1);
+            const bx = alongX ? b.x + offset : b.x;
+            const bz = alongX ? b.z : b.z + offset;
+            this.rounded(this.scene, bx, y, bz, alongX ? bagLen * 0.92 : thick * (0.95 - row * 0.08), 0.38, alongX ? thick * (0.95 - row * 0.08) : bagLen * 0.92, this.materials.sand);
+          }
+        }
+        this.box(this.scene, b.x, h - 0.04, b.z, w * 0.92, 0.08, d * 0.92, this.surfaces.wood);
+      } else if (b.kind === 'fueltank') {
+        const alongX = w > d;
+        const len = Math.max(w, d), rad = Math.min(w, d) * 0.46;
+        for (const s of [-len * 0.28, len * 0.28]) {
+          this.box(this.scene, alongX ? b.x + s : b.x, 0.45, alongX ? b.z : b.z + s, alongX ? 0.65 : rad * 1.9, 0.9, alongX ? rad * 1.9 : 0.65, this.materials.darkConcrete);
+        }
+        const tank = this.cylinder(this.scene, b.x, 0.85 + rad, b.z, rad, len * 0.92, mat, 14);
+        if (alongX) tank.rotation.z = Math.PI / 2; else tank.rotation.x = Math.PI / 2;
+        const stripe = this.cylinder(this.scene, b.x, 0.85 + rad, b.z, rad + 0.02, len * 0.18, this.materials.stripe, 14);
+        if (alongX) stripe.rotation.z = Math.PI / 2; else stripe.rotation.x = Math.PI / 2;
+        this.cylinder(this.scene, b.x, 0.85 + rad * 2 + 0.2, b.z, 0.28, 0.4, this.materials.steel, 8);
+      } else if (b.kind === 'generator') {
+        this.box(this.scene, b.x, 0.28, b.z, w + 0.16, 0.26, d + 0.16, this.materials.darkConcrete);
+        this.rounded(this.scene, b.x, 1.25, b.z, w * 0.92, 1.75, d * 0.88, mat);
+        this.box(this.scene, b.x, 1.35, b.z, w * 0.96, 0.75, d * 0.55, this.materials.darkConcrete);
+        this.cylinder(this.scene, b.x + w * 0.3, 2.45, b.z - d * 0.28, 0.11, 0.95, this.materials.rust, 8);
+        // Telescopic floodlight mast
+        this.cylinder(this.scene, b.x - w * 0.25, 3.9, b.z + d * 0.25, 0.07, 4.2, this.materials.pole, 8);
+        this.box(this.scene, b.x - w * 0.25, 6.0, b.z + d * 0.25, 1.3, 0.18, 0.28, this.materials.steel, false);
+        this.box(this.scene, b.x - w * 0.25, 5.95, b.z + d * 0.25, 1.15, 0.14, 0.34, this.materials.glow, false);
+      } else if (b.kind === 'kiosk') {
+        this.box(this.scene, b.x, 0.65, b.z, w, 1.3, d, mat);
+        this.box(this.scene, b.x, 1.22, b.z, w + 0.04, 0.16, d + 0.04, this.materials.stripe);
+        this.box(this.scene, b.x, 1.95, b.z, w * 0.92, 1.3, d * 0.92, this.materials.glass);
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          this.box(this.scene, b.x + sx * (w * 0.45), 1.95, b.z + sz * (d * 0.45), 0.14, 1.35, 0.14, this.materials.steel);
+        }
+        this.box(this.scene, b.x, h - 0.12, b.z, w + 0.36, 0.24, d + 0.36, this.materials.edge);
       } else if (building) {
         this.box(this.scene, b.x, h + 0.13, b.z, w + 0.3, 0.26, d + 0.3, this.materials.edge);
         this.box(this.scene, b.x, 0.45, b.z, w + 0.12, 0.9, d + 0.12, this.materials.darkConcrete);
@@ -380,14 +558,14 @@ export class GameRenderer {
         for (let y = 2.8; y < h - 0.9; y += 3.1) {
           for (const face of [-1, 1]) {
             for (let x = -w / 2 + 1.5; x < w / 2 - 0.7; x += 2.7) {
-              dummy.position.set(b.x + x, y, b.z + face * (d / 2 + 0.063)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.3, 1.55, 0.028); dummy.updateMatrix();
+              dummy.position.set(b.x + x, y, b.z + face * (d / 2 + 0.095)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.3, 1.55, 0.045); dummy.updateMatrix();
               (random() > 0.88 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
-              dummy.position.z = b.z + face * (d / 2 + .025); dummy.scale.set(1.5, 1.75, .042); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
+              dummy.position.z = b.z + face * (d / 2 + .04); dummy.scale.set(1.5, 1.75, .055); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
             for (let z = -d / 2 + 1.5; z < d / 2 - 0.7; z += 2.7) {
-              dummy.position.set(b.x + face * (w / 2 + 0.063), y, b.z + z); dummy.rotation.set(0, 0, 0); dummy.scale.set(0.028, 1.55, 1.3); dummy.updateMatrix();
+              dummy.position.set(b.x + face * (w / 2 + 0.095), y, b.z + z); dummy.rotation.set(0, 0, 0); dummy.scale.set(0.045, 1.55, 1.3); dummy.updateMatrix();
               (random() > 0.9 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
-              dummy.position.x = b.x + face * (w / 2 + .025); dummy.scale.set(.042, 1.75, 1.5); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
+              dummy.position.x = b.x + face * (w / 2 + .04); dummy.scale.set(.055, 1.75, 1.5); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
           }
         }
@@ -634,7 +812,7 @@ export class GameRenderer {
       } else soldier.flash.visible = false;
       soldier.pose.visible = !distant;
       soldier.distant.visible = !!distant;
-      soldier.marker.material.color.setHex(player.team === localTeam ? COLORS.friendly : COLORS.enemy);
+      soldier.marker.material.color.setHex(TEAM_COLORS[player.team] ?? COLORS.friendly);
       soldier.marker.visible = player.team === localTeam;
       soldier.marker.position.y = (crouched ? 1.55 : 1.94) + Math.sin(this.clock * 2) * .025;
     }
@@ -858,6 +1036,24 @@ export class GameRenderer {
     this.renderer.setSize(width, height, false); this.camera.aspect = width / height; this.camera.updateProjectionMatrix();
   }
 
+  updateSunShadow(anchorX = 0, anchorZ = 0) {
+    const texel = (this.shadowExtent * 2) / this.shadowMapSize;
+    const rx = Math.round((anchorX * this.sunRight.x + anchorZ * this.sunRight.z) / texel) * texel;
+    const ry = Math.round((anchorX * this.sunUp.x + anchorZ * this.sunUp.z) / texel) * texel;
+    const rz = Math.round((anchorX * this.sunForward.x + anchorZ * this.sunForward.z) / 2) * 2;
+    const tx = rx * this.sunRight.x + ry * this.sunUp.x + rz * this.sunForward.x;
+    const ty = rx * this.sunRight.y + ry * this.sunUp.y + rz * this.sunForward.y;
+    const tz = rx * this.sunRight.z + ry * this.sunUp.z + rz * this.sunForward.z;
+    if (this.lastShadowTx !== tx || this.lastShadowTz !== tz) {
+      this.lastShadowTx = tx;
+      this.lastShadowTz = tz;
+      this.sun.target.position.set(tx, ty, tz);
+      this.sun.position.set(tx + this.sunOffset.x, ty + this.sunOffset.y, tz + this.sunOffset.z);
+      this.sun.updateMatrixWorld(true);
+      this.sun.target.updateMatrixWorld(true);
+    }
+  }
+
   drawScene(menu = false) {
     this.frameCount++;
     if (menu) {
@@ -868,7 +1064,7 @@ export class GameRenderer {
       }
     } else {
       this.staticMenuShadows = false;
-      if (this.renderer.shadowMap.enabled && (!this.integratedGpu || (this.frameCount & 1) === 0)) {
+      if (this.renderer.shadowMap.enabled) {
         this.sun.shadow.needsUpdate = true;
         this.renderer.shadowMap.needsUpdate = true;
       }
@@ -910,7 +1106,7 @@ export class GameRenderer {
         this.camera.near = 2;
         this.camera.updateProjectionMatrix();
       }
-      this.sun.position.set(-90, 75, 65); this.sun.target.position.set(0, 0, 0);
+      this.updateSunShadow(0, 0);
       for (const soldier of this.soldiers.values()) soldier.group.visible = false;
       for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
       this.updateEffects(dt);
@@ -941,6 +1137,7 @@ export class GameRenderer {
         this.camera.near = 0.5;
         this.camera.updateProjectionMatrix();
       }
+      this.updateSunShadow(focusX, focusZ);
     } else if (player) {
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
       const crouching = view.crouch ?? player.crouching ?? player.crouch;
@@ -1012,18 +1209,14 @@ export class GameRenderer {
         -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018,
       );
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
-      const sx = Math.round(this.cameraAnchor.x * 0.5) * 2;
-      const sz = Math.round(this.cameraAnchor.z * 0.5) * 2;
-      this.sun.position.set(sx - 90, 75, sz + 65);
-      this.sun.target.position.set(sx, 0, sz);
+      this.updateSunShadow(this.cameraAnchor.x, this.cameraAnchor.z);
     }
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
-    const localTeam = player?.team ?? 0;
     for (const point of state.points || []) {
       const flag = this.flags.get(point.id); if (!flag) continue;
-      const color = point.owner === -1 || point.owner == null ? COLORS.neutral : point.owner === localTeam ? COLORS.friendly : COLORS.enemy;
+      const color = point.owner === -1 || point.owner == null ? COLORS.neutral : (TEAM_COLORS[point.owner] ?? COLORS.neutral);
       flag.flag.material.color.setHex(color); flag.ring.material.color.setHex(color); flag.label.material.color.setHex(color);
       flag.ring.material.opacity = point.contested ? 0.22 + Math.sin(this.clock * 8) * 0.12 : 0.19;
       this.flagBounds.center.set(point.x, 3, point.z);
