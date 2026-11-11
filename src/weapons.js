@@ -351,7 +351,7 @@ export function createWeaponRig(owner = {}) {
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
-  heldGrenade.position.set(.042,.038,-.062);heldGrenade.visible=false;
+  heldGrenade.position.set(.022,.068,-.058);heldGrenade.rotation.set(-.25,.22,-.12);heldGrenade.scale.setScalar(1.65);heldGrenade.visible=false;
   cylinder(heldGrenade,0,0,0,.025,.062,oliveMetal,'y',16);
   ellipsoid(heldGrenade,[0,.028,0],[.025,.018,.025],oliveMetal);
   ellipsoid(heldGrenade,[0,-.028,0],[.023,.016,.023],oliveMetal);
@@ -365,10 +365,10 @@ export function createWeaponRig(owner = {}) {
   rounded(heldGrenade,0,.055,-.002,.018,.014,.022,metal);
   curve(heldGrenade,[[0,.059,.008],[.016,.054,.016],[.029,.022,.018],[.027,-.018,.014]],.0032,metal,12,6);
   ring(heldGrenade,-.016,.054,-.006,.012,.009,.003,brass,'x',14);
-  ellipsoid(heldGrenade,[0,.063,0],[.004,.004,.004],medRed);
+  ellipsoid(heldGrenade,[0,.063,0],[.0045,.0045,.0045],medRed);
 
   const heldStim=new THREE.Group();heldStim.name='held-stim';leftHand.add(heldStim);
-  heldStim.position.set(.042,.036,-.060);heldStim.rotation.set(.25,0,-.2);heldStim.visible=false;
+  heldStim.position.set(.024,.062,-.058);heldStim.rotation.set(.25,0,-.2);heldStim.scale.setScalar(1.45);heldStim.visible=false;
   cylinder(heldStim,0,0,0,.013,.096,polymer,'y',14);
   cylinder(heldStim,0,-.018,0,.0145,.026,anodized,'y',14);
   cylinder(heldStim,0,.018,0,.0105,.038,stimGlow,'y',14);
@@ -376,7 +376,7 @@ export function createWeaponRig(owner = {}) {
   cylinder(heldStim,0,-.052,0,.008,.014,medRed,'y',12);
 
   const heldMedkit=new THREE.Group();heldMedkit.name='held-medkit';leftHand.add(heldMedkit);
-  heldMedkit.position.set(.048,.034,-.066);heldMedkit.rotation.set(.15,.2,-.1);heldMedkit.visible=false;
+  heldMedkit.position.set(.028,.062,-.064);heldMedkit.rotation.set(.15,.2,-.1);heldMedkit.scale.setScalar(1.38);heldMedkit.visible=false;
   rounded(heldMedkit,0,0,0,.088,.062,.038,medWhite);
   rounded(heldMedkit,0,0,0,.090,.012,.040,oliveMetal);
   rounded(heldMedkit,0,0,-.020,.028,.009,.006,medRed);
@@ -384,7 +384,7 @@ export function createWeaponRig(owner = {}) {
   for(const sx of [-.026,.026])rounded(heldMedkit,sx,.024,0,.010,.016,.042,metal);
 
   const heldAmmo=new THREE.Group();heldAmmo.name='held-ammo';leftHand.add(heldAmmo);
-  heldAmmo.position.set(.048,.032,-.066);heldAmmo.rotation.set(.12,.18,-.08);heldAmmo.visible=false;
+  heldAmmo.position.set(.028,.062,-.064);heldAmmo.rotation.set(.12,.18,-.08);heldAmmo.scale.setScalar(1.38);heldAmmo.visible=false;
   rounded(heldAmmo,0,0,0,.092,.066,.046,oliveMetal);
   rounded(heldAmmo,0,.026,0,.096,.014,.050,anodized);
   for(let i=0;i<5;i++){
@@ -394,7 +394,7 @@ export function createWeaponRig(owner = {}) {
   }
 
   const heldScanner=new THREE.Group();heldScanner.name='held-scanner';leftHand.add(heldScanner);
-  heldScanner.position.set(.046,.038,-.064);heldScanner.rotation.set(.18,.12,-.1);heldScanner.visible=false;
+  heldScanner.position.set(.026,.064,-.062);heldScanner.rotation.set(.18,.12,-.1);heldScanner.scale.setScalar(1.45);heldScanner.visible=false;
   cylinder(heldScanner,0,0,0,.030,.044,anodized,'y',14);
   cylinder(heldScanner,0,.022,0,.034,.008,metal,'y',14);
   ellipsoid(heldScanner,[0,.028,0],[.022,.010,.022],stimGlow);
@@ -500,20 +500,20 @@ export function createWeaponRig(owner = {}) {
 
     if (throwPhase > 0 && throwPhase < 1) {
       const windup = THREE.MathUtils.smoothstep(throwPhase, 0, .34);
-      const release = THREE.MathUtils.smoothstep(throwPhase, .34, .66);
-      const recover = THREE.MathUtils.smoothstep(throwPhase, .66, 1);
+      const release = THREE.MathUtils.smoothstep(throwPhase, .34, .68);
+      const recover = THREE.MathUtils.smoothstep(throwPhase, .68, 1);
       const weight = windup * (1 - recover);
       const throwArc = Math.sin(release * Math.PI);
       actionTarget.set(
-        -.145 + release * .115,
-        .075 + throwArc * .085 - release * .03,
-        -.275 - release * .265
+        -.235 + release * .155,
+        .225 + throwArc * .075 - release * .055,
+        -.145 - release * .325
       );
       palmTarget.lerp(actionTarget, weight);
-      rotX = THREE.MathUtils.lerp(rotX, .65 - release * 1.35, weight);
-      rotY = THREE.MathUtils.lerp(rotY, -.38 + release * .52, weight);
-      rotZ = THREE.MathUtils.lerp(rotZ, -.45 + release * .65, weight);
-      heldGrenade.visible = throwPhase < .56;
+      rotX = THREE.MathUtils.lerp(rotX, .82 - release * 1.45, weight);
+      rotY = THREE.MathUtils.lerp(rotY, -.42 + release * .56, weight);
+      rotZ = THREE.MathUtils.lerp(rotZ, -.48 + release * .68, weight);
+      heldGrenade.visible = throwPhase < .58;
     } else if (gadgetPhase > 0 && gadgetPhase < 1) {
       const raise = THREE.MathUtils.smoothstep(gadgetPhase, 0, .32);
       const act = THREE.MathUtils.smoothstep(gadgetPhase, .32, .68);
@@ -521,20 +521,20 @@ export function createWeaponRig(owner = {}) {
       const weight = raise * (1 - recover);
       if (classId === 'assault') {
         const inject = Math.sin(act * Math.PI);
-        actionTarget.set(-.13 + inject * .055, .04 - inject * .11, -.28 + inject * .06);
-        rotX = THREE.MathUtils.lerp(rotX, .55 + inject * .45, weight);
-        rotY = THREE.MathUtils.lerp(rotY, -.35, weight);
+        actionTarget.set(-.21 + inject * .065, .195 - inject * .09, -.18 + inject * .06);
+        rotX = THREE.MathUtils.lerp(rotX, .68 + inject * .45, weight);
+        rotY = THREE.MathUtils.lerp(rotY, -.38, weight);
         rotZ = THREE.MathUtils.lerp(rotZ, -.52 - inject * .25, weight);
         heldStim.visible = gadgetPhase < .86;
       } else {
         const toss = Math.sin(act * Math.PI);
-        actionTarget.set(-.12 + act * .08, .03 + toss * .05 - act * .04, -.29 - act * .22);
-        rotX = THREE.MathUtils.lerp(rotX, .42 - act * .95, weight);
-        rotY = THREE.MathUtils.lerp(rotY, -.28 + act * .35, weight);
-        rotZ = THREE.MathUtils.lerp(rotZ, -.32 + act * .42, weight);
-        if (classId === 'medic') heldMedkit.visible = gadgetPhase < .62;
-        else if (classId === 'support') heldAmmo.visible = gadgetPhase < .62;
-        else if (classId === 'recon') heldScanner.visible = gadgetPhase < .62;
+        actionTarget.set(-.21 + act * .11, .19 + toss * .06 - act * .05, -.18 - act * .26);
+        rotX = THREE.MathUtils.lerp(rotX, .58 - act * 1.05, weight);
+        rotY = THREE.MathUtils.lerp(rotY, -.32 + act * .38, weight);
+        rotZ = THREE.MathUtils.lerp(rotZ, -.35 + act * .45, weight);
+        if (classId === 'medic') heldMedkit.visible = gadgetPhase < .64;
+        else if (classId === 'support') heldAmmo.visible = gadgetPhase < .64;
+        else if (classId === 'recon') heldScanner.visible = gadgetPhase < .64;
       }
       palmTarget.lerp(actionTarget, weight);
     }

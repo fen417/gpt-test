@@ -96,7 +96,7 @@ export class GameRenderer {
     this.activeGrenades = new Set();
     this.gadgetDeployables = [];
     this.throwTimer = 0;
-    this.throwDuration = 0.56;
+    this.throwDuration = 0.68;
     this.gadgetTimer = 0;
     this.gadgetDuration = 0.65;
     this.effects = [];
@@ -990,6 +990,7 @@ export class GameRenderer {
 
   createGrenadeMesh() {
     const group = new THREE.Group();
+    group.scale.setScalar(1.65);
     const body = new THREE.Mesh(this.geo.cylinder, this.grenadeMaterial);
     body.scale.set(0.088, 0.125, 0.088);
     body.castShadow = !this.lowQuality;
@@ -1025,7 +1026,7 @@ export class GameRenderer {
     group.add(spoon);
     const led = new THREE.Mesh(this.geo.sphere, this.grenadeLedMaterial);
     led.position.set(0, 0.134, 0);
-    led.scale.setScalar(0.022);
+    led.scale.setScalar(0.028);
     group.add(led);
     return group;
   }
@@ -1215,7 +1216,7 @@ export class GameRenderer {
     const active = this.activeGrenades;
     active.clear();
     const localPlayer = state.players?.find(p => p.id === localId);
-    this.grenadeLedMaterial.emissiveIntensity = 0.4 + (Math.sin(this.clock * 22) + 1) * 1.15;
+    this.grenadeLedMaterial.emissiveIntensity = 0.5 + (Math.sin(this.clock * 22) + 1) * 1.25;
     for (const grenade of state.grenades || []) {
       active.add(grenade.id);
       let mesh = this.grenadeMeshes.get(grenade.id);
@@ -1224,25 +1225,25 @@ export class GameRenderer {
         this.worldRoot.add(mesh);
         this.grenadeMeshes.set(grenade.id, mesh);
       }
-      const fuse = grenade.fuse ?? 1.0;
-      const age = clamp(2.15 - fuse, 0, 2.15);
-      const ownFresh = grenade.ownerId === localId && localPlayer && age < 0.35;
-      if (ownFresh && age < 0.11) {
-        mesh.visible = false;
-        continue;
-      }
+      const numId = Number(String(grenade.id).replace(/\D+/g, '')) || 0;
+      const fuse = grenade.fuse ?? 1.8;
+      const age = clamp(1.8 - fuse, 0, 1.8);
+      const ownFresh = grenade.ownerId === localId && localPlayer && age < 0.28;
       mesh.visible = true;
       let gx = grenade.x, gy = grenade.y, gz = grenade.z;
       if (ownFresh) {
-        const releaseBlend = 1 - clamp((age - 0.11) / 0.24, 0, 1);
+        const releaseBlend = 1 - clamp(age / 0.28, 0, 1);
         const yaw = localPlayer.yaw || 0;
         const rightX = Math.cos(yaw), rightZ = -Math.sin(yaw);
-        gx -= rightX * 0.24 * releaseBlend;
-        gy -= 0.14 * releaseBlend;
-        gz -= rightZ * 0.24 * releaseBlend;
+        gx -= rightX * 0.18 * releaseBlend;
+        gy -= 0.08 * releaseBlend;
+        gz -= rightZ * 0.18 * releaseBlend;
       }
       mesh.position.set(gx, gy, gz);
-      mesh.rotation.set(this.clock * 9.5 + grenade.id, this.clock * 6.2 + grenade.id * 0.7, this.clock * 7.4);
+      mesh.rotation.set(this.clock * 9.5 + numId, this.clock * 6.2 + numId * 0.7, this.clock * 7.4);
+      if (!this.lowQuality && ((this.frameCount + numId) % 3 === 0)) {
+        this.spawnSmoke(gx, gy, gz, 0.22);
+      }
     }
     for (const [id, mesh] of this.grenadeMeshes) if (!active.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
   }

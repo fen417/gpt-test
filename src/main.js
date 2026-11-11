@@ -14,7 +14,7 @@ let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let fireTap=false, recoilPitch=0, recoilYaw=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
-let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],seen=new Set(),toastTimer;
+let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
 let sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
@@ -316,7 +316,7 @@ function receive(next){
     toast('Хост запустил операцию! В бой!');
     return;
   }
-  if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast('Новая операция началась');}
+  if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast('Новая операция началась');}
   state=next;const player=local();
   if(player)document.body.classList.toggle('team-1',player.team===1);
   if(!active||!player)return;
@@ -332,6 +332,7 @@ function receive(next){
   }
   if(player.hp<lastHp){damageUntil=performance.now()+350;}
   lastHp=player.hp;wasAlive=player.alive;
+  const nowPerf=performance.now();
   for(const event of state.events??[]){
     if(seen.has(event.id))continue;seen.add(event.id);
     if(event.type==='shot'&&event.playerId===localId){
@@ -342,13 +343,26 @@ function receive(next){
         recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin((event.shotSeq??event.id)*2.1)*impulse*.31));
       }
       if(event.hit){
-        hitUntil=performance.now()+(event.headshot?190:130);
+        hitUntil=nowPerf+(event.headshot?190:130);
         $('hitmarker').classList.toggle('headshot',!!event.headshot);
       }
     }
+    if(event.type==='score'&&event.playerId===localId){
+      if(nowPerf>scoreStreakExpires)scoreStreakTotal=0;
+      scoreStreakTotal+=event.points;
+      scoreStreakExpires=nowPerf+3400;
+      const lastItem=scoreFeed[scoreFeed.length-1];
+      if(event.kind==='damage'&&lastItem&&lastItem.kind==='damage'&&lastItem.expires>nowPerf){
+        lastItem.points+=event.points;
+        lastItem.expires=nowPerf+2800;
+        lastItem.id=event.id;
+      }else{
+        scoreFeed.push({id:event.id,reason:event.reason,points:event.points,kind:event.kind,expires:nowPerf+3200});
+      }
+    }
     if(event.type==='kill'){
-      feed.push({...event,expires:performance.now()+6500});
-      if(event.killerId===localId){hitUntil=performance.now()+300;toast(`Цель устранена · ${event.victim}`);}
+      feed.push({...event,expires:nowPerf+6500});
+      if(event.killerId===localId){hitUntil=nowPerf+300;toast(`Цель устранена · ${event.victim}`);}
       if(event.victimId===localId){
         text('death-killer',`ВЫВЕДЕН ИЗ СТРОЯ · ПРОТИВНИК: ${event.killer} [${event.weapon||'ГРАНАТА'}]`);
       }
@@ -358,12 +372,16 @@ function receive(next){
   }
   while(seen.size>900)seen.delete(seen.keys().next().value);
   audio.events(state,player);
-  if(state.winner!==null&&state.winner!==undefined&&!finished){finished=true;clearControls();document.exitPointerLock?.();show('pause',false);show('death',false);text('result-title',state.winner===player.team?'Сектор удержан':'Сектор потерян');text('result-stats',`${player.kills} устранений · ${player.deaths} потерь · ${Math.floor(state.time/60)} мин боя`);show('result');}
+  if(state.winner!==null&&state.winner!==undefined&&!finished){
+    finished=true;clearControls();document.exitPointerLock?.();show('pause',false);show('death',false);show('scoreboard',false);
+    renderResultScreen(player);
+    show('result');
+  }
 }
 const multiplayer=new Multiplayer({onState:receive,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 
 function prepare(which){
-  clearControls();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
+  clearControls();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
   const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),bots:Number($('population').value),difficulty:$('difficulty').value};
 }
 function enter(){
@@ -755,15 +773,48 @@ function updateDeployScreen(player,now){
   }
   drawDeployMap(player,now);
 }
+function buildScoreRow(p,allyTeam){
+  const row=document.createElement('div');
+  row.className=`score-row team${p.team===allyTeam?0:1}${p.id===localId?' local':''}`;
+  const vals=[
+    `${p.alive?'●':'×'} ${p.name}${p.bot?' [AI]':''}`,
+    CLASSES[p.classId]?.name??p.classId,
+    `${p.kills} / ${p.deaths} / ${p.assists||0}`,
+    String(p.score||0),
+  ];
+  for(const value of vals){
+    const span=document.createElement('span');
+    span.textContent=value;
+    row.append(span);
+  }
+  return row;
+}
+function renderResultScreen(player){
+  const won=state.winner===player.team;
+  text('result-title',won?'Сектор удержан — Победа':'Сектор потерян — Поражение');
+  const mins=Math.floor(state.time/60),secs=Math.floor(state.time%60);
+  text('result-stats',`Личный вклад: ${player.score||0} очк. · ${player.kills} У / ${player.deaths} П / ${player.assists||0} А · Время операции: ${mins} мин ${String(secs).padStart(2,'0')} с`);
+  text('result-tickets-blue',Math.ceil(state.tickets[player.team]));
+  text('result-tickets-orange',Math.ceil(state.tickets[1-player.team]));
+  const allies=[...state.players].filter(p=>p.team===player.team).sort((a,b)=>(b.score||0)-(a.score||0)||b.kills-a.kills);
+  const enemies=[...state.players].filter(p=>p.team!==player.team).sort((a,b)=>(b.score||0)-(a.score||0)||b.kills-a.kills);
+  const allyTotal=allies.reduce((sum,p)=>sum+(p.score||0),0);
+  const enemyTotal=enemies.reduce((sum,p)=>sum+(p.score||0),0);
+  text('result-ally-score',`${allyTotal} ОЧК.`);
+  text('result-enemy-score',`${enemyTotal} ОЧК.`);
+  $('result-rows-ally').replaceChildren(...allies.map(p=>buildScoreRow(p,player.team)));
+  $('result-rows-enemy').replaceChildren(...enemies.map(p=>buildScoreRow(p,player.team)));
+}
 function hud(now){
   const player=local();if(!player)return;
   const weapon=getWeapon(player.classId,player.weaponId);
   const heading=(((-yaw*180/Math.PI)%360)+360)%360;const cardinal=['N','NE','E','SE','S','SW','W','NW'][Math.round(heading/45)%8];text('compass-direction',cardinal);text('compass-degrees',`${String(Math.round(heading)).padStart(3,'0')}°`);
   const nearest=MAP.points.reduce((best,p)=>Math.hypot(player.x-p.x,player.z-p.z)<Math.hypot(player.x-best.x,player.z-best.z)?p:best,MAP.points[0]);text('location-label',nearest?`${nearest.name} / СЕКТОР ${nearest.id}`:'SECTOR 09');text('protection-label',player.protected?'◇ ЗАЩИТА ПОСЛЕ ВЫСАДКИ':'');
-  text('tickets-blue',Math.ceil(state.tickets[player.team]));text('tickets-orange',Math.ceil(state.tickets[1-player.team]));$('blue-bar').style.width=`${state.tickets[player.team]/3}%`;$('orange-bar').style.width=`${state.tickets[1-player.team]/3}%`;
+  const maxT=state.maxTickets||600;
+  text('tickets-blue',Math.ceil(state.tickets[player.team]));text('tickets-orange',Math.ceil(state.tickets[1-player.team]));$('blue-bar').style.width=`${(state.tickets[player.team]/maxT)*100}%`;$('orange-bar').style.width=`${(state.tickets[1-player.team]/maxT)*100}%`;
   const seconds=Math.floor(state.time);text('match-time',`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`);
   text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;text('ammo',player.ammo);text('reserve',player.reserve);text('weapon-name',weapon.name||weapon.weapon);text('ammo-status',player.reloading?'ПЕРЕЗАРЯДКА…':player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
-  text('kd',`${player.kills} У / ${player.deaths} П`);text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
+  text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
   const capPct=nearby?Math.round(Math.abs(nearby.progress)*100):0;
@@ -772,6 +823,35 @@ function hud(now){
   if(capEl.dataset.signature!==capSig){
     capEl.dataset.signature=capSig;capEl.replaceChildren();
     if(nearby&&player.alive){const strong=document.createElement('span'),small=document.createElement('small'),track=document.createElement('div'),fill=document.createElement('i');strong.textContent=`${nearby.id} · ${nearby.contested?'ТОЧКА ОСПАРИВАЕТСЯ':nearby.owner===player.team?'УДЕРЖАНИЕ ПОЗИЦИИ':'ЗАХВАТ ТОЧКИ'}`;small.textContent=`${nearby.name} · ${capPct}%`;track.className='capture-track';fill.style.width=`${capPct}%`;track.append(fill);capEl.append(strong,small,track);}
+  }
+  scoreFeed=scoreFeed.filter(e=>e.expires>now).slice(-5);
+  if(now>scoreStreakExpires)scoreStreakTotal=0;
+  const scoreFeedSig=scoreFeed.length?`${scoreStreakTotal}:`+scoreFeed.map(e=>`${e.id}:${e.points}`).join(','):'';
+  const scoreFeedEl=$('score-feed');
+  if(scoreFeedEl&&scoreFeedEl.dataset.signature!==scoreFeedSig){
+    scoreFeedEl.dataset.signature=scoreFeedSig;
+    if(!scoreFeed.length){
+      scoreFeedEl.replaceChildren();
+    }else{
+      const nodes=[];
+      if(scoreStreakTotal>0){
+        const totalEl=document.createElement('div');
+        totalEl.className='score-feed-total';
+        totalEl.textContent=`+${scoreStreakTotal}`;
+        nodes.push(totalEl);
+      }
+      for(const item of [...scoreFeed].reverse()){
+        const row=document.createElement('div');
+        const isObj=item.kind==='capture'||item.kind==='neutralize'||item.kind==='defense'||item.kind==='attack';
+        row.className=`score-feed-item${isObj?' objective':''}`;
+        const label=document.createElement('span'),pts=document.createElement('b');
+        label.textContent=item.reason;
+        pts.textContent=`+${item.points}`;
+        row.append(label,pts);
+        nodes.push(row);
+      }
+      scoreFeedEl.replaceChildren(...nodes);
+    }
   }
   feed=feed.filter(e=>e.expires>now).slice(-5);
   const feedSig=feed.map(e=>e.id).join(',');
@@ -792,12 +872,13 @@ function hud(now){
   if(dmgEl.dataset.opacity!==dmgOpacity){dmgEl.dataset.opacity=dmgOpacity;dmgEl.style.opacity=dmgOpacity;}
   if(!player.alive)updateDeployScreen(player,now);
   if(!$('scoreboard').classList.contains('hidden')){
-    const sorted=[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||b.kills-a.kills);
-    const scoreSig=sorted.map(p=>`${p.id}:${p.alive?1:0}:${p.kills}:${p.deaths}:${p.classId}`).join('|');
+    text('scoreboard-tickets',`${Math.ceil(state.tickets[player.team])} : ${Math.ceil(state.tickets[1-player.team])}`);
+    const sorted=[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||(b.score||0)-(a.score||0)||b.kills-a.kills);
+    const scoreSig=sorted.map(p=>`${p.id}:${p.alive?1:0}:${p.kills}:${p.deaths}:${p.assists||0}:${p.score||0}:${p.classId}`).join('|');
     const scoreEl=$('score-rows');
     if(scoreEl.dataset.signature!==scoreSig){
       scoreEl.dataset.signature=scoreSig;
-      scoreEl.replaceChildren(...sorted.map(p=>{const row=document.createElement('div');row.className=`score-row team${p.team===player.team?0:1}${p.id===localId?' local':''}`;for(const value of [`${p.alive?'●':'×'} ${p.name}${p.bot?' [AI]':''}`,CLASSES[p.classId].name,`${p.kills} / ${p.deaths}`]){const span=document.createElement('span');span.textContent=value;row.append(span);}return row;}));
+      scoreEl.replaceChildren(...sorted.map(p=>buildScoreRow(p,player.team)));
     }
   }
   minimap(player);

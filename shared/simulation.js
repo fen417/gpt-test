@@ -93,7 +93,7 @@ function impactMaterial(kind) {
 
 export class Simulation {
   constructor({ bots=23, difficulty='regular', random=Math.random }={}) {
-    this.random=random;this.time=0;this.players=new Map();this.tickets=[300,300];
+    this.random=random;this.time=0;this.players=new Map();this.maxTickets=600;this.tickets=[600,600];
     this.difficulty=typeof difficulty==='string'&&Object.hasOwn(DIFFICULTIES,difficulty)?difficulty:'regular';
     this.botSettings=DIFFICULTIES[this.difficulty];
     this.points=MAP.points.map(p=>({...p,owner:-1,progress:0,contested:false}));
@@ -114,12 +114,19 @@ export class Simulation {
     }
   }
   event(type,data={}) { this.events.push({id:++this.eventId,type,time:this.time,...data}); }
+  awardScore(player,amount,reason,extra={}) {
+    if(!player||this.winner!==null)return 0;
+    const pts=Math.max(1,Math.round(amount));
+    player.score=(player.score||0)+pts;
+    this.event('score',{playerId:player.id,points:pts,total:player.score,reason,...extra});
+    return pts;
+  }
   addPlayer(id,name='Боец',team,classId='assault',weaponId='') {
     if(this.players.has(id))return this.players.get(id);
     if(team!==0&&team!==1){let a=0,b=0;for(const p of this.players.values())p.team===0?a++:b++;team=a<=b?0:1;}
     const cls=validClass(classId)?classId:'assault';
     const wep=getWeapon(cls,weaponId).id??defaultWeaponId(cls);
-    const p={id:String(id),name:String(name||'Боец').replace(/[<>\x00-\x1f]/g,'').slice(0,20),team,classId:cls,weaponId:wep,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,alive:false,ammo:0,reserve:0,kills:0,deaths:0,respawnIn:0,reloading:false,shotSeq:0,input:sanitizeInput(),cooldown:0,reloadTime:0,gadgetTime:0,grenades:2,vy:0,lastHurt:-100,bot:false};
+    const p={id:String(id),name:String(name||'Боец').replace(/[<>\x00-\x1f]/g,'').slice(0,20),team,classId:cls,weaponId:wep,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,alive:false,ammo:0,reserve:0,kills:0,deaths:0,assists:0,score:0,damagers:new Map(),spottedBy:null,respawnIn:0,reloading:false,shotSeq:0,input:sanitizeInput(),cooldown:0,reloadTime:0,gadgetTime:0,grenades:2,vy:0,lastHurt:-100,bot:false};
     this.players.set(p.id,p);this.respawn(p.id,cls,'',wep);return p;
   }
   removePlayer(id){this.players.delete(id);}
@@ -138,6 +145,7 @@ export class Simulation {
     const point=this.points.find(q=>q.id===pointId&&q.owner===p.team&&!q.contested);
     const base=point||MAP.spawns[p.team];let x=base.x,z=base.z;
     for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz,0)){x=tx;z=tz;break;}}
+    p.damagers=new Map();p.spottedBy=null;
     Object.assign(p,{x,y:0,z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:wep.mag,reserve:wep.reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
     Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false});
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
@@ -164,15 +172,58 @@ export class Simulation {
     }
     return true;
   }
-  damage(victim,amount,attacker){
+  damage(victim,amount,attacker,meta={}){
     if(!victim.alive||this.winner!==null||this.time<victim.invulnerableUntil)return;
-    victim.hp=Math.max(0,victim.hp-amount);victim.lastHurt=this.time;
-    this.event('damage',{playerId:victim.id,attackerId:attacker?.id,amount,x:attacker?.x??victim.x,z:attacker?.z??victim.z});
+    const prevHp=victim.hp;
+    victim.hp=Math.max(0,victim.hp-amount);
+    const dealt=prevHp-victim.hp;
+    victim.lastHurt=this.time;
+    this.event('damage',{playerId:victim.id,attackerId:attacker?.id,amount:dealt,x:attacker?.x??victim.x,z:attacker?.z??victim.z});
+    if(attacker&&attacker!==victim&&attacker.team!==victim.team&&dealt>0){
+      this.awardScore(attacker,Math.max(1,Math.round(dealt)),'НАНЕСЕНИЕ УРОНА',{kind:'damage'});
+      if(!victim.damagers)victim.damagers=new Map();
+      const prev=victim.damagers.get(attacker.id)||{amount:0,time:0};
+      victim.damagers.set(attacker.id,{amount:prev.amount+dealt,time:this.time});
+    }
     if(victim.hp<=0){
       victim.alive=false;victim.deaths++;victim.respawnIn=4;victim.reloading=false;
       this.tickets[victim.team]=Math.max(0,this.tickets[victim.team]-1);
-      if(attacker&&attacker.team!==victim.team)attacker.kills++;
-      this.event('kill',{killer:attacker?.name||'Окружение',victim:victim.name,killerId:attacker?.id,victimId:victim.id,weapon:attacker?getWeapon(attacker.classId,attacker.weaponId).weapon:'',team:attacker?.team});
+      if(attacker&&attacker.team!==victim.team){
+        attacker.kills++;
+        this.awardScore(attacker,100,'УСТРАНЕНИЕ ПРОТИВНИКА',{kind:'kill',victim:victim.name});
+        if(meta.headshot)this.awardScore(attacker,25,'ВЫСТРЕЛ В ГОЛОВУ',{kind:'headshot'});
+        const nearPoint=this.points.find(pt=>dist(victim,pt)<=CAPTURE_RADIUS+6||dist(attacker,pt)<=CAPTURE_RADIUS+6);
+        if(nearPoint){
+          if(nearPoint.owner===attacker.team){
+            this.awardScore(attacker,50,`ОБОРОНА ТОЧКИ ${nearPoint.id}`,{kind:'defense',pointId:nearPoint.id});
+          }else if(dist(attacker,nearPoint)<=CAPTURE_RADIUS+4){
+            this.awardScore(attacker,25,`ШТУРМ ТОЧКИ ${nearPoint.id}`,{kind:'attack',pointId:nearPoint.id});
+          }
+        }
+      }
+      const assistedIds=new Set();
+      if(victim.damagers){
+        for(const [helperId,info] of victim.damagers.entries()){
+          if(helperId===attacker?.id||this.time-info.time>12||info.amount<10)continue;
+          const helper=this.players.get(helperId);
+          if(helper&&helper.team!==victim.team){
+            helper.assists=(helper.assists||0)+1;
+            assistedIds.add(helper.id);
+            const high=info.amount>=75;
+            this.awardScore(helper,high?75:50,high?'ПОМОЩЬ КАК УБИЙСТВО':'ПОМОЩЬ В УСТРАНЕНИИ',{kind:'assist',victim:victim.name});
+          }
+        }
+      }
+      if(victim.spottedUntil>this.time&&victim.spottedBy&&victim.spottedBy!==attacker?.id){
+        const spotter=this.players.get(victim.spottedBy);
+        if(spotter&&spotter.team!==victim.team){
+          if(!assistedIds.has(spotter.id))spotter.assists=(spotter.assists||0)+1;
+          this.awardScore(spotter,25,'ПОМОЩЬ РАЗВЕДКОЙ',{kind:'spot_assist',victim:victim.name});
+        }
+      }
+      victim.damagers?.clear();
+      victim.spottedBy=null;
+      this.event('kill',{killer:attacker?.name||'Окружение',victim:victim.name,killerId:attacker?.id,victimId:victim.id,weapon:meta.weapon||(attacker?getWeapon(attacker.classId,attacker.weaponId).weapon:'ГРАНАТА'),team:attacker?.team,headshot:!!meta.headshot});
     }
   }
   shoot(p){
@@ -208,7 +259,7 @@ export class Simulation {
     const hit = !!target && this.time >= target.invulnerableUntil;
     if(target)impact=hit?'flesh':'shield';
     this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq:p.shotSeq,x:origin.x,y:origin.y,z:origin.z,tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,hit,headshot:hit&&headshot,impact});
-    if(hit){const falloff=clamp(1-Math.max(0,closest-35)/300,.65,1);this.damage(target,c.damage*falloff*(headshot?2:1),p);}
+    if(hit){const falloff=clamp(1-Math.max(0,closest-35)/300,.65,1);this.damage(target,c.damage*falloff*(headshot?2:1),p,{headshot,weapon:c.weapon});}
   }
   startReload(p){
     const weapon = getWeapon(p.classId, p.weaponId);
@@ -218,16 +269,44 @@ export class Simulation {
     this.event('reload',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,duration:weapon.reload,empty:p.ammo===0,x:p.x,z:p.z});
   }
   gadget(p){
-    if(p.gadgetTime>0)return;p.gadgetTime=12;let count=0;
+    if(p.gadgetTime>0)return;p.gadgetTime=12;let count=0,helped=0;
+    const selfDamaged=p.hp<100;
     for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&dist(p,ally)<12){
       if(p.classId==='support'){
         const allyWep=getWeapon(ally.classId,ally.weaponId);
+        const before=ally.reserve;
         ally.reserve=Math.min(allyWep.reserve,ally.reserve+60);
-      }else if(p.classId==='medic'||p.classId==='assault')ally.hp=Math.min(100,ally.hp+(p.classId==='medic'?55:25));
-      else ally.spottedUntil=this.time+8;
+        if(ally!==p&&ally.reserve>before){
+          helped++;
+          this.awardScore(p,25,'ПОПОЛНЕНИЕ БОЕПРИПАСОВ',{kind:'resupply'});
+        }
+      }else if(p.classId==='medic'){
+        const before=ally.hp;
+        ally.hp=Math.min(100,ally.hp+55);
+        if(ally!==p&&ally.hp>before){
+          helped++;
+          this.awardScore(p,35,'ЛЕЧЕНИЕ СОЮЗНИКА',{kind:'heal'});
+        }
+      }else if(p.classId==='assault'){
+        const before=ally.hp;
+        ally.hp=Math.min(100,ally.hp+25);
+        if(ally!==p&&ally.hp>before)helped++;
+      }else{
+        ally.spottedUntil=this.time+8;
+      }
       count++;
     }
-    if(p.classId==='recon')for(const enemy of this.players.values())if(enemy.alive&&enemy.team!==p.team&&dist(p,enemy)<50)enemy.spottedUntil=this.time+8;
+    if(p.classId==='assault'&&(selfDamaged||helped>0)){
+      this.awardScore(p,15,'БОЕВАЯ СТИМУЛЯЦИЯ',{kind:'stim'});
+    }
+    if(p.classId==='recon'){
+      for(const enemy of this.players.values())if(enemy.alive&&enemy.team!==p.team&&dist(p,enemy)<50){
+        const alreadySpotted=enemy.spottedUntil>this.time&&enemy.spottedBy===p.id;
+        enemy.spottedUntil=this.time+8;
+        enemy.spottedBy=p.id;
+        if(!alreadySpotted)this.awardScore(p,15,'ОБНАРУЖЕНИЕ ПРОТИВНИКА',{kind:'spot'});
+      }
+    }
     this.event('gadget',{playerId:p.id,classId:p.classId,team:p.team,x:p.x,y:p.y||0,z:p.z,yaw:p.yaw||0,count});
   }
   throwGrenade(p){
@@ -455,27 +534,50 @@ export class Simulation {
       }else if(this.collides(grenade.x+delta.x,grenade.z+delta.z,grenade.y+delta.y,.12)){grenade.vx*=-.35;grenade.vz*=-.35;}
       else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
       if(grenade.y<.15){grenade.y=.15;grenade.vy=Math.abs(grenade.vy)*.3;grenade.vx*=.92;grenade.vz*=.92;}
-      if(grenade.fuse<=0){this.event('explosion',{x:grenade.x,y:grenade.y,z:grenade.z});const owner=this.players.get(grenade.owner);for(const p of this.players.values())if(p.alive&&(p.team!==grenade.team||p.id===grenade.owner)){const d=Math.hypot(p.x-grenade.x,p.y+.8-grenade.y,p.z-grenade.z);if(d<10&&this.lineClear(grenade,{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,Math.max(0,140*(1-d/10)),owner);}}
+      if(grenade.fuse<=0){this.event('explosion',{x:grenade.x,y:grenade.y,z:grenade.z});const owner=this.players.get(grenade.owner);for(const p of this.players.values())if(p.alive&&(p.team!==grenade.team||p.id===grenade.owner)){const d=Math.hypot(p.x-grenade.x,p.y+.8-grenade.y,p.z-grenade.z);if(d<10&&this.lineClear(grenade,{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,Math.max(0,140*(1-d/10)),owner,{weapon:'ГРАНАТА'});}}
     }
     this.grenades=this.grenades.filter(g=>g.fuse>0);
     for(const point of this.points){
       const nearby=[0,0];for(const p of this.players.values())if(p.alive&&dist(p,point)<CAPTURE_RADIUS)nearby[p.team]++;
       point.contested=nearby[0]>0&&nearby[1]>0;
       const advantage=nearby[0]-nearby[1];
-      if(advantage&&!point.contested){const direction=advantage>0?-1:1;point.progress=clamp(point.progress+direction*dt*.14*Math.min(2,Math.abs(advantage)),-1,1);const owner=point.progress<=-1?0:point.progress>=1?1:point.owner;if(owner!==point.owner){point.owner=owner;this.event('capture',{pointId:point.id,team:owner});}}
+      if(advantage&&!point.contested){
+        const prevOwner=point.owner;
+        const capTeam=advantage>0?0:1;
+        const direction=advantage>0?-1:1;
+        point.progress=clamp(point.progress+direction*dt*.14*Math.min(2,Math.abs(advantage)),-1,1);
+        if((prevOwner===0&&point.progress>=0)||(prevOwner===1&&point.progress<=0)){
+          point.owner=-1;
+          for(const p of this.players.values()){
+            if(p.alive&&p.team===capTeam&&dist(p,point)<CAPTURE_RADIUS){
+              this.awardScore(p,75,`НЕЙТРАЛИЗАЦИЯ ТОЧКИ ${point.id}`,{kind:'neutralize',pointId:point.id});
+            }
+          }
+        }
+        const owner=point.progress<=-1?0:point.progress>=1?1:point.owner;
+        if(owner!==point.owner&&(owner===0||owner===1)){
+          point.owner=owner;
+          this.event('capture',{pointId:point.id,team:owner});
+          for(const p of this.players.values()){
+            if(p.alive&&p.team===owner&&dist(p,point)<CAPTURE_RADIUS){
+              this.awardScore(p,150,`ЗАХВАТ ТОЧКИ ${point.id}`,{kind:'capture',pointId:point.id});
+            }
+          }
+        }
+      }
       if(point.owner===0&&point.progress>=0)point.owner=-1;
       if(point.owner===1&&point.progress<=0)point.owner=-1;
     }
     this.ticketClock+=dt;if(this.ticketClock>=1){this.ticketClock-=1;const held=[this.points.filter(p=>p.owner===0).length,this.points.filter(p=>p.owner===1).length];if(held[0]>held[1])this.tickets[1]=Math.max(0,this.tickets[1]-(held[0]-held[1]));if(held[1]>held[0])this.tickets[0]=Math.max(0,this.tickets[0]-(held[1]-held[0]));}
     if(this.tickets[0]<=0||this.tickets[1]<=0){this.winner=this.tickets[0]<=0?1:0;this.event('roundEnd',{winner:this.winner,reason:'tickets'});}
-    else if(this.time>=480){const held=[this.points.filter(p=>p.owner===0).length,this.points.filter(p=>p.owner===1).length];this.winner=this.tickets[0]===this.tickets[1]?(held[0]>=held[1]?0:1):(this.tickets[0]>this.tickets[1]?0:1);this.event('roundEnd',{winner:this.winner,reason:'time'});}
+    else if(this.time>=960){const held=[this.points.filter(p=>p.owner===0).length,this.points.filter(p=>p.owner===1).length];this.winner=this.tickets[0]===this.tickets[1]?(held[0]>=held[1]?0:1):(this.tickets[0]>this.tickets[1]?0:1);this.event('roundEnd',{winner:this.winner,reason:'time'});}
   }
   snapshot(){
     const players=[...this.players.values()].map(p=>{
       const wep=getWeapon(p.classId,p.weaponId);
       return {
         id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
-        hp:p.hp,alive:p.alive,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,respawnIn:p.respawnIn,
+        hp:p.hp,alive:p.alive,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
         shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:p.input.crouch,sprint:p.input.sprint&&p.moveSpeed>wep.speed,
         aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
@@ -483,7 +585,7 @@ export class Simulation {
       };
     });
     return {
-      time:this.time,roundDuration:480,difficulty:this.difficulty,tickets:[...this.tickets],players,
+      time:this.time,roundDuration:960,maxTickets:this.maxTickets,difficulty:this.difficulty,tickets:[...this.tickets],players,
       points:this.points.map(p=>({...p})),events:this.events.map(e=>({...e})),
       grenades:this.grenades.map(g=>({id:g.id,x:g.x,y:g.y,z:g.z,team:g.team,ownerId:g.owner,fuse:g.fuse,yaw:g.yaw||0})),winner:this.winner,
     };

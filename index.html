@@ -50,14 +50,20 @@
   </main>
   <div id="scope-overlay" class="hidden" aria-hidden="true"></div>
   <section id="hud" class="hud hidden" aria-label="Информация о бое">
-    <div class="battle-top"><div class="team-score friendly"><small>СВОИ</small><strong id="tickets-blue">300</strong><div class="ticket-track"><i id="blue-bar"></i></div></div><div class="match-center"><span>ЗАХВАТ ТЕРРИТОРИИ</span><div id="objective-strip" class="objective-strip"></div><small id="match-time">00:00</small></div><div class="team-score enemy"><small>ПРОТИВНИК</small><strong id="tickets-orange">300</strong><div class="ticket-track"><i id="orange-bar"></i></div></div></div>
+    <div class="battle-top"><div class="team-score friendly"><small>СВОИ</small><strong id="tickets-blue">600</strong><div class="ticket-track"><i id="blue-bar"></i></div></div><div class="match-center"><span>ЗАХВАТ ТЕРРИТОРИИ</span><div id="objective-strip" class="objective-strip"></div><small id="match-time">00:00</small></div><div class="team-score enemy"><small>ПРОТИВНИК</small><strong id="tickets-orange">600</strong><div class="ticket-track"><i id="orange-bar"></i></div></div></div>
     <div id="room-badge" class="room-badge"></div><div id="location-label" class="location-label"></div><div id="killfeed" class="killfeed"></div><div class="compass"><span id="compass-direction">N</span><div class="compass-rule">┊ · · ┊ · · ┊ <b id="compass-degrees">000°</b> ┊ · · ┊ · · ┊</div></div>
     <div id="world-markers"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
+    <div id="score-feed" class="score-feed" aria-live="polite"></div>
     <div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
     <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
     <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
-    <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 / 0</span><span id="fps">60 FPS</span></div></div>
-    <div id="scoreboard" class="scoreboard hidden"><h2>СОСТАВ КОМАНД</h2><div id="score-rows"></div><small>Удерживай TAB · Убийства / Потери</small></div>
+    <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 ОЧК · 0/0/0</span><span id="fps">60 FPS</span></div></div>
+    <div id="scoreboard" class="scoreboard hidden">
+      <div class="scoreboard-head"><h2>ТАБЛИЦА МАТЧА</h2><span id="scoreboard-tickets">600 : 600</span></div>
+      <div class="score-row score-header"><span>БОЕЦ</span><span>КЛАСС</span><span>У / П / А</span><span>ОЧКИ</span></div>
+      <div id="score-rows"></div>
+      <small>Удерживай TAB · Сортировка по боевым очкам (Убийства / Потери / Ассисты)</small>
+    </div>
   </section>
   <section id="pause" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">SECTOR 09</div><h2 id="pause-title">Бой продолжается</h2><p id="pause-description">Вернись в сектор. Твой отряд ждёт.</p><button id="resume" class="deploy-button">ПРОДОЛЖИТЬ <span>→</span></button><button id="unlocked" class="outline-button">Играть без захвата мыши</button>
     <div class="settings">
@@ -83,9 +89,9 @@
           <div id="death-killer" class="death-killer">ВЫВЕДЕН ИЗ СТРОЯ · ОЖИДАНИЕ КООРДИНАТ ВЫСАДКИ</div>
         </div>
         <div class="deploy-topbar-tickets">
-          <div class="deploy-ticket friendly"><small>СОЮЗНИКИ</small><strong id="deploy-tickets-blue">300</strong></div>
+          <div class="deploy-ticket friendly"><small>СОЮЗНИКИ</small><strong id="deploy-tickets-blue">600</strong></div>
           <div class="deploy-vs">◆</div>
-          <div class="deploy-ticket enemy"><strong id="deploy-tickets-orange">300</strong><small>ПРОТИВНИК</small></div>
+          <div class="deploy-ticket enemy"><strong id="deploy-tickets-orange">600</strong><small>ПРОТИВНИК</small></div>
         </div>
       </header>
       <div class="deploy-main">
@@ -219,7 +225,38 @@
       </div>
     </div>
   </section>
-  <section id="result" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">ОПЕРАЦИЯ ЗАВЕРШЕНА</div><h2 id="result-title">Сектор удержан</h2><p id="result-stats"></p><button id="play-again" class="deploy-button">НОВАЯ ОПЕРАЦИЯ <span>→</span></button><button id="result-leave" class="outline-button">В главное меню</button></div></section>
+  <section id="result" class="overlay hidden">
+    <div class="overlay-card result-card">
+      <header class="result-header">
+        <div>
+          <div class="eyebrow"><span></span> ОПЕРАЦИЯ ЗАВЕРШЕНА // ИТОГИ МАТЧА</div>
+          <h2 id="result-title">Сектор удержан</h2>
+          <p id="result-stats"></p>
+        </div>
+        <div class="result-tickets-box">
+          <div class="deploy-ticket friendly"><small>СОЮЗНИКИ</small><strong id="result-tickets-blue">0</strong></div>
+          <div class="deploy-vs">◆</div>
+          <div class="deploy-ticket enemy"><strong id="result-tickets-orange">0</strong><small>ПРОТИВНИК</small></div>
+        </div>
+      </header>
+      <div class="result-tables">
+        <div class="result-team-col friendly-team">
+          <div class="result-team-head"><span>ВАША КОМАНДА (СОЮЗНИКИ)</span><small id="result-ally-score">0 ОЧК.</small></div>
+          <div class="score-row score-header"><span>БОЕЦ</span><span>КЛАСС</span><span>У / П / А</span><span>ОЧКИ</span></div>
+          <div id="result-rows-ally" class="result-rows"></div>
+        </div>
+        <div class="result-team-col enemy-team">
+          <div class="result-team-head"><span>КОМАНДА ПРОТИВНИКА</span><small id="result-enemy-score">0 ОЧК.</small></div>
+          <div class="score-row score-header"><span>БОЕЦ</span><span>КЛАСС</span><span>У / П / А</span><span>ОЧКИ</span></div>
+          <div id="result-rows-enemy" class="result-rows"></div>
+        </div>
+      </div>
+      <div class="result-actions">
+        <button id="play-again" class="deploy-button"><span>НОВАЯ ОПЕРАЦИЯ</span><span>→</span></button>
+        <button id="result-leave" class="outline-button">В главное меню</button>
+      </div>
+    </div>
+  </section>
   <div id="toast" class="toast hidden" role="status"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
