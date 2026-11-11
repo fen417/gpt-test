@@ -22,7 +22,7 @@ const cache=new Map();let soldier,weapon,selectedKey='',autoTurn=true,time=0,las
 const $=id=>document.getElementById(id);
 function fit(detail=false,angle='front'){
   const gun=$('model').value==='weapon';controls.target.set(0,gun?-.06:detail?1.38:.94,gun?-.15:0);
-  const dist=gun?(detail?.75:1.55):(detail?1.2:3.7),az=angle==='side'?Math.PI/2:angle==='back'?Math.PI:.18;
+  const dist=gun?(detail?.75:1.55):(detail?1.2:3.7),az=angle==='side'?Math.PI/2:angle==='back'?.18:Math.PI-.35;
   camera.position.set(Math.sin(az)*dist,gun?.18:detail?1.52:1.65,Math.cos(az)*dist);controls.update();
 }
 function choose(){

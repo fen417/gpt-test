@@ -4,6 +4,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { MAP, CLASSES, CAPTURE_RADIUS } from '../shared/world.js';
 import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign } from './visuals.js';
 import {prepareViewModel,distanceToCover,drawWorldAndViewModel} from './viewmodel.js';
+import { createWeaponRig } from './weapons.js';
+import { createSoldierRig, updateSoldierArms } from './soldier.js';
 
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
 const clamp = THREE.MathUtils.clamp;
@@ -179,14 +181,23 @@ export class GameRenderer {
     const ground = new THREE.Mesh(groundGeometry, this.surfaces.ground);
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.scene.add(ground);
     // Painted service roads are flat: no invisible curb collision.
-    this.box(this.scene, 0, 0.012, 0, 24, 0.02, size + 10, this.materials.asphalt, false);
     const crossStreets = size > 250 ? [-110, -40, 0, 40, 110] : [0];
-    for (const z of crossStreets) this.box(this.scene, 0, 0.015, z, size + 10, 0.02, 15, this.materials.asphalt, false);
+    // End the avenue at each crossing instead of stacking asphalt surfaces.
+    const roadEdge = size / 2 + 5;
+    const road = (x,z,w,d) => this.box(this.scene,x,.048,z,w,.024,d,this.materials.asphalt,false);
+    let avenueStart = -roadEdge;
+    for (const z of crossStreets) {
+      const avenueEnd = z - 7.5;
+      road(0,(avenueStart + avenueEnd) / 2,24,avenueEnd - avenueStart);
+      road(0,z,size + 10,15);
+      avenueStart = z + 7.5;
+    }
+    road(0,(avenueStart + roadEdge) / 2,24,roadEdge - avenueStart);
     for (let i = -size / 2 + 8; i < size / 2; i += 10) {
       if (crossStreets.every(z => Math.abs(i - z) > 9)) {
-        this.box(this.scene, 0, 0.032, i, 0.13, 0.015, 4.8, this.materials.marking, false);
+        this.box(this.scene, 0, 0.068, i, 0.13, 0.009, 4.8, this.materials.marking, false);
       }
-      for (const z of crossStreets) if (Math.abs(i) > 15) this.box(this.scene, i, 0.033, z, 4.8, 0.015, 0.13, this.materials.marking, false);
+      for (const z of crossStreets) if (Math.abs(i) > 15) this.box(this.scene, i, 0.068, z, 4.8, 0.009, 0.13, this.materials.marking, false);
     }
     const windowMatrices = [], litMatrices = [], frameMatrices = [];
     const dummy = new THREE.Object3D();
@@ -218,14 +229,14 @@ export class GameRenderer {
         for (let y = 2.8; y < h - 0.9; y += 3.1) {
           for (const face of [-1, 1]) {
             for (let x = -w / 2 + 1.5; x < w / 2 - 0.7; x += 2.7) {
-              dummy.position.set(b.x + x, y, b.z + face * (d / 2 + 0.021)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.3, 1.55, 0.035); dummy.updateMatrix();
+              dummy.position.set(b.x + x, y, b.z + face * (d / 2 + 0.063)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.3, 1.55, 0.028); dummy.updateMatrix();
               (random() > 0.88 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
-              dummy.scale.set(1.5, 1.75, .025); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
+              dummy.position.z=b.z+face*(d/2+.025); dummy.scale.set(1.5, 1.75, .042); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
             for (let z = -d / 2 + 1.5; z < d / 2 - 0.7; z += 2.7) {
-              dummy.position.set(b.x + face * (w / 2 + 0.021), y, b.z + z); dummy.rotation.set(0, 0, 0); dummy.scale.set(0.035, 1.55, 1.3); dummy.updateMatrix();
+              dummy.position.set(b.x + face * (w / 2 + 0.063), y, b.z + z); dummy.rotation.set(0, 0, 0); dummy.scale.set(0.028, 1.55, 1.3); dummy.updateMatrix();
               (random() > 0.9 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
-              dummy.scale.set(.025, 1.75, 1.5); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
+              dummy.position.x=b.x+face*(w/2+.025); dummy.scale.set(.042, 1.75, 1.5); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
           }
         }
@@ -261,10 +272,10 @@ export class GameRenderer {
       } else if(b.kind==='crate'){
         for(const side of [-1,1]){
           this.box(this.scene,b.x+side*w*.33,h/2,b.z,.09,h+.025,d+.035,this.materials.steel);
-          this.box(this.scene,b.x,h*.2,b.z+side*d/2,w+.03,.12,.045,this.materials.rust);
+          this.box(this.scene,b.x,h*.2,b.z+side*(d/2+.013),w+.03,.12,.045,this.materials.rust);
         }
       } else {
-        this.box(this.scene, b.x, h - 0.08, b.z, w + 0.08, 0.16, d + 0.08, this.materials.edge);
+        this.box(this.scene, b.x, h - 0.035, b.z, w + 0.08, 0.16, d + 0.08, this.materials.edge);
         if (h < 2) {
           const stripe = material(0x9b8a55);
           this.box(this.scene, b.x, h * 0.65, b.z + d / 2 + 0.015, w * 0.85, Math.min(0.14, h * 0.15), 0.02, stripe, false);
@@ -357,121 +368,23 @@ export class GameRenderer {
   }
 
   buildWeapon() {
-    this.weapon = new THREE.Group(); this.camera.add(this.weapon);
-    this.weapon.position.set(0.26, -0.23, -0.42);
-    const black = material(0x20272a, 0.5, 0.65);
-    const metal = material(0x4b5456, 0.4, 0.8);
-    const grip = material(0x343d39, 0.9, 0.1);
-    const glove = material(0x4f5144, 0.95, 0.05);
-    const sleeve = this.surfaces.cloth.clone(); sleeve.color.set(0x899681);
-    const skin = material(0x9b876d, 0.95, 0);
-    const g = this.weapon;
-    this.rounded(g, 0, 0, -0.08, 0.12, 0.14, 0.39, black);
-    this.handguard = this.rounded(g, 0, 0.015, -0.37, 0.096, 0.105, 0.34, grip);
-    this.bolt=this.box(g, 0.065, 0.012, -0.02, 0.015, 0.05, 0.13, metal);
-    this.box(g, 0.076, 0.016, 0.055, 0.045, 0.018, 0.025, metal);
-    const stampTexture=canvasTexture(256,(ctx)=>{ctx.clearRect(0,0,256,256);ctx.fillStyle='#929b97';ctx.font='24px monospace';ctx.textAlign='center';ctx.fillText('S09 / 5.56 NATO',128,125);ctx.font='15px monospace';ctx.fillText('SELECT FIRE  ·  0416',128,155);});
-    const stamp=new THREE.Mesh(new THREE.PlaneGeometry(.17,.17),new THREE.MeshStandardMaterial({map:stampTexture,transparent:true,roughness:.8,depthWrite:false}));stamp.position.set(-.061,0,-.055);stamp.rotation.y=-Math.PI/2;g.add(stamp);
-    this.box(g, 0, 0.088, -0.15, 0.075, 0.025, 0.44, metal);
-    for (let z = -0.39; z < 0.05; z += 0.034) this.box(g, 0, 0.109, z, 0.082, 0.015, 0.012, black);
-    for (let z = -0.49; z < -0.22; z += 0.045) {
-      this.box(g, 0.051, 0, z, 0.012, 0.032, 0.018, black);
-      this.box(g, -0.051, 0, z, 0.012, 0.032, 0.018, black);
-    }
-    this.barrel = this.cylinder(g, 0, 0.015, -0.63, 0.017, 0.22, metal); this.barrel.rotation.x = Math.PI / 2;
-    this.barrelSleeve = this.cylinder(g, 0, 0.015, -0.56, 0.027, 0.08, black); this.barrelSleeve.rotation.x = Math.PI / 2;
-    this.muzzle = this.cylinder(g, 0, 0.015, -0.76, 0.025, 0.07, black); this.muzzle.rotation.x = Math.PI / 2;
-    this.suppressor = this.cylinder(g,0,.015,-.83,.036,.24,black);this.suppressor.rotation.x=Math.PI/2;this.suppressor.visible=false;
-    for(const side of [-1,1])for(let z=-.22;z<.06;z+=.075){const screw=this.cylinder(g,side*.063,.015,z,.008,.007,metal);screw.rotation.z=Math.PI/2;}
-    this.supportAttachment=new THREE.Group();g.add(this.supportAttachment);
-    for(const side of [-1,1]){const bipod=this.cylinder(this.supportAttachment,side*.04,-.115,-.42,.012,.22,metal);bipod.rotation.z=side*.23;}
-    this.supportAttachment.visible=false;
-    // Open iron sights leave a clear center when aiming down sights.
-    this.box(g, 0, 0.137, -0.43, 0.012, 0.065, 0.018, black);
-    for (const side of [-1, 1]) this.box(g, side * 0.027, 0.148, -0.43, 0.008, 0.05, 0.014, black);
-    this.box(g, 0, 0.126, 0.015, 0.07, 0.025, 0.025, black);
-    for (const side of [-1, 1]) this.box(g, side * 0.024, 0.15, 0.015, 0.012, 0.04, 0.025, black);
-    this.scope = new THREE.Group(); g.add(this.scope);
-    const scopeTube = this.cylinder(this.scope, 0, 0.18, -0.15, 0.047, 0.23, black); scopeTube.rotation.x = Math.PI / 2;
-    this.box(this.scope, 0, 0.13, -0.15, 0.035, 0.1, 0.09, metal);
-    const scopeLens = this.cylinder(this.scope, 0, 0.18, -0.025, 0.043, 0.004, material(0x32666c, 0.1, 0.5)); scopeLens.rotation.x = Math.PI / 2;
-    this.scope.visible = false;
-    this.magazine = new THREE.Group(); g.add(this.magazine);
-    const mag = this.rounded(this.magazine, 0, -0.19, -0.08, 0.083, 0.25, 0.12, grip); mag.rotation.x = -0.12;
-    for (let y = -0.26; y < -0.08; y += 0.045) this.box(this.magazine, 0.043, y, -0.08, 0.006, 0.012, 0.095, black);
-    const pistolGrip = this.rounded(g, 0, -0.15, 0.105, 0.075, 0.17, 0.08, grip); pistolGrip.rotation.x = -0.28;
-    this.rounded(g, 0, -0.015, 0.28, 0.09, 0.105, 0.28, grip);
-    this.rounded(g, 0, -0.035, 0.44, 0.12, 0.2, 0.065, black);
-    // Procedural gloved hands, sleeve cuffs and forearms.
-    const rightHand = this.rounded(g, 0.025, -0.15, 0.1, 0.105, 0.13, 0.1, glove); rightHand.rotation.z = -0.15;
-    this.box(g, 0.087, -0.105, 0.035, 0.024, 0.035, 0.11, glove);
-    const rightArm = this.rounded(g, 0.1, -0.29, 0.24, 0.15, 0.26, 0.32, sleeve); rightArm.rotation.x = -0.55; rightArm.rotation.z = -0.2;
-    const leftHand = this.rounded(g, -0.018, -0.075, -0.36, 0.13, 0.09, 0.15, glove); leftHand.rotation.z = 0.1;this.leftHand=leftHand;
-    for (let i = 0; i < 4; i++) this.box(g, -0.06 + i * 0.025, -0.035, -0.39, 0.02, 0.042, 0.06, glove);
-    const leftArm = this.rounded(g, -0.17, -0.17, -0.15, 0.14, 0.15, 0.46, sleeve); leftArm.rotation.y = -0.65; leftArm.rotation.z = -0.2;this.leftArm=leftArm;
-    for(let i=0;i<4;i++)this.rounded(g,-.058+i*.025,-.025,-.375,.022,.018,.055,black);
-    this.box(g, -0.1, -0.13, -0.31, 0.13, 0.025, 0.08, skin);
-    this.flashMaterial = new THREE.MeshBasicMaterial({ color: 0xffd584, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide });
-    this.muzzleFlash = new THREE.Group(); this.muzzleFlash.position.set(0, 0.015, -0.81); g.add(this.muzzleFlash);
-    const flash = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.22, 5), this.flashMaterial); flash.rotation.x = -Math.PI / 2; flash.position.z = -0.08;
-    this.muzzleFlash.add(flash); this.muzzleFlash.visible = false;
-    const flashCore=new THREE.Mesh(new THREE.SphereGeometry(.033,8,6),new THREE.MeshBasicMaterial({color:0xfff3cb}));this.muzzleFlash.add(flashCore);
-    this.flashLight = new THREE.PointLight(0xffc36e, 0, 4, 2); this.flashLight.position.set(0, 0, -0.9); g.add(this.flashLight);
-    prepareViewModel(g);
+    this.weaponRig = createWeaponRig(this);
+    this.weapon = this.weaponRig.weapon;
+    this.camera.add(this.weapon);
+    prepareViewModel(this.weapon);
   }
 
   makeSoldier(player) {
-    const group = new THREE.Group();
-    if (!this.soldierMaterials.has(player.team)) {
-      const uniform = this.surfaces.cloth.clone(); uniform.color.setHex(player.team === 0 ? 0x849b8b : 0xb6a584);
-      this.soldierMaterials.set(player.team, { uniform, vest: material(player.team === 0 ? 0x424d43 : 0x5b5949), skin: material(0x9a846b), boots: material(0x303635), gun: material(0x293134, 0.5, 0.65) });
-    }
-    const { uniform, vest, skin, boots, gun } = this.soldierMaterials.get(player.team);
-    const pose = new THREE.Group(); group.add(pose);
-    this.rounded(pose, 0, .88, 0, .35, .22, .24, uniform);
-    this.rounded(pose, 0, 1.2, 0, .39, .43, .25, uniform);
-    this.rounded(pose, 0, 1.2, -.035, .42, .35, .29, vest);
-    for (let x = -.12; x < .17; x += .12) this.rounded(pose, x, 1.08, -.205, .1, .15, .07, vest);
-    this.rounded(pose, 0, 1.2, .2, .3, .34, .15, vest);
-    for (const side of [-1, 1]) {
-      const strap = this.box(pose, side * .12, 1.34, .015, .055, .13, .31, boots); strap.rotation.z = side * .1;
-    }
-    const head = new THREE.Group(); head.position.y = 1.57; pose.add(head);
-    const face = new THREE.Mesh(this.geo.sphere, skin); face.scale.set(0.115, 0.145, 0.115); head.add(face);
-    const helmet = new THREE.Mesh(this.geo.sphere, uniform); helmet.scale.set(.145,.11,.15); helmet.position.set(0,.08,.012); head.add(helmet); helmet.castShadow = true;
-    this.rounded(head,0,.02,-.112,.17,.045,.035,gun);
-    this.rounded(head,0,-.075,-.08,.19,.08,.12,vest);
-    this.box(head,.145,.02,.01,.035,.08,.09,boots);
-    this.box(head,-.145,.02,.01,.035,.08,.09,boots);
-    const legs = [], arms = [], knees = [], elbows = [];
-    for (const side of [-1, 1]) {
-      const leg=new THREE.Group();leg.position.set(side*.105,.9,0);pose.add(leg);
-      this.rounded(leg,0,-.19,0,.17,.38,.19,uniform);
-      this.rounded(leg,side*.07,-.14,.015,.08,.19,.15,vest);
-      const knee=new THREE.Group();knee.position.y=-.39;leg.add(knee);
-      this.rounded(knee,0,-.18,.015,.14,.37,.16,uniform);
-      this.rounded(knee,0,-.015,-.085,.15,.14,.065,vest);
-      this.rounded(knee,0,-.415,-.045,.17,.14,.27,boots);legs.push(leg);knees.push(knee);
-      const arm=new THREE.Group();arm.position.set(side*.255,1.4,.01);pose.add(arm);
-      this.rounded(arm,0,-.13,0,.15,.29,.17,uniform);
-      const elbow=new THREE.Group();elbow.position.y=-.28;elbow.rotation.x=1.25;arm.add(elbow);
-      this.rounded(elbow,0,-.13,0,.125,.27,.145,uniform);
-      this.rounded(elbow,0,-.285,-.005,.11,.12,.12,boots);
-      this.rounded(elbow,0,-.04,.065,.13,.12,.055,vest);arms.push(arm);elbows.push(elbow);
-    }
-    const rifle=new THREE.Group();rifle.position.set(.1,1.12,-.34);pose.add(rifle);
-    this.rounded(rifle,0,0,-.1,.07,.1,.47,gun);this.rounded(rifle,0,-.09,-.02,.055,.15,.08,gun);this.box(rifle,0,.01,-.41,.025,.025,.2,gun);
-    const flash=new THREE.Mesh(new THREE.ConeGeometry(.075,.22,5),new THREE.MeshBasicMaterial({color:0xffd38b,transparent:true,opacity:.9}));flash.rotation.x=-Math.PI/2;flash.position.set(0,.01,-.58);flash.visible=false;flash.userData.animated=true;rifle.add(flash);
-    const marker=new THREE.Mesh(new THREE.OctahedronGeometry(.065),new THREE.MeshBasicMaterial({color:COLORS.friendly}));marker.position.y=1.94;marker.userData.animated=true;group.add(marker);
-    this.batchActor(pose);
-    // At long range, render a baked silhouette instead of every moving joint.
-    const distant=new THREE.Group();group.add(distant);
-    this.rounded(distant,0,1.14,0,.44,.56,.3,uniform);
-    const distantHead=new THREE.Mesh(this.geo.sphere,uniform);distantHead.position.set(0,1.61,0);distantHead.scale.set(.14,.17,.15);distant.add(distantHead);
-    for(const side of [-1,1])this.rounded(distant,side*.105,.46,0,.16,.83,.18,uniform);
-    this.box(distant,.1,1.12,-.34,.07,.08,.65,gun);this.batchActor(distant);distant.visible=false;
-    this.scene.add(group);
-    return {group,pose,distant,head,legs,arms,knees,elbows,rifle,marker,uniform,flash,lastX:player.x,lastZ:player.z,lastTime:0,targetSpeed:0,speed:0,walk:0,initialized:false,deathAge:0,alive:true,recoil:0,lastShot:player.shotSeq};
+    return createSoldierRig(this, player);
+  }
+
+  removeSoldier(soldier) {
+    soldier.group.removeFromParent();
+    soldier.group.traverse(object => {
+      if (object.geometry?.userData.actorOwned) object.geometry.dispose();
+    });
+    soldier.flash.material.dispose();
+    soldier.marker.material.dispose();
   }
 
   updateSoldiers(state, localId, dt) {
@@ -481,7 +394,14 @@ export class GameRenderer {
       if (player.id === localId) continue;
       active.add(player.id);
       let soldier = this.soldiers.get(player.id);
-      if (!soldier) { soldier = this.makeSoldier(player); this.soldiers.set(player.id, soldier); }
+      if (soldier && (soldier.classId !== player.classId || soldier.team !== player.team)) {
+        this.removeSoldier(soldier);
+        soldier = null;
+      }
+      if (!soldier) {
+        soldier = this.makeSoldier(player);
+        this.soldiers.set(player.id, soldier);
+      }
       if(player.alive===false){
         soldier.deathAge+=dt;soldier.group.visible=soldier.deathAge<3.6;soldier.marker.visible=false;soldier.flash.visible=false;
         soldier.group.rotation.x=lerp(soldier.group.rotation.x,-1.45,1-Math.exp(-dt*6));
@@ -507,14 +427,13 @@ export class GameRenderer {
       soldier.head.rotation.x=(player.pitch||0)*.7;
       if(player.shotSeq!==soldier.lastShot){soldier.recoil=1;soldier.lastShot=player.shotSeq;}
       soldier.recoil*=Math.exp(-dt*18);soldier.rifle.rotation.x=(player.pitch||0)*.7+soldier.recoil*.08;
-      soldier.rifle.position.z=-.34+soldier.recoil*.025;soldier.flash.visible=soldier.recoil>.5;
+      soldier.rifle.position.z=-.32+soldier.recoil*.025;soldier.flash.visible=soldier.recoil>.5;
       for(let i=0;i<2;i++){
         const phase=soldier.walk+i*Math.PI,swing=Math.sin(phase)*move*(run?.85:.55);
         soldier.legs[i].rotation.x=swing+(crouched?-.65:0);
         soldier.knees[i].rotation.x=Math.max(0,-Math.sin(phase))*.65*move+(crouched?1.1:0);
-        soldier.arms[i].rotation.x=(run?Math.sin(phase)*.22*move:.05)-(player.pitch||0)*.35;
-        soldier.elbows[i].rotation.x=1.15+(run?Math.sin(phase)*.12:0)+soldier.recoil*.08;
       }
+      updateSoldierArms(soldier);
       soldier.pose.rotation.z=Math.sin(soldier.walk)*.025*move;
       const distant=local&&Math.hypot(player.x-local.x,player.z-local.z)>(this.lowQuality?55:95);
       soldier.pose.visible=!distant;soldier.distant.visible=!!distant;
@@ -523,7 +442,7 @@ export class GameRenderer {
       soldier.marker.position.y=(crouched?1.55:1.94)+Math.sin(this.clock*2)*.025;
       soldier.initialized = true;
     }
-    for (const [id, soldier] of this.soldiers) if (!active.has(id)) { this.scene.remove(soldier.group); this.soldiers.delete(id); }
+    for (const [id, soldier] of this.soldiers) if (!active.has(id)) { this.removeSoldier(soldier); this.soldiers.delete(id); }
   }
 
   processEvents(state, localId) {
@@ -632,7 +551,11 @@ export class GameRenderer {
       this.camera.position.set(Math.sin(angle + 0.9) * radius, 58+Math.sin(this.clock*.025)*8, Math.cos(angle + 0.9) * radius);
       this.camera.lookAt(0, 3, -12); this.weapon.visible = false;
       this.atmosphere.sky.position.copy(this.camera.position);
-      if (this.camera.fov !== 70) { this.camera.fov = 70; this.camera.updateProjectionMatrix(); }
+      if (this.camera.fov !== 70 || this.camera.near !== 2) {
+        this.camera.fov = 70;
+        this.camera.near = 2;
+        this.camera.updateProjectionMatrix();
+      }
       this.sun.position.set(-90,75,65); this.sun.target.position.set(0, 0, 0);
       for (const soldier of this.soldiers.values()) soldier.group.visible = false;
       for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
@@ -673,19 +596,16 @@ export class GameRenderer {
       }
       this.camera.rotation.set(pitch + (shake?this.kick * 0.008:0), yaw, moving&&shake ? Math.sin(cycle) * 0.0018 : 0, 'YXZ');
       const fov = lerp(sprint ? baseFov+6 : baseFov, baseFov-(player.classId==='recon'?38:23), this.aimAmount);
-      if (Math.abs(this.camera.fov - fov) > 0.03) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+      if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
+        this.camera.fov = fov;
+        this.camera.near = .045;
+        this.camera.updateProjectionMatrix();
+      }
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
       this.weapon.visible = isAlive;
-      this.scope.visible = player.classId === 'recon' && this.aimAmount < 0.9;
-      this.supportAttachment.visible=player.classId==='support';this.suppressor.visible=player.classId==='recon';
-      this.handguard.scale.z=player.classId==='medic'?.25:.34;
-      this.barrel.scale.y=player.classId==='medic'?.14:player.classId==='recon'?.32:.22;
-      this.barrel.position.z=player.classId==='medic'?-.59:player.classId==='recon'?-.69:-.63;
-      this.muzzle.position.z=player.classId==='medic'?-.68:player.classId==='recon'?-.85:-.76;
-      this.muzzleFlash.position.z=player.classId==='recon'?-.97:player.classId==='medic'?-.73:-.81;
-      this.magazine.scale.set(player.classId === 'support' ? 1.55 : 1, player.classId === 'medic' ? 1.15 : player.classId === 'recon' ? 0.65 : 1, player.classId === 'support' ? 1.55 : 1);
+      this.weaponRig.update({ classId: player.classId, aim: this.aimAmount, reloadMotion, kick: this.kick, clock: this.clock });
       this.weapon.position.set(
         lerp(0.26, 0, this.aimAmount) + Math.sin(cycle) * 0.012 * bob - this.swayX,
         lerp(-0.23, -0.167, this.aimAmount) + Math.abs(Math.cos(cycle)) * 0.012 * bob - this.swayY - reloadMotion * 0.12,
@@ -693,12 +613,6 @@ export class GameRenderer {
       );
       this.weapon.rotation.set(this.kick * 0.045 - reloadMotion * 0.45, reloadMotion * -0.18 + (sprint ? 0.2 : 0), reloadMotion * -0.5 + (sprint ? 0.14 : 0));
       this.weapon.position.y-=this.wallStow*.28;this.weapon.position.z+=this.wallStow*.18;this.weapon.rotation.x-=this.wallStow*.85;
-      this.magazine.position.set(-reloadMotion*.07,-reloadMotion*.22,0);this.magazine.rotation.z=-reloadMotion*.15;
-      this.leftHand.position.set(-.018-reloadMotion*.03,-.075-reloadMotion*.17,-.36+reloadMotion*.22);
-      this.leftArm.rotation.y=-.65+reloadMotion*.2;this.leftArm.position.y=-.17-reloadMotion*.08;
-      this.bolt.position.z=-.02+this.kick*.055;
-      this.muzzleFlash.visible = this.kick > 0.65; this.muzzleFlash.rotation.z = this.clock * 41;
-      this.flashLight.intensity = this.kick > 0.65 ? 2 : 0;
       this.sun.position.set(this.cameraAnchor.x-90,75,this.cameraAnchor.z+65);this.sun.target.position.set(this.cameraAnchor.x,0,this.cameraAnchor.z);
     }
     const localTeam = player?.team ?? 0;

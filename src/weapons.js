@@ -112,7 +112,7 @@ export function createWeaponRig(owner = {}) {
   ring(receiver,-.043,-.09,.388,.014,.009,.007,dark,'x',20);
 
   const magazine=new THREE.Group();magazine.name='removable-curved-magazine';weapon.add(magazine);
-  const magBody=profile(magazine,[[-.155,-.092],[-.077,-.092],[-.071,-.181],[-.087,-.272],[-.116,-.337],[-.192,-.321],[-.17,-.24],[-.155,-.168]],.067,polymer,{bevel:.005});
+  profile(magazine,[[-.155,-.092],[-.077,-.092],[-.071,-.181],[-.087,-.272],[-.116,-.337],[-.192,-.321],[-.17,-.24],[-.155,-.168]],.067,polymer,{bevel:.005});
   profile(magazine,[[-.194,-.314],[-.115,-.331],[-.11,-.347],[-.197,-.33]],.076,dark,{bevel:.002});
   for(const side of [-1,1])for(let i=0;i<3;i++){
     curve(magazine,[[side*.036,-.13,-.094-i*.022],[side*.037,-.23,-.108-i*.022],[side*.036,-.301,-.133-i*.022]],.0032,metal,10,8);
@@ -208,7 +208,7 @@ export function createWeaponRig(owner = {}) {
       const end=-.225-length-barrelLength;
       handguard.scale.z=length/hgLength;barrel.position.set(0,.015,-.225-length-barrelLength/2);barrel.scale.z=barrelLength/.25;
       barrelSleeve.position.set(0,.015,-.225-length+.015);muzzle.position.set(0,.015,end);
-      suppressor.position.set(0,.015,end-.035);supportAttachment.visible=classId==='support';magBody.visible=classId!=='support';
+      suppressor.position.set(0,.015,end-.035);supportAttachment.visible=classId==='support';magazine.visible=classId!=='support';
       magazine.scale.set(1,classId==='recon'?.72:classId==='medic'?1.08:1,classId==='medic'?.74:1);
       frontSight.position.z=-.225-length+.035;
       weapon.userData.muzzleZ=end-.085;
@@ -217,6 +217,9 @@ export function createWeaponRig(owner = {}) {
     muzzleFlash.position.set(0,.015,weapon.userData.muzzleZ-(classId==='recon'?.19:0));flashLight.position.copy(muzzleFlash.position);
     leftHand.position.set(leftBase.x-reloadMotion*.03,leftBase.y-reloadMotion*.17,leftBase.z+reloadMotion*.22);
     leftArm.position.set(-reloadMotion*.03,-reloadMotion*.17,reloadMotion*.22);leftArm.rotation.set(0,0,0);
+    const reloadFeed = classId === 'support' ? beltBox : magazine;
+    reloadFeed.position.set(-reloadMotion * .03, -reloadMotion * .18, reloadMotion * .03);
+    reloadFeed.rotation.z = -reloadMotion * .15;
     // Forearm/palm overlap is continuous for both the ready and reload poses.
     bolt.position.z=-.02+kick*.036;
     muzzleFlash.visible=kick>.65;muzzleFlash.rotation.z=clock*43;flashLight.intensity=kick>.65?1.8:0;

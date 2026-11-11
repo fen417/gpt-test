@@ -140,7 +140,8 @@ export function addDistrictDetails(owner, MAP) {
     const x=(random()-.5)*(size-22),z=(random()-.5)*(size-22);
     if(blocked(x,z,1))continue;
     if(i%3===0){
-      const puddle=new THREE.Mesh(new THREE.CircleGeometry(1,13),puddleMaterial);puddle.position.set(x,.026,z);puddle.rotation.x=-Math.PI/2;puddle.rotation.z=random()*Math.PI;puddle.scale.set(1+random()*4,.4+random()*1.5,1);scene.add(puddle);
+      const onRoad=Math.abs(x)<15||[-110,-40,0,40,110].some(street=>Math.abs(z-street)<10);
+      const puddle=new THREE.Mesh(new THREE.CircleGeometry(1,13),puddleMaterial);puddle.position.set(x,onRoad?.075:.018,z);puddle.rotation.x=-Math.PI/2;puddle.rotation.z=random()*Math.PI;puddle.scale.set(1+random()*4,.4+random()*1.5,1);scene.add(puddle);
     }else{
       const p=owner.box(scene,x,.035,z,.15+random()*.4,.04,.1+random()*.3,i%2?m.edge:debrisMat,false);p.rotation.y=random()*Math.PI;
     }
@@ -148,8 +149,8 @@ export function addDistrictDetails(owner, MAP) {
   // Drain covers and oil stains add close-range detail without new obstacles.
   for(let i=-limit+15;i<limit;i+=34){
     const x=10.5,z=i;if(blocked(x,z,.6))continue;
-    owner.box(scene,x,.035,z,.65,.025,1.1,m.steel,false);
-    for(let j=-.4;j<.5;j+=.12)owner.box(scene,x,.052,z+j,.56,.012,.035,m.darkConcrete,false);
+    owner.box(scene,x,.068,z,.65,.025,1.1,m.steel,false);
+    for(let j=-.4;j<.5;j+=.12)owner.box(scene,x,.085,z+j,.56,.012,.035,m.darkConcrete,false);
   }
   // Tall vegetation stays outside the combat area; shallow weeds grow at walls.
   const grassMat=new THREE.MeshStandardMaterial({color:0x657651,roughness:1,side:THREE.DoubleSide});
@@ -179,7 +180,7 @@ export function addDistrictDetails(owner, MAP) {
         owner.box(scene,x,h-.8,z+rz,w,.2,.2,m.steel);
         for(const side of [-1,1]){const beam=owner.box(scene,x+side*w/4,h-1.2,z+rz,w/2,.12,.12,m.rust);beam.rotation.z=side*.1;}
       }
-      const floor=owner.box(scene,x,.014,z,w,.022,d,surfaces.concrete,false);floor.receiveShadow=true;
+      const floor=owner.box(scene,x,.069,z,w,.034,d,surfaces.concrete,false);floor.receiveShadow=true;
       for(const side of [-1,1]){
         owner.box(scene,x+side*w*.26,h-1.5,z,.13,.08,Math.max(1,d-3),m.glow,false);
       }

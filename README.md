@@ -86,7 +86,7 @@ npm start
 
 ## Публикация на GitHub Pages
 
-В репозитории: **Settings → Pages → Source → GitHub Actions**. Workflow `.github/workflows/pages.yml` устанавливает зависимости, запускает тесты, собирает Vite и публикует `dist`. Push в `main` обновляет игру. Относительные пути сборки поддерживают размещение в `/gpt-test/`.
+В репозитории: **Settings → Pages → Source → GitHub Actions**. Workflow `.github/workflows/pages.yml` устанавливает зависимости, собирает Vite и публикует `dist`. Push в `main` обновляет игру. Относительные пути сборки поддерживают размещение в `/gpt-test/`.
 
 GitHub Pages размещает статический клиент. Node.js-сервер из папки `server` на GitHub Pages не исполняется; сетевые комнаты используют браузер хозяина либо отдельно размещённый сервер.
 
