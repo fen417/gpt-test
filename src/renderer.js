@@ -1,10 +1,11 @@
-import * as THREE from 'three';
+﻿import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { MAP, CLASSES, CLASS_WEAPONS, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
 import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
+import { drawFlagBanner } from './logos.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
   soldierHit, soldierThrow, beginDeath, animateDeath,
@@ -59,6 +60,20 @@ function detectIntegratedGpu(renderer) {
   }
 }
 
+const FLAG_LOW = 0.6, FLAG_HIGH = 4.05;
+function setFlagColor(mesh, color) {
+  const m = mesh.material;
+  m.color.setHex(color);
+  if (m._lowMaterial) m._lowMaterial.color.setHex(color);
+  if (m._highMaterial) m._highMaterial.color.setHex(color);
+}
+
+function setFlagMap(mesh, texture) {
+  for (const m of [mesh.material, mesh.material._lowMaterial, mesh.material._highMaterial]) {
+    if (m && m.map !== texture) m.map = texture;
+  }
+}
+
 function seeded(seed = 90210) {
   return () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
 }
@@ -81,8 +96,9 @@ function material(color, roughness = 0.85, metalness = 0.05, extra = {}) {
 }
 
 export class GameRenderer {
-  constructor(canvas, { onError } = {}) {
+  constructor(canvas, { onError, antialias = 'auto' } = {}) {
     this.canvas = canvas;
+    this.gfx = { shadows: 'auto', resolution: 'auto' };
     this.clock = 0;
     this.frameCount = 0;
     this.smoothDt = 0.0166;
@@ -127,10 +143,11 @@ export class GameRenderer {
     this.surfaceCache = new Map();
     this.soldierMaterials = new Map();
     this.random = seeded();
+    const integratedProbe = detectIntegratedGpu();
     try {
       this.renderer = new THREE.WebGLRenderer({
         canvas,
-        antialias: true,
+        antialias: antialias === 'on' ? true : antialias === 'off' ? false : !integratedProbe,
         stencil: false,
         powerPreference: 'high-performance',
         alpha: false,
@@ -139,7 +156,16 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
-    this.integratedGpu = detectIntegratedGpu(this.renderer);
+    this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
+    if (canvas && typeof canvas.addEventListener === 'function') {
+      canvas.addEventListener('webglcontextlost', event => {
+        event.preventDefault();
+      }, false);
+      canvas.addEventListener('webglcontextrestored', () => {
+        this.sun.shadow.needsUpdate = true;
+        this.renderer.shadowMap.needsUpdate = true;
+      }, false);
+    }
     this.grenadeMaterial = material(0x4b5842, 0.72, 0.32);
     this.grenadeLedMaterial = material(0xff3b28, 0.25, 0.1, { emissive: 0xff3b28, emissiveIntensity: 1.4 });
     this.updatePixelRatio();
@@ -163,7 +189,7 @@ export class GameRenderer {
     this.sunForward = this.sunOffset.clone().negate().normalize();
     this.sunRight = new THREE.Vector3().crossVectors(this.sunForward, new THREE.Vector3(0, 1, 0)).normalize();
     this.sunUp = new THREE.Vector3().crossVectors(this.sunRight, this.sunForward).normalize();
-    this.shadowMapSize = 2048;
+    this.shadowMapSize = this.integratedGpu ? 1024 : 2048;
     this.shadowExtent = 72;
     this.sun.position.copy(this.sunOffset);
     this.sun.castShadow = true;
@@ -187,6 +213,20 @@ export class GameRenderer {
       sphere: new THREE.SphereGeometry(1, 10, 8),
       rounded: new RoundedBoxGeometry(1, 1, 1, 1, 0.12),
       shell: new THREE.CylinderGeometry(.009, .009, .043, 6),
+      gadgetRing: new THREE.RingGeometry(0.82, 1.0, 28),
+    };
+    this.gadgetAssets = {
+      team0: material(TEAM_COLORS[0] ?? COLORS.friendly, 0.35, 0.3, {
+        emissive: TEAM_COLORS[0] ?? COLORS.friendly,
+        emissiveIntensity: 0.55,
+      }),
+      team1: material(TEAM_COLORS[1] ?? COLORS.enemy, 0.35, 0.3, {
+        emissive: TEAM_COLORS[1] ?? COLORS.enemy,
+        emissiveIntensity: 0.55,
+      }),
+      white: material(0xe4e8e2, 0.65, 0.12),
+      red: material(0xd93832, 0.45, 0.1, { emissive: 0x991815, emissiveIntensity: 0.35 }),
+      green: material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 }),
     };
     this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true });
     for (const m of [this.surfaces.asphalt, this.surfaces.asphalt._lowMaterial]) {
@@ -246,6 +286,11 @@ export class GameRenderer {
     this.resize();
   }
 
+  getQualityMaterial(mat) {
+    if (!mat) return mat;
+    return (this.lowQuality ? mat._lowMaterial : mat._highMaterial) || mat;
+  }
+
   // Pre-build all soldier rigs, effect pools and compile shaders upfront so
   // spawning bots, shooting or throwing grenades never stalls a frame.
   warmup() {
@@ -269,18 +314,27 @@ export class GameRenderer {
     });
     for (let i = 0; i < 32; i++) this.effectPools.spark.push({ mesh: new THREE.Mesh(this.geo.sphere, this.sparkMaterial), type: 'spark' });
 
-    const sampleSoldier = this.soldierTemplates.get('0:assault:ar416')?.group;
+    const sampleSoldier0 = this.soldierTemplates.get('0:assault:ar416')?.group;
+    const sampleSoldier1 = this.soldierTemplates.get('1:recon:sv98')?.group;
+    const sampleGrenade = this.createGrenadeMesh();
+    const sampleGadgetGroup = new THREE.Group();
+    for (const m of Object.values(this.gadgetAssets)) {
+      sampleGadgetGroup.add(new THREE.Mesh(this.geo.box, m));
+      if (m._lowMaterial) sampleGadgetGroup.add(new THREE.Mesh(this.geo.box, m._lowMaterial));
+    }
     const sampleTracer = this.effectPools.tracer[0]?.mesh;
     const sampleSmoke = this.effectPools.smoke[0]?.mesh;
     const sampleSpark = this.effectPools.spark[0]?.mesh;
     const sampleShell = this.effectPools.shell[0]?.mesh;
-    const temp = [sampleSoldier, sampleTracer, sampleSmoke, sampleSpark, sampleShell].filter(Boolean);
+    const temp = [sampleSoldier0, sampleSoldier1, sampleGrenade, sampleGadgetGroup, sampleTracer, sampleSmoke, sampleSpark, sampleShell].filter(Boolean);
     for (const node of temp) this.worldRoot.add(node);
+    for (const f of this.flags.values()) f.teamFlag.visible = true;
     try {
       this.renderer.compile(this.scene, this.camera);
     } catch {
       // Ignore compile errors in headless/stub environments.
     }
+    for (const f of this.flags.values()) f.teamFlag.visible = false;
     for (const node of temp) node.removeFromParent();
   }
 
@@ -695,6 +749,20 @@ export class GameRenderer {
     );
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.85, 8, 1), flagMaterial);
     flag.position.set(0.8, 4.05, 0); group.add(flag);
+    if (!this.flagLogos) {
+      this.flagLogos = TEAM_COLORS.map((hex, team) => {
+        const banner = document.createElement('canvas'); banner.width = 512; banner.height = 280;
+        drawFlagBanner(banner, team, hex);
+        const tex = new THREE.CanvasTexture(banner); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+        return tex;
+      });
+    }
+    const teamFlagMaterial = pairMaterials(
+      new THREE.MeshStandardMaterial({ color: 0xffffff, map: this.flagLogos[0], side: THREE.DoubleSide, roughness: 0.95 }),
+      new THREE.MeshLambertMaterial({ color: 0xffffff, map: this.flagLogos[0], side: THREE.DoubleSide }),
+    );
+    const teamFlag = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.85, 8, 1), teamFlagMaterial);
+    teamFlag.position.set(0.8, FLAG_LOW, 0); teamFlag.visible = false; group.add(teamFlag);
     const ring = new THREE.Mesh(new THREE.RingGeometry(CAPTURE_RADIUS - 0.13, CAPTURE_RADIUS, 36), new THREE.MeshBasicMaterial({ color: COLORS.neutral, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.045; group.add(ring);
     const texture = canvasTexture(128, (ctx) => {
@@ -704,7 +772,7 @@ export class GameRenderer {
     });
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true }));
     label.position.set(0, 6.2, 0); label.scale.set(1.75, 1.75, 1.75); group.add(label);
-    this.flags.set(point.id, { group, flag, ring, label });
+    this.flags.set(point.id, { group, flag, teamFlag, ring, label, neutralH: 1, teamH: 0, fromOwned: false });
   }
 
   buildWeapon() {
@@ -1044,10 +1112,7 @@ export class GameRenderer {
     group.position.set(x, y, z);
     group.rotation.y = yaw;
 
-    const teamMat = material(TEAM_COLORS[team] ?? COLORS.friendly, 0.35, 0.3, {
-      emissive: TEAM_COLORS[team] ?? COLORS.friendly,
-      emissiveIntensity: 0.55,
-    });
+    const teamMat = this.getQualityMaterial(team === 1 ? this.gadgetAssets.team1 : this.gadgetAssets.team0);
     let ringColor = TEAM_COLORS[team] ?? COLORS.friendly;
     let maxRadius = 4.2;
     let life = 6.5;
@@ -1104,9 +1169,9 @@ export class GameRenderer {
       life = 6.5;
       maxRadius = 4.6;
       ringColor = 0x52e088;
-      const whiteMat = material(0xe4e8e2, 0.65, 0.12);
-      const redMat = material(0xd93832, 0.45, 0.1, { emissive: 0x991815, emissiveIntensity: 0.35 });
-      const greenMat = material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 });
+      const whiteMat = this.getQualityMaterial(this.gadgetAssets.white);
+      const redMat = this.getQualityMaterial(this.gadgetAssets.red);
+      const greenMat = this.getQualityMaterial(this.gadgetAssets.green);
       const base = new THREE.Mesh(this.geo.rounded, whiteMat);
       base.position.y = 0.11;
       base.scale.set(0.52, 0.20, 0.38);
@@ -1183,7 +1248,7 @@ export class GameRenderer {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.82, 1.0, 32), ringMat);
+    const ring = new THREE.Mesh(this.geo.gadgetRing, ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.04;
     group.add(ring);
@@ -1198,7 +1263,6 @@ export class GameRenderer {
       item.age += dt;
       if (item.age >= item.life) {
         item.group.removeFromParent();
-        item.ring.geometry.dispose();
         item.ringMat.dispose();
         this.gadgetDeployables.splice(i, 1);
         continue;
@@ -1252,7 +1316,9 @@ export class GameRenderer {
 
   updatePixelRatio() {
     const dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 1.5);
-    const ratio = this.lowQuality
+    const ratio = this.gfx.resolution !== 'auto'
+      ? clamp(Number(this.gfx.resolution) || 1, 0.5, 2)
+      : this.lowQuality
       ? clamp((this.integratedGpu ? 0.68 : 0.78) * (this.adaptiveScale || 1), 0.55, 1)
       : dpr;
     if (this.currentPixelRatio !== ratio) {
@@ -1264,15 +1330,29 @@ export class GameRenderer {
     }
   }
 
-  applyQuality(low) {
-    this.lowQuality = low;
-    this.adaptiveScale = 1;
-    this.renderer.shadowMap.enabled = !low;
-    this.sun.castShadow = !low;
-    if (!low) {
+  applyShadows() {
+    const mode = this.gfx.shadows;
+    const level = mode === 'auto' ? (this.lowQuality ? 'off' : (this.integratedGpu ? 'medium' : 'high')) : mode;
+    const size = { low: 512, medium: 1024, high: 2048 }[level] || 0;
+    const on = size > 0;
+    this.renderer.shadowMap.enabled = on;
+    this.sun.castShadow = on;
+    if (on && size !== this.shadowMapSize) {
+      this.shadowMapSize = size;
+      this.sun.shadow.mapSize.set(size, size);
+      this.sun.shadow.dispose();
+      this.lastShadowTx = undefined;
+    }
+    if (on) {
       this.sun.shadow.needsUpdate = true;
       this.renderer.shadowMap.needsUpdate = true;
     }
+  }
+
+  applyQuality(low) {
+    this.lowQuality = low;
+    this.adaptiveScale = 1;
+    this.applyShadows();
     this.scene.environment = low ? null : this.atmosphere.envTexture;
     this.hemiLight.intensity = low ? 2.35 : 2.0;
     this.ambientLight.intensity = low ? 0.38 : 0.2;
@@ -1344,7 +1424,13 @@ export class GameRenderer {
     if (this.lowQuality !== low) {
       this.applyQuality(low);
     }
-    if (low && rawDt > 0.004 && rawDt < 0.09) {
+    const gfx = view.gfx;
+    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution)) {
+      this.gfx = { shadows: gfx.shadows, resolution: gfx.resolution };
+      this.applyShadows();
+      this.updatePixelRatio();
+    }
+    if (low && this.gfx.resolution === 'auto' && rawDt > 0.004 && rawDt < 0.09) {
       this.smoothDt = lerp(this.smoothDt, rawDt, 0.08);
       if (this.scaleCooldown > 0) this.scaleCooldown -= dt;
       else if (this.smoothDt > 0.021 && this.adaptiveScale > 0.75) {
@@ -1377,6 +1463,8 @@ export class GameRenderer {
       this.updateEffects(dt);
       this.drawScene(true); return;
     }
+    if (this.lastStateTime !== undefined && state.time < this.lastStateTime - 1) for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }
+    this.lastStateTime = state.time;
     for (const event of state.events || []) {
       if (event.playerId === localId) {
         const key = event.id ?? `${event.type}:${event.playerId}:${event.time}:${event.x}:${event.z}`;
@@ -1491,7 +1579,7 @@ export class GameRenderer {
       this.weapon.position.set(
         lerp(.26, 0, this.aimAmount) + Math.sin(cycle) * .015 * bob - this.swayX + this.sprintBlend * .035 + actionTilt * .055,
         lerp(-.23, -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * bob - this.swayY - reloadMotion * .10 - this.sprintBlend * .07 - this.landDip * .75 - actionTilt * .065,
-        lerp(-.42, -.32, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04,
+        lerp(-.42, player.classId === 'recon' ? -.32 : -.27, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04,
       );
       this.weapon.rotation.set(
         kick * .062 - reloadMotion * .39 - this.sprintBlend * .25 + Math.cos(cycle) * bob * .022 - actionTilt * .18,
@@ -1507,13 +1595,46 @@ export class GameRenderer {
     for (const point of state.points || []) {
       const flag = this.flags.get(point.id); if (!flag) continue;
       const color = point.owner === -1 || point.owner == null ? COLORS.neutral : (TEAM_COLORS[point.owner] ?? COLORS.neutral);
-      flag.flag.material.color.setHex(color); flag.ring.material.color.setHex(color); flag.label.material.color.setHex(color);
+      flag.ring.material.color.setHex(color); flag.label.material.color.setHex(color);
       flag.ring.material.opacity = point.contested ? 0.22 + Math.sin(this.clock * 8) * 0.12 : 0.19;
+      // Battlefield-style flag: neutral flag drops during the first half of a capture,
+      // then the capturing team's flag rises. Capturing an owned point lowers the
+      // defenders' flag first and then raises the attackers'.
+      const progress = point.progress || 0, magnitude = Math.min(1, Math.abs(progress));
+      const sideTeam = progress < 0 ? 0 : 1;
+      let neutralTarget = 0, teamTarget = 0, teamIdx = sideTeam;
+      if (point.owner === 0 || point.owner === 1) {
+        flag.fromOwned = true;
+        teamTarget = magnitude;
+        teamIdx = point.owner;
+      } else if (flag.fromOwned) {
+        teamTarget = magnitude;
+      } else {
+        neutralTarget = clamp(1 - magnitude * 2, 0, 1);
+        teamTarget = clamp(magnitude * 2 - 1, 0, 1);
+      }
+      const follow = 1 - Math.exp(-dt * 6);
+      flag.neutralH = lerp(flag.neutralH, neutralTarget, follow);
+      flag.teamH = lerp(flag.teamH, teamTarget, follow);
+      setFlagColor(flag.teamFlag, 0xffffff);
+      setFlagMap(flag.teamFlag, this.flagLogos[teamIdx]);
+      setFlagColor(flag.flag, COLORS.neutral);
+      for (const [mesh, h] of [[flag.flag, flag.neutralH], [flag.teamFlag, flag.teamH]]) {
+        const visible = h > 0.015;
+        mesh.visible = visible;
+        if (!visible) continue;
+        mesh.position.y = lerp(FLAG_LOW, FLAG_HIGH, h);
+        mesh.updateMatrix();
+        mesh.matrixWorld.multiplyMatrices(flag.group.matrixWorld, mesh.matrix);
+      }
       this.flagBounds.center.set(point.x, 3, point.z);
       if (this.camera.position.distanceToSquared(this.flagBounds.center) < 95 * 95 && this.viewFrustum.intersectsSphere(this.flagBounds)) {
-        const positions = flag.flag.geometry.attributes.position;
-        for (let i = 0; i < positions.count; i++) { const x = positions.getX(i) + 0.775; positions.setZ(i, Math.sin(this.clock * 3.5 + x * 4) * 0.09 * x); }
-        positions.needsUpdate = true;
+        for (const mesh of [flag.flag, flag.teamFlag]) {
+          if (!mesh.visible) continue;
+          const positions = mesh.geometry.attributes.position;
+          for (let i = 0; i < positions.count; i++) { const x = positions.getX(i) + 0.775; positions.setZ(i, Math.sin(this.clock * 3.5 + x * 4) * 0.09 * x); }
+          positions.needsUpdate = true;
+        }
       }
     }
     this.updateSoldiers(state, localId, dt); this.updateGrenades(state, localId); this.processEvents(state, localId); this.updateGadgets(dt); this.updateEffects(dt);

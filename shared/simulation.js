@@ -1,4 +1,4 @@
-import { MAP, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
+﻿import { MAP, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -364,6 +364,12 @@ export class Simulation {
     p.botHoldCrouch=(slot+Math.floor(this.time))%3===0;
     return bestSpot;
   }
+  assignBotRole(p){
+    if(p.botRole&&this.time<(p.botRoleUntil||0))return;
+    const r=this.random();
+    p.botRole=r<.35?'objective':r<.65?'fragger':r<.85?'flanker':'defender';
+    p.botRoleUntil=this.time+35+this.random()*55;
+  }
   thinkBot(p,dt){
     if(!p.alive)return;
     p.nextThink-=dt;const settings=this.botSettings;
@@ -403,27 +409,55 @@ export class Simulation {
       p.botTargetId=null;
       if(p.nextThink<=0&&this.botPathBudget>0){
         this.botPathBudget--;
-        let bestObjective = null, bestScore = Infinity;
-        for (const point of this.points) {
-          let assigned = 0;
-          for (const ally of this.players.values()) {
-            if (ally !== p && ally.team === p.team && ally.botObjective?.id === point.id) assigned++;
-          }
-          const score = dist(p, point) + (point.owner === p.team ? 220 : 0) + this.random() * 25 + assigned * 12;
-          if (score < bestScore) { bestObjective = point; bestScore = score; }
-        }
-        const sameObjective=p.botObjective?.id===bestObjective?.id;
-        const insideZone=bestObjective&&dist(p,bestObjective)<CAPTURE_RADIUS-1.5;
-        p.botObjective=bestObjective;
-        if(bestObjective){
-          if(!sameObjective||!p.botGoal||!insideZone||this.random()<.35){
-            p.botGoal=this.pickObjectiveSpot(p,bestObjective);
-            p.botPath=this.pathfind(p,p.botGoal);
-          }else{
-            p.botWatchYaw=(p.botWatchYaw??p.yaw)+((p.botSlot??0)%2?1:-1)*(.45+this.random()*.5);
+        this.assignBotRole(p);
+        const role=p.botRole;
+        let fragSpot=null;
+        if(role==='fragger'){
+          const enemies=[];
+          for(const e of this.players.values())if(e.alive&&e.team!==p.team)enemies.push(e);
+          if(enemies.length){
+            enemies.sort((a,b)=>dist(p,a)-dist(p,b));
+            const prey=enemies[Math.floor(this.random()*Math.min(4,enemies.length))];
+            fragSpot={x:prey.x,z:prey.z};
+            for(let i=0;i<8;i++){
+              const a=this.random()*Math.PI*2,r=2+this.random()*6;
+              const tx=prey.x+Math.cos(a)*r,tz=prey.z+Math.sin(a)*r;
+              if(!this.collides(tx,tz,0,PLAYER_RADIUS+.35)&&!this.blocked[this.gridIndex(tx,tz)]){fragSpot={x:tx,z:tz};break;}
+            }
           }
         }
-        p.nextThink=3+this.random()*2;
+        if(fragSpot){
+          p.botObjective=null;
+          p.botGoal=fragSpot;
+          p.botPath=this.pathfind(p,fragSpot);
+          p.botHoldCrouch=false;
+          p.nextThink=2.5+this.random()*2.5;
+        }else{
+          let bestObjective = null, bestScore = Infinity;
+          for (const point of this.points) {
+            let assigned = 0;
+            for (const ally of this.players.values()) {
+              if (ally !== p && ally.team === p.team && ally.botObjective?.id === point.id) assigned++;
+            }
+            let score;
+            if (role === 'flanker') score = dist(p, point) * 0.25 + this.random() * 140 + assigned * 6 + (point.id === p.botObjective?.id ? 80 : 0);
+            else if (role === 'defender') score = dist(p, point) + (point.owner === p.team ? (point.contested ? -200 : 0) : 260) + this.random() * 30 + assigned * 8;
+            else score = dist(p, point) + (point.owner === p.team ? 220 : 0) + this.random() * 25 + assigned * 12;
+            if (score < bestScore) { bestObjective = point; bestScore = score; }
+          }
+          const sameObjective=p.botObjective?.id===bestObjective?.id;
+          const insideZone=bestObjective&&dist(p,bestObjective)<CAPTURE_RADIUS-1.5;
+          p.botObjective=bestObjective;
+          if(bestObjective){
+            if(!sameObjective||!p.botGoal||!insideZone||this.random()<.35){
+              p.botGoal=this.pickObjectiveSpot(p,bestObjective);
+              p.botPath=this.pathfind(p,p.botGoal);
+            }else{
+              p.botWatchYaw=(p.botWatchYaw??p.yaw)+((p.botSlot??0)%2?1:-1)*(.45+this.random()*.5);
+            }
+          }
+          p.nextThink=(role==='flanker'?6+this.random()*4:3+this.random()*2);
+        }
       }
       const goal=p.botGoal||p.botObjective;
       while(p.botPath.length&&dist(p,p.botPath[0])<1.4)p.botPath.shift();
@@ -455,25 +489,33 @@ export class Simulation {
       }
     }
     if(p.ammo===0||(p.ammo<6&&!target))input.reload=true;
-    if(p.gadgetTime<=0){
+    if(p.gadgetTime<=0&&this.time>=(p.nextGadgetAt||0)){
       const wep=getWeapon(p.classId,p.weaponId);
-      if(p.classId==='medic'){
-        let hurtAlly=p.hp<78;
-        if(!hurtAlly)for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&ally.hp<82&&dist(p,ally)<11){hurtAlly=true;break;}
-        if(hurtAlly)input.gadget=true;
-      }else if(p.classId==='support'){
-        let needAmmo=p.reserve<wep.reserve*.75||(p.botObjective&&dist(p,p.botObjective)<CAPTURE_RADIUS+3);
-        if(!needAmmo)for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&ally!==p&&dist(p,ally)<11){needAmmo=true;break;}
-        if(needAmmo)input.gadget=true;
-      }else if(p.classId==='recon'){
-        let enemyNear=Boolean(target)||(p.botObjective&&dist(p,p.botObjective)<36);
-        if(!enemyNear)for(const enemy of this.players.values())if(enemy.alive&&enemy.team!==p.team&&dist(p,enemy)<46){enemyNear=true;break;}
-        if(enemyNear)input.gadget=true;
-      }else if(p.hp<75||(target&&p.hp<96)){
-        input.gadget=true;
+      const onPoint=Boolean(p.botObjective)&&dist(p,p.botObjective)<CAPTURE_RADIUS-1;
+      let alliesNear=0,woundedNear=false,lowAmmoNear=false;
+      for(const ally of this.players.values()){
+        if(ally===p||!ally.alive||ally.team!==p.team||dist(p,ally)>9)continue;
+        alliesNear++;
+        if(ally.hp<60)woundedNear=true;
+        const aw=getWeapon(ally.classId,ally.weaponId);
+        if(ally.reserve<aw.reserve*.45)lowAmmoNear=true;
       }
-    }
-    if(target&&p.grenades>0&&(p.grenadeCooldown||0)<=0&&this.time>=(p.nextGrenadeAt||0)&&this.time>=(p.botReactAt||0)+.35){
+      let use=false;
+      if(p.classId==='medic'){
+        use=woundedNear||(p.hp<50&&alliesNear>0)||(onPoint&&alliesNear>0&&this.random()<.5);
+      }else if(p.classId==='support'){
+        use=lowAmmoNear||(onPoint&&alliesNear>0&&this.random()<.5);
+      }else if(p.classId==='recon'){
+        use=Boolean(target)&&this.random()<.4;
+        if(!use&&onPoint)for(const enemy of this.players.values())if(enemy.alive&&enemy.team!==p.team&&dist(p,enemy)<40){use=true;break;}
+      }else{
+        use=p.hp<55&&(Boolean(target)||recentlyHurt);
+      }
+      if(use){
+        input.gadget=true;
+        p.nextGadgetAt=this.time+14+this.random()*10;
+      }
+    }    if(target&&p.grenades>0&&(p.grenadeCooldown||0)<=0&&this.time>=(p.nextGrenadeAt||0)&&this.time>=(p.botReactAt||0)+.35){
       const d=Math.sqrt(bestSquared);
       if(d>11&&d<25&&Math.abs(angleDifference(Math.atan2(-(target.x-p.x),-(target.z-p.z)),input.yaw))<.22){
         input.grenade=true;

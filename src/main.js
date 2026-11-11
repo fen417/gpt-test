@@ -1,4 +1,4 @@
-import './style.css';
+﻿import './style.css';
 import {GameRenderer} from './renderer.js';
 import {Simulation} from '../shared/simulation.js';
 import {MAP,CLASSES,WEAPONS,CLASS_WEAPONS,defaultWeaponId,getWeapon,CAPTURE_RADIUS} from '../shared/world.js';
@@ -16,7 +16,7 @@ let fireTap=false, recoilPitch=0, recoilYaw=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
-let sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
+let gfx={shadows:'auto',resolution:'auto'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -422,7 +422,10 @@ $('spawn-point').addEventListener('change',event=>selectSpawnPoint(event.target.
 $('resume').addEventListener('click',()=>{if(!active){show('pause',false);return;}audio.unlock();requestControl();});
 $('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подготовь обзор и звук перед высадкой.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause');});
 $('unlocked').addEventListener('click',()=>{unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
-for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>leave());
+for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>{
+  if(id!=='result-leave'&&performance.now()-lastFireClick<600)return;
+  leave();
+});
 $('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(mode==='host'){multiplayer.startMatch({bots:Number($('lobby-population').value),difficulty:$('lobby-difficulty').value});enter();}else{leave();toast('Создай новую комнату для следующей операции.');}});
 function triggerRespawn(){
   const p=local();if(!p||p.alive||p.respawnIn>0)return;
@@ -440,6 +443,9 @@ $('sensitivity').addEventListener('input',event=>{sensitivity=Number(event.targe
 $('quality').value=read('quality','high');quality=$('quality').value;
 document.body.classList.toggle('low-quality',quality==='low');
 $('quality').addEventListener('change',event=>{quality=event.target.value;document.body.classList.toggle('low-quality',quality==='low');save('quality',quality);});
+for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution']]){const el=$(id);const stored=read(id,'auto');el.value=[...el.options].some(o=>o.value===stored)?stored:'auto';gfx[key]=el.value;el.addEventListener('change',event=>{gfx[key]=event.target.value;save(id,gfx[key]);});}
+$('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
+$('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);toast('Сглаживание применится после перезагрузки страницы.');});
 $('volume').value=read('volume','0.5');audio.volume=Number($('volume').value);
 $('volume').addEventListener('input',event=>{audio.volume=Number(event.target.value);save('volume',audio.volume);});
 for(const [id,fallback,min,max,assign] of [['fov',85,70,100,value=>fov=value],['brightness',1,.8,1.3,value=>brightness=value],['music-volume',.45,0,1,value=>{musicVolume=value;setMusic();}],['effects-volume',.7,0,1,value=>{effectsVolume=value;audio.setEffectsVolume?.(value);}]]){
@@ -484,7 +490,8 @@ document.addEventListener('mousemove',event=>{
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
 });
-document.addEventListener('mousedown',event=>{if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
+let lastFireClick=0;
+document.addEventListener('mousedown',event=>{if(event.button===0&&active)lastFireClick=performance.now();if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{
@@ -941,7 +948,7 @@ function frame(now){
     }else{multiplayer.sendInput(lastInput);pulses.clear();fireTap=false;}
   }
   const currentPlayer=local();
-  renderer.render(active?state:null,localId,dt,{...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,brightness,shake:cameraShake,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+  renderer.render(active?state:null,localId,dt,{...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,brightness,shake:cameraShake,gfx,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
   document.body.classList.toggle('scoped',scoped);
@@ -949,7 +956,7 @@ function frame(now){
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
 }
 try{
-  renderer=new GameRenderer(canvas);renderer.resize();window.addEventListener('resize',()=>renderer.resize());
+  renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto')});renderer.resize();window.addEventListener('resize',()=>renderer.resize());
   if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';document.body.classList.toggle('low-quality',true);}
   for(const p of MAP.points){const objective=document.createElement('div');objective.id=`objective-${p.id}`;objective.className='objective';const label=document.createElement('span');label.textContent=p.id;objective.append(label);$('objective-strip').append(objective);const marker=document.createElement('div');marker.id=`marker-${p.id}`;marker.className='world-marker';const letter=document.createElement('b'),distance=document.createElement('span');letter.textContent=p.id;marker.append(letter,distance);$('world-markers').append(marker);}
   selectClass(selectedClass,false);updateKeybindUI();audio.setMode?.('menu');status('Сектор готов. Выбери класс и вступай в бой.');requestAnimationFrame(frame);

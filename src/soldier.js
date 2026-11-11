@@ -1,7 +1,8 @@
-import * as THREE from 'three';
+﻿import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import { drawTeamEmblem } from './logos.js';
 
 // Every soldier is ONE skinned mesh (one draw call + one shadow call) driven by
 // a small bone hierarchy. Parts are painted with vertex colours over a shared
@@ -18,7 +19,10 @@ const THROW_TIME = .78;
 const TAU = Math.PI * 2;
 
 // Atlas regions: [u0, u1, roughness, metalness]. Region 0 is woven camouflage.
-const REGIONS = [[0, .5, .95, 0], [.5, .625, .84, 0], [.625, .75, .58, .08], [.75, .875, .4, .66], [.875, 1, .2, .35]];
+const ATLAS_W = 1280;
+const REGION_PX = [[0, 512, .95, 0], [512, 640, .84, 0], [640, 768, .58, .08], [768, 896, .4, .66], [896, 1024, .2, .35], [1024, 1152, .75, 0], [1152, 1280, .75, 0]];
+const REGIONS = REGION_PX.map(([a, b, rough, metal]) => [a / ATLAS_W, b / ATLAS_W, rough, metal]);
+const LOGO_COLORS = [['#5bd9e8', '#14262b'], ['#f0a15d', '#2a1c12']];
 const DUMMY = new THREE.MeshBasicMaterial();
 let shapes = null;
 function geometry() {
@@ -54,24 +58,35 @@ function palette(team) {
     scarf: paint(team ? 0x9a8762 : 0x4f5b48),
     white: paint(0xe4e2d6),
     red: paint(0xb3352c),
+    logo: paint(0xffffff, 5 + (team ? 1 : 0)),
   };
 }
 
 function soldierMaterial(owner) {
   if (owner.soldierAtlas) return owner.soldierAtlas;
-  const W = 1024, H = 512;
+  const W = ATLAS_W, H = 512;
   const color = document.createElement('canvas'), surface = document.createElement('canvas');
   color.width = surface.width = W; color.height = surface.height = H;
   const c = color.getContext('2d'), s = surface.getContext('2d');
   const cloth = owner.surfaces?.maps?.cloth?.image;
-  c.fillStyle = '#b5b39a'; c.fillRect(0, 0, W / 2, H);
-  if (cloth) c.drawImage(cloth, 0, 0, cloth.width, cloth.height, 0, 0, W / 2, H);
+  c.fillStyle = '#b5b39a'; c.fillRect(0, 0, 512, H);
+  if (cloth) c.drawImage(cloth, 0, 0, cloth.width, cloth.height, 0, 0, 512, H);
   let seed = 4111;
   const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
   for (const [index, [u0, u1, roughness, metalness]] of REGIONS.entries()) {
     const x = u0 * W, w = (u1 - u0) * W;
     s.fillStyle = `rgb(0,${Math.round(roughness * 255)},${Math.round(metalness * 255)})`; s.fillRect(x, 0, w, H);
     if (!index) continue;
+    if (index >= 5) {
+      // Team emblem decals: drawn square, then stretched to fill the tall atlas strip.
+      const team = index - 5, [fg, bg] = LOGO_COLORS[team], tile = document.createElement('canvas');
+      tile.width = tile.height = 128;
+      const t = tile.getContext('2d');
+      t.fillStyle = bg; t.fillRect(0, 0, 128, 128);
+      drawTeamEmblem(t, 64, 64, 118, team, fg, '#f3f2ee', bg);
+      c.drawImage(tile, 0, 0, 128, 128, x, 0, w, H);
+      continue;
+    }
     c.fillStyle = '#f3f2ee'; c.fillRect(x, 0, w, H);
     // A faint weave/grain keeps flat-painted gear from looking like plastic.
     for (let n = 0; n < 2600; n++) {
@@ -228,6 +243,7 @@ function makeArm(spine, c, side, classId) {
   spine.add(arm); arm.add(elbow); elbow.add(wrist);
   volume(arm, c.uniform, [[-.297, .054, .054], [-.22, .061, .066], [-.1, .074, .077], [-.03, .072, .07], [.027, .052, .05], [.05, .026, .026]], 12, [0, 0, 0, .2, .6, .85]);
   round(arm, c.patch, side * .067, -.115, 0, .018, .081, .082);
+  block(arm, c.logo, side * .0785, -.115, 0, .004, .066, .066);
   if (classId === 'medic') {
     shape(arm, geometry().cyl, c.white, 0, -.07, 0, .077, .045, .08);
     block(arm, c.red, side * .078, -.07, 0, .006, .03, .01);
@@ -371,6 +387,7 @@ function makeTorso(pose, spine, c, classId) {
   }
   for (let n = 0; n < 4; n++) block(spine, c.web, 0, 1.246 + n * .025, -.171, .244 - n * .012, .011, .014);
   round(spine, c.patch, .118, 1.322, -.145, .065, .027, .014);
+  block(spine, c.logo, -.118, 1.31, -.152, .075, .075, .006);
   round(spine, c.rubber, -.147, 1.238, -.157, .047, .115, .054);
   tube(spine, c.rubber, -.149, 1.371, -.16, .007, .17);
   // Class-specific load.
@@ -379,6 +396,7 @@ function makeTorso(pose, spine, c, classId) {
   round(spine, c.armor, 0, 1.205, .159 + depth / 2 - .058, .258, height, depth);
   round(spine, c.web, 0, 1.145, .159 + depth - .058 + .02, .207, .138, .039);
   for (const x of [-.074, .074]) block(spine, c.web, x, 1.217, .183 + depth - .058 + .02, .026, .248, .018);
+  block(spine, c.logo, 0, 1.145, .121 + depth + .0195 + .003, .105, .105, .006);
   if (classId === 'medic') {
     const z = .159 + depth - .058 + .042;
     block(spine, c.white, 0, 1.3, z, .11, .11, .008);

@@ -1,5 +1,5 @@
-// The same geometry drives rendering, navigation, and server collision.
-export const PROTOCOL_VERSION=2;
+﻿// The same geometry drives rendering, navigation, and server collision.
+export const PROTOCOL_VERSION=3;
 export const WEAPONS = {
   ar416: { id: 'ar416', classId: 'assault', name: 'AR-416', weapon: 'AR-416', type: 'ШТУРМОВАЯ ВИНТОВКА', mag: 30, reserve: 150, damage: 27, interval: .105, spread: .012, recoil: .019, reload: 2, speed: 6.3, range: 150 },
   ak12:  { id: 'ak12',  classId: 'assault', name: 'АК-12М', weapon: 'АК-12М', type: 'ТЯЖЁЛЫЙ АВТОМАТ',   mag: 30, reserve: 150, damage: 33, interval: .125, spread: .014, recoil: .024, reload: 2.15, speed: 6.15, range: 165 },
@@ -166,6 +166,20 @@ for(const [x,z,w,d,h,kind,color]of [
   [36,75,5.6,6.8,3.2,'tent','#757960'],
 ])add(x,z,w,d,h,kind,color);
 
+// Spawn compounds (HQ): sealed on the sides and back with container walls; the only way out is
+// through a staggered screen of trucks and tents, so nobody can camp the spawn from the avenue.
+for(const s of [-1,1]){
+  for(const [x,z,w,d,h,kind,color]of [
+    [-8.5,134,8,3,3.2,'truck','#5f7268'],
+    [8.5,134,8,3,3.2,'truck','#6c785e'],
+    [0,126,7.5,3,3.2,'truck','#54686e'],
+    [-16,131,5,12,2.8,'container','#607d7c'],
+    [16,131,5,12,2.8,'container','#7b6d54'],
+    [-13.5,147,4.5,20,2.8,'container','#837656'],
+    [13.5,147,4.5,20,2.8,'container','#607d7c'],
+    [0,158.5,24,4.5,2.8,'container','#7b6d54'],
+  ])add(x,z*s,w,d,h,kind,color);
+}
 // Fortified sandbag positions along avenue medians, intersections and capture approaches
 for(const [x,z,w,d]of [
   [-10.5,-132,2.4,5.2],[10.5,-116,2.4,5.2],[-10.5,-76,2.4,5.2],[10.5,-48,2.4,5.2],
@@ -202,7 +216,7 @@ for(const [x,z,w,d,h,kind]of [
   [-44,-21,3,5,1.25,'barrier'],[44,-21,3,5,1.25,'barrier'],[-44,21,3,5,1.25,'barrier'],[44,21,3,5,1.25,'barrier'],
   [-84,-21,3.4,3.4,1.45,'crate'],[84,-21,3.4,3.4,1.45,'crate'],[-84,21,3.4,3.4,1.45,'crate'],[84,21,3.4,3.4,1.45,'crate'],
   [-124,-52,3.2,3.2,1.4,'crate'],[124,-52,3.2,3.2,1.4,'crate'],[-124,52,3.2,3.2,1.4,'crate'],[124,52,3.2,3.2,1.4,'crate'],
-  [-16,136,6,1.4,1.2,'barrier'],[16,136,6,1.4,1.2,'barrier'],[-16,-136,6,1.4,1.2,'barrier'],[16,-136,6,1.4,1.2,'barrier'],
+  
   [-42,-126,3.5,3.5,1.4,'crate'],[42,-126,3.5,3.5,1.4,'crate'],[-42,126,3.5,3.5,1.4,'crate'],[42,126,3.5,3.5,1.4,'crate'],
   [-118,-126,12,9,4.5,'warehouse'],[118,126,12,9,4.5,'warehouse'],[-118,126,12,9,4.5,'warehouse'],[118,-126,12,9,4.5,'warehouse'],
 ])add(x,z,w,d,h,kind,kind==='crate'?'#9f8a67':kind==='barrier'?'#a6a18e':'#8a9387');

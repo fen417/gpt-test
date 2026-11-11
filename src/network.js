@@ -187,6 +187,15 @@ export class Multiplayer {
         else if (this._mode === 'host' && ['peer-unavailable', 'webrtc'].includes(error?.type)) {
           // An individual guest failing must not destroy the host's running match.
           this.onStatus('Один из игроков не смог установить прямое соединение. Матч продолжается.');
+        } else if (['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected', 'webrtc', 'peer-unavailable'].includes(error?.type)
+          && (this._mode === 'host' || this._connection?.open)) {
+          // Signaling-server hiccups must not kick players out of a live match.
+          this.onStatus('Связь с поиском комнат нестабильна. Матч продолжается.');
+          this._timeout(() => {
+            if (this._active(generation) && !peer.destroyed && peer.disconnected) {
+              try { peer.reconnect(); } catch { /* Data channels remain usable. */ }
+            }
+          }, 2000);
         } else this._fail(peerMessage(error), generation);
       });
       peer.on('disconnected', () => {
