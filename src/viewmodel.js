@@ -16,6 +16,7 @@ export function prepareViewModel(group){
 export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   let closest=maxDistance;
   for(const box of boxes){
+    if(Math.abs(origin.x-box.x)>box.w/2+closest||Math.abs(origin.z-box.z)>box.d/2+closest)continue;
     let near=0,far=closest;
     for(const [axis,min,max]of [['x',box.x-box.w/2,box.x+box.w/2],['y',0,box.h],['z',box.z-box.d/2,box.z+box.d/2]]){
       const component=direction[axis];
@@ -28,10 +29,12 @@ export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   return closest;
 }
 
-export function drawWorldAndViewModel(renderer,scene,camera,weapon){
+export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot){
   const mask=camera.layers.mask,autoClear=renderer.autoClear,autoReset=renderer.info.autoReset;
   const background=scene.background;
   const shadowAutoUpdate=renderer.shadowMap?.autoUpdate;
+  const worldVisible=worldRoot?.visible;
+  const updateWorld=scene.matrixWorldAutoUpdate;
   renderer.info.autoReset=false;renderer.info.reset();
   try{
     renderer.autoClear=true;camera.layers.set(0);renderer.render(scene,camera);
@@ -39,10 +42,15 @@ export function drawWorldAndViewModel(renderer,scene,camera,weapon){
       // A solid scene background forces Three.js to clear color even with autoClear off.
       scene.background=null;
       if(renderer.shadowMap)renderer.shadowMap.autoUpdate=false;
+      if(worldRoot)worldRoot.visible=false;
+      // Both passes share a camera and transforms. The first pass already updated them.
+      scene.matrixWorldAutoUpdate=false;
       renderer.autoClear=false;renderer.clearDepth();camera.layers.set(VIEWMODEL_LAYER);renderer.render(scene,camera);
     }
   }finally{
     scene.background=background;
+    if(worldRoot)worldRoot.visible=worldVisible;
+    scene.matrixWorldAutoUpdate=updateWorld;
     camera.layers.mask=mask;
     renderer.autoClear=autoClear;
     renderer.info.autoReset=autoReset;

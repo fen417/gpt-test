@@ -104,11 +104,31 @@ export function createSurfaceMaterials(renderer) {
   };
 }
 
+export function mapSector(matrix) {
+  const position = matrix.elements;
+  return `${Math.floor(position[12] / 64)},${Math.floor(position[14] / 64)}`;
+}
+
+export function addSectorInstances(scene, geometry, material, matrices) {
+  const sectors = new Map();
+  for (const matrix of matrices) {
+    const sector = mapSector(matrix);
+    if (!sectors.has(sector)) sectors.set(sector, []);
+    sectors.get(sector).push(matrix);
+  }
+  for (const instances of sectors.values()) {
+    const mesh = new THREE.InstancedMesh(geometry, material, instances.length);
+    instances.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
+    mesh.computeBoundingSphere();
+    scene.add(mesh);
+  }
+}
+
 export function makeSky(scene, renderer) {
   const uniforms={sunDirection:{value:new THREE.Vector3(-.65,.42,.5).normalize()}};
   const shader = new THREE.ShaderMaterial({
     side:THREE.BackSide,depthWrite:false,fog:false,uniforms,
-    vertexShader:'varying vec3 direction; void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    vertexShader:'varying vec3 direction; void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_Position.z=gl_Position.w;}',
     fragmentShader:`
       varying vec3 direction;uniform vec3 sunDirection;
       float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -121,7 +141,8 @@ export function makeSky(scene, renderer) {
         sky+=vec3(1.,.77,.46)*(sun*2.+halo*.14);sky=mix(vec3(.60,.65,.65),sky,smoothstep(-.12,.02,d.y));gl_FragColor=vec4(sky,1.);}
     `,
   });
-  const sky=new THREE.Mesh(new THREE.SphereGeometry(700,32,16),shader);sky.renderOrder=-10;sky.frustumCulled=false;sky.userData.noBatch=true;scene.add(sky);
+  // Fill only uncovered pixels, so buildings and ground reject the cloud shader with depth testing.
+  const sky=new THREE.Mesh(new THREE.SphereGeometry(700,32,16),shader);sky.renderOrder=1000;sky.frustumCulled=false;sky.userData.noBatch=true;scene.add(sky);
   // A sky-only environment gives metal, windows and puddles consistent reflections.
   const environmentScene=new THREE.Scene();environmentScene.add(new THREE.Mesh(new THREE.SphereGeometry(100,32,16),shader));
   const generator=new THREE.PMREMGenerator(renderer);const target=generator.fromScene(environmentScene,.03,.1,200);
@@ -160,7 +181,7 @@ export function addDistrictDetails(owner, MAP) {
     if(side<2){x=(random()-.5)*(size+25);z=(side===0?-1:1)*(limit+3+random()*17);}else{x=(side===2?-1:1)*(limit+3+random()*17);z=(random()-.5)*(size+25);}
     const h=.3+random()*.8;dummy.position.set(x,h/2,z);dummy.scale.set(.6+random(),h,1);dummy.rotation.set(0,random()*Math.PI,random()*.2);dummy.updateMatrix();grassMatrices.push(dummy.matrix.clone());
   }
-  const grass=new THREE.InstancedMesh(grassGeo,grassMat,grassMatrices.length);grassMatrices.forEach((matrix,i)=>grass.setMatrixAt(i,matrix));scene.add(grass);
+  addSectorInstances(scene,grassGeo,grassMat,grassMatrices);
   const rockGeo=new THREE.DodecahedronGeometry(1,0),rockMat=surfaces.concrete;
   const rocks=new THREE.InstancedMesh(rockGeo,rockMat,64);
   for(let i=0;i<64;i++){const a=i/64*Math.PI*2,r=limit+8+random()*14;dummy.position.set(Math.sin(a)*r,.2,Math.cos(a)*r);dummy.rotation.set(random(),random(),random());dummy.scale.set(1+random()*2,.5+random(),1+random()*2);dummy.updateMatrix();rocks.setMatrixAt(i,dummy.matrix);}rocks.castShadow=true;scene.add(rocks);

@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+#world-markers .world-marker{left:0;top:0}
 #crosshair{width:calc(var(--spread-gap,6px) * 2 + 12px);height:calc(var(--spread-gap,6px) * 2 + 12px);transition:width .075s linear,height .075s linear,opacity .12s ease}
 #crosshair.aim{transform:translate(-50%,-50%)}
 #crosshair i:nth-child(-n+2){left:calc(50% - 1px)}

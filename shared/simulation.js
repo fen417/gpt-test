@@ -7,25 +7,44 @@ const names = ['Ворон','Север','Волк','Туман','Барс','К�
 const classKeys = Object.keys(CLASSES);
 const validClass = value => typeof value==='string' && Object.hasOwn(CLASSES,value);
 const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+const withBounds = box => ({
+  ...box,minX:box.x-box.w/2,maxX:box.x+box.w/2,minZ:box.z-box.d/2,maxZ:box.z+box.d/2,
+});
+const colliders = MAP.boxes.map(withBounds);
+const grenadeColliders = MAP.boxes.map(box => withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12}));
 
 export function sanitizeInput(input = {}) {
   if(!input||typeof input!=='object')input={};
   return {
     forward: clamp(finite(input.forward), -1, 1), strafe: clamp(finite(input.strafe), -1, 1),
     yaw: finite(input.yaw) % (Math.PI * 2), pitch: clamp(finite(input.pitch), -1.45, 1.45),
-    ...Object.fromEntries(['sprint','crouch','jump','fire','aim','reload','gadget','grenade'].map(key=>[key,input[key]===true])),
+    sprint:input.sprint===true,crouch:input.crouch===true,jump:input.jump===true,
+    fire:input.fire===true,aim:input.aim===true,reload:input.reload===true,
+    gadget:input.gadget===true,grenade:input.grenade===true,
   };
 }
 
 function rayBox(origin, direction, box, maximum) {
   let near = 0, far = maximum;
-  for (const [axis,min,max] of [['x',box.x-box.w/2,box.x+box.w/2],['y',0,box.h],['z',box.z-box.d/2,box.z+box.d/2]]) {
-    if (Math.abs(direction[axis]) < 1e-8) { if (origin[axis]<min || origin[axis]>max) return Infinity; continue; }
-    let a=(min-origin[axis])/direction[axis], b=(max-origin[axis])/direction[axis];
-    if(a>b)[a,b]=[b,a]; near=Math.max(near,a); far=Math.min(far,b);
-    if(near>far)return Infinity;
+  if (Math.abs(direction.x) < 1e-8) {
+    if (origin.x < box.minX || origin.x > box.maxX) return Infinity;
+  } else {
+    const a=(box.minX-origin.x)/direction.x, b=(box.maxX-origin.x)/direction.x;
+    near=Math.max(near,Math.min(a,b)); far=Math.min(far,Math.max(a,b));
+    if (near > far) return Infinity;
   }
-  return near;
+  if (Math.abs(direction.z) < 1e-8) {
+    if (origin.z < box.minZ || origin.z > box.maxZ) return Infinity;
+  } else {
+    const a=(box.minZ-origin.z)/direction.z, b=(box.maxZ-origin.z)/direction.z;
+    near=Math.max(near,Math.min(a,b)); far=Math.min(far,Math.max(a,b));
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(direction.y) < 1e-8) return origin.y < 0 || origin.y > box.h ? Infinity : near;
+  const a=-origin.y/direction.y, b=(box.h-origin.y)/direction.y;
+  near=Math.max(near,Math.min(a,b)); far=Math.min(far,Math.max(a,b));
+  return near<=far?near:Infinity;
 }
 
 function raySphere(origin, direction, center, radius) {
@@ -78,6 +97,8 @@ export class Simulation {
     this.events=[];this.eventId=0;this.winner=null;this.grenades=[];this.ticketClock=0;
     this.gridCell=4;this.gridSize=Math.ceil(MAP.size/this.gridCell);this.gridOrigin=-MAP.size/2;
     this.blocked=new Uint8Array(this.gridSize*this.gridSize);
+    this.pathPrevious=new Int32Array(this.blocked.length);
+    this.pathQueue=new Int32Array(this.blocked.length);
     for(let z=0;z<this.gridSize;z++)for(let x=0;x<this.gridSize;x++){
       const wx=this.gridOrigin+(x+.5)*this.gridCell,wz=this.gridOrigin+(z+.5)*this.gridCell;
       const clearance=this.gridCell/2+PLAYER_RADIUS+.1;
@@ -110,7 +131,18 @@ export class Simulation {
   collides(x,z,y=0,radius=PLAYER_RADIUS){
     return Math.abs(x)>MAP.size/2-2||Math.abs(z)>MAP.size/2-2||MAP.boxes.some(b=>y<b.h&&Math.abs(x-b.x)<b.w/2+radius&&Math.abs(z-b.z)<b.d/2+radius);
   }
-  lineClear(a,b){const length=Math.hypot(b.x-a.x,b.y-a.y,b.z-a.z);if(length<.01)return true;const d={x:(b.x-a.x)/length,y:(b.y-a.y)/length,z:(b.z-a.z)/length};return !MAP.boxes.some(box=>rayBox(a,d,box,length)<length-.1);}
+  lineClear(a,b){
+    const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
+    const length=Math.hypot(dx,dy,dz);
+    if(length<.1)return true;
+    const direction={x:dx/length,y:dy/length,z:dz/length};
+    const minX=Math.min(a.x,b.x),maxX=Math.max(a.x,b.x),minZ=Math.min(a.z,b.z),maxZ=Math.max(a.z,b.z);
+    for(const box of colliders){
+      if(box.maxX<minX||box.minX>maxX||box.maxZ<minZ||box.minZ>maxZ)continue;
+      if(rayBox(a,direction,box,length)<length-.1)return false;
+    }
+    return true;
+  }
   damage(victim,amount,attacker){
     if(!victim.alive||this.winner!==null||this.time<victim.invulnerableUntil)return;
     victim.hp=Math.max(0,victim.hp-amount);victim.lastHurt=this.time;
@@ -140,7 +172,7 @@ export class Simulation {
       const ground = -origin.y / direction.y;
       if (ground < closest) { closest = ground; impact = 'ground'; }
     }
-    for(const box of MAP.boxes){
+    for(const box of colliders){
       const distance=rayBox(origin,direction,box,closest);
       if(distance<closest){closest=distance;impact=impactMaterial(box.kind);}
     }
@@ -184,25 +216,39 @@ export class Simulation {
   gridIndex(x,z){return clamp(Math.floor((z-this.gridOrigin)/this.gridCell),0,this.gridSize-1)*this.gridSize+clamp(Math.floor((x-this.gridOrigin)/this.gridCell),0,this.gridSize-1);}
   pathfind(start,goal){
     const source=this.gridIndex(start.x,start.z),target=this.gridIndex(goal.x,goal.z);
-    const size=this.gridSize,queue=[source],prev=new Int32Array(size*size).fill(-1);prev[source]=source;let read=0,found=source;
-    while(read<queue.length){const cur=queue[read++];if(cur===target){found=cur;break;}const x=cur%size,z=Math.floor(cur/size);
-      if(Math.abs(x-target%size)+Math.abs(z-Math.floor(target/size))<Math.abs(found%size-target%size)+Math.abs(Math.floor(found/size)-Math.floor(target/size)))found=cur;
-      for(const [dx,dz]of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,nz=z+dz,n=nz*size+nx;if(nx<0||nx>=size||nz<0||nz>=size||this.blocked[n]||prev[n]!==-1)continue;prev[n]=cur;queue.push(n);}
+    const size=this.gridSize,queue=this.pathQueue,prev=this.pathPrevious;
+    prev.fill(-1);prev[source]=source;queue[0]=source;
+    const targetX=target%size,targetZ=Math.floor(target/size);
+    let read=0,write=1,found=source,best=Infinity;
+    while(read<write){
+      const cur=queue[read++];if(cur===target){found=cur;break;}
+      const x=cur%size,z=Math.floor(cur/size),remaining=Math.abs(x-targetX)+Math.abs(z-targetZ);
+      if(remaining<best){found=cur;best=remaining;}
+      for(const [dx,dz]of neighbors){
+        const nx=x+dx,nz=z+dz,n=nz*size+nx;
+        if(nx<0||nx>=size||nz<0||nz>=size||this.blocked[n]||prev[n]!==-1)continue;
+        prev[n]=cur;queue[write++]=n;
+      }
     }
     const result=[];for(let cur=found;cur!==source&&cur!==-1;cur=prev[cur])result.push({x:this.gridOrigin+(cur%size+.5)*this.gridCell,z:this.gridOrigin+(Math.floor(cur/size)+.5)*this.gridCell});return result.reverse();
   }
   thinkBot(p,dt){
     if(!p.alive)return;
     p.nextThink-=dt;const settings=this.botSettings;
-    let target=null,best=settings.awareness;
+    let target=null,bestSquared=settings.awareness**2;
     const eye={x:p.x,y:p.y+1.65,z:p.z};
+    const recentlyHurt=this.time-p.lastHurt<1.5;
     for(const other of this.players.values())if(other.alive&&other.team!==p.team){
-      const d=dist(p,other),heading=Math.atan2(-(other.x-p.x),-(other.z-p.z));
-      const aware=d<10||Math.abs(angleDifference(heading,p.yaw))<1.9||this.time-p.lastHurt<1.5||other.id===p.botTargetId;
-      if(d<best&&aware&&this.time>=other.invulnerableUntil&&this.lineClear(eye,{x:other.x,y:other.y+(other.input.crouch?.75:1.1),z:other.z})){target=other;best=d;}
+      const dx=other.x-p.x,dz=other.z-p.z,distanceSquared=dx*dx+dz*dz;
+      if(distanceSquared>=bestSquared||this.time<other.invulnerableUntil)continue;
+      const aware=distanceSquared<100||recentlyHurt||other.id===p.botTargetId||Math.abs(angleDifference(Math.atan2(-dx,-dz),p.yaw))<1.9;
+      if(aware&&this.lineClear(eye,{x:other.x,y:other.y+(other.input.crouch?.75:1.1),z:other.z})){
+        target=other;bestSquared=distanceSquared;
+      }
     }
     const input=sanitizeInput();
     if(target){
+      const best=Math.sqrt(bestSquared);
       if(p.botTargetId!==target.id){p.botTargetId=target.id;p.botReactAt=this.time+settings.reaction+this.random()*settings.reactionVariance;p.botBurstAt=p.botReactAt;p.botAimPhase=this.random()*Math.PI*2;}
       const dx=target.x-p.x,dz=target.z-p.z;
       const phase=p.botAimPhase+this.time*1.5;
@@ -275,7 +321,7 @@ export class Simulation {
       const delta={x:grenade.vx*dt,y:grenade.vy*dt,z:grenade.vz*dt},length=Math.hypot(delta.x,delta.y,delta.z);
       const direction=length>0?{x:delta.x/length,y:delta.y/length,z:delta.z/length}:{x:0,y:0,z:0};
       let nearest=length,hit=null;
-      for(const box of MAP.boxes){const inflated={...box,w:box.w+.24,d:box.d+.24,h:box.h+.12};const distance=rayBox(grenade,direction,inflated,length);if(distance<nearest){nearest=distance;hit=inflated;}}
+      for(const box of grenadeColliders){const distance=rayBox(grenade,direction,box,length);if(distance<nearest){nearest=distance;hit=box;}}
       if(hit){
         const travel=Math.max(0,nearest-.02);grenade.x+=direction.x*travel;grenade.y+=direction.y*travel;grenade.z+=direction.z*travel;
         const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.abs(grenade.y-hit.h)]];

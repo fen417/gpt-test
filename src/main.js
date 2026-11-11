@@ -7,7 +7,7 @@ import {CombatAudio} from './audio.js';
 
 const $=id=>document.getElementById(id);
 const show=(id,visible=true)=>$(id).classList.toggle('hidden',!visible);
-const text=(id,value)=>{$(id).textContent=value;};
+const text=(id,value)=>{const node=$(id),next=String(value);if(node.textContent!==next)node.textContent=next;};
 const audio=new CombatAudio();
 const canvas=$('game');
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
@@ -164,7 +164,7 @@ function hud(now){
   feed=feed.filter(e=>e.expires>now).slice(-5);$('killfeed').replaceChildren(...feed.map(e=>{const row=document.createElement('div'),a=document.createElement('b'),b=document.createElement('em');row.classList.toggle('enemy-kill',e.team!==player.team);a.textContent=e.killer;b.textContent=e.victim;row.append(a,document.createTextNode(`  [${e.weapon||'ГРАНАТА'}]  `),b);return row;}));
   const crosshair=$('crosshair');
   const spread=player.spread??CLASSES[player.classId].spread*.66;
-  const projectedSpread=Math.tan(spread)*canvas.clientHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
+  const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
   crosshair.style.setProperty('--spread-gap',`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`);
   crosshair.classList.toggle('aim',aim);crosshair.style.opacity=player.reloading||!player.alive?'0':'';
   $('hitmarker').style.opacity=now<hitUntil?'1':'0';$('damage-flash').style.opacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
@@ -172,7 +172,20 @@ function hud(now){
   if(!$('scoreboard').classList.contains('hidden')){$('score-rows').replaceChildren(...[...state.players].sort((a,b)=>Number(a.team!==player.team)-Number(b.team!==player.team)||b.kills-a.kills).map(p=>{const row=document.createElement('div');row.className=`score-row team${p.team===player.team?0:1}${p.id===localId?' local':''}`;for(const value of [`${p.alive?'●':'×'} ${p.name}${p.bot?' [AI]':''}`,CLASSES[p.classId].name,`${p.kills} / ${p.deaths}`]){const span=document.createElement('span');span.textContent=value;row.append(span);}return row;}));}
   minimap(player);
 }
-function markers(){if(!renderer.project)return;const player=local();if(!player)return;for(const point of state.points){const marker=$(`marker-${point.id}`),position=renderer.project(point.x,5,point.z);marker.style.display=position.visible?'flex':'none';marker.style.left=`${position.x}px`;marker.style.top=`${position.y}px`;marker.className=`world-marker ${point.owner===-1?'':point.owner===player.team?'friendly':'enemy'}`;marker.lastChild.textContent=`${Math.round(Math.hypot(point.x-player.x,point.z-player.z))} м`;}}
+function markers(){
+  const player=local();if(!player)return;
+  for(const point of state.points){
+    const marker=$(`marker-${point.id}`),position=renderer.project(point.x,5,point.z);
+    const display=position.visible?'flex':'none';
+    if(marker.style.display!==display)marker.style.display=display;
+    if(!position.visible)continue;
+    marker.style.transform=`translate3d(${position.x}px,${position.y}px,0) translate(-50%,-50%)`;
+    const style=`world-marker ${point.owner===-1?'':point.owner===player.team?'friendly':'enemy'}`;
+    if(marker.className!==style)marker.className=style;
+    const distance=`${Math.round(Math.hypot(point.x-player.x,point.z-player.z))} м`;
+    if(marker.lastChild.textContent!==distance)marker.lastChild.textContent=distance;
+  }
+}
 function frame(now){
   requestAnimationFrame(frame);const dt=Math.min((now-lastFrame)/1000,.08);lastFrame=now;frames++;fpsClock+=dt;
   if(fpsClock>=1){text('fps',`${Math.round(frames/fpsClock)} FPS`);fpsClock=0;frames=0;const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);canvas.dataset.renderStats=JSON.stringify(renderer.getStats?.()??{});}

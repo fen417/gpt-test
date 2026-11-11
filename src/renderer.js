@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { MAP, CLASSES, CAPTURE_RADIUS } from '../shared/world.js';
-import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign } from './visuals.js';
+import { createSurfaceMaterials, makeSky, addDistrictDetails, makeSign, addSectorInstances, mapSector } from './visuals.js';
 import {prepareViewModel,distanceToCover,drawWorldAndViewModel} from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
 import { createSoldierRig, animateSoldier } from './soldier.js';
@@ -10,6 +10,31 @@ import { createSoldierRig, animateSoldier } from './soldier.js';
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
+
+// Preserve Three's lighting equations inside each light's range. Outside it,
+// the stock shader produces zero, so it can skip attenuation and shading.
+const pointVector = 'vec3 lVector = pointLight.position - geometryPosition;';
+const boundedLightParameters = THREE.ShaderChunk.lights_pars_begin.replace(pointVector, `${pointVector}
+    if (pointLight.distance > 0.0 && dot(lVector, lVector) >= pointLight.distance * pointLight.distance) {
+      light.direction = vec3(0.0);
+      light.color = vec3(0.0);
+      light.visible = false;
+      return;
+    }`);
+const boundedLightFragment = THREE.ShaderChunk.lights_fragment_begin.replace(
+  /(getPointLightInfo\( pointLight, geometryPosition, directLight \);[\s\S]*?)(RE_Direct\( directLight,[^;]+;)/,
+  '$1if (directLight.visible) { $2 }',
+);
+
+function boundedPointLights(shader) {
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <lights_pars_begin>', boundedLightParameters)
+    .replace('#include <lights_fragment_begin>', boundedLightFragment);
+}
+
+function optimizeLighting(object) {
+  if (object.material?.isMeshStandardMaterial) object.material.onBeforeCompile = boundedPointLights;
+}
 
 function seeded(seed = 90210) {
   return () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
@@ -26,7 +51,9 @@ function canvasTexture(size, draw) {
 }
 
 function material(color, roughness = 0.85, metalness = 0.05, extra = {}) {
-  return new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
+  const result=new THREE.MeshStandardMaterial({color,roughness,metalness,...extra});
+  result.onBeforeCompile=boundedPointLights;
+  return result;
 }
 
 export class GameRenderer {
@@ -56,6 +83,9 @@ export class GameRenderer {
     this.cameraPlayerId = null;
     this.cameraAlive = null;
     this.scratchPosition = new THREE.Vector3();
+    this.viewFrustum = new THREE.Frustum();
+    this.viewProjection = new THREE.Matrix4();
+    this.lightBounds = new THREE.Sphere();
     this.surfaceCache = new Map();
     this.soldierMaterials = new Map();
     this.random = seeded();
@@ -105,8 +135,20 @@ export class GameRenderer {
     };
     this.buildWorld();
     this.mergeStaticWorld();
+    this.worldRoot = new THREE.Group();
+    for (const object of [...this.scene.children]) {
+      if (object.isPointLight) object.userData.lightsWeapon = true;
+      if (!object.isLight && object !== this.camera && object !== this.sun.target) this.worldRoot.add(object);
+    }
+    this.scene.add(this.worldRoot);
+    this.scene.updateMatrixWorld(true);
+    this.scene.matrixAutoUpdate = false;
+    this.worldRoot.traverse(object => {
+      if (object !== this.atmosphere.sky) object.matrixAutoUpdate = false;
+    });
     this.buildWeapon();
     this.scene.traverse(object=>{if(object.isLight)object.layers.enable(1);});
+    this.scene.traverse(optimizeLighting);
     this.wallStow=0;
     this.smokeTexture = canvasTexture(64, (ctx, size) => {
       const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
@@ -289,9 +331,7 @@ export class GameRenderer {
       }
     }
     for (const [matrices, mat] of [[frameMatrices, this.materials.edge], [windowMatrices, this.materials.window], [litMatrices, material(0xb5a27c, 0.6, 0.2, { emissive: 0x7c633c, emissiveIntensity: 0.45 })]]) {
-      if (!matrices.length) continue;
-      const mesh = new THREE.InstancedMesh(this.geo.box, mat, matrices.length);
-      matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix)); this.scene.add(mesh);
+      addSectorInstances(this.scene,this.geo.box,mat,matrices);
     }
     // The non-playable port skyline encloses the battlefield.
     const limit = size / 2;
@@ -339,7 +379,8 @@ export class GameRenderer {
     this.scene.traverse(object => {
       if (!object.isMesh || object.isInstancedMesh || object.userData.noBatch || Array.isArray(object.material)) return;
       for (let node = object; node; node = node.parent) if (dynamic.has(node) || node === this.camera) return;
-      const key = `${object.material.uuid}:${object.castShadow}:${object.receiveShadow}`;
+      const sector = object.material.transparent ? 'transparent' : mapSector(object.matrixWorld);
+      const key = `${object.material.uuid}:${object.castShadow}:${object.receiveShadow}:${!!object.geometry.index}:${sector}`;
       if (!batches.has(key)) batches.set(key, []);
       batches.get(key).push(object);
     });
@@ -349,6 +390,7 @@ export class GameRenderer {
       const geometry = mergeGeometries(sources, false);
       sources.forEach(source => source.dispose());
       if (!geometry) continue;
+      geometry.computeBoundingSphere();
       const combined = new THREE.Mesh(geometry, meshes[0].material);
       combined.castShadow = meshes[0].castShadow; combined.receiveShadow = meshes[0].receiveShadow;
       meshes.forEach(mesh => { mesh.removeFromParent(); if (mesh.geometry.userData.owned) mesh.geometry.dispose(); }); this.scene.add(combined);
@@ -381,7 +423,10 @@ export class GameRenderer {
   }
 
   makeSoldier(player) {
-    return createSoldierRig(this, player);
+    const soldier=createSoldierRig(this,player);
+    soldier.group.traverse(optimizeLighting);
+    this.worldRoot.add(soldier.group);
+    return soldier;
   }
 
   removeSoldier(soldier) {
@@ -458,14 +503,14 @@ export class GameRenderer {
           const geometry=new THREE.BufferGeometry().setFromPoints([origin,origin.clone().addScaledVector(direction,5)]);
           const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:0xffca79,transparent:true,opacity:.75,blending:THREE.AdditiveBlending,depthWrite:false}));
           line.frustumCulled=false;
-          this.scene.add(line);
+          this.worldRoot.add(line);
           this.effects.push({mesh:line,age:0,life:clamp(length/950,.048,.19),type:'tracer',origin,direction,length,ownedGeometry:true,ownedMaterial:true});
         }
         if(own&&this.weapon.visible){
           const yaw=player?.yaw||0,shell=new THREE.Mesh(this.geo.shell,this.shellMaterial);
           this.weaponRig.bolt.getWorldPosition(shell.position);
           shell.rotation.z=Math.PI/2;
-          this.scene.add(shell);
+          this.worldRoot.add(shell);
           this.effects.push({mesh:shell,age:0,life:1.1,type:'shell',vx:Math.cos(yaw)*2.9,vy:.85+this.random()*.7,vz:-Math.sin(yaw)*2.9,spin:8+this.random()*8});
           if(!this.lowQuality&&this.wallStow<.3&&(event.shotSeq??event.id)%2===0){
             const muzzle=this.weaponRig.muzzleFlash.getWorldPosition(this.scratchPosition);
@@ -495,13 +540,13 @@ export class GameRenderer {
   smoke(x, y, z, size, life, color) {
     if (this.effects.length > 180) return;
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, color, transparent: true, opacity: 0.6, depthWrite: false, rotation: this.random() * Math.PI }));
-    sprite.position.set(x, y, z); sprite.scale.setScalar(size); this.scene.add(sprite);
+    sprite.position.set(x, y, z); sprite.scale.setScalar(size); this.worldRoot.add(sprite);
     this.effects.push({ mesh: sprite, age: 0, life, size, type: 'smoke', vx: (this.random() - 0.5) * 0.6, vz: (this.random() - 0.5) * 0.6,ownedMaterial:true });
   }
 
   spark(x,y,z,force=1){
     if(this.effects.length>180)return;
-    const mesh=new THREE.Mesh(this.geo.sphere,this.sparkMaterial);mesh.scale.setScalar(.014*force);mesh.position.set(x,y,z);this.scene.add(mesh);
+    const mesh=new THREE.Mesh(this.geo.sphere,this.sparkMaterial);mesh.scale.setScalar(.014*force);mesh.position.set(x,y,z);this.worldRoot.add(mesh);
     this.effects.push({mesh,age:0,life:.2+this.random()*.2,type:'spark',vx:(this.random()-.5)*4*force,vy:(1+this.random()*2)*force,vz:(this.random()-.5)*4*force});
   }
 
@@ -509,7 +554,7 @@ export class GameRenderer {
     for (let i = this.effects.length - 1; i >= 0; i--) {
       const effect = this.effects[i]; effect.age += dt;
       if (effect.age >= effect.life) {
-        this.scene.remove(effect.mesh); if(effect.ownedGeometry)effect.mesh.geometry?.dispose();if(effect.ownedMaterial)effect.mesh.material?.dispose(); this.effects.splice(i, 1); continue;
+        effect.mesh.removeFromParent(); if(effect.ownedGeometry)effect.mesh.geometry?.dispose();if(effect.ownedMaterial)effect.mesh.material?.dispose(); this.effects.splice(i, 1); continue;
       }
       const alpha = 1 - effect.age / effect.life;
       if(effect.type==='tracer'){
@@ -542,7 +587,7 @@ export class GameRenderer {
       let mesh = this.grenadeMeshes.get(grenade.id);
       if (!mesh) {
         mesh = new THREE.Mesh(this.geo.sphere, material(0x485545, 0.7, 0.4, { emissive: 0xa96220, emissiveIntensity: 0.2 }));
-        mesh.scale.set(0.11, 0.15, 0.11); mesh.castShadow = true; this.scene.add(mesh); this.grenadeMeshes.set(grenade.id, mesh);
+        mesh.scale.set(0.11, 0.15, 0.11); mesh.castShadow = true; this.worldRoot.add(mesh); this.grenadeMeshes.set(grenade.id, mesh);
       }
       mesh.visible = true; mesh.position.set(grenade.x, grenade.y, grenade.z); mesh.rotation.x = this.clock * 4;
       mesh.material.emissiveIntensity = 0.1 + (Math.sin(this.clock * 12) + 1) * 0.6;
@@ -553,10 +598,34 @@ export class GameRenderer {
   resize() {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
+    this.viewportWidth=width;
+    this.viewportHeight=height;
     this.renderer.setSize(width, height, false); this.camera.aspect = width / height; this.camera.updateProjectionMatrix();
   }
 
-  drawScene(){drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon);}
+  drawScene(menu=false){
+    if(menu!==this.staticMenuShadows){
+      this.staticMenuShadows=menu;
+      this.sun.shadow.autoUpdate=!menu;
+      this.sun.shadow.needsUpdate=true;
+    }
+    this.camera.updateMatrixWorld();
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
+    this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
+    for(const light of this.scene.children){
+      if(!light.isPointLight||light.distance<=0)continue;
+      // Point lights contribute exactly zero beyond their cutoff sphere.
+      this.lightBounds.center.copy(light.position);
+      this.lightBounds.radius=light.distance;
+      if(this.viewFrustum.intersectsSphere(this.lightBounds))light.layers.enable(0);
+      else light.layers.disable(0);
+      if(light.userData.lightsWeapon){
+        if(this.camera.position.distanceToSquared(light.position)<(light.distance+2)**2)light.layers.enable(1);
+        else light.layers.disable(1);
+      }
+    }
+    drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
+  }
 
   render(state, localId, dt, view = {}) {
     dt = Math.min(dt || 0.016, 0.1); this.clock += dt;
@@ -565,7 +634,7 @@ export class GameRenderer {
     this.renderer.toneMappingExposure=1.06*clamp(Number(view.brightness)||1,.6,1.5);
     const low = view.quality === 'low';
     if (this.lowQuality !== low) {
-      this.lowQuality = low; this.renderer.shadowMap.enabled = !low; this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, low ? 1 : 1.75)); this.resize();
+      this.lowQuality = low; this.renderer.shadowMap.enabled = !low; this.sun.shadow.needsUpdate=true; this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, low ? 1 : 1.75)); this.resize();
     }
     if (!state?.players) {
       this.cameraPlayerId = null;
@@ -582,7 +651,7 @@ export class GameRenderer {
       for (const soldier of this.soldiers.values()) soldier.group.visible = false;
       for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
       this.updateEffects(dt);
-      this.drawScene(); return;
+      this.drawScene(true); return;
     }
     const player = state.players.find(p => p.id === localId);
     const isAlive = player?.alive !== false;
@@ -674,9 +743,8 @@ export class GameRenderer {
   getStats() { return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries }; }
 
   project(x, y, z) {
-    const position = new THREE.Vector3(x, y, z).project(this.camera);
-    const width = this.canvas.clientWidth || window.innerWidth;
-    const height = this.canvas.clientHeight || window.innerHeight;
+    const position = this.scratchPosition.set(x,y,z).project(this.camera);
+    const width=this.viewportWidth, height=this.viewportHeight;
     return { x: (position.x * 0.5 + 0.5) * width, y: (-position.y * 0.5 + 0.5) * height, visible: position.z > -1 && position.z < 1 && Math.abs(position.x) < 1.1 && Math.abs(position.y) < 1.1 };
   }
 
