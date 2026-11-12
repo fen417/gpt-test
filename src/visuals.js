@@ -262,21 +262,70 @@ export function addWarehouseDetails(owner, structures = []) {
 }
 
 const signCache = new Map();
+const signAspect = .48;
+const signBacking = pairMaterials(
+  new THREE.MeshStandardMaterial({ color: 0x384445, roughness: .78, metalness: .18 }),
+  new THREE.MeshLambertMaterial({ color: 0x384445 }),
+);
+
+function signTexture(title, subtitle) {
+  const canvas = document.createElement('canvas');
+  const width = canvas.width = 600;
+  const height = canvas.height = width * signAspect;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#273538';
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = '#a1a69b';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(10, 10, width - 20, height - 20);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#d9d8b8';
+  function drawLine(text, weight, size, y) {
+    ctx.font = `${weight} ${size}px Arial, sans-serif`;
+    const measured = ctx.measureText(text).width;
+    if (measured > width - 80) {
+      size = Math.floor(size * (width - 80) / measured);
+      ctx.font = `${weight} ${size}px Arial, sans-serif`;
+    }
+    ctx.fillText(text, width / 2, y);
+  }
+  drawLine(title, 'bold', 90, height * (subtitle ? .39 : .47));
+  if (subtitle) drawLine(subtitle, 'normal', 36, height * .65);
+
+  ctx.fillStyle = '#c8a35b';
+  for (let x = 24; x + 28 <= width - 24; x += 28) {
+    ctx.beginPath();
+    ctx.moveTo(x, height - 40);
+    ctx.lineTo(x + 12, height - 40);
+    ctx.lineTo(x + 28, height - 21);
+    ctx.lineTo(x + 16, height - 21);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+  return map;
+}
+
 export function makeSign(text, subtext = '', width = 3.2) {
-  const key = `${text}:${subtext}`;
+  const key = JSON.stringify([text, subtext]);
   let mat = signCache.get(key);
   if (!mat) {
-    const map = texture((ctx, s) => {
-      ctx.fillStyle = '#273538'; ctx.fillRect(0, 0, s, s); ctx.strokeStyle = '#a1a69b'; ctx.lineWidth = 6; ctx.strokeRect(7, 7, s - 14, s - 14);
-      ctx.font = 'bold 55px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#d9d8b8'; ctx.fillText(text, s / 2, s * .42);
-      ctx.font = '19px Arial'; ctx.fillText(subtext, s / 2, s * .68);
-      ctx.fillStyle = '#c8a35b'; for (let x = 15; x < s - 15; x += 20) { ctx.beginPath(); ctx.moveTo(x, s - 32); ctx.lineTo(x + 10, s - 32); ctx.lineTo(x + 20, s - 15); ctx.lineTo(x + 10, s - 15); ctx.fill(); }
-    }, 1, 256);
+    const map = signTexture(text, subtext);
     mat = pairMaterials(
       new THREE.MeshStandardMaterial({ map, roughness: .8, metalness: .1 }),
       new THREE.MeshLambertMaterial({ map }),
     );
     signCache.set(key, mat);
   }
-  return new THREE.Mesh(new THREE.PlaneGeometry(width, width * .48), mat);
+  const height = width * signAspect;
+  const thickness = width * .012;
+  const backing = new THREE.Mesh(new THREE.BoxGeometry(width, height, thickness), signBacking);
+  backing.position.z = -thickness * .6;
+  const sign = new THREE.Group();
+  sign.add(backing, new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat));
+  return sign;
 }
