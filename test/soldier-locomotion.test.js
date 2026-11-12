@@ -138,7 +138,8 @@ function run(
     m,
   };
 }
-const reports = [];
+const reports = [],
+  startupReports = [];
 for (const [name, speed, options] of [
   ["slow", 0.7, {}],
   ["walk", 1.4, {}],
@@ -185,6 +186,8 @@ test("one cycle equals two steps", () => {
   assert.ok(Math.abs(r.landings / 20 - g.frequency) < 0.2, JSON.stringify(r));
 });
 process.on("exit", () => {
+  if (process.env.STARTUP_REPORT)
+    console.log("STARTUP_REPORT " + JSON.stringify(startupReports));
   if (process.env.GAIT_REPORT)
     console.log("GAIT_REPORT " + JSON.stringify(reports));
 });
@@ -220,3 +223,90 @@ test("slide suspends stepping without resetting cycle", () => {
   assert.equal(m.phase, 0.37);
   assert.ok(m.feet.every((f) => !f.swinging));
 });
+
+function startup(fps, speed, { remote = false, resume = false } = {}) {
+  const m = makeMotion(),
+    p = point(),
+    dt = 1 / fps;
+  let time = 0,
+    firstLift = Infinity,
+    firstLanding = Infinity,
+    firstDistance = Infinity,
+    settlingOnFirstMovement = null;
+  // Idle long enough to reproduce the zero-speed/settling state before a start.
+  for (let i = 0; i < fps; i++) updateFootContacts(m, p, 0, dt);
+  if (resume) {
+    const foot = m.feet[0];
+    foot.swinging = true;
+    foot.settling = true;
+    foot.duration = 0.2;
+    foot.age = 0.01;
+    foot.startLift = 0;
+    foot.stepLift = 0.035;
+    foot.start.x = foot.planted.x;
+    foot.start.z = foot.planted.z;
+    foot.end.x = foot.planted.x;
+    foot.end.z = foot.planted.z - 0.12;
+    foot.startYaw = foot.endYaw = foot.yaw;
+  }
+  for (let i = 0; i < fps; i++) {
+    time += dt;
+    const before = p.z;
+    if (remote)
+      p.z +=
+        ((-speed * Math.floor(time * 20 + 1e-8)) / 20 - p.z) *
+        (1 - Math.exp(-dt * 18));
+    else p.z = -speed * time;
+    m.dx = 0;
+    m.dz = p.z - before;
+    const response = 1 - Math.exp(-dt * 22);
+    m.vz += (m.dz / dt - m.vz) * response;
+    m.speed += (Math.abs(m.dz) / dt - m.speed) * response;
+    m.stillTime = Math.abs(m.dz) / dt < 0.035 ? m.stillTime + dt : 0;
+    updateFootContacts(m, p, 0, dt);
+    if (m.speed > 0.14 && settlingOnFirstMovement === null)
+      settlingOnFirstMovement = m.feet.some((f) => f.swinging && f.settling);
+    if (
+      Math.max(...m.feet.map((f) => f.lift)) >= 0.02 &&
+      firstLift === Infinity
+    )
+      firstLift = time;
+    if (m.feet.some((f) => f.landings > 0) && firstLanding === Infinity) {
+      firstLanding = time;
+      firstDistance = Math.abs(p.z);
+    }
+  }
+  return {
+    fps,
+    speed,
+    remote,
+    resume,
+    firstLift,
+    firstLanding,
+    firstDistance,
+    settlingOnFirstMovement,
+  };
+}
+for (const remote of [false, true])
+  for (const resume of [false, true]) {
+    test(`immediate start ${remote ? "snapshots" : "direct"} ${resume ? "from settling" : "from idle"}`, () => {
+      for (const fps of [20, 30, 60, 120])
+        for (const speed of [6.3, 9.765]) {
+          const r = startup(fps, speed, { remote, resume });
+          startupReports.push(r);
+          assert.equal(
+            r.settlingOnFirstMovement,
+            false,
+            "stale settling step " + JSON.stringify(r),
+          );
+          assert.ok(
+            r.firstLift <= (remote ? 0.15 : 0.085),
+            "late first lift " + JSON.stringify(r),
+          );
+          assert.ok(
+            r.firstLanding <= (remote ? 0.29 : 0.23),
+            "late first contact " + JSON.stringify(r),
+          );
+        }
+    });
+  }

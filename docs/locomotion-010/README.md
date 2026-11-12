@@ -94,3 +94,29 @@ The full-detail CPU animation microbenchmark (`cpu.json`) measured about 0.13,
 0.21 and 0.32 ms for 10/20/32 characters. Counts include two diagnostic markers in
 this scene. The browser uses ANGLE/SwiftShader software rendering, so this is no
 claim about GPU performance or stable full-match FPS. Production build passes.
+
+## Starting-step correction
+
+A later startup regression exposed a gap in the original steady-gait tests.
+The first launch used the still-cold filtered velocity to choose its entire swing
+duration (up to 0.65 s). That value persisted even while the displayed root was
+already running. At 30 Hz and 6.3 m/s the reproduced first touchdown happened at
+0.40 s, after 2.52 m of travel. The initial low lift also made the early movement
+hard to read.
+
+An idle-to-moving transition now plans a short acceleration push-off, no longer
+than 0.18 s, using observed displayed displacement for the first launch. The usual
+velocity filter, cycle rate and steady gait are retained. Resuming during an
+idle/turn replant transfers that foot into the moving step immediately, retaining
+its current lift. It leaves the opposite foot supporting rather than launching
+both together. A reset after respawn/offscreen return clears the transition flag.
+The small takeoff-gait object is cached per actor.
+
+The regression suite now has 20 tests, with startup/restart checks at
+20/30/60/120 Hz for 6.3 and 9.765 m/s, both direct movement and 20 Hz snapshot
+emulation. `startup.json` records planner timing. `startup-bones.json` measures the
+actual ankle bones of the skinned model: after one second idle, first rise above
+2 cm occurred within 17–50 ms for direct motion and at most 67 ms with snapshot
+emulation. First touchdown occurred by 200/233 ms respectively. These delays are
+from motion start in the scenarios, not a network-latency guarantee. Syntax and
+production build were checked again.

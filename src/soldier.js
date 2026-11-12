@@ -801,7 +801,7 @@ function resetLocomotion(rig, position, yaw, crouched) {
   const motion = rig.motion ?? { feet: [newFoot(), newFoot()] };
   Object.assign(motion, {
     x: position.x, z: position.z, dx: 0, dz: 0, phase: .05, time: 0,
-    stillTime: 0, nextFoot: 0, stepTimer: 0, contactYaw: yaw,
+    stillTime: 0, nextFoot: 0, stepTimer: 0, contactYaw: yaw, contactMoving: false,
     speed: 0, vx: 0, vz: 0, crouch: Number(crouched), sprint: 0, aim: .6,
     air: 0, land: 0, hipYaw: 0, lean: 0, reloadTime: 0, reloadBlend: 0, slide: 0,
   });

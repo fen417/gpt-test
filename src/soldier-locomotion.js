@@ -39,7 +39,19 @@ export function gaitForSpeed(speed, crouch, sprint, out) {
   return out;
 }
 
-function launch(foot, x, z, yaw, vx, vz, gait, settling, side, crouch) {
+function launch(
+  foot,
+  x,
+  z,
+  yaw,
+  vx,
+  vz,
+  gait,
+  settling,
+  side,
+  crouch,
+  starting = false,
+) {
   foot.start.x = foot.planted.x;
   foot.start.z = foot.planted.z;
   foot.startYaw = foot.yaw;
@@ -49,6 +61,9 @@ function launch(foot, x, z, yaw, vx, vz, gait, settling, side, crouch) {
   foot.duration = settling
     ? 0.2
     : clamp(((1 - gait.duty) * 2) / Math.max(0.3, gait.frequency), 0.12, 0.65);
+  // The first push-off is a short acceleration step. Do not retain the slow
+  // walk duration calculated while the velocity filter is still warming up.
+  if (starting) foot.duration = Math.min(foot.duration, 0.18);
   foot.stepLift = settling ? 0.035 : gait.lift;
   foot.settling = settling;
   foot.swinging = true;
@@ -98,6 +113,47 @@ export function updateFootContacts(motion, position, yaw, dt) {
     motion.stillTime < 0.09 &&
     motion.air < 0.5 &&
     motion.slide < 0.25;
+  const starting = moving && !motion.contactMoving;
+  let takeoffGait = gait,
+    takeoffVx = motion.vx,
+    takeoffVz = motion.vz;
+  if (starting) {
+    const observedSpeed = Math.hypot(motion.dx, motion.dz) / dt;
+    const velocityScale = Math.min(1, 12 / Math.max(0.001, observedSpeed));
+    takeoffVx = (motion.dx / dt) * velocityScale;
+    takeoffVz = (motion.dz / dt) * velocityScale;
+    motion.takeoffGait ??= {};
+    takeoffGait = gaitForSpeed(
+      Math.min(12, Math.max(observedSpeed, motion.speed)),
+      motion.crouch,
+      motion.sprint,
+      motion.takeoffGait,
+    );
+    // A stop/turn correction must hand over immediately when locomotion resumes.
+    if (feet[motion.nextFoot].swinging) motion.nextFoot = 1 - motion.nextFoot;
+    let resumedCorrection = false;
+    for (let i = 0; i < feet.length; i++)
+      if (feet[i].swinging && feet[i].settling) {
+        launch(
+          feet[i],
+          position.x - motion.dx,
+          position.z - motion.dz,
+          yaw + motion.hipYaw,
+          takeoffVx,
+          takeoffVz,
+          takeoffGait,
+          false,
+          i ? 1 : -1,
+          motion.crouch,
+          true,
+        );
+        motion.nextFoot = 1 - i;
+        resumedCorrection = true;
+      }
+    motion.stepTimer = resumedCorrection
+      ? 1 / Math.max(0.3, takeoffGait.frequency)
+      : 0;
+  }
   const substeps = Math.max(1, Math.ceil(dt / (1 / 120))),
     h = dt / substeps;
   const previousYaw = motion.contactYaw ?? yaw;
@@ -121,15 +177,17 @@ export function updateFootContacts(motion, position, yaw, dt) {
             x,
             z,
             footYaw,
-            motion.vx,
-            motion.vz,
-            gait,
+            starting ? takeoffVx : motion.vx,
+            starting ? takeoffVz : motion.vz,
+            starting ? takeoffGait : gait,
             false,
             i ? 1 : -1,
             motion.crouch,
+            starting,
           );
           motion.nextFoot = 1 - i;
-          motion.stepTimer = 1 / Math.max(0.3, gait.frequency);
+          motion.stepTimer =
+            1 / Math.max(0.3, (starting ? takeoffGait : gait).frequency);
         }
       }
     } else motion.stepTimer = 0;
@@ -255,4 +313,5 @@ export function updateFootContacts(motion, position, yaw, dt) {
     }
   }
   motion.contactYaw = yaw;
+  motion.contactMoving = moving;
 }

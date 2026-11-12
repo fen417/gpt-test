@@ -1,0 +1,322 @@
+[
+  {
+    "fps": 20,
+    "speed": 6.3,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.26,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 20,
+    "speed": 9.765,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.9530000000000003,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 6.3,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.03333333333333333,
+    "firstLanding": 0.19999999999999998,
+    "firstDistance": 1.2599999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 9.765,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.03333333333333333,
+    "firstLanding": 0.19999999999999998,
+    "firstDistance": 1.9529999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 6.3,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.1549999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 9.765,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.79025,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 6.3,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.1549999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 9.765,
+    "remote": false,
+    "resume": false,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.79025,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 20,
+    "speed": 6.3,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.26,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 20,
+    "speed": 9.765,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.9530000000000003,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 6.3,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.03333333333333333,
+    "firstLanding": 0.19999999999999998,
+    "firstDistance": 1.2599999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 9.765,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.03333333333333333,
+    "firstLanding": 0.19999999999999998,
+    "firstDistance": 1.9529999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 6.3,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.1549999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 9.765,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.79025,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 6.3,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.1549999999999998,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 9.765,
+    "remote": false,
+    "resume": true,
+    "firstLift": 0.016666666666666666,
+    "firstLanding": 0.18333333333333332,
+    "firstDistance": 1.79025,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 20,
+    "speed": 6.3,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.0500846983079932,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 20,
+    "speed": 9.765,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.6276312823773895,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 6.3,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.06666666666666667,
+    "firstLanding": 0.2333333333333333,
+    "firstDistance": 1.0887647743510822,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 9.765,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.06666666666666667,
+    "firstLanding": 0.2333333333333333,
+    "firstDistance": 1.6875854002441775,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 6.3,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.05,
+    "firstLanding": 0.21666666666666665,
+    "firstDistance": 0.9766439811660708,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 9.765,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.05,
+    "firstLanding": 0.21666666666666665,
+    "firstDistance": 1.5137981708074095,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 6.3,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.05833333333333333,
+    "firstLanding": 0.22499999999999998,
+    "firstDistance": 0.9766439811660707,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 9.765,
+    "remote": true,
+    "resume": false,
+    "firstLift": 0.05833333333333333,
+    "firstLanding": 0.22499999999999998,
+    "firstDistance": 1.5137981708074095,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 20,
+    "speed": 6.3,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.0500846983079932,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 20,
+    "speed": 9.765,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.05,
+    "firstLanding": 0.2,
+    "firstDistance": 1.6276312823773895,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 6.3,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.06666666666666667,
+    "firstLanding": 0.2333333333333333,
+    "firstDistance": 1.0887647743510822,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 30,
+    "speed": 9.765,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.06666666666666667,
+    "firstLanding": 0.2333333333333333,
+    "firstDistance": 1.6875854002441775,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 6.3,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.05,
+    "firstLanding": 0.21666666666666665,
+    "firstDistance": 0.9766439811660708,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 60,
+    "speed": 9.765,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.05,
+    "firstLanding": 0.21666666666666665,
+    "firstDistance": 1.5137981708074095,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 6.3,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.041666666666666664,
+    "firstLanding": 0.22499999999999998,
+    "firstDistance": 0.9766439811660707,
+    "settlingOnFirstMovement": false
+  },
+  {
+    "fps": 120,
+    "speed": 9.765,
+    "remote": true,
+    "resume": true,
+    "firstLift": 0.041666666666666664,
+    "firstLanding": 0.22499999999999998,
+    "firstDistance": 1.5137981708074095,
+    "settlingOnFirstMovement": false
+  }
+]
