@@ -7,7 +7,7 @@ import portEdits from './maps/port.json' with { type: 'json' };
 import quarryEdits from './maps/quarry.json' with { type: 'json' };
 import villageEdits from './maps/village.json' with { type: 'json' };
 
-export const PROTOCOL_VERSION=16;
+export const PROTOCOL_VERSION=17;
 export const WEAPON_SWITCH_TIME = .38;
 export const WEAPON_SWAP_PHASE = .42;
 export function weaponSwitchPose(remaining=0){

@@ -5,7 +5,8 @@ import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import { slideVelocity } from './movement.js';
-import { boxBounds, rayAffineBox, overlapsAffine, uprightBox, affineNormal, shapeForBox } from './geometry.js';
+import { boxBounds, rayAffineBox, overlapsAffine, uprightBox } from './geometry.js';
+import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -16,7 +17,6 @@ const validClass = value => typeof value==='string' && Object.hasOwn(CLASSES,val
 const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
 const crouching = player => !player.vehicleId && Boolean(player.crouching || player.slideTime > 0 || player.input.crouch);
-const withBounds = boxBounds;
 const rayDir = { x: 0, y: 0, z: 0 };
 const scratchEye = { x: 0, y: 0, z: 0 };
 const scratchTarget = { x: 0, y: 0, z: 0 };
@@ -33,39 +33,21 @@ export function sanitizeInput(input = {}) {
   };
 }
 
-function rayBox(origin, direction, box, maximum) {
-  if(box.obb)return rayAffineBox(origin,direction,box.obb,maximum);
-  let near = 0, far = maximum;
-  if (Math.abs(direction.x) < 1e-8) {
-    if (origin.x < box.minX || origin.x > box.maxX) return Infinity;
-  } else {
-    const a=(box.minX-origin.x)/direction.x, b=(box.maxX-origin.x)/direction.x;
-    near=Math.max(near,Math.min(a,b)); far=Math.min(far,Math.max(a,b));
-    if (near > far) return Infinity;
-  }
-  if (Math.abs(direction.z) < 1e-8) {
-    if (origin.z < box.minZ || origin.z > box.maxZ) return Infinity;
-  } else {
-    const a=(box.minZ-origin.z)/direction.z, b=(box.maxZ-origin.z)/direction.z;
-    near=Math.max(near,Math.min(a,b)); far=Math.min(far,Math.max(a,b));
-    if (near > far) return Infinity;
-  }
-  const minY=box.minY??0;
-  if (Math.abs(direction.y) < 1e-8) return origin.y < minY || origin.y > box.h ? Infinity : near;
-  const a=(minY-origin.y)/direction.y, b=(box.h-origin.y)/direction.y;
-  near=Math.max(near,Math.min(a,b)); far=Math.min(far,Math.max(a,b));
-  return near<=far?near:Infinity;
-}
-
 function rotatedFloor(box,x,z,min,max,radius){
+  if(box.parts){
+    if(x<box.minX-radius||x>box.maxX+radius||z<box.minZ-radius||z>box.maxZ+radius||box.minY>max||box.h<min)return -Infinity;
+    let top=-Infinity;
+    for(const part of box.parts)top=Math.max(top,rotatedFloor(part,x,z,min,max,radius));
+    return top;
+  }
   if(x<box.minX-radius||x>box.maxX+radius||z<box.minZ-radius||z>box.maxZ+radius)return -Infinity;
   let top=-Infinity;
   for(const dx of [-radius,0,radius])for(const dz of [-radius,0,radius]){
     const origin={x:x+dx,y:max,z:z+dz};
-    const hit=rayAffineBox(origin,{x:0,y:-1,z:0},box.obb,max-min);
+    const hit=rayBox(origin,{x:0,y:-1,z:0},box,max-min);
     if(hit>1e-6&&Number.isFinite(hit)){
       const y=max-hit;
-      if(affineNormal(box.obb,{x:origin.x,y,z:origin.z}).y>=.6)top=Math.max(top,y);
+      if(colliderNormal(box,{x:origin.x,y,z:origin.z}).y>=.6)top=Math.max(top,y);
     }
   }
   return top;
@@ -143,8 +125,8 @@ function rayVehicle(origin,direction,vehicle,maximum){
 export class Simulation {
   constructor({ bots=23, difficulty='regular', mapId, random=Math.random }={}) {
     this.map=getMap(mapId);
-    this.colliders=this.map.boxes.map(withBounds);
-    this.hasRotatedGeometry=this.colliders.some(box=>box.obb);
+    this.colliders=getAssetColliders(this.map);
+    this.hasRotatedGeometry=this.colliders.some(box=>box.obb||box.parts);
     this.stepHeight=this.map.stepHeight??(this.hasRotatedGeometry ? .3 : 0);
     // Static broad phase: movement queries touch nearby cells, not every
     // warehouse/container on the map for every actor and axis each tick.
@@ -158,8 +140,7 @@ export class Simulation {
     this.rayCandidates=[];
     this.rayVisited=new Uint32Array(this.colliders.length);
     this.rayVisit=0;
-    this.grenadeColliders=this.map.boxes.map(box=>withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12,
-      ...(box.obb?{obb:{...box.obb,half:box.obb.half.map(size=>size+.12)}}:{})}));
+    this.grenadeColliders=this.colliders.map(box=>expandCollider(box,.12));
     this.random=random;this.time=0;this.players=new Map();this.maxTickets=600;this.tickets=[600,600];
     this.difficulty=typeof difficulty==='string'&&Object.hasOwn(DIFFICULTIES,difficulty)?difficulty:'regular';
     this.botSettings=DIFFICULTIES[this.difficulty];
@@ -186,16 +167,16 @@ export class Simulation {
         this.blocked[iz*this.gridSize+ix]=1;
     }
     for(const box of this.colliders){
-      if(box.overhead&&!box.obb&&box.kind!=='village-stair')continue;
+      if(box.overhead&&!box.obb&&!box.parts&&box.kind!=='village-stair')continue;
       const minX=Math.max(0,Math.floor(gridIndex(box.minX-clearance))+1);
       const maxX=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxX+clearance)));
       const minZ=Math.max(0,Math.floor(gridIndex(box.minZ-clearance))+1);
       const maxZ=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxZ+clearance)));
       if(minX<maxX)for(let z=minZ;z<maxZ;z++){
-        if(!box.obb)this.blocked.fill(1,z*this.gridSize+minX,z*this.gridSize+maxX);
+        if(!box.obb&&!box.parts)this.blocked.fill(1,z*this.gridSize+minX,z*this.gridSize+maxX);
         else for(let x=minX;x<maxX;x++){
           const px=this.gridOrigin+(x+.5)*this.gridCell,pz=this.gridOrigin+(z+.5)*this.gridCell;
-          if(overlapsAffine(uprightBox(px,this.groundAt(px,pz),pz,clearance,EYE_HEIGHT),box.obb))this.blocked[z*this.gridSize+x]=1;
+          if(overlapsCollider(uprightBox(px,this.groundAt(px,pz),pz,clearance,EYE_HEIGHT),box))this.blocked[z*this.gridSize+x]=1;
         }
       }
     }
@@ -269,7 +250,7 @@ export class Simulation {
     let height=y;
     const origin={x,y:y+step+.001,z},direction={x:0,y:-1,z:0};
     for(const box of this.rayBoxes(origin,direction,step+.001)){
-      if(box.obb){
+      if(box.obb||box.parts){
         const top=rotatedFloor(box,x,z,y+.001,y+step+.001,PLAYER_RADIUS);
         if(top>height&&!this.collides(x,z,top+1e-5,PLAYER_RADIUS,bodyHeight))height=top+1e-5;
         continue;
@@ -290,7 +271,7 @@ export class Simulation {
     const minX=Math.max(0,Math.floor((x-radius+origin)/cell)),maxX=Math.min(size-1,Math.floor((x+radius+origin)/cell));
     const minZ=Math.max(0,Math.floor((z-radius+origin)/cell)),maxZ=Math.min(size-1,Math.floor((z+radius+origin)/cell));
     for(let bz=minZ;bz<=maxZ;bz++)for(let bx=minX;bx<=maxX;bx++)for(const b of this.collisionBins[bz*size+bx]){
-      if(b.obb){if(overlapsAffine(uprightBox(x,y,z,radius,height),b.obb))return true;continue;}
+      if(b.obb||b.parts){if(overlapsCollider(uprightBox(x,y,z,radius,height),b))return true;continue;}
       if(b.overhead&&y+height<=b.minY)continue;
       if(y<b.h&&x>b.minX-radius&&x<b.maxX+radius&&z>b.minZ-radius&&z<b.maxZ+radius)return true;
     }
@@ -357,10 +338,9 @@ export class Simulation {
     const bounds=shape?boxBounds({obb:shape}):null;
     if(tilted&&(bounds.minX<-limit||bounds.maxX>limit||bounds.minZ<-limit||bounds.maxZ>limit))return true;
     for(const box of this.colliders){
-      if(box.obb||tilted){
+      if(box.obb||box.parts||tilted){
         if(bounds.minX>=box.maxX||bounds.maxX<=box.minX||bounds.minZ>=box.maxZ||bounds.maxZ<=box.minZ)continue;
-        const raw=this.map.boxes[box.collisionIndex];
-        if(overlapsAffine(shape,shapeForBox(raw)))return true;
+        if(overlapsCollider(shape,box))return true;
         continue;
       }
       if(Math.abs(box.x-x)>=dx+box.w/2||Math.abs(box.z-z)>=dz+box.d/2)continue;
@@ -1063,7 +1043,7 @@ export class Simulation {
       if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
       if(p.vy<=0)for(const box of this.colliders){
-        if(box.obb){
+        if(box.obb||box.parts){
           floor=Math.max(floor,rotatedFloor(box,p.x,p.z,nextY-.01,oldY+.01,PLAYER_RADIUS));
           continue;
         }
@@ -1087,16 +1067,24 @@ export class Simulation {
       const direction=length>0?{x:delta.x/length,y:delta.y/length,z:delta.z/length}:{x:0,y:0,z:0};
       let nearest=length,hit=null;
       for(const box of this.grenadeColliders){const distance=rayBox(grenade,direction,box,length);if(distance<nearest){nearest=distance;hit=box;}}
+      if(hit?.parts){
+        const asset=hit;
+        let closest=length;
+        for(const part of asset.parts){
+          const distance=rayBox(grenade,direction,part,closest);
+          if(distance<closest){closest=distance;hit=part;}
+        }
+      }
       if(hit){
         const travel=Math.max(0,nearest-.02);grenade.x+=direction.x*travel;grenade.y+=direction.y*travel;grenade.z+=direction.z*travel;
         if(hit.obb){
-          const normal=affineNormal(hit.obb,grenade),speed=grenade.vx*normal.x+grenade.vy*normal.y+grenade.vz*normal.z;
+          const normal=colliderNormal(hit,grenade),speed=grenade.vx*normal.x+grenade.vy*normal.y+grenade.vz*normal.z;
           if(speed<0){grenade.vx-=1.35*speed*normal.x;grenade.vy-=1.35*speed*normal.y;grenade.vz-=1.35*speed*normal.z;}
         }else{
           const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.min(Math.abs(grenade.y-hit.h),Math.abs(grenade.y-hit.minY))]];
           const axis=faces.sort((a,b)=>a[1]-b[1])[0][0];grenade[`v${axis}`]*=-.35;
         }
-      }else if(this.collides(grenade.x+delta.x,grenade.z+delta.z,grenade.y+delta.y,.12)){grenade.vx*=-.35;grenade.vz*=-.35;}
+      }else if(this.collides(grenade.x+delta.x,grenade.z+delta.z,grenade.y+delta.y-.12,.12,.24)){grenade.vx*=-.35;grenade.vz*=-.35;}
       else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
       const ground=this.groundAt(grenade.x,grenade.z)+.15;
       if(grenade.y<ground){grenade.y=ground;grenade.vy=Math.abs(grenade.vy)*.3;grenade.vx*=.92;grenade.vz*=.92;}

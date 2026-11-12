@@ -1,4 +1,5 @@
-import { rayAffineBox } from '../shared/geometry.js';
+import { rayCollider } from '../shared/asset-colliders.js';
+import { boxBounds } from '../shared/geometry.js';
 // View models get their own depth pass, while retaining normal self-occlusion.
 export const VIEWMODEL_LAYER=1;
 export function prepareViewModel(group){
@@ -16,17 +17,9 @@ export function prepareViewModel(group){
 
 export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   let closest=maxDistance;
-  for(const box of boxes){
-    if(box.obb){closest=Math.min(closest,rayAffineBox(origin,direction,box.obb,closest));continue;}
-    if(Math.abs(origin.x-box.x)>box.w/2+closest||Math.abs(origin.z-box.z)>box.d/2+closest)continue;
-    let near=0,far=closest;
-    for(const [axis,min,max]of [['x',box.x-box.w/2,box.x+box.w/2],['y',box.baseY??0,(box.baseY??0)+box.h],['z',box.z-box.d/2,box.z+box.d/2]]){
-      const component=direction[axis];
-      if(Math.abs(component)<1e-8){if(origin[axis]<min||origin[axis]>max){far=-1;break;}continue;}
-      let a=(min-origin[axis])/component,b=(max-origin[axis])/component;
-      if(a>b)[a,b]=[b,a];near=Math.max(near,a);far=Math.min(far,b);if(near>far)break;
-    }
-    if(near<=far&&far>=0)closest=Math.min(closest,Math.max(0,near));
+  for (const box of boxes) {
+    const collider = box.minX === undefined ? boxBounds(box) : box;
+    closest = Math.min(closest, rayCollider(origin, direction, collider, closest));
   }
   return closest;
 }
