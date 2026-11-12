@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Редактор карт · Рубеж</title>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="title"><a href="../" aria-label="Вернуться в игру">←</a><h1>Редактор карт</h1></div>
+    <label class="map-label">Карта <select id="map"></select></label>
+    <div class="tools" role="group" aria-label="Камера">
+      <button id="top" aria-pressed="true">Сверху</button>
+      <button id="angle" aria-pressed="false">Под углом</button>
+      <button id="frame">Вся карта</button>
+    </div>
+    <div class="tools" role="group" aria-label="Правки">
+      <button id="undo" title="Ctrl+Z">Отменить</button>
+      <button id="redo" title="Ctrl+Shift+Z">Повторить</button>
+    </div>
+    <div class="publish"><button id="connect">Подключить GitHub</button><button class="primary" id="save" disabled>Сохранить в GitHub</button></div>
+  </header>
+  <main class="workspace">
+    <aside class="library">
+      <h2>Библиотека</h2>
+      <input id="assets-search" type="search" placeholder="Поиск ассетов" aria-label="Поиск ассетов">
+      <div id="assets" class="assets"></div>
+      <p class="hint">Перетащите ассет на карту или выберите его и щёлкните по месту.</p>
+    </aside>
+    <section id="viewport" aria-label="Карта">
+      <div class="viewport-bar">
+        <label>Слой <select id="layer"></select></label>
+        <label>Шаг <select id="snap"><option value="0">Свободно</option><option value="1" selected>1 м</option><option value="5">5 м</option><option value="10">10 м</option></select></label>
+        <button id="cancel-place" hidden>Отменить размещение · Esc</button>
+      </div>
+      <div id="labels" aria-hidden="true"></div>
+      <div class="viewport-footer"><span id="coords">X — / Z —</span><span>Колесо — масштаб · ПКМ — панорама</span></div>
+    </section>
+    <aside class="inspector">
+      <h2>Свойства</h2>
+      <p id="empty-selection" class="hint">Выберите объект на карте.</p>
+      <div id="selection" hidden>
+        <strong id="object-name"></strong>
+        <small id="object-id"></small>
+        <form id="position">
+          <label>X, м <input id="x" type="number" step="any" required></label>
+          <label>Z, м <input id="z" type="number" step="any" required></label>
+          <button>Применить координаты</button>
+        </form>
+        <button id="duplicate">Дублировать</button>
+        <button id="remove" class="danger">Удалить</button>
+        <p id="selection-note" class="hint"></p>
+      </div>
+    </aside>
+  </main>
+  <footer class="statusbar"><span id="status" role="status"></span><a id="commit" target="_blank" rel="noopener" hidden>Открыть коммит</a><button id="export">Скачать JSON</button></footer>
+  <dialog id="login">
+    <form id="login-form">
+      <h2>Публикация карты</h2>
+      <p>Введите пароль редактора, заданный на сервере игры.</p>
+      <label>Пароль <input id="password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="error" role="alert"></p>
+      <div class="tools"><button type="button" id="cancel-login">Закрыть</button><button id="login-submit" class="primary">Подключить</button></div>
+    </form>
+  </dialog>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

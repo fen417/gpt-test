@@ -343,11 +343,11 @@ export function addPortGround(owner, map) {
     owner.rounded(scene, map.shoreX + .65, .62, z, .48, .12, .25, m.steel);
   }
   addServiceRoads(owner, map, m);
-  for (const track of [...map.railTracks, -134, -118]) {
-    const quayTrack = track < 0, span = quayTrack ? 355 : 445;
+  for (const { x, z, quayTrack } of map.railTracks) {
+    const span = quayTrack ? 355 : 445;
     const gauge = quayTrack ? .54 : 1.43;
-    for (const side of [-1, 1]) owner.box(scene, track + side * gauge / 2, .071, 0, .07, .11, span, m.steel, false);
-    if (!quayTrack) for (let z = -span / 2 + 1; z < span / 2; z += 2.1) owner.box(scene, track, .024, z, 2.47, .05, .29, m.pallet, false);
+    for (const side of [-1, 1]) owner.box(scene, x + side * gauge / 2, .071, z, .07, .11, span, m.steel, false);
+    if (!quayTrack) for (let offset = -span / 2 + 1; offset < span / 2; offset += 2.1) owner.box(scene, x, .024, z + offset, 2.47, .05, .29, m.pallet, false);
   }
   for (const box of map.boxes) {
     switch (box.kind) {
@@ -369,11 +369,13 @@ export function addPortGround(owner, map) {
   }
   for (const crane of map.cranes) cargoCrane(owner, m, crane);
   for (const building of map.structures) warehouseInterior(owner, m, building);
-  containerShip(owner, m, map.ship);
+  if (map.ship) containerShip(owner, m, map.ship);
   portBackdrop(owner, m);
-  const berth = makeSign('ПРИЧАЛ 03', 'КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ', 4.3);
-  berth.position.set(map.shoreX + 3.7, 2.2, 59);
-  berth.rotation.y = Math.PI / 2;
-  scene.add(berth);
-  for (const dz of [-1.55, 1.55]) owner.cylinder(scene, map.shoreX + 3.7, 1.0, 59 + dz, .074, 2, m.steel);
+  for (const site of map.signs) {
+    const berth = makeSign(site.name, 'КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ', 4.3);
+    berth.position.set(site.x, 2.2, site.z);
+    berth.rotation.y = Math.PI / 2;
+    scene.add(berth);
+    for (const dz of [-1.55, 1.55]) owner.cylinder(scene, site.x, 1.0, site.z + dz, .074, 2, m.steel);
+  }
 }

@@ -1,6 +1,6 @@
 ﻿import Peer from 'peerjs';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
-import { DEFAULT_MAP_ID, getMap, PROTOCOL_VERSION, getPrimaryWeapon, getSidearm } from '../shared/world.js';
+import { DEFAULT_MAP_ID, getMap, PROTOCOL_VERSION, MAP_LAYOUT_REVISION, getPrimaryWeapon, getSidearm } from '../shared/world.js';
 import { packSnapshot, unpackSnapshot } from '../shared/snapshot-codec.js';
 
 const ROOM_PREFIX = 'gpt-test-';
@@ -392,7 +392,7 @@ export class Multiplayer {
       if (second !== guest.second) { guest.second = second; guest.count = 0; }
       if (++guest.count > 120) { connection.close(); return; }
       if (message.type === 'join') {
-        if (message.protocol !== PROTOCOL_VERSION) {
+        if (message.protocol !== PROTOCOL_VERSION || (message.layout ?? '') !== MAP_LAYOUT_REVISION) {
           this._safeSend(connection,{type:'error',message:'Версии карты различаются. Всем игрокам нужно обновить страницу и создать новую комнату.'});
           this._timeout(()=>connection.close(),150);return;
         }
@@ -403,7 +403,7 @@ export class Multiplayer {
           const added = this._simulation.addPlayer(guest.id, playerName(message.name), undefined, cls, playerWeapon(cls, message.weaponId), message.sidearmId);
           guest.lastControls = sanitizeInput({ yaw: added?.yaw ?? 0, pitch: added?.pitch ?? 0 });
         }
-        this._safeSend(connection, { type: 'welcome', id: guest.id, protocol: PROTOCOL_VERSION, lobby: this._phase === 'lobby' });
+        this._safeSend(connection, { type: 'welcome', id: guest.id, protocol: PROTOCOL_VERSION, layout: MAP_LAYOUT_REVISION, lobby: this._phase === 'lobby' });
         this._broadcastSnapshot();
         this.onStatus(`Комната открыта · игроков: ${1 + [...this._connections.values()].filter(g => g.joined).length}`);
       } else if (guest.joined && message.type === 'lobbyLoadout') {
@@ -466,7 +466,7 @@ export class Multiplayer {
       await new Promise((resolve, reject) => {
         let welcomed = false;
         let settled = false;
-      const sendJoin = () => this._safeSend(connection, { type: 'join', name: playerName(name), classId: cls, weaponId: wep, sidearmId:getSidearm(sidearmId).id, protocol: PROTOCOL_VERSION });
+      const sendJoin = () => this._safeSend(connection, { type: 'join', name: playerName(name), classId: cls, weaponId: wep, sidearmId:getSidearm(sidearmId).id, protocol: PROTOCOL_VERSION, layout: MAP_LAYOUT_REVISION });
         const retryTimer = setInterval(() => {
           if (!settled && !welcomed && connection.open) sendJoin();
         }, 800);
@@ -493,7 +493,7 @@ export class Multiplayer {
           if (!this._active(generation) || !message || typeof message !== 'object') return;
           if (message.type === 'snapshot') message.state = unpackSnapshot(message.state);
           if (message.type === 'welcome' && typeof message.id === 'string') {
-            if(message.protocol!==PROTOCOL_VERSION){finish(new Error('У хозяина старая версия карты. Обновите страницы и создайте новую комнату.'));return;}
+            if(message.protocol!==PROTOCOL_VERSION||(message.layout??'')!==MAP_LAYOUT_REVISION){finish(new Error('Версии карты различаются. Обновите страницы и создайте новую комнату.'));return;}
             welcomed = true;
             this._localId = message.id;
             this._phase = message.lobby ? 'lobby' : 'battle';
@@ -551,7 +551,7 @@ export class Multiplayer {
           if (error) reject(error); else resolve();
         };
         this._pending.add(cancel);
-        socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'join', name: playerName(name), classId: playerClass(classId), weaponId: playerWeapon(classId,weaponId), sidearmId:getSidearm(sidearmId).id, protocol: PROTOCOL_VERSION })));
+        socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'join', name: playerName(name), classId: playerClass(classId), weaponId: playerWeapon(classId,weaponId), sidearmId:getSidearm(sidearmId).id, protocol: PROTOCOL_VERSION, layout: MAP_LAYOUT_REVISION })));
         socket.addEventListener('message', event => {
           if (!this._active(generation) || typeof event.data !== 'string' || event.data.length > 2000000) return;
           let message;
@@ -559,7 +559,7 @@ export class Multiplayer {
           if (!message || typeof message !== 'object') return;
           if (message.type === 'snapshot') message.state = unpackSnapshot(message.state);
           if (message.type === 'welcome' && typeof message.id === 'string') {
-            if(message.protocol!==PROTOCOL_VERSION){finish(new Error('Сервер использует старую версию карты. Обновите сервер и клиент до одной версии.'));return;}
+            if(message.protocol!==PROTOCOL_VERSION||(message.layout??'')!==MAP_LAYOUT_REVISION){finish(new Error('Версии карты различаются. Обновите сервер и клиент до одной версии.'));return;}
             welcomed = true;
             this._localId = message.id;
             this.onIdentity(message.id);

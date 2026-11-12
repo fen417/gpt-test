@@ -1,4 +1,5 @@
 import { makeTerrain } from './terrain.js';
+import { routeRoads } from './map-edits.js';
 
 const size = 896;
 const boxes = [];
@@ -9,6 +10,7 @@ function add(x, z, w, d, h, kind, color, options = {}) {
 }
 
 function hangar(x, z, w, d, h) {
+  const first = boxes.length;
   const color = '#8e8774';
   structures.push({ id: 'quarry-hangar', x, z, w, d, h, kind: 'open-warehouse', color, roof: true });
   const gate = 13;
@@ -20,6 +22,7 @@ function hangar(x, z, w, d, h) {
     }
     add(x + side * 10, z + 6, 3.5, 4, 1.4, 'crate', '#9f8963');
   }
+  for (const box of boxes.slice(first)) box.editorParent = 'structure:quarry-hangar';
 }
 
 const nodes = Object.entries({
@@ -68,12 +71,7 @@ const tracks = [
   ['crusher', 'crusher-parking'], ['east-hangar', 'hangar-parking'],
 ];
 const edges = tracks.flatMap(track => track.slice(1).map((id, i) => [track[i], id]));
-const roads = edges.map(([from, to]) => {
-  const a = nodeById.get(from), b = nodeById.get(to);
-  const dx = b.x - a.x, dz = b.z - a.z;
-  const w = to.endsWith('-parking') ? 9 : 14;
-  return { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, w, d: Math.hypot(dx, dz) + w, yaw: Math.atan2(dx, dz) };
-});
+const roads = routeRoads(nodes, edges);
 
 const points = [
   { id: 'A', name: 'СТАРЫЙ СКЛАД', x: -155, z: -97 },
@@ -146,12 +144,13 @@ add(-351, 14, 4, 1.4, 1.1, 'sandbags', '#9c8c70');
 // The unloading canopy leaves a central passage between two low concrete bays.
 const loadingCanopy = { id: 'quarry-loading-canopy', x: 342, z: 19, w: 12, d: 10, h: 4.2, roof: true };
 structures.push(loadingCanopy);
+const canopyPart = { editorParent: 'structure:quarry-loading-canopy' };
 for (const side of [-1, 1]) {
   const x = loadingCanopy.x + side * loadingCanopy.w / 2;
   for (const end of [-1, 1]) {
-    add(x, loadingCanopy.z + end * loadingCanopy.d / 2, .32, .32, loadingCanopy.h, 'pillar', '#65645c');
+    add(x, loadingCanopy.z + end * loadingCanopy.d / 2, .32, .32, loadingCanopy.h, 'pillar', '#65645c', canopyPart);
   }
-  add(x, loadingCanopy.z, .7, 6.8, 1.12, 'barrier', '#b2a189');
+  add(x, loadingCanopy.z, .7, 6.8, 1.12, 'barrier', '#b2a189', canopyPart);
 }
 add(340, 6, 3.2, 2.2, 1.25, 'crate', '#997b55');
 
@@ -275,7 +274,7 @@ for (let i = lastNaturalCover - 1; i >= firstNaturalCover; i--) {
       Math.abs(box.z - cover.z) < (box.d + cover.d) / 2 + 4)) boxes.splice(i, 1);
 }
 
-const terrain = makeTerrain(size, [
+const landforms = [
   { x: 0, z: 0, rx: 94, rz: 104, height: -15, flat: .44 },
   { x: -344, z: -8, rx: 102, rz: 103, height: -12, flat: .29 },
   { x: 341, z: 13, rx: 111, rz: 114, height: 24, flat: .33 },
@@ -285,15 +284,23 @@ const terrain = makeTerrain(size, [
   { x: 137, z: 321, rx: 90, rz: 63, height: 10, flat: .20, angle: .42 },
   { x: 213, z: 343, rx: 67, rz: 43, height: 5, flat: .12, angle: -.51 },
   { x: 101, z: 367, rx: 48, rz: 45, height: 4, flat: .10 },
-]);
+];
+const terrain = makeTerrain(size, landforms);
 
 for (const box of boxes) box.baseY = terrain.heightAt(box.x, box.z) + (box.baseY ?? 0);
 loadingCanopy.baseY = terrain.heightAt(loadingCanopy.x, loadingCanopy.z);
 for (const point of points) point.y = terrain.heightAt(point.x, point.z);
 
 export const QUARRY_MAP = {
-  id: 'quarry', name: 'Карьер «Перевал»', size, fogDensity: .00195, terrain,
+  id: 'quarry', name: 'Карьер «Перевал»', size, fogDensity: .00195, terrain, landforms,
   boxes, structures, roads, points,
+  signs: [
+    { x: -344, z: 4, name: 'ВОДООТЛИВ', note: 'НАСОСНАЯ СТАНЦИЯ' },
+    { x: 342, z: 31, name: 'ТЕРРАСА', note: 'ВЕРХНИЙ ГОРИЗОНТ' },
+    { x: -299, z: 201, name: 'ВЕСОВАЯ', note: 'КОНТРОЛЬ ГРУЗА' },
+    { x: 0, z: -370.89, name: 'ПЕРЕВАЛ', note: 'ПАРК ТЕХНИКИ', baseSign: true, yaw: 0 },
+    { x: 0, z: 370.89, name: 'ПЕРЕВАЛ', note: 'ПАРК ТЕХНИКИ', baseSign: true, yaw: Math.PI },
+  ],
   districts: [...points, ...landmarks], landmarks,
   spawns: [{ x: 0, z: 358 }, { x: 0, z: -358 }],
   vehicleSpawns,

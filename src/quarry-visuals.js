@@ -165,29 +165,19 @@ export function addQuarryGround(owner, map, ground) {
   quarryCliffs(owner, map);
   for (const box of map.boxes) if (box.kind === 'pump-manifold') addPumpManifold(owner, box);
 
-  const siteSigns = [
-    { x: -344, z: 4, name: 'ВОДООТЛИВ', note: 'НАСОСНАЯ СТАНЦИЯ' },
-    { x: 342, z: 31, name: 'ТЕРРАСА', note: 'ВЕРХНИЙ ГОРИЗОНТ' },
-    { x: -299, z: 201, name: 'ВЕСОВАЯ', note: 'КОНТРОЛЬ ГРУЗА' },
-  ];
-  for (const { x, z, name, note } of siteSigns) {
+  for (const { x, z, name, note, baseSign, yaw = Math.PI } of map.signs) {
     const y = map.terrain.heightAt(x, z);
-    const sign = makeSign(name, note, 3.3);
-    sign.position.set(x, y + 2.25, z);
-    sign.rotation.y = Math.PI;
+    const sign = makeSign(name, note, baseSign ? 4 : 3.3);
+    sign.position.set(x, y + (baseSign ? 2.35 : 2.25), z);
+    sign.rotation.y = yaw;
     owner.scene.add(sign);
-    for (const side of [-1, 1]) owner.cylinder(owner.scene, x + side * 1.15, y + 1.05, z, .075, 2.1, owner.materials.steel);
+    if (!baseSign) for (const side of [-1, 1]) owner.cylinder(owner.scene, x + side * 1.15, y + 1.05, z, .075, 2.1, owner.materials.steel);
   }
   for (const pad of map.vehicleSpawns) {
+    const y = map.terrain.heightAt(pad.x, pad.z);
     for (const side of [-1, 1]) {
-      owner.box(owner.scene, pad.x + side * 2.6, .052, pad.z, .17, .008, 7.2, owner.materials.marking, false);
+      owner.box(owner.scene, pad.x + side * 2.6, y + .052, pad.z, .17, .008, 7.2, owner.materials.marking, false);
     }
-    owner.box(owner.scene, pad.x, .053, pad.z + Math.cos(pad.yaw) * 3.5, 5.2, .008, .18, owner.materials.marking, false);
-  }
-  for (const side of [-1, 1]) {
-    const sign = makeSign('ПЕРЕВАЛ', 'ПАРК ТЕХНИКИ', 4);
-    sign.position.set(0, 2.35, side * 370.89);
-    sign.rotation.y = side === 1 ? Math.PI : 0;
-    owner.scene.add(sign);
+    owner.box(owner.scene, pad.x, y + .053, pad.z + Math.cos(pad.yaw) * 3.5, 5.2, .008, .18, owner.materials.marking, false);
   }
 }

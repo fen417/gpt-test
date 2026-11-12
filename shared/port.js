@@ -11,6 +11,7 @@ function stack(x, z, levels = 1, index = 0, alongZ = false, length = 12.2) {
 }
 
 function warehouse({ id, name, x, z, w, d, h, color, stock }) {
+  const first = boxes.length;
   const gates = [-w * .27, w * .27];
   const width = 12, sideGate = 12, doorHeight = 5.1;
   structures.push({ id, name, x, z, w, d, h, gates, width, sideGate, doorHeight, color, stock });
@@ -31,6 +32,7 @@ function warehouse({ id, name, x, z, w, d, h, color, stock }) {
     add('port-lintel', wallX, z, 1.1, sideGate, h - doorHeight, color, { overhead: true, baseY: doorHeight });
   }
   add('port-roof', x, z, w + 1, d + 1, .34, color, { overhead: true, baseY: h });
+  for (const box of boxes.slice(first)) box.editorParent = 'structure:' + id;
 }
 
 warehouse({ id: 'rail-freight', name: 'СКЛАД 02 · Ж/Д ГРУЗЫ', x: 55, z: -75, w: 58, d: 47, h: 10, color: '#7c8989', stock: 'racks' });
@@ -52,6 +54,10 @@ add('crate', -27, 106, 6, 3.3, 1.35, '#9f8a69');
 add('crate', -45, 107, 4.6, 4, 1.5, '#9d8765');
 add('crate', 86, 77, 5.2, 4, 1.65, '#958268');
 add('barrier', 89, 51, 5.5, 1.15, 1.1, '#a19d88');
+for (const box of boxes) {
+  const building = structures.find(({ x, z, w, d }) => Math.abs(x - box.x) < w / 2 && Math.abs(z - box.z) < d / 2);
+  if (building) box.editorParent ??= 'structure:' + building.id;
+}
 
 // Export stacks around the marshalling lanes. Gaps between rows remain passable.
 for (const [row, z] of [-107, -92, -76, -44, -29, -14].entries()) {
@@ -101,17 +107,17 @@ const cranes = [
   { x: -126, z: -21, height: 31, color: '#ad703a' },
   { x: -126, z: 111, height: 27, color: '#a47042' },
 ];
-for (const crane of cranes) for (const side of [-1, 1]) for (const end of [-1, 1]) {
-  add('port-crane-leg', crane.x + side * 8, crane.z + end * 7, 2.2, 2.2, crane.height, crane.color);
+for (const [i, crane] of cranes.entries()) for (const side of [-1, 1]) for (const end of [-1, 1]) {
+  add('port-crane-leg', crane.x + side * 8, crane.z + end * 7, 2.2, 2.2, crane.height, crane.color, { editorParent: 'crane:' + i });
 }
 
-const railTracks = [138, 158];
+const railTracks = [138, 158, -134, -118].map((x, i) => ({ x, z: 0, quayTrack: i >= 2 }));
 for (const [x, z, length, paint, type] of [
   [138, -113, 19, '#7a7567', 'box'], [138, -91, 20, '#687981', 'box'],
   [138, -67, 22, '#956f56', 'flat'], [138, 64, 22, '#837259', 'box'],
   [158, -29, 23, '#607672', 'flat'], [158, -5, 20, '#777c77', 'box'],
   [158, 102, 23, '#6c786a', 'flat'], [158, 126, 20, '#8a705f', 'box'],
-]) add('port-railcar', x, z, 3.5, length, type === 'box' ? 4.1 : 3.9, paint, { carType: type });
+]) add('port-railcar', x, z, 3.5, length, type === 'box' ? 4.1 : 3.9, paint, { carType: type, editorParent: 'rail:' + (x === 138 ? 0 : 1) });
 
 for (const side of [-1, 1]) {
   const z = side * 151;
@@ -147,6 +153,7 @@ export const PORT_MAP = {
   id: 'port', size, name: 'Порт «Рубеж»', fogDensity: .0031, shoreX,
   boxes, structures, roads, cranes, railTracks, points, landmarks,
   ship: { x: -170, z: 36, w: 23, d: 126 },
+  signs: [{ x: -142.3, z: 59, name: 'ПРИЧАЛ 03' }],
   districts: [...points, ...landmarks],
   spawns: [{ x: 82, z: 151 }, { x: 82, z: -151 }],
 };

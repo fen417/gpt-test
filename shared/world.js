@@ -1,6 +1,9 @@
 // The same geometry drives rendering, navigation, and server collision.
 import { PORT_MAP } from './port.js';
 import { QUARRY_MAP } from './quarry.js';
+import { applyMapEdits } from './map-edits.js';
+import portEdits from './maps/port.json' with { type: 'json' };
+import quarryEdits from './maps/quarry.json' with { type: 'json' };
 
 export const PROTOCOL_VERSION=11;
 export const WEAPON_SWITCH_TIME = .38;
@@ -56,8 +59,20 @@ export const DIFFICULTIES = {
   veteran: { name: 'Ветеран', awareness: 66, reaction: .36, reactionVariance: .18, turnSpeed: 3.2, aimError: .012, burst: .5, pause: .48 },
 };
 export const DEFAULT_MAP_ID=PORT_MAP.id;
-export const MAP=PORT_MAP;
-export const MAPS={ [DEFAULT_MAP_ID]:MAP, [QUARRY_MAP.id]:QUARRY_MAP };
+export const BASE_MAPS = { port: PORT_MAP, quarry: QUARRY_MAP };
+export const MAP_EDITS = { port: portEdits, quarry: quarryEdits };
+function mapLayoutRevision() {
+  const hasChanges = Object.values(MAP_EDITS).some(({ moves, added, removed }) =>
+    Object.keys(moves).length || Object.keys(added).length || removed.length);
+  if (!hasChanges) return '';
+  let hash = 2166136261;
+  const layout = JSON.stringify(MAP_EDITS);
+  for (let i = 0; i < layout.length; i++) hash = Math.imul(hash ^ layout.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(16);
+}
+export const MAP_LAYOUT_REVISION = mapLayoutRevision();
+export const MAPS = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, map]) => [id, applyMapEdits(map, MAP_EDITS[id])]));
+export const MAP=MAPS[DEFAULT_MAP_ID];
 export function getMap(mapId){
   return Object.hasOwn(MAPS,mapId)?MAPS[mapId]:MAP;
 }

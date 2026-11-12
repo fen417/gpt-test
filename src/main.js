@@ -693,11 +693,14 @@ function drawHarborChart(c,scale,half){
   c.strokeStyle='#6caaa488';c.beginPath();c.moveTo(quay,0);c.lineTo(quay,size);c.stroke();
   const ship=currentMap.ship;
   c.fillStyle='#496d76';
-  c.fillRect((ship.x-ship.w/2+half)*scale,(ship.z-ship.d/2+half)*scale,ship.w*scale,ship.d*scale);
+  if(ship)c.fillRect((ship.x-ship.w/2+half)*scale,(ship.z-ship.d/2+half)*scale,ship.w*scale,ship.d*scale);
   c.strokeStyle='#9eb5b340';
   for(const track of currentMap.railTracks){
-    const x=(track+half)*scale;
-    c.beginPath();c.moveTo(x,0);c.lineTo(x,size);c.stroke();
+    const x=(track.x+half)*scale;
+    const span=track.quayTrack?355:445;
+    const start=Math.max(0,(track.z-span/2+half)*scale);
+    const end=Math.min(size,(track.z+span/2+half)*scale);
+    if(start<end){c.beginPath();c.moveTo(x,start);c.lineTo(x,end);c.stroke();}
   }
 }
 function drawMapRelief(c,scale,half){

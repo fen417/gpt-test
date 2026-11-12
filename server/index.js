@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
-import { PROTOCOL_VERSION } from '../shared/world.js';
+import { MAP_LAYOUT_REVISION, PROTOCOL_VERSION } from '../shared/world.js';
 import { packSnapshot } from '../shared/snapshot-codec.js';
+import { handleEditorApi } from './editor-api.js';
 
 const port=process.env.PORT===undefined?8080:Number(process.env.PORT);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist');
@@ -21,7 +22,10 @@ const server=http.createServer(async(req,res)=>{
   if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({ok:true,players:clients.size,bots:botCount,mapId:simulation.map.id,difficulty:simulation.difficulty,time:simulation.time}));return;}
   try{
     const url=new URL(req.url,'http://localhost');
-    const requested=decodeURIComponent(url.pathname)==='/'?'index.html':decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    const pathname=decodeURIComponent(url.pathname);
+    if(pathname.startsWith('/api/editor/')){await handleEditorApi(req,res,pathname);return;}
+    if(pathname==='/editor'){res.writeHead(308,{Location:'/editor/'});res.end();return;}
+    const requested=pathname==='/'?'index.html':pathname==='/editor/'?'editor/index.html':pathname.replace(/^\/+/, '');
     const target=path.resolve(root,requested);
     if(!target.startsWith(root+path.sep)&&target!==root)throw new Error('invalid path');
     if(!(await stat(target)).isFile())throw new Error('not found');
@@ -55,10 +59,10 @@ wss.on('connection',(ws)=>{
     let message;try{message=JSON.parse(raw.toString());}catch{return;}
     if(!message||typeof message!=='object')return;
     if(message.type==='join'&&!client.joined){
-      if(message.protocol!==PROTOCOL_VERSION){send(ws,{type:'error',message:'Версия игры устарела. Обновите страницу и подключитесь снова.'});ws.close(1008,'Protocol version mismatch');return;}
+      if(message.protocol!==PROTOCOL_VERSION||(message.layout??'')!==MAP_LAYOUT_REVISION){send(ws,{type:'error',message:'Версии игры или карты различаются. Обновите страницу и подключитесь снова.'});ws.close(1008,'Game version mismatch');return;}
       client.name=typeof message.name==='string'?message.name:'Боец';client.classId=typeof message.classId==='string'?message.classId:'assault';client.weaponId=typeof message.weaponId==='string'?message.weaponId:'';
       const player=simulation.addPlayer(client.id,client.name,undefined,client.classId,client.weaponId,message.sidearmId);client.joined=true;client.team=player.team;client.weaponId=player.primaryWeaponId;client.sidearmId=player.sidearmId;
-      send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
+      send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
     }else if(message.type==='input'&&client.joined){client.lastInput=now;const input=sanitizeInput(message.input);client.interact||=input.interact;client.switchSeat||=input.switchSeat;client.lastControls=input;}
     else if(message.type==='respawn'&&client.joined){
       const validPoint=simulation.map.points.some(p=>p.id===message.pointId)?message.pointId:undefined;
