@@ -4,8 +4,8 @@ const size = 896;
 const boxes = [];
 const structures = [];
 
-function add(x, z, w, d, h, kind, color) {
-  boxes.push({ id: `quarry-${boxes.length}`, x, z, w, d, h, kind, color });
+function add(x, z, w, d, h, kind, color, options = {}) {
+  boxes.push({ id: `quarry-${boxes.length}`, x, z, w, d, h, kind, color, ...options });
 }
 
 function hangar(x, z, w, d, h) {
@@ -114,7 +114,7 @@ add(106, -61, 22, 13, 9, 'building', '#928970');
 add(130, -75, 5.5, 4, 2.3, 'generator', '#a18a50');
 add(97, -78, 1.6, 7, 1.2, 'barrier', '#b6a486');
 add(124, -75, 4.5, 1.5, 1.16, 'sandbags', '#a29676');
-add(14, 1, 9, 6.4, 3.2, 'truck', '#746c50');
+add(22, 1, 9, 6.4, 3.2, 'truck', '#746c50');
 add(-9, -18, 11, 4, 2.8, 'container', '#966d53');
 add(-9, 22, 13, 4, 2.8, 'container', '#6d7b70');
 add(3, -12, 5.4, 1.5, 1.15, 'barrier', '#b6a486');
@@ -204,6 +204,7 @@ function random() {
   seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
   return seed / 0x100000000;
 }
+const firstNaturalCover = boxes.length;
 for (let i = 0, placed = 0; i < 570 && placed < 145; i++) {
   const x = Math.round((random() - .5) * 793), z = Math.round((random() - .5) * 792);
   const w = 2.6 + random() * 4.4, d = 2.4 + random() * 4.3;
@@ -214,6 +215,64 @@ for (let i = 0, placed = 0; i < 570 && placed < 145; i++) {
   placed++;
   if (i % 9 === 0 && Math.abs(x) > 53) add(x, z, 2.2, 2.2, 4.6, 'tree', '#647051');
   else add(x, z, w, d, 1.1 + random() * 2, 'rock', rockColors[i % rockColors.length]);
+}
+
+const lastNaturalCover = boxes.length;
+
+// Open bays shelter the capture circle from the rim. The west entrance faces
+// the parking spur, and the center stays clear for capture and respawns.
+add(1.5, 0, 18.2, 16, .34, 'roof', '#777f73', { overhead: true, baseY: 3.7 });
+add(-7, -3.75, 1.1, 7.5, 3.7, 'wall', '#a0957e');
+add(10, 3.75, 1.1, 7.5, 3.7, 'wall', '#a0957e');
+add(6.5, -7, 7, 1.1, 3.7, 'wall', '#a0957e');
+add(-3.5, 7, 7, 1.1, 3.7, 'wall', '#a0957e');
+
+// Put cover on alternate sides of the approaches so a single position
+// cannot see the full route. Keep the gravel lanes and parking spurs open.
+for (const [x, z, w, d, h, kind, color] of [
+  [-23, -168, 13, 3.4, 2.8, 'container', '#87765d'],
+  [-30, -178, 4.2, 3.4, 1.35, 'crate', '#a08a69'],
+  [24, -128, 16, 1.25, 3.2, 'wall', '#a59b85'],
+  [30, -135, 8.6, 3.5, 3.2, 'truck', '#6e725d'],
+  [-91, -106, 3.4, 11.5, 2.8, 'container', '#777d69'],
+  [76, -59, 12, 3.4, 2.8, 'container', '#887965'],
+  [69, -62, 3.2, 2.6, 1.4, 'crate', '#a28d6c'],
+  [-18, -42, 12, 1.2, 3.2, 'wall', '#a79a82'],
+  [17, -29, 11.5, 3.2, 2.8, 'container', '#8e7259'],
+  [29, -16, 2.4, 3.5, 1.4, 'crate', '#a08a69'],
+  [-20, 39, 12, 3.3, 2.8, 'container', '#767c69'],
+  [21, 45, 13, 1.25, 3.2, 'wall', '#a59b85'],
+  [13, 49, 4.5, 2.1, 1.15, 'sandbags', '#a29676'],
+  [-22, 133, 11, 1.25, 3.1, 'wall', '#a39782'],
+  [-28, 128, 4.3, 3.4, 1.4, 'crate', '#a08a69'],
+  [23, 166, 13, 3.4, 2.8, 'container', '#87715c'],
+  [29, 176, 9, 3.5, 3.2, 'truck', '#6e745f'],
+  [-151, -54, 3.4, 12, 2.8, 'container', '#847762'],
+  [-197, 31, 9.2, 3.5, 3.2, 'truck', '#727660'],
+  [-145, 57, 11, 1.25, 3.1, 'wall', '#a69a84'],
+  [-138, 63, 3.7, 3.4, 1.4, 'crate', '#a48a63'],
+  [152, -8, 3.4, 12, 2.8, 'container', '#806a56'],
+  [196, 52, 12, 1.25, 3.1, 'wall', '#a59a81'],
+  [203, 46, 5.5, 3.7, 2.3, 'generator', '#a28c57'],
+  [144, 73, 11, 3.4, 2.8, 'container', '#747d70'],
+  [-316, 66, 14, 6, 3.4, 'building', '#8e826d'],
+  [-306, 75, 4.5, 3.3, 1.4, 'crate', '#a18b66'],
+  [-314, 131, 3.4, 12, 2.8, 'container', '#7e7563'],
+  [321, -74, 13, 6, 3.4, 'building', '#958570'],
+  [315, -86, 3.4, 12, 2.8, 'container', '#82735e'],
+  [-62, -276, 13, 3.4, 2.8, 'container', '#8c775d'],
+  [72, 278, 15, 1.25, 3.3, 'wall', '#a29782'],
+  [81, 271, 9, 3.6, 3.2, 'truck', '#6e745e'],
+]) {
+  add(x, z, w, d, h, kind, color);
+}
+
+// Leave clearance between the new cover and existing procedural scenery.
+const newCover = boxes.slice(lastNaturalCover);
+for (let i = lastNaturalCover - 1; i >= firstNaturalCover; i--) {
+  const box = boxes[i];
+  if (newCover.some(cover => Math.abs(box.x - cover.x) < (box.w + cover.w) / 2 + 4 &&
+      Math.abs(box.z - cover.z) < (box.d + cover.d) / 2 + 4)) boxes.splice(i, 1);
 }
 
 const terrain = makeTerrain(size, [
@@ -228,7 +287,7 @@ const terrain = makeTerrain(size, [
   { x: 101, z: 367, rx: 48, rz: 45, height: 4, flat: .10 },
 ]);
 
-for (const box of boxes) box.baseY = terrain.heightAt(box.x, box.z);
+for (const box of boxes) box.baseY = terrain.heightAt(box.x, box.z) + (box.baseY ?? 0);
 loadingCanopy.baseY = terrain.heightAt(loadingCanopy.x, loadingCanopy.z);
 for (const point of points) point.y = terrain.heightAt(point.x, point.z);
 
