@@ -5,9 +5,8 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { drawTeamEmblem } from './logos.js';
 import { smoothRingSeams, tailoredGeometry } from './character-geometry.js';
 
-// Every soldier is ONE skinned mesh (one draw call + one shadow call) driven by
-// a small bone hierarchy. Parts are painted with vertex colours over a shared
-// atlas, so both teams and all classes share a single shader program.
+// Each soldier draws one skinned mesh with two geometries bound to the same bones.
+// Vertex colours and a shared atlas let all teams and classes use one shader.
 const down = new THREE.Vector3(0, -1, 0);
 const { clamp, lerp, smoothstep } = THREE.MathUtils;
 const UPPER_ARM = .285;
@@ -533,37 +532,34 @@ function makeTorso(pose, spine, c, classId) {
   }
 }
 
-function makeDistant(group, c, classId) {
-  const distant = new THREE.Group(); group.add(distant);
+function makeDistantGeometry(rig, c) {
+  const { group, spine, head, arms, elbows, wrists, legs, knees, ankles, rifle, magazine, body, classId } = rig;
   const low = geometry().low;
-  volume(distant,c.uniform,[[.86,.13,.09],[1.03,.15,.11],[1.31,.203,.123],[1.44,.126,.075]],8);
-  panel(distant,c.armor,0,1.235,-.119,.265,.302,.048,.006);
-  round(distant,c.armor,0,1.2,.18,.23,classId==='support'?.38:.32,classId==='support'?.19:.13);
-  round(distant,c.web,0,1.13,-.174,.26,.135,.073);
-  shape(distant, low, c.skin, 0, 1.56, -.01, .09, .11, .09);
-  shape(distant, low, classId==='recon'?c.uniform:c.shell, 0, 1.64, 0, .126, .1, .124);
-  if(classId==='recon')shape(distant,geometry().cyl,c.uniform,0,1.61,0,.18,.01,.18);
-  for (const side of [-1, 1]) {
-    const trouser=volume(distant,c.uniform,[[.15,.047,.053],[.37,.06,.07],[.57,.066,.074],[.82,.09,.1],[.94,.079,.09]],8);
-    trouser.position.x=side*.103;
-    shape(distant, low, c.boot, side * .103, .086, -.059, .068, .082, .141);
-    shape(distant, low, c.uniform, side * .192, 1.193, -.128, .075, .196, .083, .96);
+  volume(spine, c.uniform, [[-.12,.13,.09],[.07,.15,.11],[.47,.203,.123],[.60,.126,.075]],
+    8, [1,.7,0,0]);
+  block(spine, c.armor, 0, .395, -.12, .265, .302, .048);
+  block(spine, c.armor, 0, .36, .18, .23, classId === 'support' ? .38 : .32, classId === 'support' ? .19 : .13);
+  block(spine, c.web, 0, .29, -.17, .26, .135, .073);
+  shape(head, low, c.skin, 0, -.006, -.01, .09, .11, .09);
+  shape(head, low, classId === 'recon' ? c.uniform : c.shell, 0, .074, 0, .126, .1, .124);
+  if (classId === 'recon') shape(head, geometry().cyl, c.uniform, 0, .044, 0, .18, .01, .18);
+  for (let i = 0; i < 2; i++) {
+    volume(legs[i], c.uniform, [[-.41,.057,.067],[-.28,.076,.085],[-.06,.09,.104],[.014,.083,.09]], 8);
+    volume(knees[i], c.uniform, [[-.37,.042,.05],[-.22,.058,.067],[-.09,.059,.069],[.035,.058,.068]],
+      8, [0,0,.1,.5]);
+    shape(ankles[i], low, c.boot, 0, -.05, -.059, .069, .059, .144);
+    volume(arms[i], c.uniform, [[-.296,.048,.05],[-.17,.064,.069],[-.035,.075,.074],[.04,.045,.043]],
+      8, [0,0,.15,.55]);
+    volume(elbows[i], c.uniform, [[-.265,.034,.037],[-.16,.05,.055],[-.055,.054,.059],[.025,.05,.052]],
+      8, [0,0,.2,.55]);
+    shape(wrists[i], low, c.glove, i === 0 ? .027 : .012, -.023, -.027, .036, .037, .048);
   }
-  round(distant, c.steel, .125, 1.232, -.357, .07, .083, .6);
-  const mesh = new THREE.Mesh(bake(distant), null);
-  // Distant mesh has no crouched-ready pelvis offset; match its silhouette
-  // to the standing animated model instead of changing height at the LOD cut.
-  const distantPositions = mesh.geometry.attributes.position;
-  for (let i = 0; i < distantPositions.count; i++) {
-    const y = distantPositions.getY(i);
-    distantPositions.setY(i, y + (UPPER_BODY_LIFT - .075) * smoothstep(y, .96, 1.21));
-  }
-  mesh.geometry.computeVertexNormals();
-  mesh.geometry.computeBoundingSphere();
-  mesh.castShadow = mesh.receiveShadow = true;
-  distant.add(mesh);
-  distant.visible = false;
-  return { distant, mesh };
+  block(rifle, c.steel, 0, 0, -.055, .065, .08, .36);
+  block(rifle, c.polymer, 0, -.015, .238, .06, .08, .21);
+  block(rifle, c.steel, 0, .012, -.35, .058, .061, .28);
+  block(rifle, c.steel, 0, .013, -.525, .026, .026, classId === 'recon' ? .44 : .21);
+  block(magazine, c.polymer, 0, -.026, 0, .05, .105, .077);
+  return bake(group, body.skeleton.bones);
 }
 
 export function createSoldierRig(owner, player) {
@@ -617,8 +613,6 @@ export function createSoldierRig(owner, player) {
   group.add(body);
   group.updateMatrixWorld(true);
   body.bind(new THREE.Skeleton(bones));
-  const { distant, mesh: distantMesh } = makeDistant(group, c, classId);
-  distantMesh.material = material;
 
   const marker = new THREE.Mesh(new THREE.OctahedronGeometry(.059), new THREE.MeshBasicMaterial({ color: 0x5bd9e8 }));
   marker.geometry.userData.actorOwned = true;
@@ -632,15 +626,17 @@ export function createSoldierRig(owner, player) {
   contactShadow.castShadow = false;
   group.add(contactShadow);
   const rig = {
-    group, pose, spine, body, distant, head, legs, arms, knees, elbows, ankles, wrists, rifle, magazine, marker, flash,
+    group, pose, spine, body, head, legs, arms, knees, elbows, ankles, wrists, rifle, magazine, marker, flash,
     team: player.team, classId, weaponId, lastX: player.x, lastZ: player.z, initialized: false, deathAge: 0, alive: true,
     recoil: 0, flinch: 0, flinchSide: 0, lastShot: player.shotSeq, seed: 0, stepIndex: 0,
   };
+  rig.detailGeometry = body.geometry;
+  rig.distantGeometry = makeDistantGeometry(rig, c);
   updateSoldierArms(rig);
   return rig;
 }
 
-const RIG_NODES = ['pose', 'spine', 'body', 'distant', 'head', 'rifle', 'magazine', 'marker', 'flash'];
+const RIG_NODES = ['pose', 'spine', 'body', 'head', 'rifle', 'magazine', 'marker', 'flash'];
 const RIG_LISTS = ['legs', 'arms', 'knees', 'elbows', 'ankles', 'wrists'];
 let cloneSeed = 1;
 export function cloneSoldierRig(template, player) {

@@ -870,12 +870,12 @@ export class GameRenderer {
     const rig = cloneSoldierRig(template, { ...player, weaponId });
     rig.weaponId = weaponId;
     rig.stepIndex = this.soldiers.size;
-    rig.distant.traverse(object => { object.castShadow = false; });
     return rig;
   }
 
   removeSoldier(soldier) {
     soldier.group.removeFromParent();
+    soldier.body.skeleton.dispose();
     soldier.flash.material.dispose();
     soldier.marker.material.dispose();
   }
@@ -944,7 +944,9 @@ export class GameRenderer {
       shadowFrustum = this.sun.shadow.getFrustum();
     }
     const distantLimit = this.lowQuality ? 55 : (this.integratedGpu ? 70 : 95);
-    const distantLimitSq = distantLimit * distantLimit;
+    // Use projected size so magnification keeps distant targets detailed.
+    const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
+      Math.tan(THREE.MathUtils.degToRad(85 / 2));
     for (const player of state.players) {
       if (player.id === localId) continue;
       active.add(player.id);
@@ -1007,29 +1009,25 @@ export class GameRenderer {
       if (returning) this.worldRoot.add(group);
       group.visible = true;
       if (!alive) {
-        if (soldier.body) soldier.body.visible = true;
-        soldier.pose.visible = true;
-        soldier.distant.visible = false;
+        soldier.body.geometry = soldier.detailGeometry;
         animateDeath(soldier, { age: soldier.deathAge });
         continue;
       }
       const crouched = player.crouching || player.crouch;
-      const distant = !externalScene && local && !crouched && distSq > distantLimitSq;
-      if (soldier.body) {
-        soldier.body.visible = !distant;
-        soldier.body.castShadow = !this.lowQuality && distSq < 48 * 48;
+      const projectedDistanceSq = this.camera.position.distanceToSquared(this.soldierBounds.center) * viewScale ** 2;
+      const wasDistant = soldier.body.geometry === soldier.distantGeometry;
+      const lodThreshold = distantLimit * (wasDistant ? .94 : 1.06);
+      const distant = !externalScene && Boolean(local) && projectedDistanceSq > lodThreshold ** 2;
+      soldier.body.geometry = distant ? soldier.distantGeometry : soldier.detailGeometry;
+      soldier.body.castShadow = !distant && !this.lowQuality && distSq < 48 * 48;
+      const mustReset = reset || respawned || returning;
+      const reducedRate = !externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
+      soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
+      if (!reducedRate || mustReset || soldier.animationDt >= 1 / 30) {
+        animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset });
+        soldier.animationDt = 0;
       }
-      if (!distant) {
-        const mustReset = reset || respawned || returning || soldier.distant.visible;
-        const reducedRate = !externalScene && this.camera.fov > 35 && distSq > 30 * 30;
-        soldier.animationDt = (soldier.animationDt || 0) + dt;
-        if (!reducedRate || mustReset || soldier.animationDt >= 1 / 30) {
-          animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset });
-          soldier.animationDt = 0;
-        }
-      } else soldier.flash.visible = false;
-      soldier.pose.visible = !distant;
-      soldier.distant.visible = !!distant;
+      if (distant) soldier.flash.visible = false;
       soldier.marker.material.color.setHex(TEAM_COLORS[player.team] ?? COLORS.friendly);
       soldier.marker.visible = player.team === localTeam;
       soldier.marker.position.y = (crouched ? 1.55 : 1.94) + Math.sin(this.clock * 2) * .025;
@@ -1874,9 +1872,10 @@ export class GameRenderer {
 
   dispose() {
     this.clearVehicles();
-    const geometries = new Set(), materials = new Set(), textures = new Set();
+    const geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set();
     const collect = object => {
       if (object.geometry) geometries.add(object.geometry);
+      if (object.skeleton) skeletons.add(object.skeleton);
       for (const mat of object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : []) {
         materials.add(mat); for (const value of Object.values(mat)) if (value?.isTexture) textures.add(value);
       }
@@ -1884,7 +1883,10 @@ export class GameRenderer {
     this.scene.traverse(collect);
     for (const world of this.worlds.values()) if (!world.root.parent) world.root.traverse(collect);
     for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(collect);
-    for (const soldier of this.soldierTemplates.values()) soldier.group.traverse(collect);
+    for (const soldier of this.soldierTemplates.values()) {
+      soldier.group.traverse(collect);
+      geometries.add(soldier.distantGeometry);
+    }
     for (const pool of Object.values(this.effectPools)) for (const effect of pool) collect(effect.mesh);
     if (this.soldierAtlas) {
       materials.add(this.soldierAtlas);
@@ -1893,6 +1895,7 @@ export class GameRenderer {
     textures.add(this.smokeTexture);
     materials.add(this.grenadeMaterial);
     geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose());
+    skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();
     this.atmosphere.target.dispose();
     this.renderer.dispose();
