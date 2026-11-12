@@ -1035,13 +1035,16 @@ export class GameRenderer {
       const wasDistant = soldier.body.geometry === soldier.distantGeometry;
       const lodThreshold = distantLimit * (wasDistant ? .94 : 1.06);
       const distant = !externalScene && Boolean(local) && projectedDistanceSq > lodThreshold ** 2;
-      soldier.body.geometry = distant ? soldier.distantGeometry : soldier.detailGeometry;
+      const wasMedium = soldier.body.geometry === soldier.mediumGeometry;
+      const nearLimit = (this.lowQuality ? 17 : 28) * (wasMedium ? .94 : 1.06);
+      soldier.body.geometry = distant ? soldier.distantGeometry
+        : projectedDistanceSq > nearLimit ** 2 ? soldier.mediumGeometry : soldier.detailGeometry;
       soldier.body.castShadow = !distant && !this.lowQuality && distSq < 48 * 48;
       const mustReset = reset || respawned || returning;
       const reducedRate = !externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
       if (!reducedRate || previousRig || mustReset || soldier.animationDt >= 1 / 30) {
-        animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset });
+        animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset, terrain: this.map.terrain });
         soldier.animationDt = 0;
       }
       if (distant) soldier.flash.visible = false;
@@ -1979,6 +1982,7 @@ export class GameRenderer {
     for (const soldier of this.soldierTemplates.values()) {
       soldier.group.traverse(collect);
       geometries.add(soldier.distantGeometry);
+      geometries.add(soldier.mediumGeometry);
     }
     for (const pool of Object.values(this.effectPools)) for (const effect of pool) collect(effect.mesh);
     if (this.soldierAtlas) {

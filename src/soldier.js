@@ -4,21 +4,22 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { drawTeamEmblem } from './logos.js';
 import { smoothRingSeams, tailoredGeometry } from './character-geometry.js';
+import { gloveSurface } from './glove-geometry.js';
+import { anatomicalGeometry, reduceSoldierGeometry } from './soldier-anatomy.js';
 import { SIDEARMS, weaponSwitchPose } from '../shared/world.js';
 
-// Each soldier draws one skinned mesh with two geometries bound to the same bones.
+// Each soldier draws one skinned mesh with three geometries bound to the same bones.
 // Vertex colours and a shared atlas let all teams and classes use one shader.
 const down = new THREE.Vector3(0, -1, 0);
 const { clamp, lerp, smoothstep } = THREE.MathUtils;
-const UPPER_ARM = .285;
-const FOREARM = .265;
-const THIGH = .402;
-const SHIN = .365;
+const UPPER_ARM = .315;
+const FOREARM = .275;
+const THIGH = .435;
+const SHIN = .405;
 const ANKLE_HEIGHT = .109;
-const WAIST = .98;
-// Eye line in the ready stance matches the 1.65 m first-person camera.
-// Extend the torso above the belt, keeping feet and limb lengths unchanged.
-const UPPER_BODY_LIFT = .14;
+const WAIST = 1.02;
+// Action anchors are relative to the waist. Body proportions are authored in metres.
+const UPPER_BODY_LIFT = .10;
 const THROW_TIME = .78;
 const TAU = Math.PI * 2;
 const grips = [new THREE.Vector3(-.057, -.033, -.127), new THREE.Vector3(.004, -.057, .105)];
@@ -80,9 +81,20 @@ function soldierMaterial(owner) {
   if (cloth) c.drawImage(cloth, 0, 0, cloth.width, cloth.height, 0, 0, 512, H);
   let seed = 4111;
   const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
+  if (!cloth) for (let n = 0; n < 550; n++) {
+    const x = random() * 512, y = random() * H, radius = 6 + random() * 27;
+    c.fillStyle = ['#697264', '#d1ceb4', '#8c927a', '#454e43'][n % 4];
+    c.beginPath();
+    for (let j = 0; j < 9; j++) {
+      const a = j / 9 * TAU, r = radius * (.45 + random() * .55);
+      const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * .65;
+      if (j) c.lineTo(px, py); else c.moveTo(px, py);
+    }
+    c.closePath(); c.fill();
+  }
   for (const [index, [u0, u1, roughness, metalness]] of REGIONS.entries()) {
     const x = u0 * W, w = (u1 - u0) * W;
-    s.fillStyle = `rgb(0,${Math.round(roughness * 255)},${Math.round(metalness * 255)})`; s.fillRect(x, 0, w, H);
+    s.fillStyle = `rgb(255,${Math.round(roughness * 255)},${Math.round(metalness * 255)})`; s.fillRect(x, 0, w, H);
     if (!index) continue;
     if (index >= 5) {
       // Team emblem decals: drawn square, then stretched to fill the tall atlas strip.
@@ -103,8 +115,25 @@ function soldierMaterial(owner) {
     }
   }
   const map = new THREE.CanvasTexture(color); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
+  const normalPixels = new Uint8Array(W * H * 4), orm = s.getImageData(0, 0, W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4, fabric = x < 640, decal = x >= 1024;
+    const warp = Math.sin(x * Math.PI / 2), weft = Math.sin(y * Math.PI / 2);
+    const grain = Math.sin(x * 2.17 + y * 1.73) * Math.cos(y * 2.43 - x * .91);
+    const nx = decal ? 0 : (fabric ? warp * .17 : grain * .045);
+    const ny = decal ? 0 : (fabric ? weft * .14 : grain * .04);
+    normalPixels.set([128 + nx * 127, 128 + ny * 127, Math.sqrt(1 - nx * nx - ny * ny) * 127 + 128, 255], i);
+    orm.data[i] = decal ? 255 : 244 + Math.round(grain * 7);
+    orm.data[i + 1] = Math.min(255, Math.max(0, orm.data[i + 1] + grain * (fabric ? 12 : 5)));
+  }
+  s.putImageData(orm, 0, 0);
+  const normalMap = new THREE.DataTexture(normalPixels, W, H);
+  normalMap.generateMipmaps = true; normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+  normalMap.magFilter = THREE.LinearFilter; normalMap.anisotropy = 4; normalMap.needsUpdate = true;
   const rm = new THREE.CanvasTexture(surface);
-  const highMat = new THREE.MeshStandardMaterial({ name: 'soldier atlas', map, roughnessMap: rm, metalnessMap: rm, roughness: 1, metalness: 1, vertexColors: true });
+  const highMat = new THREE.MeshStandardMaterial({ name: 'soldier atlas', map, normalMap,
+    normalScale: new THREE.Vector2(.55, .55), aoMap: rm, aoMapIntensity: .65,
+    roughnessMap: rm, metalnessMap: rm, roughness: 1, metalness: 1, vertexColors: true });
   const lowMat = new THREE.MeshLambertMaterial({ name: 'soldier atlas low', map, vertexColors: true });
   highMat._lowMaterial = lowMat;
   lowMat._highMaterial = highMat;
@@ -129,7 +158,7 @@ const along = (p, look, x, y, z, radius, length, fine) => tube(p, look, x, y, z,
 // Tapered elliptical sections with continuous normals for fabric and armour.
 // `blend` gives each ring a weight toward the parent bone for soft joints.
 function volume(parent, look, sections, segments = 14, blend = null, cut = {}) {
-  const geo = tailoredGeometry(sections, segments, cut);
+  const geo = cut.anatomy ? anatomicalGeometry(sections, segments, cut) : tailoredGeometry(sections, segments, cut);
   const mesh = shape(parent, geo, look, 0, 0, 0, 1, 1, 1);
   mesh.userData.owned = true;
   if (blend) { mesh.userData.blend = blend; mesh.userData.ring = segments + 1; }
@@ -142,6 +171,28 @@ function cord(parent, look, points, radius = .003, segments = 10) {
   const mesh = shape(parent, geo, look, 0, 0, 0, 1, 1, 1);
   mesh.userData.owned = true;
   return mesh;
+}
+
+function webbing(parent, look, points, width = .038) {
+  const path = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
+  const positions = [], uv = [], indices = [], side = new THREE.Vector3(1, 0, 0);
+  for (let row = 0; row <= 16; row++) {
+    const t = row / 16, center = path.getPoint(t), tangent = path.getTangent(t).normalize();
+    const across = side.clone().addScaledVector(tangent, -side.dot(tangent)).normalize();
+    const normal = new THREE.Vector3().crossVectors(across, tangent).normalize();
+    for (let col = 0; col <= 4; col++) {
+      const a = [0, 1, 2, 3, 0][col];
+      positions.push(...center.clone().addScaledVector(across, a < 2 ? -width / 2 : width / 2)
+        .addScaledVector(normal, a === 0 || a === 3 ? -.0025 : .0025).toArray());
+      uv.push(col / 4, t);
+      if (row < 16 && col < 4) {
+        const i = row * 5 + col; indices.push(i, i + 5, i + 1, i + 1, i + 5, i + 6);
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(indices); geo.computeVertexNormals();
+  shape(parent, geo, look, 0, 0, 0, 1, 1, 1).userData.owned = true;
 }
 
 // Clipped corners and bevels give hard equipment a manufactured silhouette.
@@ -195,6 +246,10 @@ function bake(root, bones) {
       uv.setXY(i, u0 + inset + clamp(uv.getX(i), 0, 1) * (u1 - u0 - inset * 2), .03 + clamp(uv.getY(i), 0, 1) * .94);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setAttribute('uv1', uv.clone());
+    const anatomy = part.geometry.userData.anatomy;
+    geo.setAttribute('bodySurface', new THREE.Uint8BufferAttribute(new Uint8Array(count).fill(
+      anatomy && !['plate', 'sole'].includes(anatomy) || region === 0 ? 1 : 0), 1));
     if (bones) {
       const skinIndex = new Uint16Array(count * 4), skinWeight = new Float32Array(count * 4);
       const { blend, ring } = part.userData;
@@ -218,45 +273,38 @@ function bake(root, bones) {
 }
 
 function makeHead(head, c, classId, team) {
-  // Neck and face, softly attached to the chest.
-  volume(head, c.skin, [[-.14, .052, .05], [-.09, .05, .05], [-.04, .052, .054], [-.01, .055, .058]], 10, [.85, .35, 0, 0]);
-  volume(head, c.skin, [[-.101,.025,.031,-.04],[-.084,.051,.055,-.026],[-.047,.068,.071,-.015],
-    [.003,.08,.082,-.005],[.057,.083,.081,.002],[.1,.072,.069,.004],[.124,.018,.024,.006]], 18, null, { square: .88 });
-  ball(head, c.skin, 0, -.008, -.091, .014, .029, .024);
-  ball(head, c.skin, 0, -.028, -.103, .019, .012, .014);
-  cord(head, c.scarf, [[-.025,-.066,-.08],[0,-.068,-.086],[.025,-.066,-.08]], .002);
+  // Jaw, cheekbones, brow and cranial vault use independent face/back contours.
+  volume(head,c.scarf,[[-.145,.047,.044,.048],[-.105,.049,.048,.051],[-.068,.054,.058,.059]],16,[.8,.3,0],{anatomy:'neck',caps:true});
+  volume(head,c.scarf,[[-.107,.027,.039,.032,-.012],[-.087,.047,.060,.046,-.008],
+    [-.047,.063,.077,.065],[-.003,.073,.082,.075],[.047,.075,.079,.077],
+    [.087,.066,.067,.068],[.123,.038,.037,.045],[.132,.004,.005,.007]],24,null,{anatomy:'head',caps:true});
+  volume(head,c.scarf,[[-.083,.048,.061,.045,-.005],[-.048,.064,.079,.060],[-.018,.068,.081,.065]],18,null,{anatomy:'mask',caps:true});
+  cord(head,c.web,[[-.047,-.057,-.076],[0,-.063,-.083],[.047,-.057,-.076]],.0015);
   for (const side of [-1, 1]) {
-    ball(head, c.skin, side*.049, -.016, -.07, .027, .031, .021);
     cord(head, c.web, [[side*.095,.033,.021],[side*.076,-.055,-.022],[side*.037,-.09,-.06]], .005);
   }
-  for (const side of [-1, 1]) ball(head, c.skin, side * .088, -.004, .008, .016, .03, .022);
-  if (team) {
-    // Shemagh wrapped over the lower face.
-    ball(head, c.scarf, 0, -.062, -.046, .086, .06, .074);
-    volume(head, c.scarf, [[-.13, .07, .066], [-.09, .074, .072], [-.05, .08, .078]], 12);
-  } else volume(head, c.scarf, [[-.135, .066, .062], [-.1, .068, .066], [-.07, .066, .066]], 12);
   for (const side of [-1, 1]) {
-    round(head, c.rubber, side * .044, .021, -.094, .082, .044, .046, 0, -side * .17);
-    round(head, c.visor, side * .044, .022, -.118, .072, .035, .012, 0, -side * .17);
+    round(head, c.rubber, side * .038, .021, -.084, .070, .037, .028, 0, -side * .17);
+    round(head, c.visor, side * .038, .022, -.101, .061, .027, .009, 0, -side * .17);
     ball(head, c.rubber, side * .106, .002, .01, .03, .052, .046);
   }
-  round(head, c.rubber, 0, .022, -.112, .03, .014, .02);
+  round(head, c.rubber, 0, .022, -.099, .024, .012, .016);
   if (classId === 'recon') {
     // Boonie hat in the team camouflage.
     volume(head, c.uniform, [[.03, .114, .11, .004], [.09, .114, .11, .006], [.15, .102, .1, .008], [.178, .072, .072, .008], [.188, .002, .002, .008]], 14);
-    shape(head, geometry().fine, c.uniform, 0, .04, .004, .19, .012, .186);
+    shape(head, geometry().fine, c.uniform, 0, .04, .004, .151, .009, .149);
     tube(head, c.web, 0, .065, .005, .117, .022);
     return;
   }
-  volume(head, c.shell, [[.028, .113, .102, .004], [.065, .123, .115, .009], [.117, .116, .112, .012], [.166, .085, .086, .011], [.196, .032, .036, .009], [.201, .002, .002, .009]], 18);
-  round(head, c.shell, 0, .069, -.109, .208, .034, .05);
-  shape(head, geometry().fine, c.web, 0, .1, .008, .124, .02, .118);
+  volume(head, c.shell, [[.031,.098,.095,.006],[.070,.108,.104,.009],[.118,.098,.097,.011],[.158,.070,.074,.010],[.178,.025,.030,.009],[.181,.002,.002,.009]], 18);
+  round(head, c.shell, 0, .060, -.094, .170, .018, .025);
+  shape(head, geometry().fine, c.web, 0, .1, .008, .108, .009, .104);
   round(head, c.accent, 0, .085, -.124, .062, .039, .024);
   round(head, c.web, 0, .1, .112, .1, .055, .04);
   for (const side of [-1, 1]) {
-    round(head, c.accent, side * .116, .06, .012, .016, .026, .14);
+    round(head, c.accent, side * .104, .06, .012, .016, .026, .14);
     round(head, c.web, side * .1, .14, .0, .016, .07, .03, 0, 0, side * .5);
-    for (const z of [-.036, .001, .038]) block(head, c.polymer, side*.126, .058, z, .01, .012, .018);
+    for (const z of [-.036, .001, .038]) block(head, c.polymer, side*.114, .058, z, .01, .012, .018);
   }
   panel(head, c.polymer, 0, .105, -.117, .038, .047, .008, .003);
   round(head, c.web, 0, .11, .116, .07, .043, .025);
@@ -277,24 +325,12 @@ function makeGlove(wrist, c, support, pistol) {
   glove.position.copy((pistol ? pistolGrips : grips)[support ? 0 : 1]).negate().applyQuaternion(glove.quaternion);
   wrist.add(glove);
   const finger = (points, radius) => {
-    const path = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point)));
-    const segments = 12, sides = 8;
-    const geometry = new THREE.TubeGeometry(path, segments, radius, sides);
-    const positions = geometry.attributes.position;
-    const vertex = new THREE.Vector3();
-    for (let ring = 0; ring <= segments; ring++) {
-      const t = ring / segments;
-      const center = path.getPointAt(t);
-      const taper = lerp(1, .74, t) * Math.sqrt(1 - smoothstep(t, .83, 1) * .999);
-      for (let side = 0; side <= sides; side++) {
-        const index = ring * (sides + 1) + side;
-        vertex.fromBufferAttribute(positions, index).sub(center).multiplyScalar(taper).add(center);
-        positions.setXYZ(index, vertex.x, vertex.y, vertex.z);
-      }
-    }
-    geometry.computeVertexNormals();
-    smoothRingSeams(geometry, segments + 1, sides);
-    shape(glove, geometry, c.glove, 0, 0, 0, 1, 1, 1).userData.owned = true;
+    const skin = gloveSurface(points,[1,.95,.88,.91,.78,.74,.77,.57,.15].map(x=>x*radius),
+      [.82,.80,.73,.76,.68,.64,.66,.49,.13].map(x=>x*radius),
+      {across:support?[0,0,1]:[0,1,0],segments:12,radial:8});
+    shape(glove,skin.geometry,c.glove,0,0,0,1,1,1).userData.owned=true;
+    for(const [from,to]of [[.08,.88]])
+      shape(glove,skin.patch(from,to,.40,2.74,.0007),c.web,0,0,0,1,1,1).userData.owned=true;
   };
   if (support && pistol) {
     ball(glove,c.glove,-.055,-.105,.079,.022,.032,.034);
@@ -337,11 +373,13 @@ function makeGlove(wrist, c, support, pistol) {
 }
 
 function makeArm(spine, c, side, classId, pistol) {
-  const arm = bone(side < 0 ? 'arm.L' : 'arm.R', side * .207, 1.39, 0);
+  const arm = bone(side < 0 ? 'arm.L' : 'arm.R', side * .205, 1.455, .006);
   const elbow = bone('elbow', 0, -UPPER_ARM, 0), wrist = bone('wrist', 0, -FOREARM, 0);
   spine.add(arm); arm.add(elbow); elbow.add(wrist);
-  volume(arm, c.uniform, [[-.297,.048,.05],[-.255,.055,.058],[-.21,.057,.062],[-.16,.065,.07],
-    [-.1,.073,.077],[-.03,.075,.074],[.027,.055,.054],[.05,.026,.026]], 16, [0,0,0,0,0,.2,.6,.85], {folds:.07});
+  volume(arm,c.uniform,[[-.326,.043,.044,.046],[-.285,.049,.049,.051],
+    [-.22,.057,.060,.064],[-.14,.065,.064,.070],[-.065,.070,.068,.069],
+    [.005,.068,.065,.064],[.044,.038,.036,.037]],20,[0,0,0,0,.15,.6,.95],
+    {anatomy:'upperArm',folds:.025,caps:true});
   pouch(arm,c,side*.061,-.105,.014,.035,.097,.092);
   round(arm, c.patch, side * .067, -.115, 0, .018, .081, .082);
   block(arm, c.logo, side * .0785, -.115, 0, .004, .066, .066);
@@ -350,8 +388,9 @@ function makeArm(spine, c, side, classId, pistol) {
     block(arm, c.red, side * .078, -.07, 0, .006, .03, .01);
     block(arm, c.red, side * .078, -.07, 0, .006, .01, .03);
   } else shape(arm, geometry().cyl, c.web, 0, -.2, 0, .066, .022, .072);
-  volume(elbow, c.uniform, [[-.264,.032,.035],[-.235,.037,.039],[-.21,.044,.046],[-.17,.049,.054],
-    [-.13,.053,.059],[-.075,.055,.061],[-.04,.054,.06],[.025,.05,.052]], 16, [0,0,0,0,0,.12,.25,.55], {folds:.085});
+  volume(elbow,c.uniform,[[-.282,.030,.031,.033],[-.245,.034,.035,.037],
+    [-.18,.044,.045,.052],[-.11,.051,.052,.056],[-.045,.047,.046,.051],
+    [.018,.044,.043,.045]],20,[0,0,0,0,.2,.6],{anatomy:'forearm',folds:.03,caps:true});
   panel(elbow, c.armor, 0, -.037, .052, .075, .1, .022, .006);
   shape(elbow, geometry().cyl, c.glove, 0, -.215, 0, .046, .07, .05);
   if (side < 0) {
@@ -364,29 +403,33 @@ function makeArm(spine, c, side, classId, pistol) {
 }
 
 function makeLeg(pose, c, side) {
-  const leg = bone(side < 0 ? 'leg.L' : 'leg.R', side * .097, .92, 0);
+  const leg = bone(side < 0 ? 'leg.L' : 'leg.R', side * .095, .96, 0);
   const knee = bone('knee', 0, -THIGH, 0), ankle = bone('ankle', 0, -SHIN, 0);
   pose.add(leg); leg.add(knee); knee.add(ankle);
-  volume(leg,c.uniform,[[-.411,.058,.068],[-.36,.062,.074],[-.3,.074,.082],[-.22,.083,.094],
-    [-.13,.089,.103],[-.06,.091,.104],[.014,.083,.09]],16,[0,0,0,0,0,.15,.55],{folds:.055});
+  volume(leg,c.uniform,[[-.447,.052,.058,.057],[-.391,.059,.067,.067],
+    [-.31,.072,.082,.078],[-.21,.082,.091,.085],[-.11,.086,.097,.093],
+    [-.025,.083,.090,.091],[.025,.072,.077,.079]],22,[0,0,0,0,0,.25,.7],
+    {anatomy:'thigh',folds:.022,caps:true});
   pouch(leg,c,side*.086,-.2,.004,.047,.15,.12);
   round(leg, c.web, side * .101, -.128, .004, .028, .036, .126);
   if (side > 0) {
     round(leg, c.polymer, side * .108, -.1, .04, .045, .15, .075, -.1);
     shape(leg, geometry().cyl, c.web, 0, -.2, .0, .1, .024, .108);
   } else round(leg, c.armor, side * .1, -.07, .045, .04, .09, .085);
-  volume(knee,c.uniform,[[-.37,.041,.049],[-.32,.047,.054],[-.27,.051,.059],[-.2,.06,.069],
-    [-.14,.063,.074],[-.09,.06,.07],[-.025,.057,.066],[.042,.058,.068]],16,[0,0,0,0,0,.1,.3,.5],{folds:.075});
+  volume(knee,c.uniform,[[-.414,.036,.042,.041],[-.36,.039,.045,.047],
+    [-.28,.047,.052,.061],[-.19,.054,.056,.068],[-.105,.052,.054,.062],
+    [-.035,.048,.054,.052],[.027,.051,.057,.053]],20,[0,0,0,0,.1,.3,.65],
+    {anatomy:'calf',folds:.024,caps:true});
   panel(knee,c.rubber,0,-.04,-.068,.105,.132,.014,.007);
   panel(knee,c.shell,0,-.04,-.084,.081,.105,.012,.006);
   for(const y of [-.065,-.035]) round(knee,c.web,0,y,-.096,.055,.004,.004);
   round(knee, c.web, 0, -.044, .022, .132, .03, .116);
-  // Boot: shaft, foot, toe cap, heel and sole.
-  volume(ankle, c.boot, [[-.07, .058, .068, .005], [-.01, .055, .062], [.05, .053, .058], [.09, .056, .061]], 10);
-  ball(ankle, c.boot, 0, -.046, -.06, .066, .058, .14);
-  ball(ankle, c.boot, 0, -.064, -.17, .058, .042, .046);
-  round(ankle, c.sole, 0, -.094, -.062, .142, .03, .296);
-  round(ankle, c.sole, 0, -.084, .06, .12, .036, .07);
+  // Authored heel, instep and toe-box sections form a single leather upper.
+  volume(ankle,c.boot,[[-.093,.053,.101,.048,-.061],[-.071,.059,.157,.052,-.018],
+    [-.038,.058,.151,.050,-.012],[.002,.048,.094,.048],[.055,.044,.050,.046],
+    [.095,.047,.050,.049]],18,null,{anatomy:'boot',caps:true,square:.64});
+  volume(ankle,c.sole,[[-.109,.054,.156,.050,-.018],[-.101,.060,.163,.054,-.018],
+    [-.086,.060,.160,.054,-.018]],18,null,{anatomy:'sole',caps:true,square:.6});
   for(let n=0;n<5;n++){
     const y=.04-n*.018,z=-.058-n*.012;
     cord(ankle,c.web,[[-.028,y,z],[.028,y-.013,z-.008]],.0025,3);
@@ -501,20 +544,27 @@ function makeMuzzleFlash(rifle,muzzle,scale=1) {
 }
 
 function makeTorso(pose, spine, c, classId) {
-  volume(spine,c.uniform,[[.84,.117,.082],[.9,.155,.105],[.96,.164,.113],[1.035,.148,.104],
-    [1.12,.151,.108],[1.24,.177,.118],[1.34,.205,.119],[1.4,.187,.098],[1.44,.126,.074],[1.465,.067,.056]],
-    20,[1,.95,.75,.35,.1,0,0,0,0,0],{folds:.035,square:.9});
+  volume(spine,c.uniform,[
+    [.86,.102,.078,.083],[.91,.139,.098,.107],[.97,.152,.102,.111],
+    [1.035,.137,.092,.101],[1.10,.139,.096,.108],[1.19,.163,.112,.115],
+    [1.29,.182,.122,.116],[1.38,.192,.112,.104],[1.445,.177,.087,.088],
+    [1.485,.119,.063,.065],[1.515,.057,.048,.050]],
+    24,[1,1,.9,.5,.2,0,0,0,0,0,0],{anatomy:'torso',folds:.018,caps:true});
   // Independent front/back SAPI bags, rather than an oval armoured barrel.
   volume(spine,c.web,[[1.04,.156,.114],[1.075,.166,.124],[1.18,.177,.128],[1.22,.176,.125]],16,null,{square:.78});
-  panel(spine,c.armor,0,1.235,-.121,.265,.302,.048,.013);
-  panel(spine,c.armor,0,1.25,.114,.256,.29,.036,.012);
+  const frontBag = volume(spine,c.armor,[[1.07,.109,.022,.017],[1.09,.136,.027,.018],
+    [1.29,.136,.029,.018],[1.365,.112,.026,.017],[1.414,.076,.022,.014]],
+    20,null,{anatomy:'plate',square:.48,caps:true}); frontBag.position.z=-.133;
+  const rearBag = volume(spine,c.armor,[[1.09,.104,.017,.019],[1.12,.133,.019,.024],
+    [1.32,.130,.018,.024],[1.40,.077,.015,.020]],20,null,{anatomy:'plate',square:.48,caps:true});
+  rearBag.position.z=.118;
   volume(pose,c.web,[[.939,.161,.115],[.981,.162,.116]],20,null,{square:.82});
   panel(pose,c.accent,0,.961,-.123,.048,.03,.013,.003);
   pouch(pose,c,.1,.915,.128,.10,.12,.065);
   tube(pose, c.armor, -.17, .93, -.05, .034, .09);
   for (const side of [-1, 1]) {
-    cord(spine,c.web,[[side*.094,1.32,-.139],[side*.135,1.405,-.084],
-      [side*.137,1.424,.021],[side*.104,1.34,.127]],.018,14);
+    webbing(spine,c.web,[[side*.094,1.36,-.144],[side*.130,1.446,-.075],
+      [side*.133,1.462,.018],[side*.104,1.38,.136]],.039);
     panel(spine,c.polymer,side*.106,1.36,-.115,.031,.038,.015,.004);
     pouch(spine,c,side*.17,1.078,.027,.058,.139,.112);
     for(let row=0;row<3;row++){
@@ -565,7 +615,7 @@ function makeTorso(pose, spine, c, classId) {
 function makeDistantGeometry(rig, c) {
   const { group, spine, head, arms, elbows, wrists, legs, knees, ankles, rifle, magazine, body, classId } = rig;
   const low = geometry().low;
-  volume(spine, c.uniform, [[-.12,.13,.09],[.07,.15,.11],[.47,.203,.123],[.60,.126,.075]],
+  volume(spine, c.uniform, [[-.16,.11,.08],[-.05,.151,.107],[.08,.139,.10],[.29,.182,.12],[.425,.177,.088],[.495,.057,.05]],
     8, [1,.7,0,0]);
   block(spine, c.armor, 0, .395, -.12, .265, .302, .048);
   block(spine, c.armor, 0, .36, .18, .23, classId === 'support' ? .38 : .32, classId === 'support' ? .19 : .13);
@@ -574,13 +624,13 @@ function makeDistantGeometry(rig, c) {
   shape(head, low, classId === 'recon' ? c.uniform : c.shell, 0, .074, 0, .126, .1, .124);
   if (classId === 'recon') shape(head, geometry().cyl, c.uniform, 0, .044, 0, .18, .01, .18);
   for (let i = 0; i < 2; i++) {
-    volume(legs[i], c.uniform, [[-.41,.057,.067],[-.28,.076,.085],[-.06,.09,.104],[.014,.083,.09]], 8);
-    volume(knees[i], c.uniform, [[-.37,.042,.05],[-.22,.058,.067],[-.09,.059,.069],[.035,.058,.068]],
+    volume(legs[i], c.uniform, [[-.445,.052,.058],[-.28,.075,.083],[-.06,.085,.094],[.025,.072,.078]], 8);
+    volume(knees[i], c.uniform, [[-.414,.036,.042],[-.22,.053,.064],[-.09,.052,.059],[.027,.051,.055]],
       8, [0,0,.1,.5]);
     shape(ankles[i], low, c.boot, 0, -.05, -.059, .069, .059, .144);
-    volume(arms[i], c.uniform, [[-.296,.048,.05],[-.17,.064,.069],[-.035,.075,.074],[.04,.045,.043]],
+    volume(arms[i], c.uniform, [[-.326,.043,.045],[-.17,.062,.066],[-.035,.070,.068],[.044,.038,.037]],
       8, [0,0,.15,.55]);
-    volume(elbows[i], c.uniform, [[-.265,.034,.037],[-.16,.05,.055],[-.055,.054,.059],[.025,.05,.052]],
+    volume(elbows[i], c.uniform, [[-.282,.030,.033],[-.16,.047,.053],[-.055,.049,.05],[.018,.044,.044]],
       8, [0,0,.2,.55]);
     shape(wrists[i], low, c.glove, i === 0 ? .027 : .012, -.023, -.027, .036, .037, .048);
   }
@@ -608,7 +658,7 @@ export function createSoldierRig(owner, player) {
   const spine = bone('spine'); pose.add(spine);
   pose.rotation.order = 'YXZ';
   makeTorso(pose, spine, c, classId);
-  const head = bone('head', 0, 1.566, 0); spine.add(head);
+  const head = bone('head', 0, 1.65, -.008); spine.add(head);
   makeHead(head, c, classId, team);
   const arms = [], elbows = [], wrists = [], legs = [], knees = [], ankles = [];
   for (const side of [-1, 1]) {
@@ -618,25 +668,6 @@ export function createSoldierRig(owner, player) {
     legs.push(leg); knees.push(knee); ankles.push(ankle);
   }
   const { rifle, flash, magazine } = makeRifle(spine, c, classId, weaponId);
-  for (const child of spine.children) {
-    if (child.isBone) child.position.y += UPPER_BODY_LIFT;
-    else if (child.isMesh) {
-      // These are torso/gear parts. Clone shared primitives before shaping.
-      const source = child.geometry;
-      child.updateMatrix();
-      const geo = source.clone().applyMatrix4(child.matrix);
-      const positions = geo.attributes.position;
-      for (let i = 0; i < positions.count; i++) {
-        const y = positions.getY(i);
-        positions.setY(i, y + UPPER_BODY_LIFT * smoothstep(y, .96, 1.21));
-      }
-      geo.computeVertexNormals();
-      child.geometry = geo;
-      if (child.userData.owned) source.dispose();
-      child.userData.owned = true;
-      child.position.set(0,0,0); child.rotation.set(0,0,0); child.scale.set(1,1,1);
-    }
-  }
   // The chest pivots at the waist: re-express its children relative to it.
   spine.position.y = WAIST;
   for (const child of spine.children) child.position.y -= WAIST;
@@ -669,6 +700,7 @@ export function createSoldierRig(owner, player) {
     recoil: 0, flinch: 0, flinchSide: 0, lastShot: player.shotSeq, seed: 0, stepIndex: 0,
   };
   rig.detailGeometry = body.geometry;
+  rig.mediumGeometry = reduceSoldierGeometry(rig.detailGeometry, .014);
   rig.distantGeometry = makeDistantGeometry(rig, c);
   updateSoldierArms(rig);
   return rig;
@@ -737,7 +769,7 @@ export function updateSoldierArms(rig, supportTarget = null) {
     const arm = rig.arms[i], elbow = rig.elbows[i];
     if (i === 0 && supportTarget) target.copy(supportTarget);
     else target.copy((rig.pistol ? pistolGrips : grips)[i]).applyMatrix4(rig.rifle.matrix);
-    solveLimb(arm, elbow, target, UPPER_ARM, FOREARM, i === 0 ? -.46 : .66, -.95, .12);
+    solveLimb(arm, elbow, target, UPPER_ARM, FOREARM, i === 0 ? -.38 : .48, -.8, .32);
     const wrist = rig.wrists?.[i];
     if (!wrist) continue;
     wrist.quaternion.copy(arm.quaternion).multiply(elbow.quaternion).invert().multiply(rig.rifle.quaternion);
@@ -821,7 +853,7 @@ function animateFeet(motion, position, yaw, dt) {
   const moveBlend = smoothstep(speed, .12, 2.1);
   const dirX = travelSpeed > .05 ? lateralSpeed / travelSpeed : 0;
   const dirZ = travelSpeed > .05 ? -forwardSpeed / travelSpeed : 0;
-  const maxLift = lerp(lerp(.10, .14, sprint), .075, crouch);
+  const maxLift = lerp(lerp(.075, .115, sprint), .06, crouch);
   const ampZ = lerp(.21, .37, sprint) * (1 - crouch * .32) * moveBlend;
   const ampX = lerp(.135, .175, sprint) * (1 - crouch * .28) * moveBlend;
   const footResp = 1 - Math.exp(-dt * 26);
@@ -842,7 +874,7 @@ function animateFeet(motion, position, yaw, dt) {
 
     const targetLift = air > .5
       ? (i === 0 ? .105 : .18)
-      : Math.max(0, Math.sin(angle)) * maxLift * moveBlend;
+      : Math.max(0, Math.sin(angle)) ** 1.5 * maxLift * moveBlend;
     foot.lift = lerp(foot.lift, targetLift, 1 - Math.exp(-dt * 24));
     foot.swinging = moving && Math.sin(angle) > 0;
     foot.settle = 1;
@@ -962,7 +994,7 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
 
 // The renderer sets the interpolated root position/yaw first. Foot contacts
 // use that same motion, so server snapshot cadence does not reset the stride.
-export function animateSoldier(rig, { dt, player, reset = false }) {
+export function animateSoldier(rig, { dt, player, reset = false, terrain = null }) {
   dt = clamp(Number(dt) || 1 / 60, .001, .1);
   const { position } = rig.group, yaw = rig.group.rotation.y;
   const crouched = Boolean(player.crouch || player.crouching || player.sliding);
@@ -1003,15 +1035,28 @@ export function animateSoldier(rig, { dt, player, reset = false }) {
   motion.hipYaw = fresh ? hipTarget : lerp(motion.hipYaw, hipTarget, 1 - Math.exp(-dt * 16));
   motion.lean = lerp(motion.lean, clamp(-lateralSpeed * .01, -.055, .055) * (1 - motion.crouch * .5), 1 - Math.exp(-dt * 14));
   animateFeet(motion, position, yaw, dt);
+  // Apply local ground differences only while standing on terrain. Roofs,
+  // vehicle seats and airborne characters retain their authoritative height.
+  const ground = terrain?.heightAt(position.x, position.z);
+  if (ground !== undefined && Math.abs(position.y - ground) < .18 && motion.air < .5) {
+    for (const foot of motion.feet) {
+      const wx = position.x + foot.local.x * cos + foot.local.z * sin;
+      const wz = position.z - foot.local.x * sin + foot.local.z * cos;
+      foot.local.y += clamp(terrain.heightAt(wx, wz) - ground, -.22, .22);
+      const front = terrain.heightAt(wx - sin * .10, wz - cos * .10);
+      const rear = terrain.heightAt(wx + sin * .10, wz + cos * .10);
+      foot.slope = lerp(foot.slope || 0, clamp(Math.atan2(front - rear, .20), -.4, .4), response);
+    }
+  } else for (const foot of motion.feet) foot.slope = 0;
   for(let i=0;i<2;i++){
     const foot=motion.feet[i];
     foot.local.lerp(target.set(i===0?-.16:.16,ANKLE_HEIGHT,i===0?-.43:.26),motion.slide);
     foot.lift*=1-motion.slide;
   }
   const stridePhase = motion.phase * TAU;
-  const strideTwist = Math.sin(stridePhase) * (.05 + motion.sprint * .05) * gaitWeight * (1 - motion.crouch * .5);
+  const strideTwist = Math.sin(stridePhase) * (.028 + motion.sprint * .025) * gaitWeight * (1 - motion.crouch * .5);
   const breathing = Math.sin(motion.time * 2.4) * .004;
-  const bodyHeight = lerp(-.075 - motion.sprint * .06, -.675, motion.crouch);
+  const bodyHeight = lerp(-.018 - motion.sprint * .035, -.603, motion.crouch);
   const bodyBob = Math.cos(stridePhase * 2) * lerp(.018, .012, motion.sprint) * gaitWeight + breathing - motion.land * .09;
   rig.pose.rotation.set(
     -.02 - motion.sprint * .11 - motion.crouch * .12 - motion.land * .06 + motion.slide*.22,
@@ -1031,7 +1076,7 @@ export function animateSoldier(rig, { dt, player, reset = false }) {
     // Counter-rotate the boot so the sole remains parallel to the ground in stance.
     inverse.setFromAxisAngle(up, nearestAngle(yaw, foot.yaw));
     ankle.quaternion.copy(rig.pose.quaternion).multiply(leg.quaternion).multiply(knee.quaternion).invert().multiply(inverse);
-    ankle.rotateX(-foot.lift * 1.8);
+    ankle.rotateX(-foot.lift * 1.8 + (foot.slope || 0) * (1 - smoothstep(foot.lift, .02, .09)));
   }
   animateUpperBody(rig, motion, player, dt, fresh, strideTwist);
 }

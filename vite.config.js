@@ -8,6 +8,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       input: {
+        soldiers: fileURLToPath(new URL('./soldier-review.html', import.meta.url)),
         game: fileURLToPath(new URL('./index.html', import.meta.url)),
         editor: fileURLToPath(new URL('./editor/index.html', import.meta.url)),
       },

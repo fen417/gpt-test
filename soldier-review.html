@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+  <meta charset="utf-8" /><title>Soldier 0.10 review</title
+  ><style>
+    body {
+      margin: 0;
+      background: #242b30;
+      color: #eee;
+      font: 14px system-ui;
+    }
+    nav {
+      padding: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+    }
+    select,
+    button {
+      background: #39454b;
+      color: white;
+      padding: 7px;
+      border: 1px solid #71818a;
+    }
+    #info {
+      margin-left: auto;
+      white-space: pre;
+    }
+  </style>
+  <nav>
+    <b>Бойцы 0.10</b
+    ><select id="state">
+      <option>idle</option>
+      <option>walk</option>
+      <option>sprint</option>
+      <option>crouch</option>
+      <option>jump</option>
+      <option>reload</option>
+      <option>death</option>
+      <option>rest</option></select
+    ><select id="weapon">
+      <option>ar416</option>
+      <option>mcx9</option>
+      <option>mg36</option>
+      <option>sv98</option>
+      <option>p19</option>
+      <option>m50</option></select
+    ><select id="view">
+      <option>perspective</option>
+      <option>front</option>
+      <option>back</option>
+      <option>side</option></select
+    ><select id="lod">
+      <option>0</option>
+      <option>1</option>
+      <option>2</option></select
+    ><select id="count">
+      <option>1</option>
+      <option>10</option>
+      <option>20</option>
+      <option>32</option></select
+    ><button id="uniform">Форма / экипировка</button><span id="info"></span>
+  </nav>
+  <script type="module" src="./src/soldier-review.js"></script>
+</html>
