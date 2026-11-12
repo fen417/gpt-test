@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { smoothRingSeams } from './character-geometry.js';
+import { gloveSurface } from './glove-geometry.js';
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
 // its own depth pass by GameRenderer; no material is allowed to see through it.
@@ -69,10 +70,10 @@ export function createWeaponRig(owner = {}) {
   }
   const glove=mat('glove-tactical-fabric',0x51544d,.95,0,{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.00045});
   const leather=mat('glove-leather-palms',0x665b4e,.88,0,{map:leatherGrain,bumpMap:leatherGrain,bumpScale:.0004});
-  const glovePanel=mat('glove-reinforced-panels',0x828579,.82,0,{map:leatherGrain,bumpMap:leatherGrain,bumpScale:.00034});
+  const glovePanel=mat('glove-reinforced-panels',0x8d8979,.96,0,{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.00028});
   const gloveThread=mat('glove-contrast-thread',0xb9b09b,.97,0);
   const seam=mat('glove-stitched-seams',0x969078,.97,0);
-  const knuckle=mat('glove-knuckle-protection',0x323735,.70,.02,{map:leatherGrain,bumpMap:leatherGrain,bumpScale:.00022});
+  const knuckle=mat('glove-knuckle-protection',0x323735,.96,0,{map:leatherGrain,bumpMap:leatherGrain,bumpScale:.00022});
   const clothMap = owner.surfaces?.maps?.cloth || null;
   const cloth = mat('sleeve-ripstop-cloth', 0x68745c, .98, 0, clothMap ? { map: clothMap } : {});
   const cuff=mat('sleeve-elastic-cuff',0x384638,.99,0);
@@ -192,6 +193,14 @@ export function createWeaponRig(owner = {}) {
     // Faceted shoulders join the side plates to the lower and upper ribs.
     const rib=rounded(handguard,side*.031,-.034,-.18,.019,.016,.34,metal);rib.rotation.z=side*.52;
     for(let z=-.052;z>-.32;z-=.058)detail(handguard,side*.047,.032,z,.0018,.004,.028,worn);
+  }
+  // The rail's underside is at y=.056; the side plates stop at y=.046.
+  // A solid upper bridge overlaps both, including the sloped front/rear ends.
+  profile(handguard,[[0,.028],[0,.062],[-.348,.062],[-.36,.046],[-.36,.024],
+    [-.334,.034],[-.018,.034]],.083,anodized,{bevel:.001});
+  for(const side of [-1,1]){
+    profile(handguard,[[-.017,.045],[-.017,.060],[-.338,.060],[-.348,.049]],
+      .009,metal,{x:side*.028,bevel:.001});
   }
   // The bore is a separate continuous assembly. Changing handguard length or
   // width must never shorten or hide the steel visible through its vents.
@@ -399,49 +408,63 @@ export function createWeaponRig(owner = {}) {
   const rightTab=rounded(rightArm,.101,-.196,.14,.026,.013,.035,cuff);rightTab.rotation.z=.3;
   const leftHand=new THREE.Group();leftHand.name='left-support-glove';leftHand.position.set(-.018,-.075,-.36);weapon.add(leftHand);
   const leftBase=leftHand.position.clone(), lp=p=>[p[0]-leftBase.x,p[1]-leftBase.y,p[2]-leftBase.z];
-  function finger(parent, points, radius, segments=18) {
-    // Separate phalange volumes with shallow joint constrictions and a round tip.
-    return loft(parent,points,[radius*.94,radius*1.06,radius*.95,radius*.86,
-      radius*.96,radius*.81,radius*.83,radius*.68,radius*.18],glove,{segments:Math.max(24,segments),radial:14,ellipse:[1,.88]});
+  function surfaceLine(parent,skin,t0,t1,angle,material=seam,radius=.00065){
+    const points=Array.from({length:11},(_,i)=>skin.point(THREE.MathUtils.lerp(t0,t1,i/10),angle,.001).toArray());
+    curve(parent,points,radius,material,12,6);
   }
-  function gloveStitches(parent,points,count){
-    const path=new THREE.CatmullRomCurve3(points.map(point=>new THREE.Vector3(...point)));
-    const axis=new THREE.Vector3(0,0,1);
+  function surfaceStitches(parent,skin,t0,t1,angle,count){
     for(let i=0;i<count;i++){
-      const t=(i+.5)/count;
-      const center=path.getPointAt(t);
-      const stitch=rounded(parent,center.x,center.y,center.z,.0016,.0012,.0037,gloveThread);
-      stitch.quaternion.setFromUnitVectors(axis,path.getTangentAt(t).normalize());
+      const t=THREE.MathUtils.lerp(t0,t1,(i+.5)/count);
+      curve(parent,[-.035,0,.035].map(offset=>skin.point(t,angle+offset,.0012).toArray()),.00045,gloveThread,3,4);
     }
   }
-  loft(leftHand,[[-.083,-.108,-.361],[-.058,-.089,-.389],[-.035,-.08,-.429],[-.032,-.077,-.471]].map(lp),
-    [.024,.03,.035,.035,.029,.019],glove,{segments:28,radial:18,ellipse:[1.35,.64],widthAxis:[1,0,0]});
-  // Leather heel and thenar pad connect the thumb to the palm, with a slimmer back.
-  ellipsoid(leftHand,lp([-.045,-.096,-.399]),[.03,.016,.033],leather);
-  ellipsoid(leftHand,lp([-.064,-.067,-.394]),[.023,.022,.031],glove);
-  loft(leftHand,[[-.069,-.077,-.387],[-.080,-.078,-.420],[-.071,-.077,-.455]].map(lp),
-    [.009,.015,.014,.008],glovePanel,{segments:12,radial:10,ellipse:[.33,1],widthAxis:[1,0,0]});
-  gloveStitches(leftHand,[[-.074,-.087,-.389],[-.086,-.087,-.419],[-.078,-.087,-.455]].map(lp),13);
-  loft(leftHand,[[-.054,-.108,-.389],[-.031,-.103,-.424],[-.027,-.096,-.462]].map(lp),
-    [.019,.032,.03,.017],leather,{segments:18,radial:12,ellipse:[1,.18],widthAxis:[1,0,0]});
-  for(let i=0;i<4;i++){
-    const z=-.477+i*.028, r=[.0118,.0128,.0121,.0105][i], shorten=[.009,0,.004,.016][i];
-    const points=[[-.055,-.077,z],[-.021,-.098,z-.002],[.026,-.091,z-.002],[.053,-.058,z],
-      [.058,-.023-shorten,z+.003],[.043,.004-shorten,z+.006]];
-    finger(leftHand,points.map(lp),r);
-    ellipsoid(leftHand,lp([.041,-.077,z]),[.013,.012,.011],knuckle);
-    ellipsoid(leftHand,lp([.058,-.035,z+.001]),[.009,.012,.01],leather);
-    for(const [x,y]of [[-.016,-.105],[.056,-.041]])curve(leftHand,[[x-.006,y-.003,z-.01],[x,y-.006,z],[x+.006,y-.003,z+.01]].map(lp),.0012,seam,6,6);
+  function palm(parent,points,widths,depths,across,{wrist=true}={}){
+    const skin=gloveSurface(points,widths,depths,{across,segments:36});
+    mesh(parent,skin.geometry,glove);
+    mesh(parent,skin.patch(.22,.92,.38,2.76),glovePanel);
+    mesh(parent,skin.patch(.29,.92,3.42,5.99),leather);
+    for(const angle of [.36,2.78]){
+      surfaceLine(parent,skin,.24,.89,angle);
+      surfaceStitches(parent,skin,.27,.86,angle,14);
+    }
+    // Thin wrist closure follows the wrist contour instead of a floating block.
+    if(wrist){
+      mesh(parent,skin.patch(.08,.20,.10,3.04,.0011),knuckle);
+      for(const angle of [.7,2.4])surfaceLine(parent,skin,.09,.19,angle,gloveThread,.0005);
+    }
+    return skin;
   }
-  finger(leftHand,[[-.067,-.068,-.383],[-.082,-.034,-.395],[-.071,.012,-.42],[-.047,.031,-.438]].map(lp),.015);
-  ellipsoid(leftHand,lp([-.073,-.017,-.407]),[.018,.022,.023],knuckle);
-  curve(leftHand,[[-.07,-.092,-.375],[-.077,-.098,-.411],[-.072,-.087,-.464]].map(lp),.0018,seam,16,6);
-  for(let i=0;i<4;i++){
-    const z=-.461+i*.023;
-    const pad=rounded(leftHand,...lp([-.063,-.081,z]),.014,.01,.017,knuckle);pad.rotation.z=-.3;
+  function finger(parent, points, radius, segments=32, across=[0,1,0]) {
+    const widths=[1,.98,.94,.88,.91,.82,.77,.79,.66,.48,.16].map(v=>v*radius);
+    const depths=[.86,.85,.81,.74,.79,.72,.67,.68,.59,.43,.14].map(v=>v*radius);
+    const skin=gloveSurface(points,widths,depths,{across,segments:Math.max(32,segments),radial:16});
+    mesh(parent,skin.geometry,glove);
+    // Separate flat phalange panels expose the flexible fabric at both joints.
+    for(const [from,to] of [[.07,.29],[.37,.58],[.69,.88]]){
+      mesh(parent,skin.patch(from,to,.38,2.76),glovePanel);
+      for(const angle of [.38,2.76])surfaceLine(parent,skin,from+.01,to-.01,angle,leather,.00045);
+    }
+    mesh(parent,skin.patch(.10,.94,3.40,6.02,.00055),leather);
+    for(const t of [.325,.635]){
+      curve(parent,Array.from({length:7},(_,i)=>skin.point(t,.35+i*2.44/6,.0008).toArray()),.00055,knuckle,8,4);
+    }
+    surfaceStitches(parent,skin,.12,.87,.30,9);
+    return skin;
   }
-  curve(leftHand,[[-.074,-.091,-.376],[-.064,-.114,-.369],[-.039,-.11,-.381]].map(lp),.004,knuckle,10,6);
-  for(let i=0;i<7;i++)ellipsoid(leftHand,lp([-.073+i*.002,-.099,-.402-i*.007]),[.0012,.0012,.0025],seam);
+  // Wrist -> heel -> metacarpals. The palm spans the underside of the fore-end;
+  // fingers start at its far edge, so they do not trace an entire second palm.
+  palm(leftHand,[[-.089,-.113,-.352],[-.072,-.099,-.379],[-.037,-.065,-.419],
+    [.003,-.060,-.433]].map(lp),[.023,.029,.038,.043,.043],[.020,.021,.019,.016,.012],[0,0,1]);
+  for(let i=0;i<4;i++){
+    const z=-.465+i*.022, r=[.010,.0107,.0101,.0088][i], shorten=[.006,0,.005,.018][i];
+    finger(leftHand,[[.000,-.060,z],[.027,-.059,z],[.050,-.041,z+.001],
+      [.055,-.022-shorten,z+.003],[.046,-.004-shorten,z+.005]].map(lp),r,36,[0,0,1]);
+  }
+  // A low thumb lies along the near side, with a broad web sewn into the palm.
+  palm(leftHand,[[-.061,-.085,-.391],[-.058,-.070,-.405],[-.057,-.056,-.419]].map(lp),
+    [.020,.018,.012],[.014,.014,.010],[0,0,-1],{wrist:false});
+  finger(leftHand,[[-.057,-.062,-.407],[-.059,-.039,-.422],[-.054,-.021,-.443],
+    [-.048,-.019,-.458]].map(lp),.0115,32,[0,0,-1]);
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
@@ -504,34 +527,19 @@ export function createWeaponRig(owner = {}) {
   }
 
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
-  loft(rightHand,[[.064,-.208,.116],[.055,-.184,.111],[.051,-.155,.105],[.05,-.131,.097]],
-    [.022,.026,.031,.031,.026,.019],glove,{segments:28,radial:18,ellipse:[.86,.9],widthAxis:[1,0,0]});
-  ellipsoid(rightHand,[.034,-.176,.09],[.014,.037,.025],leather);
-  ellipsoid(rightHand,[.037,-.135,.112],[.021,.025,.021],glove);
-  loft(rightHand,[[.057,-.198,.134],[.055,-.173,.139],[.052,-.145,.132]],
-    [.008,.017,.017,.009],glovePanel,{segments:12,radial:10,ellipse:[1,.29],widthAxis:[1,0,0]});
-  gloveStitches(rightHand,[[.039,-.193,.135],[.036,-.172,.141],[.038,-.151,.138]],10);
+  palm(rightHand,[[.067,-.218,.126],[.056,-.191,.113],[.052,-.160,.100],[.048,-.133,.091]],
+    [.024,.030,.032,.030,.025],[.020,.020,.019,.017,.014],[0,0,1]);
   for(let i=0;i<3;i++){
-    const y=-.155-i*.026, short=i*.003;
-    finger(rightHand,[[.055,y,.106],[.063,y-.005,.074],[.045,y-.008,.036],[.006,y-.005,.027],
-      [-.027+short,y,.043],[-.031+short,y+.005,.064-short]],.012-i*.001);
-    ellipsoid(rightHand,[.065,y-.002,.061],[.009,.011,.014],knuckle);
-    ellipsoid(rightHand,[-.02,y,.041],[.01,.008,.011],leather);
-    curve(rightHand,[[.051,y-.013,.041],[.063,y-.014,.049],[.068,y-.011,.061]],.0012,seam,6,6);
+    const y=-.153-i*.023, short=i*.003;
+    finger(rightHand,[[.046,y,.082],[.048,y-.003,.058],[.029,y-.006,.040],
+      [-.007,y-.005,.041],[-.029+short,y,.060-short]],.0105-i*.0008);
   }
   // Index finger reaches the trigger rather than becoming a fourth grip block.
   const triggerFinger=new THREE.Group();
   triggerFinger.position.set(.055,-.129,.098);
   rightHand.add(triggerFinger);
-  finger(triggerFinger,[[0,0,0],[.009,.022,-.04],[-.005,.036,-.079],[-.029,.038,-.091],[-.04,.027,-.082]],.0108,22);
-  finger(rightHand,[[.057,-.12,.12],[.022,-.108,.139],[-.014,-.108,.122],[-.03,-.124,.091]],.016);
-  curve(rightHand,[[.071,-.143,.12],[.077,-.176,.116],[.066,-.214,.104]],.0018,seam,16,6);
-  for(const [y,z]of [[-.144,.112],[-.172,.12],[-.199,.117]]){
-    const pad=rounded(rightHand,.082,y,z,.008,.018,.022,knuckle);pad.rotation.y=-.18;
-    for(let n=0;n<3;n++)detail(rightHand,.087,y-.005+n*.005,z,.0015,.0018,.012,leather);
-  }
-  curve(rightHand,[[.071,-.131,.129],[.079,-.165,.136],[.068,-.197,.137]],.0015,seam,12,6);
-  const wristStrap=rounded(rightHand,.069,-.204,.139,.046,.014,.011,knuckle);wristStrap.rotation.z=.23;
+  finger(triggerFinger,[[0,0,0],[.005,.022,-.035],[-.004,.034,-.068],[-.027,.035,-.083],[-.040,.027,-.079]],.0095);
+  finger(rightHand,[[.049,-.131,.116],[.026,-.113,.135],[-.005,-.112,.129],[-.028,-.127,.105]],.0125);
 
   const flashMaterial=new THREE.MeshBasicMaterial({name:'muzzle-flash',color:0xffd08a,transparent:true,opacity:.92,depthTest:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});ownedMaterials.add(flashMaterial);
   const muzzleFlash=new THREE.Group();weapon.add(muzzleFlash);muzzleFlash.visible=false;
@@ -647,14 +655,8 @@ export function createWeaponRig(owner = {}) {
   pistolGlove.name='pistol-support-glove';
   const supportPoint=([x,y,z])=>lp([x-.035,y-.08,z-.423]);
   const supportPath=points=>points.map(supportPoint);
-  loft(pistolGlove,supportPath([[-.058,-.035,.075],[-.048,-.028,.062],[-.026,-.013,.037],
-    [-.009,0,.013],[-.003,.005,-.015]]),[.021,.023,.026,.031,.029,.023],glove,
-    {ellipse:[.74,1.19],widthAxis:[1,0,0]});
-  ellipsoid(pistolGlove,supportPoint([.003,-.004,.006]),[.010,.027,.032],leather);
-  ellipsoid(pistolGlove,supportPoint([-.011,.017,.016]),[.014,.019,.026],glove);
-  loft(pistolGlove,supportPath([[-.032,-.018,.038],[-.026,-.005,.016],[-.019,.004,-.005]]),
-    [.009,.016,.017,.011],glovePanel,{segments:12,radial:10,ellipse:[.30,1.12],widthAxis:[1,0,0]});
-  gloveStitches(pistolGlove,supportPath([[-.037,-.025,.039],[-.033,-.021,.017],[-.027,-.014,-.003]]),12);
+  palm(pistolGlove,supportPath([[-.058,-.035,.075],[-.041,-.023,.052],[-.018,-.009,.025],
+    [-.009,-.004,-.014]]),[.022,.025,.032,.035,.033],[.019,.018,.016,.014,.011],[0,-1,0]);
   const supportFingers=[];
   for(const [index,y] of [.021,.003,-.014,-.029].entries()){
     const inset=index*.003;
@@ -665,35 +667,21 @@ export function createWeaponRig(owner = {}) {
     supportFingers.push(digit);
     finger(digit,[[0,0,0],[.012,-.004,-.022],[.03,-.007,-.039+inset],
       [.046-inset,-.005,-.037+inset],[.052-inset,.001,-.031+inset]],.0096-index*.0007);
-    const pad=rounded(digit,-.004,0,-.005,.007,.012-index*.001,.014,knuckle);
-    pad.rotation.y=.27;
-    gloveStitches(digit,[[.003,.007,-.008],[.01,.005,-.017],[.017,.004,-.021]],4);
   }
   const supportThumb=new THREE.Group();
   supportThumb.position.set(...supportPoint([-.017,.014,.023]));
   pistolGlove.add(supportThumb);
   finger(supportThumb,[[0,0,0],[-.007,.030,-.014],[-.001,.052,-.043],
     [.007,.055,-.068],[.009,.050,-.078]],.0115);
-  curve(pistolGlove,supportPath([[-.046,-.019,.054],[-.033,.006,.036],[-.024,.023,.011]]),.00145,seam);
-  curve(pistolGlove,supportPath([[-.019,-.023,.033],[-.025,-.009,.012],[-.020,.010,-.015]]),.0013,seam);
 
   const pistolRight=new THREE.Group();pistolRight.name='pistol-trigger-glove';weapon.add(pistolRight);
-  loft(pistolRight,[[.072,-.222,.142],[.061,-.202,.127],[.053,-.174,.116],
-    [.044,-.147,.107],[.041,-.127,.095]],[.023,.026,.03,.032,.028,.022],glove,
-    {ellipse:[.9,1.08],widthAxis:[1,0,0]});
-  ellipsoid(pistolRight,[.031,-.169,.109],[.012,.042,.025],leather);
-  ellipsoid(pistolRight,[.037,-.127,.12],[.019,.018,.022],glove);
-  loft(pistolRight,[[.060,-.201,.146],[.057,-.180,.142],[.052,-.151,.135],[.046,-.133,.122]],
-    [.009,.017,.019,.016,.007],glovePanel,{segments:16,radial:12,ellipse:[1,.32],widthAxis:[1,0,0]});
-  gloveStitches(pistolRight,[[.045,-.197,.146],[.039,-.177,.144],[.035,-.153,.138],[.033,-.137,.126]],13);
+  palm(pistolRight,[[.072,-.222,.142],[.058,-.197,.127],[.048,-.166,.110],
+    [.041,-.130,.094]],[.024,.027,.030,.029,.024],[.020,.019,.017,.016,.013],[0,0,1]);
   for(const [index,y] of [-.14,-.164,-.187].entries()){
     const inset=index*.003, front=.035-inset;
     finger(pistolRight,[[.044,y,.088],[.049,y-.004,.062],[.032,y-.008,front+.008],
       [.009,y-.008,front],[-.014+inset,y-.006,front+.003],[-.026+inset,y-.002,front+.015]],
       .0105-index*.00085);
-    const pad=rounded(pistolRight,.055,y-.003,.065,.011,.015-index*.001,.019,knuckle);
-    pad.rotation.y=-.27;
-    gloveStitches(pistolRight,[[.057,y+.005,.079],[.058,y+.004,.071],[.057,y+.004,.063]],4);
   }
   finger(pistolRight,[[.044,-.127,.123],[.022,-.112,.144],[-.005,-.102,.136],
     [-.023,-.100,.114],[-.031,-.104,.089]],.013);
@@ -702,9 +690,6 @@ export function createWeaponRig(owner = {}) {
   pistolRight.add(pistolIndex);
   finger(pistolIndex,[[0,0,0],[.010,.023,-.026],[.005,.029,-.054],
     [-.022,.028,-.073],[-.036,.019,-.078]],.010);
-  curve(pistolRight,[[.080,-.211,.132],[.074,-.178,.128],[.064,-.151,.113]],.0015,seam);
-  const gripStrap=rounded(pistolRight,.070,-.205,.145,.037,.011,.010,knuckle);
-  gripStrap.rotation.z=.28;
 
   // Merge each rigid island by material. Articulated groups remain independent.
   function batch(group){
@@ -779,7 +764,7 @@ export function createWeaponRig(owner = {}) {
 
     gripTarget.set(...(pistol ? [-.026,.018,.012] : loadout.grasp)).applyQuaternion(feed.quaternion).add(feed.position);
     if(pistol)palmTarget.copy(pistol.supportGrip);
-    else palmTarget.set(-.035,-.08,loadout.handZ);
+    else palmTarget.set(-.035*loadout.width,-.08,loadout.handZ);
     palmTarget.lerp(gripTarget,grip);
     if(pistol)palmTarget.lerp(actionTarget.set(-.038,.033,.063+pistol.slide.position.z),charging);
     else palmTarget.lerp(chargeGrip,charging);
@@ -845,11 +830,15 @@ export function createWeaponRig(owner = {}) {
       supportThumb.rotation.z=-open*.28;
     }
     leftHand.rotation.set(rotX, rotY, rotZ);
-    palmOffset.copy(palmLocal).applyQuaternion(leftHand.quaternion);
+    palmOffset.copy(palmLocal);
+    if(!pistol)palmOffset.multiply(rifleGlove.scale);
+    palmOffset.applyQuaternion(leftHand.quaternion);
     leftHand.position.copy(palmTarget).sub(palmOffset);
 
     // Keep the shoulder anchored while the cuff follows the rotating wrist.
-    wristDirection.copy(wristLocal).applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
+    wristDirection.copy(wristLocal);
+    if(!pistol)wristDirection.multiply(rifleGlove.scale);
+    wristDirection.applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
     // Extend the cloth cuff into the glove so it stays joined at every wrist angle.
     armScale.z = (wristDirection.length()+(pistol ? .020 : .012))/armLength;
     armRotation.setFromUnitVectors(armAxis,wristDirection.normalize());
@@ -866,7 +855,7 @@ export function createWeaponRig(owner = {}) {
     if(team !== previousTeam){
       previousTeam = team;
       for(const [material, color] of [[cloth,team?0xc1ab85:0x849783],[glove,team?0x6b6256:0x51544d],
-        [glovePanel,team?0xa4987e:0x828579],[cuff,team?0x605942:0x384638]]){
+        [glovePanel,team?0xa4987e:0x8d8979],[cuff,team?0x605942:0x384638]]){
         material.color.setHex(color);
         material._lowMaterial?.color.setHex(color);
         material._highMaterial?.color.setHex(color);
@@ -883,6 +872,7 @@ export function createWeaponRig(owner = {}) {
       visiblePistol = pistol;
       rifleAssembly.visible = !pistol;
       rifleGlove.visible = !pistol;
+      rifleGlove.scale.x = loadout.width;
       pistolGlove.visible = Boolean(pistol);
       rightHand.visible = !pistol;
       pistolRight.visible = Boolean(pistol);
