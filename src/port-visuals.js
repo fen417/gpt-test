@@ -388,12 +388,12 @@ function addPortModels(owner, map, m) {
 }
 
 function addPortSigns(owner, signs = []) {
-  const { scene } = owner;
+  const { scene, materials: { steel } } = owner;
   for (const site of signs) {
     const berth = makeSign(site.name, 'КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ', 4.3);
     berth.position.set(site.x, 2.2, site.z);
     berth.rotation.y = Math.PI / 2;
     scene.add(berth);
-    for (const dz of [-1.55, 1.55]) owner.cylinder(scene, site.x, 1.0, site.z + dz, .074, 2, m.steel);
+    for (const dz of [-1.55, 1.55]) owner.cylinder(scene, site.x, 1.0, site.z + dz, .074, 2, steel);
   }
 }
