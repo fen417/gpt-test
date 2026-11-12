@@ -42,7 +42,7 @@ export function mapItems(map, includeVehicleRoutes = false) {
 
 export const canCloneItem = item => cloneKinds.has(item.kind);
 export const canRemoveItem = item => !['objective', 'spawn', 'route', 'segment'].includes(item.kind);
-export const canResizeItem = item => ['box', 'structure', 'road', 'landform', 'vehicle', 'crane', 'rail', 'ship'].includes(item.kind);
+export const canResizeItem = item => ['box', 'structure', 'road', 'landform', 'vehicle', 'sign', 'crane', 'rail', 'ship'].includes(item.kind);
 
 export function constrainPosition(map, item, x, z) {
   const half = map.size / 2;
