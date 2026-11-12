@@ -22,8 +22,8 @@ tangent-space normal and packed occlusion/roughness/metal channels; vertex
 colours retain team/class variations. AO is a light material micro-occlusion,
 not a baked scene/contact-occlusion map.
 
-LOD0 is 22,564–25,264 triangles including the held weapon. The upper bound is
-about 1% above the requested 25,000 budget. LOD1 is 10,672–11,537 triangles;
+LOD0 is 22,372–25,072 triangles including the held weapon. The upper bound is
+about 0.3% above the requested 25,000 budget. LOD1 is 10,488–11,353 triangles;
 LOD2 is 872–928. The medium geometry is generated once with joint/weight/atlas
 boundaries preserved. All three levels use the same animated skeleton. Default
 near switching is around 28 m (17 m at low quality); the pre-existing far
@@ -59,9 +59,9 @@ CPU-only animation microbenchmark: 120 iterations per count, first 21 discarded,
 
 | Characters | Mean animation CPU | P95 animation CPU | Scene draw calls |
 |---|---:|---:|---:|
-| 10 | 0.104 ms | 0.200 ms | 21 |
-| 20 | 0.160 ms | 0.300 ms | 41 |
-| 32 | 0.273 ms | 0.500 ms | 65 |
+| 10 | 0.103 ms | 0.200 ms | 21 |
+| 20 | 0.166 ms | 0.300 ms | 41 |
+| 32 | 0.267 ms | 0.500 ms | 65 |
 
 Draw counts include a contact shadow per character and one grid. Rendering was
 submitted once per count to verify the draw budget; the CPU loop does not measure

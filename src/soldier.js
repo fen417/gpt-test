@@ -428,14 +428,14 @@ function makeLeg(pose, c, side) {
   volume(ankle,c.boot,[[-.093,.053,.101,.048,-.061],[-.071,.059,.157,.052,-.018],
     [-.038,.058,.151,.050,-.012],[.002,.048,.094,.048],[.055,.044,.050,.046],
     [.095,.047,.050,.049]],18,null,{anatomy:'boot',caps:true,square:.64});
-  volume(ankle,c.sole,[[-.109,.054,.156,.050,-.018],[-.101,.060,.163,.054,-.018],
-    [-.086,.060,.160,.054,-.018]],18,null,{anatomy:'sole',caps:true,square:.6});
+  // One bevelled outsole follows the toe and heel, without outboard tread blocks.
+  volume(ankle,c.sole,[[-.109,.052,.150,.047,-.018],[-.103,.057,.157,.051,-.018],
+    [-.090,.058,.157,.051,-.018]],18,null,{anatomy:'sole',caps:true,square:.78});
   for(let n=0;n<5;n++){
     const y=.04-n*.018,z=-.058-n*.012;
     cord(ankle,c.web,[[-.028,y,z],[.028,y-.013,z-.008]],.0025,3);
     cord(ankle,c.web,[[.028,y,z],[-.028,y-.013,z-.008]],.0025,3);
   }
-  for(const x of [-.057,.057])for(const z of [-.17,-.12,-.07,.02])block(ankle,c.boot,x,-.099,z,.018,.014,.023);
   return { leg, knee, ankle };
 }
 

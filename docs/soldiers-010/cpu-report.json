@@ -1,27 +1,27 @@
 {
   "triangles": [
-    25060,
-    11431,
+    24868,
+    11247,
     896
   ],
   "counts": {
     "10": {
-      "meanCpuAnimationMs": 0.10404040596701881,
+      "meanCpuAnimationMs": 0.10303030351195673,
       "p95CpuAnimationMs": 0.20000004768371582,
       "drawCalls": 21,
-      "renderedTriangles": 250720
+      "renderedTriangles": 248800
     },
     "20": {
-      "meanCpuAnimationMs": 0.1595959591143059,
+      "meanCpuAnimationMs": 0.16565656421160457,
       "p95CpuAnimationMs": 0.2999999523162842,
       "drawCalls": 41,
-      "renderedTriangles": 501440
+      "renderedTriangles": 497600
     },
     "32": {
-      "meanCpuAnimationMs": 0.27272727031900423,
+      "meanCpuAnimationMs": 0.26666666522170557,
       "p95CpuAnimationMs": 0.5,
       "drawCalls": 65,
-      "renderedTriangles": 802304
+      "renderedTriangles": 796160
     }
   },
   "errors": []
