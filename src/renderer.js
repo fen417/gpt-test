@@ -1042,8 +1042,9 @@ export class GameRenderer {
       soldier.body.castShadow = !distant && !this.lowQuality && distSq < 48 * 48;
       const mustReset = reset || respawned || returning;
       const reducedRate = !externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
+      const animationInterval = distant ? 1 / 20 : 1 / 30;
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
-      if (!reducedRate || previousRig || mustReset || soldier.animationDt >= 1 / 30) {
+      if (!reducedRate || previousRig || mustReset || soldier.animationDt >= animationInterval) {
         animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset, terrain: this.map.terrain });
         soldier.animationDt = 0;
       }

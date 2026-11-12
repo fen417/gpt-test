@@ -1,0 +1,28 @@
+{
+  "triangles": [
+    24868,
+    11247,
+    896
+  ],
+  "counts": {
+    "10": {
+      "meanCpuAnimationMs": 0.13434343386178066,
+      "p95CpuAnimationMs": 0.2999999523162842,
+      "drawCalls": 23,
+      "renderedTriangles": 248960
+    },
+    "20": {
+      "meanCpuAnimationMs": 0.20707070707070707,
+      "p95CpuAnimationMs": 0.40000009536743164,
+      "drawCalls": 43,
+      "renderedTriangles": 497760
+    },
+    "32": {
+      "meanCpuAnimationMs": 0.3181818181818182,
+      "p95CpuAnimationMs": 0.5,
+      "drawCalls": 67,
+      "renderedTriangles": 796320
+    }
+  },
+  "errors": []
+}

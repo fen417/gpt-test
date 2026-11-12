@@ -11,6 +11,7 @@
     nav {
       padding: 12px;
       display: flex;
+      flex-wrap: wrap;
       gap: 12px;
       align-items: center;
     }
@@ -34,7 +35,15 @@
     ><select id="state">
       <option>idle</option>
       <option>walk</option>
+      <option>run</option>
       <option>sprint</option>
+      <option>strafe-left</option>
+      <option>strafe-right</option>
+      <option>back</option>
+      <option>diagonal</option>
+      <option>stop</option>
+      <option>turn</option>
+      <option>reverse</option>
       <option>crouch</option>
       <option>jump</option>
       <option>reload</option>
@@ -61,7 +70,18 @@
       <option>10</option>
       <option>20</option>
       <option>32</option></select
-    ><button id="uniform">Форма / экипировка</button><span id="info"></span>
+    ><button id="uniform">Форма / экипировка</button>
+    <label
+      >Гц
+      <select id="fps">
+        <option>60</option>
+        <option>30</option>
+        <option>120</option>
+      </select></label
+    >
+    <label><input id="remote" type="checkbox" />Снимки 20 Гц</label>
+    <label><input id="diagnostics" type="checkbox" checked />Диагностика</label>
+    <span id="info"></span>
   </nav>
   <script type="module" src="./src/soldier-review.js"></script>
 </html>

@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { drawTeamEmblem } from './logos.js';
 import { smoothRingSeams, tailoredGeometry } from './character-geometry.js';
+import { updateFootContacts } from './soldier-locomotion.js';
 import { gloveSurface } from './glove-geometry.js';
 import { anatomicalGeometry, reduceSoldierGeometry } from './soldier-anatomy.js';
 import { SIDEARMS, weaponSwitchPose } from '../shared/world.js';
@@ -781,7 +782,7 @@ function newFoot() {
   return {
     planted: new THREE.Vector3(), start: new THREE.Vector3(), end: new THREE.Vector3(),
     local: new THREE.Vector3(), yaw: 0, startYaw: 0, endYaw: 0,
-    lift: 0, startLift: 0, swinging: false, settle: 1,
+    lift: 0, swinging: false, age: 0, duration: .2, stepLift: 0, landings: 0,
   };
 }
 
@@ -796,103 +797,28 @@ function restingFoot(out, position, yaw, side, crouch) {
   return out.set(position.x + lateral * cos + fore * sin, 0, position.z - lateral * sin + fore * cos);
 }
 
-function startStep(foot, end, yaw) {
-  foot.start.copy(foot.planted);
-  foot.end.copy(end);
-  foot.startYaw = foot.yaw;
-  foot.endYaw = foot.yaw + nearestAngle(foot.yaw, yaw);
-  foot.startLift = foot.lift;
-}
-
-function moveStep(foot, fraction, lift) {
-  const t = clamp(fraction, 0, 1);
-  const travel = smoothstep(t, 0, 1);
-  foot.planted.lerpVectors(foot.start, foot.end, travel);
-  foot.yaw = lerp(foot.startYaw, foot.endYaw, travel);
-  foot.lift = foot.startLift * (1 - travel) + Math.sin(t * Math.PI) * lift;
-}
-
 function resetLocomotion(rig, position, yaw, crouched) {
   const motion = rig.motion ?? { feet: [newFoot(), newFoot()] };
   Object.assign(motion, {
-    x: position.x, z: position.z, phase: .05, time: 0,
+    x: position.x, z: position.z, dx: 0, dz: 0, phase: .05, time: 0,
+    stillTime: 0, nextFoot: 0, stepTimer: 0, contactYaw: yaw,
     speed: 0, vx: 0, vz: 0, crouch: Number(crouched), sprint: 0, aim: .6,
     air: 0, land: 0, hipYaw: 0, lean: 0, reloadTime: 0, reloadBlend: 0, slide: 0,
   });
+  motion.gait ??= {};
   for (let i = 0; i < 2; i++) {
     const foot = motion.feet[i], side = i === 0 ? -1 : 1;
     restingFoot(foot.planted, position, yaw, side, motion.crouch);
     foot.yaw = yaw - side * .08;
     foot.lift = 0;
     foot.swinging = false;
-    foot.settle = 1;
+    foot.age = 0; foot.landings = 0;
   }
   rig.motion = motion;
   rig.recoil = 0;
   rig.flinch = 0;
   rig.throwAge = undefined;
   return motion;
-}
-
-function animateFeet(motion, position, yaw, dt) {
-  const { feet, sprint, crouch, air } = motion;
-  const legYaw = yaw + motion.hipYaw;
-  const cos = Math.cos(yaw), sin = Math.sin(yaw);
-  const forwardSpeed = -motion.vx * sin - motion.vz * cos;
-  const lateralSpeed = motion.vx * cos - motion.vz * sin;
-  const travelSpeed = Math.hypot(forwardSpeed, lateralSpeed);
-  const speed = travelSpeed*(1-(motion.slide??0));
-  const moving = speed > .16;
-  const jog = smoothstep(speed, .2, 5.8);
-  const standingStride = lerp(lerp(1.2, 3.3, jog), 5.2, sprint);
-  const crouchedStride = lerp(.72, 1.45, smoothstep(speed, .2, 3));
-  const stride = lerp(standingStride, crouchedStride, crouch);
-  // Filtered velocity keeps the gait continuous between authoritative snapshots.
-  const cadence = Math.min(speed / stride, lerp(2.1, 1.9, crouch));
-  if (moving && air < .5) motion.phase = (motion.phase + dt * cadence) % 1;
-  const moveBlend = smoothstep(speed, .12, 2.1);
-  const dirX = travelSpeed > .05 ? lateralSpeed / travelSpeed : 0;
-  const dirZ = travelSpeed > .05 ? -forwardSpeed / travelSpeed : 0;
-  const maxLift = lerp(lerp(.075, .115, sprint), .06, crouch);
-  const ampZ = lerp(.21, .37, sprint) * (1 - crouch * .32) * moveBlend;
-  const ampX = lerp(.135, .175, sprint) * (1 - crouch * .28) * moveBlend;
-  const footResp = 1 - Math.exp(-dt * 26);
-
-  for (let i = 0; i < feet.length; i++) {
-    const foot = feet[i], side = i === 0 ? -1 : 1;
-    const toeYaw = legYaw - side * .08;
-    const phase = (motion.phase + i * .5) % 1;
-    const angle = phase * TAU;
-    const baseX = side * (.104 + .016 * crouch);
-    const baseZ = side * -.024;
-    const swing = -Math.cos(angle);
-    const offsetZ = dirZ * swing * ampZ;
-    let offsetX = dirX * swing * ampX;
-    // Prevent legs from crossing over the centerline during fast strafing
-    if (side < 0 && offsetX > .052) offsetX = .052;
-    if (side > 0 && offsetX < -.052) offsetX = -.052;
-
-    const targetLift = air > .5
-      ? (i === 0 ? .105 : .18)
-      : Math.max(0, Math.sin(angle)) ** 1.5 * maxLift * moveBlend;
-    foot.lift = lerp(foot.lift, targetLift, 1 - Math.exp(-dt * 24));
-    foot.swinging = moving && Math.sin(angle) > 0;
-    foot.settle = 1;
-    foot.yaw = toeYaw;
-
-    const targetLocalX = baseX + offsetX;
-    const targetLocalZ = baseZ + offsetZ;
-    foot.local.set(
-      lerp(foot.local.x || baseX, targetLocalX, footResp),
-      ANKLE_HEIGHT + foot.lift,
-      lerp(foot.local.z || baseZ, targetLocalZ, footResp),
-    );
-    foot.planted.set(
-      position.x + foot.local.x * cos + foot.local.z * sin,
-      0,
-      position.z - foot.local.x * sin + foot.local.z * cos,
-    );
-  }
 }
 
 function constrainFootReach(rig, feet) {
@@ -903,12 +829,12 @@ function constrainFootReach(rig, feet) {
     const lateral = foot.local.x - hip.x;
     const forward = foot.local.z - hip.z;
     const reach = Math.hypot(lateral, forward);
-    if (reach > .53) {
-      foot.local.x = hip.x + lateral * .53 / reach;
-      foot.local.z = hip.z + forward * .53 / reach;
+    if (reach > .65) {
+      foot.local.x = hip.x + lateral * .65 / reach;
+      foot.local.z = hip.z + forward * .65 / reach;
     }
     const usable = THIGH + SHIN - .013;
-    const height = Math.sqrt(Math.max(.11, usable ** 2 - Math.min(reach, .53) ** 2));
+    const height = Math.sqrt(Math.max(.11, usable ** 2 - Math.min(reach, .65) ** 2));
     pelvisCeiling = Math.min(pelvisCeiling, foot.local.y + height - hip.y);
   }
   return pelvisCeiling;
@@ -946,13 +872,14 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
   // Chest: shares the aim pitch, breathes, absorbs recoil and hits, and
   // counter-rotates the hips so shoulders stay square to the target.
   const spineX = look * .3 + Math.sin(motion.time * 2.4) * .012 + rig.recoil * .05 + rig.flinch * .22
-    - motion.land * .14 + crouch * .05 + (smoothstep(throwPhase, 0, .3) * .2 - throwSwing * .38) * throwWeight;
+    - motion.land * .10 - crouch * .22 - sprint * .055 - motion.gait.run * .025
+    + (smoothstep(throwPhase, 0, .3) * .2 - throwSwing * .38) * throwWeight;
   const spineY = -motion.hipYaw - strideTwist * 1.6 + idle * Math.sin(t * .37) * .09 + (.32 - throwSwing * .6) * throwWeight;
   const spineZ = -rig.pose.rotation.z * .55 + rig.flinch * rig.flinchSide * .14;
   rig.spine.rotation.set(spineX, spineY, spineZ);
   const bodyPitch = rig.pose.rotation.x + spineX;
 
-  const strideSway = Math.sin(phase * TAU) * Math.min(speed * .014, .09);
+  const strideSway = Math.sin(phase * TAU) * Math.min(speed * .007, .045);
   const readyPitch = lerp(-.14, .025, motion.aim);
   const equip=weaponSwitchPose(player.equipTime).lowered;
   const riflePitch = clamp(look * .82 + readyPitch - sprint * .47 - reload * .33 - throwWeight * .55 - bodyPitch * .92 - equip*.78, -.95, 1);
@@ -1005,6 +932,8 @@ export function animateSoldier(rig, { dt, player, reset = false, terrain = null 
   const dx = position.x - motion.x, dz = position.z - motion.z;
   const distance = Math.hypot(dx, dz);
   const response = 1 - Math.exp(-dt * 22);
+  motion.dx = dx; motion.dz = dz;
+  motion.stillTime = distance / dt < .035 ? motion.stillTime + dt : 0;
   motion.x = position.x;
   motion.z = position.z;
   motion.time += dt;
@@ -1034,7 +963,7 @@ export function animateSoldier(rig, { dt, player, reset = false, terrain = null 
   const hipTarget = lerp(clamp(-heading, -.45, .45) * gaitWeight * (1 - motion.crouch * .35),clamp(travelYaw,-.9,.9),motion.slide);
   motion.hipYaw = fresh ? hipTarget : lerp(motion.hipYaw, hipTarget, 1 - Math.exp(-dt * 16));
   motion.lean = lerp(motion.lean, clamp(-lateralSpeed * .01, -.055, .055) * (1 - motion.crouch * .5), 1 - Math.exp(-dt * 14));
-  animateFeet(motion, position, yaw, dt);
+  updateFootContacts(motion, position, yaw, dt);
   // Apply local ground differences only while standing on terrain. Roofs,
   // vehicle seats and airborne characters retain their authoritative height.
   const ground = terrain?.heightAt(position.x, position.z);
@@ -1054,19 +983,23 @@ export function animateSoldier(rig, { dt, player, reset = false, terrain = null 
     foot.lift*=1-motion.slide;
   }
   const stridePhase = motion.phase * TAU;
-  const strideTwist = Math.sin(stridePhase) * (.028 + motion.sprint * .025) * gaitWeight * (1 - motion.crouch * .5);
+  const strideTwist = Math.sin(stridePhase) * (.015 + motion.sprint * .018) * gaitWeight * (1 - motion.crouch * .5);
   const breathing = Math.sin(motion.time * 2.4) * .004;
-  const bodyHeight = lerp(-.018 - motion.sprint * .035, -.603, motion.crouch);
-  const bodyBob = Math.cos(stridePhase * 2) * lerp(.018, .012, motion.sprint) * gaitWeight + breathing - motion.land * .09;
+  const bodyHeight = lerp(-.018 - motion.sprint * .035, -.50, motion.crouch);
+  const bodyBob = Math.cos(stridePhase * 2) * lerp(.007, .012, motion.sprint) * gaitWeight + breathing - motion.land * .055;
   rig.pose.rotation.set(
-    -.02 - motion.sprint * .11 - motion.crouch * .12 - motion.land * .06 + motion.slide*.22,
+    -.012 - (motion.gait.run * .025 + motion.sprint * .030) * gaitWeight - motion.crouch * .08 - motion.land * .045 + motion.slide*.22,
     motion.hipYaw + strideTwist,
-    Math.sin(stridePhase) * .028 * gaitWeight + motion.lean,
+    Math.sin(stridePhase) * .012 * gaitWeight + motion.lean,
     'YXZ',
   );
   const pelvisCeiling = constrainFootReach(rig, motion.feet);
   const desiredHeight = Math.min(bodyHeight + bodyBob, pelvisCeiling);
-  rig.pose.position.set(0, Math.min(lerp(rig.pose.position.y, desiredHeight, fresh ? 1 : response), pelvisCeiling), 0);
+  // Release the reach correction slowly instead of standing up between every
+  // pair of contacts. Downward correction still guarantees a reachable foot.
+  const recovering = desiredHeight > rig.pose.position.y;
+  const pelvisResponse = recovering ? 1 - Math.exp(-dt * (motion.speed > .2 ? 2 : 10)) : response;
+  rig.pose.position.set(0, Math.min(lerp(rig.pose.position.y, desiredHeight, fresh ? 1 : pelvisResponse), pelvisCeiling), 0);
   rig.pose.updateMatrix();
   poseInverse.copy(rig.pose.matrix).invert();
   for (let i = 0; i < 2; i++) {
