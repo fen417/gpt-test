@@ -35,7 +35,7 @@ export const VEHICLE_BOARD_RANGE = 3.5;
 export const TURRET_MIN_PITCH = -.25;
 export const TURRET_MAX_PITCH = .85;
 export const TURRET_WEAPON = {
-  weapon: 'ПУЛЕМЁТ ХАМВИ', range: 220, damage: 38, interval: .096, spread: .018,
+  weapon: 'ПУЛЕМЁТ ХАМВИ', range: 220, damage: 38, interval: .096, spread: .018, projectileSpeed: 410,
   minPitch: TURRET_MIN_PITCH, maxPitch: TURRET_MAX_PITCH,
 };
 

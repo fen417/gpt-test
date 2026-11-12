@@ -4,6 +4,7 @@ import { addQuarryGround } from './quarry-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
+import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, addWarehouseDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
@@ -390,7 +391,7 @@ export class GameRenderer {
     const mesh = new THREE.Line(geometry, new THREE.LineBasicMaterial({
       color: 0xffca79, transparent: true, opacity: .75, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
-    return { mesh, type: 'tracer', origin: new THREE.Vector3(), direction: new THREE.Vector3() };
+    return { mesh, type: 'tracer', origin: new THREE.Vector3(), velocity: new THREE.Vector3() };
   }
 
   box(parent, x, y, z, w, h, d, mat, shadow = true) {
@@ -1057,21 +1058,11 @@ export class GameRenderer {
       }
       if (event.type === 'shot') {
         const player = state.players.find(p => p.id === event.playerId);
-        const x = event.x ?? player?.x ?? 0, y = event.y ?? ((player?.y || 0) + 1.35), z = event.z ?? player?.z ?? 0;
-        const tx = event.tx ?? x - Math.sin(player?.yaw || 0) * 60;
-        const ty = event.ty ?? y + Math.sin(player?.pitch || 0) * 60;
-        const tz = event.tz ?? z - Math.cos(player?.yaw || 0) * 60;
-        const length = Math.hypot(tx - x, ty - y, tz - z);
         const own = event.playerId === localId;
-        if (!own && state.time - event.time > .27) continue;
-        const distance = Math.min(
-          this.camera.position.distanceToSquared(this.scratchPosition.set(x, y, z)),
-          this.camera.position.distanceToSquared(this.scratchPosition.set(tx, ty, tz)),
-        );
-        if (distance > 165 ** 2 || this.effects.length >= 120) continue;
-        if (length > 7 && (event.shotSeq ?? event.id) % 3 === 0) {
-          this.tracer(x, y, z, tx, ty, tz, length);
-        }
+        const age = Math.max(0, state.time - event.time);
+        if (this.effects.length >= 120) continue;
+        if (age < event.life) this.tracer(event, age);
+        if (age > .27) continue;
         if (own && this.weapon.visible && !event.mounted) {
           const yaw = player?.yaw || 0;
           const effect = this.effectPools.shell.pop() ?? { mesh: new THREE.Mesh(this.geo.shell, this.shellMaterial), type: 'shell' };
@@ -1085,14 +1076,19 @@ export class GameRenderer {
             this.smoke(muzzle.x, muzzle.y, muzzle.z, .13, .42, 0xa4a79b);
           }
         }
-        const range = getWeapon(player?.classId, player?.weaponId).range || 200;
+      }
+      if (event.type === 'bulletImpact') {
+        const tracer = this.effects.find(effect => effect.type === 'tracer' && effect.shotId === event.shotId);
+        if (tracer) tracer.life = Math.min(tracer.life, event.flight);
+        const { tx, ty, tz, impact } = event;
+        if (!impact || state.time - event.time > .27 || this.effects.length >= 120) continue;
         this.effectBounds.center.set(tx, ty, tz);
-        if (!this.viewFrustum.intersectsSphere(this.effectBounds)) continue;
-        const impact = event.impact === undefined && length < range - 1 ? (event.hit ? 'flesh' : 'concrete') : event.impact;
+        if (this.camera.position.distanceToSquared(this.effectBounds.center) > 165 ** 2 ||
+          !this.viewFrustum.intersectsSphere(this.effectBounds)) continue;
         if (impact === 'metal') {
           for (let i = 0; i < (this.lowQuality || this.integratedGpu ? 1 : 4); i++) this.spark(tx, ty, tz);
           this.smoke(tx, ty, tz, .18, .32, 0x92968e);
-        } else if (impact) {
+        } else {
           const colors = { wood: 0xb59b75, concrete: 0xb9b2a0, ground: 0x9a8666, flesh: 0x827065, shield: 0x8bc5ca };
           this.smoke(tx, ty, tz, impact === 'flesh' ? .14 : .28, impact === 'shield' ? .25 : .57, colors[impact] ?? colors.concrete);
         }
@@ -1123,16 +1119,18 @@ export class GameRenderer {
     effect.mesh.intensity = 18;
   }
 
-  tracer(x, y, z, tx, ty, tz, length) {
+  tracer({ id, x, y, z, vx, vy, vz, life }, age) {
+    const tx = x + vx * life, ty = bulletHeight(y, vy, life), tz = z + vz * life;
+    const bounds = this.effectBounds;
+    bounds.center.set((x + tx) / 2, (y + ty) / 2, (z + tz) / 2);
+    bounds.radius = Math.hypot(tx - x, ty - y, tz - z) / 2 + BULLET_GRAVITY * life ** 2 / 8;
+    const visible = this.viewFrustum.intersectsSphere(bounds);
+    bounds.radius = 12;
+    if (!visible) return;
     const effect = this.effectPools.tracer.pop() ?? this.createTracerEffect();
-    effect.age = 0;
-    effect.life = clamp(length / 950, .048, .19);
-    effect.length = length;
+    Object.assign(effect, { age, life, shotId: id, tailTime: 11 / Math.hypot(vx, vy, vz) });
     effect.origin.set(x, y, z);
-    effect.direction.set(tx - x, ty - y, tz - z).multiplyScalar(1 / length);
-    const bounds = effect.mesh.geometry.boundingSphere;
-    bounds.center.copy(effect.origin).addScaledVector(effect.direction, length / 2);
-    bounds.radius = length / 2 + .05;
+    effect.velocity.set(vx, vy, vz);
     this.worldRoot.add(effect.mesh);
     this.effects.push(effect);
   }
@@ -1179,13 +1177,17 @@ export class GameRenderer {
       }
       const alpha = 1 - effect.age / effect.life;
       if (effect.type === 'tracer') {
-        const head = Math.min(effect.length, 4 + effect.age / effect.life * effect.length);
-        const tail = Math.max(.75, head - 11);
+        const head = effect.age;
+        const tail = Math.max(0, head - effect.tailTime);
         const positions = effect.mesh.geometry.attributes.position;
-        const { origin, direction } = effect;
-        positions.setXYZ(0, origin.x + direction.x * tail, origin.y + direction.y * tail, origin.z + direction.z * tail);
-        positions.setXYZ(1, origin.x + direction.x * head, origin.y + direction.y * head, origin.z + direction.z * head);
+        const { origin, velocity } = effect;
+        const tx = origin.x + velocity.x * tail, ty = bulletHeight(origin.y, velocity.y, tail), tz = origin.z + velocity.z * tail;
+        const hx = origin.x + velocity.x * head, hy = bulletHeight(origin.y, velocity.y, head), hz = origin.z + velocity.z * head;
+        positions.setXYZ(0, tx, ty, tz);
+        positions.setXYZ(1, hx, hy, hz);
         positions.needsUpdate = true;
+        effect.mesh.geometry.boundingSphere.center.set((tx + hx) / 2, (ty + hy) / 2, (tz + hz) / 2);
+        effect.mesh.geometry.boundingSphere.radius = Math.hypot(hx - tx, hy - ty, hz - tz) / 2 + .05;
         effect.mesh.material.opacity = alpha * .8;
       } else if (effect.type === 'smoke') {
         effect.mesh.position.x += effect.vx * dt; effect.mesh.position.z += effect.vz * dt; effect.mesh.position.y += dt * 0.8;

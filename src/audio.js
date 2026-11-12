@@ -1,4 +1,5 @@
 // Original procedural score and sound design. No external recordings or assets.
+import { BULLET_GRAVITY } from '../shared/ballistics.js';
 export const ORIGINAL_SCORE = 'AFTER THE RAIN';
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
 const midi = n => 440 * 2 ** ((n - 69) / 12);
@@ -389,7 +390,8 @@ export class CombatAudio {
     const eye=(local.y||0)+(local.crouch?1.12:1.58);
     const along=((local.x-x)*dx+(eye-y)*dy+(local.z-z)*dz)/lengthSquared;
     if(along<=.025||along>1)return;
-    const px=x+along*dx,py=y+along*dy,pz=z+along*dz;
+    const arc=.5*BULLET_GRAVITY*(event.flight||0)**2*along*(1-along);
+    const px=x+along*dx,py=y+along*dy+arc,pz=z+along*dz;
     const distance=Math.hypot(px-local.x,py-eye,pz-local.z);
     if(distance>1.95)return;
     const pan=this._position({x:px,z:pz},local).pan;
@@ -461,6 +463,8 @@ export class CombatAudio {
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
           this.shot(p.distance,e.mounted?'turret':classId,p.pan,Boolean(own),age);
         }
+      }else if(e.type==='bulletImpact'){
+        if(state.time-e.time>.25)continue;
         if(!own)this._nearMiss(e,local);
         this._impact(e,local);
         if(own&&(e.hit||e.vehicleHit)){
