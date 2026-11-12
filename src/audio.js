@@ -524,18 +524,25 @@ export class CombatAudio {
     }
     if(critical&&!paused&&now>=this._heartbeat){this._tone(59,.16,.1,{end:38});this._tone(52,.13,.065,{time:now+.19,end:34});this._heartbeat=now+.9;}
     this._updateEngine(state,local,inMenu||paused);
+    const sliding=Boolean(canMove&&local.sliding&&!local.vehicleId);
+    if(sliding&&now>=(this._slideSoundAt??0)){
+      this._noise(this._sliding?.24:.32,this._sliding?.035:.085,{priority:1,color:'pink',filter:'bandpass',cutoff:1350,attack:.025,pan:-.12});
+      this._slideSoundAt=now+.18;
+    }
+    this._sliding=sliding;
     if(!canMove||local.vehicleId){this._lastPosition=null;this._stride=0;this._falling=false;}
     else if(state?.time!==this._lastMovementTime){
       this._lastMovementTime=state?.time;
       if(this._lastPosition){
         const distance=Math.hypot(local.x-this._lastPosition.x,local.z-this._lastPosition.z),vertical=local.y-this._lastPosition.y;
-        if(distance<5)this._stride+=distance;
+        if(distance<5&&!sliding)this._stride+=distance;
+        if(sliding)this._stride=0;
         const onGround=local.grounded??Math.abs(vertical)<.04;
         if(!onGround&&this._lastPosition.grounded&&vertical>.035)this._noise(.18,.08,{filter:'bandpass',cutoff:750,pan:-.12});
         if(!onGround&&vertical<-.035)this._falling=true;
         if(this._falling&&onGround){this._step(1.5,false,false,local);this._noise(.2,.075,{cutoff:650});this._falling=false;this._stride=0;}
         const strideLength=sprinting?2.45:crouching?1.55:2.05;
-        if(this._stride>=strideLength&&onGround){this._step(1,sprinting,crouching,local);this._stride%=strideLength;}
+        if(this._stride>=strideLength&&onGround&&!sliding){this._step(1,sprinting,crouching,local);this._stride%=strideLength;}
       }
       this._lastPosition={x:local.x,y:local.y,z:local.z,grounded:local.grounded??true};
     }

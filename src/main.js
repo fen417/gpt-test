@@ -4,9 +4,11 @@ import {Simulation} from '../shared/simulation.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
 import {Multiplayer} from './network.js';
 import {CombatAudio} from './audio.js';
+import {mountChangelog} from './changelog.js';
 import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
 
 const $=id=>document.getElementById(id);
+mountChangelog();
 const show=(id,visible=true)=>$(id).classList.toggle('hidden',!visible);
 const text=(id,value)=>{const node=$(id),next=String(value);if(node.textContent!==next)node.textContent=next;};
 const audio=new CombatAudio();
@@ -19,6 +21,16 @@ let scopeZoom=8;
 let weaponSlot=1;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
+const pendingDamage=new Map(),damageSummaryDelay=650;
+function showScore(event,now){
+  if(now>scoreStreakExpires)scoreStreakTotal=0;
+  scoreStreakTotal+=event.points;
+  scoreStreakExpires=now+3400;
+  scoreFeed.push({id:event.id,reason:event.reason,points:event.points,kind:event.kind,expires:now+3200});
+}
+function flushDamage(now){
+  for(const [target,item] of pendingDamage)if(now>=item.until){showScore(item,now);pendingDamage.delete(target);}
+}
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
 let gfx={shadows:'auto',resolution:'auto'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
@@ -138,7 +150,7 @@ function updateKeybindUI(){
   text('gadget-label',`${qKey} · ${gadgetNames[p?.classId||selectedClass]}${p?.gadgetCooldown>0?' '+Math.ceil(p.gadgetCooldown)+'с':''}`);
   const help=$('controls-help');
   if(help){
-    help.innerHTML=`${formatKeyCode(keybinds.forward)}${formatKeyCode(keybinds.left)}${formatKeyCode(keybinds.back)}${formatKeyCode(keybinds.right)} — движение · ${formatKeyCode(keybinds.sprint)} — бег · ${formatKeyCode(keybinds.crouch)} — присесть<br>${formatKeyCode(keybinds.jump)} — прыжок · ${rKey} — перезарядка · ${qKey} — способность<br>${gKey} — граната · ${formatKeyCode(keybinds.score)} — счёт · Esc — меню<br>${formatKeyCode(keybinds.interact)} — сесть / выйти · ${formatKeyCode(keybinds.switchSeat)} — сменить место<br>1 — основное оружие · 2 — пистолет`;
+    help.innerHTML=`${formatKeyCode(keybinds.forward)}${formatKeyCode(keybinds.left)}${formatKeyCode(keybinds.back)}${formatKeyCode(keybinds.right)} — движение · ${formatKeyCode(keybinds.sprint)} — бег · ${formatKeyCode(keybinds.crouch)} — присесть / подкат на бегу<br>${formatKeyCode(keybinds.jump)} — прыжок · ${rKey} — перезарядка · ${qKey} — способность<br>${gKey} — граната в сторону взгляда · ${formatKeyCode(keybinds.score)} — счёт · Esc — меню<br>${formatKeyCode(keybinds.interact)} — сесть / выйти · ${formatKeyCode(keybinds.switchSeat)} — сменить место<br>1 — основное оружие · 2 — пистолет`;
   }
 }
 function currentWeaponId(classId=selectedClass){
@@ -339,7 +351,7 @@ function receive(next){
     toast(mode==='host'?'Матч начался!':'Хост запустил операцию! В бой!');
     return;
   }
-  if(state&&next.time<state.time-1){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast('Новая операция началась');}
+  if(state&&next.time<state.time-1){pendingDamage.clear();seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast('Новая операция началась');}
   const previousPlayer=local();
   const previousVehicle=state?.vehicles?.find(v=>v.id===previousPlayer?.vehicleId);
   state=next;const player=local();
@@ -384,17 +396,11 @@ function receive(next){
     }
     if(event.type==='vehicleDestroyed'&&event.attackerId===localId)toast(VEHICLE_TYPES[event.vehicleType]?.name+' · Цель уничтожена');
     if(event.type==='score'&&event.playerId===localId){
-      if(nowPerf>scoreStreakExpires)scoreStreakTotal=0;
-      scoreStreakTotal+=event.points;
-      scoreStreakExpires=nowPerf+3400;
-      const lastItem=scoreFeed[scoreFeed.length-1];
-      if(event.kind==='damage'&&lastItem&&lastItem.kind==='damage'&&lastItem.expires>nowPerf){
-        lastItem.points+=event.points;
-        lastItem.expires=nowPerf+2800;
-        lastItem.id=event.id;
-      }else{
-        scoreFeed.push({id:event.id,reason:event.reason,points:event.points,kind:event.kind,expires:nowPerf+3200});
-      }
+      flushDamage(nowPerf);
+      if(event.kind==='damage'){
+        const target=event.victimId??'damage',previous=pendingDamage.get(target);
+        pendingDamage.set(target,{...event,points:(previous?.points??0)+event.points,until:nowPerf+damageSummaryDelay});
+      }else showScore(event,nowPerf);
     }
     if(event.type==='kill'){
       feed.push({...event,expires:nowPerf+6500});
@@ -417,6 +423,7 @@ function receive(next){
 const multiplayer=new Multiplayer({onState:receive,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 
 function prepare(which){
+  pendingDamage.clear();
   clearControls();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
   const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value};
 }
@@ -542,6 +549,7 @@ document.addEventListener('mousedown',event=>{if(event.button===0&&active)lastFi
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{
+  if($('patch-notes').open)return;
   if(listeningAction){
     event.preventDefault();
     event.stopPropagation();
@@ -1020,6 +1028,7 @@ function hud(now){
     capEl.dataset.signature=capSig;capEl.replaceChildren();
     if(nearby&&player.alive){const strong=document.createElement('span'),small=document.createElement('small'),track=document.createElement('div'),fill=document.createElement('i');strong.textContent=`${nearby.id} · ${nearby.contested?'ТОЧКА ОСПАРИВАЕТСЯ':nearby.owner===player.team?'УДЕРЖАНИЕ ПОЗИЦИИ':'ЗАХВАТ ТОЧКИ'}`;small.textContent=`${nearby.name} · ${capPct}%`;track.className='capture-track';fill.style.width=`${capPct}%`;track.append(fill);capEl.append(strong,small,track);}
   }
+  flushDamage(now);
   scoreFeed=scoreFeed.filter(e=>e.expires>now).slice(-5);
   if(now>scoreStreakExpires)scoreStreakTotal=0;
   const scoreFeedSig=scoreFeed.length?`${scoreStreakTotal}:`+scoreFeed.map(e=>`${e.id}:${e.points}`).join(','):'';

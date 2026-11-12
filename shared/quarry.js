@@ -1,4 +1,5 @@
 import { makeTerrain } from './terrain.js';
+import { groundAsset } from './asset-grounding.js';
 import { routeRoads } from './map-edits.js';
 
 const size = 896;
@@ -288,6 +289,7 @@ const landforms = [
 const terrain = makeTerrain(size, landforms);
 
 for (const box of boxes) box.baseY = terrain.heightAt(box.x, box.z) + (box.baseY ?? 0);
+for (let i = 0; i < boxes.length; i++) boxes[i] = groundAsset(boxes[i], terrain);
 for (const structure of structures) structure.baseY = terrain.heightAt(structure.x, structure.z);
 for (const point of points) point.y = terrain.heightAt(point.x, point.z);
 

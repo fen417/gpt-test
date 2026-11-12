@@ -1,5 +1,5 @@
 export const UNIT_SCALE = Object.freeze({ x: 1, y: 1, z: 1 });
-const sizeAxes = { w: 'x', d: 'z', h: 'y', rx: 'x', rz: 'z', height: 'y' };
+const sizeAxes = { w: 'x', d: 'z', h: 'y', bodyHeight: 'y', rx: 'x', rz: 'z', height: 'y' };
 
 export function scaleAsset(value, scale = UNIT_SCALE) {
   const result = { ...value, modelScale: { ...scale } };

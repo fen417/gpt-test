@@ -326,7 +326,14 @@ function portBackdrop(owner, m) {
 export function addPortGround(owner, map, assets = true) {
   const { scene } = owner, m = portMaterials(owner);
   const dryEdge = map.size / 2 + 142, width = dryEdge - map.shoreX;
-  const geometry = new THREE.PlaneGeometry(width, map.size + 280);
+  const geometry = new THREE.PlaneGeometry(width, map.size + 280,
+    map.terrain ? Math.ceil(width / map.terrain.cell) : 1, map.terrain ? Math.ceil((map.size + 280) / map.terrain.cell) : 1);
+  if (map.terrain) {
+    const position = geometry.attributes.position;
+    for (let i = 0; i < position.count; i++) position.setZ(i,
+      map.terrain.heightAt(position.getX(i) + map.shoreX + width / 2, -position.getY(i)));
+    geometry.computeVertexNormals();
+  }
   const uv = geometry.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * width / 12, uv.getY(i) * (map.size + 280) / 12);
   const land = new THREE.Mesh(geometry, m.ground);

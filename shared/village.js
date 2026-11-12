@@ -1,4 +1,5 @@
 import { makeTerrain } from './terrain.js';
+import { groundAsset, shipTerrainPad } from './asset-grounding.js';
 
 const size = 384;
 const boxes = [], structures = [];
@@ -210,14 +211,21 @@ const landforms = [
 const relief = makeTerrain(size, landforms, 2);
 for (const structure of structures) structure.baseY = relief.heightAt(structure.x, structure.z);
 const terrainPads = structures.map(({ x, z, w, d, baseY }) => ({ x, z, w: w + 8, d: d + 8, height: baseY, blend: 4 }));
+const ship = { x: 109, z: 0, w: 23, d: 126, beached: true, terrainPad: true };
+const shipPad = shipTerrainPad(ship, relief);
+terrainPads.push(shipPad);
 const terrain = makeTerrain(size, landforms, 2, terrainPads);
+// The hull extends 2.7 m below its origin. Bury the keel slightly in the dry basin.
+ship.baseY = shipPad.height + 2;
 const parents = new Map(structures.map(structure => ['structure:' + structure.id, structure]));
 for (const box of boxes) box.baseY = (parents.get(box.editorParent)?.baseY ?? terrain.heightAt(box.x, box.z)) + (box.baseY ?? 0);
+for (let i = 0; i < boxes.length; i++) boxes[i] = groundAsset(boxes[i], terrain);
 for (const point of points) point.y = terrain.heightAt(point.x, point.z);
 
 // Foreground cliffs stand beyond the playable valley and close the mountain skyline.
 for (const side of [-1, 1]) for (const [i, z] of [-155,-88,-15,61,139].entries()) {
-  add('village-rock', side * (128 + i % 2 * 12), z, 62, 79, 48 + i % 3 * 9, '#aa957b', { baseY: 8 });
+  const offset = side === 1 && i >= 1 && i <= 3 ? 174 : 128 + i % 2 * 12;
+  add('village-rock', side * offset, z, 62, 79, 48 + i % 3 * 9, '#aa957b', { baseY: 8 });
 }
 for (const side of [-1, 1]) for (const x of [-94,-31,37,103]) {
   add('village-rock', x, side * 211, 74, 52, 39 + Math.abs(x) * .09, '#ac9475', { baseY: 3 });
@@ -228,6 +236,6 @@ export const VILLAGE_MAP = {
   fogDensity: .0034, fogColor: '#d0bea1', sunColor: '#ffe4b4', navigationCell: 2, stepHeight: .3,
   playArea: { minX: -82, maxX: 82, minZ: -173, maxZ: 173 },
   terrain, landforms, terrainPads, boxes, structures, roads, points, landmarks, districts: [...points, ...landmarks],
-  ship: { x: 109, z: 0, w: 23, d: 126, baseY: terrain.heightAt(109, 0) + 1.2, beached: true },
+  ship,
   spawns: [{ x: 0, z: 166 }, { x: 0, z: -166 }], vehicleSpawns: [], signs: [],
 };

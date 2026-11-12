@@ -7,7 +7,7 @@ import portEdits from './maps/port.json' with { type: 'json' };
 import quarryEdits from './maps/quarry.json' with { type: 'json' };
 import villageEdits from './maps/village.json' with { type: 'json' };
 
-export const PROTOCOL_VERSION=14;
+export const PROTOCOL_VERSION=15;
 export const WEAPON_SWITCH_TIME = .38;
 export const WEAPON_SWAP_PHASE = .42;
 export function weaponSwitchPose(remaining=0){
@@ -73,7 +73,7 @@ function mapLayoutRevision() {
   return (hash >>> 0).toString(16);
 }
 export const MAP_LAYOUT_REVISION = mapLayoutRevision();
-export const MAPS = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, map]) => [id, applyMapEdits(map, MAP_EDITS[id])]));
+export const MAPS = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, map]) => [id, applyMapEdits(map, MAP_EDITS[id], BASE_MAPS)]));
 export const MAP=MAPS[DEFAULT_MAP_ID];
 export function getMap(mapId){
   return Object.hasOwn(MAPS,mapId)?MAPS[mapId]:MAP;

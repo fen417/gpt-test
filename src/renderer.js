@@ -1647,15 +1647,12 @@ export class GameRenderer {
 
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
     const humvee = vehicle.type === 'humvee';
-    rig.body.updateWorldMatrix(true, false);
-    this.camera.position.set(seat.x, seat.height, seat.z).applyMatrix4(rig.body.matrixWorld);
-    if (humvee) {
-      this.vehicleSeatAnchor.set(seat.x, seat.height, seat.z).applyMatrix4(rig.group.matrixWorld);
-      this.camera.position.lerp(this.vehicleSeatAnchor, .28);
-    }
-    if (shake) this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012, Math.abs(vehicle.speed) * .001) * (humvee ? .65 : 1);
+    const index=VEHICLE_TYPES[vehicle.type].seats.indexOf(seat);
+    const eye=getVehicleSeatPose({ ...vehicle,x:rig.group.position.x,y:rig.group.position.y,z:rig.group.position.z,yaw:rig.group.rotation.y },index);
+    this.camera.position.set(eye.x,eye.y,eye.z);
+    if (shake && seat.role==='driver') this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012, Math.abs(vehicle.speed) * .001) * (humvee ? .65 : 1);
     const gunner = seat.role === 'gunner';
-    const roll = shake && !gunner ? rig.body.rotation.z * (humvee ? .62 : 1) : 0;
+    const roll = shake && seat.role==='driver' ? rig.body.rotation.z * (humvee ? .62 : 1) : 0;
     this.camera.rotation.set(gunner ? clamp(pitch, TURRET_MIN_PITCH, TURRET_MAX_PITCH) : pitch, yaw, roll, 'YXZ');
     this.cameraPlayerId = null;
     this.cameraAlive = true;
@@ -1798,8 +1795,12 @@ export class GameRenderer {
       this.presentedWeaponId = stowing ? swap.from : activeWeaponId;
       const pistol = getWeapon(player.classId, this.presentedWeaponId).sidearm;
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
-      const crouching = !passenger && (view.crouch ?? player.crouching ?? player.crouch);
-      const height = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+      const sliding = !passenger && Boolean(player.sliding);
+      const crouching = !passenger && Boolean(sliding || player.crouch || player.crouching || view.crouch);
+      const targetHeight = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+      this.eyeHeight=lerp(this.eyeHeight??targetHeight,targetHeight,1-Math.exp(-dt*20));
+      this.slideBlend=lerp(this.slideBlend??0,sliding?1:0,1-Math.exp(-dt*16));
+      const height=this.eyeHeight;
       const passengerCanFire = passenger && canFirePassengerWeapon(mounted.vehicle, player.vehicleSeat, yaw, pitch);
       const coverDistance = passenger ? 1.6 : distanceToCover(
         { x: player.x, y: (player.y || 0) + height, z: player.z },
@@ -1822,8 +1823,8 @@ export class GameRenderer {
       const reloadMotion = Math.sin(reloadPhase * Math.PI) * this.reloadAmount;
       const moving = passenger ? 0 : clamp(Number(view.move) || 0, 0, 1);
       const grounded = player.grounded !== false;
-      const sprint = view.sprint && !view.aim && moving > .1 && !player.reloading;
-      this.handlingMove = lerp(this.handlingMove, grounded ? moving : 0, 1 - Math.exp(-dt * 9));
+      const sprint = !crouching && !sliding && view.sprint && !view.aim && moving > .1 && !player.reloading;
+      this.handlingMove = lerp(this.handlingMove, grounded && !sliding ? moving : 0, 1 - Math.exp(-dt * 9));
       this.sprintBlend = lerp(this.sprintBlend, sprint ? 1 : 0, 1 - Math.exp(-dt * 11));
       this.strafeBlend = lerp(this.strafeBlend, passenger ? 0 : Number(view.strafe) || 0, 1 - Math.exp(-dt * 9));
       if (grounded && !this.previousGrounded) this.landDip = .09;
@@ -1850,7 +1851,7 @@ export class GameRenderer {
         const anchor = this.scoped ? target : this.cameraAnchor;
         const sway = shake && !this.scoped;
         this.camera.position.set(anchor.x, anchor.y + height + (sway ? Math.sin(cycle * 2) * .016 * bob - this.landDip * .4 : 0), anchor.z);
-        this.camera.rotation.set(pitch, yaw, sway ? Math.sin(cycle) * .003 * bob - this.strafeBlend * .005 : 0, 'YXZ');
+        this.camera.rotation.set(pitch, yaw, sway ? Math.sin(cycle) * .003 * bob - this.strafeBlend * .005 + this.slideBlend*.018 : 0, 'YXZ');
         this.updateSunShadow(this.cameraAnchor.x, this.cameraAnchor.z);
       }
       this.kick = Math.max(view.recoil || 0, this.kick * Math.exp(-dt * 16));
@@ -1861,7 +1862,7 @@ export class GameRenderer {
       const aimFov = scopedWeapon
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / (player.weaponId === 'sv98' ? clamp(Number(view.scopeZoom) || 8, 6, 12) : 4)))
         : baseFov - (pistol ? 13 : 23);
-      const fov = lerp(baseFov + this.sprintBlend * 6, aimFov, this.aimAmount);
+      const fov = lerp(baseFov + this.sprintBlend * 6 + this.slideBlend*3, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
         this.camera.near = .045;
@@ -1886,10 +1887,12 @@ export class GameRenderer {
       });
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetPhase) * Math.PI);
+      const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(this.weaponRig.sightType);
+      const adsZ=pistol?-.61:scopedWeapon?-.32:closeOptic?-.13:-.27;
       this.weapon.position.set(
         lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * bob - this.swayX + this.sprintBlend * .035 + actionTilt * .055 + lowered * .06,
         lerp(pistol ? -.18 : -.23, pistol ? -.058 : -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * bob - this.swayY - reloadMotion * .10 - this.sprintBlend * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
-        lerp(pistol ? -.64 : -.42, pistol ? -.61 : scopedWeapon ? -.32 : -.27, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
+        lerp(pistol ? -.64 : -.42, adsZ, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
       );
       this.weapon.rotation.set(
         kick * (pistol ? .089 : .062) - reloadMotion * .39 - this.sprintBlend * .25 + Math.cos(cycle) * bob * .022 - actionTilt * .18 - lowered * .72,

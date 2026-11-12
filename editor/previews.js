@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createMapModelBuilder } from '../src/renderer.js';
 import { createPortModelBuilder } from '../src/port-visuals.js';
 import { addQuarryAsset, addQuarrySigns } from '../src/quarry-visuals.js';
-import { createVillageModelBuilder } from '../src/village-visuals.js';
+import { createVillageModelBuilder, villageRoadMaterial } from '../src/village-visuals.js';
 import { createVehicleRig, disposeVehicleRig } from '../src/vehicles.js';
 import { addWarehouseDetails, makeSign } from '../src/visuals.js';
 import { makeTerrain } from '../shared/terrain.js';
@@ -24,6 +24,22 @@ function terrainModel(owner, form) {
   }
   geometry.computeVertexNormals();
   owner.scene.add(new THREE.Mesh(geometry, owner.surfaces.ground));
+}
+
+function roadModel(owner, road, map) {
+  const radius = road.w / 2, half = Math.max(0, (road.d - road.w) / 2);
+  const outline = new THREE.Shape();
+  outline.absarc(0, half, radius, 0, Math.PI, false);
+  outline.absarc(0, -half, radius, Math.PI, Math.PI * 2, false);
+  outline.closePath();
+  const geometry = new THREE.ShapeGeometry(outline, 24);
+  geometry.rotateX(-Math.PI / 2);
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 8, uv.getY(i) / 8);
+  const material = map.id === 'village' ? villageRoadMaterial(owner) : owner.surfaces.asphalt;
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.y = road.yaw ?? 0;
+  owner.scene.add(mesh);
 }
 
 function frame(camera, group, direction) {
@@ -85,6 +101,8 @@ export function createAssetPreviews(surfaces) {
         if (vehicle.gunnerGloves) vehicle.gunnerGloves.visible = false;
         if (vehicle.turret) vehicle.turret.flash.visible = false;
         group.add(vehicle.group);
+      } else if (kind === 'road') {
+        roadModel(owner, value, map);
       } else if (kind === 'landform') {
         terrainModel(owner, value);
       } else if (kind === 'landmark') {

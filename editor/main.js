@@ -1,6 +1,6 @@
 import './style.css';
 import { BASE_MAPS, MAP_EDITS } from '../shared/world.js';
-import { applyMapEdits, canCloneItem, canRemoveItem, canResizeItem, constrainPosition, mapItems, validMapEdits } from '../shared/map-edits.js';
+import { applyMapEdits, assetCatalog, canCloneItem, canRemoveItem, canResizeItem, constrainPosition, mapItems, validMapEdits } from '../shared/map-edits.js';
 import { MapViewport } from './viewport.js';
 import { loadMap, publishMap } from './github.js';
 
@@ -37,12 +37,12 @@ const draftKey = mapId => 'rubezh-map-editor:' + mapId + (BASE_MAPS[mapId].layou
 const sessions = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, map]) => {
   let draft;
   try { draft = JSON.parse(localStorage.getItem(draftKey(id))); } catch { /* storage is optional */ }
-  const validDraft = draft && validMapEdits(map, draft.edits) && validMapEdits(map, draft.original);
+  const validDraft = draft && validMapEdits(map, draft.edits, BASE_MAPS) && validMapEdits(map, draft.original, BASE_MAPS);
   return [id, { edits: validDraft ? draft.edits : MAP_EDITS[id], original: validDraft ? draft.original : MAP_EDITS[id],
     revision: null, undo: [], redo: [] }];
 }));
 const baseCatalogs = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, base]) =>
-  [id, new Map(mapItems(base, true).map(item => [item.key, item]))]));
+  [id, assetCatalog(base, BASE_MAPS)]));
 
 let mapId = 'port', items, currentMap, selection = null, placing = null, drag = null;
 let placingScale = null;
@@ -99,7 +99,7 @@ function select(item) {
 }
 
 function rebuild(key = selection?.key) {
-  currentMap = applyMapEdits(base(), session().edits);
+  currentMap = applyMapEdits(base(), session().edits, BASE_MAPS);
   items = new Map(mapItems(currentMap).map(item => [item.key, item]));
   viewport.display(currentMap, [...items.values()]);
   select(items.get(key) ?? viewport.segments.find(segment => segment.key === key));
@@ -109,7 +109,7 @@ function rebuild(key = selection?.key) {
 function changeEdits(next, key) {
   const state = session();
   if (same(next, state.edits)) { select(selection); return; }
-  if (!validMapEdits(base(), next)) { select(selection); status('Правка выходит за ограничения карты или достигнут лимит ассетов.'); return; }
+  if (!validMapEdits(base(), next, BASE_MAPS)) { select(selection); status('Правка выходит за ограничения карты или достигнут лимит ассетов.'); return; }
   state.undo.push(state.edits);
   if (state.undo.length > 100) state.undo.shift();
   state.redo = [];
@@ -228,10 +228,12 @@ function showAssets() {
   const buttons = [];
   for (const item of catalog().values()) {
     if (!canCloneItem(item)) continue;
-    const { kind, value, key } = item;
+    const { kind, value, key, sourceMap, sourceKey } = item;
+    if (!key.includes('/')) continue;
+    if ($('assets-source').value && sourceMap.id !== $('assets-source').value) continue;
     const variant = value.levels ? ' · ' + value.levels + ' ярус(а)' : '';
-    const title = displayName(item) + variant;
-    const group = [kind, value.kind ?? value.type ?? title, value.levels, value.carType,
+    const title = displayName(item) + variant + ' · ' + sourceMap.name;
+    const group = [sourceMap.id, kind, value.kind ?? value.type ?? displayName(item), value.levels, value.carType,
       value.plan, value.floors, value.doorAxis, value.plan ? value.color : ''].join('/');
     if (seen.has(group) || !(title + ' ' + group).toLowerCase().includes(filter)) continue;
     seen.add(group);
@@ -242,7 +244,7 @@ function showAssets() {
     button.setAttribute('aria-pressed', key === placing);
     preview.className = 'asset-preview';
     preview.setAttribute('aria-hidden', 'true');
-    previewItems.set(preview, { map: base(), item });
+    previewItems.set(preview, { map: sourceMap, item: { ...item, key: sourceKey } });
     button.append(preview, document.createTextNode(title));
     button.addEventListener('click', () => chooseAsset(placing === key ? null : key));
     button.addEventListener('dragstart', event => {
@@ -321,7 +323,7 @@ async function connect(token, recover = false) {
   try {
     if (!/^github_pat_[a-zA-Z0-9_]+$/.test(token)) throw new Error('Введи fine-grained токен GitHub.');
     const remote = await loadMap(mapId, token);
-    if (!validMapEdits(base(), remote.edits)) throw new Error('Данные карты изменились. Обнови страницу редактора.');
+    if (!validMapEdits(base(), remote.edits, BASE_MAPS)) throw new Error('Данные карты изменились. Обнови страницу редактора.');
     if (dirty(state) && !same(state.original, remote.edits) && !same(state.edits, remote.edits)) {
       state.revision = null;
       if (!recover || !window.confirm('В GitHub появилась новая версия карты. Загрузить её и удалить локальный черновик? Черновик можно сначала скачать кнопкой «Скачать JSON».')) {
@@ -373,7 +375,10 @@ async function save() {
   finally { pending = false; updateButtons(); }
 }
 
-for (const [id, map] of Object.entries(BASE_MAPS)) $('map').append(option(id, map.name));
+for (const [id, map] of Object.entries(BASE_MAPS)) {
+  $('map').append(option(id, map.name));
+  $('assets-source').append(option(id, map.name));
+}
 for (const [key, [name]] of Object.entries(layerOptions)) $('layer').append(option(key, name));
 $('map').addEventListener('change', () => {
   mapId = $('map').value;
@@ -398,6 +403,7 @@ $('layer').addEventListener('change', () => {
   if (selection && !layerOptions[$('layer').value][1].includes(selection.kind)) select(null);
 });
 $('assets-search').addEventListener('input', showAssets);
+$('assets-source').addEventListener('change', showAssets);
 $('cancel-place').addEventListener('click', () => chooseAsset(null));
 $('position').addEventListener('submit', event => {
   event.preventDefault();

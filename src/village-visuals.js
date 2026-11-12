@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { clonePairedMaterial, pairMaterials } from './visuals.js';
 import { createPortModelBuilder } from './port-visuals.js';
+import { terrainRoads } from './terrain-roads.js';
+import { desertMountain, desertRockMaterial } from './desert-mountains.js';
 
 const palettes = new WeakMap();
 
@@ -74,7 +76,7 @@ function palette(owner) {
     clay: new THREE.MeshStandardMaterial({ color: '#b37c53', roughness: .95 }),
     leaves: new THREE.MeshLambertMaterial({ color: '#72774c', side: THREE.DoubleSide }),
     shadow: new THREE.MeshBasicMaterial({ color: '#302c26' }),
-    rock: new THREE.MeshStandardMaterial({ color: '#ae987c', roughness: 1, vertexColors: true, flatShading: true }),
+    rock: desertRockMaterial(),
     paints: new Map(),
   };
   palettes.set(owner, result);
@@ -85,6 +87,11 @@ function painted(palette, source, color) {
   const key = source.uuid + color;
   if (!palette.paints.has(key)) palette.paints.set(key, clonePairedMaterial(source, color));
   return palette.paints.get(key);
+}
+
+export function villageRoadMaterial(owner) {
+  const m = palette(owner);
+  return painted(m, m.sand, '#bda17a');
 }
 
 function palm(owner, m, box) {
@@ -176,32 +183,6 @@ function houseDetails(owner, m, structure) {
   } finally { owner.scene = scene; }
 }
 
-function mountain(owner, m, box) {
-  const vertices = [], indices = [], colors = [];
-  const profile = [[0,1],[.22,.96],[.48,.74],[.75,.42],[1,.015]];
-  const tint = new THREE.Color(box.color);
-  for (const [level, [height, radius]] of profile.entries()) for (let i = 0; i < 10; i++) {
-    const angle = i / 10 * Math.PI * 2;
-    const irregular = .9 + Math.sin(i * 2.4 + box.x * .04 + box.z * .01) * .1;
-    vertices.push(box.x + Math.cos(angle) * box.w / 2 * radius * irregular,
-      (box.baseY ?? 0) + box.h * height, box.z + Math.sin(angle) * box.d / 2 * radius * irregular);
-    const tone = .78 + Math.cos(i * 1.8 + level) * .15;
-    colors.push(tint.r * tone, tint.g * tone, tint.b * tone);
-    if (level < profile.length - 1) {
-      const a = level * 10 + i, b = level * 10 + (i + 1) % 10;
-      indices.push(a, a + 10, b, b, a + 10, b + 10);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(geometry, m.rock);
-  mesh.castShadow = mesh.receiveShadow = true;
-  owner.scene.add(mesh);
-}
-
 export function createVillageModelBuilder(owner) {
   const m = palette(owner);
   return (boxes = [], structures = [], roads = [], terrain = null) => {
@@ -221,7 +202,7 @@ export function createVillageModelBuilder(owner) {
       const { kind, x, z, w, d, h, baseY = 0, color = '#c3ad89' } = box;
       if (!kind.startsWith('village-')) continue;
       if (kind === 'village-palm') { palm(owner, m, box); continue; }
-      if (kind === 'village-rock') { mountain(owner, m, box); continue; }
+      if (kind === 'village-rock') { desertMountain(owner, m.rock, box, terrain); continue; }
       if (kind === 'village-pottery') { pottery(owner, m, box); continue; }
       if (kind === 'village-barrels') {
         for (const side of [-1, 1]) {
@@ -286,8 +267,10 @@ export function addVillageGround(owner, map, assets = true) {
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   owner.scene.add(ground);
+  const roads = terrainRoads(owner, ground, span, map.roads, m.sand, '#bda17a');
   if (assets) {
-    createVillageModelBuilder(owner)(map.boxes, map.structures, map.roads, map.terrain);
+    createVillageModelBuilder(owner)(map.boxes, map.structures, [], map.terrain);
     if (map.ship) createPortModelBuilder(owner)({ ship: map.ship });
   }
+  return roads;
 }

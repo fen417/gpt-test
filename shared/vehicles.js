@@ -39,11 +39,33 @@ export function getVehicleDimensions(vehicle) {
 export function vehicleBoardingRange(vehicle) {
   return VEHICLE_BOARD_RANGE * Math.max(1, vehicle.modelScale?.x ?? 1, vehicle.modelScale?.z ?? 1);
 }
+export function vehicleBodyTilt(vehicle, terrain) {
+  if (!terrain) return { bodyPitch: 0, bodyRoll: 0 };
+  const { width, length } = getVehicleDimensions(vehicle), sin = Math.sin(vehicle.yaw), cos = Math.cos(vehicle.yaw);
+  const a = length * .35, b = width * .45;
+  const front = terrain.heightAt(vehicle.x - sin * a, vehicle.z - cos * a);
+  const rear = terrain.heightAt(vehicle.x + sin * a, vehicle.z + cos * a);
+  const right = terrain.heightAt(vehicle.x + cos * b, vehicle.z - sin * b);
+  const left = terrain.heightAt(vehicle.x - cos * b, vehicle.z + sin * b);
+  return { bodyPitch: Math.atan2(front - rear, a * 2), bodyRoll: Math.atan2(right - left, b * 2) };
+}
+
+export function vehicleAimDirection(vehicle, yaw, pitch) {
+  const scale = vehicle.modelScale ?? { x: 1, y: 1, z: 1 };
+  const dx = -Math.sin(yaw) * Math.cos(pitch), dy = Math.sin(pitch), dz = -Math.cos(yaw) * Math.cos(pitch);
+  const s = Math.sin(vehicle.yaw), c = Math.cos(vehicle.yaw);
+  const x = (dx * c - dz * s) / scale.x, y = dy / scale.y, z = (dx * s + dz * c) / scale.z;
+  const cp = Math.cos(vehicle.bodyPitch ?? 0), sp = Math.sin(vehicle.bodyPitch ?? 0);
+  const cr = Math.cos(vehicle.bodyRoll ?? 0), sr = Math.sin(vehicle.bodyRoll ?? 0);
+  const py = y * cp + z * sp, pz = -y * sp + z * cp;
+  return { x: x * cr + py * sr, y: -x * sr + py * cr, z: pz };
+}
 export const TURRET_MIN_PITCH = -.25;
 export const TURRET_MAX_PITCH = .85;
 export const TURRET_WEAPON = {
   weapon: 'ПУЛЕМЁТ ХАМВИ', range: 220, damage: 38, interval: .096, spread: .018, projectileSpeed: 410,
   minPitch: TURRET_MIN_PITCH, maxPitch: TURRET_MAX_PITCH,
+  heatPerShot: .048,
 };
 
 export function vehicleLocalPoint(vehicle, x, z) {
@@ -53,8 +75,12 @@ export function vehicleLocalPoint(vehicle, x, z) {
 
 export function getVehicleSeatPose(vehicle, index) {
   const seat = VEHICLE_TYPES[vehicle.type]?.seats[index];
-  return seat && { ...vehicleLocalPoint(vehicle, seat.x * (vehicle.modelScale?.x ?? 1), seat.z * (vehicle.modelScale?.z ?? 1)),
-    y: (vehicle.y ?? 0) + seat.height * (vehicle.modelScale?.y ?? 1) };
+  if (!seat) return null;
+  const cp = Math.cos(vehicle.bodyPitch ?? 0), sp = Math.sin(vehicle.bodyPitch ?? 0);
+  const cr = Math.cos(vehicle.bodyRoll ?? 0), sr = Math.sin(vehicle.bodyRoll ?? 0);
+  const x = seat.x * cr - seat.height * sr, y = seat.x * sr + seat.height * cr;
+  return { ...vehicleLocalPoint(vehicle, x * (vehicle.modelScale?.x ?? 1), (y * sp + seat.z * cp) * (vehicle.modelScale?.z ?? 1)),
+    y: (vehicle.y ?? 0) + (y * cp - seat.z * sp) * (vehicle.modelScale?.y ?? 1) };
 }
 
 export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
@@ -62,17 +88,13 @@ export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
   if (seat?.role !== 'passenger') return false;
   if (vehicle.type === 'atv') return true;
   // Fire out of the side window on this seat’s side of the cabin.
-  const angle = yaw - vehicle.yaw;
-  const outward = -Math.sin(angle) * Math.sign(seat.x);
-  if (outward <= 0) return false;
+  const direction = vehicleAimDirection(vehicle, yaw, pitch);
+  if (direction.x * Math.sign(seat.x) <= 0) return false;
   const windows = HUMVEE_SIDE_WINDOWS;
   const window = seat.z < 0 ? windows.front : windows.rear;
-  const scale = vehicle.modelScale ?? { x: 1, y: 1, z: 1 };
-  const distance = (windows.x - Math.abs(seat.x)) * scale.x / outward;
-  const z = seat.z * scale.z - Math.cos(angle) * distance;
-  const y = seat.height * scale.y + Math.tan(pitch) * distance;
-  return Math.abs(z - window.z * scale.z) <= window.width * scale.z / 2 &&
-    Math.abs(y - windows.y * scale.y) <= windows.height * scale.y / 2;
+  const distance = (Math.sign(seat.x) * windows.x - seat.x) / direction.x;
+  const z = seat.z + direction.z * distance, y = seat.height + direction.y * distance;
+  return Math.abs(z - window.z) <= window.width / 2 && Math.abs(y - windows.y) <= windows.height / 2;
 }
 
 export function getVehicleBoardingSeat(player, vehicles) {

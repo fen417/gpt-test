@@ -163,7 +163,7 @@ export class MapViewport {
     if (map.vehicleRoutes) {
       const { edges } = map.vehicleRoutes;
       const vehicles = new Set(map.vehicleSpawns.map(vehicle => vehicle.id));
-      map.roads.forEach((road, index) => {
+      map.roads.slice(0, edges.length).forEach((road, index) => {
         const [a, b] = edges[index];
         const segment = { key: routeKey(index), kind: 'segment', value: road, name: a + ' → ' + b,
           endpoints: [a, b].map(id => byKey.get((vehicles.has(id) ? 'vehicle:' : 'route:') + id)) };
@@ -207,6 +207,11 @@ export class MapViewport {
   }
 
   clearSelection() {
+    clearTimeout(this.roadPreviewTimer);
+    this.roadPreviewTimer = null;
+    this.pendingRoadPreview = null;
+    if (this.previewRoad) this.level?.roadSurface?.update(this.map.roads);
+    this.previewRoad = false;
     if (this.previewGroups?.length) this.renderer.shadowMap.needsUpdate = true;
     for (const { mesh, position } of this.previewMeshes ?? []) mesh.position.copy(position);
     for (const { group, position, scale } of this.previewGroups ?? []) {
@@ -310,6 +315,7 @@ export class MapViewport {
     for (const { group, position } of this.previewGroups) {
       group.position.set(position.x + dx, position.y + rise, position.z + dz);
     }
+    this.previewRoads(item, { x, z });
     this.renderer.shadowMap.needsUpdate = true;
     this.render();
   }
@@ -326,7 +332,23 @@ export class MapViewport {
       this.outline.scale.copy(ratio);
       this.outline.position.y = anchor.y + (item.value.h ?? 1.5) * ratio.y / 2;
     }
+    this.previewRoads(item, { w: item.value.w * ratio.x, d: item.value.d * ratio.z, modelScale: scale });
     this.renderer.shadowMap.needsUpdate = true;
     this.render();
+  }
+
+  previewRoads(item, change) {
+    if (item.kind !== 'road' || !this.level.roadSurface) return;
+    this.previewRoad = true;
+    this.pendingRoadPreview = this.map.roads.map((road, i) =>
+      (road.editorKey ?? 'road:' + (road.id ?? i)) === item.key ? { ...road, ...change } : road);
+    if (this.roadPreviewTimer) return;
+    this.roadPreviewTimer = setTimeout(() => {
+      this.roadPreviewTimer = null;
+      if (!this.pendingRoadPreview) return;
+      this.level.roadSurface.update(this.pendingRoadPreview);
+      this.pendingRoadPreview = null;
+      this.render();
+    }, 100);
   }
 }

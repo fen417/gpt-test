@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { getVehicleDimensions, HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { getVehicleDimensions, vehicleAimDirection, HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 
 const upAxis = new THREE.Vector3(0, 1, 0);
 const turretHeading = new THREE.Quaternion();
@@ -428,13 +428,16 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
   if(turret){
     const localGunner=localSeat===1;
     rig.gunnerGloves.visible=!wrecked&&localGunner;
-    const target=(localGunner?(view.yaw??player.yaw):vehicle.aimYaw)-group.rotation.y;
+    const desiredPitch=localGunner?THREE.MathUtils.clamp(view.pitch??player.pitch,TURRET_MIN_PITCH,TURRET_MAX_PITCH):vehicle.aimPitch;
+    const direction=vehicleAimDirection({ ...vehicle, yaw:group.rotation.y, bodyPitch:body.rotation.x, bodyRoll:body.rotation.z },
+      localGunner?(view.yaw??player.yaw):vehicle.aimYaw,desiredPitch);
+    const target=Math.atan2(-direction.x,-direction.z),localPitch=Math.atan2(direction.y,Math.hypot(direction.x,direction.z));
     const delta=target-(rig.turretYaw??target);
     rig.turretYaw=(rig.turretYaw??target)+Math.atan2(Math.sin(delta),Math.cos(delta))*(localGunner?1:t);
     turretHeading.setFromAxisAngle(upAxis,rig.turretYaw);
-    turret.turret.quaternion.copy(body.quaternion).invert().multiply(turretHeading);
+    turret.turret.quaternion.copy(turretHeading);
     turret.gun.rotation.x=THREE.MathUtils.lerp(turret.gun.rotation.x,
-      localGunner?THREE.MathUtils.clamp(view.pitch??player.pitch,TURRET_MIN_PITCH,TURRET_MAX_PITCH):vehicle.aimPitch,localGunner?1:t);
+      localPitch,localGunner?1:t);
     if(rig.gunSeq!==undefined&&rig.gunSeq!==vehicle.gunSeq)rig.flashTime=.055;
     rig.gunSeq=vehicle.gunSeq;
     rig.flashTime=Math.max(0,(rig.flashTime??0)-dt);

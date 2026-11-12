@@ -27,6 +27,7 @@ function fences(owner, map) {
 export function buildMapScene(owner, map, { editable = false } = {}) {
   const parent = owner.scene, previousMap = owner.map;
   const root = new THREE.Group(), background = new THREE.Group(), groups = new Map();
+  let roadSurface;
   const items = mapItems(map);
   const represented = new Set(items.filter(item => item.kind === 'box').map(item => item.value.id));
   root.add(background);
@@ -38,7 +39,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
       addPortGround(owner, map, false);
       if (map.vehicleRoutes) createPortModelBuilder(owner)({ roads: map.roads });
     }
-    else if (map.theme === 'desert-village') addVillageGround(owner, map, false);
+    else if (map.theme === 'desert-village') roadSurface = addVillageGround(owner, map, false);
     else {
       const span = map.size + 256, segments = span / map.terrain.cell;
       const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
@@ -56,6 +57,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
     const villageModels = createVillageModelBuilder(owner);
     for (const item of items) {
       const { key, kind, value } = item;
+      const assetMapId = value.assetMapId ?? map.id;
       if (['landform', 'landmark', 'spawn', 'route'].includes(kind) || (kind === 'vehicle' && !editable)) continue;
       const group = new THREE.Group();
       group.userData.editorKey = key;
@@ -80,20 +82,22 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
         if (rig.gunnerGloves) rig.gunnerGloves.visible = false;
         if (rig.turret) rig.turret.flash.visible = false;
         group.add(rig.group);
+      } else if (kind === 'road' && (roadSurface || map.id === 'quarry')) {
+        // Roads belong to the shared terrain mask. Their groups remain selectable.
       } else {
         if (kind === 'ship') portModels({ ship: local });
-        else if (map.shoreX !== undefined) {
+        else if (assetMapId === 'port' || (kind === 'road' && assetMapId === 'quarry')) {
           const fields = { structure: 'structures', road: 'roads', crane: 'cranes', rail: 'railTracks', sign: 'signs' };
           const field = fields[kind];
           portModels(field ? { boxes: parts, [field]: [local] } : { boxes: parts });
-        } else if (map.theme === 'desert-village') {
-          const terrain = map.terrain && { heightAt: (x, z) =>
-            (map.terrain.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) - anchor.baseY) / scale.y };
-          villageModels(parts, kind === 'structure' ? [local] : [], kind === 'road' ? [local] : [], terrain);
+        } else if (assetMapId === 'village') {
+          const terrain = { heightAt: (x, z) =>
+            ((map.terrain?.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) ?? 0) - anchor.baseY) / scale.y };
+          villageModels(parts, kind === 'structure' ? [local] : [], kind === 'road' && !roadSurface ? [local] : [], terrain);
         } else {
           if (kind === 'structure') addWarehouseDetails(owner, [local]);
           const terrain = { heightAt: (x, z) =>
-            (map.terrain.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) - anchor.baseY) / scale.y };
+            ((map.terrain?.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) ?? 0) - anchor.baseY) / scale.y };
           if (kind === 'sign') addQuarrySigns(owner, { terrain, signs: [local] });
           for (const part of parts) addQuarryAsset(owner, part, { ...map, terrain });
         }
@@ -103,7 +107,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
       group.position.set(anchor.x, anchor.baseY, anchor.z);
       group.scale.set(scale.x, scale.y, scale.z);
     }
-    return { root, groups, owner };
+    return { root, groups, owner, roadSurface };
   } finally {
     owner.scene = parent;
     owner.map = previousMap;

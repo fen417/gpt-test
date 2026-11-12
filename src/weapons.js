@@ -944,5 +944,7 @@ export function createWeaponRig(owner = {}) {
     for(const texture of ownedTextures)texture.dispose();
   }
   update();weapon.position.set(.26,-.23,-.42);
-  return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,heldStim,heldMedkit,heldAmmo,heldScanner,muzzleFlash,flashLight,flashMaterial,update,dispose};
+  return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
+    get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
+    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,heldStim,heldMedkit,heldAmmo,heldScanner,muzzleFlash,flashLight,flashMaterial,update,dispose};
 }
