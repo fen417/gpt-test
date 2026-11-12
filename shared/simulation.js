@@ -91,7 +91,7 @@ function weaponSpread(player) {
 function impactMaterial(kind) {
   if (kind.startsWith('port-')) return kind==='port-wall'?'concrete':'metal';
   if (kind === 'crate' || kind === 'tree' || kind === 'tent') return 'wood';
-  if (kind === 'container' || kind === 'pillar' || kind === 'warehouse' || kind === 'truck' || kind === 'car' || kind === 'fueltank' || kind === 'generator' || kind === 'kiosk') return 'metal';
+  if (kind === 'roof' || kind === 'container' || kind === 'pillar' || kind === 'warehouse' || kind === 'truck' || kind === 'car' || kind === 'fueltank' || kind === 'generator' || kind === 'kiosk') return 'metal';
   return 'concrete';
 }
 
@@ -293,6 +293,7 @@ export class Simulation {
     if(Math.abs(x)+dx>limit||Math.abs(z)+dz>limit)return true;
     for(const box of this.map.boxes){
       if(Math.abs(box.x-x)>=dx+box.w/2||Math.abs(box.z-z)>=dz+box.d/2)continue;
+      if(box.overhead&&this.groundAt(x,z)+body.h<=(box.baseY??0))continue;
       if(overlaps(body,{x:box.x,z:box.z,w:box.w/2,d:box.d/2,cos:1,sin:0}))return true;
     }
     return this.vehicles.some(other=>other!==vehicle&&(other.hp>0||other.wreckTime>0)&&overlaps(body,footprint(other)));

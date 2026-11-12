@@ -537,6 +537,10 @@ export class GameRenderer {
       const parent = elevation ? new THREE.Group() : this.scene;
       if (elevation) { parent.position.y = elevation; this.scene.add(parent); }
       const h = b.h ?? 3, w = b.w ?? 4, d = b.d ?? 4;
+      if (b.kind === 'roof') {
+        this.box(parent, b.x, h / 2, b.z, w, h, d, this.surfaces.metal);
+        continue;
+      }
       const specialProp = ['truck', 'car', 'tent', 'tree', 'sandbags', 'fueltank', 'generator', 'kiosk'].includes(b.kind);
       const building = h > 5 && !['wall', 'pillar'].includes(b.kind) && !specialProp;
       const container = String(b.kind || '').includes('container');
