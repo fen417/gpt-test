@@ -451,20 +451,69 @@ export function createWeaponRig(owner = {}) {
     surfaceStitches(parent,skin,.12,.87,.30,9);
     return skin;
   }
-  // Wrist -> heel -> metacarpals. The palm spans the underside of the fore-end;
-  // fingers start at its far edge, so they do not trace an entire second palm.
-  palm(leftHand,[[-.089,-.113,-.352],[-.072,-.099,-.379],[-.037,-.065,-.419],
-    [.003,-.060,-.433]].map(lp),[.023,.029,.038,.043,.043],[.020,.021,.019,.016,.012],[0,0,1]);
-  for(let i=0;i<4;i++){
-    const z=-.465+i*.022, r=[.010,.0107,.0101,.0088][i], shorten=[.006,0,.005,.018][i];
-    finger(leftHand,[[.000,-.060,z],[.027,-.059,z],[.050,-.041,z+.001],
-      [.055,-.022-shorten,z+.003],[.046,-.004-shorten,z+.005]].map(lp),r,36,[0,0,1]);
+  // Support-hand silhouette: the palm is broad across the rifle, not a tube
+  // running down the barrel. Finger roots overlap its knuckle edge.
+  // Coordinates are in weapon space, converted to leftHand-local by lp().
+  palm(leftHand,[
+    [-.087,-.112,-.356], // wrist inside the fabric cuff
+    [-.077,-.103,-.381], // heel
+    [-.064,-.091,-.411], // palm
+    [-.046,-.085,-.423], // metacarpals
+    [-.033,-.083,-.423], // knuckle edge, almost transverse to the barrel
+  ].map(lp),[.029,.033,.039,.043,.042],[.020,.022,.020,.017,.013],[0,0,1]);
+
+  // A flatter, tapered digit with joint creases; the ends tuck into the palm.
+  // Unlike the general-purpose finger() this has NO long, raised tube panels.
+  function supportDigit(parent,points,radius,{thumb=false}={}) {
+    const widths=[1.10,1.08,1.03,.98,.94,.88,.84,.79,.74,.62,.39,.10].map(v=>v*radius);
+    const depths=[.86,.84,.81,.75,.71,.70,.68,.64,.60,.52,.34,.10].map(v=>v*radius);
+    const skin=gloveSurface(points.map(lp),widths,depths,{
+      across:[0,0,1],segments:40,radial:14,square:.92,
+    });
+    mesh(parent,skin.geometry,glove);
+    for(const [a,b] of (thumb?[[.12,.32],[.50,.73]]:[[.13,.32],[.48,.68],[.76,.88]])){
+      mesh(parent,skin.patch(a,b,.48,2.64,.00045),glovePanel);
+    }
+    mesh(parent,skin.patch(.18,.88,3.45,5.94,.0004),leather);
+    // Thin fabric articulation creases, not spherical 'knuckles'.
+    for(const t of (thumb?[.46]:[.36,.71])){
+      const pts=Array.from({length:7},(_,i)=>skin.point(t,.53+i*(2.57-.53)/6,.0008).toArray());
+      curve(parent,pts,.0004,seam,8,4);
+    }
   }
-  // A low thumb lies along the near side, with a broad web sewn into the palm.
-  palm(leftHand,[[-.061,-.085,-.391],[-.058,-.070,-.405],[-.057,-.056,-.419]].map(lp),
-    [.020,.018,.012],[.014,.014,.010],[0,0,-1],{wrist:false});
-  finger(leftHand,[[-.057,-.062,-.407],[-.059,-.039,-.422],[-.054,-.021,-.443],
-    [-.048,-.019,-.458]].map(lp),.0115,32,[0,0,-1]);
+
+  // Four fingers curl UNDER the handguard: the previous geometry curled
+  // upwards over the gun and read as four independent sausage-like claws.
+  for(let i=0;i<4;i++){
+    const z=-.455+i*.0185;
+    const reach=[1,1,.94,.83][i];
+    const r=[.0108,.0112,.0101,.0091][i];
+    supportDigit(leftHand,[
+      [-.044,-.086,z],                  // rooted in the metacarpals
+      [-.035,-.097,z-.001],
+      [-.018,-.109,z-.002],
+      [.004*reach,-.112,z-.002],      // curved below the fore-end
+      [.025*reach,-.100,z-.001],
+      [.035*reach,-.085,z],           // fingertip remains below the rail
+    ],r);
+    // Small, low-profile hard knuckle on the visible back of the glove.
+    const pad=rounded(leftHand,...lp([-.046,-.077,z]),.017,.0046,.012,knuckle);
+    pad.rotation.z=-.16;
+  }
+
+  // Thumb originates at the palm's side and points along the handguard.
+  // There is no separate swollen mini-palm or upward-hooking 'crab claw'.
+  const thumbWeb=gloveSurface([
+    [-.075,-.088,-.398],[-.077,-.075,-.410],[-.076,-.063,-.423],
+  ].map(lp),[.017,.016,.012],[.013,.011,.008],{
+    across:[0,0,-1],segments:24,radial:14,square:.90,
+  });
+  mesh(leftHand,thumbWeb.geometry,glove);
+  mesh(leftHand,thumbWeb.patch(.20,.85,.40,2.72,.00045),glovePanel);
+  supportDigit(leftHand,[
+    [-.077,-.064,-.417],[-.077,-.055,-.429],
+    [-.069,-.053,-.441],[-.057,-.060,-.449],[-.050,-.071,-.450],
+  ],.0117,{thumb:true});
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
