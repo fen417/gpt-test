@@ -32,6 +32,13 @@ export const HUMVEE_SIDE_WINDOWS = {
 };
 
 export const VEHICLE_BOARD_RANGE = 3.5;
+export function getVehicleDimensions(vehicle) {
+  const spec = VEHICLE_TYPES[vehicle.type], scale = vehicle.modelScale ?? { x: 1, y: 1, z: 1 };
+  return { width: spec.width * scale.x, length: spec.length * scale.z, height: spec.height * scale.y };
+}
+export function vehicleBoardingRange(vehicle) {
+  return VEHICLE_BOARD_RANGE * Math.max(1, vehicle.modelScale?.x ?? 1, vehicle.modelScale?.z ?? 1);
+}
 export const TURRET_MIN_PITCH = -.25;
 export const TURRET_MAX_PITCH = .85;
 export const TURRET_WEAPON = {
@@ -46,7 +53,8 @@ export function vehicleLocalPoint(vehicle, x, z) {
 
 export function getVehicleSeatPose(vehicle, index) {
   const seat = VEHICLE_TYPES[vehicle.type]?.seats[index];
-  return seat && { ...vehicleLocalPoint(vehicle, seat.x, seat.z), y: (vehicle.y ?? 0) + seat.height };
+  return seat && { ...vehicleLocalPoint(vehicle, seat.x * (vehicle.modelScale?.x ?? 1), seat.z * (vehicle.modelScale?.z ?? 1)),
+    y: (vehicle.y ?? 0) + seat.height * (vehicle.modelScale?.y ?? 1) };
 }
 
 export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
@@ -59,20 +67,22 @@ export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
   if (outward <= 0) return false;
   const windows = HUMVEE_SIDE_WINDOWS;
   const window = seat.z < 0 ? windows.front : windows.rear;
-  const distance = (windows.x - Math.abs(seat.x)) / outward;
-  const z = seat.z - Math.cos(angle) * distance;
-  const y = seat.height + Math.tan(pitch) * distance;
-  return Math.abs(z - window.z) <= window.width / 2 && Math.abs(y - windows.y) <= windows.height / 2;
+  const scale = vehicle.modelScale ?? { x: 1, y: 1, z: 1 };
+  const distance = (windows.x - Math.abs(seat.x)) * scale.x / outward;
+  const z = seat.z * scale.z - Math.cos(angle) * distance;
+  const y = seat.height * scale.y + Math.tan(pitch) * distance;
+  return Math.abs(z - window.z * scale.z) <= window.width * scale.z / 2 &&
+    Math.abs(y - windows.y * scale.y) <= windows.height * scale.y / 2;
 }
 
 export function getVehicleBoardingSeat(player, vehicles) {
-  let nearest = VEHICLE_BOARD_RANGE;
+  let nearest = Infinity;
   let result = null;
   for (const vehicle of vehicles) {
     if (vehicle.hp <= 0 || (vehicle.team !== player.team && vehicle.seats.some(Boolean))) continue;
     const distance = Math.hypot(player.x - vehicle.x, player.z - vehicle.z);
     const seat = vehicle.seats.indexOf(null);
-    if (seat >= 0 && distance <= nearest && Math.abs(vehicle.speed) <= 3) {
+    if (seat >= 0 && distance <= vehicleBoardingRange(vehicle) && distance < nearest && Math.abs(vehicle.speed) <= 3) {
       nearest = distance;
       result = { vehicle, seat };
     }

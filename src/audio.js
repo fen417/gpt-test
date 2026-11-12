@@ -1,5 +1,6 @@
 // Original procedural score and sound design. No external recordings or assets.
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
+import { getMap } from '../shared/world.js';
 export const ORIGINAL_SCORE = 'AFTER THE RAIN';
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
 const midi = n => 440 * 2 ** ((n - 69) / 12);
@@ -143,8 +144,8 @@ export class CombatAudio {
     return buffer;
   }
   _startAmbient(){
-    for(const [frequency,pan,gain,rate]of [[310,-.65,.16,.71],[620,.7,.085,.93]]){
-      const source=this.ctx.createBufferSource();source.buffer=this._noiseBuffer('pink');source.loop=true;source.playbackRate.value=rate;
+    for(const [frequency,pan,gain,rate]of [[310,-.65,.16,.71],[620,.7,.085,.93],[2200,.15,0,.83]]){
+      const source=this.ctx.createBufferSource();source.buffer=this._noiseBuffer(frequency>2000?'white':'pink');source.loop=true;source.playbackRate.value=rate;
       const filter=this.ctx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=frequency;filter.Q.value=.45;
       const volume=this.ctx.createGain();volume.gain.value=gain;source.connect(filter).connect(volume);let output=volume;
       if(this.ctx.createStereoPanner){const p=this.ctx.createStereoPanner();p.pan.value=pan;volume.connect(p);output=p;}
@@ -543,19 +544,46 @@ export class CombatAudio {
     this._lastAmmo=local?.ammo;
   }
   _updateAmbience(state,local,silent){
-    const now=this.ctx.currentTime,quarry=state?.mapId==='quarry'&&!silent;
-    if(now>=this._nextGust||quarry!==this._quarryAmbience){
-      this._quarryAmbience=quarry;
+    const now=this.ctx.currentTime,mapId=silent?'':state?.mapId;
+    const quarry=mapId==='quarry',village=mapId==='village';
+    const map=village?getMap(mapId):null;
+    const sheltered=village&&local&&map.structures.some(building=>
+      building.roof&&building.kind.startsWith('village-house')&&
+      Math.abs(local.x-building.x)<building.w/2&&Math.abs(local.z-building.z)<building.d/2&&
+      local.y<(building.baseY??0)+building.h);
+    const shelter=sheltered?.32:1;
+    if(now>=this._nextGust||mapId!==this._ambientMap){
+      this._ambientMap=mapId;
       this._nextGust=now+.4;
-      const gust=quarry?.55+.27*Math.sin(now*.59)+.18*Math.sin(now*.22):.55;
-      const [air,ridge]=this._ambientSources;
-      this._target(air.filter.frequency,quarry?205+gust*180:310,.8);
-      this._target(air.volume.gain,quarry?.2+gust*.25:.16,.9);
-      this._target(ridge.filter.frequency,quarry?710+gust*540:620,1.2);
-      this._target(ridge.volume.gain,quarry?.14+gust*.22:.085,1);
+      const gust=village?.53+.24*Math.sin(now*.31)+.17*Math.sin(now*.087+.7):
+        quarry?.55+.27*Math.sin(now*.59)+.18*Math.sin(now*.22):.55;
+      const [air,ridge,sand]=this._ambientSources;
+      this._target(air.filter.frequency,village?165+gust*220:quarry?205+gust*180:310,.8);
+      this._target(air.volume.gain,village?(.19+gust*.15)*shelter:quarry?.2+gust*.25:.16,.9);
+      this._target(ridge.filter.frequency,village?650+gust*1100:quarry?710+gust*540:620,1.2);
+      this._target(ridge.volume.gain,village?(.06+gust*.08)*shelter:quarry?.14+gust*.22:.085,1);
+      this._target(sand.filter.frequency,1500+gust*1600,1.1);
+      this._target(sand.volume.gain,village?(.007+gust*.013)*shelter:0,1);
     }
     if(silent||now<=this._distantAt)return;
-    this._distantAt=now+9+Math.random()*10;
+    this._distantAt=now+(village?6:9)+Math.random()*(village?7:10);
+    if(village){
+      let nearest=null,distance=32;
+      for(const building of map.structures){
+        if(!['village-stall','village-well'].includes(building.kind))continue;
+        const offset=local?Math.hypot(building.x-local.x,building.z-local.z):Infinity;
+        if(offset<distance){nearest=building;distance=offset;}
+      }
+      const pan=nearest?this._position(nearest,local).pan:Math.sin(now*.19)*.65;
+      const level=(.013+.012/(1+distance/12))*shelter;
+      this._noise(1.8,level,{priority:0,color:'pink',filter:'bandpass',cutoff:1800,attack:.55,pan,send:.1});
+      if(nearest){
+        this._tone(157,.46,level*.65,{priority:0,time:now+.18,type:'triangle',end:112,cutoff:750,attack:.08,pan,send:.14});
+        this._tone(790,.12,level*.45,{priority:0,time:now+.79,end:590,attack:.008,pan,send:.18});
+        this._tone(1030,.09,level*.25,{priority:0,time:now+.9,end:860,attack:.006,pan,send:.18});
+      }
+      return;
+    }
     const crusher=quarry&&state.points?.find(p=>p.id==='D');
     if(crusher){
       const position=this._position(crusher,local);

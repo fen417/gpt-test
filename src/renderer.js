@@ -1,12 +1,10 @@
 ﻿import * as THREE from 'three';
-import { addPortGround } from './port-visuals.js';
-import { addQuarryGround } from './quarry-visuals.js';
-import { addVillageGround } from './village-visuals.js';
+import { buildMapScene } from './map-scene.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS, EYE_HEIGHT, CROUCH_EYE_HEIGHT } from '../shared/world.js';
 import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
-import { createSurfaceMaterials, makeSky, addWarehouseDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
+import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
 import { drawFlagBanner } from './logos.js';
@@ -129,8 +127,8 @@ function mapGeometry() {
 }
 
 export function createMapModelBuilder(surfaces) {
-  const { box, cylinder, rounded, buildMapBoxes } = GameRenderer.prototype;
-  return { box, cylinder, rounded, buildMapBoxes, materials: mapMaterials(surfaces),
+  const { box, cylinder, rounded, buildMapBoxes, makeFlag, mergeStaticWorld } = GameRenderer.prototype;
+  return { box, cylinder, rounded, buildMapBoxes, makeFlag, mergeStaticWorld, flags: new Map(), materials: mapMaterials(surfaces),
     geo: mapGeometry(), surfaces, surfaceCache: new Map(), random: seeded(), createMaterial: material };
 }
 
@@ -543,37 +541,7 @@ export class GameRenderer {
   }
 
   buildWorld() {
-    const size = this.map.size;
-    if (this.map.shoreX !== undefined) addPortGround(this, this.map);
-    else if (this.map.theme === 'desert-village') addVillageGround(this, this.map);
-    else {
-      const span = size + 256, segments = span / this.map.terrain.cell;
-      const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
-      const uv = geometry.attributes.uv;
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * span / 9, uv.getY(i) * span / 9);
-      const ground = new THREE.Mesh(geometry, this.surfaces.ground);
-      ground.rotation.x = -Math.PI / 2;
-      ground.receiveShadow = true;
-      this.scene.add(ground);
-      addQuarryGround(this, this.map, ground);
-      addWarehouseDetails(this, this.map.structures);
-    }
-    this.buildMapBoxes(this.map.boxes ?? []);
-    for (const point of this.map.points) this.makeFlag(point);
-    const limit = size / 2;
-    const west = this.map.shoreX ?? -limit - 1;
-    const fenceMat = material(0x697674, 0.7, 0.45, {}, this.integratedGpu);
-    for (let x = west; x <= limit; x += 10) for (const side of [-1, 1]) {
-      this.cylinder(this.scene, x, 1.7, side * (limit + 1), .055, 3.4, fenceMat);
-    }
-    const sides = this.map.shoreX === undefined ? [-1, 1] : [1];
-    for (let z = -limit; z <= limit; z += 10) for (const side of sides) {
-      this.cylinder(this.scene, side * (limit + 1), 1.7, z, .055, 3.4, fenceMat);
-    }
-    for (const y of [.7, 1.7, 2.7]) {
-      for (const side of [-1, 1]) this.box(this.scene, (west + limit) / 2, y, side * (limit + 1), limit - west, .025, .025, fenceMat, false);
-      for (const side of sides) this.box(this.scene, side * (limit + 1), y, 0, .025, .025, size, fenceMat, false);
-    }
+    buildMapScene(this, this.map);
   }
 
   buildMapBoxes(boxes) {

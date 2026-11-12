@@ -161,15 +161,17 @@ function addPumpManifold(owner, box) {
   }
 }
 
-export function addQuarryGround(owner, map, ground) {
+export function addQuarryGround(owner, map, ground, assets = true) {
   ground.material = clonePairedMaterial(owner.surfaces.ground, 0xc4ae87);
   ground.material.vertexColors = true;
   if (ground.material._lowMaterial) ground.material._lowMaterial.vertexColors = true;
   shapeQuarrySurface(ground.geometry, map, 0, true);
   gravelRoads(owner, map);
-  quarryCliffs(owner, map);
-  for (const box of map.boxes) if (box.kind === 'pump-manifold') addPumpManifold(owner, box);
-  addQuarrySigns(owner, map);
+  quarryCliffs(owner, assets ? map : { ...map, boxes: [] });
+  if (assets) {
+    for (const box of map.boxes) if (box.kind === 'pump-manifold') addPumpManifold(owner, box);
+    addQuarrySigns(owner, map);
+  }
 
   for (const pad of map.vehicleSpawns) {
     const y = map.terrain.heightAt(pad.x, pad.z);

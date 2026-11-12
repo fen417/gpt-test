@@ -1,6 +1,6 @@
 import './style.css';
 import { BASE_MAPS, MAP_EDITS } from '../shared/world.js';
-import { applyMapEdits, canCloneItem, canRemoveItem, constrainPosition, mapItems, validMapEdits } from '../shared/map-edits.js';
+import { applyMapEdits, canCloneItem, canRemoveItem, canResizeItem, constrainPosition, mapItems, validMapEdits } from '../shared/map-edits.js';
 import { MapViewport } from './viewport.js';
 import { loadMap, publishMap } from './github.js';
 
@@ -18,6 +18,7 @@ const labels = {
   'port-forklift': 'Погрузчик', 'port-railcar': 'Вагон', 'port-lintel': 'Перемычка',
   'village-barricade': 'Глинобитная ограда', 'village-pottery': 'Глиняные кувшины',
   'village-rubble': 'Куча каменной кладки', 'village-barrels': 'Бочки с водой', 'village-palm': 'Пальма',
+  'village-rock': 'Скальный массив',
 };
 const layerOptions = {
   all: ['Все объекты', ['box', 'structure', 'objective', 'spawn', 'vehicle', 'route', 'segment', 'road', 'landmark', 'sign', 'crane', 'rail', 'ship']],
@@ -32,7 +33,7 @@ const layerOptions = {
 const status = message => { $('status').textContent = message; };
 const serialize = value => JSON.stringify(value);
 const same = (a, b) => serialize(a) === serialize(b);
-const draftKey = mapId => 'rubezh-map-editor:' + mapId;
+const draftKey = mapId => 'rubezh-map-editor:' + mapId + (BASE_MAPS[mapId].layoutVersion ? ':' + BASE_MAPS[mapId].layoutVersion : '');
 const sessions = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, map]) => {
   let draft;
   try { draft = JSON.parse(localStorage.getItem(draftKey(id))); } catch { /* storage is optional */ }
@@ -44,6 +45,7 @@ const baseCatalogs = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, base
   [id, new Map(mapItems(base, true).map(item => [item.key, item]))]));
 
 let mapId = 'port', items, currentMap, selection = null, placing = null, drag = null;
+let placingScale = null;
 let githubToken = '', pending = false;
 const session = () => sessions[mapId];
 const base = () => BASE_MAPS[mapId];
@@ -86,6 +88,9 @@ function select(item) {
   $('object-id').textContent = item.key;
   $('x').value = Number(item.value.x.toFixed(2));
   $('z').value = Number(item.value.z.toFixed(2));
+  $('size').hidden = !canResizeItem(item);
+  const scale = item.value.modelScale ?? { x: 1, y: 1, z: 1 };
+  for (const axis of ['x', 'y', 'z']) $('size-' + axis).value = Number((scale[axis] * 100).toFixed(1));
   $('duplicate').disabled = !canCloneItem(item);
   $('remove').disabled = !canRemoveItem(item) || item.kind === 'segment';
   $('selection-note').textContent = item.kind === 'segment' ? 'Переносит оба узла и пересчитывает соседние участки.' :
@@ -160,14 +165,16 @@ function updatePlacement(edits, item, x, z) {
   const original = catalog().get(item.key).value;
   const parent = catalog().get(original.editorParent)?.value;
   const parentMove = edits.moves[original.editorParent];
-  const originalX = original.x + (parentMove ? parentMove.x - parent.x : 0);
-  const originalZ = original.z + (parentMove ? parentMove.z - parent.z : 0);
-  if (x === originalX && z === originalZ) delete edits.moves[item.key];
-  else edits.moves[item.key] = { x, z };
+  const originalX = parentMove ? parentMove.x + (original.x - parent.x) * (parentMove.scale?.x ?? 1) : original.x;
+  const originalZ = parentMove ? parentMove.z + (original.z - parent.z) * (parentMove.scale?.z ?? 1) : original.z;
+  const scale = edits.moves[item.key]?.scale;
+  if (x === originalX && z === originalZ && !scale) delete edits.moves[item.key];
+  else edits.moves[item.key] = { x, z, ...(scale ? { scale } : {}) };
 }
 
-function chooseAsset(key) {
+function chooseAsset(key, scale = null) {
   placing = key;
+  placingScale = scale;
   $('cancel-place').hidden = !key;
   viewport.canvas.style.cursor = key ? 'crosshair' : '';
   for (const button of $('assets').children) button.setAttribute('aria-pressed', button.dataset.asset === key);
@@ -180,6 +187,7 @@ function addAsset(template, point) {
   const next = structuredClone(session().edits);
   const key = 'new:' + crypto.randomUUID().replaceAll('-', '');
   next.added[key] = { template, x, z };
+  if (placingScale) next.added[key].scale = { ...placingScale };
   chooseAsset(null);
   changeEdits(next, key);
 }
@@ -223,7 +231,8 @@ function showAssets() {
     const { kind, value, key } = item;
     const variant = value.levels ? ' · ' + value.levels + ' ярус(а)' : '';
     const title = displayName(item) + variant;
-    const group = [kind, value.kind ?? value.type ?? title, value.levels, value.carType].join('/');
+    const group = [kind, value.kind ?? value.type ?? title, value.levels, value.carType,
+      value.plan, value.floors, value.doorAxis, value.plan ? value.color : ''].join('/');
     if (seen.has(group) || !(title + ' ' + group).toLowerCase().includes(filter)) continue;
     seen.add(group);
     const button = document.createElement('button'), preview = document.createElement('span');
@@ -394,10 +403,36 @@ $('position').addEventListener('submit', event => {
   event.preventDefault();
   if (selection && !drag) move(selection, $('x').valueAsNumber, $('z').valueAsNumber);
 });
+function requestedScale() {
+  return Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, $('size-' + axis).valueAsNumber / 100]));
+}
+$('size').addEventListener('input', () => {
+  if (selection && canResizeItem(selection) && $('size').checkValidity()) viewport.previewScale(selection, requestedScale());
+});
+$('size').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!selection || !canResizeItem(selection) || drag) return;
+  const next = structuredClone(session().edits), desired = requestedScale();
+  const original = catalog().get(selection.key)?.value;
+  const parentScale = next.moves[original?.editorParent]?.scale ?? { x: 1, y: 1, z: 1 };
+  const scale = { x: desired.x / parentScale.x, y: desired.y / parentScale.y, z: desired.z / parentScale.z };
+  const placement = next.added[selection.key] ?? (next.moves[selection.key] ??= { x: selection.value.x, z: selection.value.z });
+  if (Object.values(scale).every(value => Math.abs(value - 1) < 1e-6)) delete placement.scale;
+  else placement.scale = scale;
+  if (!next.added[selection.key]) updatePlacement(next, selection, selection.value.x, selection.value.z);
+  const current = selection.value.modelScale ?? { x: 1, y: 1, z: 1 };
+  for (const child of items.values()) {
+    if (child.value.editorParent !== selection.key || !next.moves[child.key]) continue;
+    updatePlacement(next, child,
+      selection.value.x + (child.value.x - selection.value.x) * desired.x / current.x,
+      selection.value.z + (child.value.z - selection.value.z) * desired.z / current.z);
+  }
+  changeEdits(next, selection.key);
+});
 $('duplicate').addEventListener('click', () => {
   if (!selection) return;
   const { key } = selection;
-  chooseAsset(session().edits.added[key]?.template ?? key);
+  chooseAsset(session().edits.added[key]?.template ?? key, selection.value.modelScale);
   status('Щёлкните по месту для копии объекта.');
 });
 $('remove').addEventListener('click', removeSelected);

@@ -1,6 +1,6 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
-import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
+import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
@@ -100,7 +100,7 @@ function impactMaterial(kind) {
 }
 
 function footprint(vehicle, x=vehicle.x, z=vehicle.z, yaw=vehicle.yaw) {
-  const { width, length, height } = VEHICLE_TYPES[vehicle.type];
+  const { width, length, height } = getVehicleDimensions(vehicle);
   return { x, z, w:width/2, d:length/2, h:height, cos:Math.cos(yaw), sin:Math.sin(yaw) };
 }
 
@@ -159,8 +159,14 @@ export class Simulation {
         this.blocked.fill(1,offset,offset+dryColumn);
       }
     }
+    const area = this.map.playArea;
+    if(area)for(let iz=0;iz<this.gridSize;iz++)for(let ix=0;ix<this.gridSize;ix++){
+      const x=this.gridOrigin+(ix+.5)*this.gridCell,z=this.gridOrigin+(iz+.5)*this.gridCell;
+      if(x<area.minX+clearance||x>area.maxX-clearance||z<area.minZ+clearance||z>area.maxZ-clearance)
+        this.blocked[iz*this.gridSize+ix]=1;
+    }
     for(const box of this.colliders){
-      if(box.overhead)continue;
+      if(box.overhead&&box.kind!=='village-stair')continue;
       const minX=Math.max(0,Math.floor(gridIndex(box.minX-clearance))+1);
       const maxX=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxX+clearance)));
       const minZ=Math.max(0,Math.floor(gridIndex(box.minZ-clearance))+1);
@@ -230,10 +236,24 @@ export class Simulation {
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   groundAt(x,z){return this.map.terrain?.heightAt(x,z)??0;}
+  stairHeightAt(x,z,y){
+    const step=this.map.stepHeight??0;
+    if(!step)return y;
+    let height=y;
+    const origin={x,y:y+step+.001,z},direction={x:0,y:-1,z:0};
+    for(const box of this.rayBoxes(origin,direction,step+.001)){
+      if(!['village-stair','village-floor'].includes(box.kind)||box.h<=height||box.h>y+step)continue;
+      if(Math.abs(x-box.x)>=box.w/2+PLAYER_RADIUS||Math.abs(z-box.z)>=box.d/2+PLAYER_RADIUS)continue;
+      if(!this.collides(x,z,box.h))height=box.h;
+    }
+    return height;
+  }
   createMapVehicle(spawn){return {...createVehicle(spawn),y:this.groundAt(spawn.x,spawn.z)};}
   collides(x,z,y=this.groundAt(x,z),radius=PLAYER_RADIUS){
     const limit=this.map.size/2-2;
     if(Math.abs(x)>limit||Math.abs(z)>limit||x<(this.map.shoreX??-Infinity)+radius)return true;
+    const area=this.map.playArea;
+    if(area&&(x<area.minX+radius||x>area.maxX-radius||z<area.minZ+radius||z>area.maxZ-radius))return true;
     const origin=this.map.size/2,cell=this.collisionCell,size=this.collisionSize;
     const minX=Math.max(0,Math.floor((x-radius+origin)/cell)),maxX=Math.min(size-1,Math.floor((x+radius+origin)/cell));
     const minZ=Math.max(0,Math.floor((z-radius+origin)/cell)),maxZ=Math.min(size-1,Math.floor((z+radius+origin)/cell));
@@ -294,6 +314,8 @@ export class Simulation {
     const dx=body.w*c+body.d*s,dz=body.w*s+body.d*c;
     const limit=this.map.size/2-2;
     if(Math.abs(x)+dx>limit||Math.abs(z)+dz>limit)return true;
+    const area=this.map.playArea;
+    if(area&&(x-dx<area.minX||x+dx>area.maxX||z-dz<area.minZ||z+dz>area.maxZ))return true;
     for(const box of this.map.boxes){
       if(Math.abs(box.x-x)>=dx+box.w/2||Math.abs(box.z-z)>=dz+box.d/2)continue;
       if(box.overhead&&this.groundAt(x,z)+body.h<=(box.baseY??0))continue;
@@ -315,7 +337,7 @@ export class Simulation {
   }
   mountVehicle(p,vehicle,seat){
     if(!p.alive||p.vehicleId||vehicle.hp<=0||vehicle.seats[seat]!==null||
-      Math.abs(vehicle.speed)>3||Math.abs(p.y-this.groundAt(p.x,p.z))>.8||dist(p,vehicle)>VEHICLE_BOARD_RANGE||
+      Math.abs(vehicle.speed)>3||Math.abs(p.y-this.groundAt(p.x,p.z))>.8||dist(p,vehicle)>vehicleBoardingRange(vehicle)||
       (vehicle.team!==p.team&&vehicle.seats.some(Boolean)))return false;
     if(!this.lineClear({x:p.x,y:p.y+1.25,z:p.z},{x:vehicle.x,y:vehicle.y+1.25,z:vehicle.z}))return false;
     vehicle.team=p.team;
@@ -331,8 +353,10 @@ export class Simulation {
     if(vehicle){
       if(!force&&Math.abs(vehicle.speed)>4.5)return false;
       const spec=VEHICLE_TYPES[vehicle.type],position=spec.seats[seat];
-      const side=position.x<=0?-1:1, width=spec.width/2+.68, length=spec.length/2+.72;
-      const offsets=[[side*width,position.z],[-side*width,position.z],[0,length],[0,-length],[side*width,length],[-side*width,length]];
+      const dimensions=getVehicleDimensions(vehicle);
+      const side=position.x<=0?-1:1, width=dimensions.width/2+.68, length=dimensions.length/2+.72;
+      const seatZ=position.z*(vehicle.modelScale?.z??1);
+      const offsets=[[side*width,seatZ],[-side*width,seatZ],[0,length],[0,-length],[side*width,length],[-side*width,length]];
       const exit=offsets.map(([x,z])=>vehicleLocalPoint(vehicle,x,z)).find(({x,z})=>
         !this.collides(x,z)&&!this.vehicleAt(x,z,this.groundAt(x,z))&&
         this.lineClear({x:p.x,y:vehicle.y+.95,z:p.z},{x,y:this.groundAt(x,z)+.95,z}));
@@ -942,18 +966,29 @@ export class Simulation {
       const dx=(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
       const dz=(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
       const oldX=p.x,oldZ=p.z;
-      const followsGround=p.grounded&&p.y<=this.groundAt(oldX,oldZ)+.025;
+      let followsGround=p.grounded&&p.y<=this.groundAt(oldX,oldZ)+.025;
       const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
-      const walkX=followsGround?this.groundAt(p.x+dx,p.z):p.y;
-      if(!this.collides(p.x+dx,p.z,walkX)&&(insideVehicle||!this.vehicleAt(p.x+dx,p.z,walkX)))p.x+=dx;
-      const walkZ=followsGround?this.groundAt(p.x,p.z+dz):p.y;
-      if(!this.collides(p.x,p.z+dz,walkZ)&&(insideVehicle||!this.vehicleAt(p.x,p.z+dz,walkZ)))p.z+=dz;
+      let walkX=followsGround?this.groundAt(p.x+dx,p.z):p.y;
+      if(this.map.stepHeight&&p.grounded&&this.collides(p.x+dx,p.z,walkX))walkX=this.stairHeightAt(p.x+dx,p.z,walkX);
+      if(!this.collides(p.x+dx,p.z,walkX)&&(insideVehicle||!this.vehicleAt(p.x+dx,p.z,walkX))){
+        p.x+=dx;
+        if(walkX>p.y+.01&&this.map.stepHeight){p.y=walkX;followsGround=false;}
+      }
+      let walkZ=followsGround?this.groundAt(p.x,p.z+dz):p.y;
+      if(this.map.stepHeight&&p.grounded&&this.collides(p.x,p.z+dz,walkZ))walkZ=this.stairHeightAt(p.x,p.z+dz,walkZ);
+      if(!this.collides(p.x,p.z+dz,walkZ)&&(insideVehicle||!this.vehicleAt(p.x,p.z+dz,walkZ))){
+        p.z+=dz;
+        if(walkZ>p.y+.01&&this.map.stepHeight){p.y=walkZ;followsGround=false;}
+      }
       const ground=this.groundAt(p.x,p.z);
       if(followsGround)p.y=ground;
       p.moveSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/dt;
       if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
-      if(p.vy<=0)for(const box of this.colliders)if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+PLAYER_RADIUS*.6&&Math.abs(p.z-box.z)<box.d/2+PLAYER_RADIUS*.6)floor=Math.max(floor,box.h);
+      if(p.vy<=0)for(const box of this.colliders){
+        const support=PLAYER_RADIUS*(['village-stair','village-floor'].includes(box.kind)?1:.6);
+        if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
+      }
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
       this.firePersonalWeapon(p,c,pressed,firing);
       if(i.gadget)this.gadget(p);

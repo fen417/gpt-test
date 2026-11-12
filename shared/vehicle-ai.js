@@ -1,4 +1,4 @@
-import { TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose } from './vehicles.js';
+import { TURRET_WEAPON, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange } from './vehicles.js';
 import { aimBullet } from './ballistics.js';
 import { getWeapon } from './world.js';
 
@@ -10,8 +10,8 @@ const yawToward = (a, b) => Math.atan2(a.x - b.x, a.z - b.z);
 const angleDifference = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-function clearance(type) {
-  const { width, length } = VEHICLE_TYPES[type];
+function clearance(vehicle) {
+  const { width, length } = getVehicleDimensions(vehicle);
   return Math.hypot(width, length) / 2 + .35;
 }
 
@@ -24,17 +24,18 @@ function roadClear(sim, a, b, radius) {
   return true;
 }
 
-function roadGraph(sim, type) {
+function roadGraph(sim, vehicle) {
   let graphs = routeGraphs.get(sim.map);
   if (!graphs) {
     graphs = new Map();
     routeGraphs.set(sim.map, graphs);
   }
-  if (graphs.has(type)) return graphs.get(type);
+  const key = [vehicle.type, vehicle.modelScale?.x ?? 1, vehicle.modelScale?.z ?? 1].join('/');
+  if (graphs.has(key)) return graphs.get(key);
 
   const routes = sim.map.vehicleRoutes;
   const nodes = new Map(routes.nodes.map(node => [node.id, { ...node, neighbors: [] }]));
-  const radius = clearance(type);
+  const radius = clearance(vehicle);
   for (const [from, to] of routes.edges) {
     const a = nodes.get(from), b = nodes.get(to);
     if (a && b && roadClear(sim, a, b, radius)) {
@@ -47,12 +48,12 @@ function roadGraph(sim, type) {
     return parking ? [{ site, parking }] : [];
   });
   const graph = { nodes, radius, objectives: routes.objectives, landmarks };
-  graphs.set(type, graph);
+  graphs.set(key, graph);
   return graph;
 }
 
 function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
-  const { nodes, radius, objectives, landmarks } = roadGraph(sim, vehicle.type);
+  const { nodes, radius, objectives, landmarks } = roadGraph(sim, vehicle);
   const entries = [...nodes.values()].filter(node => node.id !== avoidNodeId && node.neighbors.length && distance(vehicle, node) < 48)
     .sort((a, b) => distance(vehicle, a) - distance(vehicle, b))
     .filter(node => roadClear(sim, vehicle, node, radius)).slice(0, 4);
@@ -278,7 +279,7 @@ function approachVehicle(sim, p, dt) {
     p.botBoarding = null;
     return false;
   }
-  if (distance(p, vehicle) <= VEHICLE_BOARD_RANGE && sim.mountVehicle(p, vehicle, boarding.seat)) {
+  if (distance(p, vehicle) <= vehicleBoardingRange(vehicle) && sim.mountVehicle(p, vehicle, boarding.seat)) {
     p.botBoarding = null;
     p.botVehicleSince = sim.time;
     p.botBoardedFrom = { x: vehicle.x, z: vehicle.z };
@@ -435,7 +436,7 @@ function aimCrew(sim, p, vehicle, dt) {
 }
 
 function nearbyInterest(sim, vehicle) {
-  const { nodes, objectives, landmarks } = roadGraph(sim, vehicle.type);
+  const { nodes, objectives, landmarks } = roadGraph(sim, vehicle);
   const near = (point, parking) => distance(vehicle, point) < 22 || (parking && distance(vehicle, parking) < 10);
   const point = sim.points.find(p => near(p, nodes.get(objectives[p.id])));
   if (point) return point.id;

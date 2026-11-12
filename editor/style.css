@@ -43,6 +43,9 @@ aside { padding: 1rem; background: var(--surface); min-width: 0; overflow: auto;
 #position { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; }
 #position button { grid-column: 1 / -1; }
 #position input, #login input { margin-top: .25rem; }
+#size { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; margin-top: .8rem; }
+#size button { grid-column: 1 / -1; }
+#size input { margin-top: .25rem; }
 .inspector #duplicate, .inspector #remove { width: 100%; margin-top: .55rem; }
 #selection-note { margin-top: .75rem; }
 #viewport { min-width: 0; position: relative; overflow: hidden; background: #131d20; }

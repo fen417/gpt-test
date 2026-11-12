@@ -90,11 +90,13 @@ export function createAssetPreviews(surfaces) {
       } else if (kind === 'landmark') {
         group.add(makeSign(value.name, '', 3.3));
       } else {
-        if (map.shoreX !== undefined) {
+        if (kind === 'ship') {
+          addPortModels({ ship: value });
+        } else if (map.shoreX !== undefined) {
           const layer = portLayers[kind];
           addPortModels(layer ? { boxes, [layer]: [value] } : { boxes });
         } else if (map.theme === 'desert-village') {
-          addVillageModels(boxes, kind === 'structure' ? [value] : [], kind === 'road' ? [value] : []);
+          addVillageModels(boxes, kind === 'structure' ? [value] : [], kind === 'road' ? [value] : [], map.terrain);
         } else {
           if (kind === 'structure') addWarehouseDetails(owner, [value]);
           if (kind === 'sign') addQuarrySigns(owner, { terrain: map.terrain, signs: [value] });

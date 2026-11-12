@@ -1,6 +1,6 @@
 const smooth = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
 
-export function makeTerrain(size, landforms, cell = 4) {
+export function makeTerrain(size, landforms, cell = 4, pads = []) {
   const half = size / 2, width = size / cell + 1;
   const heights = new Float32Array(width * width);
   let maxHeight = 0;
@@ -15,6 +15,23 @@ export function makeTerrain(size, landforms, cell = 4) {
     height *= smooth((half - Math.max(Math.abs(x), Math.abs(z))) / 22);
     heights[iz * width + ix] = height;
     maxHeight = Math.max(maxHeight, heights[iz * width + ix]);
+  }
+
+  // Level building footprints while retaining the surrounding slopes and gullies.
+  for (const pad of pads) {
+    const blend = pad.blend ?? 3;
+    const minX = Math.max(0, Math.floor((pad.x - pad.w / 2 - blend + half) / cell));
+    const maxX = Math.min(width - 1, Math.ceil((pad.x + pad.w / 2 + blend + half) / cell));
+    const minZ = Math.max(0, Math.floor((pad.z - pad.d / 2 - blend + half) / cell));
+    const maxZ = Math.min(width - 1, Math.ceil((pad.z + pad.d / 2 + blend + half) / cell));
+    for (let iz = minZ; iz <= maxZ; iz++) for (let ix = minX; ix <= maxX; ix++) {
+      const x = ix * cell - half, z = iz * cell - half;
+      const distance = Math.max(0, Math.abs(x - pad.x) - pad.w / 2, Math.abs(z - pad.z) - pad.d / 2);
+      const weight = 1 - smooth(distance / blend);
+      const index = iz * width + ix;
+      heights[index] += (pad.height - heights[index]) * weight;
+      maxHeight = Math.max(maxHeight, heights[index]);
+    }
   }
 
   function heightAt(x, z) {

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { getVehicleDimensions, HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 
 const upAxis = new THREE.Vector3(0, 1, 0);
 const turretHeading = new THREE.Quaternion();
@@ -389,6 +389,7 @@ export function createVehicleRig(type, material, teamColors) {
 
 export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality, terrain) {
   const {group,body,controls,wheels,turret,riders,paintMeshes,materials,teamColors}=rig;
+  group.scale.set(vehicle.modelScale?.x??1,vehicle.modelScale?.y??1,vehicle.modelScale?.z??1);
   const reset = !rig.initialized || Math.hypot(group.position.x-vehicle.x,group.position.z-vehicle.z)>8;
   const t=reset?1:blend;
   group.position.x=THREE.MathUtils.lerp(group.position.x,vehicle.x,t);
@@ -402,7 +403,7 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
   let pitch = 0, roll = 0;
   if (terrain) {
     const { x, z } = group.position, sin = Math.sin(group.rotation.y), cos = Math.cos(group.rotation.y);
-    const { length, width } = VEHICLE_TYPES[vehicle.type];
+    const { length, width } = getVehicleDimensions(vehicle);
     const longitudinal = length * .35, lateral = width * .45;
     const front = terrain.heightAt(x - sin * longitudinal, z - cos * longitudinal);
     const rear = terrain.heightAt(x + sin * longitudinal, z + cos * longitudinal);
@@ -416,7 +417,7 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
   controls.rotation.z=THREE.MathUtils.lerp(controls.rotation.z,steer*(vehicle.type==='atv'?-.16:-.9),t);
   for(const wheel of wheels){
     if(wheel.front)wheel.carrier.rotation.y=THREE.MathUtils.lerp(wheel.carrier.rotation.y,-steer*.41,t);
-    wheel.tire.rotation.x-=vehicle.speed*dt/wheel.radius;
+    wheel.tire.rotation.x-=vehicle.speed*dt/(wheel.radius*(vehicle.modelScale?.y??1));
   }
   for(let index=0;index<riders.length;index++){
     riders[index].visible=!wrecked&&Boolean(vehicle.seats[index])&&vehicle.seats[index]!==player?.id

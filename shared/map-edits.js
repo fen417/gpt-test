@@ -1,4 +1,5 @@
 import { makeTerrain } from './terrain.js';
+import { scaleAsset, UNIT_SCALE } from './asset-scale.js';
 
 export const emptyMapEdits = () => ({ version: 1, moves: {}, added: {}, removed: [] });
 
@@ -41,15 +42,17 @@ export function mapItems(map, includeVehicleRoutes = false) {
 
 export const canCloneItem = item => cloneKinds.has(item.kind);
 export const canRemoveItem = item => !['objective', 'spawn', 'route', 'segment'].includes(item.kind);
+export const canResizeItem = item => ['box', 'structure', 'road', 'landform', 'vehicle', 'crane', 'rail', 'ship'].includes(item.kind);
 
 export function constrainPosition(map, item, x, z) {
   const half = map.size / 2;
   const playable = ['objective', 'spawn', 'vehicle', 'route'].includes(item.kind);
   const padding = playable ? 3 : 0;
+  const area = playable ? map.playArea : null;
   return {
-    x: Math.max(playable ? Math.max(-half + padding, (map.shoreX ?? -Infinity) + padding) : -half,
-      Math.min(half - padding, x)),
-    z: Math.max(-half + padding, Math.min(half - padding, z)),
+    x: Math.max(playable ? Math.max((area?.minX ?? -half) + padding, (map.shoreX ?? -Infinity) + padding) : -half,
+      Math.min((area?.maxX ?? half) - padding, x)),
+    z: Math.max((area?.minZ ?? -half) + padding, Math.min((area?.maxZ ?? half) - padding, z)),
   };
 }
 
@@ -65,18 +68,24 @@ export function validMapEdits(map, edits) {
   const items = new Map(mapItems(map, true).map(item => [item.key, item]));
   function validPosition(item, value) {
     if (!Number.isFinite(value.x) || !Number.isFinite(value.z)) return false;
+    // Existing background assets can keep their original position outside the arena when resized.
+    if (value.x === item.value.x && value.z === item.value.z) return true;
     const bounds = constrainPosition(map, item, value.x, value.z);
     return value.x === bounds.x && value.z === bounds.z;
   }
+  function validScale(item, scale) {
+    return scale === undefined || (canResizeItem(item) && only(scale, ['x', 'y', 'z']) &&
+      ['x', 'y', 'z'].every(axis => Number.isFinite(scale[axis]) && scale[axis] >= .1 && scale[axis] <= 5));
+  }
   for (const [key, move] of Object.entries(edits.moves)) {
     const item = items.get(key);
-    if (!item || !only(move, ['x', 'z']) || !validPosition(item, move)) return false;
+    if (!item || !only(move, ['x', 'z', 'scale']) || !validPosition(item, move) || !validScale(item, move.scale)) return false;
   }
   let extraTerrain = 0, extraVehicles = 0;
   for (const [key, added] of Object.entries(edits.added)) {
-    if (!/^new:[0-9a-f]{32}$/.test(key) || !only(added, ['template', 'x', 'z'])) return false;
+    if (!/^new:[0-9a-f]{32}$/.test(key) || !only(added, ['template', 'x', 'z', 'scale'])) return false;
     const template = items.get(added.template);
-    if (!template || !canCloneItem(template) || !validPosition(template, added)) return false;
+    if (!template || !canCloneItem(template) || !validPosition(template, added) || !validScale(template, added.scale)) return false;
     if (template.kind === 'landform' && ++extraTerrain > 20) return false;
     if (template.kind === 'vehicle' && ++extraVehicles > 16) return false;
   }
@@ -88,12 +97,19 @@ export function applyMapEdits(base, edits) {
   const items = new Map(mapItems(base).map(item => [item.key, item]));
   const removed = new Set(edits.removed);
   const added = Object.entries(edits.added);
-  const translated = (value, dx, dz) => ({ ...value, x: value.x + dx, z: value.z + dz });
   const at = (value, key) => {
     const direct = edits.moves[key];
-    if (direct) return { ...value, ...direct };
     const parent = edits.moves[value.editorParent], original = items.get(value.editorParent)?.value;
-    return parent && original ? translated(value, parent.x - original.x, parent.z - original.z) : value;
+    const parentScale = parent?.scale ?? UNIT_SCALE, ownScale = direct?.scale ?? UNIT_SCALE;
+    const result = scaleAsset(value, {
+      x: parentScale.x * ownScale.x, y: parentScale.y * ownScale.y, z: parentScale.z * ownScale.z,
+    });
+    if (parent && original) {
+      result.x = parent.x + (value.x - original.x) * parentScale.x;
+      result.z = parent.z + (value.z - original.z) * parentScale.z;
+    }
+    if (direct) { result.x = direct.x; result.z = direct.z; }
+    return result;
   };
   const map = { ...base };
   for (const [kind, field] of Object.entries(layers)) {
@@ -105,7 +121,7 @@ export function applyMapEdits(base, edits) {
     for (const [key, placement] of added) {
       const template = items.get(placement.template);
       if (template.kind !== kind) continue;
-      map[field].push({ ...template.value, id: key, editorKey: key, x: placement.x, z: placement.z });
+      map[field].push({ ...scaleAsset(template.value, placement.scale), id: key, editorKey: key, x: placement.x, z: placement.z });
     }
   }
   if (base.ship) map.ship = removed.has('ship:0') ? null : at(base.ship, 'ship:0');
@@ -114,7 +130,21 @@ export function applyMapEdits(base, edits) {
       edits.removed.some(key => key.startsWith('landform:')))) {
     map.terrain = makeTerrain(base.size, map.landforms, base.terrain.cell);
   }
+  const changedStructures = added.some(([, placement]) => items.get(placement.template).kind === 'structure') ||
+    [...Object.keys(edits.moves), ...edits.removed].some(key => key.startsWith('structure:'));
+  if (base.terrainPads && (changedStructures || map.terrain !== base.terrain)) {
+    const relief = makeTerrain(base.size, map.landforms, base.terrain.cell);
+    map.terrainPads = map.structures.filter(structure => structure.terrainPad).map(structure => ({
+      x: structure.x, z: structure.z, w: structure.w + 8, d: structure.d + 8,
+      height: relief.heightAt(structure.x, structure.z), blend: 4,
+    }));
+    map.terrain = makeTerrain(base.size, map.landforms, base.terrain.cell, map.terrainPads);
+  }
   const elevation = (original, moved) => {
+    const originalParent = items.get(original.editorParent)?.value;
+    const parent = map.structures?.find(structure => structure.editorKey === moved.editorParent);
+    if (parent && originalParent) return { ...moved, baseY: (parent.baseY ?? 0) +
+      ((original.baseY ?? 0) - (originalParent.baseY ?? 0)) * (parent.modelScale?.y ?? 1) };
     if (!base.terrain) return moved;
     if (map.terrain === base.terrain && original.x === moved.x && original.z === moved.z) return moved;
     return { ...moved, baseY: map.terrain.heightAt(moved.x, moved.z) +
@@ -126,6 +156,7 @@ export function applyMapEdits(base, edits) {
       return elevation(items.get(source).value, structure);
     });
   }
+  if (map.ship && base.terrain) map.ship = elevation(base.ship, map.ship);
   map.boxes = base.boxes.flatMap(box => {
     const key = 'box:' + box.id;
     if (removed.has(key) || removed.has(box.editorParent)) return [];
@@ -134,11 +165,13 @@ export function applyMapEdits(base, edits) {
   for (const [key, placement] of added) {
     const { kind, value } = items.get(placement.template);
     if (kind === 'box') {
-      map.boxes.push(elevation(value, { ...value, id: key, editorKey: key, editorParent: undefined, x: placement.x, z: placement.z }));
+      map.boxes.push(elevation(value, { ...scaleAsset(value, placement.scale), id: key, editorKey: key, editorParent: undefined, x: placement.x, z: placement.z }));
     }
     for (const box of base.boxes.filter(box => box.editorParent === placement.template)) {
       const childKey = key + '/' + box.id;
-      map.boxes.push(elevation(box, { ...translated(box, placement.x - value.x, placement.z - value.z),
+      const scale = placement.scale ?? UNIT_SCALE;
+      map.boxes.push(elevation(box, { ...scaleAsset(box, scale),
+        x: placement.x + (box.x - value.x) * scale.x, z: placement.z + (box.z - value.z) * scale.z,
         id: childKey, editorKey: key, editorParent: key }));
     }
   }

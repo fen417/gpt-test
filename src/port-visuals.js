@@ -222,7 +222,7 @@ function sea(owner, map) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(8, 10);
-  texture.anisotropy = Math.min(8, owner.renderer.capabilities.getMaxAnisotropy());
+  texture.anisotropy = owner.surfaces.maps.metal.anisotropy;
   const material = pairMaterials(
     new THREE.MeshStandardMaterial({ color: 0xdde5e2, map: texture, bumpMap: texture, bumpScale: .25, roughness: .30, metalness: .16 }),
     new THREE.MeshLambertMaterial({ color: 0xdde5e2, map: texture }),
@@ -251,7 +251,8 @@ function shipHull(owner, parent, profile, depth, y, color) {
 
 function containerShip(owner, m, ship) {
   const root = new THREE.Group();
-  root.position.set(ship.x, 0, ship.z);
+  root.position.set(ship.x, ship.baseY ?? 0, ship.z);
+  if (ship.beached) root.rotation.z = -.045;
   owner.scene.add(root);
   const w = ship.w / 2, l = ship.d / 2;
   const profile = [[0, -l], [w * .87, -l + 12], [w, -l + 29], [w, l - 9], [w * .73, l], [-w * .73, l], [-w, l - 9], [-w, -l + 29], [-w * .87, -l + 12]];
@@ -322,7 +323,7 @@ function portBackdrop(owner, m) {
   owner.box(scene, 231, 12.35, 0, .85, .20, 94, m.steel, false);
 }
 
-export function addPortGround(owner, map) {
+export function addPortGround(owner, map, assets = true) {
   const { scene } = owner, m = portMaterials(owner);
   const dryEdge = map.size / 2 + 142, width = dryEdge - map.shoreX;
   const geometry = new THREE.PlaneGeometry(width, map.size + 280);
@@ -342,9 +343,9 @@ export function addPortGround(owner, map) {
     owner.cylinder(scene, map.shoreX + .65, .32, z, .13, .62, m.steel);
     owner.rounded(scene, map.shoreX + .65, .62, z, .48, .12, .25, m.steel);
   }
-  addPortModels(owner, map, m);
+  if (assets) addPortModels(owner, map, m);
   portBackdrop(owner, m);
-  addPortSigns(owner, map.signs);
+  if (assets) addPortSigns(owner, map.signs);
 }
 
 export function createPortModelBuilder(owner) {

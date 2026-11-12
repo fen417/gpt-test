@@ -288,7 +288,7 @@ const landforms = [
 const terrain = makeTerrain(size, landforms);
 
 for (const box of boxes) box.baseY = terrain.heightAt(box.x, box.z) + (box.baseY ?? 0);
-loadingCanopy.baseY = terrain.heightAt(loadingCanopy.x, loadingCanopy.z);
+for (const structure of structures) structure.baseY = terrain.heightAt(structure.x, structure.z);
 for (const point of points) point.y = terrain.heightAt(point.x, point.z);
 
 export const QUARRY_MAP = {
