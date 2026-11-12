@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { smoothRingSeams } from './character-geometry.js';
-import { gloveSurface } from './glove-geometry.js';
 import { createBakedGlove } from './fps-glove-mesh.js';
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
@@ -76,13 +75,17 @@ export function createWeaponRig(owner = {}) {
   const gloveThread=mat('glove-contrast-thread',0xb9b09b,.97,0);
   const seam=mat('glove-stitched-seams',0x969078,.97,0);
   const knuckle=mat('glove-knuckle-protection',0x323735,.96,0,{map:leatherGrain,bumpMap:leatherGrain,bumpScale:.00022});
+  // First-person proportions: easy to tune without re-baking or changing animation anchors.
+  const ARM_BULK = 1.12;       // +12% circumference/radius, visually stronger sleeves
+  const CUFF_BULK = 1.10;      // +10%, overlapping the glove wrist
+  const GLOVE_BULK = 1.055;    // +5.5%, retains precise weapon contact
   const clothMap = owner.surfaces?.maps?.cloth || null;
   const cloth = mat('sleeve-ripstop-cloth', 0x68745c, .98, 0, clothMap ? { map: clothMap } : {});
   const cuff=mat('sleeve-elastic-cuff',0x384638,.99,0);
   const brass=mat('weapon-brass-details',0xb89b59,.45,.77);
   const label=mat('weapon-engraved-markings',0xabb0a8,.75,.3);
   const lens=mat('lens-coated-glass',0x527780,.12,.22,{transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide});
-  const unitBox=new RoundedBoxGeometry(1,1,1,1,.09);ownedGeometries.add(unitBox);
+  const unitBox=new RoundedBoxGeometry(1,1,1,2,.075);ownedGeometries.add(unitBox);
   const unitSphere=new THREE.SphereGeometry(1,18,12);ownedGeometries.add(unitSphere);
   const detailBox = new THREE.BoxGeometry(1,1,1);
   function mesh(parent,geometry,material,x=0,y=0,z=0){ownedGeometries.add(geometry);const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=false;m.receiveShadow=false;parent.add(m);return m;}
@@ -94,7 +97,7 @@ export function createWeaponRig(owner = {}) {
   function shapePath(points){const s=new THREE.Shape();points.forEach(([z,y],i)=>i?s.lineTo(-z,y):s.moveTo(-z,y));s.closePath();return s;}
   function profile(parent,points,width,material,{x=0,holes=[],bevel=.0025}={}){
     const shape=shapePath(points);for(const points of holes){const p=new THREE.Path();points.forEach(([z,y],i)=>i?p.lineTo(-z,y):p.moveTo(-z,y));p.closePath();shape.holes.push(p);}
-    const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:bevel>0,bevelSegments:1,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:4});g.rotateY(Math.PI/2);g.translate(x-width/2,0,0);return mesh(parent,g,material);
+    const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:bevel>0,bevelSegments:2,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:4});g.rotateY(Math.PI/2);g.translate(x-width/2,0,0);return mesh(parent,g,material);
   }
   function curve(parent,points,radius,material,segments=10,radial=6){const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));return mesh(parent,new THREE.TubeGeometry(path,Math.min(segments,12),radius,Math.min(radial,6),false),material);}
   function loft(parent,points,radii,material,{segments=20,radial=12,ellipse=[1,1],folds=0,widthAxis=null}={}){
@@ -566,63 +569,20 @@ export function createWeaponRig(owner = {}) {
 
   // Tailored sleeves: elbow volume, tapered wrists and oblique tension folds.
   const leftArm=new THREE.Group();leftArm.name='left-articulated-forearm';weapon.add(leftArm);
-  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.092,.09,.083,.071,.06,.047,.041],cloth,{segments:32,radial:18,ellipse:[1.1,.88],folds:.105});
-  loft(leftArm,[[-.108,-.129,-.311],[-.095,-.119,-.34],[-.083,-.108,-.361]],[.049,.047,.044],cuff,{segments:14,radial:24,ellipse:[1.07,.92],folds:.07});
+  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.092,.09,.083,.071,.06,.047,.041].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.1,.88],folds:.105});
+  loft(leftArm,[[-.108,-.129,-.311],[-.095,-.119,-.34],[-.083,-.108,-.361]],[.049,.047,.044].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.07,.92],folds:.07});
   curve(leftArm,[[-.385,-.406,.23],[-.268,-.262,.04],[-.167,-.148,-.18],[-.086,-.071,-.338]],.0018,seam,32,6);
   for(let i=0;i<3;i++)curve(leftArm,[[-.206-i*.014,-.197-i*.012,-.123+i*.022],[-.17-i*.014,-.154-i*.012,-.16+i*.022],[-.135-i*.014,-.153-i*.012,-.167+i*.022]],.0025,cloth,8,6);
   loft(leftArm,[[-.18,-.157,-.161],[-.144,-.129,-.224],[-.115,-.105,-.28]],[.021,.03,.022],cloth,{segments:12,radial:10,ellipse:[1,.16],widthAxis:[1,0,0]});
   const leftTab=rounded(leftArm,-.108,-.077,-.327,.039,.008,.024,cuff);leftTab.rotation.z=-.35;
   for(let i=0;i<6;i++)detail(leftArm,-.123+i*.005,-.071,-.325,.002,.0015,.009,seam);
   const rightArm=new THREE.Group();weapon.add(rightArm);
-  loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.097,.094,.084,.073,.058,.047,.04],cloth,{segments:32,radial:18,ellipse:[1.08,.9],folds:.09});
-  loft(rightArm,[[.089,-.23,.151],[.074,-.212,.129],[.062,-.198,.112]],[.052,.049,.044],cuff,{segments:14,radial:24,ellipse:[1.06,.94],folds:.06});
+  loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.097,.094,.084,.073,.058,.047,.04].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.08,.9],folds:.09});
+  loft(rightArm,[[.089,-.23,.151],[.074,-.212,.129],[.062,-.198,.112]],[.052,.049,.044].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.06,.94],folds:.06});
   curve(rightArm,[[.323,-.441,.42],[.247,-.324,.29],[.161,-.226,.172],[.102,-.181,.112]],.0018,seam,32,6);
   const rightTab=rounded(rightArm,.101,-.196,.14,.026,.013,.035,cuff);rightTab.rotation.z=.3;
   const leftHand=new THREE.Group();leftHand.name='left-support-glove';leftHand.position.set(-.018,-.075,-.36);weapon.add(leftHand);
   const leftBase=leftHand.position.clone(), lp=p=>[p[0]-leftBase.x,p[1]-leftBase.y,p[2]-leftBase.z];
-  function surfaceLine(parent,skin,t0,t1,angle,material=seam,radius=.00065){
-    const points=Array.from({length:11},(_,i)=>skin.point(THREE.MathUtils.lerp(t0,t1,i/10),angle,.001).toArray());
-    curve(parent,points,radius,material,12,6);
-  }
-  function surfaceStitches(parent,skin,t0,t1,angle,count){
-    for(let i=0;i<count;i++){
-      const t=THREE.MathUtils.lerp(t0,t1,(i+.5)/count);
-      curve(parent,[-.035,0,.035].map(offset=>skin.point(t,angle+offset,.0012).toArray()),.00045,gloveThread,3,4);
-    }
-  }
-  function palm(parent,points,widths,depths,across,{wrist=true}={}){
-    const skin=gloveSurface(points,widths,depths,{across,segments:36});
-    mesh(parent,skin.geometry,glove);
-    mesh(parent,skin.patch(.22,.92,.38,2.76),glovePanel);
-    mesh(parent,skin.patch(.29,.92,3.42,5.99),leather);
-    for(const angle of [.36,2.78]){
-      surfaceLine(parent,skin,.24,.89,angle);
-      surfaceStitches(parent,skin,.27,.86,angle,14);
-    }
-    // Thin wrist closure follows the wrist contour instead of a floating block.
-    if(wrist){
-      mesh(parent,skin.patch(.08,.20,.10,3.04,.0011),knuckle);
-      for(const angle of [.7,2.4])surfaceLine(parent,skin,.09,.19,angle,gloveThread,.0005);
-    }
-    return skin;
-  }
-  function finger(parent, points, radius, segments=32, across=[0,1,0]) {
-    const widths=[1,.98,.94,.88,.91,.82,.77,.79,.66,.48,.16].map(v=>v*radius);
-    const depths=[.86,.85,.81,.74,.79,.72,.67,.68,.59,.43,.14].map(v=>v*radius);
-    const skin=gloveSurface(points,widths,depths,{across,segments:Math.max(32,segments),radial:16});
-    mesh(parent,skin.geometry,glove);
-    // Separate flat phalange panels expose the flexible fabric at both joints.
-    for(const [from,to] of [[.07,.29],[.37,.58],[.69,.88]]){
-      mesh(parent,skin.patch(from,to,.38,2.76),glovePanel);
-      for(const angle of [.38,2.76])surfaceLine(parent,skin,from+.01,to-.01,angle,leather,.00045);
-    }
-    mesh(parent,skin.patch(.10,.94,3.40,6.02,.00055),leather);
-    for(const t of [.325,.635]){
-      curve(parent,Array.from({length:7},(_,i)=>skin.point(t,.35+i*2.44/6,.0008).toArray()),.00055,knuckle,8,4);
-    }
-    surfaceStitches(parent,skin,.12,.87,.30,9);
-    return skin;
-  }
   // Offline-baked watertight anatomical left hand.  Unlike swept cylinders,
   // fingers grow continuously out of the palm with a modeled thumb web and
   // individual knuckle profiles.  The mesh is decoded ONCE when the rig loads;
@@ -697,11 +657,16 @@ export function createWeaponRig(owner = {}) {
   // entire weapon/arm, avoiding dozens of draw calls or CPU skinning work.
   const triggerGloveModel=createBakedGlove('trigger',bakedGloveMat);
   ownedGeometries.add(triggerGloveModel.geometry);
+  // Scale around the palm center, NOT the weapon origin: no artificial grip offset.
+  triggerGloveModel.scale.set(GLOVE_BULK,GLOVE_BULK,GLOVE_BULK);
+  triggerGloveModel.position.set(.050*(1-GLOVE_BULK),-.170*(1-GLOVE_BULK),.105*(1-GLOVE_BULK));
   rightHand.add(triggerGloveModel);
   const triggerFinger=new THREE.Group();
   triggerFinger.position.set(.055,-.129,.098);rightHand.add(triggerFinger);
   const triggerIndexModel=createBakedGlove('index',bakedGloveMat);
-  ownedGeometries.add(triggerIndexModel.geometry);triggerFinger.add(triggerIndexModel);
+  ownedGeometries.add(triggerIndexModel.geometry);
+  triggerIndexModel.scale.setScalar(GLOVE_BULK);
+  triggerFinger.add(triggerIndexModel);
 
   const flashMaterial=new THREE.MeshBasicMaterial({name:'muzzle-flash',color:0xffd08a,transparent:true,opacity:.92,depthTest:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});ownedMaterials.add(flashMaterial);
   const muzzleFlash=new THREE.Group();weapon.add(muzzleFlash);muzzleFlash.visible=false;
@@ -836,43 +801,27 @@ export function createWeaponRig(owner = {}) {
   leftHand.add(rifleGlove);
   const pistolGlove=new THREE.Group();leftHand.add(pistolGlove);
   pistolGlove.name='pistol-support-glove';
-  const supportPoint=([x,y,z])=>lp([x-.035,y-.08,z-.423]);
-  const supportPath=points=>points.map(supportPoint);
-  palm(pistolGlove,supportPath([[-.058,-.035,.075],[-.041,-.023,.052],[-.018,-.009,.025],
-    [-.009,-.004,-.014]]),[.022,.025,.032,.035,.033],[.019,.018,.016,.014,.011],[0,-1,0]);
-  const supportFingers=[];
-  for(const [index,y] of [.021,.003,-.014,-.029].entries()){
-    const inset=index*.003;
-    const root=[-.009,y,-.015+inset];
-    const digit=new THREE.Group();
-    digit.position.set(...supportPoint(root));
-    pistolGlove.add(digit);
-    supportFingers.push(digit);
-    finger(digit,[[0,0,0],[.012,-.004,-.022],[.03,-.007,-.039+inset],
-      [.046-inset,-.005,-.037+inset],[.052-inset,.001,-.031+inset]],.0096-index*.0007);
-  }
-  const supportThumb=new THREE.Group();
-  supportThumb.position.set(...supportPoint([-.017,.014,.023]));
-  pistolGlove.add(supportThumb);
-  finger(supportThumb,[[0,0,0],[-.007,.030,-.014],[-.001,.052,-.043],
-    [.007,.055,-.068],[.009,.050,-.078]],.0115);
+  const pistolSupportMesh=createBakedGlove('pistolSupport',bakedGloveMat);
+  ownedGeometries.add(pistolSupportMesh.geometry);
+  // Expansion about existing grip point: fits a human forearm without floating away from the pistol.
+  const supportGripPivot = new THREE.Vector3(...lp([-.035,-.08,-.423]));
+  pistolSupportMesh.scale.setScalar(GLOVE_BULK);
+  pistolSupportMesh.position.copy(supportGripPivot).sub(supportGripPivot.clone().multiply(pistolSupportMesh.scale));
+  pistolGlove.add(pistolSupportMesh);
 
   const pistolRight=new THREE.Group();pistolRight.name='pistol-trigger-glove';weapon.add(pistolRight);
-  palm(pistolRight,[[.072,-.222,.142],[.058,-.197,.127],[.048,-.166,.110],
-    [.041,-.130,.094]],[.024,.027,.030,.029,.024],[.020,.019,.017,.016,.013],[0,0,1]);
-  for(const [index,y] of [-.14,-.164,-.187].entries()){
-    const inset=index*.003, front=.035-inset;
-    finger(pistolRight,[[.044,y,.088],[.049,y-.004,.062],[.032,y-.008,front+.008],
-      [.009,y-.008,front],[-.014+inset,y-.006,front+.003],[-.026+inset,y-.002,front+.015]],
-      .0105-index*.00085);
-  }
-  finger(pistolRight,[[.044,-.127,.123],[.022,-.112,.144],[-.005,-.102,.136],
-    [-.023,-.100,.114],[-.031,-.104,.089]],.013);
+  const pistolGripMesh=createBakedGlove('pistolTrigger',bakedGloveMat);
+  ownedGeometries.add(pistolGripMesh.geometry);
+  pistolGripMesh.scale.setScalar(GLOVE_BULK);
+  pistolGripMesh.position.set(.050*(1-GLOVE_BULK),-.170*(1-GLOVE_BULK),.105*(1-GLOVE_BULK));
+  pistolRight.add(pistolGripMesh);
   const pistolIndex=new THREE.Group();
   pistolIndex.position.set(.044,-.122,.083);
   pistolRight.add(pistolIndex);
-  finger(pistolIndex,[[0,0,0],[.010,.023,-.026],[.005,.029,-.054],
-    [-.022,.028,-.073],[-.036,.019,-.078]],.010);
+  const pistolIndexMesh=createBakedGlove('pistolIndex',bakedGloveMat);
+  ownedGeometries.add(pistolIndexMesh.geometry);
+  pistolIndexMesh.scale.setScalar(GLOVE_BULK);
+  pistolIndex.add(pistolIndexMesh);
 
   // Merge each rigid island by material. Articulated groups remain independent.
   function batch(group){
@@ -1005,13 +954,8 @@ export function createWeaponRig(owner = {}) {
       palmTarget.lerp(actionTarget, weight);
     }
 
-    if(pistol){
-      for(const [index,digit] of supportFingers.entries()){
-        digit.rotation.y=open*(.42+index*.04);
-        digit.rotation.z=-open*(index-1.5)*.07;
-      }
-      supportThumb.rotation.z=-open*.28;
-    }
+    // The sculpted pistol support glove retains a stable gripping silhouette.
+    // (Its whole hand is still animated by leftHand rotation and translation.)
     leftHand.rotation.set(rotX, rotY, rotZ);
     palmOffset.copy(palmLocal);
     if(!pistol)palmOffset.multiply(rifleGlove.scale);
@@ -1023,7 +967,7 @@ export function createWeaponRig(owner = {}) {
     if(!pistol)wristDirection.multiply(rifleGlove.scale);
     wristDirection.applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
     // Extend the cloth cuff into the glove so it stays joined at every wrist angle.
-    armScale.z = (wristDirection.length()+(pistol ? .020 : .012))/armLength;
+    armScale.z = (wristDirection.length()+(pistol ? .024 : .017))/armLength;
     armRotation.setFromUnitVectors(armAxis,wristDirection.normalize());
     leftArm.matrix.compose(shoulder,armRotation,armScale).multiply(restArmInverse);
     leftArm.matrixWorldNeedsUpdate = true;
@@ -1055,7 +999,7 @@ export function createWeaponRig(owner = {}) {
       visiblePistol = pistol;
       rifleAssembly.visible = !pistol;
       rifleGlove.visible = !pistol;
-      rifleGlove.scale.x = loadout.width;
+      rifleGlove.scale.set(loadout.width*GLOVE_BULK,GLOVE_BULK,GLOVE_BULK);
       pistolGlove.visible = Boolean(pistol);
       rightHand.visible = !pistol;
       pistolRight.visible = Boolean(pistol);
