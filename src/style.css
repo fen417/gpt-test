@@ -210,6 +210,8 @@ body:has(.menu:not(.hidden)){overflow-y:auto}
 .patch:last-child { border-bottom: 0; }
 .patch summary { cursor: pointer; display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px 16px; list-style: none; }
 #revive-markers { position:absolute; inset:0; pointer-events:none; }
+.revive-control-hint{position:absolute;left:50%;top:63%;transform:translate(-50%,-50%);z-index:15;pointer-events:auto;padding:12px 22px;background:#10251edb;border:1px solid #a7e8bf77;color:#c9f5d7;text-align:center;font-size:12px;font-weight:700;letter-spacing:1.5px;box-shadow:0 5px 24px #07120c66}
+.revive-control-hint span{display:block;margin-top:7px;font-size:9px;font-weight:400;letter-spacing:1px;color:#afc6b8}
 .revive-marker { position:absolute; left:0; top:0; align-items:center; flex-direction:column; gap:3px; color:#8ef3be; text-shadow:0 1px 4px #071a14,0 0 8px #071a14; white-space:nowrap; }
 .revive-marker b { display:grid; place-items:center; width:33px; height:33px; border-radius:50%; font:700 27px/1 sans-serif; background:conic-gradient(#8ef3be var(--revive-time),#182c25cc 0); box-shadow:0 0 0 2px #10291dcc; color:#10251c; }
 .revive-marker strong { font-size:10px; letter-spacing:.8px; }

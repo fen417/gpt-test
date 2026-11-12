@@ -1,19 +1,23 @@
-# Firearm recordings
+# Weapon reports
 
-Source — [Gunshot Sounds](https://opengameart.org/content/gunshot-sounds) by Vincent Sevedge (Tabasco).
+Selected from [Modern Military Weapons Sound Pack v0.2](https://hamsunqiu.itch.io/modern-military-weapons-sound-pack-38-wav-cc0), curated by hamsunqiu. All selected material is [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 
-Copyright (c) 2009 Vincent Sevedge. Used under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), following the included source archive notice, preserved in `LICENSE-Vincent.txt`.
-
-The previous recordings contained saturated transients. These replacement source recordings have no full-scale saturated samples. Individual reports are trimmed to exclude handling sounds, converted from duplicate stereo channels to mono PCM16 at the original 48 kHz rate, high-pass filtered at 35 Hz, and given short edge fades. Output peaks stay below -2.6 dBFS. No clipping reconstruction, saturation or treble boost is applied. Runtime playback preserves this headroom and limits overlapping tails from the same shooter.
-
-| Game files | Source recording | Report positions in seconds |
+| Files / weapons | Source author and recording | Curated file / report positions |
 | --- | --- | --- |
-| rifle-light | sks.wav | 2.290, 7.705 |
-| rifle-heavy | sks.wav | 0.345, 11.455 |
-| smg | cz.wav | 0.230, 2.825 |
-| marksman | sks.wav | 9.715, 12.725 |
-| sniper | mosin.wav | 3.565, 8.845 |
-| pistol | cz.wav | 4.050, 5.540 |
-| pistol-heavy | cz.wav | 0.230, 2.825 |
+| rifle-light, smg / AR-416, MCX-9 | [SuperPhat, Automatic Assault Rifle](https://freesound.org/people/SuperPhat/sounds/416417/) | ar_full_near_01.wav, reports at 4.74 and 7.265 s |
+| rifle-heavy / AK-12M | [seroutonin//deprived, AK variant 1](https://freesound.org/people/ser%C3%B8ut%C5%8Dnin--depriv%C9%99d/sounds/855841/), [variant 2](https://freesound.org/people/ser%C3%B8ut%C5%8Dnin--depriv%C9%99d/sounds/855842/) | ar_single_near_01/02.wav |
+| lmg / MG-36, Pecheneg, vehicle turret | [sidohzen, M16 bursts](https://freesound.org/people/sidohzen/sounds/165809/) | mg_single_near_01.wav, reports near 2.06 and 4.0 s |
+| smg-suppressed / VK-45 | [Clutvh, silenced pistol shot](https://freesound.org/people/Clutvh/sounds/627087/) | pi_hand_single_near_03.wav |
+| marksman, sniper / DMR-12, SV-98 | [LilMati, Sniper Rifle Instant Kill Shots 02](https://freesound.org/people/LilMati/sounds/524738/), [01](https://freesound.org/people/LilMati/sounds/524739/) | sr_single_near_01/02.wav, first and second reports |
+| pistol / P-19 | [seroutonin//deprived, Glock reports](https://freesound.org/people/ser%C3%B8ut%C5%8Dnin--depriv%C9%99d/sounds/855652/) | pi_rev_single_near_04.wav, first and second reports |
+| pistol-heavy / M-50 | [LeMudCrab, Pistol Shot](https://freesound.org/people/LeMudCrab/sounds/163456/) | pi_hand_single_near_01.wav, two envelope variants |
 
-Weapon profiles adapt playback rate, gain, and filtering for the fictional game weapons. The original archive stays outside the shipped game.
+The game uses stereo PCM16 WAV at 44.1 kHz. Processing preserves the source stereo image, trims reports, removes DC, balances the initial report's RMS with peak headroom, and applies short edge fades. No saturation, hard clipping or peak reconstruction is applied. Weapon profiles adapt playback speed and level; the suppressed weapon has its own recording.
+
+To reproduce the assets after extracting the pack outside the repository:
+
+```powershell
+node scripts/prepare-gunshot-assets.mjs C:/path/to/extracted/curated
+```
+
+The source archive and unused recordings are not shipped with the game.

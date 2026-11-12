@@ -23,6 +23,7 @@ let weaponSlot=1;
 let toolSlot=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
+let reviveAwaitingControl=false;
 const pendingDamage=new Map(),damageSummaryDelay=650;
 function showScore(event,now){
   if(now>scoreStreakExpires)scoreStreakTotal=0;
@@ -379,8 +380,17 @@ function receive(next){
   }
   if(player)document.body.classList.toggle('team-1',player.team===1);
   if(!active||!player)return;
-  if(player.alive&&!wasAlive){weaponSlot=player.weaponSlot||1;toolSlot=0;yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;show('death',false);if(active&&!locked&&!unlocked)show('pause');}
+  if(player.alive&&!wasAlive){
+    const revived=state.events?.some(event=>event.type==='revive'&&event.playerId===localId&&!seen.has(event.id));
+    weaponSlot=player.weaponSlot||1;toolSlot=0;yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;
+    show('death',false);
+    if(revived){
+      unlockedPaused=false;reviveAwaitingControl=!locked&&!unlocked;
+      show('pause',false);show('revive-control-hint',reviveAwaitingControl);
+    }else if(active&&!locked&&!unlocked)show('pause');
+  }
   if(!player.alive&&wasAlive){
+    reviveAwaitingControl=false;show('revive-control-hint',false);
     lastDeathPos={x:player.x,z:player.z};
     if(!spawnPointAvailable(player,selectedSpawn)){
       const owned=state.points.filter(p=>canSpawnAtPoint(p,player.team)).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z));
@@ -429,6 +439,7 @@ function receive(next){
   while(seen.size>900)seen.delete(seen.keys().next().value);
   audio.events(state,player);
   if(state.winner!==null&&state.winner!==undefined&&!finished){
+    reviveAwaitingControl=false;show('revive-control-hint',false);
     finished=true;clearControls();document.exitPointerLock?.();show('pause',false);show('death',false);show('scoreboard',false);
     renderResultScreen(player);
     show('result');
@@ -437,6 +448,7 @@ function receive(next){
 const multiplayer=new Multiplayer({onState:receive,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 
 function prepare(which){
+  reviveAwaitingControl=false;show('revive-control-hint',false);
   pendingDamage.clear();
   clearControls();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
   const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value};
@@ -451,10 +463,14 @@ function enter(){
 }
 async function requestControl(allowPendingSpawn=false){
   if(!active||inLobby||(!local()?.alive&&!allowPendingSpawn)||finished)return;
-  if(unlocked){unlockedPaused=false;show('pause',false);return;}
-  try{await canvas.requestPointerLock();}catch{if(local()?.alive)show('pause');toast('Нажми «Продолжить», чтобы включить управление мышью.');}
+  if(unlocked){unlockedPaused=false;reviveAwaitingControl=false;show('revive-control-hint',false);show('pause',false);return;}
+  try{await canvas.requestPointerLock();}catch{
+    if(reviveAwaitingControl){show('revive-control-hint');toast('Нажми на игру, чтобы вернуть управление мышью.');}
+    else{if(local()?.alive)show('pause');toast('Нажми «Продолжить», чтобы включить управление мышью.');}
+  }
 }
 function leave(resetStatus=true){
+  reviveAwaitingControl=false;show('revive-control-hint',false);
   active=false;inLobby=false;clearControls();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
   document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов. Выбери класс и вступай в бой.');
@@ -525,9 +541,11 @@ $('reset-binds')?.addEventListener('click',()=>{
 $('sound-toggle').addEventListener('click',()=>{audio.enabled=!audio.enabled;text('sound-toggle',audio.enabled?'ЗВУК ВКЛ.':'ЗВУК ВЫКЛ.');$('sound-toggle').setAttribute('aria-pressed',String(audio.enabled));unlockAudio();musicUI();});
 $('music-toggle').addEventListener('click',()=>{if(audioStarted)musicMuted=!musicMuted;else musicMuted=false;save('music-muted',musicMuted);unlockAudio();setMusic();});
 canvas.addEventListener('click',()=>{if(active&&!locked)requestControl();});
+$('revive-control-hint').addEventListener('click',()=>requestControl());
 document.addEventListener('pointerlockchange',()=>{
   locked=document.pointerLockElement===canvas;
   if(locked){
+    reviveAwaitingControl=false;show('revive-control-hint',false);
     listeningAction=null;
     show('pause',false);
     audio.unlock();
@@ -535,7 +553,7 @@ document.addEventListener('pointerlockchange',()=>{
   }else{
     navigator.keyboard?.unlock?.();
     clearControls();
-    if(active&&local()?.alive&&!finished)show('pause');
+    if(active&&local()?.alive&&!finished&&!reviveAwaitingControl)show('pause');
   }
 });
 window.addEventListener('beforeunload',event=>{
@@ -544,7 +562,7 @@ window.addEventListener('beforeunload',event=>{
     event.returnValue='';
   }
 });
-document.addEventListener('pointerlockerror',()=>{if(active){show('pause');toast('Браузер не разрешил захват мыши. Нажми «Продолжить» ещё раз.');}});
+document.addEventListener('pointerlockerror',()=>{if(active){if(reviveAwaitingControl)show('revive-control-hint');else show('pause');toast(reviveAwaitingControl?'Нажми на игру, чтобы вернуть управление мышью.':'Браузер не разрешил захват мыши. Нажми «Продолжить» ещё раз.');}});
 document.addEventListener('mousemove',event=>{
   if(!locked&&!(unlocked&&!unlockedPaused&&active&&aim))return;
   const player=local();
@@ -598,6 +616,7 @@ document.addEventListener('keydown',event=>{
     if((event.code==='Space'||event.code==='Enter'||isBound('jump',event.code))&&!event.repeat){event.preventDefault();triggerRespawn();return;}
   }
   if(event.code==='Escape'&&unlocked){unlockedPaused=!unlockedPaused;show('pause',unlockedPaused);clearControls();return;}
+  if(event.code==='Escape'&&reviveAwaitingControl){reviveAwaitingControl=false;show('revive-control-hint',false);show('pause');return;}
   if(isBound('score',event.code)){event.preventDefault();show('scoreboard');return;}
   if(!locked&&!(unlocked&&!unlockedPaused))return;
   if(local()?.alive&&!event.repeat&&(event.code==='Digit1'||event.code==='Digit2')){

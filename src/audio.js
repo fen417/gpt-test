@@ -14,17 +14,17 @@ const HARMONY = [
 ];
 const MELODY = [74,0,69,0,65,0,64,0,62,0,0,69,67,0,65,0,69,0,72,0,74,0,0,77,76,0,72,0,69,0,0,0];
 const WEAPONS = {
-  ar416: { sample: 'rifle-light', rate: 1.04, gain: .88, cutoff: 17000 },
-  ak12: { sample: 'rifle-heavy', rate: 1, gain: .98, cutoff: 16000 },
-  mcx9: { sample: 'smg', rate: 1.08, gain: .73, cutoff: 16500 },
-  vk45: { sample: 'smg', rate: 1.02, gain: .53, cutoff: 3500 },
-  mg36: { sample: 'rifle-light', rate: .94, gain: 1.02, cutoff: 15000 },
-  pkp: { sample: 'rifle-heavy', rate: .94, gain: 1.06, cutoff: 14500 },
-  dmr12: { sample: 'marksman', rate: 1.02, gain: 1.01, cutoff: 17000 },
-  sv98: { sample: 'sniper', rate: .98, gain: 1.1, cutoff: 17500 },
-  p19: { sample: 'pistol', rate: 1.04, gain: .77, cutoff: 16500 },
-  m50: { sample: 'pistol-heavy', rate: .94, gain: 1.04, cutoff: 16000 },
-  turret: { sample: 'rifle-heavy', rate: .84, gain: 1.12, cutoff: 14000 },
+  ar416: { sample: 'rifle-light', rate: 1, gain: .92, cutoff: 17000 },
+  ak12: { sample: 'rifle-heavy', rate: 1, gain: .94, cutoff: 16000 },
+  mcx9: { sample: 'smg', rate: 1.12, gain: .82, cutoff: 16500 },
+  vk45: { sample: 'smg-suppressed', rate: 1, gain: .80, cutoff: 14000 },
+  mg36: { sample: 'lmg', rate: 1.03, gain: 1, cutoff: 16000 },
+  pkp: { sample: 'lmg', rate: .92, gain: 1.05, cutoff: 15500 },
+  dmr12: { sample: 'marksman', rate: 1.02, gain: .98, cutoff: 17000 },
+  sv98: { sample: 'sniper', rate: 1, gain: 1.04, cutoff: 17500 },
+  p19: { sample: 'pistol', rate: 1.04, gain: .85, cutoff: 16500 },
+  m50: { sample: 'pistol-heavy', rate: .96, gain: 1, cutoff: 16000 },
+  turret: { sample: 'lmg', rate: .84, gain: 1.10, cutoff: 14500 },
 };
 const CLASS_SHOTS = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
 const SHOT_SAMPLES = {
@@ -39,6 +39,11 @@ const SHOT_SAMPLES = {
   'smg': [
     new URL('./assets/audio/gunshots/smg-1.wav', import.meta.url),
     new URL('./assets/audio/gunshots/smg-2.wav', import.meta.url),
+  ],
+  'smg-suppressed': [new URL('./assets/audio/gunshots/smg-suppressed-1.wav',import.meta.url)],
+  'lmg': [
+    new URL('./assets/audio/gunshots/lmg-1.wav',import.meta.url),
+    new URL('./assets/audio/gunshots/lmg-2.wav',import.meta.url),
   ],
   'marksman': [
     new URL('./assets/audio/gunshots/marksman-1.wav', import.meta.url),
@@ -418,7 +423,7 @@ export class CombatAudio {
       const time=this.ctx.currentTime+.008+Math.max(0,Math.min(.35,distance/343)-age);
       const variants=this._shotBuffers.get(weapon.sample);
       const buffer=variants?.[Math.floor(Math.random()*variants.length)];
-      const cutoff=id==='vk45'?(isLocal?10500:weapon.cutoff):isLocal||distance<12?0:Math.max(1500,weapon.cutoff/(1+(distance-12)*.012));
+      const cutoff=isLocal||distance<12?0:Math.max(1500,weapon.cutoff/(1+(distance-12)*.012));
       if(buffer){
         if(!this._admit({}))return;
         let overlapping=0,oldest=null;

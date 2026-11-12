@@ -1,0 +1,7 @@
+All current weapon reports in this directory use CC0 1.0 material.
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Authors: SuperPhat, seroutonin//deprived (serøutōnin--deprivəd),
+sidohzen, Clutvh, LilMati and LeMudCrab.
+Curated source package: hamsunqiu, Modern Military Weapons Sound Pack v0.2.
+Per-file sources and adaptation details: README.md.
