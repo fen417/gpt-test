@@ -14,6 +14,8 @@ Selected from [Modern Military Weapons Sound Pack v0.2](https://hamsunqiu.itch.i
 
 The game uses stereo PCM16 WAV at 44.1 kHz. Processing preserves the source stereo image, trims reports, removes DC, balances the initial report's RMS with peak headroom, and applies short edge fades. No saturation, hard clipping or peak reconstruction is applied. Weapon profiles adapt playback speed and level; the suppressed weapon has its own recording.
 
+The M16-derived machine-gun reports end at 0.28 seconds, before unrelated broadband noise in the source recording. Their final 70 ms fade smoothly to silence.
+
 To reproduce the assets after extracting the pack outside the repository:
 
 ```powershell
