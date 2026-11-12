@@ -7,9 +7,28 @@ export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 
 export const GADGET_NAMES = { ammo: 'ЯЩИК ПАТРОНОВ', defibrillator: 'ДЕФИБРИЛЛЯТОР', repair: 'РЕМОНТНАЯ ГОРЕЛКА',
   beacon: 'МАЯК ВЫСАДКИ', launcher: 'ПТ-90', medkit: 'АПТЕЧКА' };
 export const BEACON_LIFETIME = 120;
+export function selectedGadget(classId,slot) {
+  return slot===1?CLASS_GADGET[classId]??null:slot===2?({assault:'launcher',medic:'medkit'}[classId]??null):null;
+}
+
+export function selectGadget(sim,p,slot) {
+  const kind=p.vehicleId?null:selectedGadget(p.classId,slot);
+  if(kind===(p.heldGadget??null))return;
+  p.heldGadget=kind;p.pendingGadget=null;p.gadgetAction=null;p.gadgetActionUntil=0;p.gadgetTargetId=null;
+  p.equipTime=.32;p.reloading=false;p.reloadTime=0;
+  // Selecting gear while holding the trigger must not discharge it by accident.
+  p.fireHeld=p.input.fire;
+  sim.event('equip',{playerId:p.id,kind,weaponId:p.weaponId,x:p.x,z:p.z});
+}
 const distance = (a,b) => Math.hypot(a.x-b.x,a.z-b.z);
-const eye = p => ({x:p.x,y:p.y+EYE_HEIGHT,z:p.z});
+const eye = p => ({x:p.x,y:p.y+(p.crouching?1.05:EYE_HEIGHT),z:p.z});
 const center = (value, height=.35) => ({x:value.x,y:(value.y??0)+height,z:value.z});
+function aimedAt(p,target) {
+  if(p.bot)return true;
+  const origin=eye(p),dx=target.x-origin.x,dy=target.y-origin.y,dz=target.z-origin.z;
+  const length=Math.hypot(dx,dy,dz);
+  return length<.1||(-Math.sin(p.yaw)*Math.cos(p.pitch)*dx+Math.sin(p.pitch)*dy-Math.cos(p.yaw)*Math.cos(p.pitch)*dz)/length>.72;
+}
 
 export function deployableBounds(item) {
   return boxBounds({x:item.x,z:item.z,baseY:item.y,w:item.kind==='beacon'?.55:.65,d:.5,h:item.kind==='beacon'?1.04:.45});
@@ -35,17 +54,17 @@ export function reviveTarget(sim,p) {
   for(const ally of sim.players.values()){
     if(ally.alive||ally.team!==p.team||ally.id===p.id||ally.respawnIn<=0||sim.time>=(ally.downedUntil??0))continue;
     const d=Math.hypot(distance(p,ally),p.y-ally.y);
-    if(d<best&&sim.lineClear(eye(p),center(ally,.35))){found=ally;best=d;}
+    if(d<best&&aimedAt(p,center(ally,.35))&&sim.lineClear(eye(p),center(ally,.35))){found=ally;best=d;}
   }
   return found;
 }
 
-export function repairTarget(sim,p,maxDistance=5) {
+export function repairTarget(sim,p,maxDistance=5,aimed=false) {
   let found=null,best=maxDistance;
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team!==p.team||vehicle.hp>=VEHICLE_TYPES[vehicle.type].maxHp)continue;
     const d=distance(p,vehicle);
-    if(d<best&&sim.lineClear(eye(p),center(vehicle,.9))){found=vehicle;best=d;}
+    if(d<best&&(!aimed||aimedAt(p,center(vehicle,.9)))&&sim.lineClear(eye(p),center(vehicle,.9))){found=vehicle;best=d;}
   }
   return found;
 }
@@ -75,7 +94,8 @@ export function activateGadget(sim,p,secondary=false) {
     if(p.classId==='assault'&&p.rockets>0){
       p.rockets--;p.secondaryCooldown=5;
       beginAction(sim,p,'launcher',1.05);
-      p.pendingGadget={kind:'launcher',at:sim.time+.4};
+      if(p.bot)p.pendingGadget={kind:'launcher',at:sim.time+.4};
+      else launchRocket(sim,p);
       return true;
     }
     if(p.classId==='medic'){
@@ -99,7 +119,7 @@ export function activateGadget(sim,p,secondary=false) {
     return true;
   }
   if(p.classId==='support'){
-    const vehicle=repairTarget(sim,p);
+    const vehicle=repairTarget(sim,p,5,true);
     if(!vehicle)return false;
     if(p.gadgetAction!=='repair'||p.gadgetActionUntil<=sim.time)beginAction(sim,p,'repair',.25,vehicle.id);
     p.gadgetAction='repair';p.gadgetTargetId=vehicle.id;p.gadgetActionUntil=sim.time+.25;
@@ -115,7 +135,7 @@ function finishRevive(sim,p,job) {
   if(sim.collides(ally.x,ally.z,ally.y,.4,1.05))return;
   Object.assign(ally,{alive:true,hp:65,respawnIn:0,downedUntil:0,reloading:false,reloadTime:0,vy:0,
     grounded:true,crouching:true,slideTime:0,invulnerableUntil:sim.time+.8,lastHurt:sim.time,fireHeld:false,botJob:null,
-    gadgetAction:null,gadgetActionUntil:0,pendingGadget:null});
+    gadgetAction:null,gadgetActionUntil:0,pendingGadget:null,heldGadget:null});
   ally.input={...ally.input,forward:0,strafe:0,fire:false,grenade:false,gadget:false,secondaryGadget:false,crouch:true};
   ally.deaths=Math.max(0,ally.deaths-1);
   ally.damagers?.clear();
@@ -211,8 +231,9 @@ export function updateEquipment(sim,dt) {
       p.pendingGadget=null;
       if(!p.vehicleId){if(job.kind==='defibrillator')finishRevive(sim,p,job);else launchRocket(sim,p);}
     }
-    if(p.gadgetAction==='repair'&&p.input.gadget&&!p.vehicleId){
-      const vehicle=repairTarget(sim,p);
+    const repairing=p.bot?p.input.gadget:p.heldGadget==='repair'&&p.input.fire&&!p.input.sprint;
+    if(p.gadgetAction==='repair'&&repairing&&!p.vehicleId){
+      const vehicle=repairTarget(sim,p,5,true);
       if(vehicle&&vehicle.id===p.gadgetTargetId){
         const amount=Math.min(65*dt,VEHICLE_TYPES[vehicle.type].maxHp-vehicle.hp);
         vehicle.hp+=amount;p.gadgetActionUntil=sim.time+.25;

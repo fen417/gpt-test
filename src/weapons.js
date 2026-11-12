@@ -622,7 +622,7 @@ export function createWeaponRig(owner = {}) {
     heldTools[kind]=model;
   }
   const heldLauncher=createGadgetModel('launcher',equipmentPalette);weapon.add(heldLauncher);
-  heldLauncher.position.set(0,-.02,.05);heldLauncher.visible=false;
+  heldLauncher.position.set(.05,-.02,.05);heldLauncher.visible=false;
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
   // The pistol grip also receives a sculpted palm/finger junction. Its trigger
   // finger remains posed in the static hand mesh while firing recoil moves the
@@ -647,7 +647,7 @@ export function createWeaponRig(owner = {}) {
   const flashLight={position:new THREE.Vector3(),intensity:0};
   const rifleAssembly=new THREE.Group();
   for(const child of [...weapon.children]){
-    if(![leftArm,rightArm,leftHand,rightHand,muzzleFlash].includes(child))rifleAssembly.add(child);
+    if(![leftArm,rightArm,leftHand,rightHand,muzzleFlash,heldLauncher].includes(child))rifleAssembly.add(child);
   }
   weapon.add(rifleAssembly);
 
@@ -788,6 +788,9 @@ export function createWeaponRig(owner = {}) {
     // Fit the metalwork around the existing palm contact, using metre-scale
     // dimensions. Articulated slide and magazine remain in their local space.
     root.scale.set(heavy?.54:.52,heavy?.54:.49,heavy?.72:.63);
+    // Enlarge the complete pistol uniformly around its palm contact. Sight,
+    // muzzle, support-hand and reload anchors are derived from this matrix.
+    root.scale.multiplyScalar(1.12);
     const palmContact=new THREE.Vector3(0,-.162,.071);
     root.position.copy(palmContact).sub(palmContact.clone().multiply(root.scale));
     root.updateMatrix();
@@ -883,6 +886,12 @@ export function createWeaponRig(owner = {}) {
   const wristDirection = new THREE.Vector3(), palmTarget = new THREE.Vector3(), gripTarget = new THREE.Vector3(), palmOffset = new THREE.Vector3(), actionTarget = new THREE.Vector3();
   const chargeGrip = new THREE.Vector3(-.076,.019,.044);
   leftArm.matrixAutoUpdate = false;
+  const rightShoulder=new THREE.Vector3(.27,-.48,.43),rightWrist=new THREE.Vector3(.062,-.198,.112);
+  const rightAxis=rightWrist.clone().sub(rightShoulder),rightLength=rightAxis.length();
+  const rightRotation=new THREE.Quaternion().setFromUnitVectors(armAxis,rightAxis.normalize());
+  const rightRestInverse=new THREE.Matrix4().compose(rightShoulder,rightRotation,new THREE.Vector3(1,1,1)).invert();
+  const rightDirection=new THREE.Vector3(),rightScale=new THREE.Vector3(1,1,1);
+  rightArm.matrixAutoUpdate=false;
 
   function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null) {
     const feed = pistol?.magazine ?? (support ? beltBox : magazine);
@@ -940,7 +949,7 @@ export function createWeaponRig(owner = {}) {
       const continuous=gadgetKind==='repair'||gadgetKind==='defibrillator';
       const reach=continuous?.35:act;
       actionTarget.set(-.16,.10,-.28-reach*.13);
-      if(gadgetKind==='launcher')actionTarget.set(-.035,-.065,-.37);
+      if(gadgetKind==='launcher')actionTarget.set(-.015,-.09,-.18);
       rotX=THREE.MathUtils.lerp(rotX,continuous?.15:.58-act*1.05,weight);
       rotY=THREE.MathUtils.lerp(rotY,-.24,weight);
       rotZ=THREE.MathUtils.lerp(rotZ,-.12,weight);
@@ -972,7 +981,7 @@ export function createWeaponRig(owner = {}) {
   let previousKey = '';
   let previousTeam = -1;
   let visiblePistol = null;
-  function update({classId='assault',weaponId='',team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null}={}){
+  function update({classId='assault',weaponId='',team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1052,8 +1061,8 @@ export function createWeaponRig(owner = {}) {
       pistol.slide.position.z=Math.max(kick*travel,reloadEmpty?travel*.85:0,charging*travel);
       pistolIndex.rotation.y=kick*.16;
     }
-    poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,pistol,gadgetKind);
     const usingTool=Boolean(gadgetKind&&gadgetPhase>0&&gadgetPhase<1);
+    poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,usingTool?null:pistol,gadgetKind);
     heldLauncher.visible=usingTool&&gadgetKind==='launcher';
     heldDefibRight.visible=usingTool&&gadgetKind==='defibrillator';
     rifleAssembly.visible=!pistol&&!usingTool;
@@ -1062,14 +1071,26 @@ export function createWeaponRig(owner = {}) {
     pistolGlove.visible=Boolean(pistol)&&!usingTool;
     rightHand.visible=usingTool?gadgetKind==='defibrillator'||gadgetKind==='launcher':!pistol;
     pistolRight.visible=Boolean(pistol)&&!usingTool;
+    rightHand.position.set(0,0,0);rightHand.rotation.set(0,0,0);
+    rightArm.visible=!usingTool||gadgetKind==='defibrillator'||gadgetKind==='launcher';
+    rightArm.matrix.identity();
+    if(usingTool&&gadgetKind==='defibrillator'){
+      const discharge=toolActive?Math.sin(toolProgress*Math.PI):0;
+      rightHand.position.set(.05,.25,-.415-discharge*.09);
+      leftHand.position.z-=discharge*.09;
+      rightDirection.copy(rightWrist).add(rightHand.position).sub(rightShoulder);
+      rightScale.set(1,1,rightDirection.length()/rightLength);
+      rightRotation.setFromUnitVectors(armAxis,rightDirection.normalize());
+      rightArm.matrix.compose(rightShoulder,rightRotation,rightScale).multiply(rightRestInverse);
+    }
     if(usingTool&&gadgetKind==='repair'){
       const flame=heldTools.repair.getObjectByName('tool-flame');
-      if(flame)flame.scale.setScalar(.8+Math.sin(clock*47)*.15);
+      if(flame){flame.visible=toolActive;flame.scale.setScalar(.8+Math.sin(clock*47)*.15);}
     }
-    muzzleFlash.visible = kick > .65;
+    muzzleFlash.visible = !usingTool&&kick > .65;
     muzzleFlash.rotation.z = clock*43;
     muzzleFlash.scale.setScalar((pistol?(pistol.heavy?.85:.57):1)*(.78+kick*.22));
-    flashLight.intensity = kick > .65 ? 1.8 : 0;
+    flashLight.intensity = !usingTool&&kick > .65 ? 1.8 : 0;
   }
   function dispose(){
     for(const template of gadgetTemplates(equipmentPalette))template.traverse(mesh=>{if(mesh.geometry?.userData.owned)ownedGeometries.add(mesh.geometry);});

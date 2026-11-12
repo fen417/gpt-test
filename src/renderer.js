@@ -154,6 +154,8 @@ export class GameRenderer {
     this.equipmentMeshes = new Map();
     this.rocketMeshes = new Map();
     this.remoteTools = new Map();
+    this.reviveRings = new Map();
+    this.reviveMaterial=new THREE.MeshBasicMaterial({color:0x8ef3be,transparent:true,opacity:.7,depthWrite:false,side:THREE.DoubleSide});
     this.equipmentPalette = gadgetPalette((name,color,roughness,metalness,extra)=>material(color,roughness,metalness,extra));
     this.throwTimer = 0;
     this.throwDuration = 0.68;
@@ -533,7 +535,7 @@ export class GameRenderer {
     this.soldiers.clear();
     for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
     this.grenadeMeshes.clear();
-    for(const cache of [this.equipmentMeshes,this.rocketMeshes,this.remoteTools]){
+    for(const cache of [this.equipmentMeshes,this.rocketMeshes,this.remoteTools,this.reviveRings]){
       for(const model of cache.values())model.removeFromParent();
       cache.clear();
     }
@@ -947,6 +949,7 @@ export class GameRenderer {
         this.smoke(event.x,event.y+.3,event.z,.3,.6,0x989181);this.spark(event.x,event.y+.3,event.z);continue;
       }
       if(event.type==='rocketLaunch'){
+        if(event.playerId===localId)this.kick=1;
         const x=event.x-Math.sin(event.yaw)*.7,z=event.z-Math.cos(event.yaw)*.7;
         for(let i=0;i<3;i++)this.smoke(x,event.y-.1,z,.2+i*.06,.35,0xb1ab9c);
         continue;
@@ -1170,6 +1173,17 @@ export class GameRenderer {
   }
 
   syncEquipment(state,localId,dt) {
+    const local=state.players.find(player=>player.id===localId),revivable=new Set();
+    if(local?.alive&&local.classId==='medic'&&!local.vehicleId){
+      for(const ally of state.players){
+        if(ally.alive||ally.team!==local.team||ally.respawnIn<=0||Math.hypot(ally.x-local.x,ally.z-local.z)>30)continue;
+        revivable.add(ally.id);
+        let ring=this.reviveRings.get(ally.id);
+        if(!ring){ring=new THREE.Mesh(this.geo.gadgetRing,this.reviveMaterial);ring.rotation.x=-Math.PI/2;this.worldRoot.add(ring);this.reviveRings.set(ally.id,ring);}
+        ring.visible=true;ring.position.set(ally.x,ally.y+.035,ally.z);ring.scale.setScalar(.65+Math.sin(this.clock*5)*.035);
+      }
+    }
+    for(const [id,ring] of this.reviveRings)if(!revivable.has(id)){ring.removeFromParent();this.reviveRings.delete(id);}
     const sync=(items,cache,kindOf)=>{
       const active=new Set();
       for(const item of items){
@@ -1209,22 +1223,23 @@ export class GameRenderer {
       const soldier=this.soldiers.get(player.id);
       if(!soldier)continue;
       soldier.rifle.scale.setScalar(1);
-      if(!player.alive||!player.gadgetAction||!soldier.group.parent)continue;
+      const kind=player.heldGadget??player.gadgetAction;
+      if(!player.alive||!kind||!soldier.group.parent)continue;
       active.add(player.id);
       let model=this.remoteTools.get(player.id);
-      if(model?.userData.kind!==player.gadgetAction){
+      if(model?.userData.kind!==kind){
         model?.removeFromParent();
-        model=createGadgetModel(player.gadgetAction,this.equipmentPalette);model.userData.kind=player.gadgetAction;
+        model=createGadgetModel(kind,this.equipmentPalette);model.userData.kind=kind;
         model.traverse(object=>{if(object.material)object.material=this.getQualityMaterial(object.material);});
         this.remoteTools.set(player.id,model);
       }
       if(model.parent!==soldier.group)soldier.group.add(model);
       model.position.set(.10,(player.crouch?.86:1.22),-.30);
       model.rotation.set(player.pitch??0,0,0);
-      model.scale.setScalar(player.gadgetAction==='beacon'?.4:player.gadgetAction==='ammo'?.75:1);
+      model.scale.setScalar(kind==='beacon'?.4:kind==='ammo'?.75:1);
       soldier.rifle.scale.setScalar(.001);soldier.flash.visible=false;
       const flame=model.getObjectByName('tool-flame');
-      if(flame)flame.scale.setScalar(.8+Math.sin(this.clock*43)*.15);
+      if(flame){flame.visible=player.gadgetAction==='repair';flame.scale.setScalar(.8+Math.sin(this.clock*43)*.15);}
     }
     for(const [id,model] of this.remoteTools)if(!active.has(id)){model.removeFromParent();this.remoteTools.delete(id);}
   }
@@ -1436,7 +1451,7 @@ export class GameRenderer {
       this.updateSunShadow(0, 0);
       for (const soldier of this.soldiers.values()) soldier.group.visible = false;
       for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
-      for(const cache of [this.equipmentMeshes,this.rocketMeshes])for(const model of cache.values())model.visible=false;
+      for(const cache of [this.equipmentMeshes,this.rocketMeshes,this.reviveRings])for(const model of cache.values())model.visible=false;
       this.updateEffects(dt);
       this.drawScene(true); return;
     }
@@ -1456,11 +1471,11 @@ export class GameRenderer {
     }
     this.throwTimer = Math.max(0, this.throwTimer - dt);
     const player = state.players.find(p => p.id === localId);
-    const gadgetKind=player?.gadgetAction??null;
+    const gadgetKind=player?.heldGadget??player?.gadgetAction??null;
     this.gadgetDuration=gadgetKind==='launcher'?1.05:gadgetKind==='defibrillator'?.7:gadgetKind==='medkit'?.85:.75;
     this.gadgetTimer=player?.gadgetActionRemaining??0;
     const throwPhase = this.throwTimer > 0 ? 1 - this.throwTimer / this.throwDuration : 0;
-    const gadgetPhase=gadgetKind==='repair'?.5:this.gadgetTimer>0?clamp(1-this.gadgetTimer/this.gadgetDuration,.001,.999):0;
+    const gadgetPhase=(player?.heldGadget||gadgetKind==='repair') ? .5 : this.gadgetTimer>0?clamp(1-this.gadgetTimer/this.gadgetDuration,.001,.999):0;
     const isAlive = player?.alive !== false;
     const mounted = this.updateVehicles(state, player, dt, view);
     const seat = mounted && VEHICLE_TYPES[mounted.vehicle.type].seats[player.vehicleSeat];
@@ -1515,7 +1530,8 @@ export class GameRenderer {
         swap.left = Math.max(0, swap.left - dt);
         if (swap.left === 0) this.weaponSwitch = null;
       }
-      const {stowing,lowered}=weaponSwitchPose(swap?.left);
+      const {stowing,lowered:gunLowered}=weaponSwitchPose(swap?.left);
+      const lowered=Math.max(gunLowered,!swap?clamp(player.equipTime/.32,0,1):0);
       this.presentedWeaponId = stowing ? swap.from : activeWeaponId;
       const pistol = getWeapon(player.classId, this.presentedWeaponId).sidearm;
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
@@ -1532,8 +1548,8 @@ export class GameRenderer {
       );
       const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
-      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && this.gadgetTimer <= 0 && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
-      const scopedWeapon = player.classId === 'recon' && !pistol && !this.weaponSwitch;
+      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
+      const scopedWeapon = !gadgetKind&&player.classId === 'recon' && !pistol && !this.weaponSwitch;
       this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       const weapon = getWeapon(player.classId, player.weaponId);
@@ -1585,7 +1601,7 @@ export class GameRenderer {
       }
       const aimFov = scopedWeapon
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / (player.weaponId === 'sv98' ? clamp(Number(view.scopeZoom) || 8, 6, 12) : 4)))
-        : baseFov - (pistol ? 13 : 23);
+        : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:23);
       const fov = lerp(baseFov + this.sprintBlend * 6 + this.slideBlend*3, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
@@ -1609,9 +1625,11 @@ export class GameRenderer {
         throwPhase,
         gadgetPhase,
         gadgetKind,
+        toolActive:Boolean(player.gadgetAction),
+        toolProgress:clamp(1-this.gadgetTimer/this.gadgetDuration,0,1),
       });
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
-      const actionTilt = Math.sin(Math.max(throwPhase, gadgetPhase) * Math.PI);
+      const actionTilt = Math.sin(Math.max(throwPhase, player.heldGadget?0:gadgetPhase) * Math.PI);
       const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(this.weaponRig.sightType);
       const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:-.27;
       this.weapon.position.set(
@@ -1624,6 +1642,15 @@ export class GameRenderer {
         -reloadMotion * .22 + this.sprintBlend * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
         -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018 - actionTilt * .36 + lowered * .24,
       );
+      if(gadgetKind){
+        const launcher=gadgetKind==='launcher';
+        this.weapon.position.set(
+          lerp(launcher?.22:.08,launcher?-.05:.02,this.aimAmount)+Math.sin(cycle)*.007*bob-this.swayX,
+          lerp(launcher?-.23:-.27,launcher?-.125:-.22,this.aimAmount)-this.landDip*.4-lowered*.42,
+          lerp(-.43,launcher?-.28:-.39,this.aimAmount)+kick*.075+lowered*.14,
+        );
+        this.weapon.rotation.set(kick*.09+Math.cos(cycle)*bob*.009-lowered*.4,-this.swayX*.3,Math.sin(cycle)*bob*.008);
+      }
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
     }
     this.camera.updateMatrixWorld();
@@ -1714,6 +1741,7 @@ export class GameRenderer {
     }
     textures.add(this.smokeTexture);
     materials.add(this.grenadeMaterial);
+    materials.add(this.reviveMaterial);
     geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose());
     skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();

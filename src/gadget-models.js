@@ -128,9 +128,20 @@ function build(kind,m) {
     }
     box(0,.102,-.12,.06,.045,.16,m.dark);
     ring(0,.145,-.12,.025,.007,.15,m.metal);
-    tube(0,.145,-.196,.017,.004,m.blue,'z');
-    box(0,.104,-.52,.015,.10,.018,m.metal);
-    box(0,.104,.10,.065,.085,.016,m.metal);
+    // Keep the sight bore open: its front post must remain visible while aiming.
+    ring(0,.145,-.198,.026,.004,.012,m.dark);
+    tube(.037,.145,-.09,.014,.025,m.dark,'x');
+    for(const z of [-.16,-.12,-.08])box(.050,.145,z,.005,.020,.009,m.metal);
+    for(const side of [-1,1]){
+      box(side*.038,-.16,.018,.009,.075,.012,m.metal);
+      tube(side*.062,.025,-.27,.007,.007,m.metal,'x');
+      tube(side*.061,.025,-.04,.007,.007,m.metal,'x');
+      box(side*.046,-.07,.005,.014,.065,.024,m.metal);
+    }
+    box(0,-.201,.045,.075,.012,.075,m.metal);
+    box(0,.104,-.52,.015,.08,.018,m.metal);
+    for(const side of [-1,1])box(side*.027,.104,.10,.012,.085,.016,m.metal);
+    box(0,.066,.10,.065,.012,.016,m.metal);
     box(0,-.008,.25,.13,.10,.055,m.dark);
     box(-.061,.032,-.24,.009,.055,.10,m.white);
   }else if(kind==='medkit'){

@@ -199,6 +199,13 @@ body:has(.menu:not(.hidden)){overflow-y:auto}
 .patch { padding: 22px 0; border-bottom: 1px solid var(--border); }
 .patch:last-child { border-bottom: 0; }
 .patch summary { cursor: pointer; display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px 16px; list-style: none; }
+#revive-markers { position:absolute; inset:0; pointer-events:none; }
+.revive-marker { position:absolute; left:0; top:0; align-items:center; flex-direction:column; gap:3px; color:#8ef3be; text-shadow:0 1px 4px #071a14,0 0 8px #071a14; white-space:nowrap; }
+.revive-marker b { display:grid; place-items:center; width:33px; height:33px; border-radius:50%; font:700 27px/1 sans-serif; background:conic-gradient(#8ef3be var(--revive-time),#182c25cc 0); box-shadow:0 0 0 2px #10291dcc; color:#10251c; }
+.revive-marker strong { font-size:10px; letter-spacing:.8px; }
+.revive-marker span { padding:3px 6px; background:#0b201ccc; border-radius:2px; font-size:9px; letter-spacing:.5px; }
+.revive-marker.reachable b { box-shadow:0 0 0 2px #c6ffe0,0 0 14px #65ec9c66; }
+.revive-marker.reachable span { color:#d7ffe7; }
 .patch summary::-webkit-details-marker { display: none; }
 .patch summary::after { content: '+'; margin-left: auto; color: var(--orange); }
 .patch[open] summary::after { content: '−'; }

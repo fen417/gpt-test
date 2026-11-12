@@ -1,5 +1,5 @@
 ﻿import Peer from 'peerjs';
-import { Simulation, sanitizeInput } from '../shared/simulation.js';
+import { Simulation, sanitizeInput, sanitizeSpawnPoint } from '../shared/simulation.js';
 import { DEFAULT_MAP_ID, getMap, PROTOCOL_VERSION, MAP_LAYOUT_REVISION, getPrimaryWeapon, getSidearm } from '../shared/world.js';
 import { packSnapshot, unpackSnapshot } from '../shared/snapshot-codec.js';
 
@@ -418,7 +418,7 @@ export class Multiplayer {
         for (const action of PULSE_ACTIONS) if (guest.lastControls[action]) guest.actions.add(action);
       } else if (guest.joined && message.type === 'respawn') {
         const cls = playerClass(message.classId);
-        if (this._simulation.respawn(guest.id, cls, this._simulation.map.points.some(p=>p.id===message.pointId) ? message.pointId : undefined, message.weaponId, message.sidearmId)) {
+        if (this._simulation.respawn(guest.id, cls, sanitizeSpawnPoint(this._simulation.map,message.pointId), message.weaponId, message.sidearmId)) {
           const state = this._buildSnapshot();
           const player = state.players.find(p => p.id === guest.id);
           guest.lastControls = sanitizeInput({ yaw: player?.yaw, pitch: player?.pitch });
@@ -646,7 +646,7 @@ export class Multiplayer {
     const selectedClass = playerClass(classId);
     const selectedWeapon = weaponId === undefined ? undefined : playerWeapon(selectedClass, weaponId);
     const selectedSidearm = sidearmId === undefined ? undefined : getSidearm(sidearmId).id;
-    const selectedPoint = (this._simulation?.map ?? getMap(this._remoteMapId)).points.some(p=>p.id===pointId) ? pointId : undefined;
+    const selectedPoint = sanitizeSpawnPoint(this._simulation?.map??getMap(this._remoteMapId),pointId);
     if (this._mode === 'host' && this._simulation) {
       const accepted = this._simulation.respawn(this._localId, selectedClass, selectedPoint, selectedWeapon, selectedSidearm);
       if (accepted) {

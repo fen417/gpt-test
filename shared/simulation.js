@@ -7,7 +7,7 @@ import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import { slideVelocity } from './movement.js';
 import { boxBounds, rayAffineBox, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
-import { activateGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast } from './gadgets.js';
+import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast } from './gadgets.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -22,6 +22,10 @@ const rayDir = { x: 0, y: 0, z: 0 };
 const scratchEye = { x: 0, y: 0, z: 0 };
 const scratchTarget = { x: 0, y: 0, z: 0 };
 
+export function sanitizeSpawnPoint(map,pointId) {
+  // Beacon ownership, expiry, safety and available floor space are checked by respawn.
+  return typeof pointId==='string'&&(map.points.some(point=>point.id===pointId)||/^beacon:\d{1,12}$/.test(pointId))?pointId:undefined;
+}
 export function sanitizeInput(input = {}) {
   if(!input||typeof input!=='object')input={};
   return {
@@ -30,6 +34,7 @@ export function sanitizeInput(input = {}) {
     sprint:input.sprint===true,crouch:input.crouch===true,jump:input.jump===true,
     fire:input.fire===true,aim:input.aim===true,reload:input.reload===true,
     gadget:input.gadget===true,secondaryGadget:input.secondaryGadget===true,grenade:input.grenade===true,weaponSlot:input.weaponSlot===1||input.weaponSlot===2?input.weaponSlot:0,
+    toolSlot:input.toolSlot===1||input.toolSlot===2?input.toolSlot:0,
     interact:input.interact===true,switchSeat:input.switchSeat===true,
   };
 }
@@ -255,7 +260,7 @@ export class Simulation {
     Object.assign(p,{slideTime:0,slideCooldown:0,slideVx:0,slideVz:0,crouchHeld:false,crouching:false,wasSprinting:false});
     p.y=spawnY;
     Object.assign(p,{rockets:p.classId==='assault'?2:0,secondaryCooldown:0,gadgetTime:0,gadgetAction:null,gadgetActionUntil:0,
-      pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null});
+      pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null,heldGadget:null});
     p.velocityX=0;p.velocityZ=0;p.tickX=x;p.tickZ=z;
     p.botTransit = null;
     p.botLastHouse = null;
@@ -683,7 +688,7 @@ export class Simulation {
   }
   startReload(p){
     const weapon = getWeapon(p.classId, p.weaponId);
-    if(p.equipTime>0||p.reloading||p.ammo>=weapon.mag||p.reserve<=0)return;
+    if(p.heldGadget||p.equipTime>0||p.reloading||p.ammo>=weapon.mag||p.reserve<=0)return;
     p.reloading=true;
     p.reloadTime=weapon.reload;
     this.event('reload',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,duration:weapon.reload,empty:p.ammo===0,x:p.x,z:p.z});
@@ -1036,11 +1041,12 @@ export class Simulation {
         const backup=p.bot&&p.ammo+p.reserve===0&&p.stowedAmmo.ammo+p.stowedAmmo.reserve>0;
         this.equipWeapon(p,i.weaponSlot||(backup?3-p.weaponSlot:0));
       }
+      if(!p.bot)selectGadget(this,p,i.toolSlot);
       const c=getWeapon(p.classId,p.weaponId);
       const pressed = i.fire && !p.fireHeld;
       p.fireHeld = i.fire;
       // Carry the fractional tick remainder through a burst so cadence stays on spec.
-      const firing = i.fire && !i.sprint && p.equipTime===0 && !i.gadget && !i.secondaryGadget && !(p.gadgetActionUntil>this.time);
+      const firing = !p.heldGadget && i.fire && !i.sprint && p.equipTime===0 && !i.gadget && !i.secondaryGadget && !(p.gadgetActionUntil>this.time);
       const continuous = firing && (p.bot || !c.semiAuto) && !pressed && !p.reloading;
       p.cooldown = Math.max(continuous ? -dt : 0, p.cooldown - dt);
       p.bloom = Math.max(0, p.bloom - dt * (this.time - p.lastShotAt > .16 ? 3.6 : .4));
@@ -1104,8 +1110,11 @@ export class Simulation {
       }
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
       this.firePersonalWeapon(p,c,pressed,firing);
-      if(i.gadget&&(!p.gadgetHeld||p.classId==='support'))this.gadget(p);
-      if(i.secondaryGadget&&!p.secondaryGadgetHeld)activateGadget(this,p,true);
+      if(p.heldGadget&&i.fire&&!i.sprint&&(pressed||p.heldGadget==='repair')){
+        activateGadget(this,p,p.heldGadget==='launcher'||p.heldGadget==='medkit');
+      }
+      if(p.bot&&i.gadget&&(!p.gadgetHeld||p.classId==='support'))this.gadget(p);
+      if(p.bot&&i.secondaryGadget&&!p.secondaryGadgetHeld)activateGadget(this,p,true);
       p.gadgetHeld=i.gadget;p.secondaryGadgetHeld=i.secondaryGadget;
       if(i.grenade&&!p.grenadeHeld&&!(p.gadgetActionUntil>this.time))this.throwGrenade(p);p.grenadeHeld=i.grenade;
       if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
@@ -1191,7 +1200,7 @@ export class Simulation {
         shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
         slideYaw:p.slideTime>0?Math.atan2(-p.slideVx,-p.slideVz):p.yaw,sprint:!p.vehicleId&&!crouching(p)&&p.input.sprint&&p.moveSpeed>wep.speed,
         aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
-        gadgetCooldown:p.gadgetTime,secondaryCooldown:p.secondaryCooldown,rockets:p.rockets,
+        gadgetCooldown:p.gadgetTime,secondaryCooldown:p.secondaryCooldown,rockets:p.rockets,heldGadget:p.heldGadget,
         gadgetAction:p.gadgetAction,gadgetActionRemaining:Math.max(0,(p.gadgetActionUntil??0)-this.time),gadgetTargetId:p.gadgetTargetId,
         grenades:p.grenades,spotted:p.spottedUntil>this.time,
         vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { Simulation, sanitizeInput } from '../shared/simulation.js';
+import { Simulation, sanitizeInput, sanitizeSpawnPoint } from '../shared/simulation.js';
 import { MAP_LAYOUT_REVISION, PROTOCOL_VERSION } from '../shared/world.js';
 import { packSnapshot } from '../shared/snapshot-codec.js';
 
@@ -63,7 +63,7 @@ wss.on('connection',(ws)=>{
       send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
     }else if(message.type==='input'&&client.joined){client.lastInput=now;const input=sanitizeInput(message.input);client.interact||=input.interact;client.switchSeat||=input.switchSeat;client.lastControls=input;}
     else if(message.type==='respawn'&&client.joined){
-      const validPoint=simulation.map.points.some(p=>p.id===message.pointId)?message.pointId:undefined;
+      const validPoint=sanitizeSpawnPoint(simulation.map,message.pointId);
       if(simulation.respawn(client.id,message.classId,validPoint,message.weaponId,message.sidearmId)){
         const spawned=simulation.players.get(client.id);
         client.classId=spawned.classId;client.weaponId=spawned.primaryWeaponId;client.sidearmId=spawned.sidearmId;
