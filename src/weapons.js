@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { smoothRingSeams } from './character-geometry.js';
-import { gloveSurface } from './glove-geometry.js';
+import { createBakedGlove } from './fps-glove-mesh.js';
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
 // its own depth pass by GameRenderer; no material is allowed to see through it.
@@ -69,18 +69,23 @@ export function createWeaponRig(owner = {}) {
     leatherPixels[i]=leatherPixels[i+1]=leatherPixels[i+2]=grain;
   }
   const glove=mat('glove-tactical-fabric',0x51544d,.95,0,{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.00045});
+  const bakedGloveMat=mat('glove-anatomical-vertex-tints',0x999989,.96,0,{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.0002,vertexColors:true});
   const leather=mat('glove-leather-palms',0x665b4e,.88,0,{map:leatherGrain,bumpMap:leatherGrain,bumpScale:.0004});
   const glovePanel=mat('glove-reinforced-panels',0x8d8979,.96,0,{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.00028});
   const gloveThread=mat('glove-contrast-thread',0xb9b09b,.97,0);
   const seam=mat('glove-stitched-seams',0x969078,.97,0);
   const knuckle=mat('glove-knuckle-protection',0x323735,.96,0,{map:leatherGrain,bumpMap:leatherGrain,bumpScale:.00022});
+  // First-person proportions: easy to tune without re-baking or changing animation anchors.
+  const ARM_BULK = 1.12;       // +12% circumference/radius, visually stronger sleeves
+  const CUFF_BULK = 1.10;      // +10%, overlapping the glove wrist
+  const GLOVE_BULK = 1.055;    // +5.5%, retains precise weapon contact
   const clothMap = owner.surfaces?.maps?.cloth || null;
   const cloth = mat('sleeve-ripstop-cloth', 0x68745c, .98, 0, clothMap ? { map: clothMap } : {});
   const cuff=mat('sleeve-elastic-cuff',0x384638,.99,0);
   const brass=mat('weapon-brass-details',0xb89b59,.45,.77);
   const label=mat('weapon-engraved-markings',0xabb0a8,.75,.3);
   const lens=mat('lens-coated-glass',0x527780,.12,.22,{transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide});
-  const unitBox=new RoundedBoxGeometry(1,1,1,1,.09);ownedGeometries.add(unitBox);
+  const unitBox=new RoundedBoxGeometry(1,1,1,2,.075);ownedGeometries.add(unitBox);
   const unitSphere=new THREE.SphereGeometry(1,18,12);ownedGeometries.add(unitSphere);
   const detailBox = new THREE.BoxGeometry(1,1,1);
   function mesh(parent,geometry,material,x=0,y=0,z=0){ownedGeometries.add(geometry);const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=false;m.receiveShadow=false;parent.add(m);return m;}
@@ -92,7 +97,7 @@ export function createWeaponRig(owner = {}) {
   function shapePath(points){const s=new THREE.Shape();points.forEach(([z,y],i)=>i?s.lineTo(-z,y):s.moveTo(-z,y));s.closePath();return s;}
   function profile(parent,points,width,material,{x=0,holes=[],bevel=.0025}={}){
     const shape=shapePath(points);for(const points of holes){const p=new THREE.Path();points.forEach(([z,y],i)=>i?p.lineTo(-z,y):p.moveTo(-z,y));p.closePath();shape.holes.push(p);}
-    const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:bevel>0,bevelSegments:1,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:4});g.rotateY(Math.PI/2);g.translate(x-width/2,0,0);return mesh(parent,g,material);
+    const g=new THREE.ExtrudeGeometry(shape,{depth:width,bevelEnabled:bevel>0,bevelSegments:2,steps:1,bevelSize:bevel,bevelThickness:bevel,curveSegments:4});g.rotateY(Math.PI/2);g.translate(x-width/2,0,0);return mesh(parent,g,material);
   }
   function curve(parent,points,radius,material,segments=10,radial=6){const path=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));return mesh(parent,new THREE.TubeGeometry(path,Math.min(segments,12),radius,Math.min(radial,6),false),material);}
   function loft(parent,points,radii,material,{segments=20,radial=12,ellipse=[1,1],folds=0,widthAxis=null}={}){
@@ -322,6 +327,164 @@ export function createWeaponRig(owner = {}) {
   for (const z of [.046,.195]) screw(feedCover,-.055,.014,z,.006);
   for (const z of [-.14,-.115,-.09,-.065]) cylinder(supportAttachment,-.061,.056,z,.0045,.04,brass,'x',12);
 
+  // ---- BF-style surface passes: silhouette first, then manufactured details. ----
+  // All geometry is static, batched per material, and only the selected
+  // weapon's detail group is visible.  No textures, network, or new libraries.
+  const barrelFinish=mat('weapon-barrel-parkerized',0x303a39,.56,.65,{bumpMap:metalGrain,bumpScale:.00018});
+  const serrated=mat('weapon-grip-checkering',0x29312d,.93,.03,{bumpMap:polymerGrain,bumpScale:.00038});
+  const paint=mat('weapon-cerakote-wear',0x888d7a,.79,.32);
+  const variantDetails={};
+  for(const key of ['ar416','ak12','mcx9','vk45','mg36','pkp','dmr12','sv98']){
+    const group=new THREE.Group();group.name=`${key}-hero-detail`;group.visible=false;
+    weapon.add(group);variantDetails[key]=group;
+  }
+  // Receiver wear strips, bolt raceway, individual stamped body panels.
+  // Important lateral features are on BOTH faces, not invisible coplanar planes.
+  for(const sign of [-1,1]){
+    const sx=sign*.0504;
+    profile(receiver,[[-.187,.031],[-.164,.045],[.054,.045],[.071,.035],[-.062,.030],[-.149,.024]],
+      .0015,anodized,{x:sx,bevel:.0005});
+    profile(receiver,[[-.148,-.031],[-.051,-.03],[-.027,-.047],[-.12,-.055]],
+      .0015,dark,{x:sx,bevel:.0004});
+    for(let i=0;i<5;i++){
+      const z=-.174+i*.027;
+      const g=detail(receiver,sign*.0512,-.024,z,.0012,.0026,.014,dark);
+      g.rotation.x=.20;
+    }
+    for(const z of [-.194,-.162,-.052,.041]){
+      cylinder(receiver,sign*.0518,.034,z,.003,.0014,dark,'x',10);
+      cylinder(receiver,sign*.0535,.034,z,.0015,.0015,edge,'x',8);
+    }
+  }
+  // A shallow raised continuous upper receiver and genuinely layered rail base.
+  profile(receiver,[[-.214,.067],[-.194,.082],[-.055,.084],[.052,.081],[.074,.071]],
+    .077,metal,{bevel:.0014});
+  for(const side of [-1,1]){
+    curve(receiver,[[side*.040,.052,-.196],[side*.041,.068,-.168],[side*.041,.068,.026]],
+      .00135,paint,14,5);
+  }
+  // Extra handguard machining which follows the shared fore-end on all rifles.
+  // These strips sit on the exterior so holes retain their parallax/depth.
+  for(const side of [-1,1]){
+    for(let k=0;k<5;k++){
+      const z=-.059-k*.056;
+      const slot=rounded(handguard,side*.0502,-.001,z,.0025,.008,.038,dark);
+      slot.rotation.x=.08;
+      rounded(handguard,side*.0518,-.014,z,.0014,.0017,.028,paint);
+    }
+    profile(handguard,[[-.016,.022],[-.343,.022],[-.354,.013],[-.335,.009],[-.029,.009]],
+      .003,metal,{x:side*.0485,bevel:.0004});
+  }
+  // AR416: heavy forged upper, bolt-forward-assist hump, vent collars.
+  {
+    const g=variantDetails.ar416;
+    for(const side of [-1,1]){
+      const panel=profile(g,[[-.203,.010],[-.173,.030],[-.050,.029],[-.014,.012],[-.052,-.028],[-.163,-.028]],
+        .003,polymer,{x:side*.0528,bevel:.0014});
+      for(let k=0;k<3;k++)detail(g,side*.0565,-.017,-.17+k*.032,.0013,.004,.022,serrated);
+      cylinder(g,side*.0582,.022,-.019,.010,.010,edge,'x',16);
+      cylinder(g,side*.063,.022,-.019,.006,.002,dark,'x',12);
+    }
+    for(const z of [-.25,-.37,-.49])ring(g,0,.015,z,.016,.015,.012,barrelFinish,'z',14);
+  }
+  // AK-12: tall dust cover, stamped safety and a prominent gas tube.
+  {
+    const g=variantDetails.ak12;
+    profile(g,[[-.203,.040],[-.182,.074],[.052,.073],[.09,.04],[.049,.030],[-.186,.032]],
+      .087,barrelFinish,{bevel:.003});
+    for(const side of [-1,1]){
+      profile(g,[[.079,-.008],[.028,-.009],[-.045,-.040],[-.137,-.041],[-.142,-.063],[.053,-.027]],
+        .003,metal,{x:side*.054,bevel:.001});
+      curve(g,[[side*.057,-.047,-.15],[side*.058,-.043,-.073],[side*.059,-.049,.050]],
+        .0027,edge,10,7);
+      for(let k=0;k<3;k++)screw(g,side*.061,-.023,.045-k*.074,.0038);
+    }
+    rounded(g,0,.091,-.40,.045,.024,.275,barrelFinish);
+    cylinder(g,0,.092,-.50,.018,.046,edge,'z',16);
+    for(const z of [-.325,-.40,-.47])rounded(g,0,.105,z,.054,.007,.009,metal);
+    for(const z of [-.31,-.39,-.47])for(const x of [-.039,.039])
+      detail(g,x,-.012,z,.005,.047,.008,serrated);
+  }
+  // MCX: distinct compact monolithic upper and machined M-LOK-esque cheek.
+  {
+    const g=variantDetails.mcx9;
+    profile(g,[[-.196,-.022],[-.18,.064],[.107,.064],[.123,.039],[.085,-.041]],
+      .086,barrelFinish,{bevel:.002});
+    for(const side of [-1,1]){
+      profile(g,[[-.206,.014],[-.024,.014],[.035,-.010],[-.037,-.026],[-.19,-.021]],
+        .003,anodized,{x:side*.055,bevel:.001});
+      for(let i=0;i<6;i++)detail(g,side*.059,-.012,-.174+i*.028,.002,.009,.014,serrated);
+    }
+    rounded(g,0,.069,.118,.068,.015,.057,metal);
+    for(const z of [-.271,-.318,-.372])ring(g,0,.014,z,.021,.016,.007,edge,'z',16);
+  }
+  // VK45: sculpted recoil vector housing, angled cooling channels.
+  {
+    const g=variantDetails.vk45;
+    for(const side of [-1,1]){
+      profile(g,[[-.245,-.036],[-.119,-.042],[-.097,-.137],[-.160,-.240],[-.226,-.224]],
+        .004,barrelFinish,{x:side*.044,bevel:.0015});
+      for(let i=0;i<4;i++){
+        const z=-.13-i*.018;
+        const vent=detail(g,side*.051,-.125-i*.018,z,.002,.009,.022,serrated);
+        vent.rotation.x=-.44;
+      }
+      for(const y of [-.16,-.20])screw(g,side*.053,y,-.173,.004);
+    }
+    rounded(g,0,.064,-.34,.060,.024,.14,barrelFinish);
+  }
+  // MG36: reinforced receiver, cooling vents and prominent top handle.
+  {
+    const g=variantDetails.mg36;
+    for(const side of [-1,1]){
+      profile(g,[[-.216,-.031],[-.168,.061],[.080,.060],[.124,.016],[.098,-.047]],
+        .003,anodized,{x:side*.054,bevel:.002});
+      for(let i=0;i<6;i++)rounded(g,side*.058,-.014,-.17+i*.036,.003,.009,.022,barrelFinish);
+    }
+    curve(g,[[0,.079,-.22],[0,.139,-.245],[0,.16,-.32],[0,.16,-.37],[0,.09,-.39]],
+      .006,metal,18,10);
+    rounded(g,0,.158,-.342,.038,.022,.090,serrated);
+    for(const z of [-.44,-.49,-.54])ring(g,0,.015,z,.023,.018,.01,barrelFinish,'z',16);
+  }
+  // PKP: stronger steel handguard/cooling jacket, large top cover hinge.
+  {
+    const g=variantDetails.pkp;
+    profile(g,[[-.225,.038],[-.166,.090],[.070,.090],[.120,.056],[.094,.023]],
+      .099,barrelFinish,{bevel:.003});
+    for(const z of [-.30,-.36,-.42,-.48]){
+      ring(g,0,.022,z,.031,.027,.011,metal,'z',16);
+      for(const side of [-1,1])detail(g,side*.054,.018,z,.004,.018,.012,serrated);
+    }
+    for(const side of [-1,1]){
+      cylinder(g,side*.057,.062,-.15,.011,.007,edge,'x',14);
+      for(let i=0;i<5;i++)detail(g,side*.057,.043,-.125+i*.040,.002,.005,.016,dark);
+    }
+  }
+  // DMR: match receiver, cheekpiece, floated barrel interface and scope knobs.
+  {
+    const g=variantDetails.dmr12;
+    for(const side of [-1,1]){
+      profile(g,[[-.218,-.029],[-.186,.043],[-.054,.052],[.088,.039],[.112,-.039]],
+        .002,anodized,{x:side*.053,bevel:.001});
+      for(const z of [-.155,-.094,-.048])screw(g,side*.055,-.020,z,.004);
+    }
+    rounded(g,0,.029,.385,.084,.027,.115,serrated);
+    for(const z of [-.36,-.42,-.48])ring(g,0,.015,z,.019,.014,.008,barrelFinish,'z',18);
+  }
+  // SV98: bolt-action tube/cheek rest and ventilated stock sides.
+  {
+    const g=variantDetails.sv98;
+    cylinder(g,0,.037,-.044,.036,.32,barrelFinish,'z',20);
+    for(const side of [-1,1]){
+      profile(g,[[.195,-.010],[.440,-.010],[.443,-.045],[.209,-.044]],
+        .006,polymer,{x:side*.044,bevel:.0015});
+      for(let i=0;i<5;i++)detail(g,side*.049,-.012,.243+i*.034,.0016,.009,.011,serrated);
+      cylinder(g,side*.062,.044,.069,.010,.033,edge,'x',14);
+      cylinder(g,side*.078,.044,.069,.008,.008,barrelFinish,'x',14);
+    }
+    for(const z of [-.62,-.69,-.75])ring(g,0,.015,z,.020,.016,.008,barrelFinish,'z',16);
+  }
+
   // Aperture sights have actual holes and never cover the aiming centre.
   const ironSights=new THREE.Group();weapon.add(ironSights);
   rounded(ironSights,0,.095,.043,.058,.034,.032,dark);
@@ -370,6 +533,18 @@ export function createWeaponRig(owner = {}) {
   ring(reflex,0,.166,-.09,.035,.026,.009,edge,'z',24);
   cylinder(reflex,0,.166,-.105,.025,.002,lens,'z',24);
   cylinder(reflex,.038,.16,-.12,.011,.013,edge,'x',16);
+  // Additional machined optic details for near-camera first-person inspection.
+  for(const side of [-1,1]){
+    rounded(reflex,side*.036,.137,-.117,.006,.031,.063,metal);
+    cylinder(reflex,side*.040,.155,-.109,.008,.006,edge,'x',12);
+    cylinder(reflex,side*.043,.155,-.109,.0035,.003,dark,'x',10);
+  }
+  ring(reflex,0,.166,-.146,.035,.027,.008,edge,'z',20);
+  for(let i=0;i<12;i++){
+    const a=i/12*Math.PI*2;
+    const screwX=Math.cos(a)*.029,screwY=.166+Math.sin(a)*.029;
+    if(i%3===0)cylinder(reflex,screwX,screwY,-.149,.0024,.002,metal,'z',8);
+  }
   const redDot = new THREE.MeshBasicMaterial({color:0xffab78,toneMapped:false});
   redDot.name='weapon-optic-emitter';ownedMaterials.add(redDot);
   cylinder(reflex,0,.166,-.103,.0017,.001,redDot,'z',10);
@@ -394,77 +569,27 @@ export function createWeaponRig(owner = {}) {
 
   // Tailored sleeves: elbow volume, tapered wrists and oblique tension folds.
   const leftArm=new THREE.Group();leftArm.name='left-articulated-forearm';weapon.add(leftArm);
-  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.092,.09,.083,.071,.06,.047,.041],cloth,{segments:32,radial:18,ellipse:[1.1,.88],folds:.105});
-  loft(leftArm,[[-.108,-.129,-.311],[-.095,-.119,-.34],[-.083,-.108,-.361]],[.049,.047,.044],cuff,{segments:14,radial:24,ellipse:[1.07,.92],folds:.07});
+  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.092,.09,.083,.071,.06,.047,.041].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.1,.88],folds:.105});
+  loft(leftArm,[[-.108,-.129,-.311],[-.095,-.119,-.34],[-.083,-.108,-.361]],[.049,.047,.044].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.07,.92],folds:.07});
   curve(leftArm,[[-.385,-.406,.23],[-.268,-.262,.04],[-.167,-.148,-.18],[-.086,-.071,-.338]],.0018,seam,32,6);
   for(let i=0;i<3;i++)curve(leftArm,[[-.206-i*.014,-.197-i*.012,-.123+i*.022],[-.17-i*.014,-.154-i*.012,-.16+i*.022],[-.135-i*.014,-.153-i*.012,-.167+i*.022]],.0025,cloth,8,6);
   loft(leftArm,[[-.18,-.157,-.161],[-.144,-.129,-.224],[-.115,-.105,-.28]],[.021,.03,.022],cloth,{segments:12,radial:10,ellipse:[1,.16],widthAxis:[1,0,0]});
   const leftTab=rounded(leftArm,-.108,-.077,-.327,.039,.008,.024,cuff);leftTab.rotation.z=-.35;
   for(let i=0;i<6;i++)detail(leftArm,-.123+i*.005,-.071,-.325,.002,.0015,.009,seam);
   const rightArm=new THREE.Group();weapon.add(rightArm);
-  loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.097,.094,.084,.073,.058,.047,.04],cloth,{segments:32,radial:18,ellipse:[1.08,.9],folds:.09});
-  loft(rightArm,[[.089,-.23,.151],[.074,-.212,.129],[.062,-.198,.112]],[.052,.049,.044],cuff,{segments:14,radial:24,ellipse:[1.06,.94],folds:.06});
+  loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.097,.094,.084,.073,.058,.047,.04].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.08,.9],folds:.09});
+  loft(rightArm,[[.089,-.23,.151],[.074,-.212,.129],[.062,-.198,.112]],[.052,.049,.044].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.06,.94],folds:.06});
   curve(rightArm,[[.323,-.441,.42],[.247,-.324,.29],[.161,-.226,.172],[.102,-.181,.112]],.0018,seam,32,6);
   const rightTab=rounded(rightArm,.101,-.196,.14,.026,.013,.035,cuff);rightTab.rotation.z=.3;
   const leftHand=new THREE.Group();leftHand.name='left-support-glove';leftHand.position.set(-.018,-.075,-.36);weapon.add(leftHand);
   const leftBase=leftHand.position.clone(), lp=p=>[p[0]-leftBase.x,p[1]-leftBase.y,p[2]-leftBase.z];
-  function surfaceLine(parent,skin,t0,t1,angle,material=seam,radius=.00065){
-    const points=Array.from({length:11},(_,i)=>skin.point(THREE.MathUtils.lerp(t0,t1,i/10),angle,.001).toArray());
-    curve(parent,points,radius,material,12,6);
-  }
-  function surfaceStitches(parent,skin,t0,t1,angle,count){
-    for(let i=0;i<count;i++){
-      const t=THREE.MathUtils.lerp(t0,t1,(i+.5)/count);
-      curve(parent,[-.035,0,.035].map(offset=>skin.point(t,angle+offset,.0012).toArray()),.00045,gloveThread,3,4);
-    }
-  }
-  function palm(parent,points,widths,depths,across,{wrist=true}={}){
-    const skin=gloveSurface(points,widths,depths,{across,segments:36});
-    mesh(parent,skin.geometry,glove);
-    mesh(parent,skin.patch(.22,.92,.38,2.76),glovePanel);
-    mesh(parent,skin.patch(.29,.92,3.42,5.99),leather);
-    for(const angle of [.36,2.78]){
-      surfaceLine(parent,skin,.24,.89,angle);
-      surfaceStitches(parent,skin,.27,.86,angle,14);
-    }
-    // Thin wrist closure follows the wrist contour instead of a floating block.
-    if(wrist){
-      mesh(parent,skin.patch(.08,.20,.10,3.04,.0011),knuckle);
-      for(const angle of [.7,2.4])surfaceLine(parent,skin,.09,.19,angle,gloveThread,.0005);
-    }
-    return skin;
-  }
-  function finger(parent, points, radius, segments=32, across=[0,1,0]) {
-    const widths=[1,.98,.94,.88,.91,.82,.77,.79,.66,.48,.16].map(v=>v*radius);
-    const depths=[.86,.85,.81,.74,.79,.72,.67,.68,.59,.43,.14].map(v=>v*radius);
-    const skin=gloveSurface(points,widths,depths,{across,segments:Math.max(32,segments),radial:16});
-    mesh(parent,skin.geometry,glove);
-    // Separate flat phalange panels expose the flexible fabric at both joints.
-    for(const [from,to] of [[.07,.29],[.37,.58],[.69,.88]]){
-      mesh(parent,skin.patch(from,to,.38,2.76),glovePanel);
-      for(const angle of [.38,2.76])surfaceLine(parent,skin,from+.01,to-.01,angle,leather,.00045);
-    }
-    mesh(parent,skin.patch(.10,.94,3.40,6.02,.00055),leather);
-    for(const t of [.325,.635]){
-      curve(parent,Array.from({length:7},(_,i)=>skin.point(t,.35+i*2.44/6,.0008).toArray()),.00055,knuckle,8,4);
-    }
-    surfaceStitches(parent,skin,.12,.87,.30,9);
-    return skin;
-  }
-  // Wrist -> heel -> metacarpals. The palm spans the underside of the fore-end;
-  // fingers start at its far edge, so they do not trace an entire second palm.
-  palm(leftHand,[[-.089,-.113,-.352],[-.072,-.099,-.379],[-.037,-.065,-.419],
-    [.003,-.060,-.433]].map(lp),[.023,.029,.038,.043,.043],[.020,.021,.019,.016,.012],[0,0,1]);
-  for(let i=0;i<4;i++){
-    const z=-.465+i*.022, r=[.010,.0107,.0101,.0088][i], shorten=[.006,0,.005,.018][i];
-    finger(leftHand,[[.000,-.060,z],[.027,-.059,z],[.050,-.041,z+.001],
-      [.055,-.022-shorten,z+.003],[.046,-.004-shorten,z+.005]].map(lp),r,36,[0,0,1]);
-  }
-  // A low thumb lies along the near side, with a broad web sewn into the palm.
-  palm(leftHand,[[-.061,-.085,-.391],[-.058,-.070,-.405],[-.057,-.056,-.419]].map(lp),
-    [.020,.018,.012],[.014,.014,.010],[0,0,-1],{wrist:false});
-  finger(leftHand,[[-.057,-.062,-.407],[-.059,-.039,-.422],[-.054,-.021,-.443],
-    [-.048,-.019,-.458]].map(lp),.0115,32,[0,0,-1]);
+  // Offline-baked watertight anatomical left hand.  Unlike swept cylinders,
+  // fingers grow continuously out of the palm with a modeled thumb web and
+  // individual knuckle profiles.  The mesh is decoded ONCE when the rig loads;
+  // there is no voxel field or per-vertex generation in the render loop.
+  const supportGlove = createBakedGlove('support', bakedGloveMat);
+  ownedGeometries.add(supportGlove.geometry);
+  leftHand.add(supportGlove);
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
@@ -527,19 +652,21 @@ export function createWeaponRig(owner = {}) {
   }
 
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
-  palm(rightHand,[[.067,-.218,.126],[.056,-.191,.113],[.052,-.160,.100],[.048,-.133,.091]],
-    [.024,.030,.032,.030,.025],[.020,.020,.019,.017,.014],[0,0,1]);
-  for(let i=0;i<3;i++){
-    const y=-.153-i*.023, short=i*.003;
-    finger(rightHand,[[.046,y,.082],[.048,y-.003,.058],[.029,y-.006,.040],
-      [-.007,y-.005,.041],[-.029+short,y,.060-short]],.0105-i*.0008);
-  }
-  // Index finger reaches the trigger rather than becoming a fourth grip block.
+  // The pistol grip also receives a sculpted palm/finger junction. Its trigger
+  // finger remains posed in the static hand mesh while firing recoil moves the
+  // entire weapon/arm, avoiding dozens of draw calls or CPU skinning work.
+  const triggerGloveModel=createBakedGlove('trigger',bakedGloveMat);
+  ownedGeometries.add(triggerGloveModel.geometry);
+  // Scale around the palm center, NOT the weapon origin: no artificial grip offset.
+  triggerGloveModel.scale.set(GLOVE_BULK,GLOVE_BULK,GLOVE_BULK);
+  triggerGloveModel.position.set(.050*(1-GLOVE_BULK),-.170*(1-GLOVE_BULK),.105*(1-GLOVE_BULK));
+  rightHand.add(triggerGloveModel);
   const triggerFinger=new THREE.Group();
-  triggerFinger.position.set(.055,-.129,.098);
-  rightHand.add(triggerFinger);
-  finger(triggerFinger,[[0,0,0],[.005,.022,-.035],[-.004,.034,-.068],[-.027,.035,-.083],[-.040,.027,-.079]],.0095);
-  finger(rightHand,[[.049,-.131,.116],[.026,-.113,.135],[-.005,-.112,.129],[-.028,-.127,.105]],.0125);
+  triggerFinger.position.set(.055,-.129,.098);rightHand.add(triggerFinger);
+  const triggerIndexModel=createBakedGlove('index',bakedGloveMat);
+  ownedGeometries.add(triggerIndexModel.geometry);
+  triggerIndexModel.scale.setScalar(GLOVE_BULK);
+  triggerFinger.add(triggerIndexModel);
 
   const flashMaterial=new THREE.MeshBasicMaterial({name:'muzzle-flash',color:0xffd08a,transparent:true,opacity:.92,depthTest:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});ownedMaterials.add(flashMaterial);
   const muzzleFlash=new THREE.Group();weapon.add(muzzleFlash);muzzleFlash.visible=false;
@@ -634,6 +761,27 @@ export function createWeaponRig(owner = {}) {
       rounded(slide,side*.017,.052,.109,.012,.014,.026,dark);
       detail(slide,side*.017,.053,.123,.006,.006,.002,sightDot);
     }
+    // Slide serrations, textured grip and inset controls read properly at FOV 70-95.
+    for(const side of [-1,1]){
+      const x=side*(half+.0007);
+      profile(slide,[[front+.021,-.004],[front+.115,-.004],[front+.113,.007],[front+.028,.009]],
+        .0015,heavy?dark:metal,{x,bevel:.0003});
+      for(let n=0;n<8;n++){
+        const z=front+.024+n*.010;
+        const cut=detail(slide,side*(half+.0018),.018,z,.0012,.028,.0024,dark);
+        cut.rotation.x=heavy?-.12:.19;
+      }
+      const gripSide=side*(gripWidth*.5+.0015);
+      for(let row=0;row<4;row++)for(let col=0;col<5;col++){
+        // Polymer diamond checkering, less shiny than a solid flat grip slab.
+        const y=-.126-row*.019,z=.065+col*.009+row*.007;
+        const mark=detail(root,gripSide,y,z,.0015,.004,.0035,serrated);
+        mark.rotation.x=-.29;
+      }
+      cylinder(root,side*(gripWidth*.5+.002),-.076,.068,.006,.003,metal,'x',12);
+      cylinder(root,side*(gripWidth*.5+.004),-.076,.068,.003,.003,dark,'x',10);
+      detail(slide,side*(half+.002),.026,.008,.002,.018,.037,heavy?paint:barrelFinish);
+    }
     engraving(slide,heavy?'M50':'P19',-.077,.026,heavy?.0031:.00275,-half-.0006);
     rounded(slide,0,.052,front+.027,.012,.014,.024,dark);
     detail(slide,0,.054,front+.039,.006,.006,.002,sightDot);
@@ -653,43 +801,27 @@ export function createWeaponRig(owner = {}) {
   leftHand.add(rifleGlove);
   const pistolGlove=new THREE.Group();leftHand.add(pistolGlove);
   pistolGlove.name='pistol-support-glove';
-  const supportPoint=([x,y,z])=>lp([x-.035,y-.08,z-.423]);
-  const supportPath=points=>points.map(supportPoint);
-  palm(pistolGlove,supportPath([[-.058,-.035,.075],[-.041,-.023,.052],[-.018,-.009,.025],
-    [-.009,-.004,-.014]]),[.022,.025,.032,.035,.033],[.019,.018,.016,.014,.011],[0,-1,0]);
-  const supportFingers=[];
-  for(const [index,y] of [.021,.003,-.014,-.029].entries()){
-    const inset=index*.003;
-    const root=[-.009,y,-.015+inset];
-    const digit=new THREE.Group();
-    digit.position.set(...supportPoint(root));
-    pistolGlove.add(digit);
-    supportFingers.push(digit);
-    finger(digit,[[0,0,0],[.012,-.004,-.022],[.03,-.007,-.039+inset],
-      [.046-inset,-.005,-.037+inset],[.052-inset,.001,-.031+inset]],.0096-index*.0007);
-  }
-  const supportThumb=new THREE.Group();
-  supportThumb.position.set(...supportPoint([-.017,.014,.023]));
-  pistolGlove.add(supportThumb);
-  finger(supportThumb,[[0,0,0],[-.007,.030,-.014],[-.001,.052,-.043],
-    [.007,.055,-.068],[.009,.050,-.078]],.0115);
+  const pistolSupportMesh=createBakedGlove('pistolSupport',bakedGloveMat);
+  ownedGeometries.add(pistolSupportMesh.geometry);
+  // Expansion about existing grip point: fits a human forearm without floating away from the pistol.
+  const supportGripPivot = new THREE.Vector3(...lp([-.035,-.08,-.423]));
+  pistolSupportMesh.scale.setScalar(GLOVE_BULK);
+  pistolSupportMesh.position.copy(supportGripPivot).sub(supportGripPivot.clone().multiply(pistolSupportMesh.scale));
+  pistolGlove.add(pistolSupportMesh);
 
   const pistolRight=new THREE.Group();pistolRight.name='pistol-trigger-glove';weapon.add(pistolRight);
-  palm(pistolRight,[[.072,-.222,.142],[.058,-.197,.127],[.048,-.166,.110],
-    [.041,-.130,.094]],[.024,.027,.030,.029,.024],[.020,.019,.017,.016,.013],[0,0,1]);
-  for(const [index,y] of [-.14,-.164,-.187].entries()){
-    const inset=index*.003, front=.035-inset;
-    finger(pistolRight,[[.044,y,.088],[.049,y-.004,.062],[.032,y-.008,front+.008],
-      [.009,y-.008,front],[-.014+inset,y-.006,front+.003],[-.026+inset,y-.002,front+.015]],
-      .0105-index*.00085);
-  }
-  finger(pistolRight,[[.044,-.127,.123],[.022,-.112,.144],[-.005,-.102,.136],
-    [-.023,-.100,.114],[-.031,-.104,.089]],.013);
+  const pistolGripMesh=createBakedGlove('pistolTrigger',bakedGloveMat);
+  ownedGeometries.add(pistolGripMesh.geometry);
+  pistolGripMesh.scale.setScalar(GLOVE_BULK);
+  pistolGripMesh.position.set(.050*(1-GLOVE_BULK),-.170*(1-GLOVE_BULK),.105*(1-GLOVE_BULK));
+  pistolRight.add(pistolGripMesh);
   const pistolIndex=new THREE.Group();
   pistolIndex.position.set(.044,-.122,.083);
   pistolRight.add(pistolIndex);
-  finger(pistolIndex,[[0,0,0],[.010,.023,-.026],[.005,.029,-.054],
-    [-.022,.028,-.073],[-.036,.019,-.078]],.010);
+  const pistolIndexMesh=createBakedGlove('pistolIndex',bakedGloveMat);
+  ownedGeometries.add(pistolIndexMesh.geometry);
+  pistolIndexMesh.scale.setScalar(GLOVE_BULK);
+  pistolIndex.add(pistolIndexMesh);
 
   // Merge each rigid island by material. Articulated groups remain independent.
   function batch(group){
@@ -697,7 +829,7 @@ export function createWeaponRig(owner = {}) {
     const materials=new Map();for(const child of group.children)if(child.isMesh&&!Array.isArray(child.material)){if(!materials.has(child.material))materials.set(child.material,[]);materials.get(child.material).push(child);}
     for(const [material,meshes]of materials){if(meshes.length<2)continue;const parts=meshes.map(m=>{m.updateMatrix();const g=m.geometry.clone().applyMatrix4(m.matrix);const n=g.index?g.toNonIndexed():g; if(n!==g)g.dispose();return n;});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!geometry)continue;ownedGeometries.add(geometry);const merged=new THREE.Mesh(geometry,material);merged.name=`batched-${material.name}`;group.add(merged);for(const m of meshes)m.removeFromParent();}
   }
-  for(const island of [receiver,handguard,barrelCore,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight,...Object.values(pistols).map(p=>p.root)])batch(island);
+  for(const island of [receiver,handguard,barrelCore,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,...Object.values(variantDetails),scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight,...Object.values(pistols).map(p=>p.root)])batch(island);
   // Dispose unreferenced source buffers after batching, retaining reused shapes.
   const liveGeometry=new Set();weapon.traverse(o=>{if(o.geometry)liveGeometry.add(o.geometry);});for(const geometry of ownedGeometries)if(!liveGeometry.has(geometry)){geometry.dispose();ownedGeometries.delete(geometry);}
   const loadouts = {
@@ -822,13 +954,8 @@ export function createWeaponRig(owner = {}) {
       palmTarget.lerp(actionTarget, weight);
     }
 
-    if(pistol){
-      for(const [index,digit] of supportFingers.entries()){
-        digit.rotation.y=open*(.42+index*.04);
-        digit.rotation.z=-open*(index-1.5)*.07;
-      }
-      supportThumb.rotation.z=-open*.28;
-    }
+    // The sculpted pistol support glove retains a stable gripping silhouette.
+    // (Its whole hand is still animated by leftHand rotation and translation.)
     leftHand.rotation.set(rotX, rotY, rotZ);
     palmOffset.copy(palmLocal);
     if(!pistol)palmOffset.multiply(rifleGlove.scale);
@@ -840,7 +967,7 @@ export function createWeaponRig(owner = {}) {
     if(!pistol)wristDirection.multiply(rifleGlove.scale);
     wristDirection.applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
     // Extend the cloth cuff into the glove so it stays joined at every wrist angle.
-    armScale.z = (wristDirection.length()+(pistol ? .020 : .012))/armLength;
+    armScale.z = (wristDirection.length()+(pistol ? .024 : .017))/armLength;
     armRotation.setFromUnitVectors(armAxis,wristDirection.normalize());
     leftArm.matrix.compose(shoulder,armRotation,armScale).multiply(restArmInverse);
     leftArm.matrixWorldNeedsUpdate = true;
@@ -855,7 +982,7 @@ export function createWeaponRig(owner = {}) {
     if(team !== previousTeam){
       previousTeam = team;
       for(const [material, color] of [[cloth,team?0xc1ab85:0x849783],[glove,team?0x6b6256:0x51544d],
-        [glovePanel,team?0xa4987e:0x8d8979],[cuff,team?0x605942:0x384638]]){
+        [glovePanel,team?0xa4987e:0x8d8979],[bakedGloveMat,team?0xb7a18a:0x999989],[cuff,team?0x605942:0x384638]]){
         material.color.setHex(color);
         material._lowMaterial?.color.setHex(color);
         material._highMaterial?.color.setHex(color);
@@ -872,7 +999,7 @@ export function createWeaponRig(owner = {}) {
       visiblePistol = pistol;
       rifleAssembly.visible = !pistol;
       rifleGlove.visible = !pistol;
-      rifleGlove.scale.x = loadout.width;
+      rifleGlove.scale.set(loadout.width*GLOVE_BULK,GLOVE_BULK,GLOVE_BULK);
       pistolGlove.visible = Boolean(pistol);
       rightHand.visible = !pistol;
       pistolRight.visible = Boolean(pistol);
@@ -891,6 +1018,7 @@ export function createWeaponRig(owner = {}) {
       suppressor.position.set(0,.015,end-.035);
       muzzle.visible = !recon && !isVk;
       supportAttachment.visible = support;
+      for(const [id,group] of Object.entries(variantDetails))group.visible=id===key;
       akVariant.visible = isAk;
       vkVariant.visible = isVk;
       pkpVariant.visible = isPkp;
