@@ -34,8 +34,9 @@ aside { padding: 1rem; background: var(--surface); min-width: 0; overflow: auto;
 .library h2 { margin-bottom: .1rem; }
 .library input, .inspector input { width: 100%; }
 .assets { display: grid; align-content: start; gap: .35rem; overflow: auto; }
-.asset { display: flex; align-items: center; gap: .55rem; text-align: left; min-height: 42px; cursor: grab; }
-.swatch { width: 26px; height: 26px; flex: none; border-radius: 4px; border: 1px solid #d6ea9c55; background-size: cover; }
+.asset { display: grid; gap: .38rem; text-align: left; cursor: grab; padding: .38rem .45rem .55rem; }
+.asset-preview { display: grid; place-items: center; width: 100%; aspect-ratio: 1.8; overflow: hidden; border-radius: 4px; color: var(--subtle); font-size: .75rem; background: radial-gradient(ellipse at 50% 42%, #46574e, #26312d 67%, #202925); }
+.asset-preview img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .hint, small { color: var(--subtle); line-height: 1.45; font-size: .86rem; }
 .inspector { border-left: 1px solid var(--line); }
 #object-id { display: block; margin: .35rem 0 .85rem; overflow-wrap: anywhere; }

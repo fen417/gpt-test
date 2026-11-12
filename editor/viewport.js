@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createSurfaceMaterials } from '../src/visuals.js';
 import { CAPTURE_RADIUS } from '../shared/world.js';
 
-export function surfaceFor(kind) {
+function surfaceFor(kind) {
   if (kind === 'crate' || kind === 'port-rack') return 'wood';
   if (kind === 'tent' || kind === 'sandbags') return 'cloth';
   if (kind === 'wall' || kind === 'factory') return 'brick';
@@ -39,8 +39,8 @@ export class MapViewport {
     this.controls.minZoom = .45;
     this.controls.maxZoom = 36;
     this.controls.addEventListener('change', () => this.render());
-    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: false }).maps;
-    this.swatches = Object.fromEntries(Object.entries(this.surfaces).map(([name, map]) => [name, map.image.toDataURL()]));
+    this.surfaceMaterials = createSurfaceMaterials(this.renderer, { useBump: false });
+    this.surfaces = this.surfaceMaterials.maps;
     this.materials = new Map();
     this.raycaster = new THREE.Raycaster();
     this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);

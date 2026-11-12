@@ -342,14 +342,29 @@ export function addPortGround(owner, map) {
     owner.cylinder(scene, map.shoreX + .65, .32, z, .13, .62, m.steel);
     owner.rounded(scene, map.shoreX + .65, .62, z, .48, .12, .25, m.steel);
   }
-  addServiceRoads(owner, map, m);
-  for (const { x, z, quayTrack } of map.railTracks) {
+  addPortModels(owner, map, m);
+  portBackdrop(owner, m);
+  addPortSigns(owner, map.signs);
+}
+
+export function createPortModelBuilder(owner) {
+  const palette = portMaterials(owner);
+  return map => {
+    addPortModels(owner, map, palette);
+    addPortSigns(owner, map.signs);
+  };
+}
+
+function addPortModels(owner, map, m) {
+  const { scene } = owner;
+  if (map.roads?.length) addServiceRoads(owner, map, m);
+  for (const { x, z, quayTrack } of map.railTracks ?? []) {
     const span = quayTrack ? 355 : 445;
     const gauge = quayTrack ? .54 : 1.43;
     for (const side of [-1, 1]) owner.box(scene, x + side * gauge / 2, .071, z, .07, .11, span, m.steel, false);
     if (!quayTrack) for (let offset = -span / 2 + 1; offset < span / 2; offset += 2.1) owner.box(scene, x, .024, z + offset, 2.47, .05, .29, m.pallet, false);
   }
-  for (const box of map.boxes) {
+  for (const box of map.boxes ?? []) {
     switch (box.kind) {
       case 'port-container': stack(owner, scene, m, box); break;
       case 'port-rack': rack(owner, m, box); break;
@@ -367,11 +382,14 @@ export function addPortGround(owner, map) {
       }
     }
   }
-  for (const crane of map.cranes) cargoCrane(owner, m, crane);
-  for (const building of map.structures) warehouseInterior(owner, m, building);
+  for (const crane of map.cranes ?? []) cargoCrane(owner, m, crane);
+  for (const building of map.structures ?? []) warehouseInterior(owner, m, building);
   if (map.ship) containerShip(owner, m, map.ship);
-  portBackdrop(owner, m);
-  for (const site of map.signs) {
+}
+
+function addPortSigns(owner, signs = []) {
+  const { scene } = owner;
+  for (const site of signs) {
     const berth = makeSign(site.name, 'КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ', 4.3);
     berth.position.set(site.x, 2.2, site.z);
     berth.rotation.y = Math.PI / 2;

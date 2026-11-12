@@ -7,7 +7,6 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
 import { MAP_LAYOUT_REVISION, PROTOCOL_VERSION } from '../shared/world.js';
 import { packSnapshot } from '../shared/snapshot-codec.js';
-import { handleEditorApi } from './editor-api.js';
 
 const port=process.env.PORT===undefined?8080:Number(process.env.PORT);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist');
@@ -23,7 +22,6 @@ const server=http.createServer(async(req,res)=>{
   try{
     const url=new URL(req.url,'http://localhost');
     const pathname=decodeURIComponent(url.pathname);
-    if(pathname.startsWith('/api/editor/')){await handleEditorApi(req,res,pathname);return;}
     if(pathname==='/editor'){res.writeHead(308,{Location:'/editor/'});res.end();return;}
     const requested=pathname==='/'?'index.html':pathname==='/editor/'?'editor/index.html':pathname.replace(/^\/+/, '');
     const target=path.resolve(root,requested);

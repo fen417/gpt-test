@@ -1,7 +1,8 @@
 import './style.css';
 import { BASE_MAPS, MAP_EDITS } from '../shared/world.js';
 import { applyMapEdits, canCloneItem, canRemoveItem, constrainPosition, mapItems, validMapEdits } from '../shared/map-edits.js';
-import { MapViewport, surfaceFor } from './viewport.js';
+import { MapViewport } from './viewport.js';
+import { loadMap, publishMap } from './github.js';
 
 const $ = id => document.getElementById(id);
 const option = (value, text) => new Option(text, value);
@@ -41,7 +42,7 @@ const baseCatalogs = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, base
   [id, new Map(mapItems(base, true).map(item => [item.key, item]))]));
 
 let mapId = 'port', items, currentMap, selection = null, placing = null, drag = null;
-let password = '', pending = false;
+let githubToken = '', pending = false;
 const session = () => sessions[mapId];
 const base = () => BASE_MAPS[mapId];
 const catalog = () => baseCatalogs[mapId];
@@ -64,8 +65,10 @@ function remember(state, id = mapId) {
 }
 
 function updateButtons() {
-  $('save').disabled = pending || !password || !session().revision || !dirty(session());
+  $('save').disabled = pending || !githubToken || !session().revision || !dirty(session());
   $('connect').disabled = pending;
+  $('disconnect').hidden = !githubToken;
+  $('disconnect').disabled = pending;
   $('map').disabled = pending;
   $('undo').disabled = !session().undo.length;
   $('redo').disabled = !session().redo.length;
@@ -190,6 +193,25 @@ function removeSelected() {
   changeEdits(next, '');
 }
 
+const previewItems = new WeakMap();
+let previewLoader;
+const previewObserver = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const target = entry.target;
+    previewObserver.unobserve(target);
+    const { map, item } = previewItems.get(target);
+    previewLoader ??= import('./previews.js').then(({ createAssetPreviews }) => createAssetPreviews(viewport.surfaceMaterials));
+    void previewLoader.then(render => render(map, item)).then(src => {
+      const image = document.createElement('img');
+      image.alt = '';
+      image.draggable = false;
+      image.src = src;
+      target.replaceChildren(image);
+    }).catch(() => { target.textContent = 'Превью недоступно'; });
+  }
+}, { root: $('assets'), rootMargin: '120px' });
+
 function showAssets() {
   const filter = $('assets-search').value.trim().toLowerCase();
   const seen = new Set();
@@ -202,17 +224,15 @@ function showAssets() {
     const group = [kind, value.kind ?? value.type ?? title, value.levels, value.carType].join('/');
     if (seen.has(group) || !(title + ' ' + group).toLowerCase().includes(filter)) continue;
     seen.add(group);
-    const button = document.createElement('button'), swatch = document.createElement('span');
+    const button = document.createElement('button'), preview = document.createElement('span');
     button.className = 'asset';
     button.draggable = true;
     button.dataset.asset = key;
     button.setAttribute('aria-pressed', key === placing);
-    swatch.className = 'swatch';
-    const texture = kind === 'landform' ? 'ground' : kind === 'road' ? 'asphalt' : surfaceFor(value.kind ?? 'metal');
-    swatch.style.backgroundImage = 'url(' + viewport.swatches[texture] + ')';
-    swatch.style.backgroundColor = value.color ?? '#667b71';
-    swatch.style.backgroundBlendMode = 'multiply';
-    button.append(swatch, document.createTextNode(title));
+    preview.className = 'asset-preview';
+    preview.setAttribute('aria-hidden', 'true');
+    previewItems.set(preview, { map: base(), item });
+    button.append(preview, document.createTextNode(title));
     button.addEventListener('click', () => chooseAsset(placing === key ? null : key));
     button.addEventListener('dragstart', event => {
       event.dataTransfer.setData('text/plain', key);
@@ -222,7 +242,10 @@ function showAssets() {
     button.addEventListener('dragend', () => chooseAsset(null));
     buttons.push(button);
   }
-  $('assets').replaceChildren(...buttons);
+  const list = $('assets');
+  previewObserver.disconnect();
+  list.replaceChildren(...buttons);
+  for (const button of buttons) previewObserver.observe(button.firstElementChild);
 }
 
 function snap(value) {
@@ -277,24 +300,7 @@ canvas.addEventListener('pointerup', event => finishDrag(event, true));
 canvas.addEventListener('pointercancel', event => finishDrag(event, false));
 canvas.addEventListener('lostpointercapture', event => finishDrag(event, false));
 
-async function request(id, secret, body) {
-  const response = await fetch('/api/editor/maps/' + id, {
-    method: body ? 'PUT' : 'GET',
-    headers: { Authorization: 'Bearer ' + secret, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? serialize(body) : undefined,
-    cache: 'no-store',
-    redirect: 'error',
-    signal: AbortSignal.timeout(22000),
-  });
-  if (response.headers.get('x-map-editor') !== '1') {
-    throw new Error('Для публикации откройте /editor на выделенном сервере игры.');
-  }
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error);
-  return result;
-}
-
-async function connect(secret, recover = false) {
+async function connect(token, recover = false) {
   if (pending) return;
   const state = session();
   pending = true;
@@ -302,15 +308,9 @@ async function connect(secret, recover = false) {
   $('login-error').textContent = '';
   updateButtons();
   try {
-    if (!password || password !== secret) {
-      const probe = await fetch('/api/editor/maps/' + mapId, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(70000) });
-      if (probe.headers.get('x-map-editor') !== '1') {
-        throw new Error('Для публикации откройте /editor на выделенном сервере игры.');
-      }
-      if (probe.status !== 401) throw new Error((await probe.json()).error);
-    }
-    const remote = await request(mapId, secret);
-    if (!validMapEdits(base(), remote.edits)) throw new Error('Откройте редактор после обновления сервера.');
+    if (!/^github_pat_[a-zA-Z0-9_]+$/.test(token)) throw new Error('Введи fine-grained токен GitHub.');
+    const remote = await loadMap(mapId, token);
+    if (!validMapEdits(base(), remote.edits)) throw new Error('Данные карты изменились. Обнови страницу редактора.');
     if (dirty(state) && !same(state.original, remote.edits) && !same(state.edits, remote.edits)) {
       state.revision = null;
       if (!recover || !window.confirm('В GitHub появилась новая версия карты. Загрузить её и удалить локальный черновик? Черновик можно сначала скачать кнопкой «Скачать JSON».')) {
@@ -326,11 +326,10 @@ async function connect(secret, recover = false) {
     }
     state.original = remote.edits;
     state.revision = remote.sha;
-    password = secret;
+    githubToken = token;
     remember(state);
     $('connect').textContent = 'Сверить с GitHub';
     if ($('login').open) $('login').close();
-    $('password').value = '';
     rebuild();
     status(dirty(state) ? 'GitHub подключён. Черновик готов к сохранению.' : 'Загружена актуальная карта из main.');
   } catch (error) {
@@ -352,7 +351,7 @@ async function save() {
   $('commit').hidden = true;
   status('Сохраняю карту в main…');
   try {
-    const result = await request(mapId, password, { sha: state.revision, edits });
+    const result = await publishMap(mapId, githubToken, state.revision, edits);
     state.original = edits;
     state.revision = result.sha;
     remember(state);
@@ -372,7 +371,7 @@ $('map').addEventListener('change', () => {
   showAssets();
   rebuild('');
   status(dirty(session()) ? 'Восстановлен локальный черновик.' : 'Карта готова к редактированию.');
-  if (password) void connect(password);
+  if (githubToken) void connect(githubToken);
 });
 $('top').addEventListener('click', () => setView(false));
 $('angle').addEventListener('click', () => setView(true));
@@ -401,14 +400,25 @@ $('duplicate').addEventListener('click', () => {
 });
 $('remove').addEventListener('click', removeSelected);
 $('connect').addEventListener('click', () => {
-  $('password').value = password;
+  if (githubToken) { void connect(githubToken, true); return; }
   $('login-error').textContent = '';
   $('login').showModal();
 });
+$('disconnect').addEventListener('click', () => {
+  githubToken = '';
+  for (const state of Object.values(sessions)) state.revision = null;
+  $('connect').textContent = 'Подключить GitHub';
+  updateButtons();
+  status('GitHub отключён.');
+});
 $('cancel-login').addEventListener('click', () => $('login').close());
+$('login').addEventListener('close', () => { $('github-token').value = ''; });
 $('login-form').addEventListener('submit', event => {
   event.preventDefault();
-  void connect($('password').value, true);
+  const input = $('github-token');
+  const token = input.value.trim();
+  input.value = '';
+  void connect(token, true);
 });
 $('save').addEventListener('click', save);
 $('export').addEventListener('click', () => {

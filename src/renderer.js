@@ -100,6 +100,35 @@ function material(color, roughness = 0.85, metalness = 0.05, extra = {}) {
   return pairMaterials(highMat, lowMat);
 }
 
+function mapMaterials(surfaces) {
+  return {
+    concrete: surfaces.concrete, darkConcrete: material(0x414948), edge: material(0x929087),
+    asphalt: surfaces.asphalt, steel: material(0x323c3e, 0.55, 0.65), rust: material(0x735344, 0.8, 0.4),
+    roof: material(0x4e5655), window: material(0x23363e, 0.25, 0.4),
+    marking: material(0xb5b1a0, 0.85, 0.05, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+    sand: material(0x9c8e70, 0.95, 0.02), foliage: material(0x4c6444, 0.92, 0.02), foliageDark: material(0x3b5236, 0.95, 0.02),
+    tire: material(0x1e2223, 0.92, 0.05), glass: material(0x1c2f38, 0.18, 0.55), tailLight: material(0xb83228, 0.4, 0.2, { emissive: 0x6e1810, emissiveIntensity: 0.35 }),
+    pole: material(0x788185, 0.4, 0.75),
+    stripe: material(0xc49a38, 0.65, 0.2), skyline: material(0x697476), crane: material(0x776f57, 0.8, 0.4),
+    glow: new THREE.MeshBasicMaterial({ color: 0xffd8a1 }),
+  };
+}
+
+function mapGeometry() {
+  return {
+    box: new THREE.BoxGeometry(1, 1, 1),
+    cylinder: new THREE.CylinderGeometry(1, 1, 1, 10),
+    sphere: new THREE.SphereGeometry(1, 10, 8),
+    rounded: new RoundedBoxGeometry(1, 1, 1, 1, 0.12),
+  };
+}
+
+export function createMapModelBuilder(surfaces) {
+  const { box, cylinder, rounded, buildMapBoxes } = GameRenderer.prototype;
+  return { box, cylinder, rounded, buildMapBoxes, materials: mapMaterials(surfaces),
+    geo: mapGeometry(), surfaces, surfaceCache: new Map(), random: seeded(), createMaterial: material };
+}
+
 export class GameRenderer {
   constructor(canvas, { onError, antialias = 'auto' } = {}) {
     this.canvas = canvas;
@@ -216,10 +245,7 @@ export class GameRenderer {
     this.scene.add(this.sun, this.sun.target);
     this.updateSunShadow(0, 0);
     this.geo = {
-      box: new THREE.BoxGeometry(1, 1, 1),
-      cylinder: new THREE.CylinderGeometry(1, 1, 1, 10),
-      sphere: new THREE.SphereGeometry(1, 10, 8),
-      rounded: new RoundedBoxGeometry(1, 1, 1, 1, 0.12),
+      ...mapGeometry(),
       shell: new THREE.CylinderGeometry(.009, .009, .043, 6),
       gadgetRing: new THREE.RingGeometry(0.82, 1.0, 28),
     };
@@ -241,17 +267,7 @@ export class GameRenderer {
       if (m) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
     }
     this.atmosphere = makeSky(this.scene, this.renderer);
-    this.materials = {
-      concrete: this.surfaces.concrete, darkConcrete: material(0x414948), edge: material(0x929087),
-      asphalt: this.surfaces.asphalt, steel: material(0x323c3e, 0.55, 0.65), rust: material(0x735344, 0.8, 0.4),
-      roof: material(0x4e5655), window: material(0x23363e, 0.25, 0.4),
-      marking: material(0xb5b1a0, 0.85, 0.05, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
-      sand: material(0x9c8e70, 0.95, 0.02), foliage: material(0x4c6444, 0.92, 0.02), foliageDark: material(0x3b5236, 0.95, 0.02),
-      tire: material(0x1e2223, 0.92, 0.05), glass: material(0x1c2f38, 0.18, 0.55), tailLight: material(0xb83228, 0.4, 0.2, { emissive: 0x6e1810, emissiveIntensity: 0.35 }),
-      pole: material(0x788185, 0.4, 0.75),
-      stripe: material(0xc49a38, 0.65, 0.2), skyline: material(0x697476), crane: material(0x776f57, 0.8, 0.4),
-      glow: new THREE.MeshBasicMaterial({ color: 0xffd8a1 }),
-    };
+    this.materials = mapMaterials(this.surfaces);
     this.worldRoot = new THREE.Group();
     this.worldRoot.add(this.atmosphere.sky);
     this.scene.add(this.worldRoot);
@@ -530,9 +546,28 @@ export class GameRenderer {
       addQuarryGround(this, this.map, ground);
       addWarehouseDetails(this, this.map.structures);
     }
+    this.buildMapBoxes(this.map.boxes ?? []);
+    for (const point of this.map.points) this.makeFlag(point);
+    const limit = size / 2;
+    const west = this.map.shoreX ?? -limit - 1;
+    const fenceMat = material(0x697674, 0.7, 0.45, {}, this.integratedGpu);
+    for (let x = west; x <= limit; x += 10) for (const side of [-1, 1]) {
+      this.cylinder(this.scene, x, 1.7, side * (limit + 1), .055, 3.4, fenceMat);
+    }
+    const sides = this.map.shoreX === undefined ? [-1, 1] : [1];
+    for (let z = -limit; z <= limit; z += 10) for (const side of sides) {
+      this.cylinder(this.scene, side * (limit + 1), 1.7, z, .055, 3.4, fenceMat);
+    }
+    for (const y of [.7, 1.7, 2.7]) {
+      for (const side of [-1, 1]) this.box(this.scene, (west + limit) / 2, y, side * (limit + 1), limit - west, .025, .025, fenceMat, false);
+      for (const side of sides) this.box(this.scene, side * (limit + 1), y, 0, .025, .025, size, fenceMat, false);
+    }
+  }
+
+  buildMapBoxes(boxes) {
     const windowMatrices = [], litMatrices = [], frameMatrices = [];
     const dummy = new THREE.Object3D();
-    for (const b of this.map.boxes || []) {
+    for (const b of boxes) {
       if (b.kind === 'rock' || b.kind === 'pump-manifold' || b.kind.startsWith('port-')) continue;
       const elevation = b.baseY ?? 0;
       const parent = elevation ? new THREE.Group() : this.scene;
@@ -766,21 +801,6 @@ export class GameRenderer {
     const litWindowMat = material(0xb5a27c, 0.6, 0.2, { emissive: 0x7c633c, emissiveIntensity: 0.45 }, this.integratedGpu);
     for (const [matrices, mat] of [[frameMatrices, this.materials.edge], [windowMatrices, this.materials.window], [litMatrices, litWindowMat]]) {
       addSectorInstances(this.scene, this.geo.box, mat, matrices);
-    }
-    for (const point of this.map.points) this.makeFlag(point);
-    const limit = size / 2;
-    const west = this.map.shoreX ?? -limit - 1;
-    const fenceMat = material(0x697674, 0.7, 0.45, {}, this.integratedGpu);
-    for (let x = west; x <= limit; x += 10) for (const side of [-1, 1]) {
-      this.cylinder(this.scene, x, 1.7, side * (limit + 1), .055, 3.4, fenceMat);
-    }
-    const sides = this.map.shoreX === undefined ? [-1, 1] : [1];
-    for (let z = -limit; z <= limit; z += 10) for (const side of sides) {
-      this.cylinder(this.scene, side * (limit + 1), 1.7, z, .055, 3.4, fenceMat);
-    }
-    for (const y of [.7, 1.7, 2.7]) {
-      for (const side of [-1, 1]) this.box(this.scene, (west + limit) / 2, y, side * (limit + 1), limit - west, .025, .025, fenceMat, false);
-      for (const side of sides) this.box(this.scene, side * (limit + 1), y, 0, .025, .025, size, fenceMat, false);
     }
   }
 

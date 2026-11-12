@@ -61,7 +61,7 @@ function gravelRoads(owner, map) {
   owner.scene.add(road);
 }
 
-function quarryCliffs(owner, map) {
+function quarryCliffs(owner, map, backdrop = true) {
   const positions = [], colors = [], uvs = [];
   const outline = [[-.5, -.41], [-.41, -.5], [.41, -.5], [.5, -.41], [.5, .41], [.41, .5], [-.41, .5], [-.5, .41]];
   function rock(x, z, w, d, h, color, baseY = 0) {
@@ -99,7 +99,7 @@ function quarryCliffs(owner, map) {
   }
   const limit = map.size / 2;
   const tones = [0x7e7460, 0x948574, 0x8a7963];
-  for (const side of [-1, 1]) {
+  if (backdrop) for (const side of [-1, 1]) {
     const rows = Math.ceil(limit / 55);
     for (let i = -rows; i <= rows; i++) {
       const offset = i * 55 + (owner.random() - .5) * 16;
@@ -137,6 +137,11 @@ function quarryCliffs(owner, map) {
   owner.scene.add(mesh);
 }
 
+export function addQuarryAsset(owner, box, map) {
+  if (box.kind === 'rock') quarryCliffs(owner, { ...map, boxes: [box] }, false);
+  if (box.kind === 'pump-manifold') addPumpManifold(owner, box);
+}
+
 function addPumpManifold(owner, box) {
   const { x, z, w, d, baseY } = box;
   const { scene, materials } = owner;
@@ -164,7 +169,18 @@ export function addQuarryGround(owner, map, ground) {
   gravelRoads(owner, map);
   quarryCliffs(owner, map);
   for (const box of map.boxes) if (box.kind === 'pump-manifold') addPumpManifold(owner, box);
+  addQuarrySigns(owner, map);
 
+  for (const pad of map.vehicleSpawns) {
+    const y = map.terrain.heightAt(pad.x, pad.z);
+    for (const side of [-1, 1]) {
+      owner.box(owner.scene, pad.x + side * 2.6, y + .052, pad.z, .17, .008, 7.2, owner.materials.marking, false);
+    }
+    owner.box(owner.scene, pad.x, y + .053, pad.z + Math.cos(pad.yaw) * 3.5, 5.2, .008, .18, owner.materials.marking, false);
+  }
+}
+
+export function addQuarrySigns(owner, map) {
   for (const { x, z, name, note, baseSign, yaw = Math.PI } of map.signs) {
     const y = map.terrain.heightAt(x, z);
     const sign = makeSign(name, note, baseSign ? 4 : 3.3);
@@ -172,12 +188,5 @@ export function addQuarryGround(owner, map, ground) {
     sign.rotation.y = yaw;
     owner.scene.add(sign);
     if (!baseSign) for (const side of [-1, 1]) owner.cylinder(owner.scene, x + side * 1.15, y + 1.05, z, .075, 2.1, owner.materials.steel);
-  }
-  for (const pad of map.vehicleSpawns) {
-    const y = map.terrain.heightAt(pad.x, pad.z);
-    for (const side of [-1, 1]) {
-      owner.box(owner.scene, pad.x + side * 2.6, y + .052, pad.z, .17, .008, 7.2, owner.materials.marking, false);
-    }
-    owner.box(owner.scene, pad.x, y + .053, pad.z + Math.cos(pad.yaw) * 3.5, 5.2, .008, .18, owner.materials.marking, false);
   }
 }
