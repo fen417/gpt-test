@@ -153,6 +153,8 @@ export class GameRenderer {
     this.vehicleRigs = new Map();
     this.equipmentMeshes = new Map();
     this.rocketMeshes = new Map();
+    this.rocketGlowMaterial=new THREE.MeshBasicMaterial({color:0xffdb8b,toneMapped:false});
+    this.rocketTrailMaterial=new THREE.LineBasicMaterial({color:0xddd8c9,transparent:true,opacity:.48,depthWrite:false});
     this.remoteTools = new Map();
     this.reviveRings = new Map();
     this.reviveMaterial=new THREE.MeshBasicMaterial({color:0x8ef3be,transparent:true,opacity:.7,depthWrite:false,side:THREE.DoubleSide});
@@ -535,6 +537,9 @@ export class GameRenderer {
     this.soldiers.clear();
     for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
     this.grenadeMeshes.clear();
+    for(const model of this.rocketMeshes.values()){
+      const line=model.userData.flight?.line;if(line){line.removeFromParent();line.geometry.dispose();}
+    }
     for(const cache of [this.equipmentMeshes,this.rocketMeshes,this.remoteTools,this.reviveRings]){
       for(const model of cache.values())model.removeFromParent();
       cache.clear();
@@ -950,7 +955,10 @@ export class GameRenderer {
       }
       if(event.type==='rocketLaunch'){
         if(event.playerId===localId)this.kick=1;
-        const x=event.x-Math.sin(event.yaw)*.7,z=event.z-Math.cos(event.yaw)*.7;
+        if(event.rocketId&&!this.rocketMeshes.has(event.rocketId)&&state.time-event.time<.2){
+          this.createRocketVisual({...event,id:event.rocketId},event.time);
+        }
+        const x=event.x,z=event.z;
         for(let i=0;i<3;i++)this.smoke(x,event.y-.1,z,.2+i*.06,.35,0xb1ab9c);
         continue;
       }
@@ -996,18 +1004,24 @@ export class GameRenderer {
       }
       if (event.type === 'explosion') {
         const x = event.x || 0, y = event.y ?? 0.6, z = event.z || 0;
-        if (state.time - event.time > .6 || this.camera.position.distanceToSquared(this.scratchPosition.set(x,y,z)) > 180 ** 2) continue;
-        this.effectBounds.center.set(x,y,z);
-        if (!this.viewFrustum.intersectsSphere(this.effectBounds)) continue;
-        const count = this.lowQuality || this.integratedGpu ? 8 : 13;
-        for (let i = 0; i < count; i++) this.smoke(x + (this.random() - 0.5) * 2, y + this.random() * 2, z + (this.random() - 0.5) * 2, 1.1 + this.random() * 1.4, 2.5 + this.random() * 2, i < 3 ? 0xffb668 : 0x535953);
-        this.blastFlash(x, y + 1, z);
-        for (let i = 0; i < (this.lowQuality || this.integratedGpu ? 6 : 14); i++) this.spark(x, y + .3, z, 3);
+        const flight=this.rocketMeshes.get(event.rocketId)?.userData.flight;
+        if(flight){flight.impact={x,y,z,at:this.clock,event};flight.from.copy(this.rocketMeshes.get(event.rocketId).position);}
+        else this.explosionVisual(event,state);
       }
     }
     while (this.seenEvents.size > 900) {
       this.seenEvents.delete(this.seenEvents.keys().next().value);
     }
+  }
+  explosionVisual(event,state) {
+    const x=event.x??0,y=event.y??.6,z=event.z??0;
+    if(state.time-event.time>.6||this.camera.position.distanceToSquared(this.scratchPosition.set(x,y,z))>180**2)return;
+    this.effectBounds.center.set(x,y,z);
+    if(!this.viewFrustum.intersectsSphere(this.effectBounds))return;
+    const reduced=this.lowQuality||this.integratedGpu,count=reduced?8:13;
+    for(let i=0;i<count;i++)this.smoke(x+(this.random()-.5)*2,y+this.random()*2,z+(this.random()-.5)*2,1.1+this.random()*1.4,2.5+this.random()*2,i<3?0xffb668:0x535953);
+    this.blastFlash(x,y+1,z);
+    for(let i=0;i<(reduced?6:14);i++)this.spark(x,y+.3,z,3);
   }
 
   blastFlash(x, y, z) {
@@ -1172,6 +1186,60 @@ export class GameRenderer {
     return group;
   }
 
+  createRocketVisual(item,time) {
+    const model=createGadgetModel('rocket',this.equipmentPalette);
+    model.traverse(object=>{if(object.material)object.material=this.getQualityMaterial(object.material);});
+    model.position.set(item.x,item.y,item.z);model.rotation.order='YXZ';
+    model.rotation.y=Math.atan2(-item.vx,-item.vz);model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));
+    const exhaust=new THREE.Mesh(this.geo.sphere,this.rocketGlowMaterial);
+    exhaust.name='rocket-exhaust';exhaust.position.z=.30;exhaust.scale.set(.055,.055,.22);model.add(exhaust);
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(32*3),3).setUsage(THREE.DynamicDrawUsage));geometry.setDrawRange(0,0);
+    const line=new THREE.Line(geometry,this.rocketTrailMaterial);line.frustumCulled=false;
+    model.userData.flight={line,exhaust,from:model.position.clone(),to:model.position.clone(),phase:0,interval:1/20,sampleTime:time,
+      samples:[],smokePosition:model.position.clone(),impact:null};
+    this.worldRoot.add(model,line);this.rocketMeshes.set(item.id,model);return model;
+  }
+
+  syncRockets(state,dt) {
+    const active=new Set();
+    for(const item of state.rockets??[]){
+      active.add(item.id);
+      const model=this.rocketMeshes.get(item.id)??this.createRocketVisual(item,state.time),flight=model.userData.flight;
+      if(flight.sampleTime!==state.time){
+        flight.from.copy(model.position);flight.to.set(item.x,item.y,item.z);flight.phase=0;
+        flight.interval=clamp(state.time-flight.sampleTime,1/60,.075);flight.sampleTime=state.time;
+      }
+      flight.phase+=dt;model.position.lerpVectors(flight.from,flight.to,clamp(flight.phase/flight.interval,0,1));
+      model.rotation.y=Math.atan2(-item.vx,-item.vz);model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));
+      model.visible=true;flight.exhaust.visible=true;
+      const flicker=1+Math.sin(this.clock*90)*.12;
+      flight.exhaust.scale.set(.055*flicker,.055*flicker,.20*flicker);
+      if(flight.smokePosition.distanceToSquared(model.position)>2.6**2&&this.effects.length<110&&this.camera.position.distanceToSquared(model.position)<160**2){
+        this.smoke(model.position.x,model.position.y,model.position.z,.24,.55,0xbcb8ad);flight.smokePosition.copy(model.position);
+      }
+    }
+    for(const [id,model] of this.rocketMeshes){
+      const flight=model.userData.flight;
+      if(!active.has(id)){
+        flight.impact??={x:model.position.x,y:model.position.y,z:model.position.z,at:this.clock};
+        const impact=flight.impact,progress=clamp((this.clock-impact.at)/.05,0,1);
+        model.position.set(lerp(flight.from.x,impact.x,progress),lerp(flight.from.y,impact.y,progress),lerp(flight.from.z,impact.z,progress));
+        model.visible=progress<1;flight.exhaust.visible=false;
+        if(progress===1&&impact.event&&!impact.rendered){this.explosionVisual(impact.event,state);impact.rendered=true;}
+        if(this.clock-impact.at>.45){flight.line.removeFromParent();flight.line.geometry.dispose();model.removeFromParent();this.rocketMeshes.delete(id);continue;}
+      }
+      const samples=flight.samples,last=samples[samples.length-1];
+      if(!last||Math.hypot(last.x-model.position.x,last.y-model.position.y,last.z-model.position.z)>.6){
+        samples.push({x:model.position.x,y:model.position.y,z:model.position.z,at:this.clock});
+      }
+      while(samples.length&&(this.clock-samples[0].at>.4||samples.length>31))samples.shift();
+      const attribute=flight.line.geometry.attributes.position;
+      attribute.setXYZ(0,model.position.x,model.position.y,model.position.z);
+      for(let i=0;i<samples.length;i++){const p=samples[samples.length-1-i];attribute.setXYZ(i+1,p.x,p.y,p.z);}
+      attribute.needsUpdate=true;flight.line.geometry.setDrawRange(0,samples.length+1);flight.line.visible=samples.length>1;
+    }
+  }
+
   syncEquipment(state,localId,dt) {
     const local=state.players.find(player=>player.id===localId),revivable=new Set();
     if(local?.alive&&local.classId==='medic'&&!local.vehicleId){
@@ -1207,7 +1275,7 @@ export class GameRenderer {
       for(const [id,model] of cache)if(!active.has(id)){model.removeFromParent();cache.delete(id);}
     };
     sync(state.deployables??[],this.equipmentMeshes,item=>item.kind);
-    sync(state.rockets??[],this.rocketMeshes,()=> 'rocket');
+    this.syncRockets(state,dt);
     for(const player of state.players){
       if(player.alive&&player.gadgetAction==='repair'&&this.random()<dt*16){
         const vehicle=state.vehicles?.find(item=>item.id===player.gadgetTargetId);
@@ -1452,6 +1520,7 @@ export class GameRenderer {
       for (const soldier of this.soldiers.values()) soldier.group.visible = false;
       for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
       for(const cache of [this.equipmentMeshes,this.rocketMeshes,this.reviveRings])for(const model of cache.values())model.visible=false;
+      for(const model of this.rocketMeshes.values())model.userData.flight.line.visible=false;
       this.updateEffects(dt);
       this.drawScene(true); return;
     }
@@ -1742,6 +1811,7 @@ export class GameRenderer {
     textures.add(this.smokeTexture);
     materials.add(this.grenadeMaterial);
     materials.add(this.reviveMaterial);
+    materials.add(this.rocketGlowMaterial);materials.add(this.rocketTrailMaterial);
     geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose());
     skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();

@@ -265,6 +265,10 @@ export class Simulation {
     p.botTransit = null;
     p.botLastHouse = null;
     if(p.bot)Object.assign(p,{botJourney:null,botBoarding:null,botVehicleSince:null,botDriverSeenAt:null,botVehicleRetryAt:0,botVehicleReactAt:0});
+    if(beacon){
+      const owner=this.players.get(beacon.ownerId);
+      if(owner&&owner.id!==p.id&&owner.team===p.team)this.awardScore(owner,25,'ВЫСАДКА НА МАЯК',{kind:'beaconSpawn',allyId:p.id});
+    }
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   groundAt(x,z){return this.map.terrain?.heightAt(x,z)??0;}

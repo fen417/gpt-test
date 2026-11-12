@@ -120,9 +120,9 @@ export function activateGadget(sim,p,secondary=false) {
   }
   if(p.classId==='support'){
     const vehicle=repairTarget(sim,p,5,true);
-    if(!vehicle)return false;
-    if(p.gadgetAction!=='repair'||p.gadgetActionUntil<=sim.time)beginAction(sim,p,'repair',.25,vehicle.id);
-    p.gadgetAction='repair';p.gadgetTargetId=vehicle.id;p.gadgetActionUntil=sim.time+.25;
+    if(!vehicle&&p.bot)return false;
+    if(p.gadgetAction!=='repair'||p.gadgetActionUntil<=sim.time)beginAction(sim,p,'repair',.25,vehicle?.id);
+    p.gadgetAction='repair';p.gadgetTargetId=vehicle?.id??null;p.gadgetActionUntil=sim.time+.25;
     return true;
   }
   return place(sim,p,CLASS_GADGET[p.classId]);
@@ -146,12 +146,28 @@ function finishRevive(sim,p,job) {
 
 function launchRocket(sim,p) {
   const direction={x:-Math.sin(p.yaw)*Math.cos(p.pitch),y:Math.sin(p.pitch),z:-Math.cos(p.yaw)*Math.cos(p.pitch)};
-  const origin=eye(p);
-  // Start at the player, sweeping from here so nearby cover intercepts the shot.
-  sim.rockets.push({id:'rocket:'+ ++sim.eventId,ownerId:p.id,team:p.team,...origin,
-    vx:direction.x*85,vy:direction.y*85,vz:direction.z*85,life:4});
+  const start=eye(p),side=p.input.aim?0:.27,forward=p.input.aim?.83:.98,drop=p.input.aim?.12:.225;
+  const offset={x:direction.x*forward+Math.cos(p.yaw)*side-Math.sin(p.yaw)*Math.sin(p.pitch)*drop,
+    y:direction.y*forward-Math.cos(p.pitch)*drop,z:direction.z*forward-Math.sin(p.yaw)*side-Math.cos(p.yaw)*Math.sin(p.pitch)*drop};
+  const length=Math.hypot(offset.x,offset.y,offset.z),sweep={x:offset.x/length,y:offset.y/length,z:offset.z/length};
+  let clearance=length;
+  for(const box of sim.rayBoxes(start,sweep,length))clearance=Math.min(clearance,rayCollider(start,sweep,box,clearance));
+  const ground=sim.map.terrain?.raycast(start,sweep,length)??(sweep.y<0?-start.y/sweep.y:Infinity);
+  if(ground>=0)clearance=Math.min(clearance,ground);
+  let blockedVehicle=null;
+  for(const vehicle of sim.vehicles){
+    if(vehicle.hp<=0)continue;
+    const hit=rayAffineBox(start,sweep,vehicleShape(vehicle),clearance);
+    if(hit<clearance){clearance=hit;blockedVehicle=vehicle;}
+  }
+  const origin={x:start.x+sweep.x*Math.max(0,clearance-.025),y:start.y+sweep.y*Math.max(0,clearance-.025),z:start.z+sweep.z*Math.max(0,clearance-.025)};
+  const id='rocket:'+ ++sim.eventId;
+  const rocket={id,ownerId:p.id,team:p.team,...origin,vx:direction.x*85,vy:direction.y*85,vz:direction.z*85,life:4};
   p.invulnerableUntil=0;
-  sim.event('rocketLaunch',{playerId:p.id,team:p.team,...origin,yaw:p.yaw,pitch:p.pitch});
+  sim.event('rocketLaunch',{playerId:p.id,team:p.team,rocketId:id,...origin,vx:rocket.vx,vy:rocket.vy,vz:rocket.vz,yaw:p.yaw,pitch:p.pitch});
+  // Sweep eye-to-muzzle first, so extending the barrel never shoots through cover.
+  if(clearance<length)blast(sim,origin,p,'rocket',blockedVehicle,p.team,id);
+  else sim.rockets.push(rocket);
 }
 
 export function damageDeployable(sim,item,amount,attacker) {
@@ -163,9 +179,9 @@ export function damageDeployable(sim,item,amount,attacker) {
   }
 }
 
-export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team) {
+export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null) {
   const rocket=kind==='rocket',radius=rocket?8:10;
-  sim.event('explosion',{...origin,kind,playerId:owner?.id});
+  sim.event('explosion',{...origin,kind,playerId:owner?.id,...(rocketId?{rocketId}:{})});
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team===team)continue;
     const d=Math.hypot(distance(origin,vehicle),origin.y-vehicle.y-.8);
@@ -215,7 +231,7 @@ function updateRockets(sim,dt) {
     rocket.z+=direction.z*Math.max(0,nearest-(hit?.08:0));rocket.vy-=2.8*dt;rocket.life-=dt;
     if(hit||rocket.life<=0){
       const owner=sim.players.get(rocket.ownerId);
-      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,'rocket',direct,rocket.team);
+      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,'rocket',direct,rocket.team,rocket.id);
       rocket.life=0;
     }
   }
@@ -232,9 +248,11 @@ export function updateEquipment(sim,dt) {
       if(!p.vehicleId){if(job.kind==='defibrillator')finishRevive(sim,p,job);else launchRocket(sim,p);}
     }
     const repairing=p.bot?p.input.gadget:p.heldGadget==='repair'&&p.input.fire&&!p.input.sprint;
+    if(p.gadgetAction==='repair'&&(!repairing||p.vehicleId)){p.gadgetAction=null;p.gadgetActionUntil=0;p.gadgetTargetId=null;}
     if(p.gadgetAction==='repair'&&repairing&&!p.vehicleId){
       const vehicle=repairTarget(sim,p,5,true);
-      if(vehicle&&vehicle.id===p.gadgetTargetId){
+      p.gadgetTargetId=vehicle?.id??null;p.gadgetActionUntil=sim.time+.25;
+      if(vehicle){
         const amount=Math.min(65*dt,VEHICLE_TYPES[vehicle.type].maxHp-vehicle.hp);
         vehicle.hp+=amount;p.gadgetActionUntil=sim.time+.25;
         if(sim.time>=(p.nextRepairScore??0)){sim.awardScore(p,15,'РЕМОНТ ТЕХНИКИ',{kind:'repair'});p.nextRepairScore=sim.time+1.5;}
@@ -249,14 +267,14 @@ export function updateEquipment(sim,dt) {
     for(const ally of sim.players.values()){
       if(!ally.alive||ally.team!==item.team||distance(ally,item)>5.5||!sim.lineClear(center(item,.4),center(ally,.8)))continue;
       const current=getWeapon(ally.classId,ally.weaponId),stowed=ally.weaponSlot===1?getSidearm(ally.sidearmId):getPrimaryWeapon(ally.classId,ally.primaryWeaponId);
-      const before=ally.reserve+ally.stowedAmmo.reserve;
+      const before=ally.reserve+ally.stowedAmmo.reserve+ally.grenades+(ally.rockets??0);
       ally.reserve=Math.min(current.reserve,ally.reserve+20);ally.stowedAmmo.reserve=Math.min(stowed.reserve,ally.stowedAmmo.reserve+20);
       if(sim.time>=(ally.nextExplosiveSupply??0)){
         ally.grenades=Math.min(2,ally.grenades+1);
         if(ally.classId==='assault')ally.rockets=Math.min(2,(ally.rockets??0)+1);
         ally.nextExplosiveSupply=sim.time+25;
       }
-      if(owner?.team===item.team&&ally!==owner&&before<ally.reserve+ally.stowedAmmo.reserve&&sim.time>=(ally.nextSupplyScore??0)){
+      if(owner?.team===item.team&&ally!==owner&&before<ally.reserve+ally.stowedAmmo.reserve+ally.grenades+(ally.rockets??0)&&sim.time>=(ally.nextSupplyScore??0)){
         sim.awardScore(owner,15,'ПОПОЛНЕНИЕ БОЕПРИПАСОВ',{kind:'resupply'});ally.nextSupplyScore=sim.time+5;
       }
     }

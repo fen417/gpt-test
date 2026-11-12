@@ -1,4 +1,4 @@
-// Original procedural score with local CC0 firearm recordings. See asset credits.
+// Original procedural score with local firearm recordings. See asset credits.
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
 import { getMap } from '../shared/world.js';
 export const ORIGINAL_SCORE = 'AFTER THE RAIN';
@@ -146,17 +146,13 @@ export class CombatAudio {
     this._weapons=this._node(c.createGain());
     const weaponHighpass=this._node(c.createBiquadFilter());
     weaponHighpass.type='highpass';weaponHighpass.frequency.value=60;weaponHighpass.Q.value=.707;
-    const weaponPresence=this._node(c.createBiquadFilter());
-    weaponPresence.type='highshelf';weaponPresence.frequency.value=2800;weaponPresence.gain.value=3.5;
     this._muffle=this._node(c.createBiquadFilter());this._muffle.type='lowpass';this._muffle.frequency.value=18000;
-    const compressor=this._node(c.createDynamicsCompressor());
-    compressor.threshold.value=-9;compressor.knee.value=9;compressor.ratio.value=1.6;compressor.attack.value=.008;compressor.release.value=.09;
     const limiter=this._node(c.createDynamicsCompressor());
-    limiter.threshold.value=-3;limiter.knee.value=0;limiter.ratio.value=20;limiter.attack.value=.001;limiter.release.value=.065;
+    limiter.threshold.value=-4;limiter.knee.value=4;limiter.ratio.value=12;limiter.attack.value=.003;limiter.release.value=.12;
     this._music.connect(this._master);this._effects.connect(this._muffle).connect(this._master);
-    this._localWeapon.connect(weaponHighpass).connect(weaponPresence).connect(this._master);
+    this._localWeapon.connect(weaponHighpass).connect(this._master);
     this._weapons.connect(this._master);
-    this._ambient.connect(this._effects);this._master.connect(compressor).connect(limiter);
+    this._ambient.connect(this._effects);this._master.connect(limiter);
     this._analyser=this._node(c.createAnalyser());this._analyser.fftSize=256;this._analyser.smoothingTimeConstant=.1;
     this._meter=new Float32Array(this._analyser.fftSize);limiter.connect(this._analyser).connect(c.destination);
     this._reverbs={};const impulse=this._impulse();
@@ -233,14 +229,14 @@ export class CombatAudio {
     for(const voice of this._voices)if(voice.end<=now)this._releaseVoice(voice,true);
     for(const voice of this._fadingVoices)if(voice.end<=now)this._releaseVoice(voice,true);
   }
-  _fadeVoice(voice) {
+  _fadeVoice(voice,fade=VOICE_FADE) {
     const now = this.ctx.currentTime;
     if (voice.time >= now) { this._releaseVoice(voice, true); return true; }
     if (this._fadingVoices.size >= MAX_FADING_VOICES) return false;
     const gain = voice.release;
     gain.cancelAndHoldAtTime?.(now);
-    gain.setTargetAtTime(0, now, VOICE_FADE / 5);
-    voice.end = Math.min(voice.end, now + VOICE_FADE);
+    gain.setTargetAtTime(0, now, fade / 5);
+    voice.end = Math.min(voice.end, now + fade);
     voice.source.stop(voice.end);
     this._voices.delete(voice);
     this._fadingVoices.add(voice);
@@ -398,7 +394,8 @@ export class CombatAudio {
             let mean=0;for(const value of data)mean+=value;mean/=data.length;
             for(let i=0;i<data.length;i++){data[i]-=mean;peak=Math.max(peak,Math.abs(data[i]));}
           }
-          const level=Math.min(2.5,.92/Math.max(.01,peak));
+          // Recordings are mastered offline with headroom; do not normalize them back up.
+          const level=Math.min(1,.78/Math.max(.01,peak));
           for(let channel=0;channel<buffer.numberOfChannels;channel++){
             const data=buffer.getChannelData(channel),fade=Math.ceil(buffer.sampleRate*.003);
             for(let i=0;i<data.length;i++)data[i]*=level*Math.min(1,(data.length-1-i)/fade);
@@ -410,7 +407,7 @@ export class CombatAudio {
       this._shotBuffers.set(name, buffers);
     }));
   }
-  shot(distance=0,classId='assault',pan=0,isLocal=distance<1,age=0){
+  shot(distance=0,classId='assault',pan=0,isLocal=distance<1,age=0,shooterId=classId){
     const priority=this._priority;
     this._priority=isLocal?3:distance<30?2:1;
     try{
@@ -424,13 +421,19 @@ export class CombatAudio {
       const cutoff=id==='vk45'?(isLocal?10500:weapon.cutoff):isLocal||distance<12?0:Math.max(1500,weapon.cutoff/(1+(distance-12)*.012));
       if(buffer){
         if(!this._admit({}))return;
+        let overlapping=0,oldest=null;
+        for(const voice of this._voices)if(voice.shooterId===shooterId){
+          overlapping++;if(!oldest||voice.time<oldest.time)oldest=voice;
+        }
+        if(oldest&&overlapping>=(isLocal?2:1))this._fadeVoice(oldest,.028);
         const source=this.ctx.createBufferSource();
         source.buffer=buffer;source.playbackRate.value=variation;
         const duration=Math.min(buffer.duration/variation,isLocal?1.2:distance>65?.38:.58);
-        this._voice(source,duration,gain,{
+        const voice=this._voice(source,duration,gain,{
           time,pan,attack:.0002,sample:true,send:0,bus:isLocal?'localWeapon':'weapons',
           cutoff,q:.707,tail:isLocal?.075:.04,
         });
+        if(voice)voice.shooterId=shooterId;
       }else{
         this._noise(.055,gain*.7,{time,pan,bus:isLocal?'localWeapon':'weapons',filter:'highpass',cutoff:900,attack:.0003,decay:.004,decayGain:.12});
       }
@@ -576,7 +579,7 @@ export class CombatAudio {
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
           const profile=e.mounted?'turret':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
-          this.shot(p.distance,profile,p.pan,Boolean(own),age);
+          this.shot(p.distance,profile,p.pan,Boolean(own),age,e.playerId);
         }
       }else if(e.type==='bulletImpact'){
         if(state.time-e.time>.25)continue;
@@ -600,8 +603,12 @@ export class CombatAudio {
         this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);
       }else if(e.type==='explosion')this._explosion(e,local);
       else if(e.type==='rocketLaunch'){
-        const p=this._position(e,local);this._sample('explosion-grenade',.2*p.gain,{pan:p.pan,rate:1.8,duration:.23,cutoff:12000});
-        this._noise(.22,.09*p.gain,{filter:'highpass',cutoff:3500,pan:p.pan});
+        const p=this._position(e,local),buffer=this._shotBuffers.get('rifle-heavy')?.[0];
+        if(buffer&&this._admit({})){
+          const source=this.ctx.createBufferSource();source.buffer=buffer;source.playbackRate.value=.8;
+          this._voice(source,.34,(own?.75:.38)*p.gain,{sample:true,attack:.0005,tail:.06,cutoff:8000,pan:p.pan,bus:own?'localWeapon':'weapons'});
+        }
+        this._noise(.16,.035*p.gain,{filter:'highpass',cutoff:3000,pan:p.pan});
       }else if(e.type==='revive'&&(own||e.medicId===local?.id)){
         this._tone(1120,.06,.06,{end:1760});this._noise(.022,.06,{filter:'highpass',cutoff:4000});
       }

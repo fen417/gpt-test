@@ -63,6 +63,16 @@ body.team-1 .score-row.local{background:#a57b5f33}
 .spawn-item.locked{opacity:.48;cursor:not-allowed}.spawn-item.locked .spawn-badge{color:#a8b2ae;border-color:#7c8885}
 .spawn-item.enemy-owned .spawn-badge,.spawn-item.enemy-owned .spawn-tag{color:var(--orange);border-color:#e6b27355}
 .spawn-item.contested .spawn-tag{color:#f29b76;border-color:#f29b7666}
+.spawn-group-title{grid-column:1/-1;display:flex;align-items:center;gap:9px;padding:5px 0;font-size:8px;letter-spacing:1.5px;color:#a4b8bb}
+.spawn-group-title::after{content:'';height:1px;flex:1;background:#8da4a32c}
+.spawn-group-title:not(:first-child){margin-top:9px;color:#b1d9bb}
+.spawn-item.beacon{background:#17372c66;border-style:dashed;border-color:#94bba955}
+.spawn-item.beacon .spawn-badge{transform:none;border-radius:50%;color:#b1e8c2;background:#163b2a}
+.spawn-item.beacon .spawn-badge i{transform:none;width:20px;height:20px}
+.spawn-item.beacon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.spawn-item.beacon .spawn-info small{color:#a7c4b3}
+.spawn-item.beacon .spawn-tag{color:#b1e8c2;border-color:#94bba955}
+.spawn-item.beacon.selected{border-color:#b1e8c2;background:linear-gradient(90deg,#28674788,#17382f66);box-shadow:inset 2px 0 0 #b1e8c2}
 .deploy-classes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .deploy-class-btn{position:relative;background:#16283199;border:1px solid var(--border);padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;text-align:center}
 .deploy-class-btn kbd{position:absolute;top:4px;left:5px;font-size:8px;color:#7f989e;font-family:inherit}

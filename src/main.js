@@ -671,7 +671,8 @@ function minimap(player){
   for(const item of state.deployables??[]){
     if(item.kind!=='beacon'||item.team!==player.team||item.hp<=0||item.expires<=state.time)continue;
     const x=(item.x+half)*scale,z=(item.z+half)*scale;
-    c.fillStyle='#10262c';c.fillRect(x-5,z-6,10,12);c.fillStyle=TEAM_HEX[item.team];c.fillText('М',x,z+3.5);
+    c.fillStyle='#102a20';c.strokeStyle='#a4e0b9';c.lineWidth=1.4;c.beginPath();c.arc(x,z,4,0,Math.PI*2);c.fill();c.stroke();
+    c.fillStyle='#b8f6cb';c.fillRect(x-.8,z-2,1.6,4);
   }
   for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=TEAM_HEX[p.team]??'#79c5d2';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?1.8:2.3,0,Math.PI*2);c.fill();}
   for(const vehicle of state.vehicles??[]){
@@ -818,6 +819,15 @@ deployCanvas.addEventListener('dblclick',event=>{
   const picked=pickDeploySpawnAt(event.clientX,event.clientY);
   if(picked&&picked.available&&selectSpawnPoint(picked.id,false))triggerRespawn();
 });
+function beaconTime(point){
+  const seconds=Math.max(0,Math.ceil(point.expires-state.time));
+  return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
+}
+function drawBeaconIcon(c){
+  c.lineWidth=1.4;c.beginPath();c.moveTo(0,0);c.lineTo(0,7);c.moveTo(-3,7);c.lineTo(3,7);c.stroke();
+  c.beginPath();c.arc(0,-1,1.3,0,Math.PI*2);c.fill();
+  for(const radius of [4,7]){c.beginPath();c.arc(0,-1,radius,-Math.PI*.35,Math.PI*.35);c.stroke();c.beginPath();c.arc(0,-1,radius,Math.PI*.65,Math.PI*1.35);c.stroke();}
+}
 function drawDeployMap(player,now){
   const c=deployCtx,scale=deployScale,half=deployHalf,pulse=(Math.sin(now*0.006)+1)*0.5;
   const allyColor=TEAM_HEX[player.team]??'#79c5d2',enemyColor=TEAM_HEX[1-player.team]??'#e6b273';
@@ -847,6 +857,14 @@ function drawDeployMap(player,now){
     const x=(p.x+half)*scale,z=(p.z+half)*scale;
     const color=p.owner===-1?'#ced1bb':TEAM_HEX[p.owner]??'#ced1bb';
     c.save();
+    if(p.beacon){
+      c.translate(x,z);c.fillStyle='#15382bea';c.strokeStyle='#a4e0b9';c.lineWidth=1.6;
+      c.beginPath();c.arc(0,0,12,0,Math.PI*2);c.fill();c.stroke();
+      c.fillStyle='#bcf2cd';drawBeaconIcon(c);
+      if(selectedSpawn===p.id||hoveredSpawn===p.id){c.lineWidth=1.5;c.beginPath();c.arc(0,0,16+pulse*2,0,Math.PI*2);c.stroke();}
+      c.fillStyle='#bcf2cd';c.font='600 8px sans-serif';c.textAlign='center';c.textBaseline='middle';
+      c.fillText(p.name,0,22);c.fillText(beaconTime(p),0,32);c.restore();continue;
+    }
     c.fillStyle=color;c.strokeStyle=color;
     c.globalAlpha=.14;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();
     c.globalAlpha=.45;c.lineWidth=1.2;c.stroke();
@@ -930,14 +948,18 @@ function updateDeployScreen(player,now){
   const selectEl=$('spawn-point');
   if(selectEl.dataset.signature!==signature){
     selectEl.dataset.signature=signature;
-    selectEl.replaceChildren(new Option('База команды',''),...options.map(p=>new Option(p.beacon?p.name:`${p.id} · ${p.name}`,p.id)));
+    const points=document.createElement('optgroup'),beacons=document.createElement('optgroup');
+    points.label='База и точки захвата';beacons.label='Маяки отряда';
+    points.append(new Option('База команды',''),...options.filter(p=>!p.beacon).map(p=>new Option(`${p.id} · ${p.name}`,p.id)));
+    beacons.append(...options.filter(p=>p.beacon).map(p=>new Option(p.name,p.id)));
+    selectEl.replaceChildren(points,...(beacons.children.length?[beacons]:[]));
     selectEl.value=selectedSpawn;
   }
   const allies=state.players.filter(p=>p.alive&&p.team===player.team&&p.id!==localId);
   text('deploy-allies-count',`СОЮЗНИКОВ В БОЮ: ${allies.length}`);
   const listSig=`${selectedSpawn}:`+deploymentPoints().map(p=>{
     const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
-    return `${p.id}:${p.owner}:${p.contested?1:0}:${p.spawnBlocked?1:0}:${near}`;
+    return `${p.id}:${p.owner}:${p.contested?1:0}:${p.spawnBlocked?1:0}:${near}:${p.beacon?beaconTime(p):''}`;
   }).join('|');
   const listEl=$('deploy-spawn-list');
   if(listEl.dataset.signature!==listSig){
@@ -950,22 +972,33 @@ function updateDeployScreen(player,now){
         const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
         const blocked=p.contested||(friend&&p.spawnBlocked);
         const tag=p.contested?'ОСПАРИВАЕТСЯ':blocked?'ПРОТИВНИК НА ТОЧКЕ':available?'ДОСТУПНО':enemy?'ВРАГ':'НЕЙТРАЛЬНО';
-        return {id:p.id,badge:p.beacon?'М':p.id,name:p.name,sub:`Союзников рядом: ${near}`,tag,available,enemy,contested:blocked};
+        return {id:p.id,badge:p.id,name:p.name,sub:`${p.beacon?beaconTime(p)+' · ':''}Союзников рядом: ${near}`,tag,available,enemy,contested:blocked,beacon:p.beacon};
       }),
     ];
-    listEl.replaceChildren(...items.map(item=>{
+    const makeButton=item=>{
       const btn=document.createElement('button');
       btn.type='button';
-      btn.className=`spawn-item${item.hq?' hq':''}${selectedSpawn===item.id?' selected':''}${!item.available?' locked':''}${item.enemy?' enemy-owned':''}${item.contested?' contested':''}`;
+      btn.className=`spawn-item${item.hq?' hq':''}${item.beacon?' beacon':''}${selectedSpawn===item.id?' selected':''}${!item.available?' locked':''}${item.enemy?' enemy-owned':''}${item.contested?' contested':''}`;
+      btn.setAttribute('role','option');btn.setAttribute('aria-selected',String(selectedSpawn===item.id));
       const left=document.createElement('div'),badge=document.createElement('span'),badgeInner=document.createElement('i'),info=document.createElement('div'),title=document.createElement('b'),sub=document.createElement('small'),tag=document.createElement('span');
       left.className='spawn-item-left';badge.className='spawn-badge';badgeInner.textContent=item.badge;badge.append(badgeInner);
+      if(item.beacon){
+        const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS('http://www.w3.org/2000/svg','path');
+        svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
+        path.setAttribute('d','M12 11v9m-4 0h8M8 7a6 6 0 0 0 0 8m8-8a6 6 0 0 1 0 8M5 4a10 10 0 0 0 0 14m14-14a10 10 0 0 1 0 14M11 10h2');
+        svg.append(path);badgeInner.replaceChildren(svg);
+      }
       info.className='spawn-info';title.textContent=item.name;sub.textContent=item.sub;info.append(title,sub);
       left.append(badge,info);tag.className='spawn-tag';tag.textContent=item.tag;
       btn.append(left,tag);
       btn.addEventListener('click',()=>selectSpawnPoint(item.id,true));
       btn.addEventListener('dblclick',()=>{if(item.available&&selectSpawnPoint(item.id,false))triggerRespawn();});
       return btn;
-    }));
+    };
+    const heading=label=>{const node=document.createElement('div');node.className='spawn-group-title';node.textContent=label;return node;};
+    const beacons=items.filter(item=>item.beacon);
+    listEl.replaceChildren(heading('БАЗА И ТОЧКИ ЗАХВАТА'),...items.filter(item=>!item.beacon).map(makeButton),
+      ...(beacons.length?[heading(`МАЯКИ ОТРЯДА · ${beacons.length}`),...beacons.map(makeButton)]:[]));
   }
   drawDeployMap(player,now);
 }

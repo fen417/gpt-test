@@ -109,8 +109,10 @@ function build(kind,m) {
     for(let i=0;i<5;i++)box(0,-.055+i*.02,.119,.06,.006,.007,m.metal);
     box(0,-.055,.008,.05,.09,.016,m.white);
     const flame=new THREE.Group();flame.name='tool-flame';flame.position.set(0,.11,-.25);root.add(flame);
-    const cone=new THREE.ConeGeometry(.014,.16,10);cone.userData.owned=true;
-    const mesh=add(flame,cone,m.flame,0,0,-.07,1,1,1);mesh.rotation.x=-Math.PI/2;
+    const cone=new THREE.ConeGeometry(.026,.25,12);cone.userData.owned=true;
+    const mesh=add(flame,cone,m.flame,0,0,-.115,1,1,1);mesh.rotation.x=-Math.PI/2;
+    const core=new THREE.ConeGeometry(.013,.16,10);core.userData.owned=true;
+    const inner=add(flame,core,m.white,0,0,-.07,1,1,1);inner.rotation.x=-Math.PI/2;
   }else if(kind==='launcher'){
     ring(0,.025,-.17,.057,.009,.84,m.olive);
     for(const z of [-.57,-.49,-.07,.22]){
@@ -152,10 +154,12 @@ function build(kind,m) {
     box(0,0,-.097,.09,.018,.008,m.white);box(0,0,-.097,.018,.075,.008,m.white);
     for(const x of [-.11,.11])box(x,-.02,-.09,.03,.035,.018,m.metal);
   }else if(kind==='rocket'){
-    tube(0,0,0,.026,.42,m.olive,'z');
-    const geometry=new THREE.ConeGeometry(.026,.095,12);geometry.userData.temporary=true;
-    const nose=add(root,geometry,m.dark,0,0,-.25,1,1,1);nose.rotation.x=-Math.PI/2;
-    for(const side of [-1,1]){box(side*.036,0,.15,.045,.006,.13,m.metal);box(0,side*.036,.15,.006,.045,.13,m.metal);}
+    tube(0,0,0,.034,.48,m.olive,'z');
+    tube(0,0,-.17,.049,.15,m.orange,'z');
+    const geometry=new THREE.ConeGeometry(.049,.13,12);geometry.userData.temporary=true;
+    const nose=add(root,geometry,m.metal,0,0,-.31,1,1,1);nose.rotation.x=-Math.PI/2;
+    ring(0,0,.25,.036,.008,.025,m.dark);
+    for(const side of [-1,1]){box(side*.046,0,.16,.055,.008,.15,m.metal);box(0,side*.046,.16,.008,.055,.15,m.metal);}
   }
   // Rigid pieces share one draw per material. The flame keeps its own transform.
   root.updateMatrixWorld(true);
