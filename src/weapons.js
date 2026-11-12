@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { smoothRingSeams } from './character-geometry.js';
@@ -611,48 +612,17 @@ export function createWeaponRig(owner = {}) {
   ring(heldGrenade,-.016,.054,-.006,.012,.009,.003,brass,'x',14);
   ellipsoid(heldGrenade,[0,.063,0],[.0045,.0045,.0045],medRed);
 
-  const heldStim=new THREE.Group();heldStim.name='held-stim';leftHand.add(heldStim);
-  heldStim.position.set(.024,.062,-.058);heldStim.rotation.set(.25,0,-.2);heldStim.scale.setScalar(1.45);heldStim.visible=false;
-  cylinder(heldStim,0,0,0,.013,.096,polymer,'y',14);
-  cylinder(heldStim,0,-.018,0,.0145,.026,anodized,'y',14);
-  cylinder(heldStim,0,.018,0,.0105,.038,stimGlow,'y',14);
-  cylinder(heldStim,0,.044,0,.013,.016,brass,'y',14);
-  cylinder(heldStim,0,-.052,0,.008,.014,medRed,'y',12);
-
-  const heldMedkit=new THREE.Group();heldMedkit.name='held-medkit';leftHand.add(heldMedkit);
-  heldMedkit.position.set(.028,.062,-.064);heldMedkit.rotation.set(.15,.2,-.1);heldMedkit.scale.setScalar(1.38);heldMedkit.visible=false;
-  rounded(heldMedkit,0,0,0,.088,.062,.038,medWhite);
-  rounded(heldMedkit,0,0,0,.090,.012,.040,oliveMetal);
-  rounded(heldMedkit,0,0,-.020,.028,.009,.006,medRed);
-  rounded(heldMedkit,0,0,-.020,.009,.028,.006,medRed);
-  for(const sx of [-.026,.026])rounded(heldMedkit,sx,.024,0,.010,.016,.042,metal);
-
-  const heldAmmo=new THREE.Group();heldAmmo.name='held-ammo';leftHand.add(heldAmmo);
-  heldAmmo.position.set(.028,.062,-.064);heldAmmo.rotation.set(.12,.18,-.08);heldAmmo.scale.setScalar(1.38);heldAmmo.visible=false;
-  rounded(heldAmmo,0,0,0,.092,.066,.046,oliveMetal);
-  rounded(heldAmmo,0,.026,0,.096,.014,.050,anodized);
-  for(let i=0;i<5;i++){
-    const rx=-.028+i*.014;
-    cylinder(heldAmmo,rx,.038,-.006,.0042,.028,brass,'y',10);
-    cylinder(heldAmmo,rx,.056,-.006,.0032,.012,worn,'y',10);
+  const equipmentPalette=gadgetPalette(mat);
+  const heldTools={};
+  for(const kind of ['ammo','beacon','repair','medkit','defibrillator-left']){
+    const model=createGadgetModel(kind,equipmentPalette);model.visible=false;leftHand.add(model);
+    model.position.set(.024,.025,-.058);
+    if(kind==='ammo'||kind==='beacon'){model.scale.setScalar(.55);model.position.y=-.04;}
+    if(kind==='defibrillator-left')model.position.set(.139,-.022,-.058);
+    heldTools[kind]=model;
   }
-
-  const heldScanner=new THREE.Group();heldScanner.name='held-scanner';leftHand.add(heldScanner);
-  heldScanner.position.set(.026,.064,-.062);heldScanner.rotation.set(.18,.12,-.1);heldScanner.scale.setScalar(1.45);heldScanner.visible=false;
-  cylinder(heldScanner,0,0,0,.030,.044,anodized,'y',14);
-  cylinder(heldScanner,0,.022,0,.034,.008,metal,'y',14);
-  ellipsoid(heldScanner,[0,.028,0],[.022,.010,.022],stimGlow);
-  cylinder(heldScanner,.018,.048,-.008,.0035,.056,metal,'y',10);
-  ellipsoid(heldScanner,[.018,.078,-.008],[.005,.005,.005],stimGlow);
-  for(let i=0;i<3;i++){
-    const a=i*Math.PI*2/3;
-    curve(heldScanner,[
-      [Math.cos(a)*.011,-.014,Math.sin(a)*.011],
-      [Math.cos(a)*.022,-.034,Math.sin(a)*.022],
-      [Math.cos(a)*.033,-.054,Math.sin(a)*.033],
-    ],.0042,polymer,6,6);
-  }
-
+  const heldLauncher=createGadgetModel('launcher',equipmentPalette);weapon.add(heldLauncher);
+  heldLauncher.position.set(0,-.02,.05);heldLauncher.visible=false;
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
   // The pistol grip also receives a sculpted palm/finger junction. Its trigger
   // finger remains posed in the static hand mesh while firing recoil moves the
@@ -681,6 +651,8 @@ export function createWeaponRig(owner = {}) {
   }
   weapon.add(rifleAssembly);
 
+  const heldDefibRight=createGadgetModel('defibrillator-right',equipmentPalette);
+  heldDefibRight.position.set(-.065,-.254,.105);heldDefibRight.visible=false;rightHand.add(heldDefibRight);
   const pistolFrame=mat('pistol-polymer-frame',0x262c2b,.85,.06,{bumpMap:polymerGrain,bumpScale:.0003});
   const pistolSlide=mat('pistol-blued-slide',0x394148,.51,.69,{bumpMap:metalGrain,bumpScale:.00018});
   const heavySlide=mat('pistol-brushed-slide',0x969a94,.39,.76,{bumpMap:metalGrain,bumpScale:.00016});
@@ -912,7 +884,7 @@ export function createWeaponRig(owner = {}) {
   const chargeGrip = new THREE.Vector3(-.076,.019,.044);
   leftArm.matrixAutoUpdate = false;
 
-  function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null) {
+  function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null) {
     const feed = pistol?.magazine ?? (support ? beltBox : magazine);
     const keys = pistol ? pistolReloadKeys : reloadKeys;
     let next = 1;
@@ -940,10 +912,7 @@ export function createWeaponRig(owner = {}) {
     let open = pistol ? Math.max(Math.sin(grip*Math.PI)*.8,charging*.65) : 0;
 
     heldGrenade.visible = false;
-    heldStim.visible = false;
-    heldMedkit.visible = false;
-    heldAmmo.visible = false;
-    heldScanner.visible = false;
+    for(const model of Object.values(heldTools))model.visible=false;
 
     if (throwPhase > 0 && throwPhase < 1) {
       const windup = THREE.MathUtils.smoothstep(throwPhase, 0, .34);
@@ -968,23 +937,15 @@ export function createWeaponRig(owner = {}) {
       const recover = THREE.MathUtils.smoothstep(gadgetPhase, .68, 1);
       const weight = raise * (1 - recover);
       open=Math.max(open,weight);
-      if (classId === 'assault') {
-        const inject = Math.sin(act * Math.PI);
-        actionTarget.set(-.21 + inject * .065, .195 - inject * .09, -.18 + inject * .06);
-        rotX = THREE.MathUtils.lerp(rotX, .68 + inject * .45, weight);
-        rotY = THREE.MathUtils.lerp(rotY, -.38, weight);
-        rotZ = THREE.MathUtils.lerp(rotZ, -.52 - inject * .25, weight);
-        heldStim.visible = gadgetPhase < .86;
-      } else {
-        const toss = Math.sin(act * Math.PI);
-        actionTarget.set(-.21 + act * .11, .19 + toss * .06 - act * .05, -.18 - act * .26);
-        rotX = THREE.MathUtils.lerp(rotX, .58 - act * 1.05, weight);
-        rotY = THREE.MathUtils.lerp(rotY, -.32 + act * .38, weight);
-        rotZ = THREE.MathUtils.lerp(rotZ, -.35 + act * .45, weight);
-        if (classId === 'medic') heldMedkit.visible = gadgetPhase < .64;
-        else if (classId === 'support') heldAmmo.visible = gadgetPhase < .64;
-        else if (classId === 'recon') heldScanner.visible = gadgetPhase < .64;
-      }
+      const continuous=gadgetKind==='repair'||gadgetKind==='defibrillator';
+      const reach=continuous?.35:act;
+      actionTarget.set(-.16,.10,-.28-reach*.13);
+      if(gadgetKind==='launcher')actionTarget.set(-.035,-.065,-.37);
+      rotX=THREE.MathUtils.lerp(rotX,continuous?.15:.58-act*1.05,weight);
+      rotY=THREE.MathUtils.lerp(rotY,-.24,weight);
+      rotZ=THREE.MathUtils.lerp(rotZ,-.12,weight);
+      const model=heldTools[gadgetKind==='defibrillator'?'defibrillator-left':gadgetKind];
+      if(model)model.visible=gadgetPhase<.95;
       palmTarget.lerp(actionTarget, weight);
     }
 
@@ -1011,7 +972,7 @@ export function createWeaponRig(owner = {}) {
   let previousKey = '';
   let previousTeam = -1;
   let visiblePistol = null;
-  function update({classId='assault',weaponId='',team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0}={}){
+  function update({classId='assault',weaponId='',team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1091,13 +1052,27 @@ export function createWeaponRig(owner = {}) {
       pistol.slide.position.z=Math.max(kick*travel,reloadEmpty?travel*.85:0,charging*travel);
       pistolIndex.rotation.y=kick*.16;
     }
-    poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,pistol);
+    poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,pistol,gadgetKind);
+    const usingTool=Boolean(gadgetKind&&gadgetPhase>0&&gadgetPhase<1);
+    heldLauncher.visible=usingTool&&gadgetKind==='launcher';
+    heldDefibRight.visible=usingTool&&gadgetKind==='defibrillator';
+    rifleAssembly.visible=!pistol&&!usingTool;
+    for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool;
+    rifleGlove.visible=usingTool||!pistol;
+    pistolGlove.visible=Boolean(pistol)&&!usingTool;
+    rightHand.visible=usingTool?gadgetKind==='defibrillator'||gadgetKind==='launcher':!pistol;
+    pistolRight.visible=Boolean(pistol)&&!usingTool;
+    if(usingTool&&gadgetKind==='repair'){
+      const flame=heldTools.repair.getObjectByName('tool-flame');
+      if(flame)flame.scale.setScalar(.8+Math.sin(clock*47)*.15);
+    }
     muzzleFlash.visible = kick > .65;
     muzzleFlash.rotation.z = clock*43;
     muzzleFlash.scale.setScalar((pistol?(pistol.heavy?.85:.57):1)*(.78+kick*.22));
     flashLight.intensity = kick > .65 ? 1.8 : 0;
   }
   function dispose(){
+    for(const template of gadgetTemplates(equipmentPalette))template.traverse(mesh=>{if(mesh.geometry?.userData.owned)ownedGeometries.add(mesh.geometry);});
     for(const geometry of ownedGeometries)geometry.dispose();
     for(const material of ownedMaterials)material.dispose();
     for(const texture of ownedTextures)texture.dispose();
@@ -1106,5 +1081,5 @@ export function createWeaponRig(owner = {}) {
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,heldStim,heldMedkit,heldAmmo,heldScanner,muzzleFlash,flashLight,flashMaterial,update,dispose};
+    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,dispose};
 }

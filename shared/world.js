@@ -7,7 +7,7 @@ import portEdits from './maps/port.json' with { type: 'json' };
 import quarryEdits from './maps/quarry.json' with { type: 'json' };
 import villageEdits from './maps/village.json' with { type: 'json' };
 
-export const PROTOCOL_VERSION=18;
+export const PROTOCOL_VERSION=19;
 export const WEAPON_SWITCH_TIME = .38;
 export const WEAPON_SWAP_PHASE = .42;
 export function weaponSwitchPose(remaining=0){
@@ -37,7 +37,7 @@ export const CLASS_WEAPONS = {
 export const CLASSES = {
   assault: { name: 'Штурмовик', weapon: 'AR-416', weaponId: 'ar416', weapons: CLASS_WEAPONS.assault, mag: 30, reserve: 150, damage: 27, interval: .105, spread: .012, recoil: .019, reload: 2, speed: 6.3, range: 150 },
   medic: { name: 'Медик', weapon: 'MCX-9', weaponId: 'mcx9', weapons: CLASS_WEAPONS.medic, mag: 32, reserve: 160, damage: 23, interval: .082, spread: .016, recoil: .012, reload: 2, speed: 6.5, range: 100 },
-  support: { name: 'Поддержка', weapon: 'MG-36', weaponId: 'mg36', weapons: CLASS_WEAPONS.support, mag: 60, reserve: 240, damage: 25, interval: .115, spread: .021, recoil: .025, reload: 3.1, speed: 5.8, range: 150 },
+  support: { name: 'Инженер', weapon: 'MG-36', weaponId: 'mg36', weapons: CLASS_WEAPONS.support, mag: 60, reserve: 240, damage: 25, interval: .115, spread: .021, recoil: .025, reload: 3.1, speed: 5.8, range: 150 },
   recon: { name: 'Разведчик', weapon: 'DMR-12', weaponId: 'dmr12', weapons: CLASS_WEAPONS.recon, mag: 12, reserve: 60, damage: 62, interval: .5, spread: .004, recoil: .043, reload: 2, semiAuto: true, speed: 6.1, range: 230 },
 };
 export function defaultWeaponId(classId = 'assault') {

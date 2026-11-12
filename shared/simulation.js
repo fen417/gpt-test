@@ -7,6 +7,7 @@ import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import { slideVelocity } from './movement.js';
 import { boxBounds, rayAffineBox, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
+import { activateGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast } from './gadgets.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -28,7 +29,7 @@ export function sanitizeInput(input = {}) {
     yaw: finite(input.yaw) % (Math.PI * 2), pitch: clamp(finite(input.pitch), -1.45, 1.45),
     sprint:input.sprint===true,crouch:input.crouch===true,jump:input.jump===true,
     fire:input.fire===true,aim:input.aim===true,reload:input.reload===true,
-    gadget:input.gadget===true,grenade:input.grenade===true,weaponSlot:input.weaponSlot===1||input.weaponSlot===2?input.weaponSlot:0,
+    gadget:input.gadget===true,secondaryGadget:input.secondaryGadget===true,grenade:input.grenade===true,weaponSlot:input.weaponSlot===1||input.weaponSlot===2?input.weaponSlot:0,
     interact:input.interact===true,switchSeat:input.switchSeat===true,
   };
 }
@@ -149,7 +150,7 @@ export class Simulation {
     this.botSettings=DIFFICULTIES[this.difficulty];
     this.vehicles=(this.map.vehicleSpawns??[]).map(spawn=>this.createMapVehicle(spawn));
     this.points=this.map.points.map(p=>({...p,owner:-1,progress:0,contested:false,spawnBlocked:false}));
-    this.events=[];this.eventId=0;this.winner=null;this.grenades=[];this.bullets=[];this.ticketClock=0;
+    this.events=[];this.eventId=0;this.winner=null;this.grenades=[];this.bullets=[];this.deployables=[];this.rockets=[];this.ticketClock=0;
     this.gridCell=this.map.navigationCell??4;this.gridSize=Math.ceil(this.map.size/this.gridCell);this.gridOrigin=-this.map.size/2;
     this.blocked=new Uint8Array(this.gridSize*this.gridSize);
     this.pathPrevious=new Int32Array(this.blocked.length);
@@ -200,6 +201,7 @@ export class Simulation {
       if(count[big]-count[small]<=1||!bots[big].length)return;
       const mover=bots[big].find(q=>!q.alive)||bots[big][bots[big].length-1];
       this.dismountVehicle(mover,true);
+      this.deployables=this.deployables.filter(item=>item.ownerId!==mover.id);
       mover.team=small;mover.alive=false;mover.respawnIn=0;
       this.respawn(mover.id);
     }
@@ -223,11 +225,15 @@ export class Simulation {
   removePlayer(id){
     const p=this.players.get(id);
     if(p)this.dismountVehicle(p,true);
-    this.players.delete(id);this.balanceTeams();
+    this.players.delete(id);this.deployables=this.deployables.filter(item=>item.ownerId!==id);this.balanceTeams();
   }
   setInput(id,input){const p=this.players.get(id);if(p&&!p.bot)p.input=sanitizeInput(input);}
   respawn(id,classId,pointId,weaponId,sidearmId){
     const p=this.players.get(id);if(!p || p.alive || p.respawnIn>0)return false;
+    const beacons=liveBeacons(this,p.team).filter(item=>![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,item)<8));
+    if(p.bot&&!pointId&&beacons.length&&this.random()<.32)pointId=beacons[Math.floor(this.random()*beacons.length)].id;
+    const beacon=beacons.find(item=>item.id===pointId);
+    if(pointId?.startsWith('beacon:')&&!beacon)return false;
     if(p.bot&&!pointId&&!shouldSpawnVehicleBotAtBase(this,p)){const safe=this.points.filter(q=>canSpawnAtPoint(q,p.team)&&![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,q)<25)).sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z));pointId=safe[0]?.id;}
     const point=this.points.find(q=>q.id===pointId);
     if(point&&(!canSpawnAtPoint(point,p.team)||[...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,point)<CAPTURE_RADIUS)))return false;
@@ -236,12 +242,20 @@ export class Simulation {
     const sidearm=getSidearm(sidearmId??p.sidearmId);
     p.weaponId=p.primaryWeaponId=wep.id;p.sidearmId=sidearm.id;p.weaponSlot=1;p.equipTime=0;
     p.stowedAmmo={ammo:sidearm.mag,reserve:sidearm.reserve};
-    const base=point||this.map.spawns[p.team];let x=base.x,z=base.z;
-    for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz)&&!this.vehicleAt(tx,tz,this.groundAt(tx,tz))){x=tx;z=tz;break;}}
+    const base=beacon||point||this.map.spawns[p.team];let x=base.x,z=base.z,spawnY=this.groundAt(x,z),placed=!beacon;
+    for(let n=0;n<25;n++){
+      const radius=beacon?3.2:8,tx=base.x+(this.random()-.5)*radius,tz=base.z+(this.random()-.5)*radius;
+      const ty=beacon?supportHeight(this,tx,tz,beacon.y):this.groundAt(tx,tz);
+      if((!beacon||Math.abs(ty-beacon.y)<.5)&&!this.collides(tx,tz,ty)&&!this.vehicleAt(tx,tz,ty)){x=tx;z=tz;spawnY=ty;placed=true;break;}
+    }
+    if(!placed)return false;
     p.damagers=new Map();p.spottedBy=null;
     Object.assign(p,{x,y:this.groundAt(x,z),z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:wep.mag,reserve:wep.reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
     Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false,vehicleId:null,vehicleSeat:null,interactHeld:false,switchSeatHeld:false});
     Object.assign(p,{slideTime:0,slideCooldown:0,slideVx:0,slideVz:0,crouchHeld:false,crouching:false,wasSprinting:false});
+    p.y=spawnY;
+    Object.assign(p,{rockets:p.classId==='assault'?2:0,secondaryCooldown:0,gadgetTime:0,gadgetAction:null,gadgetActionUntil:0,
+      pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null});
     p.velocityX=0;p.velocityZ=0;p.tickX=x;p.tickZ=z;
     p.botTransit = null;
     p.botLastHouse = null;
@@ -505,7 +519,8 @@ export class Simulation {
     }
     if(victim.hp<=0){
       this.dismountVehicle(victim,true);
-      victim.alive=false;victim.deaths++;victim.respawnIn=4;victim.reloading=false;
+      victim.alive=false;victim.deaths++;victim.respawnIn=4;victim.downedUntil=this.time+4;victim.reloading=false;
+      victim.pendingGadget=null;victim.gadgetAction=null;
       this.tickets[victim.team]=Math.max(0,this.tickets[victim.team]-1);
       if(attacker&&attacker.team!==victim.team){
         attacker.kills++;
@@ -599,7 +614,7 @@ export class Simulation {
     const dx=vx*dt,dy=bulletHeight(y,vy,age)-origin.y,dz=vz*dt;
     const length=Math.hypot(dx,dy,dz);
     const direction={x:dx/length,y:dy/length,z:dz/length};
-    let closest=length,target=null,vehicle=null,headshot=false,impact=null,impactBox=null;
+    let closest=length,target=null,vehicle=null,equipment=null,headshot=false,impact=null,impactBox=null;
     const terrain=this.map.terrain;
     const ground=terrain?terrain.raycast(origin,direction,length):(direction.y<0?-origin.y/direction.y:Infinity);
     if(ground>=0&&ground<closest){closest=ground;impact='ground';}
@@ -612,6 +627,11 @@ export class Simulation {
       const distance=rayVehicle(origin,direction,v,closest);
       if(distance<closest){closest=distance;vehicle=v;impact='metal';}
     }
+    for(const item of this.deployables){
+      if(item.hp<=0||item.team===team)continue;
+      const hit=rayBox(origin,direction,deployableBounds(item),closest);
+      if(hit<closest){closest=hit;equipment=item;vehicle=null;impact='metal';}
+    }
     const endX=origin.x+dx,endZ=origin.z+dz;
     const minX=Math.min(origin.x,endX)-.24,maxX=Math.max(origin.x,endX)+.24;
     const minZ=Math.min(origin.z,endZ)-.24,maxZ=Math.max(origin.z,endZ)+.24;
@@ -622,7 +642,7 @@ export class Simulation {
       const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.15);
       const body=rayCapsule(origin,direction,other.x,other.z,other.y+.26,other.y+(crouch?.79:1.25),.24);
       const hit=Math.min(head,body);
-      if(hit<closest){closest=hit;target=other;headshot=head<body;vehicle=null;}
+      if(hit<closest){closest=hit;target=other;headshot=head<body;vehicle=null;equipment=null;}
     }
     bullet.age=age;
     if(!target&&!vehicle&&!impact&&age<bullet.life)return true;
@@ -636,11 +656,12 @@ export class Simulation {
         impactBoxId:vehicle?undefined:impactBox?.id,impactVehicleId:vehicle?.id,
         dx:direction.x,dy:direction.y,dz:direction.z,
       }:{}),
-      hit,headshot:hit&&headshot,impact,vehicleHit});
+      hit,headshot:hit&&headshot,impact,vehicleHit,equipmentHit:Boolean(equipment)});
     const shooter=this.players.get(playerId),attacker=shooter?.team===team?shooter:null;
     const falloff=clamp(1-Math.max(0,flight*weapon.projectileSpeed-35)/300,.65,1);
     if(hit)this.damage(target,weapon.damage*falloff*(headshot?2:1),attacker,{headshot,weapon:weapon.weapon});
     if(vehicleHit)this.damageVehicle(vehicle,weapon.damage*falloff,attacker,'bullet');
+    if(equipment)damageDeployable(this,equipment,weapon.damage*falloff,attacker);
     return false;
   }
   updateReload(p,weapon,dt){
@@ -676,49 +697,7 @@ export class Simulation {
     p.cooldown=Math.max(p.cooldown,WEAPON_SWITCH_TIME);
     this.event('equip',{playerId:p.id,weaponId:p.weaponId,x:p.x,z:p.z});
   }
-  gadget(p){
-    if(p.gadgetTime>0)return;p.gadgetTime=12;let count=0,helped=0;
-    const selfDamaged=p.hp<100;
-    for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&dist(p,ally)<12){
-      if(p.classId==='support'){
-        const allyWep=getWeapon(ally.classId,ally.weaponId);
-        const before=ally.reserve+ally.stowedAmmo.reserve;
-        const stowedWeapon=ally.weaponSlot===1?getSidearm(ally.sidearmId):getPrimaryWeapon(ally.classId,ally.primaryWeaponId);
-        ally.reserve=Math.min(allyWep.reserve,ally.reserve+60);
-        ally.stowedAmmo.reserve=Math.min(stowedWeapon.reserve,ally.stowedAmmo.reserve+60);
-        if(ally!==p&&ally.reserve+ally.stowedAmmo.reserve>before){
-          helped++;
-          this.awardScore(p,25,'ПОПОЛНЕНИЕ БОЕПРИПАСОВ',{kind:'resupply'});
-        }
-      }else if(p.classId==='medic'){
-        const before=ally.hp;
-        ally.hp=Math.min(100,ally.hp+55);
-        if(ally!==p&&ally.hp>before){
-          helped++;
-          this.awardScore(p,35,'ЛЕЧЕНИЕ СОЮЗНИКА',{kind:'heal'});
-        }
-      }else if(p.classId==='assault'){
-        const before=ally.hp;
-        ally.hp=Math.min(100,ally.hp+25);
-        if(ally!==p&&ally.hp>before)helped++;
-      }else{
-        ally.spottedUntil=this.time+8;
-      }
-      count++;
-    }
-    if(p.classId==='assault'&&(selfDamaged||helped>0)){
-      this.awardScore(p,15,'БОЕВАЯ СТИМУЛЯЦИЯ',{kind:'stim'});
-    }
-    if(p.classId==='recon'){
-      for(const enemy of this.players.values())if(enemy.alive&&enemy.team!==p.team&&dist(p,enemy)<50){
-        const alreadySpotted=enemy.spottedUntil>this.time&&enemy.spottedBy===p.id;
-        enemy.spottedUntil=this.time+8;
-        enemy.spottedBy=p.id;
-        if(!alreadySpotted)this.awardScore(p,15,'ОБНАРУЖЕНИЕ ПРОТИВНИКА',{kind:'spot'});
-      }
-    }
-    this.event('gadget',{playerId:p.id,classId:p.classId,team:p.team,x:p.x,y:p.y||0,z:p.z,yaw:p.yaw||0,count});
-  }
+  gadget(p){return activateGadget(this,p);}
   throwGrenade(p){
     if(!p.grenades||p.grenadeCooldown>0)return;p.grenades--;p.grenadeCooldown=1;
     p.invulnerableUntil=0;
@@ -840,6 +819,11 @@ export class Simulation {
   }
   thinkBot(p,dt){
     if(!p.alive)return;
+    p.input.secondaryGadget=false;
+    const visibleBeacon=this.deployables.some(item=>item.kind==='beacon'&&item.hp>0&&item.team!==p.team&&dist(p,item)<this.botSettings.awareness&&
+      Math.abs(angleDifference(Math.atan2(-(item.x-p.x),-(item.z-p.z)),p.yaw))<.9&&
+      this.lineClear({x:p.x,y:p.y+EYE_HEIGHT,z:p.z},{x:item.x,y:item.y+.4,z:item.z}));
+    if((!visibleBeacon||p.pendingGadget)&&thinkEquipment(this,p,dt))return;
     if(thinkVehicleBot(this,p,dt))return;
     if (p.botTransit) {
       const route = p.botTransit;
@@ -856,7 +840,16 @@ export class Simulation {
     let target=null,bestSquared=settings.awareness**2;
     scratchEye.x=p.x;scratchEye.y=p.y+(crouching(p)?CROUCH_EYE_HEIGHT:EYE_HEIGHT);scratchEye.z=p.z;
     const recentlyHurt=this.time-p.lastHurt<1.5;
-    for(const other of this.players.values())if(other.alive&&other.team!==p.team){
+    for(const item of this.deployables){
+      if(item.kind!=='beacon'||item.hp<=0||item.team===p.team)continue;
+      const dx=item.x-p.x,dz=item.z-p.z,d2=dx*dx+dz*dz;
+      const yaw=Math.atan2(-dx,-dz);
+      if(d2<bestSquared&&Math.abs(angleDifference(yaw,p.yaw))<.9&&this.lineClear(scratchEye,{x:item.x,y:item.y+.4,z:item.z})){
+        target=item;bestSquared=d2;
+      }
+    }
+    const beaconTarget=Boolean(target);
+    for(const other of this.players.values())if(!beaconTarget&&other.alive&&other.team!==p.team){
       const dx=other.x-p.x,dz=other.z-p.z,distanceSquared=dx*dx+dz*dz;
       if(distanceSquared>=bestSquared||this.time<other.invulnerableUntil)continue;
       const aware=distanceSquared<100||recentlyHurt||other.id===p.botTargetId||Math.abs(angleDifference(Math.atan2(-dx,-dz),p.yaw))<1.9;
@@ -869,11 +862,11 @@ export class Simulation {
     }
     const input=p.input;
     input.forward=0;input.strafe=0;input.sprint=false;input.crouch=false;input.jump=false;
-    input.fire=false;input.aim=false;input.reload=false;input.gadget=false;input.grenade=false;
+    input.fire=false;input.aim=false;input.reload=false;input.gadget=false;input.secondaryGadget=false;input.grenade=false;
     if(target){
       const best=Math.sqrt(bestSquared);
       if(p.botTargetId!==target.id){p.botTargetId=target.id;p.botReactAt=this.time+settings.reaction+this.random()*settings.reactionVariance;p.botBurstAt=p.botReactAt;p.botAimPhase=this.random()*Math.PI*2;}
-      const solution=aimBullet(scratchEye,target,crouching(target)?.65:1.05,getWeapon(p.classId,p.weaponId).projectileSpeed);
+      const solution=aimBullet(scratchEye,target,beaconTarget?.4:crouching(target)?.65:1.05,getWeapon(p.classId,p.weaponId).projectileSpeed);
       const phase=p.botAimPhase+this.time*1.5;
       // Error grows with distance, leaving visible near-misses rather than laser aim.
       const error=settings.aimError*(.65+best/settings.awareness);
@@ -992,32 +985,21 @@ export class Simulation {
       input.forward=-.5;input.strafe=p.botUnstuckDir||1;input.sprint=false;input.jump=(this.time*4)%1<.3;
     }else if(input.forward>.3)p.botMoveTime=(p.botMoveTime||0)+dt;    if(p.ammo===0||(p.ammo<6&&!target))input.reload=true;
     if(p.gadgetTime<=0&&this.time>=(p.nextGadgetAt||0)){
-      const wep=getWeapon(p.classId,p.weaponId);
-      const onPoint=Boolean(p.botObjective)&&dist(p,p.botObjective)<CAPTURE_RADIUS-1;
-      let alliesNear=0,woundedNear=false,lowAmmoNear=false;
-      for(const ally of this.players.values()){
-        if(ally===p||!ally.alive||ally.team!==p.team||dist(p,ally)>9)continue;
-        alliesNear++;
-        if(ally.hp<60)woundedNear=true;
-        const aw=getWeapon(ally.classId,ally.weaponId);
-        if(ally.reserve<aw.reserve*.45)lowAmmoNear=true;
-      }
       let use=false;
-      if(p.classId==='medic'){
-        use=woundedNear||(p.hp<50&&alliesNear>0)||(onPoint&&alliesNear>0&&this.random()<.5);
-      }else if(p.classId==='support'){
-        use=lowAmmoNear||(onPoint&&alliesNear>0&&this.random()<.5);
+      if(p.classId==='assault'){
+        use=p.reserve<getWeapon(p.classId,p.weaponId).reserve*.55;
+        for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&dist(p,ally)<7&&ally.reserve<30)use=true;
       }else if(p.classId==='recon'){
-        use=Boolean(target)&&this.random()<.4;
-        if(!use&&onPoint)for(const enemy of this.players.values())if(enemy.alive&&enemy.team!==p.team&&dist(p,enemy)<40){use=true;break;}
-      }else{
-        use=p.hp<55&&(Boolean(target)||recentlyHurt);
+        const existing=this.deployables.find(item=>item.kind==='beacon'&&item.ownerId===p.id&&item.hp>0&&item.expires>this.time);
+        const fromBase=dist(p,this.map.spawns[p.team]);
+        use=!existing&&fromBase>35&&!target&&this.time>8+(p.botSlot??0)*.3;
       }
-      if(use){
-        input.gadget=true;
-        p.nextGadgetAt=this.time+14+this.random()*10;
-      }
-    }    if(target&&p.grenades>0&&(p.grenadeCooldown||0)<=0&&this.time>=(p.nextGrenadeAt||0)&&this.time>=(p.botReactAt||0)+.35){
+      if(use){input.gadget=true;p.nextGadgetAt=this.time+5;}
+    }
+    if(p.classId==='medic'&&p.secondaryCooldown<=0){
+      for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&ally.hp<65&&dist(p,ally)<5)input.secondaryGadget=true;
+    }
+    if(target&&p.grenades>0&&(p.grenadeCooldown||0)<=0&&this.time>=(p.nextGrenadeAt||0)&&this.time>=(p.botReactAt||0)+.35){
       const d=Math.sqrt(bestSquared);
       if(d>11&&d<25&&Math.abs(angleDifference(Math.atan2(-(target.x-p.x),-(target.z-p.z)),input.yaw))<.22){
         input.grenade=true;
@@ -1034,6 +1016,7 @@ export class Simulation {
     for(const p of this.players.values()){p.tickX=p.x;p.tickZ=p.z;}
     // Spread route planning across ticks when many bots spawn together.
     this.botPathBudget=2;
+    updateEquipment(this,dt);
     if(this.vehicles.length){
       for(const p of this.players.values()){
         if(!p.alive)continue;
@@ -1057,7 +1040,7 @@ export class Simulation {
       const pressed = i.fire && !p.fireHeld;
       p.fireHeld = i.fire;
       // Carry the fractional tick remainder through a burst so cadence stays on spec.
-      const firing = i.fire && !i.sprint && p.equipTime===0;
+      const firing = i.fire && !i.sprint && p.equipTime===0 && !i.gadget && !i.secondaryGadget && !(p.gadgetActionUntil>this.time);
       const continuous = firing && (p.bot || !c.semiAuto) && !pressed && !p.reloading;
       p.cooldown = Math.max(continuous ? -dt : 0, p.cooldown - dt);
       p.bloom = Math.max(0, p.bloom - dt * (this.time - p.lastShotAt > .16 ? 3.6 : .4));
@@ -1121,8 +1104,10 @@ export class Simulation {
       }
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
       this.firePersonalWeapon(p,c,pressed,firing);
-      if(i.gadget)this.gadget(p);
-      if(i.grenade&&!p.grenadeHeld)this.throwGrenade(p);p.grenadeHeld=i.grenade;
+      if(i.gadget&&(!p.gadgetHeld||p.classId==='support'))this.gadget(p);
+      if(i.secondaryGadget&&!p.secondaryGadgetHeld)activateGadget(this,p,true);
+      p.gadgetHeld=i.gadget;p.secondaryGadgetHeld=i.secondaryGadget;
+      if(i.grenade&&!p.grenadeHeld&&!(p.gadgetActionUntil>this.time))this.throwGrenade(p);p.grenadeHeld=i.grenade;
       if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
     }
     for(const p of this.players.values()){
@@ -1157,23 +1142,7 @@ export class Simulation {
       else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
       const ground=this.groundAt(grenade.x,grenade.z)+.15;
       if(grenade.y<ground){grenade.y=ground;grenade.vy=Math.abs(grenade.vy)*.3;grenade.vx*=.92;grenade.vz*=.92;}
-      if(grenade.fuse<=0){
-        this.event('explosion',{x:grenade.x,y:grenade.y,z:grenade.z});
-        const owner=this.players.get(grenade.owner);
-        for(const vehicle of this.vehicles){
-          if(vehicle.hp<=0||vehicle.team===grenade.team)continue;
-          const d=Math.hypot(dist(grenade,vehicle),grenade.y-vehicle.y-.8);
-          if(d<10&&this.lineClear(grenade,{x:vehicle.x,y:vehicle.y+.8,z:vehicle.z}))
-            this.damageVehicle(vehicle,245*(1-d/10),owner,'blast');
-        }
-        for(const p of this.players.values())if(p.alive&&(p.team!==grenade.team||p.id===grenade.owner)){
-          const d=Math.hypot(p.x-grenade.x,p.y+.8-grenade.y,p.z-grenade.z);
-          const mounted=this.vehicles.find(v=>v.id===p.vehicleId);
-          const enclosed=mounted?.type==='humvee'&&p.vehicleSeat!==1;
-          if(d<10&&this.lineClear(grenade,{x:p.x,y:p.y+.8,z:p.z}))
-            this.damage(p,140*(1-d/10)*(enclosed?.28:1),owner,{weapon:'ГРАНАТА'});
-        }
-      }
+      if(grenade.fuse<=0)blast(this,{x:grenade.x,y:grenade.y,z:grenade.z},this.players.get(grenade.owner),'grenade',null,grenade.team);
     }
     this.grenades=this.grenades.filter(g=>g.fuse>0);
     for(const point of this.points){
@@ -1222,7 +1191,9 @@ export class Simulation {
         shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
         slideYaw:p.slideTime>0?Math.atan2(-p.slideVx,-p.slideVz):p.yaw,sprint:!p.vehicleId&&!crouching(p)&&p.input.sprint&&p.moveSpeed>wep.speed,
         aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
-        gadgetCooldown:p.gadgetTime,grenades:p.grenades,spotted:p.spottedUntil>this.time,
+        gadgetCooldown:p.gadgetTime,secondaryCooldown:p.secondaryCooldown,rockets:p.rockets,
+        gadgetAction:p.gadgetAction,gadgetActionRemaining:Math.max(0,(p.gadgetActionUntil??0)-this.time),gadgetTargetId:p.gadgetTargetId,
+        grenades:p.grenades,spotted:p.spottedUntil>this.time,
         vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,
       };
     });
@@ -1230,6 +1201,8 @@ export class Simulation {
       time:this.time,mapId:this.map.id,roundDuration:960,maxTickets:this.maxTickets,difficulty:this.difficulty,tickets:[...this.tickets],players,
       points:this.points.map(p=>({...p})),events:this.events.map(e=>({...e})),
       vehicles:this.vehicles.map(({home,gunCooldown,...v})=>({...v,seats:[...v.seats]})),
+      deployables:this.deployables.map(item=>({...item})),
+      rockets:this.rockets.map(rocket=>({...rocket})),
       grenades:this.grenades.map(g=>({id:g.id,x:g.x,y:g.y,z:g.z,team:g.team,ownerId:g.owner,fuse:g.fuse,yaw:g.yaw||0})),winner:this.winner,
     };
   }

@@ -7,7 +7,7 @@ const ROOM_PREFIX = 'gpt-test-';
 const MAX_HUMANS = 16;
 const STEP = 1 / 60;
 const CONNECT_TIMEOUT = 18000;
-const PULSE_ACTIONS = ['jump', 'fire', 'reload', 'gadget', 'grenade', 'interact', 'switchSeat'];
+const PULSE_ACTIONS = ['jump', 'fire', 'reload', 'gadget', 'secondaryGadget', 'grenade', 'interact', 'switchSeat'];
 const noOp = () => {};
 
 export function normalizeRoomCode(value) {
@@ -259,7 +259,7 @@ export class Multiplayer {
           for (const guest of this._connections.values()) {
             if (!guest.joined) continue;
             const controls = { ...guest.lastControls, interact: false, switchSeat: false };
-            if (now - guest.lastInput > 350) Object.assign(controls, { forward: 0, strafe: 0, sprint: false, jump: false, fire: false, reload: false, grenade: false, gadget: false });
+            if (now - guest.lastInput > 350) Object.assign(controls, { forward: 0, strafe: 0, sprint: false, jump: false, fire: false, reload: false, grenade: false, gadget: false, secondaryGadget: false });
             else for (const action of guest.actions) controls[action] = true;
             this._simulation.setInput(guest.id, controls);
             guest.actions.clear();

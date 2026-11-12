@@ -400,7 +400,17 @@ function aimCrew(sim, p, vehicle, dt) {
   if (gunner) seat.y -= .105;
   const weapon = gunner ? TURRET_WEAPON : getWeapon(p.classId, p.weaponId);
   let target = null, best = sim.botSettings.awareness * (gunner ? 1.35 : 1);
+  for(const item of sim.deployables){
+    if(item.kind!=='beacon'||item.hp<=0||item.team===p.team)continue;
+    const length=distance(seat,item);
+    if(length>=best)continue;
+    const {yaw,pitch}=aimBullet(seat,item,.4,weapon.projectileSpeed);
+    if(Math.abs(angleDifference(yaw,p.yaw))>1||(!gunner&&!canFirePassengerWeapon(vehicle,p.vehicleSeat,yaw,pitch))||
+      !sim.lineClear(seat,{x:item.x,y:item.y+.4,z:item.z}))continue;
+    target={id:item.id,yaw,pitch,equipment:true};best=length;
+  }
   for (const enemy of sim.players.values()) {
+    if(target?.equipment)break;
     if (!enemy.alive || enemy.team === p.team || sim.time < enemy.invulnerableUntil) continue;
     const length = distance(seat, enemy);
     if (length >= best) continue;

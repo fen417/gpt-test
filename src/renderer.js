@@ -1,4 +1,5 @@
 ﻿import * as THREE from 'three';
+import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
@@ -150,7 +151,10 @@ export class GameRenderer {
     this.grenadeMeshes = new Map();
     this.activeGrenades = new Set();
     this.vehicleRigs = new Map();
-    this.gadgetDeployables = [];
+    this.equipmentMeshes = new Map();
+    this.rocketMeshes = new Map();
+    this.remoteTools = new Map();
+    this.equipmentPalette = gadgetPalette((name,color,roughness,metalness,extra)=>material(color,roughness,metalness,extra));
     this.throwTimer = 0;
     this.throwDuration = 0.68;
     this.gadgetTimer = 0;
@@ -529,8 +533,10 @@ export class GameRenderer {
     this.soldiers.clear();
     for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
     this.grenadeMeshes.clear();
-    for (const item of this.gadgetDeployables) this.removeGadget(item);
-    this.gadgetDeployables.length = 0;
+    for(const cache of [this.equipmentMeshes,this.rocketMeshes,this.remoteTools]){
+      for(const model of cache.values())model.removeFromParent();
+      cache.clear();
+    }
     for (const effect of this.effects) {
       if (effect.type === 'light') effect.mesh.intensity = 0;
       else { effect.mesh.removeFromParent(); this.effectPools[effect.type].push(effect); }
@@ -877,7 +883,7 @@ export class GameRenderer {
       this.soldierBounds.center.y += .9;
       const distSq = local ? (player.x - local.x) ** 2 + (player.z - local.z) ** 2 : 0;
       const shadowVisible = !this.lowQuality && distSq < 48 * 48 && shadowFrustum?.intersectsSphere(this.soldierBounds);
-      const visible = externalScene || ((alive || soldier.deathAge < 3.6) &&
+      const visible = externalScene || ((alive || soldier.deathAge < 4.1) &&
         (this.viewFrustum.intersectsSphere(this.soldierBounds) || shadowVisible));
       if (!visible) {
         if (!externalScene) group.removeFromParent();
@@ -901,6 +907,7 @@ export class GameRenderer {
       soldier.body.geometry = distant ? soldier.distantGeometry
         : projectedDistanceSq > nearLimit ** 2 ? soldier.mediumGeometry : soldier.detailGeometry;
       soldier.body.castShadow = !distant && !this.lowQuality && distSq < 48 * 48;
+      soldier.rifle.scale.setScalar(1);
       const mustReset = reset || respawned || returning;
       const reducedRate = !externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
       const animationInterval = distant ? 1 / 20 : 1 / 30;
@@ -933,8 +940,15 @@ export class GameRenderer {
       }
       if (event.type === 'gadget') {
         if (event.playerId === localId) this.gadgetTimer = this.gadgetDuration;
-        else soldierThrow(this.soldiers.get(event.playerId));
-        this.spawnGadgetDeployable(event, state);
+        else if(event.kind==='ammo'||event.kind==='beacon')soldierThrow(this.soldiers.get(event.playerId));
+        continue;
+      }
+      if(event.type==='equipmentDestroyed'){
+        this.smoke(event.x,event.y+.3,event.z,.3,.6,0x989181);this.spark(event.x,event.y+.3,event.z);continue;
+      }
+      if(event.type==='rocketLaunch'){
+        const x=event.x-Math.sin(event.yaw)*.7,z=event.z-Math.cos(event.yaw)*.7;
+        for(let i=0;i<3;i++)this.smoke(x,event.y-.1,z,.2+i*.06,.35,0xb1ab9c);
         continue;
       }
       if (event.type === 'shot') {
@@ -1155,221 +1169,64 @@ export class GameRenderer {
     return group;
   }
 
-  spawnGadgetDeployable(event, state) {
-    const player = state.players?.find(p => p.id === event.playerId);
-    const classId = event.classId || player?.classId || 'assault';
-    const team = event.team ?? player?.team ?? 0;
-    const yaw = event.yaw ?? player?.yaw ?? 0;
-    const forward = classId === 'assault' ? 0.35 : 1.05;
-    const originX = event.x ?? player?.x ?? 0, originZ = event.z ?? player?.z ?? 0;
-    const feet = event.y ?? player?.y ?? 0;
-    const x = originX - Math.sin(yaw) * forward, z = originZ - Math.cos(yaw) * forward;
-    const terrain = this.map.terrain;
-    const support = this.map.boxes.find(box => Math.abs(feet - boxTop(box)) < .08 && insideFootprint(box, originX, originZ));
-    const heightAt = (px, pz) => {
-      const ground = terrain?.heightAt(px, pz) ?? 0;
-      return support && insideFootprint(support, px, pz) ? Math.max(ground, boxTop(support)) : ground;
+  syncEquipment(state,localId,dt) {
+    const sync=(items,cache,kindOf)=>{
+      const active=new Set();
+      for(const item of items){
+        active.add(item.id);let model=cache.get(item.id);
+        if(!model){
+          model=createGadgetModel(kindOf(item),this.equipmentPalette);
+          if(item.kind==='beacon'){
+            const led=new THREE.Mesh(this.geo.sphere,this.getQualityMaterial(item.team===1?this.gadgetAssets.team1:this.gadgetAssets.team0));
+            led.name='equipment-status';led.position.set(.06,.34,-.14);led.scale.setScalar(.022);model.add(led);
+          }
+          model.traverse(object=>{if(object.material)object.material=this.getQualityMaterial(object.material);});
+          cache.set(item.id,model);this.worldRoot.add(model);
+        }
+        model.visible=true;
+        const led=model.getObjectByName('equipment-status');if(led)led.visible=Math.sin(this.clock*4.5)>-.2;
+        model.position.set(item.x,item.y,item.z);
+        model.rotation.order='YXZ';
+        model.rotation.y=item.yaw??Math.atan2(-item.vx,-item.vz);
+        if(item.vy!==undefined)model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));
+      }
+      for(const [id,model] of cache)if(!active.has(id)){model.removeFromParent();cache.delete(id);}
     };
-    const y = heightAt(x, z);
-    const group = new THREE.Group();
-    group.position.set(x, y, z);
-    group.rotation.y = yaw;
-
-    const teamMat = this.getQualityMaterial(team === 1 ? this.gadgetAssets.team1 : this.gadgetAssets.team0);
-    let ringColor = TEAM_COLORS[team] ?? COLORS.friendly;
-    let maxRadius = 4.2;
-    let life = 6.5;
-    let rotor = null;
-
-    if (classId === 'recon') {
-      life = 8.0;
-      maxRadius = 15.5;
-      ringColor = TEAM_COLORS[team] ?? 0x5bd9e8;
-      // 3-legged tactical tripod + armored core + rotating radar dish & antenna
-      for (let i = 0; i < 3; i++) {
-        const a = i * (Math.PI * 2 / 3);
-        const legGroup = new THREE.Group();
-        legGroup.rotation.y = -a;
-        const leg = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
-        leg.position.set(0.21, 0.22, 0);
-        leg.scale.set(0.024, 0.48, 0.024);
-        leg.rotation.z = 0.52;
-        legGroup.add(leg);
-        const foot = new THREE.Mesh(this.geo.cylinder, this.materials.darkConcrete);
-        foot.position.set(0.33, 0.02, 0);
-        foot.scale.set(0.055, 0.03, 0.055);
-        legGroup.add(foot);
-        group.add(legGroup);
+    sync(state.deployables??[],this.equipmentMeshes,item=>item.kind);
+    sync(state.rockets??[],this.rocketMeshes,()=> 'rocket');
+    for(const player of state.players){
+      if(player.alive&&player.gadgetAction==='repair'&&this.random()<dt*16){
+        const vehicle=state.vehicles?.find(item=>item.id===player.gadgetTargetId);
+        if(vehicle){
+          const dx=player.x-vehicle.x,dz=player.z-vehicle.z,length=Math.max(.1,Math.hypot(dx,dz));
+          this.spark(vehicle.x+dx/length,vehicle.y+.8,vehicle.z+dz/length,.6);
+        }
       }
-      const core = new THREE.Mesh(this.geo.cylinder, this.grenadeMaterial);
-      core.position.y = 0.44;
-      core.scale.set(0.14, 0.24, 0.14);
-      group.add(core);
-      const collar = new THREE.Mesh(this.geo.cylinder, teamMat);
-      collar.position.y = 0.52;
-      collar.scale.set(0.15, 0.04, 0.15);
-      group.add(collar);
-      rotor = new THREE.Group();
-      rotor.position.y = 0.64;
-      const head = new THREE.Mesh(this.geo.box, this.materials.steel);
-      head.scale.set(0.26, 0.12, 0.16);
-      rotor.add(head);
-      const dish = new THREE.Mesh(this.geo.cylinder, teamMat);
-      dish.position.set(0, 0.02, -0.09);
-      dish.rotation.x = Math.PI / 2;
-      dish.scale.set(0.11, 0.025, 0.11);
-      rotor.add(dish);
-      const antenna = new THREE.Mesh(this.geo.cylinder, this.materials.pole);
-      antenna.position.set(0.09, 0.22, 0.03);
-      antenna.scale.set(0.012, 0.36, 0.012);
-      rotor.add(antenna);
-      const tip = new THREE.Mesh(this.geo.sphere, teamMat);
-      tip.position.set(0.09, 0.41, 0.03);
-      tip.scale.setScalar(0.032);
-      rotor.add(tip);
-      group.add(rotor);
-    } else if (classId === 'medic') {
-      life = 6.5;
-      maxRadius = 4.6;
-      ringColor = 0x52e088;
-      const whiteMat = this.getQualityMaterial(this.gadgetAssets.white);
-      const redMat = this.getQualityMaterial(this.gadgetAssets.red);
-      const greenMat = this.getQualityMaterial(this.gadgetAssets.green);
-      const base = new THREE.Mesh(this.geo.rounded, whiteMat);
-      base.position.y = 0.11;
-      base.scale.set(0.52, 0.20, 0.38);
-      group.add(base);
-      const band = new THREE.Mesh(this.geo.box, this.grenadeMaterial);
-      band.position.y = 0.11;
-      band.scale.set(0.54, 0.06, 0.40);
-      group.add(band);
-      const cross1 = new THREE.Mesh(this.geo.box, redMat);
-      cross1.position.y = 0.215;
-      cross1.scale.set(0.22, 0.02, 0.065);
-      group.add(cross1);
-      const cross2 = new THREE.Mesh(this.geo.box, redMat);
-      cross2.position.y = 0.215;
-      cross2.scale.set(0.065, 0.02, 0.22);
-      group.add(cross2);
-      for (const lx of [-0.15, 0.15]) {
-        const latch = new THREE.Mesh(this.geo.box, this.materials.steel);
-        latch.position.set(lx, 0.12, -0.195);
-        latch.scale.set(0.055, 0.08, 0.025);
-        group.add(latch);
-      }
-      for (const vx of [-0.18, 0.18]) {
-        const vial = new THREE.Mesh(this.geo.cylinder, greenMat);
-        vial.position.set(vx, 0.22, 0);
-        vial.scale.set(0.026, 0.05, 0.026);
-        group.add(vial);
-      }
-    } else if (classId === 'support') {
-      life = 6.5;
-      maxRadius = 4.6;
-      ringColor = 0xf2b84b;
-      const box = new THREE.Mesh(this.geo.rounded, this.grenadeMaterial);
-      box.position.y = 0.14;
-      box.scale.set(0.58, 0.26, 0.38);
-      group.add(box);
-      const lid = new THREE.Mesh(this.geo.box, this.materials.steel);
-      lid.position.set(0, 0.32, 0.17);
-      lid.rotation.x = -0.65;
-      lid.scale.set(0.58, 0.04, 0.34);
-      group.add(lid);
-      const stripe = new THREE.Mesh(this.geo.box, this.materials.stripe);
-      stripe.position.set(0, 0.15, -0.195);
-      stripe.scale.set(0.46, 0.045, 0.015);
-      group.add(stripe);
-      for (let i = 0; i < 7; i++) {
-        const rx = -0.18 + i * 0.06;
-        const cartridge = new THREE.Mesh(this.geo.cylinder, this.shellMaterial);
-        cartridge.position.set(rx, 0.285, -0.02);
-        cartridge.rotation.x = Math.PI / 2;
-        cartridge.scale.set(0.022, 0.19, 0.022);
-        group.add(cartridge);
-      }
-    } else {
-      life = 3.2;
-      maxRadius = 2.4;
-      ringColor = 0x5bd9e8;
-      const body = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
-      body.position.y = 0.05;
-      body.rotation.z = Math.PI / 2 - 0.25;
-      body.scale.set(0.032, 0.22, 0.032);
-      group.add(body);
-      const serum = new THREE.Mesh(this.geo.cylinder, teamMat);
-      serum.position.y = 0.058;
-      serum.rotation.z = Math.PI / 2 - 0.25;
-      serum.scale.set(0.036, 0.09, 0.036);
-      group.add(serum);
     }
-
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: ringColor,
-      transparent: true,
-      opacity: 0.48,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const conformToGround = Boolean(terrain || support);
-    const ringGeometry = conformToGround ? this.geo.gadgetRing.clone() : this.geo.gadgetRing;
-    const ring = new THREE.Mesh(ringGeometry, ringMat);
-    if (conformToGround) {
-      ringGeometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
-      ring.frustumCulled = false;
-    } else {
-      ring.rotation.x = -Math.PI / 2;
-    }
-    ring.position.y = 0.04;
-    group.add(ring);
-
-    this.worldRoot.add(group);
-    this.gadgetDeployables.push({ group, ring, ringMat, rotor, age: 0, life, maxRadius, classId,
-      groundHeight: conformToGround ? heightAt : null });
-  }
-
-  removeGadget(item) {
-    item.group.removeFromParent();
-    item.ringMat.dispose();
-    if (item.groundHeight) item.ring.geometry.dispose();
-  }
-
-  shapeGadgetRing(item, radius) {
-    const { group, ring, groundHeight } = item;
-    if (!groundHeight) {
-      ring.scale.setScalar(radius);
-      return;
-    }
-    const source = this.geo.gadgetRing.attributes.position;
-    const vertices = ring.geometry.attributes.position;
-    const { x, y, z } = group.position;
-    const sin = Math.sin(group.rotation.y), cos = Math.cos(group.rotation.y);
-    for (let i = 0; i < vertices.count; i++) {
-      const dx = source.getX(i) * radius, dz = -source.getY(i) * radius;
-      const px = x + dx * cos + dz * sin, pz = z - dx * sin + dz * cos;
-      vertices.setXYZ(i, dx, groundHeight(px, pz) - y, dz);
-    }
-    vertices.needsUpdate = true;
-  }
-
-  updateGadgets(dt) {
-    for (let i = this.gadgetDeployables.length - 1; i >= 0; i--) {
-      const item = this.gadgetDeployables[i];
-      item.age += dt;
-      if (item.age >= item.life) {
-        this.removeGadget(item);
-        this.gadgetDeployables.splice(i, 1);
-        continue;
+    const active=new Set();
+    for(const player of state.players){
+      if(player.id===localId)continue;
+      const soldier=this.soldiers.get(player.id);
+      if(!soldier)continue;
+      soldier.rifle.scale.setScalar(1);
+      if(!player.alive||!player.gadgetAction||!soldier.group.parent)continue;
+      active.add(player.id);
+      let model=this.remoteTools.get(player.id);
+      if(model?.userData.kind!==player.gadgetAction){
+        model?.removeFromParent();
+        model=createGadgetModel(player.gadgetAction,this.equipmentPalette);model.userData.kind=player.gadgetAction;
+        model.traverse(object=>{if(object.material)object.material=this.getQualityMaterial(object.material);});
+        this.remoteTools.set(player.id,model);
       }
-      if (item.rotor) {
-        item.rotor.rotation.y += dt * 3.8;
-      }
-      const fade = 1 - Math.max(0, (item.age - (item.life - 0.8)) / 0.8);
-      const pulse = (item.age * (item.classId === 'recon' ? 0.85 : 1.15)) % 1;
-      const radius = lerp(0.45, item.maxRadius, pulse);
-      this.shapeGadgetRing(item, radius);
-      item.ringMat.opacity = (1 - pulse) * 0.46 * fade;
+      if(model.parent!==soldier.group)soldier.group.add(model);
+      model.position.set(.10,(player.crouch?.86:1.22),-.30);
+      model.rotation.set(player.pitch??0,0,0);
+      model.scale.setScalar(player.gadgetAction==='beacon'?.4:player.gadgetAction==='ammo'?.75:1);
+      soldier.rifle.scale.setScalar(.001);soldier.flash.visible=false;
+      const flame=model.getObjectByName('tool-flame');
+      if(flame)flame.scale.setScalar(.8+Math.sin(this.clock*43)*.15);
     }
+    for(const [id,model] of this.remoteTools)if(!active.has(id)){model.removeFromParent();this.remoteTools.delete(id);}
   }
 
   updateGrenades(state, localId) {
@@ -1579,7 +1436,7 @@ export class GameRenderer {
       this.updateSunShadow(0, 0);
       for (const soldier of this.soldiers.values()) soldier.group.visible = false;
       for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
-      this.updateGadgets(dt);
+      for(const cache of [this.equipmentMeshes,this.rocketMeshes])for(const model of cache.values())model.visible=false;
       this.updateEffects(dt);
       this.drawScene(true); return;
     }
@@ -1598,10 +1455,12 @@ export class GameRenderer {
       }
     }
     this.throwTimer = Math.max(0, this.throwTimer - dt);
-    this.gadgetTimer = Math.max(0, this.gadgetTimer - dt);
-    const throwPhase = this.throwTimer > 0 ? 1 - this.throwTimer / this.throwDuration : 0;
-    const gadgetPhase = this.gadgetTimer > 0 ? 1 - this.gadgetTimer / this.gadgetDuration : 0;
     const player = state.players.find(p => p.id === localId);
+    const gadgetKind=player?.gadgetAction??null;
+    this.gadgetDuration=gadgetKind==='launcher'?1.05:gadgetKind==='defibrillator'?.7:gadgetKind==='medkit'?.85:.75;
+    this.gadgetTimer=player?.gadgetActionRemaining??0;
+    const throwPhase = this.throwTimer > 0 ? 1 - this.throwTimer / this.throwDuration : 0;
+    const gadgetPhase=gadgetKind==='repair'?.5:this.gadgetTimer>0?clamp(1-this.gadgetTimer/this.gadgetDuration,.001,.999):0;
     const isAlive = player?.alive !== false;
     const mounted = this.updateVehicles(state, player, dt, view);
     const seat = mounted && VEHICLE_TYPES[mounted.vehicle.type].seats[player.vehicleSeat];
@@ -1749,6 +1608,7 @@ export class GameRenderer {
         clock: this.clock,
         throwPhase,
         gadgetPhase,
+        gadgetKind,
       });
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetPhase) * Math.PI);
@@ -1814,7 +1674,7 @@ export class GameRenderer {
         }
       }
     }
-    this.updateSoldiers(state, localId, dt); this.updateGrenades(state, localId); this.processEvents(state, localId); this.updateGadgets(dt); this.updateEffects(dt);
+    this.updateSoldiers(state, localId, dt); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
     this.atmosphere.sky.position.copy(this.camera.position);
     this.drawScene();
   }
@@ -1839,6 +1699,7 @@ export class GameRenderer {
       }
     };
     this.scene.traverse(collect);
+    for(const template of gadgetTemplates(this.equipmentPalette))template.traverse(collect);
     for (const world of this.worlds.values()) if (!world.root.parent) world.root.traverse(collect);
     for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(collect);
     for (const soldier of this.soldierTemplates.values()) {

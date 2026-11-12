@@ -30,10 +30,10 @@
         <div class="operation-options"><label class="map-choice" for="map-select">КАРТА<select id="map-select"></select></label><label for="difficulty">СЛОЖНОСТЬ БОТОВ<select id="difficulty"><option value="recruit">Новобранцы</option><option value="regular" selected>Обычные бойцы</option><option value="veteran">Ветераны</option></select></label><label for="population">ПЛОТНОСТЬ БОЯ<select id="population"><option value="15">16 бойцов</option><option value="23" selected>24 бойца</option><option value="31">32 бойца</option></select></label></div>
         <div class="field-label class-label">СПЕЦИАЛИЗАЦИЯ <span id="class-weapon">AR-4 · ШТУРМОВАЯ ВИНТОВКА</span></div>
         <div id="classes" class="classes">
-          <button class="class-card active" data-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>Боевая стимуляция</small></button>
-          <button class="class-card" data-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>Лечение отряда</small></button>
-          <button class="class-card" data-class="support" aria-pressed="false"><span>▥</span><b>Поддержка</b><small>Пополнение патронов</small></button>
-          <button class="class-card" data-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>Обнаружение противника</small></button>
+          <button class="class-card active" data-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>Патроны и противотанковый гранатомёт</small></button>
+          <button class="class-card" data-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>Воскрешение и лечение</small></button>
+          <button class="class-card" data-class="support" aria-pressed="false"><span>⚒</span><b>Инженер</b><small>Ремонт транспорта</small></button>
+          <button class="class-card" data-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>Маяк высадки</small></button>
         </div>
         <div class="field-label weapon-select-label">ОРУЖИЕ КЛАССА</div>
         <div id="menu-weapons" class="weapon-picker" role="group" aria-label="Выбор оружия"></div>
@@ -61,7 +61,7 @@
     <div id="score-feed" class="score-feed" aria-live="polite"></div>
     <div id="vehicle-prompt" class="vehicle-prompt hidden"></div><div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
     <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span id="minimap-name" class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
-    <div class="bottom-center"><span id="gadget-label">Q · СТИМУЛЯТОР</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
+    <div class="bottom-center"><span id="gadget-label">Q · ЯЩИК ПАТРОНОВ</span><span id="secondary-gadget-label">X · ПТ-90</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 ОЧК · 0/0/0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden">
       <div class="scoreboard-head"><h2>ТАБЛИЦА МАТЧА</h2><span id="scoreboard-tickets">600 : 600</span></div>
@@ -141,7 +141,7 @@
             <div id="deploy-classes" class="deploy-classes">
               <button type="button" class="deploy-class-btn active" data-deploy-class="assault" aria-pressed="true"><kbd>1</kbd><span>⌖</span><b>Штурмовик</b><small>AR-416</small></button>
               <button type="button" class="deploy-class-btn" data-deploy-class="medic" aria-pressed="false"><kbd>2</kbd><span>✚</span><b>Медик</b><small>MCX-9</small></button>
-              <button type="button" class="deploy-class-btn" data-deploy-class="support" aria-pressed="false"><kbd>3</kbd><span>▥</span><b>Поддержка</b><small>MG-36</small></button>
+              <button type="button" class="deploy-class-btn" data-deploy-class="support" aria-pressed="false"><kbd>3</kbd><span>⚒</span><b>Инженер</b><small>MG-36</small></button>
               <button type="button" class="deploy-class-btn" data-deploy-class="recon" aria-pressed="false"><kbd>4</kbd><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
             </div>
             <div id="deploy-weapons" class="weapon-picker compact" role="group" aria-label="Выбор оружия для высадки"></div>
@@ -149,7 +149,7 @@
             <div class="deploy-loadout">
               <div class="deploy-loadout-head">
                 <div><strong id="deploy-weapon-name">AR-416</strong><span id="deploy-weapon-type">ШТУРМОВАЯ ВИНТОВКА</span></div>
-                <div class="deploy-loadout-tags"><span id="deploy-ammo-tag">30 / 150 ПАТР.</span><span id="deploy-gadget-tag">Q · СТИМУЛЯТОР</span></div>
+                <div class="deploy-loadout-tags"><span id="deploy-ammo-tag">30 / 150 ПАТР.</span><span id="deploy-gadget-tag">Q · ЯЩИК ПАТРОНОВ</span></div>
               </div>
               <div class="deploy-stat-bars">
                 <div><span>УРОН</span><i><b id="stat-dmg" style="width:48%"></b></i></div>
@@ -211,7 +211,7 @@
             <div class="deploy-classes lobby-classes">
               <button type="button" class="deploy-class-btn active" data-lobby-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>AR-416</small></button>
               <button type="button" class="deploy-class-btn" data-lobby-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>MCX-9</small></button>
-              <button type="button" class="deploy-class-btn" data-lobby-class="support" aria-pressed="false"><span>▥</span><b>Поддержка</b><small>MG-36</small></button>
+              <button type="button" class="deploy-class-btn" data-lobby-class="support" aria-pressed="false"><span>⚒</span><b>Инженер</b><small>MG-36</small></button>
               <button type="button" class="deploy-class-btn" data-lobby-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
             </div>
             <div id="lobby-weapons" class="weapon-picker compact" role="group" aria-label="Выбор оружия в лобби"></div>

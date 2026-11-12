@@ -57,6 +57,23 @@ const SHOT_SAMPLES = {
     new URL('./assets/audio/gunshots/pistol-heavy-2.wav', import.meta.url),
   ],
 };
+const FOLEY_SAMPLES = {
+  'sand-L1': new URL('./assets/audio/foley/Fantozzi-SandL1.ogg', import.meta.url),
+  'sand-L2': new URL('./assets/audio/foley/Fantozzi-SandL2.ogg', import.meta.url),
+  'sand-L3': new URL('./assets/audio/foley/Fantozzi-SandL3.ogg', import.meta.url),
+  'sand-R1': new URL('./assets/audio/foley/Fantozzi-SandR1.ogg', import.meta.url),
+  'sand-R2': new URL('./assets/audio/foley/Fantozzi-SandR2.ogg', import.meta.url),
+  'sand-R3': new URL('./assets/audio/foley/Fantozzi-SandR3.ogg', import.meta.url),
+  'stone-L1': new URL('./assets/audio/foley/Fantozzi-StoneL1.ogg', import.meta.url),
+  'stone-L2': new URL('./assets/audio/foley/Fantozzi-StoneL2.ogg', import.meta.url),
+  'stone-L3': new URL('./assets/audio/foley/Fantozzi-StoneL3.ogg', import.meta.url),
+  'stone-R1': new URL('./assets/audio/foley/Fantozzi-StoneR1.ogg', import.meta.url),
+  'stone-R2': new URL('./assets/audio/foley/Fantozzi-StoneR2.ogg', import.meta.url),
+  'stone-R3': new URL('./assets/audio/foley/Fantozzi-StoneR3.ogg', import.meta.url),
+  'engine': new URL('./assets/audio/foley/engine-loop.wav', import.meta.url),
+  'explosion-heavy': new URL('./assets/audio/foley/explosion-heavy.ogg', import.meta.url),
+  'explosion-grenade': new URL('./assets/audio/foley/explosion-grenade.ogg', import.meta.url),
+};
 const HANDLING = {
   release: [.033, 3400, 510], pull: [.105, 1250, 188], pouch: [.16, 790, 0],
   seat: [.058, 1850, 205], tap: [.044, 2640, 300], bolt: [.075, 3600, 338],
@@ -84,6 +101,10 @@ export class CombatAudio {
     this._fadingVoices = new Set();
     this._shotBuffers = new Map();
     this._shotLoadFailures = 0;
+    this._foley = new Map();
+    this._engineChannels = new Map();
+    this._remoteSteps = new Map();
+    this._stepCounts = new Map();
   }
   get volume(){return this._volume;}
   set volume(v){this._volume=clamp(v);this._mix();}
@@ -105,6 +126,7 @@ export class CombatAudio {
         if(!Context)return false;
         this.ctx=new Context({latencyHint:.045});this._buildGraph();
         this._prepareShotBuffers().catch(() => {});
+        this._prepareFoley().catch(() => {});
       }
       if(this.ctx.state!=='running')await this.ctx.resume();
       if(!this._scheduler){
@@ -437,13 +459,40 @@ export class CombatAudio {
       attack:.001,decay:.009,decayGain:.22,send:.13});
     if(ring)this._tone(ring,duration*.85,.04*p.gain,{time:time+.002,end:ring*.76,pan:p.pan,send:.16});
   }
+  async _prepareFoley(){
+    const context=this.ctx;
+    await Promise.allSettled(Object.entries(FOLEY_SAMPLES).map(async ([name,url])=>{
+      const response=await fetch(url);if(!response.ok)return;
+      const buffer=await context.decodeAudioData(await response.arrayBuffer());
+      if(this._disposed)return;
+      if(name!=='engine'){
+        let peak=0;
+        for(let channel=0;channel<buffer.numberOfChannels;channel++)for(const value of buffer.getChannelData(channel))peak=Math.max(peak,Math.abs(value));
+        const gain=.78/Math.max(.01,peak);
+        for(let channel=0;channel<buffer.numberOfChannels;channel++){
+          const data=buffer.getChannelData(channel),fade=Math.max(1,Math.floor(buffer.sampleRate*.004));
+          for(let i=0;i<data.length;i++)data[i]*=gain*Math.min(1,i/fade,(data.length-1-i)/fade);
+        }
+      }
+      this._foley.set(name,buffer);
+    }));
+  }
+  _sample(name,gain,options={}){
+    const buffer=this._foley.get(name);
+    if(!buffer||!this._admit(options))return false;
+    const source=this.ctx.createBufferSource();source.buffer=buffer;source.playbackRate.value=options.rate??1;
+    this._voice(source,Math.min(options.duration??10,buffer.duration/source.playbackRate.value),gain,{sample:true,attack:.0003,tail:.035,...options});
+    return true;
+  }
   _explosion(event,local){
-    const p=this._position(event,local),t=this.ctx.currentTime+Math.min(.2,p.distance/500);
-    if(p.distance>180)return;
-    this._tone(85,1.1,.48*p.gain,{time:t,end:23,pan:p.pan,send:.4});
-    this._noise(1.65,.55*p.gain,{time:t,color:'pink',cutoff:2100/(1+p.distance*.035),endCutoff:110,pan:p.pan,send:.5});
-    this._noise(.14,.22*p.gain,{time:t,cutoff:6300/(1+p.distance*.06),pan:p.pan});
-    if(p.distance<35&&this._voices.size<32)for(let n=0;n<3;n++)this._noise(.13+n*.08,.07*p.gain,{time:t+.25+n*.17,filter:'bandpass',cutoff:1350+n*700,pan:clamp(p.pan+(n-1)*.3,-1,1),send:.4});
+    const p=this._position(event,local),time=this.ctx.currentTime+Math.min(.35,p.distance/343);
+    if(p.distance>220)return;
+    const heavy=event.kind==='rocket'||Boolean(event.vehicleId);
+    const played=this._sample(heavy?'explosion-heavy':'explosion-grenade',(heavy?.8:.68)*p.gain,{
+      time,pan:p.pan,rate:heavy?.94:1.04,cutoff:p.distance<15?0:Math.max(1200,14000/(1+p.distance*.022)),send:.06,
+    });
+    if(!played)this._noise(.8,.35*p.gain,{time,color:'pink',cutoff:6500,pan:p.pan,attack:.0005,decay:.04,decayGain:.15});
+    if(p.distance<24)this._noise(.32,.035*p.gain,{time:time+.1,filter:'highpass',cutoff:2600,pan:p.pan});
   }
   _reload(event,local,player){
     if(!player)return;
@@ -465,12 +514,32 @@ export class CombatAudio {
       this._mechanic(kind,Math.max(this.ctx.currentTime,start+offset),own?.24:p.pan,gain*(kind==='seat'?1.14:.8));
     }
   }
-  _step(strength,sprinting,crouching,local){
-    const metal=local?.y>.55,pan=(this._leftFoot=!this._leftFoot)?-.17:.17,gain=strength*(crouching?.37:sprinting?1:.72);
-    this._noise(.12,.15*gain,{color:'pink',cutoff:metal?2300:1050,pan,rate:.8+Math.random()*.2});
-    this._tone(metal?205:96,.075,.07*gain,{end:metal?96:48,type:'triangle',pan,send:metal?.12:.025});
-    this._noise(.075,.05*gain,{time:this.ctx.currentTime+.035,filter:'bandpass',cutoff:metal?3700:2100,pan});
-    if(sprinting)this._noise(.16,.038,{filter:'bandpass',cutoff:720,pan:-.25});
+  _step(strength,sprinting,crouching,subject,spatial=null){
+    const map=getMap(this._mapId),ground=map.terrain?.heightAt(subject.x,subject.z)??0;
+    const indoors=map.structures.some(building=>Math.abs(subject.x-building.x)<building.w/2&&Math.abs(subject.z-building.z)<building.d/2);
+    const soft=!indoors&&subject.y<ground+.35&&(map.theme==='desert-village'||map.id==='quarry');
+    const count=this._stepCounts.get(subject.id)??0;this._stepCounts.set(subject.id,count+1);
+    const side=count%2?'R':'L',take=Math.floor(count/2)%3+1;
+    const gain=strength*(crouching?.09:sprinting?.31:.24)*(spatial?.gain??1);
+    const priority=this._priority;this._priority=spatial?1:3;
+    try{
+      this._sample((soft?'sand':'stone')+'-'+side+take,gain,{pan:spatial?.pan??(side==='R'?.10:-.10),
+        rate:(sprinting?1.07:crouching?.93:1)*(.97+Math.random()*.06),cutoff:spatial?8000:0});
+    }finally{this._priority=priority;}
+  }
+  _updateOtherSteps(state,local,silent){
+    if(silent||!local?.alive){this._remoteSteps.clear();return;}
+    const nearby=(state.players??[]).filter(p=>p.id!==local.id&&p.alive&&!p.vehicleId&&p.grounded&&Math.hypot(p.x-local.x,p.z-local.z)<18)
+      .sort((a,b)=>Math.hypot(a.x-local.x,a.z-local.z)-Math.hypot(b.x-local.x,b.z-local.z)).slice(0,6);
+    const active=new Set();
+    for(const player of nearby){
+      active.add(player.id);const previous=this._remoteSteps.get(player.id);
+      const travelled=previous?Math.hypot(player.x-previous.x,player.z-previous.z):0;
+      const total=(previous?.stride??0)+(travelled<4?travelled:0),stride=player.sprint?2.45:player.crouch?1.55:2.05;
+      if(total>=stride)this._step(.7,player.sprint,player.crouch,player,this._position(player,local));
+      this._remoteSteps.set(player.id,{x:player.x,z:player.z,stride:total%stride});
+    }
+    for(const id of this._remoteSteps.keys())if(!active.has(id)){this._remoteSteps.delete(id);this._stepCounts.delete(id);}
   }
   events(state,local){
     if(!state)return;
@@ -494,7 +563,7 @@ export class CombatAudio {
         if(state.time-e.time>.25)continue;
         if(!own)this._nearMiss(e,local);
         this._impact(e,local);
-        if(own&&(e.hit||e.vehicleHit)){
+        if(own&&(e.hit||e.vehicleHit||e.equipmentHit)){
           this._tone(e.headshot?2110:1780,.04,.082,{end:e.headshot?1740:1300});
           this._noise(.024,.045,{filter:'bandpass',cutoff:e.headshot?3400:2500});
         }
@@ -511,11 +580,20 @@ export class CombatAudio {
         this._mechanic('lower',this.ctx.currentTime,.15,.13);
         this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);
       }else if(e.type==='explosion')this._explosion(e,local);
+      else if(e.type==='rocketLaunch'){
+        const p=this._position(e,local);this._sample('explosion-grenade',.2*p.gain,{pan:p.pan,rate:1.8,duration:.23,cutoff:12000});
+        this._noise(.22,.09*p.gain,{filter:'highpass',cutoff:3500,pan:p.pan});
+      }else if(e.type==='revive'&&(own||e.medicId===local?.id)){
+        this._tone(1120,.06,.06,{end:1760});this._noise(.022,.06,{filter:'highpass',cutoff:4000});
+      }
       else if(e.type==='reload')this._reload(e,local,own?local:state.players?.find(player=>player.id===e.playerId));
       else if(e.type==='damage'&&own){this._noise(.16,.16,{color:'pink',cutoff:1400});this._tone(76,.2,.13,{end:37});}
       else if(e.type==='kill'&&local&&e.killerId===local.id)[880,1174,1397].forEach((frequency,index)=>this._tone(frequency,.14,.055,{time:this.ctx.currentTime+index*.055,send:.12}));
       else if(e.type==='capture'&&local)(e.team===local.team?[587,740,880]:[440,370]).forEach((frequency,index)=>this._tone(frequency,.42,.09,{time:this.ctx.currentTime+index*.12,send:.3}));
-      else if(e.type==='gadget'&&own){this._noise(.25,.07,{filter:'bandpass',cutoff:2300,attack:.04});this._tone(520,.18,.07,{end:1040,send:.18});this._tone(1040,.18,.055,{time:this.ctx.currentTime+.16,send:.18});}
+      else if(e.type==='gadget'&&own){
+        if(e.kind==='defibrillator')this._tone(650,.42,.05,{end:1600,type:'triangle',attack:.04});
+        else this._mechanic('seat',this.ctx.currentTime,.15,.09);
+      }
       else if(e.type==='grenade'&&own){this._noise(.045,.09,{filter:'bandpass',cutoff:4200});this._noise(.24,.07,{time:this.ctx.currentTime+.12,cutoff:1100,attack:.07});}
       else if(e.type==='spawn'&&own){this._tone(196,.32,.075,{end:392,send:.2});this._noise(.3,.055,{filter:'bandpass',cutoff:950,attack:.06});}
       else if(e.type==='roundEnd'&&local)(e.winner===local.team?[50,57,62,65]:[50,53,56,62]).forEach((note,index)=>this._tone(midi(note),2.5,.1,{time:this.ctx.currentTime+index*.12,type:'triangle',attack:.2,cutoff:1700,send:.45}));
@@ -532,6 +610,7 @@ export class CombatAudio {
     }
     if(!this.ctx||this.ctx.state!=='running'||!this._enabled)return;
     const now=this.ctx.currentTime,canMove=local?.alive&&locked&&!paused&&!inMenu;
+    this._mapId=state?.mapId;
     if(aim!==this._aim&&canMove){
       this._mechanic(aim?'aim':'lower',now,.18,.072);
       if(aim)this._mechanic('tap',now+.039,.21,.035);
@@ -567,6 +646,14 @@ export class CombatAudio {
         if(this._stride>=strideLength&&onGround&&!sliding){this._step(1,sprinting,crouching,local);this._stride%=strideLength;}
       }
       this._lastPosition={x:local.x,y:local.y,z:local.z,grounded:local.grounded??true};
+    }
+    this._updateOtherSteps(state,local,inMenu||paused);
+    if(!inMenu&&!paused&&local?.gadgetAction==='repair'&&now>=(this._repairSoundAt??0)){
+      this._repairSoundAt=now+.15;this._noise(.18,.055,{filter:'highpass',cutoff:4200,attack:.015});
+    }
+    const beacon=(state?.deployables??[]).find(item=>item.kind==='beacon'&&local&&Math.hypot(item.x-local.x,item.z-local.z)<9);
+    if(beacon&&!inMenu&&!paused&&now>=(this._beaconSoundAt??0)){
+      this._beaconSoundAt=now+1.2;const p=this._position(beacon,local);this._tone(940,.045,.025*p.gain,{pan:p.pan,attack:.004});
     }
     this._updateAmbience(state,local,inMenu||paused);
     if(local?.alive&&local.ammo<=5&&local.ammo!==this._lastAmmo&&this._lastAmmo>local.ammo)this._tone(1700,.022,.035,{type:'square',cutoff:2900});
@@ -624,45 +711,38 @@ export class CombatAudio {
     }
   }
   _updateEngine(state,local,silent){
-    // Engine automation runs at 20 Hz; scheduling every render frame grows
-    // AudioParam work without adding audible detail to the smoothed engine.
-    if(this.ctx.currentTime<this._engineAt&&!silent)return;
-    this._engineAt=this.ctx.currentTime+.05;
-    let source=null,distance=45;
-    if(local?.alive&&!silent)for(const vehicle of state?.vehicles??[]){
-      if(vehicle.hp<=0||!vehicle.seats[0])continue;
-      const offset=vehicle.id===local.vehicleId?0:Math.hypot(vehicle.x-local.x,vehicle.z-local.z);
-      if(offset<distance){source=vehicle;distance=offset;}
+    const now=this.ctx.currentTime;
+    if(now<this._engineAt&&!silent)return;
+    this._engineAt=now+.05;
+    const buffer=this._foley.get('engine');
+    const candidates=buffer&&local?.alive&&!silent?(state?.vehicles??[]).filter(v=>v.hp>0&&v.seats[0]&&Math.hypot(v.x-local.x,v.z-local.z)<65)
+      .sort((a,b)=>(a.id===local.vehicleId?-1:1)-(b.id===local.vehicleId?-1:1)||Math.hypot(a.x-local.x,a.z-local.z)-Math.hypot(b.x-local.x,b.z-local.z)).slice(0,3):[];
+    const active=new Set();
+    for(const vehicle of candidates){
+      active.add(vehicle.id);let channel=this._engineChannels.get(vehicle.id);
+      if(!channel){
+        const c=this.ctx,source=c.createBufferSource(),filter=c.createBiquadFilter(),gain=c.createGain(),pan=c.createStereoPanner?c.createStereoPanner():null;
+        source.buffer=buffer;source.loop=true;filter.type='lowpass';filter.Q.value=.707;gain.gain.value=0;
+        source.connect(filter).connect(gain);if(pan)gain.connect(pan).connect(this._effects);else gain.connect(this._effects);
+        source.start(0,(now*.83)%buffer.duration);
+        channel={source,filter,gain,pan,speed:0,gear:1};this._engineChannels.set(vehicle.id,channel);
+      }
+      channel.stopAt=null;
+      const own=vehicle.id===local.vehicleId,spatial=this._position(vehicle,local),speed=Math.abs(vehicle.speed);
+      const gear=Math.min(4,1+Math.floor(speed/4.5)),load=(speed-(gear-1)*4.5)/4.5;
+      const acceleration=Math.max(0,speed-channel.speed);
+      const rate=(vehicle.type==='atv'?1.06:.68)+load*(vehicle.type==='atv'?.74:.48)+Math.min(.15,acceleration*.3);
+      this._target(channel.source.playbackRate,rate,.12);
+      this._target(channel.filter.frequency,(own?9500:6500)/(1+spatial.distance*.022),.1);
+      this._target(channel.gain.gain,(own?.30:.18)/(1+spatial.distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
+      if(channel.pan)this._target(channel.pan.pan,own?0:spatial.pan,.1);
+      if(own&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
+      channel.speed=speed;channel.gear=gear;
     }
-    if(!source){
-      if(this._engine)this._target(this._engine.output.gain,0,.12);
-      return;
+    for(const [id,channel] of this._engineChannels)if(!active.has(id)){
+      this._target(channel.gain.gain,0,.1);channel.stopAt??=now+.5;
+      if(now>=channel.stopAt){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();this._engineChannels.delete(id);}
     }
-    if(!this._engine){
-      const c=this.ctx;
-      const output=this._node(c.createGain());output.gain.value=0;
-      const pan=c.createStereoPanner?this._node(c.createStereoPanner()):null;
-      if(pan)output.connect(pan).connect(this._effects);else output.connect(this._effects);
-      const filter=this._node(c.createBiquadFilter());filter.type='lowpass';filter.Q.value=.8;filter.connect(output);
-      const sources=[this._node(c.createOscillator()),this._node(c.createOscillator())];
-      sources[0].type='sawtooth';sources[1].type='triangle';
-      for(const oscillator of sources){oscillator.connect(filter);oscillator.start();}
-      const rolling=this._node(c.createBufferSource());
-      rolling.buffer=this._noiseBuffer('pink');rolling.loop=true;
-      const road=this._node(c.createBiquadFilter());road.type='bandpass';road.frequency.value=860;road.Q.value=.6;
-      const tires=this._node(c.createGain());tires.gain.value=0;
-      rolling.connect(road).connect(tires).connect(output);rolling.start();
-      this._engine={output,pan,filter,tires,sources:[...sources,rolling]};
-    }
-    const engine=this._engine;
-    const speed=Math.abs(source.speed);
-    const rpm=(source.type==='atv'?48:32)+speed*(source.type==='atv'?3.8:2.7);
-    this._target(engine.sources[0].frequency,rpm,.1);
-    this._target(engine.sources[1].frequency,rpm*1.49,.1);
-    this._target(engine.filter.frequency,105+speed*13,.12);
-    this._target(engine.tires.gain,Math.min(.48,speed*.024),.14);
-    if(engine.pan)this._target(engine.pan.pan,source.id===local.vehicleId?0:this._position(source,local).pan,.12);
-    this._target(engine.output.gain,(.10+speed*.003)/(1+distance*.24),.1);
   }
   click(){if(!this.ctx||!this._enabled)return;this._tone(860,.035,.065,{end:610});this._noise(.018,.028,{filter:'highpass',cutoff:3800});}
   getStats(){
@@ -681,8 +761,9 @@ export class CombatAudio {
     this._disposed=true;clearInterval(this._scheduler);this._scheduler=null;
     this._pending=[];
     for(const voice of [...this._voices,...this._fadingVoices])this._releaseVoice(voice,true);
-    this._shotBuffers.clear();
-    if(this._engine){for(const source of this._engine.sources)try{source.stop();}catch{}this._engine=null;}
+    this._shotBuffers.clear();this._foley.clear();
+    for(const channel of this._engineChannels.values()){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();}
+    this._engineChannels.clear();this._remoteSteps.clear();this._stepCounts.clear();
     for(const {source,nodes}of this._ambientSources){try{source.stop();source.disconnect();}catch{}for(const node of nodes){try{node.disconnect();}catch{}}}
     this._ambientSources=[];for(const node of this._nodes){try{node.disconnect();}catch{}}this._nodes=[];this._buffers.clear();
     if(this.ctx&&this.ctx.state!=='closed')this.ctx.close().catch(()=>{});

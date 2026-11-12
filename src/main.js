@@ -1,4 +1,5 @@
 ﻿import './style.css';
+import { CLASS_GADGET, GADGET_NAMES } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
 import {Simulation} from '../shared/simulation.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
@@ -36,7 +37,7 @@ let gfx={shadows:'auto',resolution:'auto'},sensitivity=.8,quality='high',lastInp
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
-const gadgetNames={assault:'СТИМУЛЯТОР',medic:'ЛЕЧЕНИЕ',support:'БОЕПРИПАСЫ',recon:'СКАНЕР'};
+const gadgetNames=Object.fromEntries(Object.entries(CLASS_GADGET).map(([classId,kind])=>[classId,GADGET_NAMES[kind]]));
 const weaponTypes={assault:'ШТУРМОВАЯ ВИНТОВКА',medic:'ПИСТОЛЕТ-ПУЛЕМЁТ / КАРАБИН',support:'РУЧНОЙ ПУЛЕМЁТ',recon:'МАРКСМАНСКАЯ / СНАЙПЕРСКАЯ'};
 const DEFAULT_BINDS={
   forward:'KeyW',
@@ -48,6 +49,7 @@ const DEFAULT_BINDS={
   crouch:'KeyC',
   reload:'KeyR',
   gadget:'KeyQ',
+  secondaryGadget:'KeyX',
   grenade:'KeyG',
   score:'Tab',
   interact:'KeyE',
@@ -62,7 +64,8 @@ const BIND_LABELS=[
   ['sprint','Бег (спринт)'],
   ['crouch','Присесть'],
   ['reload','Перезарядка'],
-  ['gadget','Способность'],
+  ['gadget','Снаряжение / удерживать для ремонта'],
+  ['secondaryGadget','Гранатомёт / аптечка'],
   ['grenade','Граната'],
   ['score','Таблица счёта'],
   ['interact','Сесть в технику / выйти'],
@@ -243,9 +246,17 @@ function selectClass(classId,playClick=false){
   if(inLobby)multiplayer.setLobbyLoadout({classId,weaponId,sidearmId:selectedSidearm});
   if(playClick)audio.click();
 }
+function deploymentPoints(){
+  const player=local();
+  const beacons=(state?.deployables??[]).filter(item=>item.kind==='beacon'&&item.hp>0&&item.team===player?.team&&item.expires>state.time).map(item=>({
+    ...item,beacon:true,owner:item.team,name:'МАЯК · '+(state.players.find(p=>p.id===item.ownerId)?.name??'СОЮЗНИК'),
+    contested:false,progress:0,spawnBlocked:state.players.some(p=>p.alive&&p.team!==item.team&&Math.hypot(p.x-item.x,p.z-item.z)<8),
+  }));
+  return [...(state?.points??[]),...beacons];
+}
 function spawnPointAvailable(player,pointId){
   if(!pointId)return true;
-  const p=state?.points?.find(q=>q.id===pointId);
+  const p=deploymentPoints().find(q=>q.id===pointId);
   return canSpawnAtPoint(p,player?.team);
 }
 function selectSpawnPoint(pointId,playClick=false){
@@ -257,15 +268,15 @@ function selectSpawnPoint(pointId,playClick=false){
   selectedSpawn=pointId||'';
   const selectEl=$('spawn-point');
   if(selectEl)selectEl.value=selectedSpawn;
-  const point=currentMap.points.find(p=>p.id===selectedSpawn);
-  text('deploy-selected-label',point?`ТОЧКА: ${point.id} · ${point.name}`:'ТОЧКА: БАЗА КОМАНДЫ');
+  const point=deploymentPoints().find(p=>p.id===selectedSpawn);
+  text('deploy-selected-label',point?(point.beacon?point.name:`ТОЧКА: ${point.id} · ${point.name}`):'ТОЧКА: БАЗА КОМАНДЫ');
   if(playClick)audio.click();
   return true;
 }
 function getDeployTarget(player){
   if(!player)return null;
   if(selectedSpawn){
-    const pt=currentMap.points.find(p=>p.id===selectedSpawn);
+    const pt=deploymentPoints().find(p=>p.id===selectedSpawn);
     if(pt)return {x:pt.x,z:pt.z};
   }
   const base=currentMap.spawns[player.team]??currentMap.spawns[0];
@@ -390,7 +401,7 @@ function receive(next){
         recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin((event.shotSeq??event.id)*2.1)*impulse*.31));
       }
     }
-    if(event.type==='bulletImpact'&&event.playerId===localId&&(event.hit||event.vehicleHit)){
+    if(event.type==='bulletImpact'&&event.playerId===localId&&(event.hit||event.vehicleHit||event.equipmentHit)){
       hitUntil=nowPerf+(event.headshot?190:130);
       $('hitmarker').classList.toggle('headshot',!!event.headshot);
     }
@@ -410,7 +421,8 @@ function receive(next){
       }
     }
     if(event.type==='capture'&&state.points.some(p=>p.id===event.pointId))toast(`Точка ${event.pointId} ${event.team===player.team?'захвачена вашим отрядом':'под контролем противника'}`);
-    if(event.type==='gadget'&&event.playerId===localId)toast(`${gadgetNames[player.classId]} · Активировано`);
+    if(event.type==='gadget'&&event.playerId===localId)toast(`${GADGET_NAMES[event.kind]??gadgetNames[player.classId]} · Активировано`);
+    if(event.type==='revive'&&event.playerId===localId)toast('ТЕБЯ ВОСКРЕСИЛИ · Нажми на игру, чтобы продолжить');
   }
   while(seen.size>900)seen.delete(seen.keys().next().value);
   audio.events(state,player);
@@ -593,7 +605,7 @@ document.addEventListener('keydown',event=>{
   }
   if(event.ctrlKey||['ControlLeft','ControlRight','Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',keybinds.jump,keybinds.score,keybinds.crouch,keybinds.forward,keybinds.back,keybinds.left,keybinds.right].includes(event.code))event.preventDefault();
   keys.add(event.code);
-  if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('grenade',event.code)||isBound('interact',event.code)||isBound('switchSeat',event.code))){
+  if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('secondaryGadget',event.code)||isBound('grenade',event.code)||isBound('interact',event.code)||isBound('switchSeat',event.code))){
     pulses.add(event.code);
   }
 });
@@ -614,7 +626,8 @@ function input(){
     aim:enabled&&aim,
     weaponSlot:enabled?weaponSlot:0,
     reload:enabled&&pulses.has(keybinds.reload),
-    gadget:enabled&&pulses.has(keybinds.gadget),
+    gadget:enabled&&(isActionHeld('gadget')||pulses.has(keybinds.gadget)),
+    secondaryGadget:enabled&&pulses.has(keybinds.secondaryGadget),
     grenade:enabled&&pulses.has(keybinds.grenade),
     interact:enabled&&pulses.has(keybinds.interact),
     switchSeat:enabled&&pulses.has(keybinds.switchSeat),
@@ -645,6 +658,11 @@ function minimap(player){
   c.drawImage(mapBackground,0,0);
   c.font='bold 10px sans-serif';c.textAlign='center';
   for(const p of state.points){const x=(p.x+half)*scale,z=(p.z+half)*scale;c.fillStyle=p.owner===-1?'#ced1bb':TEAM_HEX[p.owner]??'#ced1bb';c.strokeStyle=c.fillStyle;c.globalAlpha=.15;c.beginPath();c.arc(x,z,CAPTURE_RADIUS*scale,0,Math.PI*2);c.fill();c.globalAlpha=1;c.fillText(p.id,x,z+3.5);}
+  for(const item of state.deployables??[]){
+    if(item.kind!=='beacon'||item.team!==player.team||item.hp<=0||item.expires<=state.time)continue;
+    const x=(item.x+half)*scale,z=(item.z+half)*scale;
+    c.fillStyle='#10262c';c.fillRect(x-5,z-6,10,12);c.fillStyle=TEAM_HEX[item.team];c.fillText('М',x,z+3.5);
+  }
   for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=TEAM_HEX[p.team]??'#79c5d2';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?1.8:2.3,0,Math.PI*2);c.fill();}
   for(const vehicle of state.vehicles??[]){
     if(vehicle.hp<=0||vehicle.team!==player.team||vehicle.id===player.vehicleId)continue;
@@ -768,7 +786,7 @@ function pickDeploySpawnAt(clientX,clientY){
   const base=currentMap.spawns[player.team]??currentMap.spawns[0];
   const bx=(base.x+deployHalf)*deployScale,bz=(base.z+deployHalf)*deployScale;
   if(Math.hypot(mx-bx,my-bz)<=24)return {id:'',available:true};
-  for(const p of state.points){
+  for(const p of deploymentPoints()){
     const px=(p.x+deployHalf)*deployScale,pz=(p.z+deployHalf)*deployScale;
     if(Math.hypot(mx-px,my-pz)<=24){
       return {id:p.id,available:canSpawnAtPoint(p,player.team)};
@@ -815,7 +833,7 @@ function drawDeployMap(player,now){
       c.restore();
     }
   }
-  for(const p of state.points){
+  for(const p of deploymentPoints()){
     const x=(p.x+half)*scale,z=(p.z+half)*scale;
     const color=p.owner===-1?'#ced1bb':TEAM_HEX[p.owner]??'#ced1bb';
     c.save();
@@ -838,7 +856,7 @@ function drawDeployMap(player,now){
     c.fillRect(-9,-9,18,18);c.strokeRect(-9,-9,18,18);
     c.rotate(-Math.PI/4);
     c.fillStyle='#f3f6ee';c.font='700 11px sans-serif';c.textAlign='center';c.textBaseline='middle';
-    c.fillText(p.id,0,0.5);
+    c.fillText(p.beacon?'М':p.id,0,0.5);
     c.fillStyle=color;c.font='600 8px sans-serif';
     c.fillText(p.name,0,19);
     c.restore();
@@ -890,24 +908,24 @@ function updateDeployScreen(player,now){
   text('deploy-tickets-blue',Math.ceil(state.tickets[player.team]));
   text('deploy-tickets-orange',Math.ceil(state.tickets[1-player.team]));
   const ready=player.respawnIn<=0;
-  text('death-countdown',ready?'ГОТОВ К ВЫСАДКЕ · ВЫБЕРИ СЕКТОР И НАЖМИ ДИСЛОКАЦИЯ':`ПОДГОТОВКА ВЫСАДКИ · ${Math.ceil(player.respawnIn)} С`);
+  text('death-countdown',ready?'ГОТОВ К ВЫСАДКЕ · ВЫБЕРИ СЕКТОР И НАЖМИ ДИСЛОКАЦИЯ':`ДО ВЫСАДКИ ${Math.ceil(player.respawnIn)} С · МЕДИК МОЖЕТ ВОСКРЕСИТЬ`);
   $('respawn').disabled=!ready;
   $('deploy-status-dot').classList.toggle('ready',ready);
   if(selectedSpawn&&!spawnPointAvailable(player,selectedSpawn)){
     selectSpawnPoint('');
     if(document.pointerLockElement===canvas)document.exitPointerLock?.();
   }
-  const options=state.points.filter(p=>canSpawnAtPoint(p,player.team));
+  const options=deploymentPoints().filter(p=>canSpawnAtPoint(p,player.team));
   const signature=options.map(p=>p.id).join('');
   const selectEl=$('spawn-point');
   if(selectEl.dataset.signature!==signature){
     selectEl.dataset.signature=signature;
-    selectEl.replaceChildren(new Option('База команды',''),...options.map(p=>new Option(`${p.id} · ${p.name}`,p.id)));
+    selectEl.replaceChildren(new Option('База команды',''),...options.map(p=>new Option(p.beacon?p.name:`${p.id} · ${p.name}`,p.id)));
     selectEl.value=selectedSpawn;
   }
   const allies=state.players.filter(p=>p.alive&&p.team===player.team&&p.id!==localId);
   text('deploy-allies-count',`СОЮЗНИКОВ В БОЮ: ${allies.length}`);
-  const listSig=`${selectedSpawn}:`+state.points.map(p=>{
+  const listSig=`${selectedSpawn}:`+deploymentPoints().map(p=>{
     const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
     return `${p.id}:${p.owner}:${p.contested?1:0}:${p.spawnBlocked?1:0}:${near}`;
   }).join('|');
@@ -916,13 +934,13 @@ function updateDeployScreen(player,now){
     listEl.dataset.signature=listSig;
     const items=[
       {id:'',badge:'HQ',name:'ШТАБ КОМАНДЫ',sub:'Основная база',tag:'ДОСТУПНО',available:true,hq:true},
-      ...state.points.map(p=>{
+      ...deploymentPoints().map(p=>{
         const friend=p.owner===player.team,enemy=p.owner!==-1&&!friend;
         const available=canSpawnAtPoint(p,player.team);
         const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
         const blocked=p.contested||(friend&&p.spawnBlocked);
         const tag=p.contested?'ОСПАРИВАЕТСЯ':blocked?'ПРОТИВНИК НА ТОЧКЕ':available?'ДОСТУПНО':enemy?'ВРАГ':'НЕЙТРАЛЬНО';
-        return {id:p.id,badge:p.id,name:p.name,sub:`Союзников рядом: ${near}`,tag,available,enemy,contested:blocked};
+        return {id:p.id,badge:p.beacon?'М':p.id,name:p.name,sub:`Союзников рядом: ${near}`,tag,available,enemy,contested:blocked};
       }),
     ];
     listEl.replaceChildren(...items.map(item=>{
@@ -1018,8 +1036,21 @@ function hud(now){
     text('ammo-status',player.equipTime>0?'СМЕНА ОРУЖИЯ…':player.reloading?'ПЕРЕЗАРЯДКА…':
       player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
   }
-  text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
+  text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);
+  let toolHint=player.classId==='support'?' · УДЕРЖИВАЙ':'';
+  if(player.alive&&player.classId==='medic'){
+    const casualty=state.players.filter(ally=>!ally.alive&&ally.team===player.team&&ally.respawnIn>0&&
+      Math.hypot(ally.x-player.x,ally.z-player.z,ally.y-player.y)<3.1).sort((a,b)=>a.respawnIn-b.respawnIn)[0];
+    if(casualty)toolHint=` · ${casualty.name} · ${Math.ceil(casualty.respawnIn)}с`;
+  }else if(player.gadgetAction==='repair'){
+    const vehicle=state.vehicles?.find(item=>item.id===player.gadgetTargetId);
+    if(vehicle)toolHint=` · ${Math.round(vehicle.hp/VEHICLE_TYPES[vehicle.type].maxHp*100)}% · УДЕРЖИВАЙ`;
+  }
+  text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${toolHint}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
+  const secondary=player.classId==='assault'?`ПТ-90 · ${player.rockets??0}`:player.classId==='medic'?'АПТЕЧКА':'';
+  show('secondary-gadget-label',Boolean(secondary));
+  text('secondary-gadget-label',`${formatKeyCode(keybinds.secondaryGadget)} · ${secondary}${player.secondaryCooldown>0?' · '+Math.ceil(player.secondaryCooldown)+'с':''}`);
   const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
   const capPct=nearby?Math.round(Math.abs(nearby.progress)*100):0;
   const capSig=nearby&&player.alive?`${nearby.id}:${nearby.contested}:${nearby.owner===player.team}:${capPct}`:'';
