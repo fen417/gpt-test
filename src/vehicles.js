@@ -159,13 +159,15 @@ function humveeGlazing({prism,pane,piece,tube}) {
     }
   }
 
-  // The side frames close the corners around the exact passenger window openings.
-  const sill = 1.34;
+  // One continuous shell joins the lower body to the glazing around both doors.
+  const floor = .89;
   const frame = new THREE.Shape();
-  frame.moveTo(zAt(front, sill), sill);
-  frame.lineTo(zAt(rear, sill), sill);
+  frame.moveTo(front.bottomZ, floor);
+  frame.lineTo(rear.bottomZ, floor);
+  frame.lineTo(rear.bottomZ, rear.bottomY);
   frame.lineTo(rear.topZ, topY);
   frame.lineTo(front.topZ, topY);
+  frame.lineTo(front.bottomZ, front.bottomY);
   frame.closePath();
   const sideWindows = [windows.front, windows.rear];
   for (const window of sideWindows) {
@@ -324,10 +326,10 @@ function rider(body, materials, seat, index, type) {
   body.add(rider);
   parts(rider,materials,({prism,round,ball,tube})=>{
     round('uniform',0,.33,.032,.40,.45,.24,-.13);
-    round('canvas',0,.27,-.104,.36,.31,.083,-.13);
-    round('canvas',0,.36,.151,.32,.36,.16,-.13);
+    round('riderArmor',0,.27,-.104,.36,.31,.083,-.13);
+    round('riderArmor',0,.36,.151,.32,.36,.16,-.13);
     ball('skin',0,.645,-.028,.123,.139,.115);
-    ball('uniform',0,.705,-.026,.145,.109,.132);
+    ball('riderHelmet',0,.705,-.026,.145,.109,.132);
     round('rubber',0,.655,-.12,.213,.058,.072);
     for(const side of [-1,1]){
       prism('badge',side*.206,.442,.027,.024,.093,.09);
@@ -347,6 +349,11 @@ function rider(body, materials, seat, index, type) {
   return rider;
 }
 
+const riderColors = [
+  { uniform: 0x849783, riderArmor: 0x46574b, riderHelmet: 0x48594c },
+  { uniform: 0xc1ab85, riderArmor: 0x827252, riderHelmet: 0x796c51 },
+];
+
 export function createVehicleRig(type, material, teamColors) {
   const group = new THREE.Group(), body = new THREE.Group();
   group.add(body);
@@ -360,7 +367,8 @@ export function createVehicleRig(type, material, teamColors) {
     rear: material(0xb32b25,.45,.11,{emissive:0x711615,emissiveIntensity:.38}),
     glass: material(0x687e83,.19,.14,{transparent:true,opacity:.19,depthWrite:false,side:THREE.DoubleSide,forceSinglePass:true}),
     screen: material(0x557c6a,.40,.14,{emissive:0x203e34,emissiveIntensity:.50}),
-    mirror: material(0x879395,.19,.65), uniform: material(0x58634c,.93,.01),
+    mirror: material(0x879395,.19,.65), uniform: material(riderColors[0].uniform,.93,.01),
+    riderArmor: material(riderColors[0].riderArmor,.95,.01), riderHelmet: material(riderColors[0].riderHelmet,.84,.08),
     skin: material(0xa2846d,.93,.01), brass: material(0x927045,.45,.68),
     badge: material(teamColors[0],.84,.1), wreck: material(0x333735,1,.1),
   };
@@ -434,8 +442,12 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
     riders[1].rotation.y=rig.turretYaw;
   }
   if(rig.team!==vehicle.team){
-    const badge=materials.badge;
-    for(const m of [badge,badge._lowMaterial])m?.color.setHex(teamColors[vehicle.team]);
+    // All occupied seats belong to the vehicle's current team.
+    for(const [key,color] of Object.entries({ ...riderColors[vehicle.team === 1 ? 1 : 0], badge: teamColors[vehicle.team] ?? teamColors[0] })){
+      const m=materials[key];
+      m.color.setHex(color);
+      m._lowMaterial?.color.setHex(color);
+    }
     rig.team=vehicle.team;
   }
   if(rig.wrecked!==wrecked||rig.low!==quality){

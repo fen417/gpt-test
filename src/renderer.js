@@ -3,13 +3,13 @@ import { addPortGround } from './port-visuals.js';
 import { addQuarryGround } from './quarry-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
+import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS, EYE_HEIGHT, CROUCH_EYE_HEIGHT } from '../shared/world.js';
 import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, addWarehouseDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
 import { drawFlagBanner } from './logos.js';
-import { canFirePassengerWeapon, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicles.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
@@ -82,6 +82,9 @@ function setFlagMap(mesh, texture) {
 function seeded(seed = 90210) {
   return () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
 }
+
+const insideFootprint = (box, x, z) => Math.abs(x - box.x) <= box.w / 2 && Math.abs(z - box.z) <= box.d / 2;
+const boxTop = box => (box.baseY ?? 0) + box.h;
 
 function canvasTexture(size, draw) {
   const canvas = document.createElement('canvas');
@@ -518,7 +521,7 @@ export class GameRenderer {
     this.soldiers.clear();
     for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
     this.grenadeMeshes.clear();
-    for (const item of this.gadgetDeployables) { item.group.removeFromParent(); item.ringMat.dispose(); }
+    for (const item of this.gadgetDeployables) this.removeGadget(item);
     this.gadgetDeployables.length = 0;
     for (const effect of this.effects) {
       if (effect.type === 'light') effect.mesh.intensity = 0;
@@ -956,7 +959,7 @@ export class GameRenderer {
     const active = this.activeSoldiers;
     active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
-    const blend = 1 - Math.exp(-dt * 18);
+    const blend = this.scoped ? 1 : 1 - Math.exp(-dt * 18);
     let shadowFrustum = null;
     if (this.renderer.shadowMap.enabled) {
       this.sun.updateMatrixWorld();
@@ -1311,11 +1314,18 @@ export class GameRenderer {
     const player = state.players?.find(p => p.id === event.playerId);
     const classId = event.classId || player?.classId || 'assault';
     const team = event.team ?? player?.team ?? 0;
-    const yaw = player?.yaw || 0;
+    const yaw = event.yaw ?? player?.yaw ?? 0;
     const forward = classId === 'assault' ? 0.35 : 1.05;
-    const x = (event.x ?? player?.x ?? 0) - Math.sin(yaw) * forward;
-    const z = (event.z ?? player?.z ?? 0) - Math.cos(yaw) * forward;
-    const y = Math.max(0, player?.y || 0);
+    const originX = event.x ?? player?.x ?? 0, originZ = event.z ?? player?.z ?? 0;
+    const feet = event.y ?? player?.y ?? 0;
+    const x = originX - Math.sin(yaw) * forward, z = originZ - Math.cos(yaw) * forward;
+    const terrain = this.map.terrain;
+    const support = this.map.boxes.find(box => Math.abs(feet - boxTop(box)) < .08 && insideFootprint(box, originX, originZ));
+    const heightAt = (px, pz) => {
+      const ground = terrain?.heightAt(px, pz) ?? 0;
+      return support && insideFootprint(support, px, pz) ? Math.max(ground, boxTop(support)) : ground;
+    };
+    const y = heightAt(x, z);
     const group = new THREE.Group();
     group.position.set(x, y, z);
     group.rotation.y = yaw;
@@ -1456,13 +1466,45 @@ export class GameRenderer {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    const ring = new THREE.Mesh(this.geo.gadgetRing, ringMat);
-    ring.rotation.x = -Math.PI / 2;
+    const conformToGround = Boolean(terrain || support);
+    const ringGeometry = conformToGround ? this.geo.gadgetRing.clone() : this.geo.gadgetRing;
+    const ring = new THREE.Mesh(ringGeometry, ringMat);
+    if (conformToGround) {
+      ringGeometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
+      ring.frustumCulled = false;
+    } else {
+      ring.rotation.x = -Math.PI / 2;
+    }
     ring.position.y = 0.04;
     group.add(ring);
 
     this.worldRoot.add(group);
-    this.gadgetDeployables.push({ group, ring, ringMat, teamMat, rotor, age: 0, life, maxRadius, classId });
+    this.gadgetDeployables.push({ group, ring, ringMat, rotor, age: 0, life, maxRadius, classId,
+      groundHeight: conformToGround ? heightAt : null });
+  }
+
+  removeGadget(item) {
+    item.group.removeFromParent();
+    item.ringMat.dispose();
+    if (item.groundHeight) item.ring.geometry.dispose();
+  }
+
+  shapeGadgetRing(item, radius) {
+    const { group, ring, groundHeight } = item;
+    if (!groundHeight) {
+      ring.scale.setScalar(radius);
+      return;
+    }
+    const source = this.geo.gadgetRing.attributes.position;
+    const vertices = ring.geometry.attributes.position;
+    const { x, y, z } = group.position;
+    const sin = Math.sin(group.rotation.y), cos = Math.cos(group.rotation.y);
+    for (let i = 0; i < vertices.count; i++) {
+      const dx = source.getX(i) * radius, dz = -source.getY(i) * radius;
+      const px = x + dx * cos + dz * sin, pz = z - dx * sin + dz * cos;
+      vertices.setXYZ(i, dx, groundHeight(px, pz) - y, dz);
+    }
+    vertices.needsUpdate = true;
   }
 
   updateGadgets(dt) {
@@ -1470,8 +1512,7 @@ export class GameRenderer {
       const item = this.gadgetDeployables[i];
       item.age += dt;
       if (item.age >= item.life) {
-        item.group.removeFromParent();
-        item.ringMat.dispose();
+        this.removeGadget(item);
         this.gadgetDeployables.splice(i, 1);
         continue;
       }
@@ -1481,7 +1522,7 @@ export class GameRenderer {
       const fade = 1 - Math.max(0, (item.age - (item.life - 0.8)) / 0.8);
       const pulse = (item.age * (item.classId === 'recon' ? 0.85 : 1.15)) % 1;
       const radius = lerp(0.45, item.maxRadius, pulse);
-      item.ring.scale.setScalar(radius);
+      this.shapeGadgetRing(item, radius);
       item.ringMat.opacity = (1 - pulse) * 0.46 * fade;
     }
   }
@@ -1775,7 +1816,7 @@ export class GameRenderer {
       const pistol = getWeapon(player.classId, this.presentedWeaponId).sidearm;
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
       const crouching = !passenger && (view.crouch ?? player.crouching ?? player.crouch);
-      const height = isAlive ? (crouching ? 1.05 : 1.65) : 0.5;
+      const height = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
       const passengerCanFire = passenger && canFirePassengerWeapon(mounted.vehicle, player.vehicleSeat, yaw, pitch);
       const coverDistance = passenger ? 1.6 : distanceToCover(
         { x: player.x, y: (player.y || 0) + height, z: player.z },
@@ -1784,6 +1825,8 @@ export class GameRenderer {
       const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
       this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && this.gadgetTimer <= 0 && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
+      const scopedWeapon = player.classId === 'recon' && !pistol && !this.weaponSwitch;
+      this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       const weapon = getWeapon(player.classId, player.weaponId);
       const observedReload = Number.isFinite(player.reloadProgress) ? player.reloadProgress : null;
@@ -1810,15 +1853,21 @@ export class GameRenderer {
       // Smooth authoritative 20 Hz movement without delaying mouse look. A
       // respawn/teleport must never drag the camera across the entire map.
       if (passenger) {
-        this.placeVehicleCamera(mounted, seat, yaw, pitch, shake);
+        this.placeVehicleCamera(mounted, seat, yaw, pitch, shake && !this.scoped);
+        if (this.scoped) {
+          const eye = getVehicleSeatPose(mounted.vehicle, player.vehicleSeat);
+          this.camera.position.set(eye.x, eye.y, eye.z);
+        }
       } else {
         if (this.cameraPlayerId !== localId || this.cameraAlive !== isAlive || this.cameraAnchor.distanceToSquared(target) > 64) {
           this.cameraAnchor.copy(target);
           this.lastYaw = yaw; this.lastPitch = pitch;
         } else this.cameraAnchor.lerp(target, 1 - Math.exp(-dt * 28));
         this.cameraPlayerId = localId; this.cameraAlive = isAlive;
-        this.camera.position.set(this.cameraAnchor.x, this.cameraAnchor.y + height + (shake ? Math.sin(cycle * 2) * .016 * bob - this.landDip * .4 : 0), this.cameraAnchor.z);
-        this.camera.rotation.set(pitch, yaw, shake ? Math.sin(cycle) * .003 * bob - this.strafeBlend * .005 : 0, 'YXZ');
+        const anchor = this.scoped ? target : this.cameraAnchor;
+        const sway = shake && !this.scoped;
+        this.camera.position.set(anchor.x, anchor.y + height + (sway ? Math.sin(cycle * 2) * .016 * bob - this.landDip * .4 : 0), anchor.z);
+        this.camera.rotation.set(pitch, yaw, sway ? Math.sin(cycle) * .003 * bob - this.strafeBlend * .005 : 0, 'YXZ');
         this.updateSunShadow(this.cameraAnchor.x, this.cameraAnchor.z);
       }
       this.kick = Math.max(view.recoil || 0, this.kick * Math.exp(-dt * 16));
@@ -1826,7 +1875,6 @@ export class GameRenderer {
         if (this.lastShot !== -1) this.kick = 1;
         this.lastShot = player.shotSeq;
       }
-      const scopedWeapon = player.classId === 'recon' && !pistol && !this.weaponSwitch;
       const aimFov = scopedWeapon
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / (player.weaponId === 'sv98' ? clamp(Number(view.scopeZoom) || 8, 6, 12) : 4)))
         : baseFov - (pistol ? 13 : 23);
@@ -1839,7 +1887,6 @@ export class GameRenderer {
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
-      this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.weapon.visible = isAlive && !this.scoped;
       this.weaponRig.update({
         classId: player.classId,

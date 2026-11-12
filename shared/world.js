@@ -5,7 +5,7 @@ import { applyMapEdits } from './map-edits.js';
 import portEdits from './maps/port.json' with { type: 'json' };
 import quarryEdits from './maps/quarry.json' with { type: 'json' };
 
-export const PROTOCOL_VERSION=11;
+export const PROTOCOL_VERSION=12;
 export const WEAPON_SWITCH_TIME = .38;
 export const WEAPON_SWAP_PHASE = .42;
 export function weaponSwitchPose(remaining=0){
@@ -23,8 +23,8 @@ export const WEAPONS = {
   vk45:  { id: 'vk45',  classId: 'medic',   name: 'ВК-45 «Шквал»', weapon: 'ВК-45 «Шквал»', type: 'ТАКТИЧЕСКИЙ ПП С ПБС', mag: 40, reserve: 160, damage: 20, interval: .066, spread: .014, recoil: .009, reload: 1.85, speed: 6.65, range: 92, projectileSpeed: 235 },
   mg36:  { id: 'mg36',  classId: 'support', name: 'MG-36',  weapon: 'MG-36',  type: 'РУЧНОЙ ПУЛЕМЁТ',    mag: 60, reserve: 240, damage: 25, interval: .115, spread: .021, recoil: .025, reload: 3.1, speed: 5.8, range: 150, projectileSpeed: 340 },
   pkp:   { id: 'pkp',   classId: 'support', name: 'ПКП «Печенег»', weapon: 'ПКП «Печенег»', type: 'ЕДИНЫЙ ПУЛЕМЁТ', mag: 100, reserve: 200, damage: 31, interval: .132, spread: .023, recoil: .029, reload: 3.6, speed: 5.55, range: 175, projectileSpeed: 380 },
-  dmr12: { id: 'dmr12', classId: 'recon',   name: 'DMR-12', weapon: 'DMR-12', type: 'МАРКСМАНСКАЯ ВИНТОВКА', mag: 12, reserve: 60, damage: 62, interval: .5, spread: .004, recoil: .043, reload: 2, semiAuto: true, semi: true, speed: 6.1, range: 230, projectileSpeed: 390 },
-  sv98:  { id: 'sv98',  classId: 'recon',   name: 'СВ-98М', weapon: 'СВ-98М', type: 'СНАЙПЕРСКАЯ ВИНТОВКА',  mag: 8, reserve: 40, damage: 92, interval: .88, spread: .002, recoil: .058, reload: 2.45, semiAuto: true, semi: true, speed: 5.9, range: 280, projectileSpeed: 440 },
+  dmr12: { id: 'dmr12', classId: 'recon',   name: 'DMR-12', weapon: 'DMR-12', type: 'МАРКСМАНСКАЯ ВИНТОВКА', mag: 12, reserve: 60, damage: 62, interval: .5, spread: .004, recoil: .043, reload: 2, semiAuto: true, semi: true, speed: 6.1, range: 230, projectileSpeed: 390, zeroRange: 80 },
+  sv98:  { id: 'sv98',  classId: 'recon',   name: 'СВ-98М', weapon: 'СВ-98М', type: 'СНАЙПЕРСКАЯ ВИНТОВКА',  mag: 8, reserve: 40, damage: 92, interval: .88, spread: .002, recoil: .058, reload: 2.45, semiAuto: true, semi: true, speed: 5.9, range: 280, projectileSpeed: 440, zeroRange: 80 },
 };
 export const CLASS_WEAPONS = {
   assault: ['ar416', 'ak12'],
@@ -78,6 +78,7 @@ export function getMap(mapId){
 }
 export const PLAYER_RADIUS=.4;
 export const EYE_HEIGHT=1.65;
+export const CROUCH_EYE_HEIGHT=1.05;
 export const CAPTURE_RADIUS=12;
 export const CAPTURE_RATE=.07;
 export const canSpawnAtPoint = (point, team) =>

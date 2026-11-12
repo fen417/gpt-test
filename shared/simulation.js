@@ -2,8 +2,8 @@
 
 import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
-import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME } from './world.js';
-import { aimBullet, bulletHeight } from './ballistics.js';
+import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
+import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -489,15 +489,18 @@ export class Simulation {
     const c=getWeapon(p.classId,p.weaponId),input=p.input;if(p.cooldown>0||p.reloading||p.ammo<=0)return;
     p.invulnerableUntil=0;
     p.ammo--;p.shotSeq++;p.cooldown+=c.interval;
-    const eye=input.crouch?1.05:EYE_HEIGHT;
+    const eye=input.crouch?CROUCH_EYE_HEIGHT:EYE_HEIGHT;
     const origin=vehicle?getVehicleSeatPose(vehicle,p.vehicleSeat):{x:p.x,y:p.y+eye,z:p.z};
     const angle = this.random() * Math.PI * 2;
     const radius = Math.sqrt(this.random()) * weaponSpread(p);
     const yaw = p.yaw + Math.cos(angle) * radius;
-    const pitch = p.pitch + Math.sin(angle) * radius;
+    // Bots already aim along the compensated launch angle returned by aimBullet.
+    const scoped = Boolean(c.zeroRange && input.aim && !p.bot);
+    const borePitch = scoped ? zeroedBulletPitch(p.pitch, c.zeroRange, c.projectileSpeed) : p.pitch;
+    const pitch = borePitch + Math.sin(angle) * radius;
     p.lastShotAt = this.time;
     p.bloom = Math.min(1.25, p.bloom + (input.aim ? .16 : .23));
-    this.launchBullet(p,c,origin,yaw,pitch,vehicle);
+    this.launchBullet(p,c,origin,yaw,pitch,vehicle,scoped);
   }
   shootTurret(p,vehicle,dt){
     if(!p.input.fire||vehicle.overheated||vehicle.gunCooldown>0)return;
@@ -512,13 +515,13 @@ export class Simulation {
     origin.y-=.105;
     this.launchBullet(p,TURRET_WEAPON,origin,yaw,pitch,vehicle);
   }
-  launchBullet(p,weapon,origin,yaw,pitch,firingVehicle=null){
+  launchBullet(p,weapon,origin,yaw,pitch,firingVehicle=null,trace=false){
     const speed=weapon.projectileSpeed, horizontal=speed*Math.cos(pitch);
     const velocity={vx:-Math.sin(yaw)*horizontal,vy:Math.sin(pitch)*speed,vz:-Math.cos(yaw)*horizontal};
     const life=weapon.range/speed, mounted=weapon===TURRET_WEAPON;
     const shotSeq=mounted?firingVehicle.gunSeq:p.shotSeq;
     this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq,...origin,
-      ...(shotSeq%3===0?{...velocity,life}:{}),...(firingVehicle?{vehicleId:firingVehicle.id,mounted}:{})});
+      ...(trace||shotSeq%3===0?{...velocity,life}:{}),...(firingVehicle?{vehicleId:firingVehicle.id,mounted}:{})});
     this.bullets.push({...origin,...velocity,life,weapon,age:0,time:this.time,shotId:this.eventId,
       playerId:p.id,team:p.team,vehicleId:firingVehicle?.id});
   }

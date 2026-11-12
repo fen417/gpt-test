@@ -1039,7 +1039,7 @@ function hud(now){
       for(const item of [...scoreFeed].reverse()){
         const row=document.createElement('div');
         const isObj=item.kind==='capture'||item.kind==='neutralize'||item.kind==='defense'||item.kind==='attack';
-        row.className=`score-feed-item${isObj?' objective':''}`;
+        row.className=`score-feed-item${isObj?' score-feed-objective':''}`;
         const label=document.createElement('span'),pts=document.createElement('b');
         label.textContent=item.reason;
         pts.textContent=`+${item.points}`;
@@ -1127,7 +1127,10 @@ function frame(now){
   renderer.render(active?state:null,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
-  text('scope-zoom',currentPlayer?.weaponId==='sv98'?`${scopeZoom}× · КОЛЕСО — ЗУМ`:'');
+  const scopedWeapon=currentPlayer&&getWeapon(currentPlayer.classId,currentPlayer.weaponId);
+  const magnification=currentPlayer?.weaponId==='sv98'?scopeZoom:4;
+  const zoomHint=currentPlayer?.weaponId==='sv98'?' · КОЛЕСО — ЗУМ':'';
+  text('scope-zoom',scoped&&scopedWeapon?.zeroRange?`${magnification}× · ПРИСТРЕЛКА ${scopedWeapon.zeroRange} М${zoomHint}`:'');
   document.body.classList.toggle('scoped',scoped);
   audio.update?.(dt,{state,local:local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}

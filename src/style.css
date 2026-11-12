@@ -136,7 +136,8 @@ body.team-1 .score-row.local{background:#a57b5f33}
 .score-feed-total{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:700;letter-spacing:1.5px;color:#ffe09c;text-shadow:0 2px 12px #000d;margin-bottom:2px}
 .score-feed-item{display:flex;align-items:center;gap:10px;padding:3px 10px;background:linear-gradient(90deg,transparent,#091921cc 20%,#091921cc 80%,transparent);font-size:10px;letter-spacing:1.2px;color:#dfe9ea;animation:score-pop .22s ease-out}
 .score-feed-item b{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:var(--orange)}
-.score-feed-item.objective b{color:var(--cyan)}
+.score-feed-objective::before{content:'';flex:none;width:7px;height:7px;border:1px solid var(--cyan);transform:rotate(45deg)}
+.score-feed-objective b{color:var(--cyan)}
 @keyframes score-pop{from{opacity:0;transform:translateY(6px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
 .scoreboard{width:min(1040px,95vw)!important}
 .scoreboard-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}

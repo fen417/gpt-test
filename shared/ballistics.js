@@ -5,6 +5,17 @@ export function bulletHeight(y, vy, age) {
   return y + vy * age - .5 * BULLET_GRAVITY * age * age;
 }
 
+export function zeroedBulletPitch(sightPitch, range, speed) {
+  const rise = Math.sin(sightPitch) * range;
+  const horizontal = Math.cos(sightPitch) * range;
+  // Solve for the shorter flight to the point on the sight line.
+  const term = speed * speed - BULLET_GRAVITY * rise;
+  const discriminant = term * term - (BULLET_GRAVITY * range) ** 2;
+  if (term <= 0 || discriminant < 0) return sightPitch;
+  const timeSquared = 2 * range * range / (term + Math.sqrt(discriminant));
+  return Math.atan2(rise + .5 * BULLET_GRAVITY * timeSquared, horizontal);
+}
+
 export function aimBullet(origin, target, height, speed) {
   const dx = target.x - origin.x, dz = target.z - origin.z;
   const travel = Math.hypot(dx, dz) / speed;
