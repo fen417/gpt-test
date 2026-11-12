@@ -1,7 +1,7 @@
 ﻿import './style.css';
 import {GameRenderer} from './renderer.js';
 import {Simulation} from '../shared/simulation.js';
-import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,defaultWeaponId,getWeapon,CAPTURE_RADIUS} from '../shared/world.js';
+import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
 import {Multiplayer} from './network.js';
 import {CombatAudio} from './audio.js';
 import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
@@ -220,7 +220,7 @@ function selectClass(classId,playClick=false){
 function spawnPointAvailable(player,pointId){
   if(!pointId)return true;
   const p=state?.points?.find(q=>q.id===pointId);
-  return !!(p&&p.owner===player?.team&&!p.contested);
+  return canSpawnAtPoint(p,player?.team);
 }
 function selectSpawnPoint(pointId,playClick=false){
   const player=local();
@@ -345,7 +345,7 @@ function receive(next){
   if(!player.alive&&wasAlive){
     lastDeathPos={x:player.x,z:player.z};
     if(!spawnPointAvailable(player,selectedSpawn)){
-      const owned=state.points.filter(p=>p.owner===player.team&&!p.contested).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z));
+      const owned=state.points.filter(p=>canSpawnAtPoint(p,player.team)).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z));
       selectSpawnPoint(owned[0]?.id||'');
     }else selectSpawnPoint(selectedSpawn);
     clearControls();document.exitPointerLock?.();show('pause',false);show('death');
@@ -363,10 +363,10 @@ function receive(next){
         recoilPitch=Math.min(.12,recoilPitch+impulse);
         recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin((event.shotSeq??event.id)*2.1)*impulse*.31));
       }
-      if(event.hit||event.vehicleHit){
-        hitUntil=nowPerf+(event.headshot?190:130);
-        $('hitmarker').classList.toggle('headshot',!!event.headshot);
-      }
+    }
+    if(event.type==='bulletImpact'&&event.playerId===localId&&(event.hit||event.vehicleHit)){
+      hitUntil=nowPerf+(event.headshot?190:130);
+      $('hitmarker').classList.toggle('headshot',!!event.headshot);
     }
     if(event.type==='vehicleDestroyed'&&event.attackerId===localId)toast(VEHICLE_TYPES[event.vehicleType]?.name+' · Цель уничтожена');
     if(event.type==='score'&&event.playerId===localId){
@@ -452,13 +452,16 @@ for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('c
 $('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(mode==='host'){multiplayer.startMatch({bots:Number($('lobby-population').value),difficulty:$('lobby-difficulty').value,mapId:$('lobby-map').value});enter();}else{leave();toast('Создай новую комнату для следующей операции.');}});
 function triggerRespawn(){
   const p=local();if(!p||p.alive||p.respawnIn>0)return;
-  const targetPoint=spawnPointAvailable(p,selectedSpawn)?selectedSpawn:'';
+  const targetPoint=selectedSpawn;
+  if(!spawnPointAvailable(p,targetPoint)){toast('Точка недоступна для высадки');return;}
   selectSpawnPoint(targetPoint);
   yaw=p.team===0?0:Math.PI;pitch=0;recoilPitch=0;recoilYaw=0;
   const weaponId=currentWeaponId(selectedClass);
-  if(simulation){simulation.respawn(localId,selectedClass,targetPoint,weaponId);receive(simulation.snapshot());}
-  else multiplayer.respawn(selectedClass,targetPoint,weaponId);
-  requestControl(true);if(!simulation)toast('Дислокация подтверждена…');
+  const accepted=simulation?simulation.respawn(localId,selectedClass,targetPoint,weaponId)
+    :multiplayer.respawn(selectedClass,targetPoint,weaponId);
+  if(!accepted){toast('Дислокация недоступна');return;}
+  if(simulation)receive(simulation.snapshot());
+  requestControl(true);
 }
 $('respawn').addEventListener('click',triggerRespawn);
 $('sensitivity').value=read('sensitivity','0.8');sensitivity=Number($('sensitivity').value);
@@ -736,7 +739,7 @@ function pickDeploySpawnAt(clientX,clientY){
   for(const p of state.points){
     const px=(p.x+deployHalf)*deployScale,pz=(p.z+deployHalf)*deployScale;
     if(Math.hypot(mx-px,my-pz)<=24){
-      return {id:p.id,available:p.owner===player.team&&!p.contested};
+      return {id:p.id,available:canSpawnAtPoint(p,player.team)};
     }
   }
   return null;
@@ -782,7 +785,6 @@ function drawDeployMap(player,now){
   }
   for(const p of state.points){
     const x=(p.x+half)*scale,z=(p.z+half)*scale;
-    const friend=p.owner===player.team,enemy=p.owner!==-1&&!friend;
     const color=p.owner===-1?'#ced1bb':TEAM_HEX[p.owner]??'#ced1bb';
     c.save();
     c.fillStyle=color;c.strokeStyle=color;
@@ -810,7 +812,7 @@ function drawDeployMap(player,now){
     c.restore();
     if(selectedSpawn===p.id||hoveredSpawn===p.id){
       c.save();
-      c.strokeStyle=friend&&!p.contested?allyColor:enemyColor;
+      c.strokeStyle=canSpawnAtPoint(p,player.team)?allyColor:enemyColor;
       c.lineWidth=selectedSpawn===p.id?2:1.2;
       const r=16+pulse*3;
       for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
@@ -859,8 +861,11 @@ function updateDeployScreen(player,now){
   text('death-countdown',ready?'ГОТОВ К ВЫСАДКЕ · ВЫБЕРИ СЕКТОР И НАЖМИ ДИСЛОКАЦИЯ':`ПОДГОТОВКА ВЫСАДКИ · ${Math.ceil(player.respawnIn)} С`);
   $('respawn').disabled=!ready;
   $('deploy-status-dot').classList.toggle('ready',ready);
-  if(selectedSpawn&&!spawnPointAvailable(player,selectedSpawn))selectSpawnPoint('');
-  const options=state.points.filter(p=>p.owner===player.team&&!p.contested);
+  if(selectedSpawn&&!spawnPointAvailable(player,selectedSpawn)){
+    selectSpawnPoint('');
+    if(document.pointerLockElement===canvas)document.exitPointerLock?.();
+  }
+  const options=state.points.filter(p=>canSpawnAtPoint(p,player.team));
   const signature=options.map(p=>p.id).join('');
   const selectEl=$('spawn-point');
   if(selectEl.dataset.signature!==signature){
@@ -872,7 +877,7 @@ function updateDeployScreen(player,now){
   text('deploy-allies-count',`СОЮЗНИКОВ В БОЮ: ${allies.length}`);
   const listSig=`${selectedSpawn}:`+state.points.map(p=>{
     const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
-    return `${p.id}:${p.owner}:${p.contested?1:0}:${near}`;
+    return `${p.id}:${p.owner}:${p.contested?1:0}:${p.spawnBlocked?1:0}:${near}`;
   }).join('|');
   const listEl=$('deploy-spawn-list');
   if(listEl.dataset.signature!==listSig){
@@ -881,10 +886,11 @@ function updateDeployScreen(player,now){
       {id:'',badge:'HQ',name:'ШТАБ КОМАНДЫ',sub:'Основная база',tag:'ДОСТУПНО',available:true,hq:true},
       ...state.points.map(p=>{
         const friend=p.owner===player.team,enemy=p.owner!==-1&&!friend;
-        const available=friend&&!p.contested;
+        const available=canSpawnAtPoint(p,player.team);
         const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
-        const tag=p.contested?'ОСПАРИВАЕТСЯ':available?'ДОСТУПНО':enemy?'ВРАГ':'НЕЙТРАЛЬНО';
-        return {id:p.id,badge:p.id,name:p.name,sub:`Союзников рядом: ${near}`,tag,available,enemy,contested:p.contested};
+        const blocked=p.contested||(friend&&p.spawnBlocked);
+        const tag=p.contested?'ОСПАРИВАЕТСЯ':blocked?'ПРОТИВНИК НА ТОЧКЕ':available?'ДОСТУПНО':enemy?'ВРАГ':'НЕЙТРАЛЬНО';
+        return {id:p.id,badge:p.id,name:p.name,sub:`Союзников рядом: ${near}`,tag,available,enemy,contested:blocked};
       }),
     ];
     listEl.replaceChildren(...items.map(item=>{

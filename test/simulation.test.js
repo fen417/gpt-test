@@ -35,11 +35,14 @@ test('diagonal input does not grant extra movement speed and walls stop movement
   sim.setInput('a',{forward:1,strafe:1});advance(sim,1);assert(Math.abs(Math.hypot(p.x,p.z-130)-CLASSES.assault.speed)<.01);
   const warehouse=MAP.boxes.find(b=>b.kind==='factory'&&b.z===145);p.x=0;p.z=warehouse.z;sim.setInput('a',{strafe:1});advance(sim,12);assert(p.x<warehouse.x-warehouse.w/2,'warehouse blocks eastward motion');
 });
-test('authoritative shots damage enemies and consume ammunition',()=>{
+test('authoritative shots consume ammunition immediately and damage enemies on arrival',()=>{
   const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=30;b.x=0;b.z=20;
   a.invulnerableUntil=b.invulnerableUntil=0;
-  sim.setInput('a',{yaw:0,pitch:0,fire:true,aim:true});sim.step(.05);assert(b.hp<100);assert.equal(a.ammo,29);assert(sim.snapshot().events.some(e=>e.type==='shot'&&e.hit));
-  advance(sim,.5);assert.equal(b.alive,false);assert.equal(a.kills,1);assert.equal(b.deaths,1);assert.equal(sim.tickets[1],299);
+  const tickets=sim.tickets[1];
+  sim.setInput('a',{yaw:0,pitch:0,fire:true,aim:true});
+  sim.step(.05);assert.equal(a.ammo,29);assert.equal(b.hp,100);
+  sim.step(.05);assert(b.hp<100);assert(sim.snapshot().events.some(e=>e.type==='bulletImpact'&&e.hit));
+  advance(sim,.5);assert.equal(b.alive,false);assert.equal(a.kills,1);assert.equal(b.deaths,1);assert.equal(sim.tickets[1],tickets-1);
 });
 test('solid cover blocks bullets; allies cannot receive friendly fire',()=>{
   const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);const cover=MAP.boxes.find(box=>box.kind==='factory'&&box.z===-145);a.x=b.x=cover.x;a.z=cover.z+cover.d/2+5;b.z=cover.z-cover.d/2-5;a.invulnerableUntil=b.invulnerableUntil=0;
@@ -47,11 +50,21 @@ test('solid cover blocks bullets; allies cannot receive friendly fire',()=>{
   a.x=0;a.z=30;b.x=0;b.z=20;b.team=0;advance(sim,1);assert.equal(b.hp,100);
 });
 test('capture needs presence and majority objectives drain opposing tickets',()=>{
-  const sim=make();const p=sim.addPlayer('a','Alice',0);p.x=0;p.z=0;advance(sim,8);
-  assert.equal(sim.points.find(p=>p.id==='C').owner,0);assert(sim.tickets[1]<300);assert.equal(sim.tickets[0],300);
+  const sim=make();const p=sim.addPlayer('a','Alice',0);p.x=0;p.z=0;
+  const point=sim.points.find(q=>q.id==='C'),tickets=sim.tickets[1];
+  advance(sim,14);assert.equal(point.owner,-1);
+  advance(sim,2);assert.equal(point.owner,0);assert(sim.tickets[1]<tickets);assert.equal(sim.tickets[0],tickets);
 });
-test('contested objectives stop capture',()=>{
-  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=0;b.x=2;b.z=0;advance(sim,5);assert.equal(sim.points.find(p=>p.id==='C').contested,true);assert.equal(sim.points.find(p=>p.id==='C').progress,0);
+test('contested objectives stop capture and hostile presence blocks spawning',()=>{
+  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);
+  const point=sim.points.find(p=>p.id==='C');
+  a.x=0;a.z=0;b.x=2;b.z=0;point.owner=0;point.progress=-1;
+  advance(sim,5);assert.equal(point.contested,true);assert.equal(point.progress,-1);
+  a.alive=false;a.respawnIn=0;
+  assert.equal(sim.respawn(a.id,'assault',point.id),false);
+  sim.step(.05);assert.equal(point.contested,false);assert.equal(point.spawnBlocked,true);
+  assert.equal(sim.respawn(a.id,'assault',point.id),false);
+  b.x=40;sim.step(.05);assert.equal(sim.respawn(a.id,'assault',point.id),true);
 });
 test('death enforces respawn delay then restores correct class loadout',()=>{
   const sim=make();const a=sim.addPlayer('a','Alice',0);a.invulnerableUntil=0;assert.equal(sim.respawn('a','recon'),false);sim.damage(a,100);assert.equal(sim.respawn('a','recon'),false);advance(sim,4.1);assert.equal(sim.respawn('a','recon'),true);assert.equal(a.ammo,CLASSES.recon.mag);assert.equal(a.hp,100);

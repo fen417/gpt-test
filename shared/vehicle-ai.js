@@ -1,4 +1,6 @@
-import { VEHICLE_BOARD_RANGE, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose } from './vehicles.js';
+import { TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose } from './vehicles.js';
+import { aimBullet } from './ballistics.js';
+import { getWeapon } from './world.js';
 
 const routeGraphs = new WeakMap();
 const BASE_RANGE = 55;
@@ -394,14 +396,17 @@ function aimCrew(sim, p, vehicle, dt) {
   const seat = getVehicleSeatPose(vehicle, p.vehicleSeat);
   const spec = VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
   const gunner = spec.role === 'gunner';
+  if (gunner) seat.y -= .105;
+  const weapon = gunner ? TURRET_WEAPON : getWeapon(p.classId, p.weaponId);
   let target = null, best = sim.botSettings.awareness * (gunner ? 1.35 : 1);
   for (const enemy of sim.players.values()) {
     if (!enemy.alive || enemy.team === p.team || sim.time < enemy.invulnerableUntil) continue;
     const length = distance(seat, enemy);
     if (length >= best) continue;
     const crouched = !enemy.vehicleId && enemy.input.crouch;
-    const aim = { x: enemy.x, y: enemy.y + (crouched ? .72 : 1.08), z: enemy.z };
-    const yaw = yawToward(seat, aim), pitch = Math.atan2(aim.y - seat.y, length);
+    const height = crouched ? .72 : 1.08;
+    const aim = { x: enemy.x, y: enemy.y + height, z: enemy.z };
+    const { yaw, pitch } = aimBullet(seat, enemy, height, weapon.projectileSpeed);
     if (!gunner && !canFirePassengerWeapon(vehicle, p.vehicleSeat, yaw, pitch)) continue;
     if (!sim.lineClear(seat, aim)) continue;
     target = { id: enemy.id, yaw, pitch };
