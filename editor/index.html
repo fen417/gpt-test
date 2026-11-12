@@ -55,6 +55,12 @@
           <label>Высота, % <input id="size-y" type="number" min="10" max="500" step="0.1" required></label>
           <button>Применить размеры</button>
         </form>
+        <form id="rotation" hidden>
+          <label>X, ° <input id="rotation-x" type="number" min="-360" max="360" step="any" required></label>
+          <label>Y, ° <input id="rotation-y" type="number" min="-360" max="360" step="any" required></label>
+          <label>Z, ° <input id="rotation-z" type="number" min="-360" max="360" step="any" required></label>
+          <button>Применить поворот</button>
+        </form>
         <button id="duplicate">Дублировать</button>
         <button id="remove" class="danger">Удалить</button>
         <p id="selection-note" class="hint"></p>

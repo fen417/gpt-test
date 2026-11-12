@@ -6,6 +6,8 @@ import { addQuarryGround, addQuarryAsset, addQuarrySigns } from './quarry-visual
 import { addVillageGround, createVillageModelBuilder } from './village-visuals.js';
 import { addWarehouseDetails } from './visuals.js';
 import { createVehicleRig } from './vehicles.js';
+import { rotationMatrix } from '../shared/geometry.js';
+import { vehicleBodyTilt } from '../shared/vehicles.js';
 
 function fences(owner, map) {
   if (map.playArea) return;
@@ -56,7 +58,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
     const portModels = createPortModelBuilder(owner);
     const villageModels = createVillageModelBuilder(owner);
     for (const item of items) {
-      const { key, kind, value } = item;
+      const { key, kind, value } = item, geometryValue=item.geometryValue??value;
       const assetMapId = value.assetMapId ?? map.id;
       if (['landform', 'landmark', 'spawn', 'route'].includes(kind) || (kind === 'vehicle' && !editable)) continue;
       const group = new THREE.Group();
@@ -66,8 +68,8 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
       root.add(group);
       owner.scene = group;
       const scale = value.modelScale ?? UNIT_SCALE;
-      const anchor = { x: value.x, z: value.z, baseY: value.baseY ?? value.y ?? map.terrain?.heightAt(value.x, value.z) ?? 0 };
-      const local = localAsset(value, anchor, scale);
+      const anchor = { x: geometryValue.x, z: geometryValue.z, baseY: geometryValue.baseY ?? geometryValue.y ?? map.terrain?.heightAt(geometryValue.x, geometryValue.z) ?? 0 };
+      const local = localAsset(geometryValue, anchor, scale);
       const parts = kind === 'box' ? [local] : map.boxes.filter(box =>
         box.editorParent === key && !represented.has(box.id)).map(box => localAsset(box, anchor, scale));
       if (kind === 'objective') {
@@ -81,6 +83,9 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
         rig.driverGloves.visible = false;
         if (rig.gunnerGloves) rig.gunnerGloves.visible = false;
         if (rig.turret) rig.turret.flash.visible = false;
+        const tilt=vehicleBodyTilt(value,map.terrain);
+        rig.body.rotation.set(tilt.bodyPitch,0,tilt.bodyRoll);
+        group.userData.vehicleBody=rig.body;
         group.add(rig.group);
       } else if (kind === 'road' && (roadSurface || map.id === 'quarry')) {
         // Roads belong to the shared terrain mask. Their groups remain selectable.
@@ -104,8 +109,13 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
         owner.buildMapBoxes(parts);
       }
       if (editable) owner.mergeStaticWorld(new Set());
-      group.position.set(anchor.x, anchor.baseY, anchor.z);
+      group.position.set(value.x, value.baseY ?? anchor.baseY, value.z);
       group.scale.set(scale.x, scale.y, scale.z);
+      if(kind==='vehicle')group.rotation.y=value.yaw??0;
+      else {
+        const m=value.modelBasis??rotationMatrix(value.modelRotation);
+        group.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(m[0],m[1],m[2],0,m[3],m[4],m[5],0,m[6],m[7],m[8],0,0,0,0,1));
+      }
     }
     return { root, groups, owner, roadSurface };
   } finally {

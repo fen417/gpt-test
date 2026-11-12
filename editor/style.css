@@ -46,6 +46,9 @@ aside { padding: 1rem; background: var(--surface); min-width: 0; overflow: auto;
 #size { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; margin-top: .8rem; }
 #size button { grid-column: 1 / -1; }
 #size input { margin-top: .25rem; }
+#rotation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .45rem; margin-top: .8rem; }
+#rotation button { grid-column: 1 / -1; }
+#rotation input { margin-top: .25rem; padding-inline: .35rem; }
 .inspector #duplicate, .inspector #remove { width: 100%; margin-top: .55rem; }
 #selection-note { margin-top: .75rem; }
 #viewport { min-width: 0; position: relative; overflow: hidden; background: #131d20; }

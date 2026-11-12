@@ -1,6 +1,7 @@
 import './style.css';
 import { BASE_MAPS, MAP_EDITS } from '../shared/world.js';
-import { applyMapEdits, assetCatalog, canCloneItem, canRemoveItem, canResizeItem, constrainPosition, mapItems, validMapEdits } from '../shared/map-edits.js';
+import { applyMapEdits, assetCatalog, canCloneItem, canRemoveItem, canResizeItem, canRotateItem, constrainPosition, mapItems, validMapEdits } from '../shared/map-edits.js';
+import { ZERO_ROTATION, hasRotation, inverseMatrix, multiplyMatrix, rotationMatrix, transformVector } from '../shared/geometry.js';
 import { MapViewport } from './viewport.js';
 import { loadMap, publishMap } from './github.js';
 
@@ -19,6 +20,7 @@ const labels = {
   'village-barricade': 'Глинобитная ограда', 'village-pottery': 'Глиняные кувшины',
   'village-rubble': 'Куча каменной кладки', 'village-barrels': 'Бочки с водой', 'village-palm': 'Пальма',
   'village-rock': 'Скальный массив',
+  'village-woven-baskets': 'Плетёные корзины', 'village-produce-crates': 'Ящик с овощами',
 };
 const layerOptions = {
   all: ['Все объекты', ['box', 'structure', 'objective', 'spawn', 'vehicle', 'route', 'segment', 'road', 'landmark', 'sign', 'crane', 'rail', 'ship']],
@@ -46,6 +48,7 @@ const baseCatalogs = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, base
 
 let mapId = 'port', items, currentMap, selection = null, placing = null, drag = null;
 let placingScale = null;
+let placingRotation = null;
 let githubToken = '', pending = false;
 const session = () => sessions[mapId];
 const base = () => BASE_MAPS[mapId];
@@ -89,6 +92,9 @@ function select(item) {
   $('x').value = Number(item.value.x.toFixed(2));
   $('z').value = Number(item.value.z.toFixed(2));
   $('size').hidden = !canResizeItem(item);
+  $('rotation').hidden = !canRotateItem(item);
+  for (const axis of ['x', 'y', 'z']) $('rotation-' + axis).value =
+    Number(((item.value.modelRotation?.[axis] ?? 0) * 180 / Math.PI).toFixed(6));
   const scale = item.value.modelScale ?? { x: 1, y: 1, z: 1 };
   for (const axis of ['x', 'y', 'z']) $('size-' + axis).value = Number((scale[axis] * 100).toFixed(1));
   $('duplicate').disabled = !canCloneItem(item);
@@ -148,9 +154,11 @@ function move(item, x, z) {
     const target = constrainPosition(base(), item, x, z);
     updatePlacement(next, item, target.x, target.z);
     const dx = target.x - item.value.x, dz = target.z - item.value.z;
+    const dy = viewport.heightAt(target.x, target.z) - viewport.heightAt(item.value.x, item.value.z);
     for (const child of items.values()) {
       if (child.value.editorParent !== item.key || !next.moves[child.key]) continue;
       const shifted = constrainPosition(base(), child, child.value.x + dx, child.value.z + dz);
+      if (next.moves[child.key].y !== undefined) next.moves[child.key].y += dy;
       updatePlacement(next, child, shifted.x, shifted.z);
     }
   }
@@ -168,13 +176,16 @@ function updatePlacement(edits, item, x, z) {
   const originalX = parentMove ? parentMove.x + (original.x - parent.x) * (parentMove.scale?.x ?? 1) : original.x;
   const originalZ = parentMove ? parentMove.z + (original.z - parent.z) * (parentMove.scale?.z ?? 1) : original.z;
   const scale = edits.moves[item.key]?.scale;
-  if (x === originalX && z === originalZ && !scale) delete edits.moves[item.key];
-  else edits.moves[item.key] = { x, z, ...(scale ? { scale } : {}) };
+  const rotation = edits.moves[item.key]?.rotation;
+  const y = edits.moves[item.key]?.y;
+  if (x === originalX && z === originalZ && !scale && !rotation && y === undefined && !hasRotation(parentMove?.rotation)) delete edits.moves[item.key];
+  else edits.moves[item.key] = { ...edits.moves[item.key], x, z };
 }
 
-function chooseAsset(key, scale = null) {
+function chooseAsset(key, scale = null, rotation = null) {
   placing = key;
   placingScale = scale;
+  placingRotation = rotation;
   $('cancel-place').hidden = !key;
   viewport.canvas.style.cursor = key ? 'crosshair' : '';
   for (const button of $('assets').children) button.setAttribute('aria-pressed', button.dataset.asset === key);
@@ -188,6 +199,7 @@ function addAsset(template, point) {
   const key = 'new:' + crypto.randomUUID().replaceAll('-', '');
   next.added[key] = { template, x, z };
   if (placingScale) next.added[key].scale = { ...placingScale };
+  if (placingRotation) next.added[key].rotation = { ...placingRotation };
   chooseAsset(null);
   changeEdits(next, key);
 }
@@ -427,19 +439,52 @@ $('size').addEventListener('submit', event => {
   else placement.scale = scale;
   if (!next.added[selection.key]) updatePlacement(next, selection, selection.value.x, selection.value.z);
   const current = selection.value.modelScale ?? { x: 1, y: 1, z: 1 };
+  const basis = rotationMatrix(selection.value.modelRotation), inverse = inverseMatrix(basis);
+  const pivotY = selection.value.baseY ?? viewport.heightAt(selection.value.x, selection.value.z);
   for (const child of items.values()) {
     if (child.value.editorParent !== selection.key || !next.moves[child.key]) continue;
-    updatePlacement(next, child,
-      selection.value.x + (child.value.x - selection.value.x) * desired.x / current.x,
-      selection.value.z + (child.value.z - selection.value.z) * desired.z / current.z);
+    const local = transformVector(inverse, { x:child.value.x-selection.value.x, y:(child.value.baseY??0)-pivotY, z:child.value.z-selection.value.z });
+    for (const axis of ['x','y','z']) local[axis] *= desired[axis]/current[axis];
+    const offset = transformVector(basis, local);
+    const target = constrainPosition(base(), child, selection.value.x + offset.x, selection.value.z + offset.z);
+    if (next.moves[child.key].y !== undefined || hasRotation(selection.value.modelRotation)) next.moves[child.key].y=pivotY+offset.y;
+    updatePlacement(next, child, target.x, target.z);
   }
   changeEdits(next, selection.key);
 });
 $('duplicate').addEventListener('click', () => {
   if (!selection) return;
   const { key } = selection;
-  chooseAsset(session().edits.added[key]?.template ?? key, selection.value.modelScale);
+  chooseAsset(session().edits.added[key]?.template ?? key, selection.value.modelScale, selection.value.modelRotation);
   status('Щёлкните по месту для копии объекта.');
+});
+function requestedRotation() {
+  return Object.fromEntries(['x','y','z'].map(axis => [axis, $('rotation-' + axis).valueAsNumber * Math.PI / 180]));
+}
+$('rotation').addEventListener('input', () => {
+  if (selection && canRotateItem(selection) && $('rotation').checkValidity()) viewport.previewRotation(selection, requestedRotation());
+});
+$('rotation').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!selection || !canRotateItem(selection) || drag) return;
+  const next = structuredClone(session().edits), desired = requestedRotation();
+  const value = selection.value, current = value.modelRotation ?? ZERO_ROTATION;
+  if (['x','y','z'].every(axis => Math.abs(desired[axis] - current[axis]) < 1e-7)) { select(selection); return; }
+  const placement = next.added[selection.key] ?? (next.moves[selection.key] ??= { x:value.x, z:value.z });
+  const original = catalog().get(placement.template ?? selection.key)?.value;
+  if (!hasRotation(desired) && !hasRotation(original?.modelRotation)) delete placement.rotation;
+  else placement.rotation = desired;
+  if (!next.added[selection.key]) updatePlacement(next, selection, value.x, value.z);
+  const delta = multiplyMatrix(rotationMatrix(desired), inverseMatrix(rotationMatrix(current)));
+  const baseY = value.baseY ?? viewport.heightAt(value.x, value.z);
+  for (const child of items.values()) {
+    const override = next.moves[child.key];
+    if (child.value.editorParent !== selection.key || !override) continue;
+    const offset = transformVector(delta, { x:child.value.x-value.x, y:(child.value.baseY??0)-baseY, z:child.value.z-value.z });
+    const position = constrainPosition(base(), child, value.x + offset.x, value.z + offset.z);
+    Object.assign(override, position, { y:baseY+offset.y });
+  }
+  changeEdits(next, selection.key);
 });
 $('remove').addEventListener('click', removeSelected);
 $('connect').addEventListener('click', () => {

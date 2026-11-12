@@ -1,3 +1,5 @@
+import { affineBox, multiplyMatrix, rotationMatrix, transformVector } from './geometry.js';
+
 const driver = { name: 'Водитель', role: 'driver' };
 const passenger = { name: 'Пассажир', role: 'passenger' };
 
@@ -40,14 +42,24 @@ export function vehicleBoardingRange(vehicle) {
   return VEHICLE_BOARD_RANGE * Math.max(1, vehicle.modelScale?.x ?? 1, vehicle.modelScale?.z ?? 1);
 }
 export function vehicleBodyTilt(vehicle, terrain) {
-  if (!terrain) return { bodyPitch: 0, bodyRoll: 0 };
+  const bodyPitch=vehicle.modelRotation?.x??0,bodyRoll=vehicle.modelRotation?.z??0;
+  if (!terrain) return { bodyPitch,bodyRoll };
   const { width, length } = getVehicleDimensions(vehicle), sin = Math.sin(vehicle.yaw), cos = Math.cos(vehicle.yaw);
   const a = length * .35, b = width * .45;
   const front = terrain.heightAt(vehicle.x - sin * a, vehicle.z - cos * a);
   const rear = terrain.heightAt(vehicle.x + sin * a, vehicle.z + cos * a);
   const right = terrain.heightAt(vehicle.x + cos * b, vehicle.z - sin * b);
   const left = terrain.heightAt(vehicle.x - cos * b, vehicle.z + sin * b);
-  return { bodyPitch: Math.atan2(front - rear, a * 2), bodyRoll: Math.atan2(right - left, b * 2) };
+  return { bodyPitch:bodyPitch+Math.atan2(front - rear, a * 2), bodyRoll:bodyRoll+Math.atan2(right - left, b * 2) };
+}
+
+export function vehicleShape(vehicle){
+  const spec=VEHICLE_TYPES[vehicle.type],s=vehicle.modelScale??{x:1,y:1,z:1};
+  const matrix=multiplyMatrix(rotationMatrix({y:vehicle.yaw??0}),
+    multiplyMatrix([s.x,0,0,0,s.y,0,0,0,s.z],rotationMatrix({x:vehicle.bodyPitch??0,z:vehicle.bodyRoll??0})));
+  const offset=transformVector(matrix,{x:0,y:spec.height/2,z:0});
+  return affineBox({x:vehicle.x+offset.x,y:(vehicle.y??0)+offset.y,z:vehicle.z+offset.z},
+    [spec.width/2,spec.height/2,spec.length/2],matrix);
 }
 
 export function vehicleAimDirection(vehicle, yaw, pitch) {

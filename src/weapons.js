@@ -193,7 +193,10 @@ export function createWeaponRig(owner = {}) {
     const rib=rounded(handguard,side*.031,-.034,-.18,.019,.016,.34,metal);rib.rotation.z=side*.52;
     for(let z=-.052;z>-.32;z-=.058)detail(handguard,side*.047,.032,z,.0018,.004,.028,worn);
   }
-  cylinder(handguard,0,.007,-.175,.014,.346,dark,'z',18);
+  // The bore is a separate continuous assembly. Changing handguard length or
+  // width must never shorten or hide the steel visible through its vents.
+  const barrelCore=new THREE.Group();barrelCore.name='continuous-inner-barrel';weapon.add(barrelCore);
+  cylinder(barrelCore,0,0,0,.016,.4,edge,'z',24);
   rounded(handguard,0,-.045,-.18,.064,.012,.345,polymer);
   rail(handguard,-.348,-.005,.075,.066);
   ring(handguard,0,.007,-.008,.051,.038,.018,metal,'z',32);
@@ -709,7 +712,7 @@ export function createWeaponRig(owner = {}) {
     const materials=new Map();for(const child of group.children)if(child.isMesh&&!Array.isArray(child.material)){if(!materials.has(child.material))materials.set(child.material,[]);materials.get(child.material).push(child);}
     for(const [material,meshes]of materials){if(meshes.length<2)continue;const parts=meshes.map(m=>{m.updateMatrix();const g=m.geometry.clone().applyMatrix4(m.matrix);const n=g.index?g.toNonIndexed():g; if(n!==g)g.dispose();return n;});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!geometry)continue;ownedGeometries.add(geometry);const merged=new THREE.Mesh(geometry,material);merged.name=`batched-${material.name}`;group.add(merged);for(const m of meshes)m.removeFromParent();}
   }
-  for(const island of [receiver,handguard,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight,...Object.values(pistols).map(p=>p.root)])batch(island);
+  for(const island of [receiver,handguard,barrelCore,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight,...Object.values(pistols).map(p=>p.root)])batch(island);
   // Dispose unreferenced source buffers after batching, retaining reused shapes.
   const liveGeometry=new Set();weapon.traverse(o=>{if(o.geometry)liveGeometry.add(o.geometry);});for(const geometry of ownedGeometries)if(!liveGeometry.has(geometry)){geometry.dispose();ownedGeometries.delete(geometry);}
   const loadouts = {
@@ -886,6 +889,9 @@ export function createWeaponRig(owner = {}) {
       pistolRight.position.x = pistol?.heavy ? .003 : 0;
       for(const model of Object.values(pistols))model.root.visible=model===pistol;
       const end = -.225-loadout.guard-loadout.barrel;
+      const coreRear=-.205,coreFront=-.225-loadout.guard-.012;
+      barrelCore.position.set(0,.015,(coreRear+coreFront)/2);
+      barrelCore.scale.set(support?1.14:1,support?1.14:1,(coreRear-coreFront)/.4);
       handguard.scale.set(loadout.width,1,loadout.guard/hgLength);
       anodized.color.setHex(loadout.finish);
       barrel.position.set(0,.015,end+loadout.barrel/2);

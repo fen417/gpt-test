@@ -1,10 +1,11 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
-import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
+import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import { slideVelocity } from './movement.js';
+import { boxBounds, rayAffineBox, overlapsAffine, uprightBox, affineNormal, shapeForBox } from './geometry.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -15,9 +16,7 @@ const validClass = value => typeof value==='string' && Object.hasOwn(CLASSES,val
 const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
 const crouching = player => !player.vehicleId && Boolean(player.crouching || player.slideTime > 0 || player.input.crouch);
-const withBounds = box => ({
-  ...box,minY:box.baseY??0,h:(box.baseY??0)+box.h,minX:box.x-box.w/2,maxX:box.x+box.w/2,minZ:box.z-box.d/2,maxZ:box.z+box.d/2,
-});
+const withBounds = boxBounds;
 const rayDir = { x: 0, y: 0, z: 0 };
 const scratchEye = { x: 0, y: 0, z: 0 };
 const scratchTarget = { x: 0, y: 0, z: 0 };
@@ -35,6 +34,7 @@ export function sanitizeInput(input = {}) {
 }
 
 function rayBox(origin, direction, box, maximum) {
+  if(box.obb)return rayAffineBox(origin,direction,box.obb,maximum);
   let near = 0, far = maximum;
   if (Math.abs(direction.x) < 1e-8) {
     if (origin.x < box.minX || origin.x > box.maxX) return Infinity;
@@ -55,6 +55,20 @@ function rayBox(origin, direction, box, maximum) {
   const a=(minY-origin.y)/direction.y, b=(box.h-origin.y)/direction.y;
   near=Math.max(near,Math.min(a,b)); far=Math.min(far,Math.max(a,b));
   return near<=far?near:Infinity;
+}
+
+function rotatedFloor(box,x,z,min,max,radius){
+  if(x<box.minX-radius||x>box.maxX+radius||z<box.minZ-radius||z>box.maxZ+radius)return -Infinity;
+  let top=-Infinity;
+  for(const dx of [-radius,0,radius])for(const dz of [-radius,0,radius]){
+    const origin={x:x+dx,y:max,z:z+dz};
+    const hit=rayAffineBox(origin,{x:0,y:-1,z:0},box.obb,max-min);
+    if(hit>1e-6&&Number.isFinite(hit)){
+      const y=max-hit;
+      if(affineNormal(box.obb,{x:origin.x,y,z:origin.z}).y>=.6)top=Math.max(top,y);
+    }
+  }
+  return top;
 }
 
 function raySphere(origin, direction, center, radius) {
@@ -116,6 +130,7 @@ function overlaps(a,b) {
 }
 
 function rayVehicle(origin,direction,vehicle,maximum){
+  if(vehicle.modelRotation?.x||vehicle.modelRotation?.z)return rayAffineBox(origin,direction,vehicleShape(vehicle),maximum);
   const {x,z,w,d,h,cos,sin}=footprint(vehicle);
   const dx=origin.x-x,dz=origin.z-z;
   return rayBox(
@@ -129,6 +144,8 @@ export class Simulation {
   constructor({ bots=23, difficulty='regular', mapId, random=Math.random }={}) {
     this.map=getMap(mapId);
     this.colliders=this.map.boxes.map(withBounds);
+    this.hasRotatedGeometry=this.colliders.some(box=>box.obb);
+    this.stepHeight=this.map.stepHeight??(this.hasRotatedGeometry ? .3 : 0);
     // Static broad phase: movement queries touch nearby cells, not every
     // warehouse/container on the map for every actor and axis each tick.
     this.collisionCell=16;
@@ -141,7 +158,8 @@ export class Simulation {
     this.rayCandidates=[];
     this.rayVisited=new Uint32Array(this.colliders.length);
     this.rayVisit=0;
-    this.grenadeColliders=this.map.boxes.map(box=>withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12}));
+    this.grenadeColliders=this.map.boxes.map(box=>withBounds({...box,w:box.w+.24,d:box.d+.24,h:box.h+.12,
+      ...(box.obb?{obb:{...box.obb,half:box.obb.half.map(size=>size+.12)}}:{})}));
     this.random=random;this.time=0;this.players=new Map();this.maxTickets=600;this.tickets=[600,600];
     this.difficulty=typeof difficulty==='string'&&Object.hasOwn(DIFFICULTIES,difficulty)?difficulty:'regular';
     this.botSettings=DIFFICULTIES[this.difficulty];
@@ -168,12 +186,18 @@ export class Simulation {
         this.blocked[iz*this.gridSize+ix]=1;
     }
     for(const box of this.colliders){
-      if(box.overhead&&box.kind!=='village-stair')continue;
+      if(box.overhead&&!box.obb&&box.kind!=='village-stair')continue;
       const minX=Math.max(0,Math.floor(gridIndex(box.minX-clearance))+1);
       const maxX=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxX+clearance)));
       const minZ=Math.max(0,Math.floor(gridIndex(box.minZ-clearance))+1);
       const maxZ=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxZ+clearance)));
-      if(minX<maxX)for(let z=minZ;z<maxZ;z++)this.blocked.fill(1,z*this.gridSize+minX,z*this.gridSize+maxX);
+      if(minX<maxX)for(let z=minZ;z<maxZ;z++){
+        if(!box.obb)this.blocked.fill(1,z*this.gridSize+minX,z*this.gridSize+maxX);
+        else for(let x=minX;x<maxX;x++){
+          const px=this.gridOrigin+(x+.5)*this.gridCell,pz=this.gridOrigin+(z+.5)*this.gridCell;
+          if(overlapsAffine(uprightBox(px,this.groundAt(px,pz),pz,clearance,EYE_HEIGHT),box.obb))this.blocked[z*this.gridSize+x]=1;
+        }
+      }
     }
     for(let n=0;n<clamp(Math.floor(bots),0,31);n++){
       const cls=classKeys[Math.floor(n/2)%4];
@@ -239,15 +263,20 @@ export class Simulation {
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   groundAt(x,z){return this.map.terrain?.heightAt(x,z)??0;}
-  stairHeightAt(x,z,y){
-    const step=this.map.stepHeight??0;
+  stairHeightAt(x,z,y,bodyHeight){
+    const step=this.stepHeight;
     if(!step)return y;
     let height=y;
     const origin={x,y:y+step+.001,z},direction={x:0,y:-1,z:0};
     for(const box of this.rayBoxes(origin,direction,step+.001)){
+      if(box.obb){
+        const top=rotatedFloor(box,x,z,y+.001,y+step+.001,PLAYER_RADIUS);
+        if(top>height&&!this.collides(x,z,top+1e-5,PLAYER_RADIUS,bodyHeight))height=top+1e-5;
+        continue;
+      }
       if(!['village-stair','village-floor'].includes(box.kind)||box.h<=height||box.h>y+step)continue;
       if(Math.abs(x-box.x)>=box.w/2+PLAYER_RADIUS||Math.abs(z-box.z)>=box.d/2+PLAYER_RADIUS)continue;
-      if(!this.collides(x,z,box.h))height=box.h;
+      if(!this.collides(x,z,box.h,PLAYER_RADIUS,bodyHeight))height=box.h;
     }
     return height;
   }
@@ -261,6 +290,7 @@ export class Simulation {
     const minX=Math.max(0,Math.floor((x-radius+origin)/cell)),maxX=Math.min(size-1,Math.floor((x+radius+origin)/cell));
     const minZ=Math.max(0,Math.floor((z-radius+origin)/cell)),maxZ=Math.min(size-1,Math.floor((z+radius+origin)/cell));
     for(let bz=minZ;bz<=maxZ;bz++)for(let bx=minX;bx<=maxX;bx++)for(const b of this.collisionBins[bz*size+bx]){
+      if(b.obb){if(overlapsAffine(uprightBox(x,y,z,radius,height),b.obb))return true;continue;}
       if(b.overhead&&y+height<=b.minY)continue;
       if(y<b.h&&x>b.minX-radius&&x<b.maxX+radius&&z>b.minZ-radius&&z<b.maxZ+radius)return true;
     }
@@ -319,16 +349,31 @@ export class Simulation {
     if(Math.abs(x)+dx>limit||Math.abs(z)+dz>limit)return true;
     const area=this.map.playArea;
     if(area&&(x-dx<area.minX||x+dx>area.maxX||z-dz<area.minZ||z+dz>area.maxZ))return true;
-    for(const box of this.map.boxes){
+    const tilted=Boolean(vehicle.modelRotation?.x||vehicle.modelRotation?.z);
+    const needsShape=tilted||this.hasRotatedGeometry||
+      this.vehicles.some(other=>other.modelRotation?.x||other.modelRotation?.z);
+    const pose=needsShape?{...vehicle,x,z,yaw,y:this.groundAt(x,z)}:null;
+    const shape=pose?vehicleShape({...pose,...vehicleBodyTilt(pose,this.map.terrain)}):null;
+    const bounds=shape?boxBounds({obb:shape}):null;
+    if(tilted&&(bounds.minX<-limit||bounds.maxX>limit||bounds.minZ<-limit||bounds.maxZ>limit))return true;
+    for(const box of this.colliders){
+      if(box.obb||tilted){
+        if(bounds.minX>=box.maxX||bounds.maxX<=box.minX||bounds.minZ>=box.maxZ||bounds.maxZ<=box.minZ)continue;
+        const raw=this.map.boxes[box.collisionIndex];
+        if(overlapsAffine(shape,shapeForBox(raw)))return true;
+        continue;
+      }
       if(Math.abs(box.x-x)>=dx+box.w/2||Math.abs(box.z-z)>=dz+box.d/2)continue;
-      if(box.overhead&&this.groundAt(x,z)+body.h<=(box.baseY??0))continue;
+      if(box.overhead&&this.groundAt(x,z)+body.h<=box.minY)continue;
       if(overlaps(body,{x:box.x,z:box.z,w:box.w/2,d:box.d/2,cos:1,sin:0}))return true;
     }
-    return this.vehicles.some(other=>other!==vehicle&&(other.hp>0||other.wreckTime>0)&&overlaps(body,footprint(other)));
+    return this.vehicles.some(other=>other!==vehicle&&(other.hp>0||other.wreckTime>0)&&
+      (tilted||other.modelRotation?.x||other.modelRotation?.z?overlapsAffine(shape,vehicleShape(other)):overlaps(body,footprint(other))));
   }
   vehicleAt(x,z,y,radius=PLAYER_RADIUS){
     return this.vehicles.some(v=>{
       if(v.hp<=0&&!(v.wreckTime>0))return false;
+      if(v.modelRotation?.x||v.modelRotation?.z)return overlapsAffine(uprightBox(x,y,z,radius,EYE_HEIGHT),vehicleShape(v));
       const body=footprint(v),dx=x-v.x,dz=z-v.z;
       return y<(v.y??0)+body.h && Math.abs(dx*body.cos-dz*body.sin)<body.w+radius
         && Math.abs(dx*body.sin+dz*body.cos)<body.d+radius;
@@ -997,16 +1042,18 @@ export class Simulation {
       let followsGround=p.grounded&&p.y<=this.groundAt(p.x,p.z)+.025;
       const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
       let walkX=followsGround?this.groundAt(p.x+stepX,p.z):p.y;
-      if(!slide&&this.map.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX);
+      const groundX=walkX;
+      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX,bodyHeight);
       if(!this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x+stepX,p.z,walkX))){
         p.x+=stepX;
-        if(walkX>p.y+.01&&this.map.stepHeight){p.y=walkX;followsGround=false;}
+        if(walkX>groundX+.0001){p.y=walkX;followsGround=false;}
       }
       let walkZ=followsGround?this.groundAt(p.x,p.z+stepZ):p.y;
-      if(!slide&&this.map.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ);
+      const groundZ=walkZ;
+      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ,bodyHeight);
       if(!this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x,p.z+stepZ,walkZ))){
         p.z+=stepZ;
-        if(walkZ>p.y+.01&&this.map.stepHeight){p.y=walkZ;followsGround=false;}
+        if(walkZ>groundZ+.0001){p.y=walkZ;followsGround=false;}
       }
       if(followsGround)p.y=this.groundAt(p.x,p.z);
       }
@@ -1016,6 +1063,10 @@ export class Simulation {
       if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
       if(p.vy<=0)for(const box of this.colliders){
+        if(box.obb){
+          floor=Math.max(floor,rotatedFloor(box,p.x,p.z,nextY-.01,oldY+.01,PLAYER_RADIUS));
+          continue;
+        }
         const support=PLAYER_RADIUS*(['village-stair','village-floor'].includes(box.kind)?1:.6);
         if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
       }
@@ -1038,8 +1089,13 @@ export class Simulation {
       for(const box of this.grenadeColliders){const distance=rayBox(grenade,direction,box,length);if(distance<nearest){nearest=distance;hit=box;}}
       if(hit){
         const travel=Math.max(0,nearest-.02);grenade.x+=direction.x*travel;grenade.y+=direction.y*travel;grenade.z+=direction.z*travel;
-        const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.min(Math.abs(grenade.y-hit.h),Math.abs(grenade.y-hit.minY))]];
-        const axis=faces.sort((a,b)=>a[1]-b[1])[0][0];grenade[`v${axis}`]*=-.35;
+        if(hit.obb){
+          const normal=affineNormal(hit.obb,grenade),speed=grenade.vx*normal.x+grenade.vy*normal.y+grenade.vz*normal.z;
+          if(speed<0){grenade.vx-=1.35*speed*normal.x;grenade.vy-=1.35*speed*normal.y;grenade.vz-=1.35*speed*normal.z;}
+        }else{
+          const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.min(Math.abs(grenade.y-hit.h),Math.abs(grenade.y-hit.minY))]];
+          const axis=faces.sort((a,b)=>a[1]-b[1])[0][0];grenade[`v${axis}`]*=-.35;
+        }
       }else if(this.collides(grenade.x+delta.x,grenade.z+delta.z,grenade.y+delta.y,.12)){grenade.vx*=-.35;grenade.vz*=-.35;}
       else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
       const ground=this.groundAt(grenade.x,grenade.z)+.15;

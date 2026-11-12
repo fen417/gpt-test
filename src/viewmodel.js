@@ -1,3 +1,4 @@
+import { rayAffineBox } from '../shared/geometry.js';
 // View models get their own depth pass, while retaining normal self-occlusion.
 export const VIEWMODEL_LAYER=1;
 export function prepareViewModel(group){
@@ -16,6 +17,7 @@ export function prepareViewModel(group){
 export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   let closest=maxDistance;
   for(const box of boxes){
+    if(box.obb){closest=Math.min(closest,rayAffineBox(origin,direction,box.obb,closest));continue;}
     if(Math.abs(origin.x-box.x)>box.w/2+closest||Math.abs(origin.z-box.z)>box.d/2+closest)continue;
     let near=0,far=closest;
     for(const [axis,min,max]of [['x',box.x-box.w/2,box.x+box.w/2],['y',box.baseY??0,(box.baseY??0)+box.h],['z',box.z-box.d/2,box.z+box.d/2]]){

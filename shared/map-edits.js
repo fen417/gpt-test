@@ -1,6 +1,7 @@
 import { makeTerrain } from './terrain.js';
 import { scaleAsset, UNIT_SCALE } from './asset-scale.js';
-import { groundAsset, shipTerrainPad } from './asset-grounding.js';
+import { fitLowProp, groundAsset, shipTerrainPad } from './asset-grounding.js';
+import { rotateMapAssets } from './geometry.js';
 
 export const emptyMapEdits = () => ({ version: 1, moves: {}, added: {}, removed: [] });
 
@@ -31,7 +32,10 @@ export function mapItems(map, includeVehicleRoutes = false) {
       if (kind === 'box' && (value.editorPart || ['port-roof', 'port-crane-leg', 'port-lintel'].includes(value.kind) ||
           (value.kind === 'port-wall' && value.editorParent) ||
           (value.editorParent && value.editorParent === value.editorKey))) continue;
-      items.push({ key, kind, value });
+      if (value.editorPose) {
+        const { x, y, z } = value.editorPose;
+        items.push({ key, kind, value: { ...value, x, z, baseY: y }, geometryValue: value });
+      } else items.push({ key, kind, value });
     }
   }
   for (const value of map.vehicleRoutes?.nodes ?? []) {
@@ -56,6 +60,7 @@ export function assetCatalog(map, sources = {}) {
 export const canCloneItem = item => cloneKinds.has(item.kind);
 export const canRemoveItem = item => !['objective', 'spawn', 'route', 'segment'].includes(item.kind);
 export const canResizeItem = item => ['box', 'structure', 'road', 'landform', 'vehicle', 'sign', 'crane', 'rail', 'ship'].includes(item.kind);
+export const canRotateItem = item => ['box','structure','vehicle','sign','crane','rail','ship'].includes(item.kind);
 
 export function constrainPosition(map, item, x, z) {
   const half = map.size / 2;
@@ -90,16 +95,22 @@ export function validMapEdits(map, edits, sources) {
     return scale === undefined || (canResizeItem(item) && only(scale, ['x', 'y', 'z']) &&
       ['x', 'y', 'z'].every(axis => Number.isFinite(scale[axis]) && scale[axis] >= .1 && scale[axis] <= 5));
   }
+  const validRotation=(item,value)=>value===undefined||(canRotateItem(item)&&only(value,['x','y','z'])&&
+    ['x','y','z'].every(axis=>Number.isFinite(value[axis])&&Math.abs(value[axis])<=Math.PI*2));
+  const validHeight=(item,value)=>value===undefined||
+    (item.kind==='box'&&item.value.editorParent&&Number.isFinite(value)&&Math.abs(value)<=2048);
   for (const [key, move] of Object.entries(edits.moves)) {
     const item = items.get(key);
     if (key.includes('/')) return false;
-    if (!item || !only(move, ['x', 'z', 'scale']) || !validPosition(item, move) || !validScale(item, move.scale)) return false;
+    if (!item || !only(move, ['x', 'z', 'y', 'scale','rotation']) || !validPosition(item, move) ||
+        !validScale(item, move.scale) || !validRotation(item, move.rotation) || !validHeight(item, move.y)) return false;
   }
   let extraTerrain = 0, extraVehicles = 0;
   for (const [key, added] of Object.entries(edits.added)) {
-    if (!/^new:[0-9a-f]{32}$/.test(key) || !only(added, ['template', 'x', 'z', 'scale'])) return false;
+    if (!/^new:[0-9a-f]{32}$/.test(key) || !only(added, ['template', 'x', 'z', 'scale','rotation'])) return false;
     const template = items.get(added.template);
-    if (!template || !canCloneItem(template) || !validPosition(template, added) || !validScale(template, added.scale)) return false;
+    if (!template || !canCloneItem(template) || !validPosition(template, added) ||
+        !validScale(template, added.scale) || !validRotation(template, added.rotation)) return false;
     if (template.kind === 'landform' && ++extraTerrain > 20) return false;
     if (template.kind === 'vehicle' && ++extraVehicles > 16) return false;
   }
@@ -125,12 +136,15 @@ export function applyMapEdits(base, edits, sources) {
       result.z = parent.z + (value.z - original.z) * parentScale.z;
     }
     if (direct) { result.x = direct.x; result.z = direct.z; }
+    if(direct?.rotation)Object.assign(result,{modelRotation:{...direct.rotation},authoredRotation:true});
+    if(direct?.y!==undefined)result.authoredY=direct.y;
     return result;
   };
   const map = { ...base };
   const copied = (template, placement, key) => ({ ...scaleAsset(template.value, placement.scale),
     id: key, editorKey: key, editorParent: undefined, x: placement.x, z: placement.z,
     assetMapId: template.sourceMap.id, assetTemplate: template.sourceKey,
+    ...(placement.rotation?{modelRotation:{...placement.rotation},authoredRotation:true}:{}),
     modelSeed: template.value.modelSeed ?? template.value.id ?? template.sourceKey });
   for (const [kind, field] of Object.entries(layers)) {
     if (kind === 'box' || (kind === 'road' && base.vehicleRoutes)) continue;
@@ -161,12 +175,14 @@ export function applyMapEdits(base, edits, sources) {
     const relief = makeTerrain(base.size, map.landforms ?? [], map.terrain.cell);
     map.terrainPads = (map.structures ?? []).filter(structure => structure.terrainPad).map(structure => ({
       x: structure.x, z: structure.z, w: structure.w + 8, d: structure.d + 8,
-      height: relief.heightAt(structure.x, structure.z), blend: 4,
+      height: relief.heightAt(structure.x, structure.z), blend: base.terrainPadBlend??4,
     }));
     for (const ship of [map.ship, ...map.extraShips].filter(ship => ship?.terrainPad)) map.terrainPads.push(shipTerrainPad(ship, relief));
     map.terrain = makeTerrain(base.size, map.landforms ?? [], map.terrain.cell, map.terrainPads);
   }
   const elevation = (original, moved, sourceMap = base) => {
+    if(moved.authoredY!==undefined)return {...moved,baseY:moved.authoredY};
+    if(moved.groundFit&&map.terrain&&!moved.editorParent)return fitLowProp(moved,map.terrain);
     if (moved.terrainPad && moved.beached && map.terrain) return { ...moved, baseY:
       map.terrain.heightAt(moved.x, moved.z) + 2 * (moved.modelScale?.y ?? 1) };
     if (!moved.editorParent && map.terrain && ['village-barricade', 'wall', 'barrier', 'sandbags'].includes(moved.kind)) return groundAsset(moved, map.terrain);
@@ -241,5 +257,5 @@ export function applyMapEdits(base, edits, sources) {
     }
   }
   if (map.structures?.some(structure => structure.floors > 1)) map.stepHeight ??= .3;
-  return map;
+  return rotateMapAssets(map,edits);
 }

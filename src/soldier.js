@@ -444,6 +444,7 @@ function makeRifle(spine, c, classId, weaponId = '') {
     round(rifle, c.steel, 0, .035, -.17 - guardLength - .02, .026, .055, .035, -.35);
   }
   const barrelStart = -.17 - guardLength;
+  along(rifle,c.steel,0,.013,(-.15+barrelStart-.012)/2,support?.018:.015,Math.abs(barrelStart-.012+.15));
   along(rifle, c.steel, 0, .013, (barrelStart + muzzle) / 2, isPkp ? .024 : support ? .017 : .013, Math.abs(muzzle - barrelStart) + .02);
   if (isSv) {
     // Rectangular multi-chamber sniper muzzle brake

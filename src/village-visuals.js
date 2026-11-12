@@ -141,6 +141,45 @@ function pottery(owner, m, box) {
   }
 }
 
+function marketGoods(owner, m, box) {
+  const {x,z,w,d,h,baseY=0}=box;
+  const scene=owner.scene;
+  if(box.kind==='village-woven-baskets'){
+    for(const [side,ratio] of [[-1,1],[1,.72]]){
+      const radius=w*.23*ratio, height=h*.86*ratio, px=x+side*w*.24;
+      const profile=[[0,0],[radius*.68,0],[radius,height*.9],[radius,height],
+        [radius*.9,height],[radius*.88,height*.9],[radius*.6,height*.12],[0,height*.12]];
+      const mesh=new THREE.Mesh(new THREE.LatheGeometry(profile.map(([r,y])=>new THREE.Vector2(r,y)),18),painted(m,m.wood,box.color));
+      mesh.position.set(px,baseY,z+side*d*.12);
+      mesh.castShadow=mesh.receiveShadow=true;
+      mesh.geometry.userData.owned=true;
+      scene.add(mesh);
+      for(let row=1;row<=5;row++){
+        const t=row/6, ring=new THREE.Mesh(new THREE.TorusGeometry(radius*(.68+t*.32),.014,5,18),m.roof);
+        ring.rotation.x=-Math.PI/2;
+        ring.position.set(px,baseY+height*t*.9,z+side*d*.12);
+        ring.geometry.userData.owned=true;
+        scene.add(ring);
+      }
+    }
+    return;
+  }
+  const wood=painted(m,m.wood,box.color);
+  owner.box(scene,x,baseY+.07,z,w,.14,d,wood);
+  for(const side of [-1,1]){
+    owner.box(scene,x+side*(w/2-.055),baseY+h*.45,z,.11,h*.72,d-.05,wood);
+    owner.box(scene,x,baseY+h*.45,z+side*(d/2-.06),w-.23,h*.72,.12,wood);
+  }
+  const colors=['#a17b39','#77784a','#986146'];
+  for(let row=0;row<3;row++)for(let col=0;col<4;col++){
+    const item=new THREE.Mesh(owner.geo.sphere,painted(m,m.clay,colors[(row+col)%colors.length]));
+    item.position.set(x+(col-1.5)*w*.19,baseY+h*(.63+.04*Math.sin(col+row)),z+(row-1)*d*.25);
+    item.scale.set(w*.094,h*.26,d*.11);
+    item.castShadow=item.receiveShadow=true;
+    scene.add(item);
+  }
+}
+
 function shutters(owner, m, structure) {
   const { x, z, w, d, h, baseY = 0 } = structure;
   for (let level = 0; level < (structure.floors ?? 1); level++) for (const side of [-1, 1]) for (const end of [-1, 1]) {
@@ -154,19 +193,19 @@ function shutters(owner, m, structure) {
   }
   // Timber ends, door surrounds and a weathered plinth keep facades readable up close.
   for (const side of [-1, 1]) {
-    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * 2.9, baseY + 1.32, z + side * (d / 2 + .04),
+    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * 2.9, baseY + 1.32, z + side * (d / 2 + .31),
       .18, 2.65, .22, m.wood);
-    owner.box(owner.scene, x, baseY + 2.72, z + side * (d / 2 + .08), 6.1, .22, .35, m.wood);
+    owner.box(owner.scene, x, baseY + 2.72, z + side * (d / 2 + .31), 6.1, .22, .18, m.wood);
     for (let dx = -w / 2 + 1; dx < w / 2; dx += 2.6) owner.box(owner.scene, x + dx, baseY + h - .15,
       z + side * (d / 2 + .14), .16, .17, .6, m.wood, false);
-    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * (w + 5.6) / 4, baseY + .16, z + side * (d / 2 + .06),
-      (w - 5.6) / 2, .3, .12, m.roof, false);
+    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * (w + 5.6) / 4, baseY + .16, z + side * (d / 2 + .31),
+      (w - 5.6) / 2 - .1, .3, .06, m.roof, false);
   }
   const floor = owner.box(owner.scene, x, baseY + .015, z, w - .6, .025, d - .6, m.roof, false);
   floor.receiveShadow = true;
   for (let level = 1; level < (structure.floors ?? 1); level++) for (const side of [-1, 1]) for (const end of [-1, 1]) {
-    owner.box(owner.scene, x + side * w * .29, baseY + level * 3.1 + 1.55, z + end * (d / 2 + .06), 1.35, 1.35, .1, m.wood);
-    owner.box(owner.scene, x + side * w * .29, baseY + level * 3.1 + .84, z + end * (d / 2 + .17), 1.65, .14, .35, m.roof);
+    owner.box(owner.scene, x + side * w * .29, baseY + level * 3.1 + 1.55, z + end * (d / 2 + .34), 1.35, 1.35, .1, m.wood);
+    owner.box(owner.scene, x + side * w * .29, baseY + level * 3.1 + .84, z + end * (d / 2 + .4), 1.65, .14, .25, m.roof);
   }
 }
 
@@ -204,6 +243,7 @@ export function createVillageModelBuilder(owner) {
       if (kind === 'village-palm') { palm(owner, m, box); continue; }
       if (kind === 'village-rock') { desertMountain(owner, m.rock, box, terrain); continue; }
       if (kind === 'village-pottery') { pottery(owner, m, box); continue; }
+      if (kind === 'village-woven-baskets' || kind === 'village-produce-crates') { marketGoods(owner, m, box); continue; }
       if (kind === 'village-barrels') {
         for (const side of [-1, 1]) {
           const px = x + side * .48;

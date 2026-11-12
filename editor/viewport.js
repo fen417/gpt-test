@@ -4,6 +4,8 @@ import { createSurfaceMaterials, makeSky } from '../src/visuals.js';
 import { createMapModelBuilder } from '../src/renderer.js';
 import { buildMapScene, disposeMapScene } from '../src/map-scene.js';
 import { CAPTURE_RADIUS } from '../shared/world.js';
+import { ZERO_ROTATION } from '../shared/geometry.js';
+import { getVehicleDimensions, vehicleBodyTilt } from '../shared/vehicles.js';
 
 function surfaceFor(kind) {
   if (kind === 'village-palm') return 'wood';
@@ -156,8 +158,13 @@ export class MapViewport {
     const byKey = new Map(items.map(item => [item.key, item]));
     for (const box of map.boxes) {
       const item = byKey.get(box.editorKey ?? 'box:' + box.id) ?? byKey.get(box.editorParent);
-      const mesh = this.mesh(box, { w: box.w, d: box.d, h: box.h, y: (box.baseY ?? 0) + box.h / 2 },
+      const center = box.obb?.center;
+      const mesh = this.mesh(center ?? box, { w: box.w, d: box.d, h: box.h, y: center?.y ?? (box.baseY ?? 0) + box.h / 2 },
         this.material(box.color ?? '#a6a69c', surfaceFor(box.kind)), square, item);
+      if(box.modelBasis){
+        const [a,b,c,d,e,f,g,h,i]=box.modelBasis;
+        mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(a,b,c,0,d,e,f,0,g,h,i,0,0,0,0,1));
+      }
       mesh.userData.parent = box.editorParent;
     }
     if (map.vehicleRoutes) {
@@ -214,9 +221,11 @@ export class MapViewport {
     this.previewRoad = false;
     if (this.previewGroups?.length) this.renderer.shadowMap.needsUpdate = true;
     for (const { mesh, position } of this.previewMeshes ?? []) mesh.position.copy(position);
-    for (const { group, position, scale } of this.previewGroups ?? []) {
+    for (const { group, position, scale, quaternion, body, bodyRotation } of this.previewGroups ?? []) {
       group.position.copy(position);
       group.scale.copy(scale);
+      group.quaternion.copy(quaternion);
+      if(body)body.rotation.copy(bodyRotation);
     }
     this.previewMeshes = [];
     this.previewGroups = [];
@@ -231,19 +240,27 @@ export class MapViewport {
     if (!item) { this.render(); return; }
     const { value, kind } = item;
     this.previewGroups = [...this.level.groups.values()].filter(group =>
-      group.userData.editorKey === item.key || group.userData.editorParent === item.key).map(group =>
-      ({ group, position: group.position.clone(), scale: group.scale.clone() }));
+      group.userData.editorKey === item.key || group.userData.editorParent === item.key).map(group => {
+      const body=group.userData.vehicleBody;
+      return { group, position: group.position.clone(), scale: group.scale.clone(), quaternion:group.quaternion.clone(),
+        body,bodyRotation:body?.rotation.clone() };
+    });
     this.previewMeshes = this.pickables.filter(mesh => mesh.userData.item?.key === item.key ||
       mesh.userData.parent === item.key).map(mesh => ({ mesh, position: mesh.position.clone() }));
-    const w = kind === 'landform' ? value.rx * 2 : value.w ?? (kind === 'objective' ? CAPTURE_RADIUS * 2 : 9);
-    const d = kind === 'landform' ? value.rz * 2 : value.d ?? (kind === 'rail' ? 355 : w);
-    const h = value.h ?? 1.5;
+    const vehicle=kind==='vehicle'?getVehicleDimensions(value):null;
+    const w = kind === 'landform' ? value.rx * 2 : value.w ?? vehicle?.width ?? (kind === 'objective' ? CAPTURE_RADIUS * 2 : 9);
+    const d = kind === 'landform' ? value.rz * 2 : value.d ?? vehicle?.length ?? (kind === 'rail' ? 355 : w);
+    const h = value.h ?? vehicle?.height ?? 1.5;
     const shape = new THREE.BoxGeometry(w + .7, h + .5, d + .7);
     const geometry = new THREE.EdgesGeometry(shape);
     shape.dispose();
     const outline = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xf6f5a1, depthTest: false }));
-    outline.position.set(value.x, (value.baseY ?? this.heightAt(value.x, value.z)) + h / 2, value.z);
-    outline.rotation.y = value.yaw ?? 0;
+    const primary=this.previewGroups.find(({group})=>group.userData.editorKey===item.key);
+    if(primary&&kind!=='road')outline.quaternion.copy(primary.quaternion);
+    else outline.rotation.y = value.yaw ?? 0;
+    this.outlineOffset=new THREE.Vector3(0,h/2,0).applyQuaternion(outline.quaternion);
+    outline.position.set(value.x, value.baseY ?? this.heightAt(value.x, value.z), value.z).add(this.outlineOffset);
+    this.outlineQuaternion=outline.quaternion.clone();
     outline.renderOrder = 20;
     this.scene.add(outline);
     this.outline = outline;
@@ -305,10 +322,7 @@ export class MapViewport {
     if (!this.outline) return;
     const dx = x - item.value.x, dz = z - item.value.z;
     const rise = this.heightAt(x, z) - this.heightAt(item.value.x, item.value.z);
-    this.outline.position.x = x;
-    this.outline.position.z = z;
-    this.outline.position.y = (item.value.baseY ?? this.heightAt(item.value.x, item.value.z)) +
-      (item.value.h ?? 1.5) / 2 + rise;
+    this.outline.position.set(x,(item.value.baseY ?? this.heightAt(item.value.x, item.value.z))+rise,z).add(this.outlineOffset);
     for (const { mesh, position } of this.previewMeshes) {
       mesh.position.set(position.x + dx, position.y + rise, position.z + dz);
     }
@@ -324,16 +338,44 @@ export class MapViewport {
     const current = item.value.modelScale ?? { x: 1, y: 1, z: 1 };
     const ratio = new THREE.Vector3(scale.x / current.x, scale.y / current.y, scale.z / current.z);
     const anchor = new THREE.Vector3(item.value.x, item.value.baseY ?? this.heightAt(item.value.x, item.value.z), item.value.z);
+    const inverse=this.outlineQuaternion.clone().invert();
     for (const saved of this.previewGroups) {
-      saved.group.position.copy(saved.position).sub(anchor).multiply(ratio).add(anchor);
+      saved.group.position.copy(saved.position).sub(anchor).applyQuaternion(inverse).multiply(ratio)
+        .applyQuaternion(this.outlineQuaternion).add(anchor);
       saved.group.scale.copy(saved.scale).multiply(ratio);
     }
     if (this.outline) {
       this.outline.scale.copy(ratio);
-      this.outline.position.y = anchor.y + (item.value.h ?? 1.5) * ratio.y / 2;
+      this.outline.position.copy(anchor).add(this.outlineOffset.clone().multiplyScalar(ratio.y));
     }
     this.previewRoads(item, { w: item.value.w * ratio.x, d: item.value.d * ratio.z, modelScale: scale });
     this.renderer.shadowMap.needsUpdate = true;
+    this.render();
+  }
+
+  previewRotation(item, rotation) {
+    if (!this.outline) return;
+    const value=item.value, current=value.modelRotation??ZERO_ROTATION;
+    const quaternion=angles=>new THREE.Quaternion().setFromEuler(new THREE.Euler(angles.x,angles.y,angles.z));
+    const delta=quaternion(rotation).multiply(quaternion(current).invert());
+    const anchor=new THREE.Vector3(value.x,value.baseY??this.heightAt(value.x,value.z),value.z);
+    for(const saved of this.previewGroups){
+      if(saved.body){
+        const yaw=value.yaw+rotation.y-current.y;
+        const tilt=vehicleBodyTilt({...value,yaw,modelRotation:rotation},this.map.terrain);
+        saved.group.rotation.y=yaw;
+        saved.body.rotation.set(tilt.bodyPitch,0,tilt.bodyRoll);
+      }else{
+        saved.group.position.copy(saved.position).sub(anchor).applyQuaternion(delta).add(anchor);
+        // Child props inherit the parent, while editing a child itself appends its local rotation.
+        if(value.editorParent&&saved.group.userData.editorKey===item.key){
+          saved.group.quaternion.copy(saved.quaternion).multiply(quaternion(current).invert()).multiply(quaternion(rotation));
+        }else saved.group.quaternion.copy(delta).multiply(saved.quaternion);
+      }
+    }
+    this.outline.position.copy(anchor).add(this.outlineOffset.clone().applyQuaternion(delta));
+    this.outline.quaternion.copy(delta).multiply(this.outlineQuaternion);
+    this.renderer.shadowMap.needsUpdate=true;
     this.render();
   }
 

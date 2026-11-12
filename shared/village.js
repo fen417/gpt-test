@@ -1,5 +1,6 @@
 import { makeTerrain } from './terrain.js';
-import { groundAsset, shipTerrainPad } from './asset-grounding.js';
+import { fitLowProp, groundAsset, shipTerrainPad } from './asset-grounding.js';
+import { rotateMapAssets } from './geometry.js';
 
 const size = 384;
 const boxes = [], structures = [];
@@ -30,7 +31,7 @@ function house(x, z, w, d, floors, plan, index) {
   Object.assign(structure, { floors, plan, doorAxis: rotated ? 'x' : 'z' });
   const first = boxes.length;
   const thickness = .55, door = 5.6, doorHeight = 2.65;
-  const section = (w - door) / 2;
+  const section = (w + thickness - door) / 2, sideDepth = d - thickness;
   for (const side of [-1, 1]) {
     for (const end of [-1, 1]) {
       add('village-wall', x + side * (door + section) / 2, z + end * d / 2,
@@ -42,17 +43,17 @@ function house(x, z, w, d, floors, plan, index) {
     const wallX = x + side * w / 2;
     // Waist-high window sills keep side windows useful for firing from cover.
     const opening = 2.6, windowCenter = d * .24;
-    const endLength = d / 2 - windowCenter - opening / 2;
+    const endLength = sideDepth / 2 - windowCenter - opening / 2;
     for (let level = 0; level < floors; level++) {
       const base = level * floorHeight;
-      add('village-wall', wallX, z, thickness, d, 1.15, color, { ...part, baseY: base });
-      add('village-wall', wallX, z, thickness, d, floorHeight - 2.25, color,
+      add('village-wall', wallX, z, thickness, sideDepth, 1.15, color, { ...part, baseY: base });
+      add('village-wall', wallX, z, thickness, sideDepth, floorHeight - 2.25, color,
         { ...part, baseY: base + 2.25, overhead: true });
       add('village-wall', wallX, z, thickness, windowCenter * 2 - opening, 1.1, color, { ...part, baseY: base + 1.15 });
-      for (const end of [-1, 1]) add('village-wall', wallX, z + end * (d / 2 - endLength / 2),
+      for (const end of [-1, 1]) add('village-wall', wallX, z + end * (sideDepth / 2 - endLength / 2),
         thickness, endLength, 1.1, color, { ...part, baseY: base + 1.15 });
     }
-    add('village-wall', wallX, z, thickness, d, .35, color, { ...part, baseY: floorHeight * floors, overhead: true });
+    add('village-wall', wallX, z, thickness, sideDepth, .35, color, { ...part, baseY: floorHeight * floors, overhead: true });
   }
   if (plan === 'rooms' || plan === 'corner') {
     for (const side of [-1, 1]) {
@@ -74,7 +75,7 @@ function house(x, z, w, d, floors, plan, index) {
     for (let step = 1; step <= 12; step++) add('village-stair', x - w / 2 + 1.45, z - d / 2 + .9 + step * .8,
       2.1, .8, .16, '#ac997a',
       { ...part, baseY: (level - 1) * floorHeight + step * floorHeight / 12 - .16, overhead: true });
-    add('village-floor', x - w / 2 + 1.45, z + 4.925, 2.3, d - 10.35, .18, '#b9a58b',
+    add('village-floor', x - w / 2 + 1.45, z + 5.325, 2.3, d - 11.15, .18, '#b9a58b',
       { ...part, baseY: base - .18, overhead: true });
   }
   const roofWidth = ruined ? w * .32 : plan === 'courtyard' ? w * .6 : w + .8;
@@ -82,9 +83,9 @@ function house(x, z, w, d, floors, plan, index) {
   add('village-roof', roofX, z, roofWidth, d + .8, .25, '#a28d71',
     { ...part, baseY: h, overhead: true });
   if (!ruined) for (const side of [-1, 1]) {
-    add('village-wall', x + side * w / 2, z, .42, d, .48, color,
+    add('village-wall', x + side * w / 2, z, .42, d - .42, .48, color,
       { ...part, baseY: h + .25, overhead: true });
-    add('village-wall', x, z + side * d / 2, w, .42, .48, color,
+    add('village-wall', x, z + side * d / 2, w + .42, .42, .48, color,
       { ...part, baseY: h + .25, overhead: true });
   }
   if (rotated) {
@@ -196,21 +197,22 @@ const landmarks = [
 const landforms = [
   { x:0, z:0, rx:100, rz:180, height:-5, flat:.16 },
   { x:-12, z:-119, rx:92, rz:86, height:10, flat:.32 },
-  { x:12, z:120, rx:95, rz:85, height:13, flat:.30 },
+  { x:8, z:122, rx:115, rz:106, height:10, flat:.24 },
   { x:-59, z:6, rx:26, rz:119, height:-4, flat:.30 },
   { x:62, z:-18, rx:44, rz:103, height:5, flat:.25 },
   { x:-145, z:-122, rx:78, rz:92, height:58, flat:.15 },
   { x:-147, z:-12, rx:73, rz:89, height:69, flat:.13 },
-  { x:-143, z:111, rx:75, rz:92, height:61, flat:.14 },
+  { x:-155, z:111, rx:75, rz:92, height:56, flat:.14 },
   { x:147, z:-118, rx:77, rz:89, height:61, flat:.13 },
   { x:151, z:0, rx:71, rz:98, height:57, flat:.16 },
   { x:146, z:117, rx:73, rz:92, height:68, flat:.13 },
   { x:0, z:-203, rx:150, rz:42, height:45, flat:.12 },
-  { x:0, z:204, rx:149, rz:42, height:49, flat:.12 },
+  { x:0, z:218, rx:149, rz:53, height:41, flat:.12 },
 ];
 const relief = makeTerrain(size, landforms, 2);
 for (const structure of structures) structure.baseY = relief.heightAt(structure.x, structure.z);
-const terrainPads = structures.map(({ x, z, w, d, baseY }) => ({ x, z, w: w + 8, d: d + 8, height: baseY, blend: 4 }));
+const terrainPadBlend=8;
+const terrainPads = structures.map(({ x, z, w, d, baseY }) => ({ x, z, w: w + 8, d: d + 8, height: baseY, blend: terrainPadBlend }));
 const ship = { x: 109, z: 0, w: 23, d: 126, beached: true, terrainPad: true };
 const shipPad = shipTerrainPad(ship, relief);
 terrainPads.push(shipPad);
@@ -218,8 +220,62 @@ const terrain = makeTerrain(size, landforms, 2, terrainPads);
 // The hull extends 2.7 m below its origin. Bury the keel slightly in the dry basin.
 ship.baseY = shipPad.height + 2;
 const parents = new Map(structures.map(structure => ['structure:' + structure.id, structure]));
+
+function roadClear(box, x, z) {
+  for (const lane of roads) {
+    const sin=Math.sin(lane.yaw), cos=Math.cos(lane.yaw);
+    const dx=x-lane.x,dz=z-lane.z;
+    const side=Math.abs(dx*cos-dz*sin), along=Math.abs(dx*sin+dz*cos);
+    const sideReach=(box.w*Math.abs(cos)+box.d*Math.abs(sin))/2;
+    const endReach=(box.w*Math.abs(sin)+box.d*Math.abs(cos))/2;
+    if(side<lane.w/2+sideReach+1.4 && along<lane.d/2+endReach+1.4)return false;
+  }
+  return true;
+}
+function propGrade(box,x,z){
+  const heights=[-1,0,1].flatMap(u=>[-1,0,1].map(v=>terrain.heightAt(x+u*box.w/2,z+v*box.d/2)));
+  return Math.max(...heights)-Math.min(...heights);
+}
+function clearFootprint(box,x,z) {
+  return !structures.some(other=>Math.abs(x-other.x)<(box.w+other.w)/2+.75&&Math.abs(z-other.z)<(box.d+other.d)/2+.75)&&
+    !boxes.some(other=>other!==box&&!other.editorParent&&Math.abs(x-other.x)<(box.w+other.w)/2+.45&&Math.abs(z-other.z)<(box.d+other.d)/2+.45)&&
+    !points.some(point=>Math.hypot(x-point.x,z-point.z)<3.2+Math.hypot(box.w,box.d)/2);
+}
+function clearSpot(box,maxRise) {
+  const {x,z}=box;
+  for(let r=0;r<=34;r+=2){
+    const count=r===0?1:24;
+    for(let i=0;i<count;i++){
+      const angle=i*2*Math.PI/count;
+      const px=x+Math.cos(angle)*r,pz=z+Math.sin(angle)*r;
+      if(Math.abs(px)+box.w/2>81||Math.abs(pz)+box.d/2>172||
+        !roadClear(box,px,pz)||!clearFootprint(box,px,pz)||propGrade(box,px,pz)>maxRise)continue;
+      return {x:px,z:pz};
+    }
+  }
+  return null;
+}
+
+const lowProps=new Set(['village-pottery','village-rubble','sandbags']);
+for (const box of boxes) {
+  if (box.editorParent) continue;
+  const wall=box.kind==='village-barricade';
+  const low=lowProps.has(box.kind);
+  const maxRise=low?Math.min(.8,Math.hypot(box.w,box.d)*.35):.38;
+  if(!roadClear(box,box.x,box.z)||propGrade(box,box.x,box.z)>maxRise){
+    const spot=clearSpot(box,maxRise);
+    if(spot)Object.assign(box,spot);
+    else if(wall){
+      // Preserve the editor ID while putting an unplaceable wall outside the lanes.
+      box.x=Math.sign(box.x||1)*79;
+      box.z=box.z<0?-171:171;
+      box.w=Math.min(box.w,2.8);box.d=Math.min(box.d,1.8);
+    }
+  }
+  if(low)box.groundFit=true;
+}
 for (const box of boxes) box.baseY = (parents.get(box.editorParent)?.baseY ?? terrain.heightAt(box.x, box.z)) + (box.baseY ?? 0);
-for (let i = 0; i < boxes.length; i++) boxes[i] = groundAsset(boxes[i], terrain);
+for (let i = 0; i < boxes.length; i++) boxes[i] = fitLowProp(groundAsset(boxes[i], terrain),terrain);
 for (const point of points) point.y = terrain.heightAt(point.x, point.z);
 
 // Foreground cliffs stand beyond the playable valley and close the mountain skyline.
@@ -231,11 +287,27 @@ for (const side of [-1, 1]) for (const x of [-94,-31,37,103]) {
   add('village-rock', x, side * 211, 74, 52, 39 + Math.abs(x) * .09, '#ac9475', { baseY: 3 });
 }
 
-export const VILLAGE_MAP = {
+for (const [i, x, z] of [[0,-13,-143],[1,10,-96],[2,-21,-74],[3,12,-35],[4,-18,21],[5,14,53],[6,-10,97],[7,12,135],[8,-12,159]]) {
+  const group=[
+    ['crate',1.65,1.15,.95,'#99734a'],
+    ['village-pottery',1.55,1.35,.96,'#a67151'],
+    i%2?['village-woven-baskets',1.35,1.25,.75,'#947749']:['village-produce-crates',1.5,1.2,.72,'#a88753'],
+    ...(i%3===0?[['sandbags',2.15,1.05,.67,'#b0a07d']]:[]),
+  ];
+  for(const [j,[kind,w,d,h,color]] of group.entries()){
+    const proposal={x:x+j*1.9,z:z+(j%2)*1.8,w,d};
+    const spot=clearSpot(proposal,kind==='crate'?.26:.42);
+    if(!spot)continue;
+    const prop=add(kind,spot.x,spot.z,w,d,h,color,{baseY:terrain.heightAt(spot.x,spot.z),groundFit:kind!=='crate'});
+    Object.assign(prop,fitLowProp(prop,terrain));
+  }
+}
+
+export const VILLAGE_MAP = rotateMapAssets({
   id: 'village', name: 'Деревня «Сухой ветер»', theme: 'desert-village', layoutVersion: 2, size,
   fogDensity: .0034, fogColor: '#d0bea1', sunColor: '#ffe4b4', navigationCell: 2, stepHeight: .3,
   playArea: { minX: -82, maxX: 82, minZ: -173, maxZ: 173 },
-  terrain, landforms, terrainPads, boxes, structures, roads, points, landmarks, districts: [...points, ...landmarks],
+  terrain, landforms, terrainPads, terrainPadBlend, boxes, structures, roads, points, landmarks, districts: [...points, ...landmarks],
   ship,
   spawns: [{ x: 0, z: 166 }, { x: 0, z: -166 }], vehicleSpawns: [], signs: [],
-};
+});

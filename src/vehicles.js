@@ -400,7 +400,7 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
   rig.initialized=true;
   const wrecked=vehicle.hp<=0;
   const steer=wrecked?0:vehicle.steer??0;
-  let pitch = 0, roll = 0;
+  let pitch = vehicle.modelRotation?.x??0, roll = vehicle.modelRotation?.z??0;
   if (terrain) {
     const { x, z } = group.position, sin = Math.sin(group.rotation.y), cos = Math.cos(group.rotation.y);
     const { length, width } = getVehicleDimensions(vehicle);
@@ -409,8 +409,8 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
     const rear = terrain.heightAt(x + sin * longitudinal, z + cos * longitudinal);
     const right = terrain.heightAt(x + cos * lateral, z - sin * lateral);
     const left = terrain.heightAt(x - cos * lateral, z + sin * lateral);
-    pitch = Math.atan2(front - rear, longitudinal * 2);
-    roll = Math.atan2(right - left, lateral * 2);
+    pitch += Math.atan2(front - rear, longitudinal * 2);
+    roll += Math.atan2(right - left, lateral * 2);
   }
   body.rotation.x=THREE.MathUtils.lerp(body.rotation.x,pitch,t);
   body.rotation.z=THREE.MathUtils.lerp(body.rotation.z,roll+steer*vehicle.speed*.0018,t);

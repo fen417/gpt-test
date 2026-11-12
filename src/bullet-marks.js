@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { affineNormal } from '../shared/geometry.js';
 
 const markLifetime = 30;
 const maxMarks = 64;
@@ -40,6 +41,7 @@ function markTexture() {
 }
 
 function boxNormal(box, point) {
+  if(box.obb){const n=affineNormal(box.obb,point);return new THREE.Vector3(n.x,n.y,n.z);}
   let nearest = Infinity;
   const normal = new THREE.Vector3(0, 1, 0);
   const bounds = [
