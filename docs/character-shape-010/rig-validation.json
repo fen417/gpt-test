@@ -1,0 +1,225 @@
+{
+  "errors": [],
+  "result": [
+    {
+      "team": 0,
+      "weaponId": "ar416",
+      "triangles": [
+        26738,
+        12156,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "ar416",
+      "triangles": [
+        27121,
+        12335,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "ak12",
+      "triangles": [
+        26878,
+        12208,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "ak12",
+      "triangles": [
+        27261,
+        12387,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "mcx9",
+      "triangles": [
+        26642,
+        12073,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "mcx9",
+      "triangles": [
+        27025,
+        12252,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "vk45",
+      "triangles": [
+        26766,
+        12165,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "vk45",
+      "triangles": [
+        27149,
+        12344,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "mg36",
+      "triangles": [
+        26834,
+        12277,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "mg36",
+      "triangles": [
+        27217,
+        12456,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "pkp",
+      "triangles": [
+        26942,
+        12314,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "pkp",
+      "triangles": [
+        27325,
+        12493,
+        1046
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "dmr12",
+      "triangles": [
+        25498,
+        11840,
+        1078
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "dmr12",
+      "triangles": [
+        25881,
+        12019,
+        1078
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "sv98",
+      "triangles": [
+        25558,
+        11871,
+        1078
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "sv98",
+      "triangles": [
+        25941,
+        12050,
+        1078
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "p19",
+      "triangles": [
+        24242,
+        11336,
+        1022
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "p19",
+      "triangles": [
+        24625,
+        11515,
+        1022
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 0,
+      "weaponId": "m50",
+      "triangles": [
+        24302,
+        11432,
+        1074
+      ],
+      "finite": true,
+      "validWeights": true
+    },
+    {
+      "team": 1,
+      "weaponId": "m50",
+      "triangles": [
+        24685,
+        11611,
+        1074
+      ],
+      "finite": true,
+      "validWeights": true
+    }
+  ]
+}

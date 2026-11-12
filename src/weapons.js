@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { smoothRingSeams } from './character-geometry.js';
+import { anatomicalGeometry } from './soldier-anatomy.js';
+import { HEAVY_GRIP_SECTIONS, heavyGripSectionAt } from './pistol-grip.js';
 import { createBakedGlove } from './fps-glove-mesh.js';
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
@@ -576,7 +578,7 @@ export function createWeaponRig(owner = {}) {
   loft(leftArm,[[-.18,-.157,-.161],[-.144,-.129,-.224],[-.115,-.105,-.28]],[.021,.03,.022],cloth,{segments:12,radial:10,ellipse:[1,.16],widthAxis:[1,0,0]});
   const leftTab=rounded(leftArm,-.108,-.077,-.327,.039,.008,.024,cuff);leftTab.rotation.z=-.35;
   for(let i=0;i<6;i++)detail(leftArm,-.123+i*.005,-.071,-.325,.002,.0015,.009,seam);
-  const rightArm=new THREE.Group();weapon.add(rightArm);
+  const rightArm=new THREE.Group();rightArm.name='right-articulated-forearm';weapon.add(rightArm);
   loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.097,.094,.084,.073,.058,.047,.04].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.08,.9],folds:.09});
   loft(rightArm,[[.089,-.23,.151],[.074,-.212,.129],[.062,-.198,.112]],[.052,.049,.044].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.06,.94],folds:.06});
   curve(rightArm,[[.323,-.441,.42],[.247,-.324,.29],[.161,-.226,.172],[.102,-.181,.112]],.0018,seam,32,6);
@@ -697,17 +699,18 @@ export function createWeaponRig(owner = {}) {
   function buildPistol(heavy){
     const root=new THREE.Group(), slide=new THREE.Group(), magazine=new THREE.Group(), ejection=new THREE.Group();
     root.add(slide,magazine);slide.add(ejection);weapon.add(root);root.visible=false;
-    const front=heavy?-.248:-.181, width=heavy?.075:.059, rear=.136, gripWidth=heavy?.065:.057;
+    const front=heavy?-.248:-.181, width=heavy?.075:.059, rear=.136, gripWidth=heavy?.040:.057;
     const finish=heavy?heavySlide:pistolSlide, frame=heavy?metal:pistolFrame;
     const half=width/2, shoulder=half-(heavy?.011:.006);
     rounded(root,0,-.047,(front+rear)/2,width*.87,.034,rear-front-.022,frame);
-    profile(root,[[.126,-.05],[.057,-.052],[.021,-.211],[.034,-.225],[.104,-.225],[.141,-.081]],
+    if(heavy)mesh(root,anatomicalGeometry(HEAVY_GRIP_SECTIONS,16,{anatomy:'pistolGrip',square:.48,caps:true}),frame);
+    else profile(root,[[.126,-.05],[.057,-.052],[.021,-.211],[.034,-.225],[.104,-.225],[.141,-.081]],
       gripWidth,frame,{bevel:.004});
-    profile(root,[[.137,-.085],[.145,-.083],[.127,-.155],[.109,-.215],[.101,-.219]],
+    profile(root,heavy ? [[.132,-.085],[.136,-.083],[.119,-.155],[.105,-.215],[.101,-.219]] : [[.137,-.085],[.145,-.083],[.127,-.155],[.109,-.215],[.101,-.219]],
       gripWidth*.81,heavy?rubber:pistolFrame,{bevel:.002});
     for(let n=0;n<7;n++){
       const y=-.111-n*.014;
-      const insert=rounded(root,0,y,.138-n*.0038,gripWidth*.59,.0034,.0046,dark);
+      const insert=rounded(root,0,y,heavy ? .128-n*.0032 : .138-n*.0038,gripWidth*.59,.0034,.0046,dark);
       insert.rotation.x=-.23;
     }
     profile(root,[[-.09,-.057],[.071,-.053],[.059,-.124],[-.038,-.127],[-.081,-.102]],gripWidth*.76,frame,{
@@ -716,11 +719,19 @@ export function createWeaponRig(owner = {}) {
     curve(root,[[0,-.063,.017],[0,-.087,.005],[0,-.105,-.002]],.007,edge);
     for(const side of [-1,1]){
       const x=side*gripWidth*.51;
-      profile(root,[[.114,-.091],[.054,-.101],[.037,-.199],[.092,-.205]],.003,heavy?rubber:polymer,{x,bevel:.001});
-      for(let row=0;row<10;row++)for(let col=0;col<4;col++){
-        detail(root,x+side*.002,-.106-row*.009,.057+col*.011-row*.0016+(col%2)*.002,.002,.0038,.0046,knuckle);
+      const panelMesh=profile(root,heavy ? [[.123,-.091],[.075,-.101],[.047,-.203],[.101,-.205],[.115,-.170]] :
+        [[.114,-.091],[.054,-.101],[.037,-.199],[.092,-.205]],.003,heavy?rubber:polymer,{x,bevel:.001});
+      if(heavy){
+        const positions=panelMesh.geometry.attributes.position;
+        for(let i=0;i<positions.count;i++)positions.setX(i,positions.getX(i)-x+side*(heavyGripSectionAt(positions.getY(i))[0]+.0008));
+        panelMesh.geometry.computeVertexNormals();
       }
-      for(const [y,z] of [[-.103,.1],[-.19,.081]])if(heavy)screw(root,x+side*.002,y,z,.005);
+      for(let row=0;row<10;row++)for(let col=0;col<4;col++){
+        const y=-.106-row*.009, [halfGrip,centerGrip]=heavyGripSectionAt(y);
+        detail(root,heavy ? side*(halfGrip+.0024) : x+side*.002,y,
+          heavy ? centerGrip+(col-1.5)*.010 : .057+col*.011-row*.0016+(col%2)*.002,.002,.0038,.0046,knuckle);
+      }
+      for(const [y,z] of [[-.103,.1],[-.19,.081]])if(heavy)screw(root,side*(heavyGripSectionAt(y)[0]+.0024),y,z,.005);
       rounded(root,side*(width*.48),-.037,.046,.007,.012,.034,edge);
       cylinder(root,x,-.091,.05,.008,.005,dark,'x');
     }
@@ -774,12 +785,13 @@ export function createWeaponRig(owner = {}) {
       const gripSide=side*(gripWidth*.5+.0015);
       for(let row=0;row<4;row++)for(let col=0;col<5;col++){
         // Polymer diamond checkering, less shiny than a solid flat grip slab.
-        const y=-.126-row*.019,z=.065+col*.009+row*.007;
-        const mark=detail(root,gripSide,y,z,.0015,.004,.0035,serrated);
+        const y=-.126-row*.019,z=heavy ? heavyGripSectionAt(y)[1]+(col-2)*.008 : .065+col*.009+row*.007;
+        const mark=detail(root,heavy ? side*(heavyGripSectionAt(y)[0]+.0024) : gripSide,y,z,.0015,.004,.0035,serrated);
         mark.rotation.x=-.29;
       }
-      cylinder(root,side*(gripWidth*.5+.002),-.076,.068,.006,.003,metal,'x',12);
-      cylinder(root,side*(gripWidth*.5+.004),-.076,.068,.003,.003,dark,'x',10);
+      const pinSide=heavy ? heavyGripSectionAt(-.076)[0] : gripWidth*.5;
+      cylinder(root,side*(pinSide+.0015),-.076,.068,.006,.003,metal,'x',12);
+      cylinder(root,side*(pinSide+.003),-.076,.068,.003,.003,dark,'x',10);
       detail(slide,side*(half+.002),.026,.008,.002,.018,.037,heavy?paint:barrelFinish);
     }
     engraving(slide,heavy?'M50':'P19',-.077,.026,heavy?.0031:.00275,-half-.0006);
@@ -787,8 +799,8 @@ export function createWeaponRig(owner = {}) {
     detail(slide,0,.054,front+.039,.006,.006,.002,sightDot);
     const magazineHome=new THREE.Vector3(0,-.227,.073);
     magazine.position.copy(magazineHome);
-    rounded(magazine,0,.037,.001,gripWidth*.73,.073,.052,metal);
-    rounded(magazine,0,0,0,gripWidth*.94,.012,.066,heavy?edge:rubber);
+    rounded(magazine,0,.037,.001,gripWidth*.73,.073,heavy?.046:.052,metal);
+    rounded(magazine,0,0,0,gripWidth*.94,.012,heavy?.058:.066,heavy?edge:rubber);
     rounded(magazine,0,.076,-.001,gripWidth*.56,.008,.038,dark);
     for(let n=0;n<3;n++)cylinder(magazine,gripWidth*.37,.057-n*.014,.002,.003,.002,brass,'x');
     return {root,slide,magazine,magazineHome,ejection,front,heavy,
@@ -1003,7 +1015,7 @@ export function createWeaponRig(owner = {}) {
       pistolGlove.visible = Boolean(pistol);
       rightHand.visible = !pistol;
       pistolRight.visible = Boolean(pistol);
-      pistolRight.position.x = pistol?.heavy ? .003 : 0;
+      pistolRight.position.x = pistol?.heavy ? -.008 : 0;
       for(const model of Object.values(pistols))model.root.visible=model===pistol;
       const end = -.225-loadout.guard-loadout.barrel;
       const coreRear=-.205,coreFront=-.225-loadout.guard-.012;
