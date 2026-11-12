@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { buildPortProp, buildPortCrane } from './port-props.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from './prop-models.js';
+import { buildVillageProp, VILLAGE_PROP_KINDS } from './village-props.js';
 import { localAsset, UNIT_SCALE } from './asset-scale.js';
 import { affineBox, affineNormal, boxBounds, overlapsAffine, rayAffineBox, rotationMatrix } from './geometry.js';
 
@@ -81,10 +82,11 @@ function convexGeometry(mesh) {
 function primitiveCollider(mesh, box) {
   const e = mesh.matrixWorld.elements;
   const matrix = [e[0], e[4], e[8], e[1], e[5], e[9], e[2], e[6], e[10]];
-  const obb = affineBox({ x: e[12], y: e[13], z: e[14] }, [.5, .5, .5], matrix);
-  // Cylinder and sphere units have diameter two, while box units have width one.
-  if (mesh.geometry.type === 'CylinderGeometry') obb.half = [1, .5, 1];
-  if (mesh.geometry.type === 'SphereGeometry') obb.half = [1, 1, 1];
+  if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+  const localBounds = mesh.geometry.boundingBox;
+  const center = localBounds.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld);
+  const half = localBounds.getSize(new THREE.Vector3()).multiplyScalar(.5);
+  const obb = affineBox({ x: center.x, y: center.y, z: center.z }, [half.x, half.y, half.z], matrix);
   const bounds = boxBounds({ obb });
   const part = {
     id: box.id, kind: box.kind, x: obb.center.x, z: obb.center.z,
@@ -97,7 +99,7 @@ function primitiveCollider(mesh, box) {
 }
 
 function assetCollider(box, map, crane) {
-  if (!crane && !portKinds.has(box.kind) && !SPECIAL_PROP_KINDS.has(box.kind)) return boxBounds(box);
+  if (!crane && !portKinds.has(box.kind) && !SPECIAL_PROP_KINDS.has(box.kind) && !VILLAGE_PROP_KINDS.has(box.kind)) return boxBounds(box);
   const value = crane ?? box, scale = value.modelScale ?? UNIT_SCALE;
   const anchor = { x: value.x, z: value.z, baseY: value.baseY ?? map.terrain?.heightAt(value.x, value.z) ?? 0 };
   const root = new THREE.Group();
@@ -110,7 +112,7 @@ function assetCollider(box, map, crane) {
       primitive(parent, cylinderGeometry(segments), x, y, z, radius, height, radius),
   };
   if (crane) buildPortCrane(owner, palette, local);
-  else if (!buildPortProp(owner, palette, local)) buildSpecialProp.call(owner, root, local, meshMaterial);
+  else if (!buildPortProp(owner, palette, local) && !buildVillageProp(owner, palette, local)) buildSpecialProp.call(owner, root, local, meshMaterial);
   const pose = value.editorPose ?? { x: value.x, y: anchor.baseY, z: value.z };
   root.position.set(pose.x, pose.y, pose.z);
   root.scale.set(scale.x, scale.y, scale.z);
@@ -133,6 +135,7 @@ export function getAssetColliders(map) {
     const cranes = new Map((map.cranes ?? []).map((crane, index) => [crane.editorKey ?? 'crane:' + (crane.id ?? index), crane]));
     const built = new Set(), colliders = [];
     for (const box of map.boxes) {
+      if (box.noCollision) continue;
       const crane = box.kind === 'port-crane-leg' ? cranes.get(box.editorParent) : undefined;
       if (crane && built.has(crane)) continue;
       if (crane) built.add(crane);

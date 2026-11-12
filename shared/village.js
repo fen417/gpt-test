@@ -1,6 +1,7 @@
 import { makeTerrain } from './terrain.js';
 import { fitLowProp, groundAsset, shipTerrainPad } from './asset-grounding.js';
 import { rotateMapAssets } from './geometry.js';
+import { VILLAGE_PROP_KINDS } from './village-props.js';
 
 const size = 384;
 const boxes = [], structures = [];
@@ -20,6 +21,72 @@ function building(kind, name, x, z, w, d, h, color) {
   return { structure, part: { editorParent: 'structure:' + id, editorPart: true } };
 }
 
+function ruinShell(x, z, w, d, h, color, part, index) {
+  const sample = value => {
+    const n = Math.sin(index * 91.7 + value * 17.31) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  const brokenWall = (cx, cz, length, alongX, heights, offset = 0) => {
+    const count = heights.length - 1, step = length / count;
+    for (let i = 0; i < count; i++) {
+      const height = Math.max(heights[i], heights[i + 1]);
+      add('village-broken-wall', cx + (alongX ? -length / 2 + (i + .5) * step : 0),
+        cz + (alongX ? 0 : -length / 2 + (i + .5) * step),
+        alongX ? step : .55, alongX ? .55 : step, height, color, {
+          ...part, baseY: offset, overhead: offset > 1.8,
+          outline: [[-.5, 0], [.5, 0], [.5, heights[alongX ? i + 1 : i] / height],
+            [-.5, heights[alongX ? i : i + 1] / height]],
+        });
+    }
+  };
+  const section = (w - 5.6) / 2;
+  for (const end of [-1, 1]) {
+    brokenWall(x - (w + 5.6) / 4, z + end * d / 2, section, true,
+      end < 0 ? [h, h, h - .12, h - .32] : [h, h - .25, h * .72, h * .63]);
+    brokenWall(x + (w + 5.6) / 4, z + end * d / 2, section, true,
+      [1.38 + sample(end + 2) * .35, 1.1, .69 + sample(end + 4) * .3, 1.35]);
+  }
+  // The surviving wall keeps real window openings below its fractured cornice.
+  add('village-wall', x - w / 2, z, .55, d - .55, 1.15, color, part);
+  const opening = 2.6, center = d * .24;
+  const outer = (d - .55) / 2 - center - opening / 2;
+  add('village-wall', x - w / 2, z, .55, center * 2 - opening, 1.1, color, { ...part, baseY: 1.15 });
+  for (const end of [-1, 1]) add('village-wall', x - w / 2,
+    z + end * ((d - .55) / 2 - outer / 2), .55, outer, 1.1, color, { ...part, baseY: 1.15 });
+  brokenWall(x - w / 2, z, d - .55, false, [h - 2.25, h - 2.25, h - 2.25, h - 2.25], 2.25);
+  brokenWall(x + w / 2, z, d - .55, false, [1.3, 1.8, 1.1, .65, 1.4, 2.15, 1.3]);
+  const edges = [-.11, -.21, -.06, -.28, -.15, -.31, -.18].map(fraction => x + w * fraction);
+  for (let i = 0; i < edges.length - 1; i++) {
+    const left = x - w / 2 - .3, right = Math.max(edges[i], edges[i + 1]);
+    const width = right - left, cx = (left + right) / 2, depth = (d + .6) / (edges.length - 1);
+    add('village-broken-roof', cx, z - (d + .6) / 2 + (i + .5) * depth, width, depth, .25, '#a28d71', {
+      ...part, baseY: h, overhead: true,
+      outline: [[-.5, -.5], [(edges[i + 1] - cx) / width, -.5], [(edges[i] - cx) / width, .5], [-.5, .5]],
+    });
+    add('village-debris', edges[i] - .15, z - d / 2 + (i + .5) * depth, .85, .13, .16, '#75583d',
+      { ...part, baseY: h - .16, overhead: true, wood: true, turn: (sample(i) - .5) * .5 });
+  }
+  for (let i = 0; i < 15; i++) {
+    add('village-debris', x + w * (.15 + sample(i + 8) * .26), z + d * (sample(i + 28) - .5) * .76,
+      .3 + sample(i + 45) * .55, .25 + sample(i + 65) * .6, .12 + sample(i + 85) * .18, '#b4a080',
+      { ...part, turn: sample(i + 100) * Math.PI, tilt: (sample(i + 120) - .5) * .35 });
+  }
+}
+
+function furnishHouse(x, z, w, d, floors, ruined, part, index) {
+  for (let level = 0; level < floors; level++) {
+    const baseY = level * floorHeight, upper = { ...part, baseY };
+    add('village-table', x + w * .28, z - d * .27, 1.8, 1, .8, '#806249', upper);
+    if (!ruined) {
+      add('village-chair', x + w * .28, z - d * .27 + 1, .52, .52, 1.02, '#806249', upper);
+      add(index % 3 ? 'village-bed' : 'village-shelf', x + w / 2 - 1.25, z + d / 2 - 1.9,
+        1.5, index % 3 ? 2.45 : .55, index % 3 ? .8 : 1.75, '#806249', upper);
+      add('village-cabinet', x + w / 2 - .7, z, .78, 1.35, 1.8, '#806249', upper);
+    }
+    add('village-rug', x + .6, z + .4, 2.5, 3.5, .06, '#825346', { ...upper, noCollision: true });
+  }
+}
+
 function house(x, z, w, d, floors, plan, index) {
   const ruined = plan === 'ruin', rotated = index % 3 === 1;
   const h = floorHeight * floors + .35;
@@ -32,7 +99,8 @@ function house(x, z, w, d, floors, plan, index) {
   const first = boxes.length;
   const thickness = .55, door = 5.6, doorHeight = 2.65;
   const section = (w + thickness - door) / 2, sideDepth = d - thickness;
-  for (const side of [-1, 1]) {
+  if (ruined) ruinShell(x, z, w, d, h, color, part, index);
+  else for (const side of [-1, 1]) {
     for (const end of [-1, 1]) {
       add('village-wall', x + side * (door + section) / 2, z + end * d / 2,
         section, thickness, ruined && side === end ? 2.2 : h, color, part);
@@ -78,20 +146,25 @@ function house(x, z, w, d, floors, plan, index) {
     add('village-floor', x - w / 2 + 1.45, z + 5.325, 2.3, d - 11.15, .18, '#b9a58b',
       { ...part, baseY: base - .18, overhead: true });
   }
-  const roofWidth = ruined ? w * .32 : plan === 'courtyard' ? w * .6 : w + .8;
-  const roofX = ruined ? x - w * .34 : plan === 'courtyard' ? x + w * .18 : x;
-  add('village-roof', roofX, z, roofWidth, d + .8, .25, '#a28d71',
-    { ...part, baseY: h, overhead: true });
+  if (!ruined) {
+    const roofWidth = plan === 'courtyard' ? w * .6 : w + .8;
+    const roofX = plan === 'courtyard' ? x + w * .18 : x;
+    add('village-roof', roofX, z, roofWidth, d + .8, .25, '#a28d71',
+      { ...part, baseY: h, overhead: true });
+  }
   if (!ruined) for (const side of [-1, 1]) {
     add('village-wall', x + side * w / 2, z, .42, d - .42, .48, color,
       { ...part, baseY: h + .25, overhead: true });
     add('village-wall', x, z + side * d / 2, w + .42, .42, .48, color,
       { ...part, baseY: h + .25, overhead: true });
   }
+  furnishHouse(x, z, w, d, floors, ruined, part, index);
   if (rotated) {
     for (const box of boxes.slice(first)) {
       const dx = box.x - x, dz = box.z - z;
-      Object.assign(box, { x: x + dz, z: z - dx, w: box.d, d: box.w });
+      Object.assign(box, { x: x + dz, z: z - dx });
+      if (VILLAGE_PROP_KINDS.has(box.kind)) box.modelRotation = { x: 0, y: Math.PI / 2, z: 0 };
+      else Object.assign(box, { w: box.d, d: box.w });
     }
     Object.assign(structure, { w: d, d: w });
   }
@@ -304,7 +377,7 @@ for (const [i, x, z] of [[0,-13,-143],[1,10,-96],[2,-21,-74],[3,12,-35],[4,-18,2
 }
 
 export const VILLAGE_MAP = rotateMapAssets({
-  id: 'village', name: 'Деревня «Сухой ветер»', theme: 'desert-village', layoutVersion: 2, size,
+  id: 'village', name: 'Деревня «Сухой ветер»', theme: 'desert-village', layoutVersion: 3, size,
   fogDensity: .0034, fogColor: '#d0bea1', sunColor: '#ffe4b4', navigationCell: 2, stepHeight: .3,
   playArea: { minX: -82, maxX: 82, minZ: -173, maxZ: 173 },
   terrain, landforms, terrainPads, terrainPadBlend, boxes, structures, roads, points, landmarks, districts: [...points, ...landmarks],

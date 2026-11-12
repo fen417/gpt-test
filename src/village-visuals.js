@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildVillageProp } from '../shared/village-props.js';
 import { clonePairedMaterial, pairMaterials } from './visuals.js';
 import { createPortModelBuilder } from './port-visuals.js';
 import { terrainRoads } from './terrain-roads.js';
@@ -73,6 +74,8 @@ function palette(owner) {
     roof: clonePairedMaterial(owner.surfaces.concrete, '#b09b7b'),
     wood: clonePairedMaterial(owner.surfaces.wood, '#806249'),
     cloth: clonePairedMaterial(owner.surfaces.cloth, '#b29870'),
+    linen: clonePairedMaterial(owner.surfaces.cloth, '#d1c5a4'),
+    rug: clonePairedMaterial(owner.surfaces.cloth, '#825346'),
     clay: new THREE.MeshStandardMaterial({ color: '#b37c53', roughness: .95 }),
     leaves: new THREE.MeshLambertMaterial({ color: '#72774c', side: THREE.DoubleSide }),
     shadow: new THREE.MeshBasicMaterial({ color: '#302c26' }),
@@ -182,17 +185,22 @@ function marketGoods(owner, m, box) {
 
 function shutters(owner, m, structure) {
   const { x, z, w, d, h, baseY = 0 } = structure;
-  for (let level = 0; level < (structure.floors ?? 1); level++) for (const side of [-1, 1]) for (const end of [-1, 1]) {
+  const ruined = structure.kind === 'village-ruin';
+  for (let level = 0; level < (structure.floors ?? 1); level++) for (const side of ruined ? [-1] : [-1, 1]) for (const end of [-1, 1]) {
     const px = x + side * (w / 2 + .32), pz = z + end * d * .24;
     for (const edge of [-1, 1]) {
-      const shutter = owner.box(owner.scene, px, baseY + level * 3.1 + 1.7, pz + edge * 1.6, .12, 1.2, .62, m.wood, false);
-      shutter.rotation.y = edge * .45;
-      for (let y = 1.24; y < 2.2; y += .2) owner.box(owner.scene, px + side * .075, baseY + level * 3.1 + y, pz + edge * 1.6,
-        .025, .035, .59, m.roof, false);
+      const hinge = new THREE.Group();
+      hinge.position.set(px, baseY + level * 3.1 + 1.7, pz + edge * 1.3);
+      hinge.rotation.y = edge * side * .28;
+      owner.scene.add(hinge);
+      owner.box(hinge, 0, 0, edge * .62, .08, 1.18, 1.24, m.wood);
+      for (let y = -.45; y <= .46; y += .18) owner.box(hinge, side * .05, y, edge * .62, .025, .045, 1.16, m.roof, false);
+      for (const y of [-.38, .38]) owner.cylinder(hinge, 0, y, 0, .025, .16, m.shadow, 8);
     }
   }
   // Timber ends, door surrounds and a weathered plinth keep facades readable up close.
   for (const side of [-1, 1]) {
+    if (ruined) continue;
     for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * 2.9, baseY + 1.32, z + side * (d / 2 + .31),
       .18, 2.65, .22, m.wood);
     owner.box(owner.scene, x, baseY + 2.72, z + side * (d / 2 + .31), 6.1, .22, .18, m.wood);
@@ -240,6 +248,7 @@ export function createVillageModelBuilder(owner) {
     for (const box of boxes) {
       const { kind, x, z, w, d, h, baseY = 0, color = '#c3ad89' } = box;
       if (!kind.startsWith('village-')) continue;
+      if (buildVillageProp(owner, { ...m, wall: painted(m, m.stucco, color) }, box)) continue;
       if (kind === 'village-palm') { palm(owner, m, box); continue; }
       if (kind === 'village-rock') { desertMountain(owner, m.rock, box, terrain); continue; }
       if (kind === 'village-pottery') { pottery(owner, m, box); continue; }

@@ -125,6 +125,9 @@ function rayVehicle(origin,direction,vehicle,maximum){
 export class Simulation {
   constructor({ bots=23, difficulty='regular', mapId, random=Math.random }={}) {
     this.map=getMap(mapId);
+    this.navigationHouses = this.map.theme === 'desert-village'
+      ? this.map.structures.filter(structure => structure.kind.startsWith('village-house') || structure.kind === 'village-ruin')
+      : [];
     this.colliders=getAssetColliders(this.map);
     this.hasRotatedGeometry=this.colliders.some(box=>box.obb||box.parts);
     this.stepHeight=this.map.stepHeight??(this.hasRotatedGeometry ? .3 : 0);
@@ -240,6 +243,8 @@ export class Simulation {
     Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false,vehicleId:null,vehicleSeat:null,interactHeld:false,switchSeatHeld:false});
     Object.assign(p,{slideTime:0,slideCooldown:0,slideVx:0,slideVz:0,crouchHeld:false,crouching:false,wasSprinting:false});
     p.velocityX=0;p.velocityZ=0;p.tickX=x;p.tickZ=z;
+    p.botTransit = null;
+    p.botLastHouse = null;
     if(p.bot)Object.assign(p,{botJourney:null,botBoarding:null,botVehicleSince:null,botDriverSeenAt:null,botVehicleRetryAt:0,botVehicleReactAt:0});
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
@@ -792,9 +797,61 @@ export class Simulation {
     p.botRole=r<.35?'objective':r<.65?'fragger':r<.85?'flanker':'defender';
     p.botRoleUntil=this.time+35+this.random()*55;
   }
+  botRouteTarget(p, goal) {
+    if (!this.navigationHouses.length) return goal;
+    const laneSlot = Math.floor((p.botSlot ?? 0) / 2) % 10;
+    const lane = laneSlot < 3 ? -1 : laneSlot < 6 ? 1 : 0;
+    if (!lane || dist(p, goal) < 24) { p.botTransit = null; return goal; }
+    const objectiveId = p.botObjective?.id ?? 'combat';
+    if (p.botTransit?.objectiveId === objectiveId && this.time < p.botTransit.until) {
+      return p.botTransit.points[p.botTransit.index];
+    }
+    const direction = Math.sign(goal.z - p.z);
+    if (!direction) return goal;
+    const outer = Math.floor((p.botSlot ?? 0) / 6) % 2 === 1;
+    const laneX = lane * (outer ? 56 : 30);
+    let chosen = null, bestScore = Infinity;
+    for (const house of this.navigationHouses) {
+      const progress = (house.z - p.z) * direction;
+      if (Math.sign(house.x) !== lane || house.id === p.botLastHouse || progress < 12 || progress > 60 ||
+          (goal.z - house.z) * direction < 15) continue;
+      if (this.blocked[this.gridIndex(house.x, house.z)] || this.collides(house.x, house.z)) continue;
+      let occupied = 0;
+      for (const ally of this.players.values()) if (ally !== p && ally.team === p.team && ally.botTransit?.houseId === house.id) occupied++;
+      const score = Math.abs(progress - 30) + Math.abs(house.x - laneX) * .8 + occupied * 24;
+      if (score < bestScore) { chosen = house; bestScore = score; }
+    }
+    if (!chosen) { p.botTransit = null; return goal; }
+    let entry, exit;
+    if (chosen.doorAxis === 'x') {
+      const side = Math.sign(p.x - chosen.x) || -lane;
+      entry = { x: chosen.x + side * (chosen.w / 2 + 1.8), z: chosen.z };
+      exit = { x: chosen.x - side * (chosen.w / 2 + 1.8), z: chosen.z };
+    } else {
+      entry = { x: chosen.x, z: chosen.z - direction * (chosen.d / 2 + 1.8) };
+      exit = { x: chosen.x, z: chosen.z + direction * (chosen.d / 2 + 1.8) };
+    }
+    if (this.collides(entry.x, entry.z) || this.collides(exit.x, exit.z)) return goal;
+    p.botTransit = {
+      houseId: chosen.id, objectiveId, index: 0, until: this.time + 24,
+      points: [entry, { x: chosen.x, z: chosen.z }, exit],
+    };
+    return entry;
+  }
   thinkBot(p,dt){
     if(!p.alive)return;
     if(thinkVehicleBot(this,p,dt))return;
+    if (p.botTransit) {
+      const route = p.botTransit;
+      if (dist(p, route.points[route.index]) < 1.65) {
+        route.index++;
+        p.botPath = [];
+        p.nextThink = 0;
+        if (route.index === route.points.length) { p.botLastHouse = route.houseId; p.botTransit = null; }
+      } else if (this.time >= route.until) {
+        p.botLastHouse = route.houseId; p.botTransit = null; p.nextThink = 0;
+      }
+    }
     p.nextThink-=dt;const settings=this.botSettings;
     let target=null,bestSquared=settings.awareness**2;
     scratchEye.x=p.x;scratchEye.y=p.y+(crouching(p)?CROUCH_EYE_HEIGHT:EYE_HEIGHT);scratchEye.z=p.z;
@@ -828,6 +885,15 @@ export class Simulation {
       input.fire=this.time>=p.botReactAt&&burstPhase>=0&&burstPhase<settings.burst&&Math.abs(angleDifference(wantedYaw,input.yaw))<.1;
       input.strafe=Math.sin(this.time*.8+p.botAimPhase)>.65?.35:0;
       if(best>32)input.forward=.3;
+      if (p.botTransit && best > 12) {
+        while (p.botPath.length && dist(p, p.botPath[0]) < 1.4) p.botPath.shift();
+        const next = p.botPath[0];
+        if (next) {
+          const dx = next.x - p.x, dz = next.z - p.z, length = Math.max(.01, Math.hypot(dx, dz));
+          input.forward = (-Math.sin(input.yaw) * dx - Math.cos(input.yaw) * dz) / length * .65;
+          input.strafe = (Math.cos(input.yaw) * dx - Math.sin(input.yaw) * dz) / length * .65;
+        } else input.forward = 0;
+      }
     }else{
       p.botTargetId=null;
       if(p.nextThink<=0&&this.botPathBudget>0){
@@ -852,7 +918,7 @@ export class Simulation {
         if(fragSpot){
           p.botObjective=null;
           p.botGoal=fragSpot;
-          p.botPath=this.pathfind(p,fragSpot);
+          p.botPath=this.pathfind(p,this.botRouteTarget(p,fragSpot));
           p.botHoldCrouch=false;
           p.nextThink=2.5+this.random()*2.5;
         }else{
@@ -872,9 +938,9 @@ export class Simulation {
           const insideZone=bestObjective&&dist(p,bestObjective)<CAPTURE_RADIUS-1.5;
           p.botObjective=bestObjective;
           if(bestObjective){
-            if(!sameObjective||!p.botGoal||!insideZone||this.random()<.35){
+            if(!sameObjective||!p.botGoal||!insideZone||p.botTransit||this.random()<.35){
               p.botGoal=this.pickObjectiveSpot(p,bestObjective);
-              p.botPath=this.pathfind(p,p.botGoal);
+              p.botPath=this.pathfind(p,this.botRouteTarget(p,p.botGoal));
             }else{
               p.botWatchYaw=(p.botWatchYaw??p.yaw)+((p.botSlot??0)%2?1:-1)*(.45+this.random()*.5);
             }
@@ -882,7 +948,7 @@ export class Simulation {
           p.nextThink=(role==='flanker'?6+this.random()*4:3+this.random()*2);
         }
       }
-      const goal=p.botGoal||p.botObjective;
+      const goal=p.botTransit?.points[p.botTransit.index]||p.botGoal||p.botObjective;
       while(p.botPath.length&&dist(p,p.botPath[0])<1.4)p.botPath.shift();
       const next=p.botPath[0]||goal;
       let sepX=0,sepZ=0;
@@ -915,7 +981,10 @@ export class Simulation {
     if(!p.botProbeAt||this.time-p.botProbeAt>=.9){
       if(p.botProbeAt&&(p.botMoveTime||0)>.55&&!target){
         const moved=Math.hypot(p.x-p.botProbeX,p.z-p.botProbeZ);
-        if(moved<.9){p.botUnstuckUntil=this.time+.8;p.botUnstuckDir=this.random()<.5?-1:1;p.botPath=[];p.botGoal=null;p.nextThink=0;}
+        if(moved<.9){
+          p.botUnstuckUntil=this.time+.8;p.botUnstuckDir=this.random()<.5?-1:1;p.botPath=[];p.botGoal=null;p.nextThink=0;
+          p.botLastHouse=p.botTransit?.houseId??p.botLastHouse;p.botTransit=null;
+        }
       }
       p.botProbeAt=this.time;p.botProbeX=p.x;p.botProbeZ=p.z;p.botMoveTime=0;
     }

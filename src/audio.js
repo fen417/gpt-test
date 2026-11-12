@@ -1,4 +1,4 @@
-// Original procedural score and sound design. No external recordings or assets.
+// Original procedural score with local CC0 firearm recordings. See asset credits.
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
 import { getMap } from '../shared/world.js';
 export const ORIGINAL_SCORE = 'AFTER THE RAIN';
@@ -14,13 +14,48 @@ const HARMONY = [
 ];
 const MELODY = [74,0,69,0,65,0,64,0,62,0,0,69,67,0,65,0,69,0,72,0,74,0,0,77,76,0,72,0,69,0,0,0];
 const WEAPONS = {
-  p19:     { crack: 6900, transient: .017, body: 205, bodyEnd: 76, report: .073, tail: .24, gain: .79, metal: 4200, echo: .17 },
-  m50:     { crack: 4600, transient: .038, body: 128, bodyEnd: 48, report: .138, tail: .45, gain: 1.11, metal: 3100, echo: .31 },
-  assault: { crack: 5400, transient: .024, body: 151, bodyEnd: 63, report: .10, tail: .36, gain: .94, metal: 3450, echo: .25 },
-  medic:   { crack: 7700, transient: .016, body: 214, bodyEnd: 89, report: .066, tail: .23, gain: .79, metal: 4400, echo: .16 },
-  support: { crack: 4200, transient: .033, body: 116, bodyEnd: 45, report: .14, tail: .47, gain: 1.06, metal: 2400, echo: .32 },
-  turret:  { crack: 4800, transient: .036, body: 93, bodyEnd: 38, report: .15, tail: .53, gain: 1.16, metal: 2600, echo: .38 },
-  recon:   { crack: 6700, transient: .039, body: 98, bodyEnd: 34, report: .19, tail: .72, gain: 1.14, metal: 2950, echo: .5 },
+  ar416: { sample: 'rifle-light', rate: 1.04, gain: .88, cutoff: 17000 },
+  ak12: { sample: 'rifle-heavy', rate: 1, gain: .98, cutoff: 16000 },
+  mcx9: { sample: 'smg', rate: 1.08, gain: .73, cutoff: 16500 },
+  vk45: { sample: 'smg', rate: 1.02, gain: .38, cutoff: 3500 },
+  mg36: { sample: 'rifle-light', rate: .94, gain: 1.02, cutoff: 15000 },
+  pkp: { sample: 'rifle-heavy', rate: .94, gain: 1.06, cutoff: 14500 },
+  dmr12: { sample: 'marksman', rate: 1.02, gain: 1.01, cutoff: 17000 },
+  sv98: { sample: 'sniper', rate: .98, gain: 1.1, cutoff: 17500 },
+  p19: { sample: 'pistol', rate: 1.04, gain: .77, cutoff: 16500 },
+  m50: { sample: 'pistol-heavy', rate: .94, gain: 1.04, cutoff: 16000 },
+  turret: { sample: 'rifle-heavy', rate: .84, gain: 1.12, cutoff: 14000 },
+};
+const CLASS_SHOTS = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
+const SHOT_SAMPLES = {
+  'rifle-light': [
+    new URL('./assets/audio/gunshots/rifle-light-1.wav', import.meta.url),
+    new URL('./assets/audio/gunshots/rifle-light-2.wav', import.meta.url),
+  ],
+  'rifle-heavy': [
+    new URL('./assets/audio/gunshots/rifle-heavy-1.wav', import.meta.url),
+    new URL('./assets/audio/gunshots/rifle-heavy-2.wav', import.meta.url),
+  ],
+  'smg': [
+    new URL('./assets/audio/gunshots/smg-1.wav', import.meta.url),
+    new URL('./assets/audio/gunshots/smg-2.wav', import.meta.url),
+  ],
+  'marksman': [
+    new URL('./assets/audio/gunshots/marksman-1.wav', import.meta.url),
+    new URL('./assets/audio/gunshots/marksman-2.wav', import.meta.url),
+  ],
+  'sniper': [
+    new URL('./assets/audio/gunshots/sniper-1.wav', import.meta.url),
+    new URL('./assets/audio/gunshots/sniper-2.wav', import.meta.url),
+  ],
+  'pistol': [
+    new URL('./assets/audio/gunshots/pistol-1.wav', import.meta.url),
+    new URL('./assets/audio/gunshots/pistol-2.wav', import.meta.url),
+  ],
+  'pistol-heavy': [
+    new URL('./assets/audio/gunshots/pistol-heavy-1.wav', import.meta.url),
+    new URL('./assets/audio/gunshots/pistol-heavy-2.wav', import.meta.url),
+  ],
 };
 const HANDLING = {
   release: [.033, 3400, 510], pull: [.105, 1250, 188], pouch: [.16, 790, 0],
@@ -48,6 +83,7 @@ export class CombatAudio {
     this._pending=[];this._priority=2;this._engineAt=0;this._resumeAt=0;this._targets=new WeakMap();
     this._fadingVoices = new Set();
     this._shotBuffers = new Map();
+    this._shotLoadFailures = 0;
   }
   get volume(){return this._volume;}
   set volume(v){this._volume=clamp(v);this._mix();}
@@ -86,7 +122,7 @@ export class CombatAudio {
     this._effects=this._node(c.createGain());this._ambient=this._node(c.createGain());
     this._muffle=this._node(c.createBiquadFilter());this._muffle.type='lowpass';this._muffle.frequency.value=18000;
     const compressor=this._node(c.createDynamicsCompressor());
-    compressor.threshold.value=-18;compressor.knee.value=18;compressor.ratio.value=4;compressor.attack.value=.004;compressor.release.value=.22;
+    compressor.threshold.value=-12;compressor.knee.value=12;compressor.ratio.value=2.2;compressor.attack.value=.002;compressor.release.value=.095;
     const limiter=this._node(c.createDynamicsCompressor());
     limiter.threshold.value=-3;limiter.knee.value=0;limiter.ratio.value=20;limiter.attack.value=.001;limiter.release.value=.065;
     this._music.connect(this._master);this._effects.connect(this._muffle).connect(this._master);
@@ -231,6 +267,11 @@ export class CombatAudio {
     }
     const envelope=c.createGain(),peak=Math.max(EPSILON,gain),attack=Math.min(duration*.35,options.attack??.002);
     envelope.gain.setValueAtTime(EPSILON,time);envelope.gain.linearRampToValueAtTime(peak,time+attack);
+    if(options.sample){
+      envelope.gain.setValueAtTime(peak,Math.max(time+attack,end-.012));
+      envelope.gain.linearRampToValueAtTime(EPSILON,end);
+      output.connect(envelope);nodes.push(envelope);return {end,nodes,envelope};
+    }
     if(options.decay){
       const shoulder=Math.min(end-.002,time+attack+options.decay);
       envelope.gain.exponentialRampToValueAtTime(Math.max(EPSILON,peak*(options.decayGain??.25)),shoulder);
@@ -304,74 +345,49 @@ export class CombatAudio {
     return {distance,pan:clamp((dx*Math.cos(yaw)-dz*Math.sin(yaw))/Math.max(4,distance),-.95,.95),gain:1/(1+distance*.042)};
   }
   async _prepareShotBuffers(){
-    const OfflineContext=globalThis.OfflineAudioContext||globalThis.webkitOfflineAudioContext;
-    if(!OfflineContext)return;
-    const sampleRate=this.ctx.sampleRate;
-    for(const [classId,weapon] of Object.entries(WEAPONS))for(const local of [false,true]){
-      if(this._disposed)return;
-      const length=local?weapon.tail+.07:.28;
-      const context=new OfflineContext(1,Math.ceil(length*sampleRate),sampleRate);
-      const record=(source,duration,gain,options)=>{
-        const {end,envelope}=this._envelope(context,source,options.time,duration,gain,options);
-        envelope.connect(context.destination);
-        if(options.noise)source.start(options.time,Math.random()*2);
-        else source.start(options.time);
-        source.stop(end);
-      };
-      this._shotLayers(weapon,classId,{isLocal:local},
-        (frequency,duration,gain,options)=>record(this._oscillator(context,frequency,options.time,duration,options),duration,gain,options),
-        (duration,gain,options)=>record(this._noiseSource(context,options),duration,gain,{...options,noise:true}));
-      const buffer=await context.startRendering();
-      if(this._disposed)return;
-      this._shotBuffers.set(`${classId}:${local}`,buffer);
-    }
+    const context = this.ctx;
+    await Promise.all(Object.entries(SHOT_SAMPLES).map(async ([name, urls]) => {
+      const results = await Promise.allSettled(urls.map(async url => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Firearm recording unavailable');
+        const data = await response.arrayBuffer();
+        if (this._disposed) return null;
+        return context.decodeAudioData(data);
+      }));
+      if (this._disposed) return;
+      const buffers = [];
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) buffers.push(result.value);
+        else if (result.status === 'rejected') this._shotLoadFailures++;
+      }
+      this._shotBuffers.set(name, buffers);
+    }));
   }
   shot(distance=0,classId='assault',pan=0,isLocal=distance<1,age=0){
     const priority=this._priority;
     this._priority=isLocal?3:distance<30?2:1;
     try{
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')return;
-      const id=Object.hasOwn(WEAPONS,classId)?classId:'assault',weapon=WEAPONS[id];
-      const variation=.94+Math.random()*.12;
-      const gain=.8*weapon.gain/(1+distance*.044);
-      const time=this.ctx.currentTime+.015+Math.max(0,Math.min(.23,distance/343)-age);
-      const buffer=this._shotBuffers.get(`${id}:${isLocal}`);
+      const id=Object.hasOwn(WEAPONS,classId)?classId:CLASS_SHOTS[classId]??'ar416',weapon=WEAPONS[id];
+      const variation=weapon.rate*(.985+Math.random()*.03);
+      const gain=.76*weapon.gain/(1+distance*.04);
+      const time=this.ctx.currentTime+.008+Math.max(0,Math.min(.35,distance/343)-age);
+      const variants=this._shotBuffers.get(weapon.sample);
+      const buffer=variants?.[Math.floor(Math.random()*variants.length)];
+      const cutoff=Math.max(650,weapon.cutoff/(1+distance*.032));
       if(buffer){
         if(!this._admit({}))return;
         const source=this.ctx.createBufferSource();
         source.buffer=buffer;source.playbackRate.value=variation;
-        this._voice(source,buffer.length/buffer.sampleRate/variation,gain,{
-          time,pan,attack:.001,sustain:.04,send:isLocal?.11:.12,
-          cutoff:distance>4?Math.max(380,weapon.crack/(1+distance*.046)):0,
+        const duration=Math.min(buffer.duration/variation,isLocal?1.2:distance>65?.38:.58);
+        this._voice(source,duration,gain,{
+          time,pan,attack:.0002,sample:true,send:id==='vk45'?.005:isLocal?.018:.035,
+          cutoff,q:.55,
         });
       }else{
-        this._shotLayers(weapon,id,{variation,distance,pan,time,gain,isLocal,tail:isLocal||this._voices.size<28},
-          this._tone.bind(this),this._noise.bind(this));
+        this._noise(.055,gain*.7,{time,pan,filter:'highpass',cutoff:900,attack:.0003,decay:.004,decayGain:.12});
       }
     }finally{this._priority=priority;}
-  }
-  _shotLayers(weapon,classId,{variation=1,distance=0,pan=0,time=0,gain=1,isLocal,tail=true},tone,noise){
-    const cutoff=Math.max(380,weapon.crack/(1+distance*.046));
-    const nearby=isLocal||distance<30;
-    // Pressure, the leading crack, and the reflection decay on different envelopes.
-    noise(weapon.report,.56*gain,{time,cutoff,q:.45,pan,rate:variation,
-      endCutoff:Math.max(180,cutoff*.29),attack:.0008,decay:.009,decayGain:.19,send:.16});
-    tone(weapon.body*variation,weapon.report+.025,.34*gain,{time,type:'triangle',end:weapon.bodyEnd,
-      cutoff:Math.min(1040,cutoff*.8),pan,attack:.001,decay:.025,decayGain:.32,send:.09});
-    if(nearby){
-      noise(weapon.transient,.31*gain,{time,filter:'bandpass',cutoff,q:.77,pan,rate:variation,
-        attack:.0005,decay:.004,decayGain:.14});
-    }
-    if(tail){
-      noise(isLocal?weapon.tail:Math.min(weapon.tail,.21),(isLocal?.27:.17)*gain,{time:time+.017+Math.min(.07,distance*.001),color:'pink',
-        cutoff:Math.min(cutoff*.72,2200),endCutoff:170,pan:pan*.64,attack:.014,
-        decay:.065,decayGain:.36,send:weapon.echo+Math.min(.34,distance*.005)});
-    }
-    if(isLocal){
-      const cycle=classId==='recon'?.091:classId==='support'?.051:.029;
-      noise(.035,.082,{time:time+cycle,filter:'bandpass',cutoff:weapon.metal,q:1.65,pan:.26,attack:.001});
-      if(classId==='recon')noise(.034,.06,{time:time+.137,filter:'bandpass',cutoff:4700,pan:.31,attack:.001});
-    }
   }
   _mechanic(kind,time,pan,gain){
     const [duration,cutoff,resonance]=HANDLING[kind];
@@ -465,7 +481,7 @@ export class CombatAudio {
         if(p.distance<145){
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
-          const profile=e.mounted?'turret':e.weaponId==='p19'||e.weaponId==='m50'?e.weaponId:classId;
+          const profile=e.mounted?'turret':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
           this.shot(p.distance,profile,p.pan,Boolean(own),age);
         }
       }else if(e.type==='bulletImpact'){
@@ -652,7 +668,8 @@ export class CombatAudio {
     }
     return {state:this.ctx?.state||'locked',mode:this._mode,score:ORIGINAL_SCORE,activeVoices:this._voices.size,queuedSounds:this._pending.length,voiceLimit:MAX_VOICES,
       musicPlaying:Boolean(this._scheduler&&this.ctx?.state==='running'&&this._enabled&&this._volume>0&&this._musicVolume>0),
-      master:this._volume,music:this._musicVolume,effects:this._effectsVolume,peak,rms};
+      master:this._volume,music:this._musicVolume,effects:this._effectsVolume,peak,rms,
+      shotSamples:[...this._shotBuffers.values()].reduce((count, variants)=>count+variants.length,0),shotLoadFailures:this._shotLoadFailures};
   }
   dispose(){
     this._disposed=true;clearInterval(this._scheduler);this._scheduler=null;

@@ -300,10 +300,9 @@ function makeHead(head, c, classId, team) {
     for(let i=0;i<positions.count;i++)positions.setXYZ(i,positions.getX(i)*1.012,positions.getY(i),positions.getZ(i)*1.012);
     const mask=shape(head,clothFace,c.scarf,0,0,0,1,1,1);mask.userData.owned=true;
   }
-  for(const side of [-1,1])cord(head,c.web,[[side*.064,-.028,-.073],
-    [side*.057,-.065,-.075],[side*.032,-.092,-.069]],.0011,8);
   for (const side of [-1, 1]) {
-    cord(head, c.web, [[side*.095,.033,.021],[side*.076,-.055,-.022],[side*.037,-.09,-.06]], .005);
+    cord(head, c.web, [[side*.098,.020,.025],[side*.105,-.047,.014],
+      [side*.075,-.105,-.026],[side*.025,-.115,-.048]], .003);
   }
   for (const side of [-1, 1]) {
     round(head, c.rubber, side * .039, .030, -.095, .070, .037, .028, 0, -side * .17);
@@ -334,8 +333,8 @@ function makeHead(head, c, classId, team) {
   }
   panel(head, c.polymer, 0, .105, -.117, .038, .047, .008, .003);
   round(head, c.web, 0, .11, .116, .07, .043, .025);
-  cord(head, c.rubber, [[-.116,-.016,-.005],[-.123,-.043,-.061],[-.072,-.055,-.102]], .0035);
-  ball(head, c.rubber, -.065, -.054, -.104, .012, .007, .008);
+  cord(head, c.rubber, [[-.116,-.016,.006],[-.122,-.045,-.05],[-.082,-.062,-.128]], .0025);
+  ball(head, c.rubber, -.073, -.062, -.13, .009, .006, .007);
   if (classId === 'medic') {
     block(head, c.white, 0, .14, -.096, .045, .045, .01, .5);
     block(head, c.red, 0, .141, -.1, .036, .011, .006, .5);
