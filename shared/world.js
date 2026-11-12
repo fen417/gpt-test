@@ -1,11 +1,13 @@
 // The same geometry drives rendering, navigation, and server collision.
 import { PORT_MAP } from './port.js';
 import { QUARRY_MAP } from './quarry.js';
+import { VILLAGE_MAP } from './village.js';
 import { applyMapEdits } from './map-edits.js';
 import portEdits from './maps/port.json' with { type: 'json' };
 import quarryEdits from './maps/quarry.json' with { type: 'json' };
+import villageEdits from './maps/village.json' with { type: 'json' };
 
-export const PROTOCOL_VERSION=12;
+export const PROTOCOL_VERSION=13;
 export const WEAPON_SWITCH_TIME = .38;
 export const WEAPON_SWAP_PHASE = .42;
 export function weaponSwitchPose(remaining=0){
@@ -59,8 +61,8 @@ export const DIFFICULTIES = {
   veteran: { name: 'Ветеран', awareness: 66, reaction: .36, reactionVariance: .18, turnSpeed: 3.2, aimError: .012, burst: .5, pause: .48 },
 };
 export const DEFAULT_MAP_ID=PORT_MAP.id;
-export const BASE_MAPS = { port: PORT_MAP, quarry: QUARRY_MAP };
-export const MAP_EDITS = { port: portEdits, quarry: quarryEdits };
+export const BASE_MAPS = { port: PORT_MAP, quarry: QUARRY_MAP, village: VILLAGE_MAP };
+export const MAP_EDITS = { port: portEdits, quarry: quarryEdits, village: villageEdits };
 function mapLayoutRevision() {
   const hasChanges = Object.values(MAP_EDITS).some(({ moves, added, removed }) =>
     Object.keys(moves).length || Object.keys(added).length || removed.length);

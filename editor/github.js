@@ -1,6 +1,6 @@
 const repository = 'fen417/gpt-test';
 const branch = 'main';
-const mapFiles = { port: 'shared/maps/port.json', quarry: 'shared/maps/quarry.json' };
+const mapFiles = { port: 'shared/maps/port.json', quarry: 'shared/maps/quarry.json', village: 'shared/maps/village.json' };
 const isSha = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
 
 async function mapRequest(mapId, token, update) {

@@ -26,7 +26,7 @@ export function mapItems(map, includeVehicleRoutes = false) {
     if (kind === 'road' && map.vehicleRoutes) continue;
     for (const [i, value] of (map[field] ?? []).entries()) {
       const key = value.editorKey ?? kind + ':' + (value.id ?? i);
-      if (kind === 'box' && (['port-roof', 'port-crane-leg', 'port-lintel'].includes(value.kind) ||
+      if (kind === 'box' && (value.editorPart || ['port-roof', 'port-crane-leg', 'port-lintel'].includes(value.kind) ||
           (value.kind === 'port-wall' && value.editorParent) ||
           (value.editorParent && value.editorParent === value.editorKey))) continue;
       items.push({ key, kind, value });

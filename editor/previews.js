@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createMapModelBuilder } from '../src/renderer.js';
 import { createPortModelBuilder } from '../src/port-visuals.js';
 import { addQuarryAsset, addQuarrySigns } from '../src/quarry-visuals.js';
+import { createVillageModelBuilder } from '../src/village-visuals.js';
 import { createVehicleRig, disposeVehicleRig } from '../src/vehicles.js';
 import { addWarehouseDetails, makeSign } from '../src/visuals.js';
 import { makeTerrain } from '../shared/terrain.js';
@@ -65,6 +66,7 @@ export function createAssetPreviews(surfaces) {
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .01, 1000);
   const owner = createMapModelBuilder(surfaces);
   const addPortModels = createPortModelBuilder(owner);
+  const addVillageModels = createVillageModelBuilder(owner);
   const sharedGeometry = new Set(Object.values(owner.geo));
   const previews = new Map();
   let queue = Promise.resolve();
@@ -91,6 +93,8 @@ export function createAssetPreviews(surfaces) {
         if (map.shoreX !== undefined) {
           const layer = portLayers[kind];
           addPortModels(layer ? { boxes, [layer]: [value] } : { boxes });
+        } else if (map.theme === 'desert-village') {
+          addVillageModels(boxes, kind === 'structure' ? [value] : [], kind === 'road' ? [value] : []);
         } else {
           if (kind === 'structure') addWarehouseDetails(owner, [value]);
           if (kind === 'sign') addQuarrySigns(owner, { terrain: map.terrain, signs: [value] });

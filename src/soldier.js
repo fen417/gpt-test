@@ -801,7 +801,7 @@ function resetLocomotion(rig, position, yaw, crouched) {
   return motion;
 }
 
-function animateFeet(motion, position, yaw, dt, distance) {
+function animateFeet(motion, position, yaw, dt) {
   const { feet, sprint, crouch, air } = motion;
   const legYaw = yaw + motion.hipYaw;
   const cos = Math.cos(yaw), sin = Math.sin(yaw);
@@ -810,15 +810,17 @@ function animateFeet(motion, position, yaw, dt, distance) {
   const speed = Math.hypot(forwardSpeed, lateralSpeed);
   const moving = speed > .16;
   const jog = smoothstep(speed, .2, 5.8);
-  const standingStride = lerp(lerp(.9, 2.25, jog), 3.1, sprint);
+  const standingStride = lerp(lerp(1.2, 3.3, jog), 5.2, sprint);
   const crouchedStride = lerp(.72, 1.45, smoothstep(speed, .2, 3));
   const stride = lerp(standingStride, crouchedStride, crouch);
-  if (moving && air < .5) motion.phase = (motion.phase + distance / stride) % 1;
+  // Filtered velocity keeps the gait continuous between authoritative snapshots.
+  const cadence = Math.min(speed / stride, lerp(2.1, 1.9, crouch));
+  if (moving && air < .5) motion.phase = (motion.phase + dt * cadence) % 1;
   const moveBlend = smoothstep(speed, .12, 2.1);
   const dirX = speed > .05 ? lateralSpeed / speed : 0;
   const dirZ = speed > .05 ? -forwardSpeed / speed : 0;
-  const maxLift = lerp(lerp(.11, .19, sprint), .075, crouch);
-  const ampZ = lerp(.21, .31, sprint) * (1 - crouch * .32) * moveBlend;
+  const maxLift = lerp(lerp(.10, .14, sprint), .075, crouch);
+  const ampZ = lerp(.21, .37, sprint) * (1 - crouch * .32) * moveBlend;
   const ampX = lerp(.135, .175, sprint) * (1 - crouch * .28) * moveBlend;
   const footResp = 1 - Math.exp(-dt * 26);
 
@@ -996,12 +998,12 @@ export function animateSoldier(rig, { dt, player, reset = false }) {
   const hipTarget = clamp(-heading, -.45, .45) * gaitWeight * (1 - motion.crouch * .35);
   motion.hipYaw = fresh ? hipTarget : lerp(motion.hipYaw, hipTarget, 1 - Math.exp(-dt * 16));
   motion.lean = lerp(motion.lean, clamp(-lateralSpeed * .01, -.055, .055) * (1 - motion.crouch * .5), 1 - Math.exp(-dt * 14));
-  animateFeet(motion, position, yaw, dt, distance);
+  animateFeet(motion, position, yaw, dt);
   const stridePhase = motion.phase * TAU;
   const strideTwist = Math.sin(stridePhase) * (.05 + motion.sprint * .05) * gaitWeight * (1 - motion.crouch * .5);
   const breathing = Math.sin(motion.time * 2.4) * .004;
   const bodyHeight = lerp(-.075 - motion.sprint * .06, -.675, motion.crouch);
-  const bodyBob = Math.cos(stridePhase * 2) * .018 * gaitWeight + breathing - motion.land * .09;
+  const bodyBob = Math.cos(stridePhase * 2) * lerp(.018, .012, motion.sprint) * gaitWeight + breathing - motion.land * .09;
   rig.pose.rotation.set(
     -.02 - motion.sprint * .11 - motion.crouch * .12 - motion.land * .06,
     motion.hipYaw + strideTwist,

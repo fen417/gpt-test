@@ -1,6 +1,7 @@
 ﻿import * as THREE from 'three';
 import { addPortGround } from './port-visuals.js';
 import { addQuarryGround } from './quarry-visuals.js';
+import { addVillageGround } from './village-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS, EYE_HEIGHT, CROUCH_EYE_HEIGHT } from '../shared/world.js';
@@ -504,6 +505,10 @@ export class GameRenderer {
     this.staticRoot?.removeFromParent();
     this.map = map;
     this.scene.fog.density = map.fogDensity ?? .0034;
+    this.scene.fog.color.set(map.fogColor ?? 0x9aa7a7);
+    this.scene.background.set(map.fogColor ?? 0x9aa7a7);
+    this.sun.color.set(map.sunColor ?? 0xffd7a4);
+    this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .23 : 0;
     this.staticRoot = world.root;
     this.flags = world.flags;
     this.portWater = world.water;
@@ -540,6 +545,7 @@ export class GameRenderer {
   buildWorld() {
     const size = this.map.size;
     if (this.map.shoreX !== undefined) addPortGround(this, this.map);
+    else if (this.map.theme === 'desert-village') addVillageGround(this, this.map);
     else {
       const span = size + 256, segments = span / this.map.terrain.cell;
       const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
@@ -574,7 +580,7 @@ export class GameRenderer {
     const windowMatrices = [], litMatrices = [], frameMatrices = [];
     const dummy = new THREE.Object3D();
     for (const b of boxes) {
-      if (b.kind === 'rock' || b.kind === 'pump-manifold' || b.kind.startsWith('port-')) continue;
+      if (b.kind === 'rock' || b.kind === 'pump-manifold' || b.kind.startsWith('port-') || b.kind.startsWith('village-')) continue;
       const elevation = b.baseY ?? 0;
       const parent = elevation ? new THREE.Group() : this.scene;
       if (elevation) { parent.position.y = elevation; this.scene.add(parent); }
@@ -1855,7 +1861,7 @@ export class GameRenderer {
       if (grounded && !this.previousGrounded) this.landDip = .09;
       this.previousGrounded = grounded;
       this.landDip *= Math.exp(-dt * 12);
-      this.handlingCycle += dt * lerp(crouching ? 7 : 10, 15, this.sprintBlend);
+      this.handlingCycle += dt * lerp(crouching ? 7 : 10, 12, this.sprintBlend);
       const cycle = this.handlingCycle;
       const bob = this.handlingMove * (1 - this.aimAmount * .84) * (crouching ? .65 : 1);
       const target = this.scratchPosition.set(player.x, player.y || 0, player.z);

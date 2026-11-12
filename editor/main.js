@@ -16,6 +16,8 @@ const labels = {
   pillar: 'Опора', roof: 'Крыша', 'pump-manifold': 'Коллектор',
   'port-container': 'Контейнер', 'port-wall': 'Портовая стена', 'port-rack': 'Стеллаж',
   'port-forklift': 'Погрузчик', 'port-railcar': 'Вагон', 'port-lintel': 'Перемычка',
+  'village-barricade': 'Глинобитная ограда', 'village-pottery': 'Глиняные кувшины',
+  'village-rubble': 'Куча каменной кладки', 'village-barrels': 'Бочки с водой', 'village-palm': 'Пальма',
 };
 const layerOptions = {
   all: ['Все объекты', ['box', 'structure', 'objective', 'spawn', 'vehicle', 'route', 'segment', 'road', 'landmark', 'sign', 'crane', 'rail', 'ship']],

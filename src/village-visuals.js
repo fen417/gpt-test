@@ -1,0 +1,250 @@
+import * as THREE from 'three';
+import { clonePairedMaterial, pairMaterials } from './visuals.js';
+
+const palettes = new WeakMap();
+
+function surfaceTexture(stucco) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  let seed = stucco ? 6391 : 1703;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+    return (seed >>> 0) / 4294967296;
+  };
+  ctx.fillStyle = stucco ? '#d8ccb0' : '#cbb890';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 8500; i++) {
+    ctx.fillStyle = i % 2 ? '#6d55351b' : '#fff4ce25';
+    ctx.fillRect(random() * 256, random() * 256, 1 + random() * 3, 1 + random() * 2);
+  }
+  if (stucco) {
+    ctx.strokeStyle = '#67503d52';
+    ctx.lineWidth = .7;
+    for (let i = 0; i < 8; i++) {
+      let x = random() * 256, y = random() * 220;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let n = 0; n < 6; n++) {
+        x += random() * 12 - 6;
+        y += random() * 7;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#9e85603b';
+    for (let i = 0; i < 16; i++) {
+      ctx.beginPath();
+      ctx.ellipse(random() * 256, random() * 256, 3 + random() * 12, 2 + random() * 5, random(), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    ctx.strokeStyle = '#9d815521';
+    ctx.lineWidth = 2;
+    for (let y = -8; y < 270; y += 15) {
+      ctx.beginPath();
+      for (let x = 0; x <= 256; x += 8) ctx.lineTo(x, y + Math.sin(x * .024 + y * .04) * 6);
+      ctx.stroke();
+    }
+  }
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.anisotropy = 4;
+  return map;
+}
+
+function palette(owner) {
+  if (palettes.has(owner)) return palettes.get(owner);
+  const make = (map, color, tile) => {
+    const high = new THREE.MeshStandardMaterial({ map, color, roughness: .98, bumpMap: map, bumpScale: .025 });
+    const low = new THREE.MeshLambertMaterial({ map, color });
+    high.userData.tileSize = low.userData.tileSize = tile;
+    return pairMaterials(high, low);
+  };
+  const sand = surfaceTexture(false), stucco = surfaceTexture(true);
+  const result = {
+    sand: make(sand, 0xd6bd90, 7),
+    stucco: make(stucco, 0xd0b88f, 3.4),
+    stone: clonePairedMaterial(owner.surfaces.concrete, '#b9a380'),
+    roof: clonePairedMaterial(owner.surfaces.concrete, '#b09b7b'),
+    wood: clonePairedMaterial(owner.surfaces.wood, '#806249'),
+    cloth: clonePairedMaterial(owner.surfaces.cloth, '#b29870'),
+    clay: new THREE.MeshStandardMaterial({ color: '#b37c53', roughness: .95 }),
+    leaves: new THREE.MeshLambertMaterial({ color: '#72774c', side: THREE.DoubleSide }),
+    shadow: new THREE.MeshBasicMaterial({ color: '#302c26' }),
+    paints: new Map(),
+  };
+  palettes.set(owner, result);
+  return result;
+}
+
+function painted(palette, source, color) {
+  const key = source.uuid + color;
+  if (!palette.paints.has(key)) palette.paints.set(key, clonePairedMaterial(source, color));
+  return palette.paints.get(key);
+}
+
+function palm(owner, m, box) {
+  const { x, z, h, baseY = 0 } = box;
+  const geometry = new THREE.CylinderGeometry(.17, .31, h, 10);
+  const trunk = new THREE.Mesh(geometry, m.wood);
+  trunk.position.set(x, baseY + h / 2, z);
+  trunk.castShadow = true;
+  owner.scene.add(trunk);
+  for (let y = .6; y < h; y += .45) owner.cylinder(owner.scene, x, baseY + y, z, .235, .065, m.wood);
+  for (let leaf = 0; leaf < 9; leaf++) {
+    const angle = leaf / 9 * Math.PI * 2, length = 3.4 + Math.sin(leaf * 2) * .5;
+    const vertices = [], indices = [];
+    for (let i = 0; i <= 6; i++) {
+      const t = i / 6, halfWidth = Math.sin(t * Math.PI) * .46;
+      for (const side of [-1, 1]) vertices.push(
+        x + Math.cos(angle) * length * t - Math.sin(angle) * halfWidth * side,
+        baseY + h + Math.sin(t * Math.PI) * .7 - t * t * 1.7,
+        z + Math.sin(angle) * length * t + Math.cos(angle) * halfWidth * side,
+      );
+      if (i < 6) {
+        const n = i * 2;
+        indices.push(n, n + 1, n + 2, n + 1, n + 3, n + 2);
+      }
+    }
+    const frond = new THREE.BufferGeometry();
+    frond.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    frond.setIndex(indices);
+    frond.computeVertexNormals();
+    const mesh = new THREE.Mesh(frond, m.leaves);
+    mesh.castShadow = true;
+    owner.scene.add(mesh);
+  }
+}
+
+function pottery(owner, m, box) {
+  const { x, z, h, baseY = 0 } = box;
+  const heightScale = (h - .015) / .91;
+  const profile = [[.24, 0], [.43, .12], [.48, .4], [.36, .7], [.23, .84], [.26, .91]];
+  for (const [dx, dz, scale] of [[-.4, -.1, 1], [.43, .25, .74], [.4, -.43, .54]]) {
+    const geometry = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r * scale, y * scale * heightScale)), 16);
+    const pot = new THREE.Mesh(geometry, m.clay);
+    pot.position.set(x + dx, baseY + .015, z + dz);
+    pot.castShadow = true;
+    owner.scene.add(pot);
+    owner.cylinder(owner.scene, x + dx, baseY + .015 + .85 * scale * heightScale, z + dz, .21 * scale, .015, m.shadow, 16);
+  }
+}
+
+function shutters(owner, m, structure) {
+  const { x, z, w, d, h, baseY = 0 } = structure;
+  for (const side of [-1, 1]) for (const end of [-1, 1]) {
+    const px = x + side * (w / 2 + .32), pz = z + end * d * .24;
+    for (const edge of [-1, 1]) {
+      const shutter = owner.box(owner.scene, px, baseY + 1.7, pz + edge * 1.6, .12, 1.2, .62, m.wood, false);
+      shutter.rotation.y = edge * .45;
+      for (let y = 1.24; y < 2.2; y += .2) owner.box(owner.scene, px + side * .075, baseY + y, pz + edge * 1.6,
+        .025, .035, .59, m.roof, false);
+    }
+  }
+  // Timber ends, door surrounds and a weathered plinth keep facades readable up close.
+  for (const side of [-1, 1]) {
+    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * 2.9, baseY + 1.32, z + side * (d / 2 + .04),
+      .18, 2.65, .22, m.wood);
+    owner.box(owner.scene, x, baseY + 2.72, z + side * (d / 2 + .08), 6.1, .22, .35, m.wood);
+    for (let dx = -w / 2 + 1; dx < w / 2; dx += 2.6) owner.box(owner.scene, x + dx, baseY + h - .15,
+      z + side * (d / 2 + .14), .16, .17, .6, m.wood, false);
+    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * (w + 5.6) / 4, baseY + .16, z + side * (d / 2 + .06),
+      (w - 5.6) / 2, .3, .12, m.roof, false);
+  }
+  const floor = owner.box(owner.scene, x, baseY + .015, z, w - .6, .025, d - .6, m.roof, false);
+  floor.receiveShadow = true;
+  if (h > 5) for (const side of [-1, 1]) for (const end of [-1, 1]) {
+    owner.box(owner.scene, x + side * w * .29, baseY + 4.15, z + end * (d / 2 + .06), 1.35, 1.35, .1, m.wood);
+    owner.box(owner.scene, x + side * w * .29, baseY + 3.44, z + end * (d / 2 + .17), 1.65, .14, .35, m.roof);
+  }
+}
+
+export function createVillageModelBuilder(owner) {
+  const m = palette(owner);
+  return (boxes = [], structures = [], roads = []) => {
+    for (const road of roads) {
+      const lane = owner.box(owner.scene, road.x, .008, road.z, road.w, .01, road.d,
+        painted(m, m.sand, '#c1a57b'), false);
+      lane.rotation.y = road.yaw ?? 0;
+      lane.receiveShadow = true;
+    }
+    for (const box of boxes) {
+      const { kind, x, z, w, d, h, baseY = 0, color = '#c3ad89' } = box;
+      if (!kind.startsWith('village-')) continue;
+      if (kind === 'village-palm') { palm(owner, m, box); continue; }
+      if (kind === 'village-pottery') { pottery(owner, m, box); continue; }
+      if (kind === 'village-barrels') {
+        for (const side of [-1, 1]) {
+          const px = x + side * .48;
+          owner.cylinder(owner.scene, px, baseY + h / 2, z, .4, h - .04, painted(m, owner.surfaces.metal, color), 16);
+          for (const y of [.06, .3, .72, .94]) owner.cylinder(owner.scene, px, baseY + y * h, z, .42, .055, m.wood, 16);
+          owner.cylinder(owner.scene, px, baseY + h - .02, z, .39, .04, m.roof, 16);
+        }
+        continue;
+      }
+      if (kind === 'village-rubble') {
+        owner.box(owner.scene, x, baseY + .15, z, w, .3, d, m.stone);
+        for (let row = 0; row < 2; row++) for (let i = 0; i < 4; i++) {
+          const brick = owner.box(owner.scene, x - w * .36 + i * w * .24, baseY + .42 + row * .24,
+            z + (row ? -.28 : .3), w * .22, .26, d * .37, m.stone);
+          brick.rotation.y = Math.sin(i * 3 + row) * .1;
+        }
+        continue;
+      }
+      const source = kind === 'village-wood' ? m.wood : kind === 'village-roof' ? m.roof :
+        kind === 'village-awning' ? m.cloth : kind === 'village-stone' ? m.stone : m.stucco;
+      owner.box(owner.scene, x, baseY + h / 2, z, w, h, d, painted(m, source, color));
+      if (kind === 'village-awning') {
+        for (let stripe = -w / 2 + .15; stripe < w / 2; stripe += .65) {
+          owner.box(owner.scene, x + stripe, baseY + h + .003, z, .18, .009, d, m.roof, false);
+        }
+        owner.box(owner.scene, x, baseY - .12, z + d / 2, w, .25, .035, painted(m, m.cloth, color), false);
+      }
+      if (kind === 'village-barricade') {
+        owner.box(owner.scene, x, baseY + h + .03, z, w + .08, .12, d + .08, m.stone);
+      }
+    }
+    for (const structure of structures) {
+      if (['village-house', 'village-house-tall', 'village-ruin'].includes(structure.kind)) shutters(owner, m, structure);
+      if (structure.kind === 'village-stall') {
+        for (let i = 0; i < 5; i++) {
+          owner.box(owner.scene, structure.x - 2 + i, (structure.baseY ?? 0) + 1.05, structure.z + .7,
+            .72, .28, .8, i % 2 ? m.clay : m.wood);
+        }
+      }
+      if (structure.kind === 'village-well') {
+        const { x, z, baseY = 0 } = structure;
+        owner.box(owner.scene, x, baseY + .03, z, 2.1, .02, 2.1, m.shadow, false);
+        const axle = owner.cylinder(owner.scene, x, baseY + 2.3, z, .12, 3.4, m.wood, 12);
+        axle.rotation.z = Math.PI / 2;
+        owner.cylinder(owner.scene, x, baseY + 1.65, z, .025, 1.35, m.wood);
+        owner.cylinder(owner.scene, x, baseY + 1.03, z, .28, .35, owner.materials.steel, 12);
+      }
+    }
+  };
+}
+
+export function addVillageGround(owner, map) {
+  const m = palette(owner), span = map.size + 220;
+  const geometry = new THREE.PlaneGeometry(span, span);
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * span / 7, uv.getY(i) * span / 7);
+  const ground = new THREE.Mesh(geometry, m.sand);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  owner.scene.add(ground);
+  createVillageModelBuilder(owner)(map.boxes, map.structures, map.roads);
+  // Dunes form the horizon outside the playable village.
+  for (const side of [-1, 1]) for (let i = -3; i <= 3; i++) {
+    const dune = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 6), m.sand);
+    dune.position.set(side * (map.size / 2 + 47), -7, i * 65);
+    dune.scale.set(48, 22 + (i + 3) % 3 * 5, 55);
+    dune.receiveShadow = true;
+    owner.scene.add(dune);
+    const horizon = dune.clone();
+    horizon.position.set(i * 65, -7, side * (map.size / 2 + 54));
+    owner.scene.add(horizon);
+  }
+}

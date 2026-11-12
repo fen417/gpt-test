@@ -222,9 +222,9 @@ export function makeSky(scene, renderer) {
 
   const bakedShader = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { skyMap: { value: cubeTarget.texture } },
+    uniforms: { skyMap: { value: cubeTarget.texture }, hazeAmount: { value: 0 } },
     vertexShader: 'varying vec3 direction; void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_Position.z=gl_Position.w;}',
-    fragmentShader: 'varying vec3 direction; uniform samplerCube skyMap; void main(){gl_FragColor=textureCube(skyMap,direction);}',
+    fragmentShader: 'varying vec3 direction; uniform samplerCube skyMap; uniform float hazeAmount; void main(){vec4 sky=textureCube(skyMap,direction);float haze=hazeAmount*(1.-max(normalize(direction).y,0.));sky.rgb=mix(sky.rgb,vec3(.79,.68,.51),haze);gl_FragColor=sky;}',
   });
   const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 20, 12), bakedShader);
   sky.renderOrder = 1000; sky.frustumCulled = false; sky.userData.noBatch = true; scene.add(sky);

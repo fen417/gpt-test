@@ -746,7 +746,7 @@ function initializeMapPickers(){
     const map=getMap($('map-select').value);
     text('menu-map-name',map.name.toUpperCase());
     text('menu-map-points',String(map.points.length).padStart(2,'0'));
-    text('menu-map-info',map.size+' × '+map.size+' м · '+map.points.length+' позиций'+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':''));
+    text('menu-map-info',map.size+' × '+map.size+' м · '+map.points.length+' позиций'+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
     save('map',map.id);
   };
   $('map-select').addEventListener('change',update);

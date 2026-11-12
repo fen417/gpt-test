@@ -4,6 +4,7 @@ import { createSurfaceMaterials } from '../src/visuals.js';
 import { CAPTURE_RADIUS } from '../shared/world.js';
 
 function surfaceFor(kind) {
+  if (kind === 'village-palm') return 'wood';
   if (kind === 'crate' || kind === 'port-rack') return 'wood';
   if (kind === 'tent' || kind === 'sandbags') return 'cloth';
   if (kind === 'wall' || kind === 'factory') return 'brick';
@@ -109,7 +110,8 @@ export class MapViewport {
       uv.setXY(i, uv.getX(i) * map.size / 15, uv.getY(i) * map.size / 15);
     }
     geometry.computeVertexNormals();
-    const ground = new THREE.Mesh(geometry, this.material(map.terrain ? '#a69f79' : '#a3aaa1', map.terrain ? 'ground' : 'concrete'));
+    const groundColor = map.theme === 'desert-village' ? '#cbb58c' : map.terrain ? '#a69f79' : '#a3aaa1';
+    const ground = new THREE.Mesh(geometry, this.material(groundColor, map.terrain ? 'ground' : 'concrete'));
     this.world.add(ground);
     if (map.shoreX !== undefined) this.mesh({ x: (map.shoreX - map.size / 2) / 2, z: 0 },
       { w: map.shoreX + map.size / 2, d: map.size, h: .2, y: .03 }, this.material('#396878'));
@@ -169,6 +171,7 @@ export class MapViewport {
       if (kind === 'box') continue;
       if (kind === 'road') { this.road(value, item); continue; }
       if (kind === 'structure') {
+        if (value.kind?.startsWith('village-')) continue;
         this.mesh(value, { w: value.w, d: value.d, h: .35, y: (value.baseY ?? 0) + value.h },
           this.material(value.color ?? '#a9a391', 'metal'), square, item);
         continue;

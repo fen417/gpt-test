@@ -91,6 +91,8 @@ function weaponSpread(player) {
 }
 
 function impactMaterial(kind) {
+  if (kind === 'village-wood' || kind === 'village-awning' || kind === 'village-palm') return 'wood';
+  if (kind === 'village-barrels') return 'metal';
   if (kind.startsWith('port-')) return kind==='port-wall'?'concrete':'metal';
   if (kind === 'crate' || kind === 'tree' || kind === 'tent') return 'wood';
   if (kind === 'roof' || kind === 'container' || kind === 'pillar' || kind === 'warehouse' || kind === 'truck' || kind === 'car' || kind === 'fueltank' || kind === 'generator' || kind === 'kiosk') return 'metal';
@@ -144,7 +146,7 @@ export class Simulation {
     this.vehicles=(this.map.vehicleSpawns??[]).map(spawn=>this.createMapVehicle(spawn));
     this.points=this.map.points.map(p=>({...p,owner:-1,progress:0,contested:false,spawnBlocked:false}));
     this.events=[];this.eventId=0;this.winner=null;this.grenades=[];this.bullets=[];this.ticketClock=0;
-    this.gridCell=4;this.gridSize=Math.ceil(this.map.size/this.gridCell);this.gridOrigin=-this.map.size/2;
+    this.gridCell=this.map.navigationCell??4;this.gridSize=Math.ceil(this.map.size/this.gridCell);this.gridOrigin=-this.map.size/2;
     this.blocked=new Uint8Array(this.gridSize*this.gridSize);
     this.pathPrevious=new Int32Array(this.blocked.length);
     this.pathQueue=new Int32Array(this.blocked.length);
