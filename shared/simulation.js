@@ -2,7 +2,7 @@
 
 import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, TURRET_WEAPON, VEHICLE_BOARD_RANGE, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
-import { CAPTURE_RATE, canSpawnAtPoint } from './world.js';
+import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME } from './world.js';
 import { aimBullet, bulletHeight } from './ballistics.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -27,7 +27,7 @@ export function sanitizeInput(input = {}) {
     yaw: finite(input.yaw) % (Math.PI * 2), pitch: clamp(finite(input.pitch), -1.45, 1.45),
     sprint:input.sprint===true,crouch:input.crouch===true,jump:input.jump===true,
     fire:input.fire===true,aim:input.aim===true,reload:input.reload===true,
-    gadget:input.gadget===true,grenade:input.grenade===true,
+    gadget:input.gadget===true,grenade:input.grenade===true,weaponSlot:input.weaponSlot===1||input.weaponSlot===2?input.weaponSlot:0,
     interact:input.interact===true,switchSeat:input.switchSeat===true,
   };
 }
@@ -194,13 +194,13 @@ export class Simulation {
     this.event('score',{playerId:player.id,points:pts,total:player.score,reason,...extra});
     return pts;
   }
-  addPlayer(id,name='Боец',team,classId='assault',weaponId='') {
+  addPlayer(id,name='Боец',team,classId='assault',weaponId='',sidearmId) {
     if(this.players.has(id))return this.players.get(id);
     if(team!==0&&team!==1){let a=0,b=0;for(const p of this.players.values())p.team===0?a++:b++;team=a<=b?0:1;}
     const cls=validClass(classId)?classId:'assault';
-    const wep=getWeapon(cls,weaponId).id??defaultWeaponId(cls);
+    const wep=getPrimaryWeapon(cls,weaponId).id??defaultWeaponId(cls);
     const p={id:String(id),name:String(name||'Боец').replace(/[<>\x00-\x1f]/g,'').slice(0,20),team,classId:cls,weaponId:wep,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,alive:false,ammo:0,reserve:0,kills:0,deaths:0,assists:0,score:0,damagers:new Map(),spottedBy:null,respawnIn:0,reloading:false,shotSeq:0,input:sanitizeInput(),cooldown:0,reloadTime:0,gadgetTime:0,grenades:2,vy:0,lastHurt:-100,bot:false};
-    this.players.set(p.id,p);this.respawn(p.id,cls,'',wep);this.balanceTeams();return p;
+    this.players.set(p.id,p);this.respawn(p.id,cls,'',wep,sidearmId);this.balanceTeams();return p;
   }
   removePlayer(id){
     const p=this.players.get(id);
@@ -208,19 +208,16 @@ export class Simulation {
     this.players.delete(id);this.balanceTeams();
   }
   setInput(id,input){const p=this.players.get(id);if(p&&!p.bot)p.input=sanitizeInput(input);}
-  respawn(id,classId,pointId,weaponId){
+  respawn(id,classId,pointId,weaponId,sidearmId){
     const p=this.players.get(id);if(!p || p.alive || p.respawnIn>0)return false;
     if(p.bot&&!pointId&&!shouldSpawnVehicleBotAtBase(this,p)){const safe=this.points.filter(q=>canSpawnAtPoint(q,p.team)&&![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,q)<25)).sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z));pointId=safe[0]?.id;}
     const point=this.points.find(q=>q.id===pointId);
     if(point&&(!canSpawnAtPoint(point,p.team)||[...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,point)<CAPTURE_RADIUS)))return false;
-    if(validClass(classId)){
-      const changedClass=p.classId!==classId;
-      p.classId=classId;
-      if(changedClass&&!weaponId)p.weaponId=defaultWeaponId(classId);
-    }
-    if(weaponId)p.weaponId=getWeapon(p.classId,weaponId).id??defaultWeaponId(p.classId);
-    else p.weaponId=getWeapon(p.classId,p.weaponId).id??defaultWeaponId(p.classId);
-    const wep=getWeapon(p.classId,p.weaponId);
+    if(validClass(classId))p.classId=classId;
+    const wep=getPrimaryWeapon(p.classId,weaponId||p.primaryWeaponId);
+    const sidearm=getSidearm(sidearmId??p.sidearmId);
+    p.weaponId=p.primaryWeaponId=wep.id;p.sidearmId=sidearm.id;p.weaponSlot=1;p.equipTime=0;
+    p.stowedAmmo={ammo:sidearm.mag,reserve:sidearm.reserve};
     const base=point||this.map.spawns[p.team];let x=base.x,z=base.z;
     for(let n=0;n<25;n++){const tx=base.x+(this.random()-.5)*8,tz=base.z+(this.random()-.5)*8;if(!this.collides(tx,tz)&&!this.vehicleAt(tx,tz,this.groundAt(tx,tz))){x=tx;z=tz;break;}}
     p.damagers=new Map();p.spottedBy=null;
@@ -599,10 +596,19 @@ export class Simulation {
   }
   startReload(p){
     const weapon = getWeapon(p.classId, p.weaponId);
-    if(p.reloading||p.ammo>=weapon.mag||p.reserve<=0)return;
+    if(p.equipTime>0||p.reloading||p.ammo>=weapon.mag||p.reserve<=0)return;
     p.reloading=true;
     p.reloadTime=weapon.reload;
     this.event('reload',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,duration:weapon.reload,empty:p.ammo===0,x:p.x,z:p.z});
+  }
+  equipWeapon(p,slot){
+    if(!slot||slot===p.weaponSlot)return;
+    const {ammo,reserve}=p.stowedAmmo;
+    p.stowedAmmo={ammo:p.ammo,reserve:p.reserve};
+    Object.assign(p,{ammo,reserve,weaponSlot:slot,weaponId:slot===2?p.sidearmId:p.primaryWeaponId,
+      equipTime:WEAPON_SWITCH_TIME,reloading:false,reloadTime:0,bloom:0});
+    p.cooldown=Math.max(p.cooldown,WEAPON_SWITCH_TIME);
+    this.event('equip',{playerId:p.id,weaponId:p.weaponId,x:p.x,z:p.z});
   }
   gadget(p){
     if(p.gadgetTime>0)return;p.gadgetTime=12;let count=0,helped=0;
@@ -610,9 +616,11 @@ export class Simulation {
     for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&dist(p,ally)<12){
       if(p.classId==='support'){
         const allyWep=getWeapon(ally.classId,ally.weaponId);
-        const before=ally.reserve;
+        const before=ally.reserve+ally.stowedAmmo.reserve;
+        const stowedWeapon=ally.weaponSlot===1?getSidearm(ally.sidearmId):getPrimaryWeapon(ally.classId,ally.primaryWeaponId);
         ally.reserve=Math.min(allyWep.reserve,ally.reserve+60);
-        if(ally!==p&&ally.reserve>before){
+        ally.stowedAmmo.reserve=Math.min(stowedWeapon.reserve,ally.stowedAmmo.reserve+60);
+        if(ally!==p&&ally.reserve+ally.stowedAmmo.reserve>before){
           helped++;
           this.awardScore(p,25,'ПОПОЛНЕНИЕ БОЕПРИПАСОВ',{kind:'resupply'});
         }
@@ -890,17 +898,25 @@ export class Simulation {
     for(const p of this.players.values()){
       if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if(p.bot&&p.respawnIn===0)this.respawn(p.id);continue;}
       if(p.bot&&!this.vehicles.length)this.thinkBot(p,dt);
-      const i=p.input,c=getWeapon(p.classId,p.weaponId);p.yaw=i.yaw;p.pitch=i.pitch;
+      const i=p.input;p.yaw=i.yaw;p.pitch=i.pitch;
+      p.equipTime=Math.max(0,p.equipTime-dt);
+      const mounted=p.vehicleId&&this.vehicles.find(v=>v.id===p.vehicleId);
+      const personal=!mounted||VEHICLE_TYPES[mounted.type].seats[p.vehicleSeat].role==='passenger';
+      if(personal){
+        const backup=p.bot&&p.ammo+p.reserve===0&&p.stowedAmmo.ammo+p.stowedAmmo.reserve>0;
+        this.equipWeapon(p,i.weaponSlot||(backup?3-p.weaponSlot:0));
+      }
+      const c=getWeapon(p.classId,p.weaponId);
       const pressed = i.fire && !p.fireHeld;
       p.fireHeld = i.fire;
       // Carry the fractional tick remainder through a burst so cadence stays on spec.
-      const firing = i.fire && !i.sprint;
+      const firing = i.fire && !i.sprint && p.equipTime===0;
       const continuous = firing && (p.bot || !c.semiAuto) && !pressed && !p.reloading;
       p.cooldown = Math.max(continuous ? -dt : 0, p.cooldown - dt);
       p.bloom = Math.max(0, p.bloom - dt * (this.time - p.lastShotAt > .16 ? 3.6 : .4));
       p.gadgetTime=Math.max(0,p.gadgetTime-dt);p.grenadeCooldown=Math.max(0,(p.grenadeCooldown||0)-dt);
       if(p.vehicleId){
-        const vehicle=this.vehicles.find(v=>v.id===p.vehicleId);
+        const vehicle=mounted;
         const seat=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
         if(seat.role==='gunner'){
           p.pitch=vehicle.aimPitch;
@@ -1013,7 +1029,7 @@ export class Simulation {
     const players=[...this.players.values()].map(p=>{
       const wep=getWeapon(p.classId,p.weaponId);
       return {
-        id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
+        id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,primaryWeaponId:p.primaryWeaponId,sidearmId:p.sidearmId,weaponSlot:p.weaponSlot,equipTime:p.equipTime,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
         hp:p.hp,alive:p.alive,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
         shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:!p.vehicleId&&p.input.crouch,sprint:!p.vehicleId&&p.input.sprint&&p.moveSpeed>wep.speed,

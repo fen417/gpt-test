@@ -57,14 +57,14 @@ wss.on('connection',(ws)=>{
     if(message.type==='join'&&!client.joined){
       if(message.protocol!==PROTOCOL_VERSION){send(ws,{type:'error',message:'Версия игры устарела. Обновите страницу и подключитесь снова.'});ws.close(1008,'Protocol version mismatch');return;}
       client.name=typeof message.name==='string'?message.name:'Боец';client.classId=typeof message.classId==='string'?message.classId:'assault';client.weaponId=typeof message.weaponId==='string'?message.weaponId:'';
-      const player=simulation.addPlayer(client.id,client.name,undefined,client.classId,client.weaponId);client.joined=true;client.team=player.team;client.weaponId=player.weaponId;
+      const player=simulation.addPlayer(client.id,client.name,undefined,client.classId,client.weaponId,message.sidearmId);client.joined=true;client.team=player.team;client.weaponId=player.primaryWeaponId;client.sidearmId=player.sidearmId;
       send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
     }else if(message.type==='input'&&client.joined){client.lastInput=now;const input=sanitizeInput(message.input);client.interact||=input.interact;client.switchSeat||=input.switchSeat;client.lastControls=input;}
     else if(message.type==='respawn'&&client.joined){
       const validPoint=simulation.map.points.some(p=>p.id===message.pointId)?message.pointId:undefined;
-      if(simulation.respawn(client.id,message.classId,validPoint,message.weaponId)){
+      if(simulation.respawn(client.id,message.classId,validPoint,message.weaponId,message.sidearmId)){
         const spawned=simulation.players.get(client.id);
-        client.classId=spawned.classId;client.weaponId=spawned.weaponId;
+        client.classId=spawned.classId;client.weaponId=spawned.primaryWeaponId;client.sidearmId=spawned.sidearmId;
         client.lastControls={yaw:spawned.yaw,pitch:spawned.pitch};client.interact=false;client.switchSeat=false;
         const packet={type:'snapshot',state:simulation.snapshot()};
         for(const [sock,c] of clients)if(c.joined)send(sock,packet);
@@ -90,7 +90,7 @@ const loop=setInterval(()=>{
   }
   simulation.step(dt);broadcastClock+=dt;
   if(broadcastClock>=1/20){broadcastClock%=1/20;const packet={type:'snapshot',state:simulation.snapshot()};for(const [ws,c]of clients)if(c.joined)send(ws,packet);}
-  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount,difficulty,mapId});for(const [ws,c]of clients)if(c.joined){const p=simulation.addPlayer(c.id,c.name,c.team,c.classId,c.weaponId);c.lastControls={yaw:p.yaw,pitch:p.pitch};c.lastInput=0;send(ws,{type:'roundReset'});}roundResetAt=0;}}
+  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount,difficulty,mapId});for(const [ws,c]of clients)if(c.joined){const p=simulation.addPlayer(c.id,c.name,c.team,c.classId,c.weaponId,c.sidearmId);c.lastControls={yaw:p.yaw,pitch:p.pitch};c.lastInput=0;send(ws,{type:'roundReset'});}roundResetAt=0;}}
   for(const [ws,c]of clients)if(Date.now()-c.lastSeen>120000||(!c.joined&&Date.now()-c.connectedAt>10000))ws.close(1001,'Connection timed out');
 },1000/60);
 server.listen(port,'0.0.0.0',()=>console.log(`RUBEZH server: http://localhost:${server.address().port} — WebSocket ws://localhost:${server.address().port} — ${botCount} bots`));

@@ -1,5 +1,5 @@
 // Full state, compact on the wire: no delta baseline to lose under congestion.
-const PLAYER_FIELDS = 'id name team classId weaponId x y z yaw pitch hp alive ammo reserve kills deaths assists score respawnIn reloading reloadProgress shotSeq spread crouch sprint aim grounded bot protected gadgetCooldown grenades spotted vehicleId vehicleSeat'.split(' ');
+const PLAYER_FIELDS = 'id name team classId weaponId primaryWeaponId sidearmId weaponSlot equipTime x y z yaw pitch hp alive ammo reserve kills deaths assists score respawnIn reloading reloadProgress shotSeq spread crouch sprint aim grounded bot protected gadgetCooldown grenades spotted vehicleId vehicleSeat'.split(' ');
 const precise = value => typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 1000) / 1000 : value;
 const compactObject = object => Object.fromEntries(Object.entries(object).map(([key, value]) => [key, precise(value)]));
 

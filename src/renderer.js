@@ -3,7 +3,7 @@ import { addPortGround } from './port-visuals.js';
 import { addQuarryGround } from './quarry-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { getMap, CLASSES, CLASS_WEAPONS, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
+import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS } from '../shared/world.js';
 import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, addWarehouseDetails, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
@@ -342,7 +342,7 @@ export class GameRenderer {
   warmup() {
     for (const team of [0, 1]) {
       for (const classId of Object.keys(CLASSES)) {
-        for (const weaponId of (CLASS_WEAPONS[classId] || [defaultWeaponId(classId)])) {
+        for (const weaponId of [...CLASS_WEAPONS[classId], ...SIDEARMS]) {
           const key = `${team}:${classId}:${weaponId}`;
           if (!this.soldierTemplates.has(key)) {
             const template = createSoldierRig(this, { id: key, team, classId, weaponId, x: 0, y: 0, z: 0, shotSeq: 0 });
@@ -959,14 +959,30 @@ export class GameRenderer {
         }
         continue;
       }
-      const weaponId = player.weaponId || defaultWeaponId(player.classId);
+      const activeWeaponId = player.weaponId || defaultWeaponId(player.classId);
       let soldier = this.soldiers.get(player.id);
+      const stowing = soldier && soldier.classId === player.classId && soldier.team === player.team &&
+        weaponSwitchPose(player.equipTime).stowing;
+      const weaponId = stowing ? soldier.weaponId : activeWeaponId;
+      let previousRig = null, previousParent = null;
       if (soldier && (soldier.classId !== player.classId || soldier.team !== player.team || soldier.weaponId !== weaponId)) {
+        if (soldier.classId === player.classId && soldier.team === player.team && soldier.alive && player.alive !== false) {
+          previousRig = soldier;
+          previousParent = soldier.group.parent;
+        }
         this.removeSoldier(soldier);
         soldier = null;
       }
       if (!soldier) {
         soldier = this.makeSoldier(player);
+        if (previousRig) {
+          soldier.group.position.copy(previousRig.group.position);
+          soldier.group.rotation.copy(previousRig.group.rotation);
+          soldier.pose.position.copy(previousRig.pose.position);
+          soldier.motion = previousRig.motion;
+          soldier.initialized = previousRig.initialized;
+          previousParent?.add(soldier.group);
+        }
         this.soldiers.set(player.id, soldier);
       }
       const { group } = soldier;
@@ -1024,7 +1040,7 @@ export class GameRenderer {
       const mustReset = reset || respawned || returning;
       const reducedRate = !externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
-      if (!reducedRate || mustReset || soldier.animationDt >= 1 / 30) {
+      if (!reducedRate || previousRig || mustReset || soldier.animationDt >= 1 / 30) {
         animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset });
         soldier.animationDt = 0;
       }
@@ -1067,7 +1083,8 @@ export class GameRenderer {
           const yaw = player?.yaw || 0;
           const effect = this.effectPools.shell.pop() ?? { mesh: new THREE.Mesh(this.geo.shell, this.shellMaterial), type: 'shell' };
           const shell = effect.mesh;
-          this.weaponRig.bolt.getWorldPosition(shell.position);
+          this.weaponRig.ejection.getWorldPosition(shell.position);
+          shell.scale.setScalar(getWeapon(event.classId,event.weaponId).sidearm ? .57 : 1);
           shell.rotation.set(0, 0, Math.PI / 2);
           Object.assign(effect, { age: 0, life: 1.1, vx: Math.cos(yaw) * 2.9, vy: .85 + this.random() * .7, vz: -Math.sin(yaw) * 2.9, spin: 8 + this.random() * 8 });
           this.effects.push(effect);
@@ -1649,6 +1666,7 @@ export class GameRenderer {
         this.camera.lookAt(0, 3, -12);
       }
       this.weapon.visible = false;
+      this.viewWeaponTarget = null;
       this.atmosphere.sky.position.copy(this.camera.position);
       if (this.camera.fov !== 70 || this.camera.near !== 2) {
         this.camera.fov = 70;
@@ -1701,6 +1719,7 @@ export class GameRenderer {
       this.cameraPlayerId = localId;
       this.cameraAlive = false;
       this.weapon.visible = false;
+      this.viewWeaponTarget = null;
       if (Math.abs(this.camera.fov - 65) > 0.1 || this.camera.near !== 0.5) {
         this.camera.fov = 65;
         this.camera.near = 0.5;
@@ -1710,6 +1729,7 @@ export class GameRenderer {
     } else if (mounted && !passenger) {
       this.placeVehicleCamera(mounted, seat, view.yaw ?? player.yaw, view.pitch ?? player.pitch, shake);
       this.weapon.visible = false;
+      this.viewWeaponTarget = null;
       this.wallStow = this.aimAmount = this.sprintBlend = 0;
       if (Math.abs(this.camera.fov - baseFov) > .03 || this.camera.near !== .045) {
         this.camera.fov = baseFov;
@@ -1717,6 +1737,22 @@ export class GameRenderer {
         this.camera.updateProjectionMatrix();
       }
     } else if (player) {
+      const activeWeaponId = player.weaponId || defaultWeaponId(player.classId);
+      if (this.viewWeaponTarget !== activeWeaponId || this.viewWeaponPlayer !== player.id) {
+        this.weaponSwitch = player.equipTime > 0 && this.viewWeaponPlayer === player.id && this.viewWeaponTarget
+          ? { from: this.presentedWeaponId, left: player.equipTime } : null;
+        this.viewWeaponPlayer = player.id;
+        this.viewWeaponTarget = activeWeaponId;
+        this.kick = 0;
+      }
+      const swap = this.weaponSwitch;
+      if (swap) {
+        swap.left = Math.max(0, swap.left - dt);
+        if (swap.left === 0) this.weaponSwitch = null;
+      }
+      const {stowing,lowered}=weaponSwitchPose(swap?.left);
+      this.presentedWeaponId = stowing ? swap.from : activeWeaponId;
+      const pistol = getWeapon(player.classId, this.presentedWeaponId).sidearm;
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
       const crouching = !passenger && (view.crouch ?? player.crouching ?? player.crouch);
       const height = isAlive ? (crouching ? 1.05 : 1.65) : 0.5;
@@ -1727,7 +1763,7 @@ export class GameRenderer {
       );
       const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
-      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !player.reloading && this.throwTimer <= 0 && this.gadgetTimer <= 0 && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
+      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && this.gadgetTimer <= 0 && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       const weapon = getWeapon(player.classId, player.weaponId);
       const observedReload = Number.isFinite(player.reloadProgress) ? player.reloadProgress : null;
@@ -1770,9 +1806,10 @@ export class GameRenderer {
         if (this.lastShot !== -1) this.kick = 1;
         this.lastShot = player.shotSeq;
       }
-      const aimFov = player.classId === 'recon'
+      const scopedWeapon = player.classId === 'recon' && !pistol && !this.weaponSwitch;
+      const aimFov = scopedWeapon
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / (player.weaponId === 'sv98' ? clamp(Number(view.scopeZoom) || 8, 6, 12) : 4)))
-        : baseFov - 23;
+        : baseFov - (pistol ? 13 : 23);
       const fov = lerp(baseFov + this.sprintBlend * 6, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
@@ -1782,12 +1819,12 @@ export class GameRenderer {
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
-      this.scoped = isAlive && player.classId === 'recon' && this.aimAmount >= .92;
+      this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.weapon.visible = isAlive && !this.scoped;
       this.weaponRig.update({
         classId: player.classId,
         team: player.team,
-        weaponId: player.weaponId || defaultWeaponId(player.classId),
+        weaponId: this.presentedWeaponId,
         aim: this.aimAmount,
         reloadMotion,
         reloadPhase,
@@ -1800,14 +1837,14 @@ export class GameRenderer {
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetPhase) * Math.PI);
       this.weapon.position.set(
-        lerp(.26, 0, this.aimAmount) + Math.sin(cycle) * .015 * bob - this.swayX + this.sprintBlend * .035 + actionTilt * .055,
-        lerp(-.23, -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * bob - this.swayY - reloadMotion * .10 - this.sprintBlend * .07 - this.landDip * .75 - actionTilt * .065,
-        lerp(-.42, player.classId === 'recon' ? -.32 : -.27, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04,
+        lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * bob - this.swayX + this.sprintBlend * .035 + actionTilt * .055 + lowered * .06,
+        lerp(pistol ? -.18 : -.23, pistol ? -.058 : -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * bob - this.swayY - reloadMotion * .10 - this.sprintBlend * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
+        lerp(pistol ? -.64 : -.42, pistol ? -.61 : scopedWeapon ? -.32 : -.27, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
       );
       this.weapon.rotation.set(
-        kick * .062 - reloadMotion * .39 - this.sprintBlend * .25 + Math.cos(cycle) * bob * .022 - actionTilt * .18,
+        kick * (pistol ? .089 : .062) - reloadMotion * .39 - this.sprintBlend * .25 + Math.cos(cycle) * bob * .022 - actionTilt * .18 - lowered * .72,
         -reloadMotion * .22 + this.sprintBlend * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
-        -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018 - actionTilt * .36,
+        -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018 - actionTilt * .36 + lowered * .24,
       );
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
     }

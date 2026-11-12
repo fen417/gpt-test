@@ -13,6 +13,8 @@ const HARMONY = [
 ];
 const MELODY = [74,0,69,0,65,0,64,0,62,0,0,69,67,0,65,0,69,0,72,0,74,0,0,77,76,0,72,0,69,0,0,0];
 const WEAPONS = {
+  p19:     { crack: 6900, transient: .017, body: 205, bodyEnd: 76, report: .073, tail: .24, gain: .79, metal: 4200, echo: .17 },
+  m50:     { crack: 4600, transient: .038, body: 128, bodyEnd: 48, report: .138, tail: .45, gain: 1.11, metal: 3100, echo: .31 },
   assault: { crack: 5400, transient: .024, body: 151, bodyEnd: 63, report: .10, tail: .36, gain: .94, metal: 3450, echo: .25 },
   medic:   { crack: 7700, transient: .016, body: 214, bodyEnd: 89, report: .066, tail: .23, gain: .79, metal: 4400, echo: .16 },
   support: { crack: 4200, transient: .033, body: 116, bodyEnd: 45, report: .14, tail: .47, gain: 1.06, metal: 2400, echo: .32 },
@@ -428,9 +430,10 @@ export class CombatAudio {
     const elapsed=Number.isFinite(event.time)?Math.max(0,this._lastStateTime-event.time):0;
     const start=this.ctx.currentTime-elapsed;
     const gain=(own?.16:.068)*p.gain;
-    const belt=(event.classId||player.classId)==='support';
+    const pistol=event.weaponId==='p19'||event.weaponId==='m50';
+    const belt=!pistol&&(event.classId||player.classId)==='support';
     const expected=belt?3.1:2;
-    const scale=Number.isFinite(event.duration)?clamp(event.duration/expected,.7,1.35):1;
+    const scale=Number.isFinite(event.duration)?clamp(event.duration/expected,.6,1.35):1;
     for(const [mark,kind] of belt?BELT_RELOAD:MAG_RELOAD){
       const offset=mark*scale;
       if(!own&&kind!=='seat'&&kind!=='lock')continue;
@@ -461,7 +464,8 @@ export class CombatAudio {
         if(p.distance<145){
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
-          this.shot(p.distance,e.mounted?'turret':classId,p.pan,Boolean(own),age);
+          const profile=e.mounted?'turret':e.weaponId==='p19'||e.weaponId==='m50'?e.weaponId:classId;
+          this.shot(p.distance,profile,p.pan,Boolean(own),age);
         }
       }else if(e.type==='bulletImpact'){
         if(state.time-e.time>.25)continue;
@@ -480,6 +484,9 @@ export class CombatAudio {
         if(e.type==='vehicleEnter'&&e.seat===0)this._tone(closed?28:43,.32,.10,{time:time+.05,type:'triangle',end:closed?49:67});
       }else if(e.type==='dryFire'&&own){
         this._mechanic('dry',this.ctx.currentTime,.21,.16);
+      }else if(e.type==='equip'&&own){
+        this._mechanic('lower',this.ctx.currentTime,.15,.13);
+        this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);
       }else if(e.type==='explosion')this._explosion(e,local);
       else if(e.type==='reload')this._reload(e,local,own?local:state.players?.find(player=>player.id===e.playerId));
       else if(e.type==='damage'&&own){this._noise(.16,.16,{color:'pink',cutoff:1400});this._tone(76,.2,.13,{end:37});}

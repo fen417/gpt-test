@@ -1,7 +1,7 @@
 ﻿import './style.css';
 import {GameRenderer} from './renderer.js';
 import {Simulation} from '../shared/simulation.js';
-import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
+import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
 import {Multiplayer} from './network.js';
 import {CombatAudio} from './audio.js';
 import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
@@ -16,6 +16,7 @@ let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let fireTap=false, recoilPitch=0, recoilYaw=0;
 let scopeZoom=8;
+let weaponSlot=1;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
@@ -137,7 +138,7 @@ function updateKeybindUI(){
   text('gadget-label',`${qKey} · ${gadgetNames[p?.classId||selectedClass]}${p?.gadgetCooldown>0?' '+Math.ceil(p.gadgetCooldown)+'с':''}`);
   const help=$('controls-help');
   if(help){
-    help.innerHTML=`${formatKeyCode(keybinds.forward)}${formatKeyCode(keybinds.left)}${formatKeyCode(keybinds.back)}${formatKeyCode(keybinds.right)} — движение · ${formatKeyCode(keybinds.sprint)} — бег · ${formatKeyCode(keybinds.crouch)} — присесть<br>${formatKeyCode(keybinds.jump)} — прыжок · ${rKey} — перезарядка · ${qKey} — способность<br>${gKey} — граната · ${formatKeyCode(keybinds.score)} — счёт · Esc — меню<br>${formatKeyCode(keybinds.interact)} — сесть / выйти · ${formatKeyCode(keybinds.switchSeat)} — сменить место`;
+    help.innerHTML=`${formatKeyCode(keybinds.forward)}${formatKeyCode(keybinds.left)}${formatKeyCode(keybinds.back)}${formatKeyCode(keybinds.right)} — движение · ${formatKeyCode(keybinds.sprint)} — бег · ${formatKeyCode(keybinds.crouch)} — присесть<br>${formatKeyCode(keybinds.jump)} — прыжок · ${rKey} — перезарядка · ${qKey} — способность<br>${gKey} — граната · ${formatKeyCode(keybinds.score)} — счёт · Esc — меню<br>${formatKeyCode(keybinds.interact)} — сесть / выйти · ${formatKeyCode(keybinds.switchSeat)} — сменить место<br>1 — основное оружие · 2 — пистолет`;
   }
 }
 function currentWeaponId(classId=selectedClass){
@@ -181,6 +182,19 @@ function selectWeapon(weaponId,playClick=false){
   save('weapons',JSON.stringify(selectedWeapons));
   selectClass(selectedClass,playClick);
 }
+let selectedSidearm=getSidearm(read('sidearm','')).id;
+const sidearmPickers=['menu-sidearm','deploy-sidearm','lobby-sidearm'].map($);
+for(const picker of sidearmPickers){
+  picker.replaceChildren(...SIDEARMS.map(id=>new Option(WEAPONS[id].name,id)));
+  picker.value=selectedSidearm;
+  picker.addEventListener('change',()=>{
+    selectedSidearm=getSidearm(picker.value).id;
+    save('sidearm',selectedSidearm);
+    for(const other of sidearmPickers)other.value=selectedSidearm;
+    if(inLobby)multiplayer.setLobbyLoadout({classId:selectedClass,weaponId:currentWeaponId(),sidearmId:selectedSidearm});
+    audio.click();
+  });
+}
 $('callsign').value=read('name','Rookie');
 musicMuted=read('music-muted','false')==='true';
 $('difficulty').value=['recruit','regular','veteran'].includes(read('difficulty','regular'))?read('difficulty','regular'):'regular';
@@ -214,7 +228,7 @@ function selectClass(classId,playClick=false){
   $('stat-dmg').style.width=`${Math.min(100,Math.round(w.damage/95*100))}%`;
   $('stat-rof').style.width=`${Math.min(100,Math.round((1/w.interval)/14*100))}%`;
   $('stat-rng').style.width=`${Math.min(100,Math.round(w.range/260*100))}%`;
-  if(inLobby)multiplayer.setLobbyLoadout({classId,weaponId});
+  if(inLobby)multiplayer.setLobbyLoadout({classId,weaponId,sidearmId:selectedSidearm});
   if(playClick)audio.click();
 }
 function spawnPointAvailable(player,pointId){
@@ -341,7 +355,7 @@ function receive(next){
   }
   if(player)document.body.classList.toggle('team-1',player.team===1);
   if(!active||!player)return;
-  if(player.alive&&!wasAlive){yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;show('death',false);if(active&&!locked&&!unlocked)show('pause');}
+  if(player.alive&&!wasAlive){weaponSlot=player.weaponSlot||1;yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;show('death',false);if(active&&!locked&&!unlocked)show('pause');}
   if(!player.alive&&wasAlive){
     lastDeathPos={x:player.x,z:player.z};
     if(!spawnPointAvailable(player,selectedSpawn)){
@@ -404,7 +418,7 @@ const multiplayer=new Multiplayer({onState:receive,onIdentity:id=>{localId=id;},
 
 function prepare(which){
   clearControls();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
-  const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value};
+  const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value};
 }
 function enter(){
   inLobby=false;active=true;setBusy(false);show('menu',false);show('lobby',false);show('hud');show('pause',false);show('death',false);show('result',false);document.body.style.overflow='hidden';
@@ -424,7 +438,7 @@ function leave(resetStatus=true){
   document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов. Выбери класс и вступай в бой.');
 }
-function solo(){if(busy)return;multiplayer.close();const opts=prepare('solo');simulation=new Simulation({bots:opts.bots,difficulty:opts.difficulty,mapId:opts.mapId});localId='local';simulation.addPlayer(localId,opts.name,0,opts.classId,opts.weaponId);state=simulation.snapshot();enter();}
+function solo(){if(busy)return;multiplayer.close();const opts=prepare('solo');simulation=new Simulation({bots:opts.bots,difficulty:opts.difficulty,mapId:opts.mapId});localId='local';simulation.addPlayer(localId,opts.name,0,opts.classId,opts.weaponId,opts.sidearmId);state=simulation.snapshot();enter();}
 $('solo').addEventListener('click',solo);
 $('host').addEventListener('click',async()=>{if(busy)return;const opts=prepare('host');setBusy(true);try{room=await multiplayer.host({...opts,lobby:true});enterLobby();toast(`Лобби комнаты ${room} создано. Пригласи игроков и нажми «Начать матч».`);}catch(error){status(error.message,true);setBusy(false);}});
 $('room-code').addEventListener('input',event=>{event.target.value=event.target.value.replace(/\D+/g,'').slice(0,6);});
@@ -434,7 +448,7 @@ $('server-form').addEventListener('submit',async event=>{event.preventDefault();
 for(const button of document.querySelectorAll('[data-class]'))button.addEventListener('click',()=>selectClass(button.dataset.class,true));
 for(const button of document.querySelectorAll('[data-deploy-class]'))button.addEventListener('click',()=>selectClass(button.dataset.deployClass,true));
 for(const button of document.querySelectorAll('[data-lobby-class]'))button.addEventListener('click',()=>selectClass(button.dataset.lobbyClass,true));
-$('lobby-switch-team').addEventListener('click',()=>{const p=local();if(!p)return;audio.click();multiplayer.setLobbyLoadout({classId:selectedClass,weaponId:currentWeaponId(selectedClass),team:1-p.team});});
+$('lobby-switch-team').addEventListener('click',()=>{const p=local();if(!p)return;audio.click();multiplayer.setLobbyLoadout({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,team:1-p.team});});
 $('lobby-map').addEventListener('change',event=>multiplayer.updateLobbySettings({mapId:event.target.value}));
 $('lobby-difficulty').addEventListener('change',event=>{multiplayer.updateLobbySettings({difficulty:event.target.value,bots:Number($('lobby-population').value)});});
 $('lobby-population').addEventListener('change',event=>{multiplayer.updateLobbySettings({bots:Number(event.target.value),difficulty:$('lobby-difficulty').value});});
@@ -457,8 +471,8 @@ function triggerRespawn(){
   selectSpawnPoint(targetPoint);
   yaw=p.team===0?0:Math.PI;pitch=0;recoilPitch=0;recoilYaw=0;
   const weaponId=currentWeaponId(selectedClass);
-  const accepted=simulation?simulation.respawn(localId,selectedClass,targetPoint,weaponId)
-    :multiplayer.respawn(selectedClass,targetPoint,weaponId);
+  const accepted=simulation?simulation.respawn(localId,selectedClass,targetPoint,weaponId,selectedSidearm)
+    :multiplayer.respawn(selectedClass,targetPoint,weaponId,selectedSidearm);
   if(!accepted){toast('Дислокация недоступна');return;}
   if(simulation)receive(simulation.snapshot());
   requestControl(true);
@@ -512,7 +526,8 @@ window.addEventListener('beforeunload',event=>{
 document.addEventListener('pointerlockerror',()=>{if(active){show('pause');toast('Браузер не разрешил захват мыши. Нажми «Продолжить» ещё раз.');}});
 document.addEventListener('mousemove',event=>{
   if(!locked&&!(unlocked&&!unlockedPaused&&active&&aim))return;
-  const aimScale = aim ? (local()?.classId === 'recon' ? (local()?.weaponId==='sv98' ? .35*4/scopeZoom : .35) : .65) : 1;
+  const player=local();
+  const aimScale = aim ? (player?.classId === 'recon' && player.weaponSlot!==2 ? (player.weaponId==='sv98' ? .35*4/scopeZoom : .35) : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
 });
@@ -563,6 +578,11 @@ document.addEventListener('keydown',event=>{
   if(event.code==='Escape'&&unlocked){unlockedPaused=!unlockedPaused;show('pause',unlockedPaused);clearControls();return;}
   if(isBound('score',event.code)){event.preventDefault();show('scoreboard');return;}
   if(!locked&&!(unlocked&&!unlockedPaused))return;
+  if(local()?.alive&&!event.repeat&&(event.code==='Digit1'||event.code==='Digit2')){
+    event.preventDefault();
+    weaponSlot=event.code==='Digit2'?2:1;
+    return;
+  }
   if(event.ctrlKey||['ControlLeft','ControlRight','Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',keybinds.jump,keybinds.score,keybinds.crouch,keybinds.forward,keybinds.back,keybinds.left,keybinds.right].includes(event.code))event.preventDefault();
   keys.add(event.code);
   if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('grenade',event.code)||isBound('interact',event.code)||isBound('switchSeat',event.code))){
@@ -584,6 +604,7 @@ function input(){
     jump:enabled&&isActionHeld('jump'),
     fire:firing,
     aim:enabled&&aim,
+    weaponSlot:enabled?weaponSlot:0,
     reload:enabled&&pulses.has(keybinds.reload),
     gadget:enabled&&pulses.has(keybinds.gadget),
     grenade:enabled&&pulses.has(keybinds.grenade),
@@ -979,7 +1000,13 @@ function hud(now){
   const maxT=state.maxTickets||600;
   text('tickets-blue',Math.ceil(state.tickets[player.team]));text('tickets-orange',Math.ceil(state.tickets[1-player.team]));$('blue-bar').style.width=`${(state.tickets[player.team]/maxT)*100}%`;$('orange-bar').style.width=`${(state.tickets[1-player.team]/maxT)*100}%`;
   const seconds=Math.floor(state.time);text('match-time',`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`);
-  text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;if(personalWeapon){text('ammo',player.ammo);text('reserve',player.reserve);text('weapon-name',weapon.name||weapon.weapon);text('ammo-status',player.reloading?'ПЕРЕЗАРЯДКА…':player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');}
+  text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;
+  if(personalWeapon){
+    text('ammo',player.ammo);text('reserve',player.reserve);
+    text('weapon-name',`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`);
+    text('ammo-status',player.equipTime>0?'СМЕНА ОРУЖИЯ…':player.reloading?'ПЕРЕЗАРЯДКА…':
+      player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
+  }
   text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
@@ -13,7 +13,7 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu">
-    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST · ALPHA 0.06</span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
+    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST · ALPHA 0.07</span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
     <div class="menu-content">
       <section class="intro">
         <div class="eyebrow"><span></span> ЗАХВАТ ТЕРРИТОРИИ</div>
@@ -37,6 +37,7 @@
         </div>
         <div class="field-label weapon-select-label">ОРУЖИЕ КЛАССА</div>
         <div id="menu-weapons" class="weapon-picker" role="group" aria-label="Выбор оружия"></div>
+        <label class="sidearm-picker">ПИСТОЛЕТ <select id="menu-sidearm"></select></label>
         <button id="solo" class="deploy-button"><span>НА ПОЛЕ БОЯ</span><span>↗</span></button>
         <div class="solo-note">Мгновенный бой с ботами · Без регистрации</div>
         <div class="network-divider"><span>ИЛИ ИГРА С ДРУЗЬЯМИ</span></div>
@@ -140,6 +141,7 @@
               <button type="button" class="deploy-class-btn" data-deploy-class="recon" aria-pressed="false"><kbd>4</kbd><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
             </div>
             <div id="deploy-weapons" class="weapon-picker compact" role="group" aria-label="Выбор оружия для высадки"></div>
+            <label class="sidearm-picker">ПИСТОЛЕТ <select id="deploy-sidearm"></select></label>
             <div class="deploy-loadout">
               <div class="deploy-loadout-head">
                 <div><strong id="deploy-weapon-name">AR-416</strong><span id="deploy-weapon-type">ШТУРМОВАЯ ВИНТОВКА</span></div>
@@ -209,6 +211,7 @@
               <button type="button" class="deploy-class-btn" data-lobby-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
             </div>
             <div id="lobby-weapons" class="weapon-picker compact" role="group" aria-label="Выбор оружия в лобби"></div>
+            <label class="sidearm-picker">ПИСТОЛЕТ <select id="lobby-sidearm"></select></label>
           </div>
           <div id="lobby-host-controls" class="deploy-box">
             <div class="deploy-box-title"><span>ПАРАМЕТРЫ ОПЕРАЦИИ</span><small>НАСТРОЙКИ ХОСТА</small></div>

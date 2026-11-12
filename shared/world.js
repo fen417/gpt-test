@@ -2,8 +2,18 @@
 import { PORT_MAP } from './port.js';
 import { QUARRY_MAP } from './quarry.js';
 
-export const PROTOCOL_VERSION=10;
+export const PROTOCOL_VERSION=11;
+export const WEAPON_SWITCH_TIME = .38;
+export const WEAPON_SWAP_PHASE = .42;
+export function weaponSwitchPose(remaining=0){
+  const phase=1-Math.max(0,Math.min(1,remaining/WEAPON_SWITCH_TIME));
+  const t=phase<WEAPON_SWAP_PHASE ? phase/WEAPON_SWAP_PHASE : (1-phase)/(1-WEAPON_SWAP_PHASE);
+  return {stowing:phase<WEAPON_SWAP_PHASE,lowered:t*t*(3-2*t)};
+}
+export const SIDEARMS = ['p19', 'm50'];
 export const WEAPONS = {
+  p19:  { id: 'p19', name: 'P-19', weapon: 'P-19', type: 'КОМПАКТНЫЙ ПИСТОЛЕТ', sidearm: true, mag: 15, reserve: 45, damage: 29, interval: .17, spread: .028, recoil: .024, reload: 1.35, speed: 6.5, range: 88, projectileSpeed: 270, semiAuto: true },
+  m50:  { id: 'm50', name: 'M-50 «Орёл»', weapon: 'M-50 «Орёл»', type: 'ТЯЖЁЛЫЙ ПИСТОЛЕТ', sidearm: true, mag: 7, reserve: 28, damage: 62, interval: .38, spread: .071, recoil: .056, reload: 1.65, speed: 6.25, range: 115, projectileSpeed: 325, semiAuto: true },
   ar416: { id: 'ar416', classId: 'assault', name: 'AR-416', weapon: 'AR-416', type: 'ШТУРМОВАЯ ВИНТОВКА', mag: 30, reserve: 150, damage: 27, interval: .105, spread: .012, recoil: .019, reload: 2, speed: 6.3, range: 150, projectileSpeed: 340 },
   ak12:  { id: 'ak12',  classId: 'assault', name: 'АК-12М', weapon: 'АК-12М', type: 'ТЯЖЁЛЫЙ АВТОМАТ',   mag: 30, reserve: 150, damage: 33, interval: .125, spread: .014, recoil: .024, reload: 2.15, speed: 6.15, range: 165, projectileSpeed: 315 },
   mcx9:  { id: 'mcx9',  classId: 'medic',   name: 'MCX-9',  weapon: 'MCX-9',  type: 'КАРАБИН / ПП',      mag: 32, reserve: 160, damage: 23, interval: .082, spread: .016, recoil: .012, reload: 2, speed: 6.5, range: 100, projectileSpeed: 265 },
@@ -28,12 +38,17 @@ export const CLASSES = {
 export function defaultWeaponId(classId = 'assault') {
   return CLASS_WEAPONS[classId]?.[0] ?? 'ar416';
 }
-export function getWeapon(classId = 'assault', weaponId = '') {
+export const getSidearm = id => WEAPONS[SIDEARMS.includes(id) ? id : SIDEARMS[0]];
+
+export function getPrimaryWeapon(classId = 'assault', weaponId = '') {
   const validClass = Object.hasOwn(CLASSES, classId) ? classId : 'assault';
   if (weaponId && Object.hasOwn(WEAPONS, weaponId) && WEAPONS[weaponId].classId === validClass) {
     return WEAPONS[weaponId];
   }
   return WEAPONS[defaultWeaponId(validClass)] ?? CLASSES[validClass];
+}
+export function getWeapon(classId = 'assault', weaponId = '') {
+  return SIDEARMS.includes(weaponId) ? WEAPONS[weaponId] : getPrimaryWeapon(classId, weaponId);
 }
 export const DIFFICULTIES = {
   recruit: { name: 'Новобранец', awareness: 43, reaction: .85, reactionVariance: .35, turnSpeed: 1.8, aimError: .031, burst: .28, pause: .95 },

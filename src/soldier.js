@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { drawTeamEmblem } from './logos.js';
 import { smoothRingSeams, tailoredGeometry } from './character-geometry.js';
+import { SIDEARMS, weaponSwitchPose } from '../shared/world.js';
 
 // Each soldier draws one skinned mesh with two geometries bound to the same bones.
 // Vertex colours and a shared atlas let all teams and classes use one shader.
@@ -21,6 +22,7 @@ const UPPER_BODY_LIFT = .14;
 const THROW_TIME = .78;
 const TAU = Math.PI * 2;
 const grips = [new THREE.Vector3(-.057, -.033, -.127), new THREE.Vector3(.004, -.057, .105)];
+const pistolGrips = [new THREE.Vector3(-.054, -.10, .08), grips[1]];
 const supportPalm = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI * .37);
 
 // Atlas regions: [u0, u1, roughness, metalness]. Region 0 is woven camouflage.
@@ -267,12 +269,12 @@ function makeHead(head, c, classId, team) {
   }
 }
 
-function makeGlove(wrist, c, support) {
+function makeGlove(wrist, c, support, pistol) {
   // Build the fingers around the weapon in rifle coordinates, then attach
   // the whole glove to the wrist so it follows the same IK in every pose.
   const glove = new THREE.Group();
   if (support) glove.quaternion.copy(supportPalm).invert();
-  glove.position.copy(grips[support ? 0 : 1]).negate().applyQuaternion(glove.quaternion);
+  glove.position.copy((pistol ? pistolGrips : grips)[support ? 0 : 1]).negate().applyQuaternion(glove.quaternion);
   wrist.add(glove);
   const finger = (points, radius) => {
     const path = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point)));
@@ -294,7 +296,14 @@ function makeGlove(wrist, c, support) {
     smoothRingSeams(geometry, segments + 1, sides);
     shape(glove, geometry, c.glove, 0, 0, 0, 1, 1, 1).userData.owned = true;
   };
-  if (support) {
+  if (support && pistol) {
+    ball(glove,c.glove,-.055,-.105,.079,.022,.032,.034);
+    for(const [index,y] of [-.086,-.103,-.12,-.137].entries()){
+      finger([[-.054,y,.073],[-.046,y-.004,.043],[-.025,y-.005,.029],
+        [-.002-index*.003,y-.005,.038]],.008-index*.00055);
+    }
+    finger([[-.055,-.089,.099],[-.045,-.069,.069],[-.028,-.064,.04]],.01);
+  } else if (support) {
     const palm = volume(glove, c.glove, [[0,.023,.019],[.028,.028,.018],[.06,.033,.016],
       [.092,.035,.014],[.117,.026,.012],[.127,.017,.009]], 14, null, { caps: true, square: .82 });
     palm.position.set(-.062, -.049, -.136);
@@ -327,7 +336,7 @@ function makeGlove(wrist, c, support) {
   }
 }
 
-function makeArm(spine, c, side, classId) {
+function makeArm(spine, c, side, classId, pistol) {
   const arm = bone(side < 0 ? 'arm.L' : 'arm.R', side * .207, 1.39, 0);
   const elbow = bone('elbow', 0, -UPPER_ARM, 0), wrist = bone('wrist', 0, -FOREARM, 0);
   spine.add(arm); arm.add(elbow); elbow.add(wrist);
@@ -350,7 +359,7 @@ function makeArm(spine, c, side, classId) {
     panel(elbow, c.steel, 0, -.215, .047, .03, .027, .008, .003);
     block(elbow, c.visor, 0, -.215, .054, .022, .02, .003);
   }
-  makeGlove(wrist, c, side < 0);
+  makeGlove(wrist, c, side < 0, pistol);
   return { arm, elbow, wrist };
 }
 
@@ -392,6 +401,22 @@ function makeRifle(spine, c, classId, weaponId = '') {
   spine.add(rifle);
   const magazine = bone('magazine', 0, -.087, -.076);
   rifle.add(magazine);
+  if(SIDEARMS.includes(weaponId)){
+    const heavy=weaponId==='m50', muzzle=heavy ? -.235 : -.17;
+    const width=heavy ? .065 : .052, length=.124-muzzle;
+    round(rifle,heavy?c.accent:c.steel,0,.011,(muzzle+.124)/2,width,.061,length);
+    round(rifle,c.polymer,0,-.039,(muzzle+.12)/2,width*.84,.034,length*.92);
+    round(rifle,c.polymer,0,-.10,.091,width*.87,.115,.076,.2);
+    block(rifle,c.polymer,0,-.104,.011,.037,.015,.078);
+    block(rifle,c.polymer,0,-.079,-.025,.037,.053,.016);
+    block(rifle,c.steel,0,.044,.103,.036,.012,.02);
+    block(rifle,c.steel,0,.044,muzzle+.025,.015,.012,.019);
+    along(rifle,c.rubber,0,.011,muzzle-.001,heavy ? .016 : .011,.006);
+    magazine.position.set(0,-.087,.091);
+    block(magazine,c.steel,0,-.04,0,width*.72,.075,.052);
+    block(magazine,c.rubber,0,-.071,0,width*.9,.014,.067);
+    return {rifle,magazine,flash:makeMuzzleFlash(rifle,muzzle,heavy ? .8 : .58)};
+  }
   const recon = classId === 'recon', medic = classId === 'medic', support = classId === 'support';
   const isAk = weaponId === 'ak12', isVk = weaponId === 'vk45', isPkp = weaponId === 'pkp', isSv = weaponId === 'sv98';
   const muzzle = isSv ? -.88 : recon ? -.8 : isVk ? -.52 : medic ? -.46 : isPkp ? -.76 : support ? -.7 : -.6;
@@ -460,14 +485,18 @@ function makeRifle(spine, c, classId, weaponId = '') {
     round(magazine, c.polymer, 0, -.02, 0, .05, .09, .08, .08);
     round(magazine, isAk ? c.accent : c.polymer, 0, -.095, -.014, .05, recon ? .05 : isAk ? .095 : .08, .078, isAk ? .34 : .26);
   }
-  const flash = new THREE.Mesh(new THREE.ConeGeometry(.06, .18, 6), new THREE.MeshBasicMaterial({ name: 'muzzle flash', color: 0xffd997, transparent: true, opacity: .9, depthWrite: false }));
+  return { rifle, flash:makeMuzzleFlash(rifle,muzzle), magazine };
+}
+
+function makeMuzzleFlash(rifle,muzzle,scale=1) {
+  const flash = new THREE.Mesh(new THREE.ConeGeometry(.06*scale, .18*scale, 6), new THREE.MeshBasicMaterial({ name: 'muzzle flash', color: 0xffd997, transparent: true, opacity: .9, depthWrite: false }));
   flash.geometry.userData.actorOwned = true;
   flash.rotation.x = -Math.PI / 2;
-  flash.position.set(0, .013, muzzle - .1);
+  flash.position.set(0, .013, muzzle - .1*scale);
   flash.visible = false;
   flash.castShadow = false;
   rifle.add(flash);
-  return { rifle, flash, magazine };
+  return flash;
 }
 
 function makeTorso(pose, spine, c, classId) {
@@ -554,16 +583,24 @@ function makeDistantGeometry(rig, c) {
       8, [0,0,.2,.55]);
     shape(wrists[i], low, c.glove, i === 0 ? .027 : .012, -.023, -.027, .036, .037, .048);
   }
-  block(rifle, c.steel, 0, 0, -.055, .065, .08, .36);
-  block(rifle, c.polymer, 0, -.015, .238, .06, .08, .21);
-  block(rifle, c.steel, 0, .012, -.35, .058, .061, .28);
-  block(rifle, c.steel, 0, .013, -.525, .026, .026, classId === 'recon' ? .44 : .21);
-  block(magazine, c.polymer, 0, -.026, 0, .05, .105, .077);
+  if(rig.pistol){
+    const heavy=rig.weaponId==='m50';
+    block(rifle,heavy?c.accent:c.steel,0,.011,heavy ? -.055 : -.024,heavy ? .065 : .052,.061,heavy ? .36 : .294);
+    block(rifle,c.polymer,0,-.10,.091,.052,.115,.076);
+    block(magazine,c.polymer,0,-.059,0,.05,.032,.063);
+  }else{
+    block(rifle, c.steel, 0, 0, -.055, .065, .08, .36);
+    block(rifle, c.polymer, 0, -.015, .238, .06, .08, .21);
+    block(rifle, c.steel, 0, .012, -.35, .058, .061, .28);
+    block(rifle, c.steel, 0, .013, -.525, .026, .026, classId === 'recon' ? .44 : .21);
+    block(magazine, c.polymer, 0, -.026, 0, .05, .105, .077);
+  }
   return bake(group, body.skeleton.bones);
 }
 
 export function createSoldierRig(owner, player) {
   const team = player.team ? 1 : 0, classId = player.classId, weaponId = player.weaponId || '';
+  const pistol=SIDEARMS.includes(weaponId);
   const c = palette(team), material = soldierMaterial(owner);
   const group = new THREE.Group();
   const pose = bone('pelvis'); group.add(pose);
@@ -574,7 +611,7 @@ export function createSoldierRig(owner, player) {
   makeHead(head, c, classId, team);
   const arms = [], elbows = [], wrists = [], legs = [], knees = [], ankles = [];
   for (const side of [-1, 1]) {
-    const { arm, elbow, wrist } = makeArm(spine, c, side, classId);
+    const { arm, elbow, wrist } = makeArm(spine, c, side, classId, pistol);
     const { leg, knee, ankle } = makeLeg(pose, c, side);
     arms.push(arm); elbows.push(elbow); wrists.push(wrist);
     legs.push(leg); knees.push(knee); ankles.push(ankle);
@@ -627,7 +664,7 @@ export function createSoldierRig(owner, player) {
   group.add(contactShadow);
   const rig = {
     group, pose, spine, body, head, legs, arms, knees, elbows, ankles, wrists, rifle, magazine, marker, flash,
-    team: player.team, classId, weaponId, lastX: player.x, lastZ: player.z, initialized: false, deathAge: 0, alive: true,
+    team: player.team, classId, weaponId, pistol, lastX: player.x, lastZ: player.z, initialized: false, deathAge: 0, alive: true,
     recoil: 0, flinch: 0, flinchSide: 0, lastShot: player.shotSeq, seed: 0, stepIndex: 0,
   };
   rig.detailGeometry = body.geometry;
@@ -698,7 +735,7 @@ export function updateSoldierArms(rig, supportTarget = null) {
   for (let i = 0; i < 2; i++) {
     const arm = rig.arms[i], elbow = rig.elbows[i];
     if (i === 0 && supportTarget) target.copy(supportTarget);
-    else target.copy(grips[i]).applyMatrix4(rig.rifle.matrix);
+    else target.copy((rig.pistol ? pistolGrips : grips)[i]).applyMatrix4(rig.rifle.matrix);
     solveLimb(arm, elbow, target, UPPER_ARM, FOREARM, i === 0 ? -.46 : .66, -.95, .12);
     const wrist = rig.wrists?.[i];
     if (!wrist) continue;
@@ -856,7 +893,7 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
   rig.flash.visible = rig.recoil > .58;
   motion.reloadTime = player.reloading ? motion.reloadTime + dt : 0;
   motion.reloadBlend = lerp(motion.reloadBlend, Number(Boolean(player.reloading)), 1 - Math.exp(-dt * 12));
-  const duration = rig.classId === 'support' ? 3.1 : 2;
+  const duration = rig.pistol ? 1.5 : rig.classId === 'support' ? 3.1 : 2;
   const reloadPhase = clamp(player.reloadProgress ?? motion.reloadTime / duration, 0, 1);
   const reload = Math.sin(reloadPhase * Math.PI) * motion.reloadBlend;
   // Grenade throw with the support hand.
@@ -881,11 +918,13 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
 
   const strideSway = Math.sin(phase * TAU) * Math.min(speed * .014, .09);
   const readyPitch = lerp(-.14, .025, motion.aim);
-  const riflePitch = clamp(look * .82 + readyPitch - sprint * .47 - reload * .33 - throwWeight * .55 - bodyPitch * .92, -.9, 1);
-  rig.rifle.rotation.set(riflePitch + rig.recoil * .085, -.025 + sprint * .19 + reload * .24 + throwWeight * .3, strideSway * sprint - reload * .18 + throwWeight * .35, 'YXZ');
+  const equip=weaponSwitchPose(player.equipTime).lowered;
+  const riflePitch = clamp(look * .82 + readyPitch - sprint * .47 - reload * .33 - throwWeight * .55 - bodyPitch * .92 - equip*.78, -.95, 1);
+  const recoil=rig.pistol ? (rig.weaponId==='m50' ? .22 : .14) : .085;
+  rig.rifle.rotation.set(riflePitch + rig.recoil * recoil, -.025 + sprint * .19 + reload * .24 + throwWeight * .3, strideSway * sprint - reload * .18 + throwWeight * .35 + equip*.18, 'YXZ');
   // Rotate the rifle around the stock so both grips travel with the weapon.
-  stockScratch.copy(stockOffset).applyQuaternion(rig.rifle.quaternion);
-  rig.rifle.position.set(.126, 1.277 + UPPER_BODY_LIFT - WAIST + motion.aim * .052 - sprint * .075 - throwWeight * .07, -.012 + rig.recoil * .027).sub(stockScratch);
+  stockScratch.copy(stockOffset).multiplyScalar(rig.pistol ? 1.57 : 1).applyQuaternion(rig.rifle.quaternion);
+  rig.rifle.position.set(rig.pistol ? .084 : .126, 1.277 + UPPER_BODY_LIFT - WAIST + motion.aim * .052 - sprint * .075 - throwWeight * .07 - equip*.09, -.012 + rig.recoil * .027).sub(stockScratch);
   rig.head.rotation.set(
     clamp(look * .8 - bodyPitch * .85 - reload * .3 + rig.flinch * .3 + idle * Math.sin(t * .23) * .07, -.9, .95),
     idle * Math.sin(t * .37 + 1.1) * .38 + lerp(0, .045, sprint) - crouch * .025 - spineY * .25,
@@ -900,7 +939,7 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
     const seat = smoothstep(reloadPhase, .57, .79);
     rig.magazine.position.y -= .14 * pull * (1 - seat);
     rig.rifle.updateMatrix();
-    handTarget.copy(grips[0]).applyMatrix4(rig.rifle.matrix);
+    handTarget.copy((rig.pistol ? pistolGrips : grips)[0]).applyMatrix4(rig.rifle.matrix);
     handMagazine.copy(rig.magazine.position).addScaledVector(down, .045).applyMatrix4(rig.rifle.matrix);
     const releaseGrip = smoothstep(reloadPhase, .03, .18) * (1 - smoothstep(reloadPhase, .79, .97));
     const reachPouch = smoothstep(reloadPhase, .28, .43) * (1 - smoothstep(reloadPhase, .47, .67));
@@ -909,7 +948,7 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
     leftHand = handTarget;
   } else if (throwWeight > 0) {
     rig.rifle.updateMatrix();
-    handTarget.copy(grips[0]).applyMatrix4(rig.rifle.matrix);
+    handTarget.copy((rig.pistol ? pistolGrips : grips)[0]).applyMatrix4(rig.rifle.matrix);
     throwPoint.lerpVectors(throwBack, throwFront, throwSwing);
     handTarget.lerp(throwPoint, throwWeight);
     leftHand = handTarget;
