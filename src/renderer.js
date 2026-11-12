@@ -450,18 +450,12 @@ export class GameRenderer {
   setMap(mapId) {
     const map = getMap(mapId);
     if (this.map === map) return;
-    this.clearVehicles();
-    this.clearMapDynamics();
-    this.map = map;
-    this.scene.fog.density = map.fogDensity ?? .0034;
-    // A cached map is never a child of the live world unless it is selected.
-    for (const cached of this.worlds.values()) cached.root.removeFromParent();
     let world = this.worlds.get(map.id);
     if (!world) {
-      const liveScene = this.scene;
+      const live = { scene: this.scene, map: this.map, flags: this.flags, portWater: this.portWater, random: this.random };
       const root = new THREE.Group();
       root.name = `map-${map.id}`;
-      const random = this.random;
+      this.map = map;
       this.random = seeded();
       this.flags = new Map();
       this.portWater = null;
@@ -471,9 +465,9 @@ export class GameRenderer {
       try {
         this.buildWorld();
         this.mergeStaticWorld(new Set());
+        world = { root, flags: this.flags, water: this.portWater };
       } finally {
-        this.scene = liveScene;
-        this.random = random;
+        Object.assign(this, live);
       }
       root.updateMatrixWorld(true);
       root.traverse(object => {
@@ -481,9 +475,13 @@ export class GameRenderer {
         object.matrixAutoUpdate = false;
         object.matrixWorldAutoUpdate = false;
       });
-      world = { root, flags: this.flags, water: this.portWater };
       this.worlds.set(map.id, world);
     }
+    this.clearVehicles();
+    this.clearMapDynamics();
+    this.staticRoot?.removeFromParent();
+    this.map = map;
+    this.scene.fog.density = map.fogDensity ?? .0034;
     this.staticRoot = world.root;
     this.flags = world.flags;
     this.portWater = world.water;
@@ -709,19 +707,19 @@ export class GameRenderer {
           for (const face of [-1, 1]) {
             for (let x = -w / 2 + 1.5; x < w / 2 - 0.7; x += 2.7) {
               dummy.position.set(b.x + x, y + elevation, b.z + face * (d / 2 + 0.095)); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.3, 1.55, 0.045); dummy.updateMatrix();
-              (random() > 0.88 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
+              (this.random() > 0.88 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
               dummy.position.z = b.z + face * (d / 2 + .04); dummy.scale.set(1.5, 1.75, .055); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
             for (let z = -d / 2 + 1.5; z < d / 2 - 0.7; z += 2.7) {
               dummy.position.set(b.x + face * (w / 2 + 0.095), y + elevation, b.z + z); dummy.rotation.set(0, 0, 0); dummy.scale.set(0.045, 1.55, 1.3); dummy.updateMatrix();
-              (random() > 0.9 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
+              (this.random() > 0.9 ? litMatrices : windowMatrices).push(dummy.matrix.clone());
               dummy.position.x = b.x + face * (w / 2 + .04); dummy.scale.set(.055, 1.75, 1.5); dummy.updateMatrix(); frameMatrices.push(dummy.matrix.clone());
             }
           }
         }
         const vents = Math.min(3, Math.floor(w * d / 70));
         for (let i = 0; i < vents; i++) {
-          const vx = b.x + (random() - 0.5) * w * 0.55, vz = b.z + (random() - 0.5) * d * 0.55;
+          const vx = b.x + (this.random() - 0.5) * w * 0.55, vz = b.z + (this.random() - 0.5) * d * 0.55;
           this.box(parent, vx, h + 0.7, vz, 1.7, 1.1, 1.5, this.materials.steel);
           this.cylinder(parent, vx + 0.3, h + 1.7, vz, 0.19, 1.2, this.materials.rust);
         }

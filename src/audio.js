@@ -3,6 +3,7 @@ export const ORIGINAL_SCORE = 'AFTER THE RAIN';
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
 const midi = n => 440 * 2 ** ((n - 69) / 12);
 const BEAT = 60 / 82, EPSILON = .00001, MAX_VOICES = 56, MUSIC_VOICES = 14;
+const VOICE_FADE = .012, MAX_FADING_VOICES = 8;
 const HARMONY = [
   [38, [50, 53, 57, 64]], [34, [46, 50, 53, 57]],
   [41, [48, 53, 57, 60]], [36, [48, 53, 55, 60]],
@@ -41,6 +42,8 @@ export class CombatAudio {
     this._heartbeat=0; this._distantAt=0; this._nextGust=0; this._paused=false;
     this._suppressedUntil=0; this._muffleTarget=18000;
     this._pending=[];this._priority=2;this._engineAt=0;this._resumeAt=0;this._targets=new WeakMap();
+    this._fadingVoices = new Set();
+    this._shotBuffers = new Map();
   }
   get volume(){return this._volume;}
   set volume(v){this._volume=clamp(v);this._mix();}
@@ -60,7 +63,8 @@ export class CombatAudio {
       if(!this.ctx){
         const Context=globalThis.AudioContext||globalThis.webkitAudioContext;
         if(!Context)return false;
-        this.ctx=new Context({latencyHint:'interactive'});this._buildGraph();
+        this.ctx=new Context({latencyHint:.045});this._buildGraph();
+        this._prepareShotBuffers().catch(() => {});
       }
       if(this.ctx.state!=='running')await this.ctx.resume();
       if(!this._scheduler){
@@ -145,7 +149,7 @@ export class CombatAudio {
     }
   }
   _releaseVoice(voice,stop=false){
-    if(!this._voices.delete(voice))return;
+    if(!this._voices.delete(voice)&&!this._fadingVoices.delete(voice))return;
     voice.source.onended=null;
     if(stop)try{voice.source.stop();}catch{}
     for(const node of voice.nodes)try{node.disconnect();}catch{}
@@ -155,6 +159,20 @@ export class CombatAudio {
     // onended is delivered on the main thread and can be delayed by a busy frame.
     // Never allow a stale callback to hold the voice budget indefinitely.
     for(const voice of this._voices)if(voice.end<=now)this._releaseVoice(voice,true);
+    for(const voice of this._fadingVoices)if(voice.end<=now)this._releaseVoice(voice,true);
+  }
+  _fadeVoice(voice) {
+    const now = this.ctx.currentTime;
+    if (voice.time >= now) { this._releaseVoice(voice, true); return true; }
+    if (this._fadingVoices.size >= MAX_FADING_VOICES) return false;
+    const gain = voice.release;
+    gain.cancelAndHoldAtTime?.(now);
+    gain.setTargetAtTime(0, now, VOICE_FADE / 5);
+    voice.end = Math.min(voice.end, now + VOICE_FADE);
+    voice.source.stop(voice.end);
+    this._voices.delete(voice);
+    this._fadingVoices.add(voice);
+    return true;
   }
   _admit(options){
     this._reapVoices();
@@ -162,14 +180,15 @@ export class CombatAudio {
     let music=0,victim=null;
     for(const voice of this._voices){
       if(voice.bus==='music')music++;
-      if(voice.priority<priority&&(!victim||voice.priority<victim.priority||voice.priority===victim.priority&&voice.end<victim.end))victim=voice;
+      if(voice.bus===bus && voice.priority<priority &&
+        (!victim || voice.priority<victim.priority ||
+          (voice.priority===victim.priority && voice.end<victim.end))) victim=voice;
     }
     if(bus==='music'&&music>=MUSIC_VOICES)return false;
     // Reserve headroom for the local weapon, hits and immediate feedback.
     const limit=priority>=3?MAX_VOICES:priority>=2?MAX_VOICES-8:MAX_VOICES-16;
     if(this._voices.size<limit)return true;
-    if(!victim)return false;
-    this._releaseVoice(victim,true);return true;
+    return Boolean(victim) && this._fadeVoice(victim) !== false;
   }
   _defer(kind,frequency,duration,gain,options){
     if(!Number.isFinite(options.time)||options.time<=this.ctx.currentTime+.3)return false;
@@ -184,7 +203,23 @@ export class CombatAudio {
   }
   _voice(source,duration,gain,options={}){
     if(!this.ctx||!this._enabled||this.ctx.state!=='running'||!Number.isFinite(duration)||!Number.isFinite(gain)){try{source.disconnect();}catch{}return null;}
-    const c=this.ctx,time=Math.max(c.currentTime,options.time??c.currentTime),end=time+Math.max(.015,duration),nodes=[source];let output=source;
+    const c=this.ctx,time=Math.max(c.currentTime,options.time??c.currentTime);
+    const {end,nodes,envelope}=this._envelope(c,source,time,duration,gain,options);
+    let output=envelope,release=envelope.gain;
+    if(!release.cancelAndHoldAtTime){
+      const gate=c.createGain();output.connect(gate);output=gate;nodes.push(gate);release=gate.gain;
+    }
+    if(c.createStereoPanner&&options.pan){const p=c.createStereoPanner();p.pan.value=clamp(options.pan,-1,1);output.connect(p);output=p;nodes.push(p);}
+    const bus=options.bus==='music'?'music':'effects';output.connect(bus==='music'?this._music:this._effects);
+    if(options.send){const send=c.createGain();send.gain.value=options.send;output.connect(send).connect(this._reverbs[bus]);nodes.push(send);}
+    const voice={source,nodes,time,end:end+.015,bus,release,priority:options.priority??(bus==='music'?0:this._priority)};this._voices.add(voice);
+    source.onended=()=>this._releaseVoice(voice);
+    try{source.start(time,...(options.offset===undefined?[]:[options.offset]));source.stop(voice.end);}
+    catch{this._releaseVoice(voice,true);return null;}
+    return voice;
+  }
+  _envelope(c,source,time,duration,gain,options){
+    const end=time+Math.max(.015,duration),nodes=[source];let output=source;
     if(options.cutoff){
       const filter=c.createBiquadFilter();filter.type=options.filter||'lowpass';filter.frequency.setValueAtTime(clamp(options.cutoff,20,19000),time);filter.Q.value=options.q??.6;
       if(options.endCutoff)filter.frequency.exponentialRampToValueAtTime(Math.max(20,options.endCutoff),end);
@@ -196,30 +231,31 @@ export class CombatAudio {
       const shoulder=Math.min(end-.002,time+attack+options.decay);
       envelope.gain.exponentialRampToValueAtTime(Math.max(EPSILON,peak*(options.decayGain??.25)),shoulder);
     }else if(options.sustain)envelope.gain.setValueAtTime(peak*.72,Math.max(time+attack,end-options.sustain));
-    envelope.gain.exponentialRampToValueAtTime(EPSILON,end);output.connect(envelope);output=envelope;nodes.push(envelope);
-    if(c.createStereoPanner&&options.pan){const p=c.createStereoPanner();p.pan.value=clamp(options.pan,-1,1);output.connect(p);output=p;nodes.push(p);}
-    const bus=options.bus==='music'?'music':'effects';output.connect(bus==='music'?this._music:this._effects);
-    if(options.send){const send=c.createGain();send.gain.value=options.send;output.connect(send).connect(this._reverbs[bus]);nodes.push(send);}
-    const voice={source,nodes,end:end+.015,bus,priority:options.priority??(bus==='music'?0:this._priority)};this._voices.add(voice);
-    source.onended=()=>this._releaseVoice(voice);
-    try{source.start(time,...(options.offset===undefined?[]:[options.offset]));source.stop(voice.end);}
-    catch{this._releaseVoice(voice,true);return null;}
-    return voice;
+    envelope.gain.exponentialRampToValueAtTime(EPSILON,end);output.connect(envelope);nodes.push(envelope);
+    return {end,nodes,envelope};
+  }
+  _oscillator(context,frequency,time,duration,options){
+    const o=context.createOscillator();o.type=options.type||'sine';
+    o.frequency.setValueAtTime(Math.max(1,frequency),time);if(options.end)o.frequency.exponentialRampToValueAtTime(Math.max(1,options.end),time+duration);if(options.detune)o.detune.value=options.detune;
+    return o;
   }
   _tone(frequency,duration,gain,options={}){
     if(!this.ctx||!this._enabled||this.ctx.state!=='running'||!Number.isFinite(frequency))return;
     if(this._defer('tone',frequency,duration,gain,options))return;
     if(!this._admit(options))return;
-    const time=Math.max(this.ctx.currentTime,options.time??this.ctx.currentTime),o=this.ctx.createOscillator();o.type=options.type||'sine';
-    o.frequency.setValueAtTime(Math.max(1,frequency),time);if(options.end)o.frequency.exponentialRampToValueAtTime(Math.max(1,options.end),time+duration);if(options.detune)o.detune.value=options.detune;
+    const time=Math.max(this.ctx.currentTime,options.time??this.ctx.currentTime),o=this._oscillator(this.ctx,frequency,time,duration,options);
     return this._voice(o,duration,gain,options);
   }
   _noise(duration,gain,options={}){
     if(!this.ctx||!this._enabled||this.ctx.state!=='running')return;
     if(this._defer('noise',0,duration,gain,options))return;
     if(!this._admit(options))return;
-    const s=this.ctx.createBufferSource();s.buffer=this._noiseBuffer(options.color||'white');s.playbackRate.value=options.rate||1;
+    const s=this._noiseSource(this.ctx,options);
     return this._voice(s,duration,gain,{...options,offset:Math.random()*Math.max(0,3-duration)});
+  }
+  _noiseSource(context,options){
+    const s=context.createBufferSource();s.buffer=this._noiseBuffer(options.color||'white');s.playbackRate.value=options.rate||1;
+    return s;
   }
   tone(frequency,duration,gain=.1,type='sine',end=frequency){this._tone(frequency,duration,gain,{type,end});}
   noise(duration,gain,lowpass=4000){this._noise(duration,gain,{cutoff:lowpass});}
@@ -263,38 +299,74 @@ export class CombatAudio {
     const dx=(event.x??local.x)-local.x,dz=(event.z??local.z)-local.z,distance=Math.hypot(dx,dz),yaw=local.yaw||0;
     return {distance,pan:clamp((dx*Math.cos(yaw)-dz*Math.sin(yaw))/Math.max(4,distance),-.95,.95),gain:1/(1+distance*.042)};
   }
-  shot(distance=0,classId='assault',pan=0,isLocal=distance<1){
+  async _prepareShotBuffers(){
+    const OfflineContext=globalThis.OfflineAudioContext||globalThis.webkitOfflineAudioContext;
+    if(!OfflineContext)return;
+    const sampleRate=this.ctx.sampleRate;
+    for(const [classId,weapon] of Object.entries(WEAPONS))for(const local of [false,true]){
+      if(this._disposed)return;
+      const length=local?weapon.tail+.07:.28;
+      const context=new OfflineContext(1,Math.ceil(length*sampleRate),sampleRate);
+      const record=(source,duration,gain,options)=>{
+        const {end,envelope}=this._envelope(context,source,options.time,duration,gain,options);
+        envelope.connect(context.destination);
+        if(options.noise)source.start(options.time,Math.random()*2);
+        else source.start(options.time);
+        source.stop(end);
+      };
+      this._shotLayers(weapon,classId,{isLocal:local},
+        (frequency,duration,gain,options)=>record(this._oscillator(context,frequency,options.time,duration,options),duration,gain,options),
+        (duration,gain,options)=>record(this._noiseSource(context,options),duration,gain,{...options,noise:true}));
+      const buffer=await context.startRendering();
+      if(this._disposed)return;
+      this._shotBuffers.set(`${classId}:${local}`,buffer);
+    }
+  }
+  shot(distance=0,classId='assault',pan=0,isLocal=distance<1,age=0){
     const priority=this._priority;
     this._priority=isLocal?3:distance<30?2:1;
-    try{this._shot(distance,classId,pan,isLocal);}finally{this._priority=priority;}
+    try{
+      if(!this.ctx||!this._enabled||this.ctx.state!=='running')return;
+      const id=Object.hasOwn(WEAPONS,classId)?classId:'assault',weapon=WEAPONS[id];
+      const variation=.94+Math.random()*.12;
+      const gain=.8*weapon.gain/(1+distance*.044);
+      const time=this.ctx.currentTime+.015+Math.max(0,Math.min(.23,distance/343)-age);
+      const buffer=this._shotBuffers.get(`${id}:${isLocal}`);
+      if(buffer){
+        if(!this._admit({}))return;
+        const source=this.ctx.createBufferSource();
+        source.buffer=buffer;source.playbackRate.value=variation;
+        this._voice(source,buffer.length/buffer.sampleRate/variation,gain,{
+          time,pan,attack:.001,sustain:.04,send:isLocal?.11:.12,
+          cutoff:distance>4?Math.max(380,weapon.crack/(1+distance*.046)):0,
+        });
+      }else{
+        this._shotLayers(weapon,id,{variation,distance,pan,time,gain,isLocal,tail:isLocal||this._voices.size<28},
+          this._tone.bind(this),this._noise.bind(this));
+      }
+    }finally{this._priority=priority;}
   }
-  _shot(distance,classId,pan,isLocal){
-    if(!this.ctx||!this._enabled)return;
-    if(!isLocal&&this._voices.size>=(distance<20?48:36))return;
-    const weapon=WEAPONS[classId]||WEAPONS.assault;
-    const variation=.94+Math.random()*.12;
-    const gain=weapon.gain*variation/(1+distance*.044);
-    const time=this.ctx.currentTime+Math.min(.23,distance/343);
+  _shotLayers(weapon,classId,{variation=1,distance=0,pan=0,time=0,gain=1,isLocal,tail=true},tone,noise){
     const cutoff=Math.max(380,weapon.crack/(1+distance*.046));
     const nearby=isLocal||distance<30;
     // Pressure, the leading crack, and the reflection decay on different envelopes.
-    this._noise(weapon.report,.56*gain,{time,cutoff,q:.45,pan,rate:variation,
+    noise(weapon.report,.56*gain,{time,cutoff,q:.45,pan,rate:variation,
       endCutoff:Math.max(180,cutoff*.29),attack:.0008,decay:.009,decayGain:.19,send:.16});
-    this._tone(weapon.body*variation,weapon.report+.025,.34*gain,{time,type:'triangle',end:weapon.bodyEnd,
+    tone(weapon.body*variation,weapon.report+.025,.34*gain,{time,type:'triangle',end:weapon.bodyEnd,
       cutoff:Math.min(1040,cutoff*.8),pan,attack:.001,decay:.025,decayGain:.32,send:.09});
     if(nearby){
-      this._noise(weapon.transient,.31*gain,{time,filter:'bandpass',cutoff,q:.77,pan,rate:variation,
+      noise(weapon.transient,.31*gain,{time,filter:'bandpass',cutoff,q:.77,pan,rate:variation,
         attack:.0005,decay:.004,decayGain:.14});
     }
-    if(isLocal||this._voices.size<28){
-      this._noise(weapon.tail,.27*gain,{time:time+.017+Math.min(.07,distance*.001),color:'pink',
+    if(tail){
+      noise(isLocal?weapon.tail:Math.min(weapon.tail,.21),(isLocal?.27:.17)*gain,{time:time+.017+Math.min(.07,distance*.001),color:'pink',
         cutoff:Math.min(cutoff*.72,2200),endCutoff:170,pan:pan*.64,attack:.014,
         decay:.065,decayGain:.36,send:weapon.echo+Math.min(.34,distance*.005)});
     }
     if(isLocal){
       const cycle=classId==='recon'?.091:classId==='support'?.051:.029;
-      this._noise(.035,.082,{time:time+cycle,filter:'bandpass',cutoff:weapon.metal,q:1.65,pan:.26,attack:.001});
-      if(classId==='recon')this._mechanic('lock',time+.137,.31,.06);
+      noise(.035,.082,{time:time+cycle,filter:'bandpass',cutoff:weapon.metal,q:1.65,pan:.26,attack:.001});
+      if(classId==='recon')noise(.034,.06,{time:time+.137,filter:'bandpass',cutoff:4700,pan:.31,attack:.001});
     }
   }
   _mechanic(kind,time,pan,gain){
@@ -386,7 +458,8 @@ export class CombatAudio {
         const p=this._position(e,local);
         if(p.distance<145){
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
-          this.shot(p.distance,e.mounted?'turret':classId,p.pan,own);
+          const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
+          this.shot(p.distance,e.mounted?'turret':classId,p.pan,Boolean(own),age);
         }
         if(!own)this._nearMiss(e,local);
         this._impact(e,local);
@@ -538,8 +611,8 @@ export class CombatAudio {
   dispose(){
     this._disposed=true;clearInterval(this._scheduler);this._scheduler=null;
     this._pending=[];
-    for(const voice of this._voices){voice.source.onended=null;try{voice.source.stop();}catch{}for(const node of voice.nodes){try{node.disconnect();}catch{}}}
-    this._voices.clear();
+    for(const voice of [...this._voices,...this._fadingVoices])this._releaseVoice(voice,true);
+    this._shotBuffers.clear();
     if(this._engine){for(const source of this._engine.sources)try{source.stop();}catch{}this._engine=null;}
     for(const {source,nodes}of this._ambientSources){try{source.stop();source.disconnect();}catch{}for(const node of nodes){try{node.disconnect();}catch{}}}
     this._ambientSources=[];for(const node of this._nodes){try{node.disconnect();}catch{}}this._nodes=[];this._buffers.clear();

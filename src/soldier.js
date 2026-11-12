@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { drawTeamEmblem } from './logos.js';
-import { tailoredGeometry } from './character-geometry.js';
+import { smoothRingSeams, tailoredGeometry } from './character-geometry.js';
 
 // Every soldier is ONE skinned mesh (one draw call + one shadow call) driven by
 // a small bone hierarchy. Parts are painted with vertex colours over a shared
@@ -21,6 +21,8 @@ const WAIST = .98;
 const UPPER_BODY_LIFT = .14;
 const THROW_TIME = .78;
 const TAU = Math.PI * 2;
+const grips = [new THREE.Vector3(-.057, -.033, -.127), new THREE.Vector3(.004, -.057, .105)];
+const supportPalm = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI * .37);
 
 // Atlas regions: [u0, u1, roughness, metalness]. Region 0 is woven camouflage.
 const ATLAS_W = 1280;
@@ -266,6 +268,66 @@ function makeHead(head, c, classId, team) {
   }
 }
 
+function makeGlove(wrist, c, support) {
+  // Build the fingers around the weapon in rifle coordinates, then attach
+  // the whole glove to the wrist so it follows the same IK in every pose.
+  const glove = new THREE.Group();
+  if (support) glove.quaternion.copy(supportPalm).invert();
+  glove.position.copy(grips[support ? 0 : 1]).negate().applyQuaternion(glove.quaternion);
+  wrist.add(glove);
+  const finger = (points, radius) => {
+    const path = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point)));
+    const segments = 12, sides = 8;
+    const geometry = new THREE.TubeGeometry(path, segments, radius, sides);
+    const positions = geometry.attributes.position;
+    const vertex = new THREE.Vector3();
+    for (let ring = 0; ring <= segments; ring++) {
+      const t = ring / segments;
+      const center = path.getPointAt(t);
+      const taper = lerp(1, .74, t) * Math.sqrt(1 - smoothstep(t, .83, 1) * .999);
+      for (let side = 0; side <= sides; side++) {
+        const index = ring * (sides + 1) + side;
+        vertex.fromBufferAttribute(positions, index).sub(center).multiplyScalar(taper).add(center);
+        positions.setXYZ(index, vertex.x, vertex.y, vertex.z);
+      }
+    }
+    geometry.computeVertexNormals();
+    smoothRingSeams(geometry, segments + 1, sides);
+    shape(glove, geometry, c.glove, 0, 0, 0, 1, 1, 1).userData.owned = true;
+  };
+  if (support) {
+    const palm = volume(glove, c.glove, [[0,.023,.019],[.028,.028,.018],[.06,.033,.016],
+      [.092,.035,.014],[.117,.026,.012],[.127,.017,.009]], 14, null, { caps: true, square: .82 });
+    palm.position.set(-.062, -.049, -.136);
+    palm.rotation.set(-Math.PI / 2, 0, -.43);
+    for (const [index, z] of [-.257, -.24, -.223, -.207].entries()) {
+      const short = index === 3 ? .009 : index === 0 ? .004 : 0;
+      finger([[-.02,-.049,z],[.016,-.045,z-.004],[.04,-.03,z-.006],
+        [.044-short,-.006-short,z-.005],[.032,.009-short,z-.003]], .009-index*.0005);
+      ball(glove, c.rubber, .017, -.049, z-.004, .011, .004, .006);
+    }
+    ball(glove, c.glove, -.052, -.045, -.231, .017, .02, .028);
+    finger([[-.062,-.055,-.224],[-.058,-.024,-.245],[-.044,-.001,-.267],
+      [-.034,.01,-.278]], .011);
+  } else {
+    const palm = volume(glove, c.glove, [[-.036,.008,.014],[-.023,.014,.027],[0,.019,.035],
+      [.024,.017,.028],[.036,.011,.018]], 14, null, { caps: true, square: .82 });
+    palm.position.set(.032, -.087, .125);
+    palm.rotation.z = -.15;
+    panel(glove, c.rubber, .049, -.088, .125, .036, .045, .004, .003).rotation.y = Math.PI / 2;
+    for (const [index, y] of [-.073, -.09, -.107].entries()) {
+      const z = .076 + index*.005;
+      finger([[.039,y,.106],[.029,y,z+.01],[.011,y-.001,z],[-.016,y,z+.003],
+        [-.024,y+.004,z+.017]], .009-index*.00065);
+    }
+    finger([[.041,-.062,.118],[.035,-.052,.085],[.029,-.051,.058],
+      [.017,-.057,.047],[.006,-.063,.047]], .008);
+    ball(glove, c.glove, .021, -.059, .139, .018, .016, .018);
+    finger([[.026,-.062,.147],[.004,-.055,.151],[-.019,-.06,.14],
+      [-.026,-.072,.12]], .011);
+  }
+}
+
 function makeArm(spine, c, side, classId) {
   const arm = bone(side < 0 ? 'arm.L' : 'arm.R', side * .207, 1.39, 0);
   const elbow = bone('elbow', 0, -UPPER_ARM, 0), wrist = bone('wrist', 0, -FOREARM, 0);
@@ -289,40 +351,7 @@ function makeArm(spine, c, side, classId) {
     panel(elbow, c.steel, 0, -.215, .047, .03, .027, .008, .003);
     block(elbow, c.visor, 0, -.215, .054, .022, .02, .003);
   }
-  // Metacarpal fan, opposed thumb and individual curled fingers. The hand
-  // stays on the original wrist bone so the grip IK and reloads still agree.
-  if (side > 0) {
-    const palm=volume(wrist,c.glove,[[-.067,.018,.017,.012],[-.046,.022,.025,.011],
-      [-.018,.025,.026,.007],[.011,.024,.022,.004],[.028,.016,.015]],16,null,{caps:true});
-    palm.position.x=.025;
-    const pad=panel(wrist,c.rubber,.047,-.019,.008,.039,.053,.006,.004);
-    pad.rotation.y=Math.PI/2;
-    for(let n=0;n<3;n++){
-      const y=-.015-n*.021;
-      cord(wrist,c.glove,[[.038,y,.02],[.045,y,-.005],[.024,y,-.032],
-        [-.009,y,-.035],[-.024,y,-.015]],.008,12);
-      ball(wrist,c.glove,-.024,y,-.015,.007,.008,.007);
-    }
-    // Index finger reaches forward into the trigger guard; thumb opposes it.
-    cord(wrist,c.glove,[[.035,.012,.007],[.035,.022,-.033],[.021,.015,-.061],[.009,.007,-.063]],.0075,12);
-    ball(wrist,c.glove,.019,.015,.022,.018,.022,.019);
-    cord(wrist,c.glove,[[.025,.021,.026],[.001,.022,.031],[-.024,.005,.012],[-.025,-.008,-.006]],.009,12);
-  } else {
-  volume(wrist,c.glove,[[.024,.026,.026],[.003,.032,.026],[-.025,.041,.025,-.002],
-    [-.05,.039,.024,-.009],[-.063,.031,.019,-.018]].reverse(),16,null,{caps:true});
-  panel(wrist,c.rubber,0,-.025,.025,.051,.04,.005,.004);
-  for(let n=0;n<4;n++){
-    const x=(n-1.5)*.018, short=n===0||n===3;
-    const y=-.051+(short?.006:0);
-    cord(wrist,c.glove,[[x,y,.012],[x,y-.017,-.006],[x,y-.012,-.032],
-      [x,y+.008,-.044],[x,y+.021,-.033]],short?.0075:.0085,12);
-    ball(wrist,c.rubber,x,y,.018,.007,.01,.004);
-    ball(wrist,c.glove,x,y+.021,-.033,.007,.008,.006);
-  }
-  ball(wrist,c.glove,-side*.026,-.01,-.013,.018,.026,.022);
-  cord(wrist,c.glove,[[-side*.032,.002,-.006],[-side*.044,-.012,-.026],
-    [-side*.028,-.028,-.047],[-side*.011,-.026,-.049]],.010,12);
-  }
+  makeGlove(wrist, c, side < 0);
   return { arm, elbow, wrist };
 }
 
@@ -629,12 +658,10 @@ export function cloneSoldierRig(template, player) {
   return rig;
 }
 
-const grips = [new THREE.Vector3(-.057, -.033, -.127), new THREE.Vector3(.004, -.057, .105)];
 const target = new THREE.Vector3(), axis = new THREE.Vector3(), bend = new THREE.Vector3();
 const middle = new THREE.Vector3(), upper = new THREE.Vector3(), lower = new THREE.Vector3();
 const inverse = new THREE.Quaternion();
 const up = new THREE.Vector3(0, 1, 0);
-const supportPalm = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI * .37);
 const poseInverse = new THREE.Matrix4();
 const stockOffset = new THREE.Vector3(0, -.008, .295);
 const stockScratch = new THREE.Vector3();
