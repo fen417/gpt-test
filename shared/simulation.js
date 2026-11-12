@@ -540,13 +540,13 @@ export class Simulation {
     const dx=vx*dt,dy=bulletHeight(y,vy,age)-origin.y,dz=vz*dt;
     const length=Math.hypot(dx,dy,dz);
     const direction={x:dx/length,y:dy/length,z:dz/length};
-    let closest=length,target=null,vehicle=null,headshot=false,impact=null;
+    let closest=length,target=null,vehicle=null,headshot=false,impact=null,impactBox=null;
     const terrain=this.map.terrain;
     const ground=terrain?terrain.raycast(origin,direction,length):(direction.y<0?-origin.y/direction.y:Infinity);
     if(ground>=0&&ground<closest){closest=ground;impact='ground';}
     for(const box of this.rayBoxes(origin,direction,closest)){
       const distance=rayBox(origin,direction,box,closest);
-      if(distance<closest){closest=distance;impact=impactMaterial(box.kind);}
+      if(distance<closest){closest=distance;impact=impactMaterial(box.kind);impactBox=box;}
     }
     for(const v of this.vehicles){
       if(v.id===bullet.vehicleId||(v.hp<=0&&!(v.wreckTime>0)))continue;
@@ -571,8 +571,12 @@ export class Simulation {
     if(target)impact=hit?'flesh':'shield';
     const vehicleHit=Boolean(vehicle?.hp>0&&vehicle.team!==team);
     const flight=start+dt*closest/length;
-    this.event('bulletImpact',{shotId:bullet.shotId,playerId,team,x,y,z,flight,
+    this.event('bulletImpact',{shotId:bullet.shotId,playerId,team,weaponId:weapon.id,x,y,z,flight,
       tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,
+      ...(weapon.id==='sv98'&&!target&&impact?{
+        impactBoxId:vehicle?undefined:impactBox?.id,impactVehicleId:vehicle?.id,
+        dx:direction.x,dy:direction.y,dz:direction.z,
+      }:{}),
       hit,headshot:hit&&headshot,impact,vehicleHit});
     const shooter=this.players.get(playerId),attacker=shooter?.team===team?shooter:null;
     const falloff=clamp(1-Math.max(0,flight*weapon.projectileSpeed-35)/300,.65,1);

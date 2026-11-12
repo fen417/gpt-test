@@ -11,6 +11,7 @@ import { createWeaponRig } from './weapons.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicles.js';
+import { BulletMarks } from './bullet-marks.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
   soldierHit, soldierThrow, beginDeath, animateDeath,
@@ -154,6 +155,7 @@ export class GameRenderer {
     this.gadgetTimer = 0;
     this.gadgetDuration = 0.65;
     this.effects = [];
+    this.bulletMarks = new BulletMarks();
     this.effectPools = { tracer: [], shell: [], smoke: [], spark: [] };
     this.seenEvents = new Set();
     this.lastShot = -1;
@@ -517,6 +519,7 @@ export class GameRenderer {
   }
 
   clearMapDynamics() {
+    this.bulletMarks.clear();
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
     for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
@@ -1121,9 +1124,11 @@ export class GameRenderer {
         const tracer = this.effects.find(effect => effect.type === 'tracer' && effect.shotId === event.shotId);
         if (tracer) tracer.life = Math.min(tracer.life, event.flight);
         const { tx, ty, tz, impact } = event;
+        this.bulletMarks.add(event, this.map, this.staticRoot, this.worldRoot, this.vehicleRigs.get(event.impactVehicleId));
         if (!impact || state.time - event.time > .27 || this.effects.length >= 120) continue;
         this.effectBounds.center.set(tx, ty, tz);
-        if (this.camera.position.distanceToSquared(this.effectBounds.center) > 165 ** 2 ||
+        const impactRange = event.weaponId === 'sv98' ? getWeapon('recon', 'sv98').range + 20 : 165;
+        if (this.camera.position.distanceToSquared(this.effectBounds.center) > impactRange ** 2 ||
           !this.viewFrustum.intersectsSphere(this.effectBounds)) continue;
         if (impact === 'metal') {
           for (let i = 0; i < (this.lowQuality || this.integratedGpu ? 1 : 4); i++) this.spark(tx, ty, tz);
@@ -1200,6 +1205,7 @@ export class GameRenderer {
   }
 
   updateEffects(dt) {
+    this.bulletMarks.update(dt);
     for (const batch of Object.values(this.effectBatches)) batch.count = 0;
     this.smokeOrder.length = 0;
     for (let i = this.effects.length - 1; i >= 0; i--) {
@@ -1741,7 +1747,10 @@ export class GameRenderer {
       this.updateEffects(dt);
       this.drawScene(true); return;
     }
-    if (this.lastStateTime !== undefined && state.time < this.lastStateTime - 1) for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }
+    if (this.lastStateTime !== undefined && state.time < this.lastStateTime - 1) {
+      this.bulletMarks.clear();
+      for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }
+    }
     this.lastStateTime = state.time;
     for (const event of state.events || []) {
       if (event.playerId === localId) {
@@ -1977,6 +1986,7 @@ export class GameRenderer {
   }
 
   dispose() {
+    this.bulletMarks.dispose();
     this.clearVehicles();
     const geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set();
     const collect = object => {
