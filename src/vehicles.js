@@ -6,6 +6,7 @@ import { HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES 
 const upAxis = new THREE.Vector3(0, 1, 0);
 const turretHeading = new THREE.Quaternion();
 const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
+const paneGeometry = new THREE.PlaneGeometry(1, 1);
 const roundedGeometry = new RoundedBoxGeometry(1, 1, 1, 1, .13);
 const cylinderGeometry = new THREE.CylinderGeometry(1, 1, 1, 16);
 const sphereGeometry = new THREE.SphereGeometry(1, 12, 8);
@@ -24,6 +25,7 @@ function parts(parent, materials, draw) {
     batches.get(mat).push(clone);
   };
   const prism = (mat,...params) => piece(boxGeometry,mat,...params);
+  const pane = (x,y,z,w,h,rx=0,ry=0) => piece(paneGeometry,'glass',x,y,z,w,h,1,rx,ry);
   const round = (mat,...params) => piece(roundedGeometry,mat,...params);
   const ball = (mat,...params) => piece(sphereGeometry,mat,...params);
   const ring = (mat,...params) => piece(ringGeometry,mat,...params);
@@ -35,7 +37,7 @@ function parts(parent, materials, draw) {
     ));
     cylinder(mat,(ax+bx)/2,(ay+by)/2,(az+bz)/2,r,delta.length(),angle.x,angle.y,angle.z);
   };
-  draw({ prism, round, ball, ring, cylinder, tube });
+  draw({ prism, pane, piece, round, ball, ring, cylinder, tube });
   for (const [key, list] of batches) {
     const geometry = mergeGeometries(list);
     for (const item of list) item.dispose();
@@ -122,8 +124,73 @@ function buildAtv(body, materials) {
   return controls;
 }
 
+function humveeGlazing({prism,pane,piece,tube}) {
+  const windows = HUMVEE_SIDE_WINDOWS;
+  const front = { bottomY: 1.26, bottomZ: -1.34, topZ: -1.11 };
+  const rear = { bottomY: 1.32, bottomZ: 1.43, topZ: 1.395 };
+  const topY = 1.75;
+  const zAt = (end, y) => THREE.MathUtils.lerp(end.bottomZ, end.topZ, (y - end.bottomY) / (topY - end.bottomY));
+
+  // Each pane and its frame share one plane between the cowl and the roof.
+  for (const end of [front, rear]) {
+    const height = topY - end.bottomY;
+    const depth = end.topZ - end.bottomZ;
+    const pitch = Math.atan2(depth, height);
+    const length = Math.hypot(height, depth);
+    const midY = (topY + end.bottomY) / 2;
+    const midZ = (end.topZ + end.bottomZ) / 2;
+    const width = 1.98, rail = .048;
+    const frame = (x, offset, w, h) => prism('paint', x,
+      midY + offset * Math.cos(pitch), midZ + offset * Math.sin(pitch), w, h, .049, pitch);
+    for (const side of [-1, 1]) {
+      frame(0, side * (length - rail) / 2, width, rail);
+      frame(side * (width - rail) / 2, 0, rail, length - 2 * rail);
+    }
+    if (end === front) {
+      frame(0, 0, rail, length - 2 * rail);
+      const paneWidth = (width - 3 * rail) / 2;
+      for (const side of [-1, 1]) {
+        pane(side * (rail + paneWidth) / 2, midY, midZ, paneWidth, length - 2 * rail, pitch);
+        tube('steel', .009, side * .34, 1.32, zAt(front, 1.32) - .022,
+          side * .57, 1.54, zAt(front, 1.54) - .022);
+      }
+    } else {
+      pane(0, midY, midZ, width - 2 * rail, length - 2 * rail, pitch);
+    }
+  }
+
+  // The side frames close the corners around the exact passenger window openings.
+  const sill = 1.34;
+  const frame = new THREE.Shape();
+  frame.moveTo(zAt(front, sill), sill);
+  frame.lineTo(zAt(rear, sill), sill);
+  frame.lineTo(rear.topZ, topY);
+  frame.lineTo(front.topZ, topY);
+  frame.closePath();
+  const sideWindows = [windows.front, windows.rear];
+  for (const window of sideWindows) {
+    const left = window.z - window.width / 2, right = window.z + window.width / 2;
+    const bottom = windows.y - windows.height / 2, top = windows.y + windows.height / 2;
+    const opening = new THREE.Path();
+    opening.moveTo(left, bottom);
+    opening.lineTo(left, top);
+    opening.lineTo(right, top);
+    opening.lineTo(right, bottom);
+    opening.closePath();
+    frame.holes.push(opening);
+  }
+  const sideFrame = new THREE.ExtrudeGeometry(frame, { depth: .045, bevelEnabled: false });
+  sideFrame.translate(0, 0, -.0225);
+  for (const side of [-1, 1]) {
+    piece(sideFrame, 'paint', side * windows.x, 0, 0, 1, 1, 1, 0, -H);
+    for (const window of sideWindows) pane(side * windows.x, windows.y, window.z, window.width, windows.height, 0, -H);
+  }
+  sideFrame.dispose();
+}
+
 function buildHumvee(body, materials) {
-  parts(body,materials,({prism,round,cylinder,ring,tube})=>{
+  parts(body,materials,helpers=>{
+    const {prism,round,cylinder,ring,tube}=helpers;
     round('steel',0,.53,.04,1.70,.24,4.18);
     round('paint',0,.76,-.09,1.98,.34,4.43);
     round('paint',0,1.02,-1.69,1.87,.31,1.36,.085);
@@ -137,26 +204,16 @@ function buildHumvee(body, materials) {
     prism('canvas',0,1.14,-1.08,1.81,.24,.32,.15);
     prism('paint',0,1.82,.14,1.95,.14,2.53);
     prism('rubber',0,1.751,.14,1.83,.032,2.45);
-    prism('paint',0,1.27,1.43,1.98,.11,.13);
-    prism('paint',0,1.66,1.43,1.98,.09,.13);
-    prism('glass',0,1.47,1.425,1.82,.32,.018);
-    prism('paint',0,1.27,-1.33,1.93,.08,.09,-.37);
-    prism('glass',0,1.52,-1.244,1.83,.49,.02,-.37);
-    prism('steel',0,1.52,-1.263,.041,.53,.041,-.37);
+    prism('paint',0,1.20,-1.33,1.98,.15,.13);
+    prism('paint',0,1.25,1.43,1.98,.15,.10);
+    humveeGlazing(helpers);
     prism('rubber',0,1.04,.08,.22,.42,1.63);
     round('canvas',0,1.26,-.16,.27,.055,.54);
     for(let n=0;n<7;n++)prism('tread',-.56,.775,-.83+n*.092,.46,.022,.023);
     for(const side of [-1,1]){
       round('paint',side*.84,.98,1.82,.29,.31,1);
-      prism('paint',side*.985,1.128,.33,.069,.48,2.73);
+      prism('paint',side*.985,1.125,.33,.069,.48,2.73);
       prism('steel',side*1.054,.70,.16,.18,.08,2.30);
-      tube('steel',.035,side*.978,1.26,-1.34,side*.965,1.8,-1.11);
-      tube('paint',.038,side*.978,1.25,1.43,side*.965,1.8,1.39);
-      prism('steel',side*.973,1.54,.06,.055,.46,.086);
-      const windows = HUMVEE_SIDE_WINDOWS;
-      for (const window of [windows.front, windows.rear]) {
-        prism('glass',side*windows.x,windows.y,window.z,.022,windows.height,window.width);
-      }
       for(const z of [-.52,.71]){
         round('canvas',side*.55,.91,z,.42,.15,.44);
         round('canvas',side*.55,1.16,z+.25,.41,.54,.116,-.12);
@@ -178,7 +235,6 @@ function buildHumvee(body, materials) {
       prism('mirror',side*1.238,1.35,-.899,.138,.13,.015);
       prism('rubber',side*.57,.72,-2.529,.2,.20,.13);
       tube('steel',.031,side*.7,1.17,-2.31,side*.73,.69,-2.5);
-      tube('steel',.009,side*.34,1.37,-1.338,side*.57,1.56,-1.258);
       round('steel',side*.50,1.225,-.895,.48,.12,.29,-.23);
       prism('screen',side*.50,1.286,-.882,.25,.012,.09,-.23);
       for(let n=0;n<4;n++)prism('lamp',side*.50-.09+n*.06,1.293,-.858,.019,.012,.019,-.23);
@@ -302,7 +358,7 @@ export function createVehicleRig(type, material, teamColors) {
     lamp: material(0xffe7b4,.25,.15,{emissive:0x705b35,emissiveIntensity:.45}),
     signal: material(0xce751c,.44,.12,{emissive:0x703509,emissiveIntensity:.3}),
     rear: material(0xb32b25,.45,.11,{emissive:0x711615,emissiveIntensity:.38}),
-    glass: material(0x687e83,.19,.14,{transparent:true,opacity:.19,depthWrite:false,side:THREE.DoubleSide}),
+    glass: material(0x687e83,.19,.14,{transparent:true,opacity:.19,depthWrite:false,side:THREE.DoubleSide,forceSinglePass:true}),
     screen: material(0x557c6a,.40,.14,{emissive:0x203e34,emissiveIntensity:.50}),
     mirror: material(0x879395,.19,.65), uniform: material(0x58634c,.93,.01),
     skin: material(0xa2846d,.93,.01), brass: material(0x927045,.45,.68),

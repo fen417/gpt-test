@@ -23,8 +23,8 @@ function hangar(x, z, w, d, h) {
 }
 
 const nodes = Object.entries({
-  'north-humvee': [-15, -347], 'north-atv': [15, -347], 'north-atv-2': [7, -347],
-  'north-atv-merge': [15, -319],
+  'north-humvee': [-15, -347], 'north-humvee-2': [-7, -347], 'north-atv': [15, -347], 'north-atv-2': [7, -347],
+  'north-humvee-merge': [-15, -319], 'north-atv-merge': [15, -319],
   'north-west-gate': [-15, -219], 'north-east-gate': [15, -219], 'north-junction': [0, -190],
   'north-west-switch': [-110, -190], 'north-east-switch': [112, -190],
   'north-approach': [0, -112], 'north-inlet': [-44, -77], 'north-outlet': [44, -77],
@@ -37,8 +37,8 @@ const nodes = Object.entries({
   'east-ring-north': [44, -25], 'east-ring-south': [44, 27], 'south-inlet': [-44, 77],
   'south-outlet': [44, 77], 'south-approach': [0, 114], 'south-junction': [0, 190],
   'south-west-gate': [-15, 219], 'south-east-gate': [15, 219],
-  'south-atv': [-15, 347], 'south-humvee': [15, 347], 'south-atv-2': [-7, 347],
-  'south-atv-merge': [-15, 319],
+  'south-atv': [-15, 347], 'south-atv-2': [-7, 347], 'south-humvee': [15, 347], 'south-humvee-2': [7, 347],
+  'south-atv-merge': [-15, 319], 'south-humvee-merge': [15, 319],
   'west-cut': [-226, -28], 'west-drain': [-300, -28], 'pump-turn': [-360, -28],
   'pump-parking': [-355, -15], 'west-haul-south': [-353, 210], 'west-haul-return': [-276, 289], 'west-return-gate': [-45, 289],
   'east-cut': [224, -13], 'east-climb': [281, -13], 'terrace-turn': [350, -13],
@@ -49,9 +49,11 @@ const nodes = Object.entries({
 const nodeById = new Map(nodes.map(node => [node.id, node]));
 
 const tracks = [
-  ['north-humvee', 'north-west-gate', 'north-junction', 'north-east-gate', 'north-atv-merge', 'north-atv'],
+  ['north-humvee', 'north-humvee-merge', 'north-west-gate', 'north-junction', 'north-east-gate', 'north-atv-merge', 'north-atv'],
+  ['north-humvee-2', 'north-humvee-merge'],
   ['north-atv-2', 'north-atv-merge'],
-  ['south-atv', 'south-atv-merge', 'south-west-gate', 'south-junction', 'south-east-gate', 'south-humvee'],
+  ['south-atv', 'south-atv-merge', 'south-west-gate', 'south-junction', 'south-east-gate', 'south-humvee-merge', 'south-humvee'],
+  ['south-humvee-2', 'south-humvee-merge'],
   ['south-atv-2', 'south-atv-merge'],
   ['north-junction', 'north-west-switch', 'west-top', 'west-depot', 'west-bend', 'west-bottom', 'crusher', 'west-south-switch', 'south-junction'],
   ['north-junction', 'north-east-switch', 'east-top', 'east-upper-bend', 'east-lower-bend', 'east-hangar', 'east-bottom', 'east-south-switch', 'south-junction'],
@@ -85,7 +87,7 @@ const vehicleSpawns = [];
 for (const team of [0, 1]) {
   const sign = team === 0 ? 1 : -1;
   const end = team === 0 ? 'south' : 'north';
-  for (const [suffix, type] of [['atv', 'atv'], ['atv-2', 'atv'], ['humvee', 'humvee']]) {
+  for (const [suffix, type] of [['atv', 'atv'], ['atv-2', 'atv'], ['humvee', 'humvee'], ['humvee-2', 'humvee']]) {
     const id = `${end}-${suffix}`;
     const { x, z } = nodeById.get(id);
     vehicleSpawns.push({ id, type, team, x, z, yaw: team === 0 ? 0 : Math.PI });
