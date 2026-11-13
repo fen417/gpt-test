@@ -1,7 +1,8 @@
-// Original procedural score with local firearm recordings. See asset credits.
+// Menu soundtrack, procedural battle ambience and local firearm recordings.
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
 import { getMap } from '../shared/world.js';
-export const ORIGINAL_SCORE = 'AFTER THE RAIN';
+export const MENU_MUSIC_TITLE = 'Quiet Resolve';
+const MENU_MUSIC_URL=new URL('./assets/audio/music/quiet-resolve.mp3',import.meta.url);
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
 const midi = n => 440 * 2 ** ((n - 69) / 12);
 const BEAT = 60 / 82, EPSILON = .00001, MAX_VOICES = 56, MUSIC_VOICES = 14;
@@ -101,6 +102,7 @@ export class CombatAudio {
     this._volume=.35; this._musicVolume=.62; this._effectsVolume=.85; this._enabled=true;
     this._mode='menu'; this._voices=new Set(); this._ambientSources=[]; this._buffers=new Map(); this._nodes=[];
     this._scheduler=null; this._nextMusic=0; this._musicStep=0; this._disposed=false;
+    this._menuTrack=null;this._menuPlayPending=false;
     this._lastStateTime=-1; this._lastMovementTime=-1; this._lastPosition=null;
     this._stride=0; this._leftFoot=false; this._falling=false; this._aim=false;
     this._heartbeat=0; this._distantAt=0; this._nextGust=0; this._paused=false;
@@ -141,6 +143,7 @@ export class CombatAudio {
         this._nextMusic=this.ctx.currentTime+.08;
         this._scheduler=setInterval(()=>this._schedule(),100);this._schedule();
       }
+      this._syncMenuMusic();
       return this.ctx.state==='running';
     }catch{return false;}
   }
@@ -171,7 +174,22 @@ export class CombatAudio {
       const wet=this._node(c.createGain());wet.gain.value=bus==='music'?.32:.16;
       convolver.connect(wet).connect(bus==='music'?this._music:this._effects);this._reverbs[bus]=convolver;
     }
+    // Stream the MP3 rather than retaining a full decoded song in memory.
+    this._menuTrack=new Audio(MENU_MUSIC_URL.href);this._menuTrack.loop=true;this._menuTrack.preload='auto';
+    const trackGain=this._node(c.createGain());trackGain.gain.value=.45;
+    this._node(c.createMediaElementSource(this._menuTrack)).connect(trackGain).connect(this._music);
     this._mix(true);this._noiseBuffer('white');this._startAmbient();
+  }
+  _syncMenuMusic(){
+    const track=this._menuTrack;if(!track)return;
+    const play=!this._disposed&&this._mode==='menu'&&this._enabled&&this._volume>0&&this._musicVolume>0&&this.ctx?.state==='running';
+    if(!play){track.pause();return;}
+    if(!track.paused||this._menuPlayPending)return;
+    this._menuPlayPending=true;
+    track.play().catch(()=>{}).finally(()=>{
+      this._menuPlayPending=false;
+      if(this._disposed||this._mode!=='menu'||!this._enabled||this._volume<=0||this._musicVolume<=0)track.pause();
+    });
   }
   _target(parameter,value,seconds=.1,immediate=false){
     if(!parameter||!this.ctx)return;
@@ -188,12 +206,14 @@ export class CombatAudio {
     this._target(this._weapons.gain,this._effectsVolume*.7*(this._paused?.35:1),.16,immediate);
     this._target(this._music.gain,this._musicVolume*(this._mode==='menu'?1.64:.22),.9,immediate);
     this._target(this._ambient.gain,this._mode==='battle'?.24:.055,1.5,immediate);
+    this._syncMenuMusic();
   }
   setMode(mode){
     const next=mode==='battle'?'battle':'menu';if(next===this._mode)return;
     this._stopRocketAudio();this._mode=next;this._lastPosition=null;this._stride=0;this._falling=false;this._suppressedUntil=0;
-    this._pending=this._pending.filter(sound=>sound.options.bus==='music');
+    this._pending=next==='menu'?[]:this._pending.filter(sound=>sound.options.bus==='music');
     for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);
+    if(next==='menu')for(const voice of this._voices)if(voice.bus==='music')this._fadeVoice(voice,.08);
     this.seen.clear();this._lastStateTime=-1;this._mix();
     if(this.ctx&&this._enabled&&next==='battle'){
       this._tone(78,1.15,.13,{end:37,send:.3});this._noise(.9,.08,{cutoff:480,send:.35});
@@ -356,7 +376,7 @@ export class CombatAudio {
     }
     if(this._nextMusic<now-.3)this._nextMusic=now+.08;let scheduled=0;
     while(this._nextMusic<now+.32&&scheduled++<8){
-      if(this._enabled&&this._musicVolume>0)this._musicTick(this._musicStep,this._nextMusic);
+      if(this._mode==='battle'&&this._enabled&&this._musicVolume>0)this._musicTick(this._musicStep,this._nextMusic);
       this._musicStep=(this._musicStep+1)%256;this._nextMusic+=BEAT/2;
     }
   }
@@ -838,13 +858,14 @@ export class CombatAudio {
       else{const bytes=new Uint8Array(this._meter.length);this._analyser.getByteTimeDomainData(bytes);for(let i=0;i<bytes.length;i++)this._meter[i]=(bytes[i]-128)/128;}
       for(const sample of this._meter){peak=Math.max(peak,Math.abs(sample));rms+=sample*sample;}rms=Math.sqrt(rms/this._meter.length);
     }
-    return {state:this.ctx?.state||'locked',mode:this._mode,score:ORIGINAL_SCORE,activeVoices:this._voices.size,queuedSounds:this._pending.length,voiceLimit:MAX_VOICES,
-      musicPlaying:Boolean(this._scheduler&&this.ctx?.state==='running'&&this._enabled&&this._volume>0&&this._musicVolume>0),
+    return {state:this.ctx?.state||'locked',mode:this._mode,score:this._mode==='menu'?MENU_MUSIC_TITLE:'AFTER THE RAIN',activeVoices:this._voices.size,queuedSounds:this._pending.length,voiceLimit:MAX_VOICES,
+      musicPlaying:Boolean(this.ctx?.state==='running'&&this._enabled&&this._volume>0&&this._musicVolume>0&&(this._mode==='menu'?this._menuTrack&&!this._menuTrack.paused:this._scheduler)),
       master:this._volume,music:this._musicVolume,effects:this._effectsVolume,peak,rms,
       shotSamples:[...this._shotBuffers.values()].reduce((count, variants)=>count+variants.length,0),shotLoadFailures:this._shotLoadFailures};
   }
   dispose(){
     this._disposed=true;clearInterval(this._scheduler);this._scheduler=null;
+    if(this._menuTrack){this._menuTrack.pause();this._menuTrack.removeAttribute('src');this._menuTrack.load();this._menuTrack=null;}
     this._pending=[];
     for(const voice of [...this._voices,...this._fadingVoices])this._releaseVoice(voice,true);
     this._stopRocketAudio();
