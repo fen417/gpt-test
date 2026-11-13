@@ -516,10 +516,8 @@ async function requestControl(allowPendingSpawn=false){
   if(!active||inLobby||(!local()?.alive&&!allowPendingSpawn)||finished)return;
   if(unlocked){unlockedPaused=false;reviveAwaitingControl=false;show('revive-control-hint',false);show('pause',false);return;}
   try{
-    // Pointer lock must be requested before fullscreen consumes activation.
-    const pointer=canvas.requestPointerLock();
-    const keyboard=captureGameKeyboard({fullscreen:keybinds.crouch==='KeyC'||/^Control/.test(keybinds.crouch)}).catch(()=>{toast('Для Ctrl+W нужен полноэкранный режим и разрешение на захват клавиатуры. Без него можно назначить приседание на C.');});
-    await pointer;await keyboard;
+    await canvas.requestPointerLock();
+    await captureGameKeyboard().catch(()=>{});
   }catch{
     if(reviveAwaitingControl){show('revive-control-hint');toast('Нажми на игру, чтобы вернуть управление мышью.');}
     else{if(local()?.alive)show('pause');toast('Нажми «Продолжить», чтобы включить управление мышью.');}
@@ -576,7 +574,7 @@ $('lobby-leave').addEventListener('click',()=>leave());
 $('spawn-point').addEventListener('change',event=>selectSpawnPoint(event.target.value,true));
 $('resume').addEventListener('click',()=>{if(!active){show('pause',false);return;}audio.unlock();requestControl();});
 $('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подстрой игру под себя.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause-squads',false);show('pause');});
-$('unlocked').addEventListener('click',()=>{captureGameKeyboard({fullscreen:true}).catch(()=>{});unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
+$('unlocked').addEventListener('click',()=>{captureGameKeyboard().catch(()=>{});unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
 for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>{
   if(id!=='result-leave'&&performance.now()-lastFireClick<600)return;
   leave();
