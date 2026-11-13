@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { LAUNCHER_POSE } from './gadget-poses.js';
 
 const boxGeometry=new RoundedBoxGeometry(1,1,1,2,.055);
 const cylinderGeometry=new THREE.CylinderGeometry(1,1,1,12);
@@ -114,6 +115,8 @@ function build(kind,m) {
     const core=new THREE.ConeGeometry(.013,.16,10);core.userData.owned=true;
     const inner=add(flame,core,m.white,0,0,-.07,1,1,1);inner.rotation.x=-Math.PI/2;
   }else if(kind==='launcher'){
+    const triggerAssembly=new THREE.Group();root.add(triggerAssembly);
+    triggerAssembly.position.z=LAUNCHER_POSE.triggerShiftZ;
     ring(0,.025,-.17,.057,.009,.84,m.olive);
     for(const z of [-.57,-.49,-.07,.22]){
       ring(0,.025,z,.061,.008,.022,m.dark);
@@ -122,13 +125,13 @@ function build(kind,m) {
     ring(0,.025,-.593,.057,.009,.017,m.metal);
     tube(0,.025,-.50,.043,.006,m.dark,'z');
     // Open trigger guard: the index finger must meet the trigger, not a solid box.
-    box(0,-.028,.01,.045,.022,.085,m.dark);
-    box(0,-.075,-.028,.024,.08,.012,m.dark);
-    box(0,-.115,.01,.028,.014,.085,m.dark);
-    const trigger=box(0,-.070,.016,.008,.032,.008,m.metal);trigger.rotation.x=-.12;
-    const grip=box(0,-.15,.06,.036,.12,.06,m.dark);grip.rotation.x=-.16;
-    for(const z of [-.26,-.14])box(0,-.027,z,.050,.034,.022,m.dark);
-    box(0,-.050,-.20,.075,.035,.16,m.cloth);
+    box(0,-.028,.01,.045,.022,.085,m.dark,triggerAssembly);
+    box(0,-.075,-.028,.024,.08,.012,m.dark,triggerAssembly);
+    box(0,-.115,.01,.028,.014,.085,m.dark,triggerAssembly);
+    const trigger=box(0,-.070,.016,.008,.032,.008,m.metal,triggerAssembly);trigger.rotation.x=-.12;
+    const grip=box(0,-.15,.06,.036,.12,.06,m.dark,triggerAssembly);grip.rotation.x=-.16;
+    for(const offset of [-.06,.06])box(0,-.027,LAUNCHER_POSE.supportZ+offset,.050,.034,.022,m.dark);
+    box(0,-.050,LAUNCHER_POSE.supportZ,.075,.035,.16,m.cloth);
     for(const side of [-1,1]){
       box(side*.06,.025,-.34,.012,.075,.14,m.orange);
       for(let i=0;i<3;i++)box(side*.067,.025,-.37+i*.032,.003,.045,.013,m.white);
@@ -140,12 +143,12 @@ function build(kind,m) {
     tube(.037,.145,-.09,.014,.025,m.dark,'x');
     for(const z of [-.16,-.12,-.08])box(.050,.145,z,.005,.020,.009,m.metal);
     for(const side of [-1,1]){
-      box(side*.038,-.16,.018,.009,.075,.012,m.metal);
+      box(side*.038,-.16,.018,.009,.075,.012,m.metal,triggerAssembly);
       tube(side*.062,.025,-.27,.007,.007,m.metal,'x');
       tube(side*.061,.025,-.04,.007,.007,m.metal,'x');
-      box(side*.046,-.07,.005,.014,.065,.024,m.metal);
+      box(side*.046,-.07,.005,.014,.065,.024,m.metal,triggerAssembly);
     }
-    box(0,-.201,.045,.075,.012,.075,m.metal);
+    box(0,-.201,.045,.075,.012,.075,m.metal,triggerAssembly);
     box(0,.104,-.52,.015,.08,.018,m.metal);
     for(const side of [-1,1])box(side*.027,.104,.10,.012,.085,.016,m.metal);
     box(0,.066,.10,.065,.012,.016,m.metal);

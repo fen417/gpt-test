@@ -10,6 +10,7 @@ import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
+import { LAUNCHER_POSE, SUPPLY_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicles.js';
@@ -1713,10 +1714,11 @@ export class GameRenderer {
       );
       if(gadgetKind){
         const launcher=gadgetKind==='launcher';
+        const framing=launcher?LAUNCHER_POSE:(gadgetKind==='ammo'||gadgetKind==='medkit')?SUPPLY_POSE:null;
         this.weapon.position.set(
-          lerp(launcher?.22:.08,launcher?-.05:.02,this.aimAmount)+Math.sin(cycle)*.007*bob-this.swayX,
-          lerp(launcher?-.23:-.27,launcher?-.125:-.22,this.aimAmount)-this.landDip*.4-lowered*.42,
-          lerp(-.43,launcher?-.28:-.39,this.aimAmount)+kick*.075+lowered*.14,
+          lerp(framing?.hip[0]??.08,framing?.ads[0]??.02,this.aimAmount)+Math.sin(cycle)*.007*bob-this.swayX,
+          lerp(framing?.hip[1]??-.27,framing?.ads[1]??-.22,this.aimAmount)-this.landDip*.4-lowered*.42,
+          lerp(framing?.hip[2]??-.43,framing?.ads[2]??-.39,this.aimAmount)+kick*.075+lowered*.14,
         );
         this.weapon.rotation.set(kick*.09+Math.cos(cycle)*bob*.009-lowered*.4,-this.swayX*.3,Math.sin(cycle)*bob*.008);
       }

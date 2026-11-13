@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SUPPLY_POSE } from '../src/gadget-poses.js';
 
 globalThis.self = globalThis;
 const root = new URL('../', import.meta.url);
@@ -12,6 +13,8 @@ const poses = {
   trigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.202, .145], origin: [0, 0, 0], index: [.008, -.090, .018], fingers: [[-.024,-.149,.047],[-.024,-.178,.052],[-.022,-.199,.045]], thumb: [-.024,-.129,.055] },
   pistolSupport: { source: 'pistol', side: 'R', mirror: true, scale: .48, rotation: [.35, .02, 0], wrist: [-.035, -.053, -.014], origin: [0, 0, 0], index: [.002,.012,-.064], fingers: [[.004,-.003,-.060],[.002,-.019,-.057],[-.003,-.035,-.050]], thumb: [-.010,.050,-.047] },
   pistolTrigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.195, .175], origin: [0, 0, 0], index: [.006, -.122, .034], fingers: [[-.024,-.157,.081],[-.024,-.177,.087],[-.023,-.198,.092]], thumb: [-.024,-.136,.088] },
+  supplyLeft: { source:'rifle',side:'L',scale:.45,rotation:[0,0,0],wrist:SUPPLY_POSE.leftWrist,origin:[0,0,0],cutStart:.01,index:[-.088,.007,.106],indexWrap:true,fingers:[[-.068,.010,.108],[-.050,.008,.108],[-.035,.003,.107]],fingerPole:[0,0,1],thumb:[-.065,.018,.108],thumbDirection:[1,.05,0] },
+  supplyRight: { source:'rifle',side:'L',mirror:true,scale:.45,rotation:[0,0,0],wrist:SUPPLY_POSE.rightWrist,origin:[0,0,0],cutStart:.01,index:[.088,.007,.106],indexWrap:true,fingers:[[.068,.010,.108],[.050,.008,.108],[.035,.003,.107]],fingerPole:[0,0,1],thumb:[.065,.018,.108],thumbDirection:[-1,.05,0] },
 };
 const encoded = {};
 const pack = (values, Type, scale) => Buffer.from(new Type(values.map(v => Math.round(v * scale))).buffer).toString('base64');
@@ -80,7 +83,9 @@ for (const [name, pose] of Object.entries(poses)) {
       const distal=new T.Vector3(...pose.thumb).addScaledVector(forward,-length);
       fingerIK(distal.toArray(),['021','020'],'022');
       const pivot=bone.getWorldPosition(new T.Vector3());
-      const direction=forward.applyQuaternion(rotation.clone().invert());
+      const direction=forward.clone();
+      if(pose.mirror) direction.x*=-1;
+      direction.applyQuaternion(rotation.clone().invert());
       const delta=new T.Quaternion().setFromUnitVectors(tip.getWorldPosition(new T.Vector3()).sub(pivot).normalize(),direction);
       const parent=bone.parent.getWorldQuaternion(new T.Quaternion());
       bone.quaternion.premultiply(parent.clone().invert().multiply(delta).multiply(parent));

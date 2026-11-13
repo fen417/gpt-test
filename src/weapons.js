@@ -6,6 +6,7 @@ import { smoothRingSeams } from './character-geometry.js';
 import { anatomicalGeometry } from './soldier-anatomy.js';
 import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS, pistolGripSectionAt } from './pistol-grip.js';
 import { createFPSHand, fpsHandTextures } from './fps-hands.js';
+import { LAUNCHER_POSE, SUPPLY_POSE } from './gadget-poses.js';
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
 // its own depth pass by GameRenderer; no material is allowed to see through it.
@@ -591,20 +592,27 @@ export function createWeaponRig(owner = {}) {
   ellipsoid(heldGrenade,[0,.063,0],[.0045,.0045,.0045],medRed);
 
   const equipmentPalette=gadgetPalette(mat);
+  const supplyRoot=new THREE.Group();supplyRoot.name='held-supply-case';weapon.add(supplyRoot);supplyRoot.visible=false;
+  const supplyLeft=new THREE.Group();supplyLeft.name='supply-left-grip';leftHand.add(supplyLeft);
+  const supplyLeftMesh=createFPSHand('supplyLeft',importedGloveMat);ownedGeometries.add(supplyLeftMesh.geometry);supplyLeft.add(supplyLeftMesh);supplyLeft.visible=false;
   const heldTools={};
   for(const kind of ['ammo','beacon','repair','medkit','defibrillator-left']){
-    const model=createGadgetModel(kind,equipmentPalette);model.visible=false;leftHand.add(model);
+    const model=createGadgetModel(kind,equipmentPalette);model.visible=false;
+    const supply=kind==='ammo'||kind==='medkit';(supply?supplyRoot:leftHand).add(model);
     model.position.set(.024,.025,-.058);
     if(kind==='ammo'||kind==='beacon'){model.scale.setScalar(.55);model.position.y=-.04;}
+    if(supply){const pose=SUPPLY_POSE[kind];model.position.set(...pose.position);model.scale.setScalar(pose.scale);model.rotation.y=Math.PI;}
     if(kind==='defibrillator-left')model.position.set(.139,-.022,-.058);
     heldTools[kind]=model;
   }
   const heldLauncher=createGadgetModel('launcher',equipmentPalette);weapon.add(heldLauncher);
-  heldLauncher.position.set(.05,-.02,.05);heldLauncher.visible=false;
+  heldLauncher.position.set(...LAUNCHER_POSE.model);heldLauncher.visible=false;
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
   const triggerGloveModel=createFPSHand('trigger',importedGloveMat);
   ownedGeometries.add(triggerGloveModel.geometry);
   rightHand.add(triggerGloveModel);
+  const supplyRight=new THREE.Group();supplyRight.name='supply-right-grip';rightHand.add(supplyRight);
+  const supplyRightMesh=createFPSHand('supplyRight',importedGloveMat);ownedGeometries.add(supplyRightMesh.geometry);supplyRight.add(supplyRightMesh);supplyRight.visible=false;
 
   const flashMaterial=new THREE.MeshBasicMaterial({name:'muzzle-flash',color:0xffd08a,transparent:true,opacity:.92,depthTest:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});ownedMaterials.add(flashMaterial);
   const muzzleFlash=new THREE.Group();weapon.add(muzzleFlash);muzzleFlash.visible=false;
@@ -613,7 +621,7 @@ export function createWeaponRig(owner = {}) {
   const flashLight={position:new THREE.Vector3(),intensity:0};
   const rifleAssembly=new THREE.Group();
   for(const child of [...weapon.children]){
-    if(![leftArm,rightArm,leftHand,rightHand,muzzleFlash,heldLauncher].includes(child))rifleAssembly.add(child);
+    if(![leftArm,rightArm,leftHand,rightHand,muzzleFlash,heldLauncher,supplyRoot].includes(child))rifleAssembly.add(child);
   }
   weapon.add(rifleAssembly);
 
@@ -847,7 +855,16 @@ export function createWeaponRig(owner = {}) {
   const rightRotation=new THREE.Quaternion().setFromUnitVectors(armAxis,rightAxis.normalize());
   const rightRestInverse=new THREE.Matrix4().compose(rightShoulder,rightRotation,new THREE.Vector3(1,1,1)).invert();
   const rightDirection=new THREE.Vector3(),rightScale=new THREE.Vector3(1,1,1);
+  const supplyLeftWrist=new THREE.Vector3(...SUPPLY_POSE.leftWrist),supplyRightWrist=new THREE.Vector3(...SUPPLY_POSE.rightWrist);
   rightArm.matrixAutoUpdate=false;
+
+  function fitLeftSleeve(wrist,overlap=.017) {
+    wristDirection.copy(wrist).applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
+    armScale.z=(wristDirection.length()+overlap)/armLength;
+    armRotation.setFromUnitVectors(armAxis,wristDirection.normalize());
+    leftArm.matrix.compose(shoulder,armRotation,armScale).multiply(restArmInverse);
+    leftArm.matrixWorldNeedsUpdate=true;
+  }
 
   function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null, defibTravel=0) {
     const feed = pistol?.magazine ?? (support ? beltBox : magazine);
@@ -906,11 +923,16 @@ export function createWeaponRig(owner = {}) {
       const continuous=gadgetKind==='repair'||gadgetKind==='defibrillator';
       const reach=continuous?.35:act;
       actionTarget.set(-.16,.10,-.28-reach*.13);
-      if(gadgetKind==='launcher')actionTarget.set(.015,-.090,-.18);
+      if(gadgetKind==='launcher')actionTarget.set(...LAUNCHER_POSE.leftContact);
       if(gadgetKind==='defibrillator')actionTarget.z-=defibTravel;
       rotX=THREE.MathUtils.lerp(rotX,continuous?.15:.58-act*1.05,weight);
       rotY=THREE.MathUtils.lerp(rotY,-.24,weight);
       rotZ=THREE.MathUtils.lerp(rotZ,-.12,weight);
+      if(gadgetKind==='launcher'){
+        rotX=THREE.MathUtils.lerp(rotX,0,weight);
+        rotY=THREE.MathUtils.lerp(rotY,0,weight);
+        rotZ=THREE.MathUtils.lerp(rotZ,0,weight);
+      }
       const model=heldTools[gadgetKind==='defibrillator'?'defibrillator-left':gadgetKind];
       if(model)model.visible=gadgetPhase<.95;
       palmTarget.lerp(actionTarget, weight);
@@ -924,13 +946,7 @@ export function createWeaponRig(owner = {}) {
     leftHand.position.copy(palmTarget).sub(palmOffset);
 
     // Keep the shoulder anchored while the cuff follows the rotating wrist.
-    wristDirection.copy(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolWristLocal : wristLocal);
-    wristDirection.applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
-    // Extend the cloth cuff into the glove so it stays joined at every wrist angle.
-    armScale.z = (wristDirection.length()+(pistol ? .024 : .017))/armLength;
-    armRotation.setFromUnitVectors(armAxis,wristDirection.normalize());
-    leftArm.matrix.compose(shoulder,armRotation,armScale).multiply(restArmInverse);
-    leftArm.matrixWorldNeedsUpdate = true;
+    fitLeftSleeve(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolWristLocal : wristLocal,pistol?.024:.017);
   }
 
   const defaultByClass = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
@@ -1015,6 +1031,7 @@ export function createWeaponRig(owner = {}) {
       pistolGripMesh.morphTargetInfluences[0]=THREE.MathUtils.clamp(kick,0,1);
     }
     const usingTool=Boolean(gadgetKind&&gadgetPhase>0&&gadgetPhase<1);
+    const usingSupply=usingTool&&(gadgetKind==='ammo'||gadgetKind==='medkit');
     const throwing=throwPhase>0&&throwPhase<1;
     const discharge=usingTool&&gadgetKind==='defibrillator'&&toolActive?Math.sin(toolProgress*Math.PI):0;
     poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,usingTool?null:pistol,gadgetKind,discharge*.09);
@@ -1024,16 +1041,29 @@ export function createWeaponRig(owner = {}) {
     heldDefibRight.visible=usingTool&&gadgetKind==='defibrillator';
     rifleAssembly.visible=!pistol&&!usingTool;
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool;
-    rifleGlove.visible=usingTool||throwing||!pistol;
+    rifleGlove.visible=!usingSupply&&(usingTool||throwing||!pistol);
     pistolGlove.visible=Boolean(pistol)&&!usingTool&&!throwing;
-    rightHand.visible=usingTool?gadgetKind==='defibrillator'||gadgetKind==='launcher':!pistol;
+    supplyLeft.visible=supplyRight.visible=supplyRoot.visible=usingSupply;
+    triggerGloveModel.visible=!usingSupply;
+    rightHand.visible=usingTool?usingSupply||gadgetKind==='defibrillator'||gadgetKind==='launcher':!pistol;
     pistolRight.visible=Boolean(pistol)&&!usingTool;
     rightHand.position.set(0,0,0);rightHand.rotation.set(0,0,0);
-    if(usingTool&&gadgetKind==='launcher')rightHand.position.set(.05,0,.045);
+    if(usingTool&&gadgetKind==='launcher')rightHand.position.set(...LAUNCHER_POSE.rightOffset);
     if(usingTool&&gadgetKind==='defibrillator')rightHand.position.set(.05,.25,-.415-discharge*.09);
-    rightArm.visible=!usingTool||gadgetKind==='defibrillator'||gadgetKind==='launcher';
-    rightDirection.copy(pistol&&!usingTool ? pistolWrist : rightWrist);
-    if(pistol&&!usingTool)rightDirection.x-=.008;else rightDirection.add(rightHand.position);
+    if(usingSupply){
+      // Both hands and the case share one movement, so the grip cannot drift
+      // through the object during the use gesture. Palms support its underside.
+      const push=toolActive?Math.sin(THREE.MathUtils.clamp(toolProgress,0,1)*Math.PI):0;
+      supplyRoot.position.set(0,-push*.025,-push*.09);supplyRoot.rotation.set(-push*.08,0,0);
+      leftHand.position.copy(supplyRoot.position);leftHand.quaternion.copy(supplyRoot.quaternion);
+      rightHand.position.copy(supplyRoot.position);rightHand.quaternion.copy(supplyRoot.quaternion);
+      supplyLeftMesh.morphTargetInfluences[0]=supplyRightMesh.morphTargetInfluences[0]=0;
+      for(const kind of ['ammo','medkit'])heldTools[kind].visible=kind===gadgetKind;
+      fitLeftSleeve(supplyLeftWrist);
+    }
+    rightArm.visible=!usingTool||usingSupply||gadgetKind==='defibrillator'||gadgetKind==='launcher';
+    rightDirection.copy(usingSupply?supplyRightWrist:pistol&&!usingTool ? pistolWrist : rightWrist);
+    if(pistol&&!usingTool)rightDirection.x-=.008;else rightDirection.applyQuaternion(rightHand.quaternion).add(rightHand.position);
     rightDirection.sub(rightShoulder);
     rightScale.set(1,1,(rightDirection.length()+.014)/rightLength);
     rightRotation.setFromUnitVectors(armAxis,rightDirection.normalize());

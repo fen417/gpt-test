@@ -26,14 +26,18 @@ including the extracted arm ORM image, live in `src/assets/fps-hands/`.
 
 Run `node scripts/build-fps-hands.mjs` to regenerate `src/fps-hands-data.js`.
 The builder crops a wrist-length overlap beneath the game's existing sleeves,
-fits separate rifle, pistol and magazine hand poses in metres, poses fingers
+fits separate rifle, pistol, magazine and supply-case hand poses in metres, poses fingers
 with the source skeleton and bakes connected trigger/release morphs. Source UVs
 and skinned normals are preserved. The supporting magazine hand is mirrored
 from the same artist's right-hand mesh; winding and normals are corrected.
 The support sleeve meets the palm heel rather than the source wrist bone.
 Its covered wrist extension is cropped separately, preserving the existing
 palm and finger contact vertices. Rifle hands have about 11,400 triangles per
-pair; pistol reload hands about 12,200. Both use one shared PBR material.
+pair; pistol reload hands about 12,200; supply-case hands about 10,900.
+All six poses use one shared PBR material. The supply pair uses mirrored
+left-hand meshes with corrected winding and normals, curled fingers at the
+near lower edge, and palms supporting the case from underneath. The case and
+hands share the same use-gesture transform; sleeves follow the wrist contacts.
 There is no GLB loading, skeleton solving or AnimationMixer in the frame loop.
 
 Game credit: `credits.html`, linked from the game menu.
@@ -66,3 +70,12 @@ trigger finger is a connected, independently animated part of the same mesh.
 
 The game keeps the requested one-handed first-person pistol stance. These are
 visual reference sources, not imported meshes, animations or textures.
+
+## Supply-case pose reference
+
+- Shibby2142, Battlefield 3 — Tip 10 (Medic & Ammo Box Placement):
+  https://www.youtube.com/watch?v=_wKIYX1Ev2g
+
+The two-handed carrying/deployment silhouette informed the ammo-box and
+medical-bag poses. Only the existing licensed hand meshes are used; no
+Battlefield art, textures or animation files are redistributed.
