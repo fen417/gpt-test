@@ -828,13 +828,15 @@ export function createWeaponRig(owner = {}) {
   const pistolPalmLocal = new THREE.Vector3(-.050,.020,-.086);
   const wristLocal = new THREE.Vector3(...lp([-.104,-.067,-.455]));
   const pistolWristLocal = new THREE.Vector3(-.035,-.053,-.014);
-  const shoulder = new THREE.Vector3(-.40,-.47,.25);
+  const restShoulder = new THREE.Vector3(-.40,-.47,.25);
+  // Bring the elbow/sleeve inward; keep the fitted hand and wrist contact fixed.
+  const shoulder = new THREE.Vector3(-.27,-.43,.25);
   const armAxis = new THREE.Vector3(0,0,1);
-  const armDirection = new THREE.Vector3(-.083,-.108,-.361).sub(shoulder);
+  const armDirection = new THREE.Vector3(-.083,-.108,-.361).sub(restShoulder);
   const armLength = armDirection.length();
   const armRotation = new THREE.Quaternion().setFromUnitVectors(armAxis,armDirection.normalize());
   const armScale = new THREE.Vector3(1,1,1);
-  const restArmInverse = new THREE.Matrix4().compose(shoulder,armRotation,armScale).invert();
+  const restArmInverse = new THREE.Matrix4().compose(restShoulder,armRotation,armScale).invert();
   const wristDirection = new THREE.Vector3(), palmTarget = new THREE.Vector3(), gripTarget = new THREE.Vector3(), palmOffset = new THREE.Vector3(), actionTarget = new THREE.Vector3();
   const chargeGrip = new THREE.Vector3(-.076,.019,.044);
   leftArm.matrixAutoUpdate = false;
