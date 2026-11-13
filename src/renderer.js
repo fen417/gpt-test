@@ -12,6 +12,7 @@ import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
+import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
@@ -948,7 +949,7 @@ export class GameRenderer {
         soldier.animationDt = 0;
       }
       if (distant) soldier.flash.visible = false;
-      soldier.marker.material.color.setHex(TEAM_COLORS[player.team] ?? COLORS.friendly);
+      soldier.marker.material.color.setHex(sameSquad(local,player)?0x91dc78:player.team===localTeam?0x79c5d2:TEAM_COLORS[player.team]??COLORS.friendly);
       soldier.marker.visible = player.team === localTeam;
       soldier.marker.position.y = (crouched ? 1.55 : 1.94) + Math.sin(this.clock * 2) * .025;
     }
@@ -1291,7 +1292,10 @@ export class GameRenderer {
           cache.set(item.id,model);this.worldRoot.add(model);
         }
         model.visible=true;
-        const led=model.getObjectByName('equipment-status');if(led)led.visible=Math.sin(this.clock*4.5)>-.2;
+        const led=model.getObjectByName('equipment-status');if(led){
+          led.visible=Math.sin(this.clock*4.5)>-.2;
+          led.material=this.getQualityMaterial(sameSquad(local,item)?this.gadgetAssets.green:item.team===local?.team?this.gadgetAssets.team0:this.gadgetAssets.team1);
+        }
         // The medical case is authored around its centre; its base must rest
         // on the same authoritative support height as the ammo box.
         model.position.set(item.x,item.y+(item.kind==='medkit'?.08:0),item.z);

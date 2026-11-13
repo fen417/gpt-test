@@ -88,7 +88,7 @@ function place(sim,p,kind) {
   const x=p.x-Math.sin(p.yaw)*1.15,z=p.z-Math.cos(p.yaw)*1.15,y=supportHeight(sim,x,z,p.y);
   if(Math.abs(y-p.y)>1.2||sim.collides(x,z,y+.04,.35,.8)||!sim.lineClear(eye(p),{x,y:y+.4,z}))return false;
   sim.deployables=sim.deployables.filter(item=>item.ownerId!==p.id||item.kind!==kind);
-  sim.deployables.push({id:`${kind==='beacon'?'beacon':'crate'}:${++sim.eventId}`,kind,ownerId:p.id,team:p.team,x,y,z,yaw:p.yaw,
+  sim.deployables.push({id:`${kind==='beacon'?'beacon':'crate'}:${++sim.eventId}`,kind,ownerId:p.id,team:p.team,squadId:p.squadId,x,y,z,yaw:p.yaw,
     hp:kind==='beacon'?70:120,expires:sim.time+(kind==='beacon'?BEACON_LIFETIME:60),supplyAt:sim.time});
   beginAction(sim,p,kind,kind==='medkit'?.85:.75);
   if(kind==='medkit')p.secondaryCooldown=15;

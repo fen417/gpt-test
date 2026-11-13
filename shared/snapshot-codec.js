@@ -2,7 +2,7 @@ import { Reader, Writer } from './binary.js';
 import { getWeapon } from './world.js';
 
 export const MESSAGE=Object.freeze({SNAPSHOT:1,EVENTS:2,INPUT:3,ACK:4,PING:5,PONG:6,RESYNC:7});
-export const CONTROL=Object.freeze(Object.fromEntries(['hello','rooms','list','create','join','resume','welcome','lobby','settings','loadout','start','init','respawn','leave','left','error','stats'].map((name,i)=>[name,16+i])));
+export const CONTROL=Object.freeze(Object.fromEntries(['hello','rooms','list','create','join','resume','welcome','lobby','settings','loadout','start','init','respawn','leave','left','error','stats','squad'].map((name,i)=>[name,16+i])));
 const CONTROL_NAMES=Object.fromEntries(Object.entries(CONTROL).map(([name,id])=>[id,name]));
 export function encodeControl(message){const type=CONTROL[message.type];if(type===undefined)throw Error('Unknown control message');return JSON.stringify({...message,type});}
 export function decodeControl(value){const data=JSON.parse(value);if(!data||typeof data!=='object'||!Object.hasOwn(CONTROL_NAMES,data.type))throw Error('Некорректное сообщение. Обновите игру.');return {...data,type:CONTROL_NAMES[data.type]};}
@@ -13,14 +13,14 @@ const PRIVATE=new Set(['vy','slideVx','slideVz','slideAt','slideCooldownAt','con
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),finite=v=>Number.isFinite(Number(v))?Number(v):0;
 const specs=rows=>rows.trim().split(/\s+/).map(row=>{const [key,type]=row.split(':');return {key,type};});
 export const SCHEMAS={
-  players:specs(`name:r team:u8 classId:r weaponId:r primaryWeaponId:r sidearmId:r weaponSlot:u8 equipAt:f32
+  players:specs(`name:r team:u8 squadId:u8 squadLeader:u8 classId:r weaponId:r primaryWeaponId:r sidearmId:r weaponSlot:u8 equipAt:f32
     x:x y:y z:z yaw:a pitch:a motionAt:f32 hp:u8 ammo:u8 reserve:u16 kills:u16 deaths:u16 assists:u16 score:u32 respawnAt:f32
     reloadAt:f32 shotSeq:u16 spread:s slideYaw:a gadgetAt:f32 secondaryAt:f32 rockets:u8 heldGadget:r gadgetAction:r
     gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v`),
   vehicles:specs(`type:r team:u8 x:x y:y z:z yaw:a motionAt:f32 bodyPitch:a bodyRoll:a scaleX:scale scaleY:scale scaleZ:scale
     rotationX:a rotationZ:a hp:u16 maxHp:u16 speed:v steer:signed heat:s overheated:u8 aimYaw:a aimPitch:a
     gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32`),
-  deployables:specs('kind:r ownerId:r team:u8 x:x y:y z:z yaw:a hp:u8 expires:f32'),
+  deployables:specs('kind:r ownerId:r team:u8 squadId:u8 x:x y:y z:z yaw:a hp:u8 expires:f32'),
   grenades:specs('team:u8 ownerId:r x:f32 y:f32 z:f32 fuseAt:f32 yaw:a'),
   rockets:specs('ownerId:r team:u8 x:f32 y:f32 z:f32 vx:v vy:v vz:v lifeAt:f32'),
   points:specs('name:r x:x z:z owner:i8 progress:signed contested:u8 spawnBlocked:u8'),

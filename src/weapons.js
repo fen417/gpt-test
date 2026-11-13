@@ -1120,8 +1120,14 @@ export function createWeaponRig(owner = {}) {
     for(const texture of ownedTextures)texture.dispose();
   }
   update();weapon.position.set(.26,-.23,-.42);
+  function createPreviewModel(classId,weaponId){
+    // Menus use a rigid copy of the actual equipped model, without hands,
+    // sleeves, muzzle effects or gadget geometry. GPU assets stay shared.
+    update({classId,weaponId,reloadPhase:1,reloadEmpty:false});
+    return (visiblePistol?visiblePistol.root:rifleAssembly).clone(true);
+  }
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,dispose};
+    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,dispose,createPreviewModel};
 }

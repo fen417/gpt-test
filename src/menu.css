@@ -204,3 +204,27 @@ body:has(dialog.menu-dialog[open]),body:has(#pause:not(.hidden)){overflow:hidden
 @media(max-width:700px){#pause .settings-layout{grid-template-rows:auto minmax(0,1fr);}}
 @media(max-width:1000px){.browser-tools{flex-wrap:wrap;}.browser-identity{display:flex;font-size:9px;}.browser-identity input{width:110px;}}
 @media(max-width:700px){.browser-identity{width:100%;justify-content:space-between;margin:7px 0 0;}.browser-identity input{width:65%;}}
+
+/* Actual game models, presented independently from the first-person hands. */
+#single-player-panel{width:min(1100px,calc(100vw - 48px));}
+#single-player-panel[open]{display:flex;flex-direction:column;overflow:hidden;}
+#single-player-panel>.menu-panel-header,#single-player-panel>.menu-panel-footer{flex-shrink:0;}
+#single-player-panel .solo-layout{grid-template-columns:.8fr 1.5fr;min-height:0;overflow:auto;scrollbar-width:thin;}
+#single-player-panel .classes{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:18px;}
+#single-player-panel .class-card{grid-template-columns:1fr;gap:5px;padding:10px;text-align:left;min-height:82px;}
+#single-player-panel .class-card>span{grid-row:auto;font-size:18px;}
+#single-player-panel .class-card b{font-size:11px;}
+#single-player-panel .class-card small{font-size:8px;}
+.weapon-preview-stage{border:1px solid #ffffff12;border-radius:8px;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#52614545,transparent 70%),#0e1511;margin:10px 0;}
+.weapon-preview-toolbar{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #ffffff0a;}
+.weapon-preview-slots{display:flex;gap:12px;}
+.weapon-preview-slots button,#weapon-preview-reset{background:transparent;border:0;padding:3px 0;color:#829375;font-size:9px;}
+.weapon-preview-slots button[aria-pressed=true]{color:#d6ec9b;}
+#weapon-preview{display:block;width:100%;height:160px;touch-action:none;cursor:grab;}
+#weapon-preview:active{cursor:grabbing;}
+.weapon-preview-caption{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:0 14px 11px;}
+#weapon-preview-name{font-size:11px;font-weight:500;letter-spacing:.5px;color:#d9e3d1;}
+#weapon-preview-hint{font-size:8px;color:#75856a;}
+#single-player-panel .weapon-picker{margin:10px 0 14px;}
+@media(max-width:1000px){#single-player-panel .solo-layout{grid-template-columns:.8fr 1.3fr;}#single-player-panel .classes{grid-template-columns:1fr 1fr;}#single-player-panel .class-card{grid-template-columns:24px 1fr;min-height:70px;}#single-player-panel .class-card>span{grid-row:1/3;}}
+@media(max-width:700px){#single-player-panel{width:calc(100vw - 24px);}#single-player-panel .solo-layout{grid-template-columns:1fr;}#weapon-preview{height:150px;}}

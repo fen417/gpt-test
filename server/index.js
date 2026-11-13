@@ -211,6 +211,9 @@ export function createGameServer(options={}){
           case 'resume':join(c,data,requestId,true);break;
           case 'leave':detach(c,true);send(c,{type:'left',requestId});break;
           case 'loadout':if(s&&room.phase==='lobby'){loadout(s,data);lobbyChanged();}break;
+          case 'squad':
+            if(!s||room?.phase!=='match'||!room.sim.changeSquad(s.id,data.squadId))throw Error('Отряд заполнен или недоступен. Выберите свободное место.');
+            send(c,{type:'squad',requestId,squadId:room.sim.players.get(s.id).squadId});break;
           case 'settings':if(!s||s.id!==room.ownerId||room.phase!=='lobby')throw Error('Настройки доступны создателю в лобби.');settings(data);lobbyChanged();break;
           case 'start':if(!s||s.id!==room.ownerId)throw Error('Матч запускает создатель комнаты.');if(room.phase==='match'&&room.sim.winner===null)throw Error('Матч уже идёт.');settings(data);room.ended=false;startMatch();break;
           case 'respawn':if(s&&room.sim){const point=sanitizeSpawnPoint(room.sim.map,data.pointId);room.sim.respawn(s.id,data.classId,point,data.weaponId,data.sidearmId);const p=room.sim.players.get(s.id);s.classId=p.classId;s.weaponId=p.primaryWeaponId;s.sidearmId=p.sidearmId;}break;

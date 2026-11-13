@@ -85,6 +85,7 @@ function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
 
   let destination = null, bestScore = Infinity;
   for (const point of sim.points) {
+    if(p.ai?.squad?.order?.pointId&&point.id!==p.ai.squad.order.pointId)continue;
     if (point.id === avoidDestinationId) continue;
     const stop = nodes.get(objectives[point.id]);
     if (!stop || !costs.has(stop) || distance(vehicle, stop) < 22) continue;
@@ -376,7 +377,7 @@ function drive(sim, p, vehicle, dt) {
     if(sim.time>(vehicle.supportRetryAt??0)){vehicle.supportUntil=sim.time+3;vehicle.supportRetryAt=sim.time+10;}
     if(vehicle.supportUntil>sim.time)return;
   }
-  if (atBase(sim, vehicle) && !vehicle.pickupPlayerId && vehicle.seats.filter(Boolean).length < departureCrew(vehicle)) {
+  if (!p.ai?.squad?.order&&atBase(sim, vehicle) && !vehicle.pickupPlayerId && vehicle.seats.filter(Boolean).length < departureCrew(vehicle)) {
     // Let an understaffed crew fall back to infantry rather than depart shorthanded.
     if ((sim.time - p.botVehicleSince > 15 || vehicle.hp < vehicle.maxHp * .22)
       && Math.abs(vehicle.speed) < 1.3) stopRiding(sim, p);
@@ -546,11 +547,18 @@ export function thinkVehicleBot(sim, p, dt) {
   const vehicle = p.vehicleId == null ? null : sim.vehicles.find(v => v.id === p.vehicleId);
   if (vehicle) {
     resetControls(p);
+    const order=p.ai?.squad?.order;
+    const orderedPoint=order?.pointId?sim.points.find(point=>point.id===order.pointId):null;
+    if(order&&((p.vehicleSeat===0&&order.kind==='follow')||(orderedPoint&&distance(vehicle,orderedPoint)<22)||
+      (p.vehicleSeat!==0&&vehicle.seats[0]!==order.playerId))){
+      if(Math.abs(vehicle.speed)<1.3){stopRiding(sim,p,order.pointId);return true;}
+      if(p.vehicleSeat===0&&order.kind==='follow')return true;
+    }
     p.botVehicleSince ??= sim.time;
     if (p.vehicleSeat === 0){
       if(sim.map.vehicleRoutes)drive(sim, p, vehicle, dt);
       else if(sim.time>=(vehicle.pickupUntil??0)){
-        const goal=[...sim.points].sort((a,b)=>distance(vehicle,a)+(a.owner===p.team?100:0)-distance(vehicle,b)-(b.owner===p.team?100:0))[0];
+        const goal=orderedPoint??[...sim.points].sort((a,b)=>distance(vehicle,a)+(a.owner===p.team?100:0)-distance(vehicle,b)-(b.owner===p.team?100:0))[0];
         if(goal){
           if(distance(vehicle,goal)<18&&Math.abs(vehicle.speed)<1.3)stopRiding(sim,p,goal.id);
           else {const error=angleDifference(yawToward(vehicle,goal),vehicle.yaw),steer=clamp(-error*1.6,-1,1);

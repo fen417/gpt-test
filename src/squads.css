@@ -1,0 +1,19 @@
+.squad-hud{position:absolute;left:226px;bottom:59px;width:220px;color:#91dc78;text-shadow:0 1px 4px #000;}
+.squad-hud>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px;font-size:10px;text-transform:uppercase;}
+#squad-hud-name{font-weight:600;letter-spacing:1px;}#squad-hud-key{color:#c3d2be;font-size:8px;}
+.squad-member{display:flex;align-items:center;gap:9px;min-height:31px;padding:4px 6px;background:linear-gradient(90deg,#0b190e90,#0b190e18);border-left:2px solid #91dc7860;margin-bottom:3px;}
+.squad-class{font-size:17px;line-height:1;width:21px;flex:0 0 21px;text-align:center;}
+.squad-member-detail{flex:1;min-width:0;}.squad-member-name{display:block;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.squad-member-health{display:block;max-width:100px;height:2px;margin-top:4px;background:#91dc7825;}.squad-member-health i{display:block;height:100%;background:#91dc78;}
+.squad-member-meta{display:flex;align-items:center;gap:7px;margin-top:3px;}.squad-member-classname{font-size:6px;letter-spacing:.4px;text-transform:uppercase;opacity:.8;}.squad-member-meta .squad-member-health{flex:1;margin:0;max-width:65px;}
+.squad-member-status{font-size:7px;letter-spacing:.5px;white-space:nowrap;}.squad-member.dead{color:#8b9987;border-left-color:#72836c50;}.squad-member.self{background:linear-gradient(90deg,#38552b99,#0b190e18);}
+.squad-dialog{width:min(950px,calc(100vw - 36px));}.squad-list{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:24px 30px;}
+.squad-card{padding:18px;border:1px solid #ffffff15;border-radius:8px;background:#101712;min-width:0;}.squad-card.current{border-color:#91dc7870;}
+.squad-card>header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:15px;color:#91dc78;}.squad-card h3{font-size:17px;font-weight:500;margin:0;}.squad-card header>span{font-size:11px;}
+.squad-card .squad-member{color:#91dc78;}.squad-card .squad-member.dead{color:#8b9987;}.squad-card .panel-secondary{width:100%;justify-content:center;margin-top:14px;}
+.squad-empty-slot{font-size:10px;color:#5d7057;min-height:34px;display:flex;align-items:center;border-bottom:1px dashed #ffffff0a;padding-left:35px;}
+.squad-dialog-footer{padding:0 30px 24px;font-size:11px;color:#a2b09c;}.squad-dialog-footer p{margin:8px 0;line-height:1.6;}
+.spawn-item.beacon:not(.squad-beacon) .spawn-badge{color:#79c5d2;background:#16303b;}.spawn-item.beacon:not(.squad-beacon) .spawn-info small{color:#a7bec4;}.spawn-item.beacon:not(.squad-beacon) .spawn-tag{color:#79c5d2;border-color:#79c5d255;}.spawn-item.beacon:not(.squad-beacon).selected{border-color:#79c5d2;background:linear-gradient(90deg,#28546788,#172f3866);box-shadow:inset 2px 0 0 #79c5d2;}
+.beacon-world-marker{font-size:8px;left:0;top:0;will-change:transform;}.beacon-world-marker b{border-radius:50%;font-size:21px;}
+@media(max-width:850px){.squad-hud{left:155px;bottom:55px;width:180px;}.squad-member-name{font-size:10px;}.squad-member-status{font-size:6px;}.squad-hud>header{font-size:8px;}#squad-hud-key{font-size:7px;}}
+@media(max-width:600px){.squad-list{grid-template-columns:1fr;padding:18px;}.squad-hud{left:15px;bottom:211px;width:180px;}.squad-hud .squad-member{min-height:26px;}.squad-hud .squad-class{font-size:14px;}.squad-dialog-footer{padding:0 18px 18px;}}

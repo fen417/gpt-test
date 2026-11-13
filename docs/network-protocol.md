@@ -1,4 +1,4 @@
-# Binary protocol 23
+# Binary protocol 24
 
 All integers use little-endian byte order. Dynamic packets are `Uint8Array`/`ArrayBuffer`, encoded with bounds-checked `DataView`. WebSocket compression is disabled. Maximum client payload: 8192 bytes. JSON is reserved for control messages; each client control carries protocol + map layout revision.
 
@@ -37,3 +37,5 @@ JSON control types also have numeric wire IDs: hello=16, rooms=17, list=18, crea
 Metrics count actual transmitted application bytes plus WS framing, and include every recipient. They exclude TCP/TLS/IP overhead. No bandwidth/FPS claim follows from the format alone: measure the real room on the actual Northflank resource.
 
 Client presentation uses a monotonic shared playback clock, with a slowly adapted 55–140 ms buffer (60 ms at steady 20 Hz). RTT is measured separately and is not added again to the playback buffer. Per-entity histories share that clock; bounded extrapolation lasts at most 80 ms. Multiple snapshots received before a frame are all decoded for delta baselines, but only the latest authority is replayed. Event sent/ACK cursors are separate: reliable WebSocket delivery does not resend in-flight events when new shots arrive. Old cosmetic shot/impact/horn events may be omitted after 500 ms; damage, kills and match outcomes remain reliable.
+
+Protocol 24 adds public player squadId/squadLeader fields and deployable squadId. The squad control request changes the authenticated player's squad during a match; the server checks team membership and the four-person capacity before accepting it. Client and server must be updated together.

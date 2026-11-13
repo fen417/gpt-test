@@ -34,6 +34,7 @@
           <button class="class-card" data-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>Маяк высадки</small></button>
         </div>
         <div class="field-label weapon-select-label">ОРУЖИЕ КЛАССА</div>
+        <section class="weapon-preview-stage" aria-label="Просмотр оружия"><div class="weapon-preview-toolbar"><div class="weapon-preview-slots" role="group" aria-label="Оружие для просмотра"><button type="button" data-preview-slot="primary" aria-pressed="true">Основное</button><button type="button" data-preview-slot="sidearm" aria-pressed="false">Пистолет</button></div><button id="weapon-preview-reset" type="button" aria-label="Сбросить поворот оружия">Сбросить ракурс ↺</button></div><canvas id="weapon-preview" tabindex="0" aria-label="3D-модель выбранного оружия"></canvas><div class="weapon-preview-caption"><strong id="weapon-preview-name"></strong><span id="weapon-preview-hint">Потяни, чтобы повернуть</span></div></section>
         <div id="menu-weapons" class="weapon-picker" role="group" aria-label="Выбор оружия"></div>
         <label class="sidearm-picker">ПИСТОЛЕТ <select id="menu-sidearm"></select></label>
 </section></div>
@@ -55,6 +56,7 @@
           <button type="submit" class="outline-button">СОЗДАТЬ И ВОЙТИ →</button>
         </form>
 <p id="create-status" class="panel-status" role="status"></p></div></dialog>
+  <dialog id="squad-panel" class="menu-dialog squad-dialog" aria-labelledby="squad-title"><header class="menu-panel-header"><div><span class="section-kicker">КОМАНДА / ОТРЯДЫ</span><h2 id="squad-title">Твой отряд</h2><p>До четырёх бойцов. Один лидер. Общая задача.</p></div><button class="panel-close" data-close-dialog="squad-panel" aria-label="Закрыть отряды">×</button></header><div id="squad-list" class="squad-list"></div><footer class="squad-dialog-footer"><p id="squad-current"></p><p id="squad-status" role="status"></p></footer></dialog>
   <dialog id="patch-notes" class="patch-notes" aria-labelledby="patch-title">
     <header class="patch-header"><div><span class="eyebrow">SECTOR 09</span><h2 id="patch-title">История обновлений</h2></div><button id="close-changelog" class="small-button" aria-label="Закрыть историю обновлений">✕</button></header>
     <div id="patch-list" class="patch-list"></div>
@@ -63,12 +65,12 @@
   <section id="hud" class="hud hidden" aria-label="Информация о бое">
     <div class="battle-top"><div class="team-score friendly"><small>СВОИ</small><strong id="tickets-blue">600</strong><div class="ticket-track"><i id="blue-bar"></i></div></div><div class="match-center"><span>ЗАХВАТ ТЕРРИТОРИИ</span><div id="objective-strip" class="objective-strip"></div><small id="match-time">00:00</small></div><div class="team-score enemy"><small>ПРОТИВНИК</small><strong id="tickets-orange">600</strong><div class="ticket-track"><i id="orange-bar"></i></div></div></div>
     <div id="room-badge" class="room-badge"></div><div id="location-label" class="location-label"></div><div id="killfeed" class="killfeed"></div><div class="compass"><span id="compass-direction">N</span><div class="compass-rule">┊ · · ┊ · · ┊ <b id="compass-degrees">000°</b> ┊ · · ┊ · · ┊</div></div>
-    <div id="world-markers"></div><div id="revive-markers" aria-label="Союзники для воскрешения"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
+    <div id="world-markers"></div><div id="squad-beacon-markers"></div><div id="revive-markers" aria-label="Союзники для воскрешения"></div><div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker">╳</div>
     <div id="score-feed" class="score-feed" aria-live="polite"></div>
     <button id="revive-control-hint" type="button" class="revive-control-hint hidden">ТЕБЯ ВОСКРЕСИЛИ<span>НАЖМИ, ЧТОБЫ ВЕРНУТЬСЯ В БОЙ</span></button>
     <div id="vehicle-prompt" class="vehicle-prompt hidden"></div><div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
     <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span id="minimap-name" class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
-    <div class="bottom-center"><span id="gadget-label">Q · ЯЩИК ПАТРОНОВ</span><span id="secondary-gadget-label">X · ПТ-90</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
+    <aside class="squad-hud" aria-label="Твой отряд"><header><span id="squad-hud-name">ОТРЯД</span><small id="squad-hud-key">O · ОТРЯДЫ</small></header><div id="squad-hud-members"></div></aside><div class="bottom-center"><span id="gadget-label">Q · ЯЩИК ПАТРОНОВ</span><span id="secondary-gadget-label">X · ПТ-90</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 ОЧК · 0/0/0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden">
       <div class="scoreboard-head"><h2>ТАБЛИЦА МАТЧА</h2><span id="scoreboard-tickets">600 : 600</span></div>
@@ -109,7 +111,7 @@
         <label class="setting-row" for="sensitivity"><span><b>Чувствительность мыши</b></span><span class="setting-control"><input id="sensitivity" type="range" min="0.3" max="2" step="0.05" value="0.8" /><output for="sensitivity" data-range-value="sensitivity"></output></span></label>
         <div class="bindings-heading"><h4>Клавиши</h4><button type="button" id="reset-binds" class="panel-secondary">Сбросить</button></div><div id="keybinds-grid" class="keybinds-grid" role="group" aria-label="Переназначение клавиш"></div><p id="controls-help" class="controls-help"></p>
       </section>
-    </div></div><footer class="settings-footer"><div class="settings-session"><button id="leave" class="panel-secondary">Покинуть бой</button><button id="unlocked" class="panel-secondary">Без захвата мыши</button></div><span class="settings-save-note">Изменения сохраняются автоматически</span><button id="resume" class="panel-primary">Готово <span>↗</span></button></footer>
+    </div></div><footer class="settings-footer"><div class="settings-session"><button id="pause-squads" class="panel-secondary hidden" data-open-squads>Отряды</button><button id="leave" class="panel-secondary">Покинуть бой</button><button id="unlocked" class="panel-secondary">Без захвата мыши</button></div><span class="settings-save-note">Изменения сохраняются автоматически</span><button id="resume" class="panel-primary">Готово <span>↗</span></button></footer>
   </div></section>
   <section id="death" class="overlay deploy-overlay hidden" aria-label="Тактический экран дислокации">
     <div class="deploy-hud">
@@ -175,7 +177,7 @@
               <p id="death-countdown">Подготовка к высадке…</p>
             </div>
             <button id="respawn" class="deploy-button"><span>ДИСЛОКАЦИЯ [ПРОБЕЛ]</span><span>→</span></button>
-            <button id="death-leave" class="outline-button">В главное меню</button>
+            <button class="outline-button" data-open-squads>Выбрать отряд</button><button id="death-leave" class="outline-button">В главное меню</button>
           </div>
         </aside>
       </div>

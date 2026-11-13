@@ -124,6 +124,7 @@ export class Multiplayer{
     await this.request('join',options);return this.roomName;
   }
   setLobbyLoadout(data){this.control('loadout',data);}
+  changeSquad(squadId){return this.request('squad',{squadId});}
   updateLobbySettings(data){this.control('settings',data);}
   startMatch(data={}){this.control('start',data);}
   respawn(classId,pointId,weaponId,sidearmId){return this.control('respawn',{classId,pointId,weaponId,sidearmId});}

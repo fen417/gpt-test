@@ -2,6 +2,7 @@
 
 import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle } from './vehicle-ai.js';
+import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
 import { thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
 import { findBotPath, prepareNavigation, beginNavigationTick } from './bot-navigation.js';
@@ -171,7 +172,7 @@ export class Simulation {
     for(let n=0;n<clamp(Math.floor(bots),0,31);n++){
       const cls=classKeys[Math.floor(n/2)%4];
       const wep=CLASS_WEAPONS[cls]?.[Math.floor(n/8)%2]??defaultWeaponId(cls);
-      const p=this.addPlayer(`bot-${n}`,names[n%names.length],n%2,cls,wep);p.bot=true;p.botSlot=n;p.nextThink=0;p.botPath=[];
+      const p=this.addPlayer(`bot-${n}`,names[n%names.length],n%2,cls,wep,undefined,true);p.bot=true;p.botSlot=n;p.nextThink=0;p.botPath=[];
     }
     if(bots>0)prepareNavigation(this);
     this.ready=true;
@@ -187,7 +188,7 @@ export class Simulation {
       const mover=bots[big].find(q=>!q.alive)||bots[big][bots[big].length-1];
       this.dismountVehicle(mover,true);
       this.deployables=this.deployables.filter(item=>item.ownerId!==mover.id);
-      mover.team=small;mover.alive=false;mover.respawnIn=0;
+      mover.team=small;mover.squadId=0;mover.squadLeader=false;mover.alive=false;mover.respawnIn=0;assignSquad(this,mover);
       this.respawn(mover.id);
     }
   }
@@ -199,19 +200,21 @@ export class Simulation {
     this.event('score',{playerId:player.id,points:pts,total:player.score,reason,...extra});
     return pts;
   }
-  addPlayer(id,name='Боец',team,classId='assault',weaponId='',sidearmId) {
+  addPlayer(id,name='Боец',team,classId='assault',weaponId='',sidearmId,bot=false) {
     if(this.players.has(id))return this.players.get(id);
     if(team!==0&&team!==1){let a=0,b=0;for(const p of this.players.values())p.team===0?a++:b++;team=a<=b?0:1;}
     const cls=validClass(classId)?classId:'assault';
     const wep=getPrimaryWeapon(cls,weaponId).id??defaultWeaponId(cls);
     const p={id:String(id),name:String(name||'Боец').replace(/[<>\x00-\x1f]/g,'').slice(0,20),team,classId:cls,weaponId:wep,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,alive:false,ammo:0,reserve:0,kills:0,deaths:0,assists:0,score:0,damagers:new Map(),spottedBy:null,respawnIn:0,reloading:false,shotSeq:0,input:sanitizeInput(),cooldown:0,reloadTime:0,gadgetTime:0,grenades:2,vy:0,lastHurt:-100,bot:false};
-    this.players.set(p.id,p);this.respawn(p.id,cls,'',wep,sidearmId);this.balanceTeams();return p;
+    p.bot=bot;if(bot)p.botSlot=Number(String(id).split('-').at(-1))||0;
+    this.players.set(p.id,p);assignSquad(this,p);this.respawn(p.id,cls,'',wep,sidearmId);this.balanceTeams();return p;
   }
   removePlayer(id){
     const p=this.players.get(id);
     if(p)this.dismountVehicle(p,true);
-    this.players.delete(id);this.deployables=this.deployables.filter(item=>item.ownerId!==id);this.balanceTeams();
+    this.players.delete(id);this.deployables=this.deployables.filter(item=>item.ownerId!==id);reconcileSquads(this);this.balanceTeams();
   }
+  changeSquad(id,squadId){return changeSquad(this,id,squadId);}
   setInput(id,input){const p=this.players.get(id);if(p&&!p.bot)p.input=sanitizeInput(input);}
   respawn(id,classId,pointId,weaponId,sidearmId){
     const p=this.players.get(id);if(!p || p.alive || p.respawnIn>0)return false;
@@ -1021,7 +1024,7 @@ export class Simulation {
       const wep=getWeapon(p.classId,p.weaponId);
       return {
         id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,primaryWeaponId:p.primaryWeaponId,sidearmId:p.sidearmId,weaponSlot:p.weaponSlot,equipTime:p.equipTime,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
-        hp:p.hp,alive:p.alive,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
+        hp:p.hp,alive:p.alive,squadId:p.squadId,squadLeader:p.squadLeader,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
         shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
         slideYaw:p.slideTime>0?Math.atan2(-p.slideVx,-p.slideVz):p.yaw,sprint:!p.vehicleId&&!crouching(p)&&p.input.sprint&&p.moveSpeed>wep.speed,

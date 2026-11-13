@@ -12,6 +12,10 @@ import {mountChangelog} from './changelog.js';
 import './menu.css';
 import {mountMenuPanels,closeMenuPanels} from './menu-panels.js';
 import {mountRoomBrowser} from './room-browser.js';
+import {mountSquadUI} from './squad-ui.js';
+import {mountWeaponPreview} from './weapon-preview.js';
+import {sameSquad,SQUAD_COLOR} from '../shared/squads.js';
+import './squads.css';
 import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
 
 const $=id=>document.getElementById(id);
@@ -21,6 +25,7 @@ const text=(id,value)=>{const node=$(id),next=String(value);if(node.textContent!
 const audio=new CombatAudio();
 const canvas=$('game');
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
+let squadUI,weaponPreview;
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let fireTap=false, recoilPitch=0, recoilYaw=0;
@@ -63,7 +68,7 @@ const DEFAULT_BINDS={
   interact:'KeyE',
   switchSeat:'KeyV',
   horn:'KeyH',
-  orderAttack:'KeyB',orderDefend:'KeyN',orderFollow:'KeyJ',
+  orderAttack:'KeyB',orderDefend:'KeyN',orderFollow:'KeyJ',squad:'KeyO',
 };
 const BIND_LABELS=[
   ['forward','Вперёд'],
@@ -80,7 +85,8 @@ const BIND_LABELS=[
   ['score','Таблица счёта'],
   ['interact','Сесть в технику / выйти'],
   ['switchSeat','Сменить место в технике'],
-  ['orderAttack','Отделение: атаковать точку по взгляду'],
+  ['squad','Открыть отряды'],
+  ['orderAttack','Отряд: атаковать точку по взгляду'],
   ['orderDefend','Отделение: защищать ближайшую точку'],
   ['orderFollow','Отделение: следовать за мной'],
   ['horn','Сигнал / позвать ботов в транспорт'],
@@ -220,6 +226,7 @@ for(const picker of sidearmPickers){
     selectedSidearm=getSidearm(picker.value).id;
     save('sidearm',selectedSidearm);
     for(const other of sidearmPickers)other.value=selectedSidearm;
+    weaponPreview?.update('sidearm');
     if(inLobby)multiplayer.setLobbyLoadout({classId:selectedClass,weaponId:currentWeaponId(),sidearmId:selectedSidearm});
     audio.click();
   });
@@ -259,11 +266,12 @@ function selectClass(classId,playClick=false){
   $('stat-rng').style.width=`${Math.min(100,Math.round(w.range/260*100))}%`;
   if(inLobby)multiplayer.setLobbyLoadout({classId,weaponId,sidearmId:selectedSidearm});
   if(playClick)audio.click();
+  weaponPreview?.update('primary');
 }
 function deploymentPoints(){
   const player=local();
   const beacons=(state?.deployables??[]).filter(item=>item.kind==='beacon'&&item.hp>0&&item.team===player?.team&&item.expires>state.time).map(item=>({
-    ...item,beacon:true,owner:item.team,name:'МАЯК · '+(state.players.find(p=>p.id===item.ownerId)?.name??'СОЮЗНИК'),
+    ...item,beacon:true,squadBeacon:sameSquad(player,item),owner:item.team,name:(sameSquad(player,item)?'МАЯК ОТРЯДА · ':'СОЮЗНЫЙ МАЯК · ')+(state.players.find(p=>p.id===item.ownerId)?.name??'СОЮЗНИК'),
     contested:false,progress:0,spawnBlocked:state.players.some(p=>p.alive&&p.team!==item.team&&Math.hypot(p.x-item.x,p.z-item.z)<8),
   }));
   return [...(state?.points??[]),...beacons];
@@ -480,6 +488,7 @@ function prepare(which){
 }
 function enter(){
   closeMenuPanels();
+  show('pause-squads');
   inLobby=false;active=true;setBusy(false);show('menu',false);show('lobby',false);show('hud');show('pause',false);show('death',false);show('result',false);document.body.style.overflow='hidden';
   document.body.classList.add('in-battle');audio.setMode?.('battle');
   text('pause-title','Бой продолжается');text('pause-description','Вернись в сектор. Твой отряд ждёт.');$('resume').firstChild.textContent='ПРОДОЛЖИТЬ ';show('unlocked');show('leave');
@@ -544,7 +553,7 @@ $('lobby-start').addEventListener('click',()=>{if(state?.ownerId!==localId)retur
 $('lobby-leave').addEventListener('click',()=>leave());
 $('spawn-point').addEventListener('change',event=>selectSpawnPoint(event.target.value,true));
 $('resume').addEventListener('click',()=>{if(!active){show('pause',false);return;}audio.unlock();requestControl();});
-$('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подстрой игру под себя.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause');});
+$('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подстрой игру под себя.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause-squads',false);show('pause');});
 $('unlocked').addEventListener('click',()=>{unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
 for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>{
   if(id!=='result-leave'&&performance.now()-lastFireClick<600)return;
@@ -591,6 +600,12 @@ $('reset-binds')?.addEventListener('click',()=>{
 $('sound-toggle').addEventListener('click',()=>{audio.enabled=!audio.enabled;text('sound-toggle',audio.enabled?'ЗВУК ВКЛ.':'ЗВУК ВЫКЛ.');$('sound-toggle').setAttribute('aria-pressed',String(audio.enabled));unlockAudio();musicUI();});
 $('music-toggle').addEventListener('click',()=>{if(audioStarted)musicMuted=!musicMuted;else musicMuted=false;save('music-muted',musicMuted);unlockAudio();setMusic();});
 mountMenuPanels(()=>{unlockAudio();audio.click();});
+weaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm})});
+squadUI=mountSquadUI({getState:()=>state,getLocalId:()=>localId,getKey:()=>formatKeyCode(keybinds.squad),
+  getOrderKeys:()=>({attack:formatKeyCode(keybinds.orderAttack),defend:formatKeyCode(keybinds.orderDefend),follow:formatKeyCode(keybinds.orderFollow)}),
+  onOpen:()=>{clearControls();if(active&&local()?.alive){unlockedPaused=true;document.exitPointerLock?.();show('pause');}audio.click();},
+  onChange:async id=>{if(simulation){if(!simulation.changeSquad(localId,id))throw Error('Отряд заполнен.');receive(simulation.snapshot());}else await multiplayer.changeSquad(id);},
+});
 canvas.addEventListener('click',()=>{if(active&&!locked)requestControl();});
 $('revive-control-hint').addEventListener('click',()=>requestControl());
 document.addEventListener('pointerlockchange',()=>{
@@ -651,6 +666,7 @@ document.addEventListener('keydown',event=>{
     return;
   }
   if(!active){if(event.code==='Escape')show('pause',false);return;}
+  if(isBound('squad',event.code)&&!event.repeat){event.preventDefault();squadUI.open();return;}
   if(!local()?.alive&&!finished&&!$('death').classList.contains('hidden')){
     const classKeys={Digit1:'assault',Digit2:'medic',Digit3:'support',Digit4:'recon'};
     if(classKeys[event.code]){
@@ -749,10 +765,10 @@ function minimap(player){
   for(const item of state.deployables??[]){
     if(item.kind!=='beacon'||item.team!==player.team||item.hp<=0||item.expires<=state.time)continue;
     const x=(item.x+half)*scale,z=(item.z+half)*scale;
-    c.fillStyle='#102a20';c.strokeStyle='#a4e0b9';c.lineWidth=1.4;c.beginPath();c.arc(x,z,4,0,Math.PI*2);c.fill();c.stroke();
-    c.fillStyle='#b8f6cb';c.fillRect(x-.8,z-2,1.6,4);
+    c.fillStyle='#102129';c.strokeStyle=sameSquad(player,item)?SQUAD_COLOR:'#79c5d2';c.lineWidth=1.4;c.beginPath();c.arc(x,z,4,0,Math.PI*2);c.fill();c.stroke();
+    c.fillStyle=c.strokeStyle;c.fillRect(x-.8,z-2,1.6,4);
   }
-  for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=TEAM_HEX[p.team]??'#79c5d2';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?1.8:2.3,0,Math.PI*2);c.fill();}
+  for(const p of state.players){if(!p.alive||p.id===localId)continue;const friend=p.team===player.team;if(!friend&&!p.spotted&&Math.hypot(p.x-player.x,p.z-player.z)>28)continue;c.fillStyle=sameSquad(player,p)?SQUAD_COLOR:TEAM_HEX[p.team]??'#79c5d2';c.beginPath();c.arc((p.x+half)*scale,(p.z+half)*scale,friend?1.8:2.3,0,Math.PI*2);c.fill();}
   for(const vehicle of state.vehicles??[]){
     if(vehicle.hp<=0||vehicle.team!==player.team||vehicle.id===player.vehicleId)continue;
     c.save();c.translate((vehicle.x+half)*scale,(vehicle.z+half)*scale);c.rotate(-vehicle.yaw);
@@ -936,11 +952,11 @@ function drawDeployMap(player,now){
     const color=p.owner===-1?'#ced1bb':TEAM_HEX[p.owner]??'#ced1bb';
     c.save();
     if(p.beacon){
-      c.translate(x,z);c.fillStyle='#15382bea';c.strokeStyle='#a4e0b9';c.lineWidth=1.6;
+      c.translate(x,z);c.fillStyle=p.squadBeacon?'#15382bea':'#15303bea';c.strokeStyle=p.squadBeacon?SQUAD_COLOR:'#79c5d2';c.lineWidth=1.6;
       c.beginPath();c.arc(0,0,12,0,Math.PI*2);c.fill();c.stroke();
-      c.fillStyle='#bcf2cd';drawBeaconIcon(c);
+      c.fillStyle=p.squadBeacon?SQUAD_COLOR:'#79c5d2';drawBeaconIcon(c);
       if(selectedSpawn===p.id||hoveredSpawn===p.id){c.lineWidth=1.5;c.beginPath();c.arc(0,0,16+pulse*2,0,Math.PI*2);c.stroke();}
-      c.fillStyle='#bcf2cd';c.font='600 8px sans-serif';c.textAlign='center';c.textBaseline='middle';
+      c.fillStyle=p.squadBeacon?SQUAD_COLOR:'#79c5d2';c.font='600 8px sans-serif';c.textAlign='center';c.textBaseline='middle';
       c.fillText(p.name,0,22);c.fillText(beaconTime(p),0,32);c.restore();continue;
     }
     c.fillStyle=color;c.strokeStyle=color;
@@ -984,7 +1000,7 @@ function drawDeployMap(player,now){
     const friend=p.team===player.team;
     if(!friend&&!p.spotted)continue;
     const x=(p.x+half)*scale,z=(p.z+half)*scale;
-    const pColor=TEAM_HEX[p.team]??allyColor;
+    const pColor=sameSquad(player,p)?SQUAD_COLOR:friend?'#79c5d2':TEAM_HEX[p.team]??allyColor;
     c.save();
     c.translate(x,z);
     if(friend){
@@ -1027,7 +1043,7 @@ function updateDeployScreen(player,now){
   if(selectEl.dataset.signature!==signature){
     selectEl.dataset.signature=signature;
     const points=document.createElement('optgroup'),beacons=document.createElement('optgroup');
-    points.label='База и точки захвата';beacons.label='Маяки отряда';
+    points.label='База и точки захвата';beacons.label='Союзные маяки';
     points.append(new Option('База команды',''),...options.filter(p=>!p.beacon).map(p=>new Option(`${p.id} · ${p.name}`,p.id)));
     beacons.append(...options.filter(p=>p.beacon).map(p=>new Option(p.name,p.id)));
     selectEl.replaceChildren(points,...(beacons.children.length?[beacons]:[]));
@@ -1037,7 +1053,7 @@ function updateDeployScreen(player,now){
   text('deploy-allies-count',`СОЮЗНИКОВ В БОЮ: ${allies.length}`);
   const listSig=`${selectedSpawn}:`+deploymentPoints().map(p=>{
     const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
-    return `${p.id}:${p.owner}:${p.contested?1:0}:${p.spawnBlocked?1:0}:${near}:${p.beacon?beaconTime(p):''}`;
+    return `${p.id}:${p.squadBeacon?1:0}:${p.owner}:${p.contested?1:0}:${p.spawnBlocked?1:0}:${near}:${p.beacon?beaconTime(p):''}`;
   }).join('|');
   const listEl=$('deploy-spawn-list');
   if(listEl.dataset.signature!==listSig){
@@ -1050,13 +1066,13 @@ function updateDeployScreen(player,now){
         const near=allies.filter(a=>Math.hypot(a.x-p.x,a.z-p.z)<32).length;
         const blocked=p.contested||(friend&&p.spawnBlocked);
         const tag=p.contested?'ОСПАРИВАЕТСЯ':blocked?'ПРОТИВНИК НА ТОЧКЕ':available?'ДОСТУПНО':enemy?'ВРАГ':'НЕЙТРАЛЬНО';
-        return {id:p.id,badge:p.id,name:p.name,sub:`${p.beacon?beaconTime(p)+' · ':''}Союзников рядом: ${near}`,tag,available,enemy,contested:blocked,beacon:p.beacon};
+        return {id:p.id,badge:p.id,name:p.name,sub:`${p.beacon?beaconTime(p)+' · ':''}Союзников рядом: ${near}`,tag,available,enemy,contested:blocked,beacon:p.beacon,squadBeacon:p.squadBeacon};
       }),
     ];
     const makeButton=item=>{
       const btn=document.createElement('button');
       btn.type='button';
-      btn.className=`spawn-item${item.hq?' hq':''}${item.beacon?' beacon':''}${selectedSpawn===item.id?' selected':''}${!item.available?' locked':''}${item.enemy?' enemy-owned':''}${item.contested?' contested':''}`;
+      btn.className=`spawn-item${item.hq?' hq':''}${item.beacon?' beacon':''}${item.squadBeacon?' squad-beacon':''}${selectedSpawn===item.id?' selected':''}${!item.available?' locked':''}${item.enemy?' enemy-owned':''}${item.contested?' contested':''}`;
       btn.setAttribute('role','option');btn.setAttribute('aria-selected',String(selectedSpawn===item.id));
       const left=document.createElement('div'),badge=document.createElement('span'),badgeInner=document.createElement('i'),info=document.createElement('div'),title=document.createElement('b'),sub=document.createElement('small'),tag=document.createElement('span');
       left.className='spawn-item-left';badge.className='spawn-badge';badgeInner.textContent=item.badge;badge.append(badgeInner);
@@ -1076,7 +1092,7 @@ function updateDeployScreen(player,now){
     const heading=label=>{const node=document.createElement('div');node.className='spawn-group-title';node.textContent=label;return node;};
     const beacons=items.filter(item=>item.beacon);
     listEl.replaceChildren(heading('БАЗА И ТОЧКИ ЗАХВАТА'),...items.filter(item=>!item.beacon).map(makeButton),
-      ...(beacons.length?[heading(`МАЯКИ ОТРЯДА · ${beacons.length}`),...beacons.map(makeButton)]:[]));
+      ...(beacons.length?[heading(`СОЮЗНЫЕ МАЯКИ · ${beacons.length}`),...beacons.map(makeButton)]:[]));
   }
   drawDeployMap(player,now);
 }
@@ -1137,6 +1153,7 @@ function updateVehicleHud(player){
   return seat;
 }
 function hud(now){
+  squadUI?.update(state,localId);
   drawBotDebug(state);
   const player=local();if(!player)return;
   const weapon=getWeapon(player.classId,player.weaponId);
@@ -1281,6 +1298,7 @@ function markCasualties(player){
 }
 function markers(){
   const player=local();if(!player)return;
+  squadUI?.markers(renderer,state,localId);
   markCasualties(player);
   for(const point of state.points){
     const marker=$(`marker-${point.id}`),position=renderer.project(point.x,(point.y??0)+5,point.z);
