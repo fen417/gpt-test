@@ -120,7 +120,8 @@ export class SnapshotEncoder{
         if((kind==='grenades'||kind==='rockets')&&own&&d>(scoped?320:kind==='grenades'?65:200)&&at('ownerId')!==localId&&at('owner')!==localId)continue;
         const key=kind+'/'+id;
         if(!full&&old&&id!==localId&&['players','vehicles'].includes(kind)){
-          const hz=scoped||current.active.has(id)||d<70?20:d<150?10:kind==='vehicles'||at('team')===own?.team?4:2;
+          const facing=own&&Math.abs(Math.atan2(Math.sin(Math.atan2(-(at('x')-own.x),-(at('z')-own.z))-own.yaw),Math.cos(Math.atan2(-(at('x')-own.x),-(at('z')-own.z))-own.yaw)))<1.25;
+          const hz=scoped||current.active.has(id)||d<150||facing&&d<300?20:10;
           motion=current.time>=(this.due.get(key)??0);if(motion)this.due.set(key,current.time+1/hz);
         }
         if(kind==='players'&&id!==localId)row=row.map((v,i)=>PRIVATE.has(schema[i].key)?0:v);
@@ -178,6 +179,14 @@ export function decodeEvents(value,dict){
   const r=new Reader(value);if(r.u8()!==MESSAGE.EVENTS)throw Error('Not events');dict.read(r);const through=r.u32(),count=r.u16();if(count>1024)throw Error('Event limit');const events=[];
   for(let n=0;n<count;n++){const id=r.u32(),type=EVENT_TYPES[r.u8()],time=r.f32();if(!type)throw Error('Unknown event');const schema=EVENT_KEYS[type].split(' ').map(k=>EVENT_SPEC[k]),mask=[];for(let i=0;i<Math.ceil(schema.length/8);i++)mask.push(r.u8());const event={id,type,time};schema.forEach((f,i)=>{if(mask[i>>3]&(1<<(i&7)))event[f.key]=dequant(f.type,readValue(r,f.type,dict),1);});events.push(event);
   }r.done();return {through,events};
+}
+// Same values decodeInput produces, without allocating a packet just to read it
+// back during every local prediction step. Callers pass sanitized input.
+export function quantizedInput(sequence,input,dt=INPUT_STEP){
+  const command={forward:Math.round(clamp(input.forward??0,-1,1)*127)/127,strafe:Math.round(clamp(input.strafe??0,-1,1)*127)/127,
+    yaw:dequant('a',quant('a',input.yaw,1),1),pitch:dequant('a',quant('a',input.pitch,1),1),weaponSlot:input.weaponSlot??0,toolSlot:input.toolSlot??0};
+  for(const key of INPUT_FLAGS)command[key]=Boolean(input[key]);
+  return {sequence,dt:clamp(Math.round(dt*1e6),1000,50000)/1e6,input:command};
 }
 export function encodeInput(frames,{snapshotAck=0,eventAck=0,dictAck=0,epoch=0}={}){
   const w=new Writer(512);w.u8(MESSAGE.INPUT);w.u32(epoch);w.u32(snapshotAck);w.u32(eventAck);w.u16(dictAck);w.u8(frames.length);

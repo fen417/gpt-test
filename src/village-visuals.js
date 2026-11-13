@@ -4,6 +4,7 @@ import { clonePairedMaterial, pairMaterials } from './visuals.js';
 import { createPortModelBuilder } from './port-visuals.js';
 import { terrainRoads } from './terrain-roads.js';
 import { desertMountain, desertRockMaterial } from './desert-mountains.js';
+import { partitionTerrain } from './terrain-chunks.js';
 
 const palettes = new WeakMap();
 
@@ -317,6 +318,7 @@ export function addVillageGround(owner, map, assets = true) {
   ground.receiveShadow = true;
   owner.scene.add(ground);
   const roads = terrainRoads(owner, ground, span, map.roads, m.sand, '#bda17a');
+  partitionTerrain(owner.scene, geometry);
   if (assets) {
     createVillageModelBuilder(owner)(map.boxes, map.structures, [], map.terrain);
     if (map.ship) createPortModelBuilder(owner)({ ship: map.ship });

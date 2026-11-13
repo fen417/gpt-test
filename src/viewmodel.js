@@ -1,5 +1,7 @@
 import { rayCollider } from '../shared/asset-colliders.js';
 import { boxBounds } from '../shared/geometry.js';
+import { SpatialIndex } from '../shared/spatial-index.js';
+const coverIndices=new WeakMap(),coverCandidates=[];
 // View models get their own depth pass, while retaining normal self-occlusion.
 export const VIEWMODEL_LAYER=1;
 export function prepareViewModel(group){
@@ -17,7 +19,10 @@ export function prepareViewModel(group){
 
 export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   let closest=maxDistance;
-  for (const box of boxes) {
+  let index=coverIndices.get(boxes);
+  if(!index){index=new SpatialIndex(boxes,8,b=>b.minX===undefined?boxBounds(b):b);coverIndices.set(boxes,index);}
+  const endX=origin.x+direction.x*maxDistance,endZ=origin.z+direction.z*maxDistance;
+  for (const box of index.query(Math.min(origin.x,endX),Math.min(origin.z,endZ),Math.max(origin.x,endX),Math.max(origin.z,endZ),coverCandidates)) {
     const collider = box.minX === undefined ? boxBounds(box) : box;
     closest = Math.min(closest, rayCollider(origin, direction, collider, closest));
   }

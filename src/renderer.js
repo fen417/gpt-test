@@ -1,4 +1,6 @@
 ﻿import * as THREE from 'three';
+import { CachedShadows } from './cached-shadows.js';
+import { InteriorVisibility } from './interior-visibility.js';
 import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
@@ -192,6 +194,7 @@ export class GameRenderer {
     this.soldierBounds = new THREE.Sphere(new THREE.Vector3(), 2.5);
     this.flagBounds = new THREE.Sphere(new THREE.Vector3(), 4.5);
     this.effectBounds = new THREE.Sphere(new THREE.Vector3(), 12);
+    this.cachedShadows=new CachedShadows();this.interiorVisibility=new InteriorVisibility();
     this.surfaceCache = new Map();
     this.soldierMaterials = new Map();
     this.random = seeded();
@@ -208,12 +211,15 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
+    this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
     if (canvas && typeof canvas.addEventListener === 'function') {
       canvas.addEventListener('webglcontextlost', event => {
         event.preventDefault();
       }, false);
       canvas.addEventListener('webglcontextrestored', () => {
+        this.cachedShadows.disposeTargets();this.cachedShadows.size=null;this.cachedShadows.install(this);
+        this.cachedShadows.invalidate();
         this.sun.shadow.needsUpdate = true;
         this.renderer.shadowMap.needsUpdate = true;
       }, false);
@@ -667,7 +673,7 @@ export class GameRenderer {
     for (const root of this.scene.children) if (!existing.has(root)) root.traverse(object => {
       if (!object.isMesh || object.isInstancedMesh || object.userData.noBatch || Array.isArray(object.material)) return;
       for (let node = object; node; node = node.parent) if (dynamic.has(node) || node === this.camera) return;
-      const sector = object.material.transparent ? 'transparent' : mapSector(object.matrixWorld);
+      const sector = mapSector(object.matrixWorld, this.map?.id==='village'?32:96);
       const key = `${object.material.uuid}:${object.castShadow}:${object.receiveShadow}:${!!object.geometry.index}:${sector}`;
       if (!batches.has(key)) batches.set(key, []);
       batches.get(key).push(object);
@@ -1433,7 +1439,8 @@ export class GameRenderer {
   }
 
   updateSunShadow(anchorX = 0, anchorZ = 0) {
-    const texel = (this.shadowExtent * 2) / this.shadowMapSize;
+    const texelSize = (this.shadowExtent * 2) / this.shadowMapSize;
+    const texel = texelSize*Math.ceil(4/texelSize);
     const rx = Math.round((anchorX * this.sunRight.x + anchorZ * this.sunRight.z) / texel) * texel;
     const ry = Math.round((anchorX * this.sunUp.x + anchorZ * this.sunUp.z) / texel) * texel;
     const rz = Math.round((anchorX * this.sunForward.x + anchorZ * this.sunForward.z) / 2) * 2;
@@ -1465,7 +1472,9 @@ export class GameRenderer {
         this.renderer.shadowMap.needsUpdate = true;
       }
     }
-    drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);
+    if(!menu)this.interiorVisibility.apply(this);
+    try{drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);}
+    finally{this.interiorVisibility.restore();}
   }
 
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
@@ -1804,6 +1813,7 @@ export class GameRenderer {
   }
 
   dispose() {
+    this.cachedShadows.dispose();
     this.bulletMarks.dispose();
     this.clearVehicles();
     const geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set();

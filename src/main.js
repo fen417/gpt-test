@@ -1,3 +1,5 @@
+import { PerformanceSamples } from '../shared/performance-samples.js';
+const frameTimes=new PerformanceSamples(),cpuTimes=new PerformanceSamples(),renderTimes=new PerformanceSamples(),simulationTimes=new PerformanceSamples();
 import { drawBotDebug } from './bot-debug.js';
 ﻿import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isSupplyGadget, gadgetCooldown } from '../shared/gadgets.js';
@@ -1287,13 +1289,15 @@ function markers(){
   }
 }
 function frame(now){
+  const cpuBegin=performance.now();
   requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;frames++;fpsClock+=elapsed;
+  if(active)frameTimes.add(elapsed*1000);
   if(fpsClock>=1){
     const network=mode==='server'?multiplayer.diagnostics():null;
     const networkLabel=network?` · ПИНГ ${network.rttMs??'—'} мс · ОЧЕРЕДЬ ${network.pendingInputs}${network.server?.tickAverageMs!=null?` · ТИК ${network.server.tickAverageMs} мс`:''}`:'';
     text('fps',`${Math.round(frames/fpsClock)} FPS${networkLabel}`);fpsClock=0;frames=0;
     const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);
-    canvas.dataset.renderStats=JSON.stringify(renderer.getStats?.()??{});
+    canvas.dataset.renderStats=JSON.stringify({...renderer.getStats?.(),frameMs:frameTimes.summary(),cpuMs:cpuTimes.summary(),renderMs:renderTimes.summary(),simulationMs:simulationTimes.summary()});
     if(network)canvas.dataset.networkStats=JSON.stringify(network);else delete canvas.dataset.networkStats;
   }
   if(active){
@@ -1303,6 +1307,7 @@ function frame(now){
       pitch=Math.max(-1.45,Math.min(1.45,pitch+(Number(keys.has('ArrowUp'))-Number(keys.has('ArrowDown')))*dt*1.2));
     }
     lastInput=input();
+    const simulationBegin=performance.now();
     if(simulation){
       accumulator+=dt;
       let steps=0;
@@ -1313,9 +1318,12 @@ function frame(now){
       if(accumulator>1/60)accumulator=1/60;
       if(steps){receive(simulation.snapshot());pulses.clear();fireTap=false;}
     }else{multiplayer.advance(lastInput,dt);pulses.clear();fireTap=false;}
+    simulationTimes.add(performance.now()-simulationBegin);
   }
   const currentPlayer=local();
+  const renderBegin=performance.now();
   renderer.render(active?(simulation?state:multiplayer.sample(now)):null,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),networkInterpolated:mode==='server',aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+  renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
   const scopedWeapon=currentPlayer&&getWeapon(currentPlayer.classId,currentPlayer.weaponId);
@@ -1325,6 +1333,7 @@ function frame(now){
   document.body.classList.toggle('scoped',scoped);
   audio.update?.(dt,{state,local:local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
+  if(active)cpuTimes.add(performance.now()-cpuBegin);
 }
 try{
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto')});renderer.resize();window.addEventListener('resize',()=>renderer.resize());

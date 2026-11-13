@@ -2,7 +2,7 @@ import { sanitizeInput, createPredictionWorld } from '../shared/simulation.js';
 import { EYE_HEIGHT } from '../shared/world.js';
 import { getVehicleSeatPose } from '../shared/vehicles.js';
 import { PROTOCOL_VERSION, MAP_LAYOUT_REVISION } from '../shared/world.js';
-import { MESSAGE, INPUT_STEP, SnapshotDecoder, decodeEvents, encodeInput, decodeInput, encodeAck, encodeControl, decodeControl } from '../shared/snapshot-codec.js';
+import { MESSAGE, INPUT_STEP, SnapshotDecoder, decodeEvents, encodeInput, quantizedInput, encodeAck, encodeControl, decodeControl } from '../shared/snapshot-codec.js';
 import { Reader, Writer } from '../shared/binary.js';
 
 export { sanitizeInput };
@@ -128,7 +128,7 @@ export class Multiplayer{
   respawn(classId,pointId,weaponId,sidearmId){return this.control('respawn',{classId,pointId,weaponId,sidearmId});}
   initialize(data){
     this.context={mapId:data.mapId,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
-    this.decoder=new SnapshotDecoder(this.context);this.prediction=new Prediction(data.mapId);this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.interpolationMs=100;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
+    this.decoder=new SnapshotDecoder(this.context);this.prediction=new Prediction(data.mapId);this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.interpolationMs=60;this.renderTime=null;this.targetInterpolationMs=60;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
   }
   acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0};}
   binary(value){
@@ -136,19 +136,19 @@ export class Multiplayer{
     if(bytes[0]===MESSAGE.PONG){const r=new Reader(value);r.u8();const sample=now-r.f64();if(sample>=0&&sample<30000)this.rtt=this.rtt?this.rtt*.8+sample*.2:sample;return;}
     if(!this.decoder)return;
     if(bytes[0]===MESSAGE.SNAPSHOT){
-      const result=this.decoder.decode(value);if(result.missingBase){this.send(new Uint8Array([MESSAGE.RESYNC]));return;}
+      const decodeBegin=performance.now(),result=this.decoder.decode(value);this.decodeMs=performance.now()-decodeBegin;if(result.missingBase){this.send(new Uint8Array([MESSAGE.RESYNC]));return;}
       const {frame,state,inputAck,sequence}=result;
       if(sequence<=this.snapshotAck)return;this.snapshotAck=sequence;
       if(this.lastArrival){const interval=now-this.lastArrival,expected=1000/(this.snapshotHz??20);this.jitter=this.jitter*.9+Math.abs(interval-expected)*.1;}
-      this.lastArrival=now;this.interpolationMs=clamp(85+this.jitter*2+this.rtt*.1,85,180);
+      this.lastArrival=now;this.targetInterpolationMs=clamp(1000/(this.snapshotHz??20)+10+this.jitter*1.5,55,140);
       for(const kind of ['players','vehicles'])for(const p of state[kind]){
         const key=kind+'/'+p.id,track=this.motion.get(key)??{samples:[],period:.05};const last=track.samples.at(-1);
-        if(!last||p.motionAt>last.time){if(last)track.period=clamp(p.motionAt-last.time,.04,.6);track.samples.push({time:p.motionAt,arrival:now,pose:p});if(track.samples.length>12)track.samples.shift();this.motion.set(key,track);}
+        if(!last||p.motionAt>last.time){if(last)track.period=track.period*.8+clamp(p.motionAt-last.time,.04,.125)*.2;track.samples.push({time:p.motionAt,arrival:now,pose:p});if(track.samples.length>12)track.samples.shift();this.motion.set(key,track);}
       }
       const aliveKeys=new Set([...state.players.map(p=>'players/'+p.id),...state.vehicles.map(v=>'vehicles/'+v.id)]);for(const key of this.motion.keys())if(!aliveKeys.has(key))this.motion.delete(key);
       this.frames.push({frame,state,arrival:now});while(this.frames.length>40)this.frames.shift();
       if(state.winner!=null)this.prediction.pending=[];
-      const own=state.players.find(p=>p.id===this.id);if(own)this.prediction.reconcile(own,inputAck,state.vehicles);
+      const own=state.players.find(p=>p.id===this.id);if(own)this.pendingAuthority={own,inputAck,vehicles:state.vehicles};
       this.state=state;this.publish();this.ackSoon();
     }else if(bytes[0]===MESSAGE.EVENTS){
       const decoded=decodeEvents(value,this.decoder.dict);for(const event of decoded.events)if(event.id>this.eventAck)this.events.push(event);
@@ -158,7 +158,13 @@ export class Multiplayer{
   publish(){if(!this.state)return;this.events=this.events.filter(e=>e.time>this.state.time-1.3);this.state.events=this.events;this.onState(this.state);}
   ackSoon(){this.ackDirty=true;}
   sendInput(input,dt=INPUT_STEP){this.advance(input,dt);}
+  reconcileLatest(){
+    const pending=this.pendingAuthority;if(!pending)return;this.pendingAuthority=null;
+    const begin=performance.now();this.replayedInputs=this.prediction.pending.filter(f=>f.sequence>pending.inputAck).length;this.prediction.reconcile(pending.own,pending.inputAck,pending.vehicles);
+    this.correctionMs=performance.now()-begin;this.correctionDistance=Math.hypot(this.prediction.offset.x,this.prediction.offset.y,this.prediction.offset.z);
+  }
   advance(input,dt){
+    this.reconcileLatest();
     if(this._phase!=='match'||this.state?.winner!=null||!this.prediction||this.ws?.readyState!==WebSocket.OPEN)return;
     this.input=sanitizeInput(input);for(const key of pulses)if(input[key])this.pendingPulses[key]=true;
     if(input.fire)this.pendingFire=true;
@@ -172,7 +178,7 @@ export class Multiplayer{
       }
       const merged={...this.input,...this.pendingPulses,fire:this.input.fire||this.pendingFire};
       // Use exactly the quantized command the server receives, including angles.
-      const packed=encodeInput([{sequence:++this.sequence,dt:INPUT_STEP,input:merged}],this.acks()),command=decodeInput(packed).frames[0];
+      const command=quantizedInput(++this.sequence,merged);
       this.prediction.add(command);this.accumulator-=INPUT_STEP;this.pendingPulses={};this.pendingFire=false;
     }
   }
@@ -185,7 +191,7 @@ export class Multiplayer{
   clearInput(angles={}){this.input=sanitizeInput(angles);this.pendingPulses={};this.pendingFire=false;}
   startTimers(){
     clearInterval(this.pingTimer);clearInterval(this.flushTimer);
-    this.flushTimer=setInterval(()=>this.flush(),1000/30);
+    this.flushTimer=setInterval(()=>this.flush(),1000/60);
     const poll=()=>{
       const w=new Writer(9);w.u8(MESSAGE.PING);w.f64(performance.now());this.send(w.finish());
       if(this.token&&this._phase==='match')this.send({type:'stats',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION});
@@ -193,13 +199,20 @@ export class Multiplayer{
     poll();this.pingTimer=setInterval(poll,5000);
   }
   sample(now=performance.now()){
+    this.reconcileLatest();
     if(!this.state||!this.frames.length||this.state.winner!=null)return this.state;
-    const latest=this.frames.at(-1),target=latest.frame.time+Math.min(.1,(now-latest.arrival)/1000)-this.interpolationMs/1000;
+    const latest=this.frames.at(-1),dt=Math.max(0,Math.min(.25,(now-this.lastSample)/1000));this.lastSample=now;
+    this.interpolationMs+=( (this.targetInterpolationMs??60)-this.interpolationMs)*(1-Math.exp(-dt*2));
+    const desired=latest.frame.time+Math.min(.2,(now-latest.arrival)/1000)-this.interpolationMs/1000;
+    if(this.renderTime==null)this.renderTime=desired;
+    else this.renderTime=Math.min(latest.frame.time+.08,Math.max(this.renderTime,this.renderTime+dt*(1+clamp((desired-this.renderTime-dt)*2,-.15,.15))));
+    const target=this.renderTime;
+    if(target>latest.frame.time&&!this.underrun){this.bufferUnderruns++;this.underrun=true;}else if(target<=latest.frame.time)this.underrun=false;
     let left=this.frames[0],right=latest;
     for(let i=1;i<this.frames.length;i++)if(this.frames[i].frame.time>=target){left=this.frames[i-1];right=this.frames[i];break;}else left=this.frames[i];
     const span=right.frame.time-left.frame.time,alpha=span>0?clamp((target-left.frame.time)/span,0,1):1;
     const a=left.state,b=right.state,render={...this.state,time:Math.max(0,target),events:this.events};
-    for(const kind of ['players','vehicles','grenades','rockets']){
+    for(const kind of ['grenades','rockets']){
       const older=new Map(a[kind].map(p=>[p.id,p]));render[kind]=b[kind].map(p=>{
         const before=older.get(p.id);if(!before||before.alive!==p.alive||before.vehicleId!==p.vehicleId||Math.hypot(p.x-before.x,p.z-before.z)>8)return p;
         const out={...p};for(const key of ['x','y','z'])out[key]=before[key]+(p[key]-before[key])*alpha;
@@ -207,18 +220,20 @@ export class Multiplayer{
         return out;
       });
     }
-    for(const kind of ['players','vehicles'])render[kind]=this.state[kind].map(p=>this.sampleMotion(kind,p,now));
-    const dt=Math.min(.1,(now-this.lastSample)/1000);this.lastSample=now;const predicted=this.prediction.sample(dt);
+    for(const kind of ['players','vehicles'])render[kind]=this.state[kind].map(p=>this.sampleMotion(kind,p,target,dt));
+    const predicted=this.prediction.sample(dt);
     if(predicted?.alive&&(!predicted.vehicleId||predicted.vehicleSeat===0)){const index=render.players.findIndex(p=>p.id===this.id);if(index>=0)render.players[index]={...this.state.players.find(p=>p.id===this.id),...predicted,yaw:this.input.yaw??predicted.yaw,pitch:this.input.pitch??predicted.pitch};}
     if(predicted?.vehicleId&&predicted.vehicleSeat===0){const vehicle=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId),index=render.vehicles.findIndex(v=>v.id===predicted.vehicleId);if(vehicle&&index>=0)render.vehicles[index]={...vehicle};}
     // Derive every seated body from the very same interpolated/predicted vehicle.
     for(const p of render.players)if(p.vehicleId){const vehicle=render.vehicles.find(v=>v.id===p.vehicleId);if(vehicle){const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);p.x=pose.x;p.y=pose.y-EYE_HEIGHT;p.z=pose.z;}}
     return render;
   }
-  sampleMotion(kind,current,now){
+  sampleMotion(kind,current,renderTime,dt){
     const track=this.motion.get(kind+'/'+current.id);if(!track?.samples.length)return {...current};
-    const samples=track.samples,last=samples.at(-1),delay=Math.max(this.interpolationMs/1000,track.period+.02);
-    const target=last.time+Math.max(0,(now-last.arrival)/1000)-delay;
+    const samples=track.samples,last=samples.at(-1);
+    const extraDelay=Math.max(0,track.period+.01-this.interpolationMs/1000);
+    track.delay=(track.delay??extraDelay)+(extraDelay-(track.delay??extraDelay))*(1-Math.exp(-dt*2));
+    const target=Math.max(track.renderTime??-Infinity,renderTime-track.delay);track.renderTime=target;
     let a=samples[0],b=last;for(let i=1;i<samples.length;i++){if(samples[i].time>=target){a=samples[i-1];b=samples[i];break;}a=samples[i];}
     const out={...current},span=b.time-a.time;
     if(a.pose.alive!==b.pose.alive||a.pose.vehicleId!==b.pose.vehicleId||Math.hypot(a.pose.x-b.pose.x,a.pose.z-b.pose.z)>8)return out;
@@ -228,7 +243,7 @@ export class Multiplayer{
     if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.08,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;}}
     return out;
   }
-  diagnostics(){return {rttMs:this.rtt?Math.round(this.rtt):null,interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,snapshotAgeMs:this.lastArrival?Math.round(performance.now()-this.lastArrival):null,bufferedBytes:this.ws?.bufferedAmount??0,recoveries:this.recoveries,lastRecovery:this.lastRecovery,receivedBytes:this.receivedBytes,server:this.serverStats};}
+  diagnostics(){return {decodeMs:this.decodeMs??0,replayedInputs:this.replayedInputs??0,correctionMs:this.correctionMs??0,correctionDistance:this.correctionDistance??0,bufferUnderruns:this.bufferUnderruns??0,renderAgeMs:this.state&&this.renderTime!=null?Math.round((this.state.time-this.renderTime)*1000):null,rttMs:this.rtt?Math.round(this.rtt):null,interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,snapshotAgeMs:this.lastArrival?Math.round(performance.now()-this.lastArrival):null,bufferedBytes:this.ws?.bufferedAmount??0,recoveries:this.recoveries,lastRecovery:this.lastRecovery,receivedBytes:this.receivedBytes,server:this.serverStats};}
   close(forget=true){
     this.manual=true;this.generation++;clearInterval(this.pingTimer);clearInterval(this.flushTimer);
     if(this.ws?.readyState===WebSocket.OPEN&&this.token)this.control('leave');this.ws?.close();this.ws=null;

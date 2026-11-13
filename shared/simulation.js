@@ -4,7 +4,7 @@ import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehic
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle } from './vehicle-ai.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
 import { thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
-import { findBotPath } from './bot-navigation.js';
+import { findBotPath, prepareNavigation, beginNavigationTick } from './bot-navigation.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import { slideVelocity } from './movement.js';
@@ -173,6 +173,7 @@ export class Simulation {
       const wep=CLASS_WEAPONS[cls]?.[Math.floor(n/8)%2]??defaultWeaponId(cls);
       const p=this.addPlayer(`bot-${n}`,names[n%names.length],n%2,cls,wep);p.bot=true;p.botSlot=n;p.nextThink=0;p.botPath=[];
     }
+    if(bots>0)prepareNavigation(this);
     this.ready=true;
   }
   // Keep both teams within one player of each other by moving bots across the sides.
@@ -848,6 +849,7 @@ export class Simulation {
     for(const p of this.players.values()){p.tickX=p.x;p.tickZ=p.z;}
     // Spread route planning across ticks when many bots spawn together.
     this.botPathBudget=this.pathRequestsPerTick??2;
+    beginNavigationTick(this);
     updateEquipment(this,dt);
     updateBotTeams(this);
     if(this.vehicles.length){

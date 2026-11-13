@@ -1,3 +1,4 @@
+import { SpatialIndex } from './spatial-index.js';
 import { rayCollider } from './asset-colliders.js';
 import { EYE_HEIGHT, PLAYER_RADIUS } from './world.js';
 
@@ -54,7 +55,7 @@ function navigation(sim){
     }
     return out;
   };
-  const result={ground,layers,cover,nodes,nearby,edges:new Map()};caches.set(sim,result);return result;
+  const result={ground,layers,cover,nodes,nearby,coverIndex:new SpatialIndex(cover),nodeIndex:new SpatialIndex(nodes),edges:new Map()};caches.set(sim,result);return result;
 }
 
 export function walkableSegment(sim,a,b,dynamic=true){
@@ -82,24 +83,30 @@ class Heap{
   pop(){const a=this.values,first=a[0],last=a.pop();if(a.length){let i=0;while(i*2+1<a.length){let c=i*2+1;if(c+1<a.length&&a[c+1].f<a[c].f)c++;if(a[c].f>=last.f)break;a[i]=a[c];i=c;}a[i]=last;}return first;}
 }
 
-export function findBotPath(sim,start,goal){
+function* pathJob(sim,start,goal){
   if(!goal)return [];
   const nav=navigation(sim);
-  const nearest=(point,source)=>nav.nearby(point,2).filter(n=>!sim.vehicleAt(n.x,n.z,n.y)&&(!source||walkableSegment(sim,point,n)))
-    .sort((a,b)=>distance(a,point)+Math.abs(a.y-(point.y??sim.groundAt(point.x,point.z)))*4-distance(b,point)-Math.abs(b.y-(point.y??sim.groundAt(point.x,point.z)))*4)[0];
-  const source=nearest(start,true),target=nearest(goal,false);if(!source||!target)return [];
+  function* nearest(point,source){let best=null,score=Infinity;
+    for(const n of nav.nearby(point,2)){yield;
+      if(sim.vehicleAt(n.x,n.z,n.y)||source&&!walkableSegment(sim,point,n))continue;
+      const value=distance(n,point)+Math.abs(n.y-(point.y??sim.groundAt(point.x,point.z)))*4;
+      if(value<score){score=value;best=n;}
+    }return best;
+  }
+  const source=yield* nearest(start,true),target=yield* nearest(goal,false);if(!source||!target)return [];
   const open=new Heap(),costs=new Map([[source.id,0]]),previous=new Map(),closed=new Set();
   open.push({node:source,f:distance(source,target)});
   let best=source,bestRange=distance(source,target)+Math.abs(source.y-target.y)*3,expanded=0;
   const context=start.ai,threat=context?.contact??context?.memory;
   let riskBudget=32;
-  const deadline=sim.pathBudgetMs?performance.now()+sim.pathBudgetMs:Infinity;
+
   while(open.values.length&&expanded++<(sim.pathExpansionLimit??6500)){
-    if((expanded&31)===0&&performance.now()>deadline)break;
+    yield;
     const {node}=open.pop();if(closed.has(node.id))continue;closed.add(node.id);
     const range=distance(node,target)+Math.abs(node.y-target.y)*3;
     if(range<bestRange){best=node;bestRange=range;}if(node===target)break;
     for(const next of nav.nearby(node)){
+      yield;
       if(next===node||closed.has(next.id)||distance(node,next)>sim.gridCell*1.5+.1)continue;
       if(sim.vehicleAt(next.x,next.z,next.y))continue;
       if((!node.ground||!next.ground)&&Math.abs(next.y-node.y)>.35)continue;
@@ -119,9 +126,10 @@ export function findBotPath(sim,start,goal){
   }
   const path=[];let current=best;
   while(current&&current!==source){path.push({x:current.x,y:current.y,z:current.z,crouch:current.crouch});current=previous.get(current.id);}path.reverse();
+  yield;
   if(best===target&&walkableSegment(sim,target,goal))path.push({x:goal.x,y:goal.y??sim.groundAt(goal.x,goal.z),z:goal.z,crouch:target.crouch});
   const smooth=[];let anchor={x:start.x,y:start.y,z:start.z};
-  for(let i=0;i<path.length;){let end=i;while(end+1<path.length&&end<i+5&&path[end].crouch===path[end+1].crouch&&Math.abs(path[end+1].y-anchor.y)<.3&&walkableSegment(sim,anchor,path[end+1]))end++;
+  for(let i=0;i<path.length;){yield;let end=i;while(end+1<path.length&&end<i+5&&path[end].crouch===path[end+1].crouch&&Math.abs(path[end+1].y-anchor.y)<.3&&walkableSegment(sim,anchor,path[end+1]))end++;
     smooth.push(path[end]);anchor=path[end];i=end+1;}
   return smooth;
 }
@@ -129,8 +137,10 @@ export function findBotPath(sim,start,goal){
 export function findCover(sim,p,threat,{retreat=false,fire=false}={}){
   const nav=navigation(sim),ai=p.ai;let best=null,score=Infinity;
   const eye={x:threat.x,y:(threat.y??sim.groundAt(threat.x,threat.z))+1.2,z:threat.z};
-  const candidates=nav.cover.filter(c=>distance(c,p)<(retreat?24:17)&&Math.abs(c.y-p.y)<2).sort((a,b)=>distance(a,p)-distance(b,p)).slice(0,32);
+  const radius=retreat?24:17;
+  const candidates=nav.coverIndex.query(p.x-radius,p.z-radius,p.x+radius,p.z+radius).filter(c=>distance(c,p)<(retreat?24:17)&&Math.abs(c.y-p.y)<2).sort((a,b)=>distance(a,p)-distance(b,p)).slice(0,32);
   for(const point of candidates){
+    if(performance.now()>(sim.navigationDeadline??Infinity))break;
     if(sim.lineClear(eye,{x:point.x,y:point.y+1,z:point.z}))continue;
     let occupied=false;
     for(const ally of sim.players.values())if(ally!==p&&ally.alive&&ally.team===p.team&&distance(ally.ai?.cover??ally,point)<1.1){occupied=true;break;}
@@ -147,7 +157,7 @@ export function findCover(sim,p,threat,{retreat=false,fire=false}={}){
 }
 
 export function elevatedSpots(sim,p,goal){
-  return navigation(sim).nodes.filter(n=>n.y>sim.groundAt(n.x,n.z)+1.8&&distance(n,goal)<38&&distance(n,p)<60);
+  return navigation(sim).nodeIndex.query(goal.x-38,goal.z-38,goal.x+38,goal.z+38).filter(n=>n.y>sim.groundAt(n.x,n.z)+1.8&&distance(n,goal)<38&&distance(n,p)<60);
 }
 
 export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={}){
@@ -155,12 +165,13 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={})
   const ai=p.ai;
   if(distance(p,goal)<.55&&Math.abs(p.y-(goal.y??sim.groundAt(goal.x,goal.z)))<.6)return true;
   const changed=!ai.pathGoal||distance(ai.pathGoal,goal)>2||Math.abs((ai.pathGoal.y??0)-(goal.y??0))>.6;
-  if((changed||!p.botPath.length||sim.time>ai.pathUntil)&&sim.botPathBudget>0&&sim.time>=(ai.repathAt??0)){
-    sim.botPathBudget--;p.botPath=findBotPath(sim,p,goal);ai.pathGoal={...goal};ai.pathUntil=sim.time+3;ai.repathAt=sim.time+.5;
+  if((changed||!p.botPath.length||sim.time>ai.pathUntil)&&(sim.botPathBudget>0||ai.pathJob||ai.pathResult)&&sim.time>=(ai.repathAt??0)){
+    if(!ai.pathJob&&!ai.pathResult)sim.botPathBudget--;const result=resumeBotPath(sim,p,goal);
+    if(result){p.botPath=result;ai.pathGoal={...goal};ai.pathUntil=sim.time+3;ai.repathAt=sim.time+.5;}
   }
   while(p.botPath.length&&distance(p,p.botPath[0])<.65&&Math.abs(p.y-p.botPath[0].y)<.65)p.botPath.shift();
   let next=p.botPath[0];
-  if(!next&&walkableSegment(sim,p,goal))next=goal;
+  if(!next&&distance(p,goal)<8&&walkableSegment(sim,p,goal))next=goal;
   if(!next){p.input.forward=p.input.strafe=0;ai.mode='blocked';return false;}
   let dx=next.x-p.x,dz=next.z-p.z;
   for(const ally of sim.players.values()){
@@ -184,4 +195,31 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={})
   }
   if(sim.time<(ai.yieldUntil??0)){p.input.forward=-.25;p.input.strafe=(p.botSlot%2?1:-1)*.4;p.input.sprint=false;}
   return false;
+}
+
+// Build immutable navigation before the match starts, never in a combat tick.
+export function prepareNavigation(sim){navigation(sim);}
+export function findBotPath(sim,start,goal){if(start.bot&&start.ai)return resumeBotPath(sim,start,goal)??start.botPath??[];const job=pathJob(sim,start,goal);let result;do{result=job.next();}while(!result.done);return result.value;}
+function resumeBotPath(sim,p,goal){
+  const ai=p.ai;
+  const changed=!ai.pathJobGoal||distance(ai.pathJobGoal,goal)>2||Math.abs((ai.pathJobGoal.y??0)-(goal.y??0))>.6;
+  if(changed||ai.pathJobStart&&distance(ai.pathJobStart,p)>3){ai.pathJob=null;ai.pathResult=null;}
+  if(ai.pathResult){const path=ai.pathResult;ai.pathResult=null;return path;}
+  if(!ai.pathJob){
+    ai.pathJob=pathJob(sim,{...p}, {...goal});ai.pathJobGoal={...goal};ai.pathJobStart={x:p.x,z:p.z};
+    (sim.navigationQueue??=[]).push({p,ai,job:ai.pathJob});
+  }
+  return null;
+}
+export function beginNavigationTick(sim){
+  sim.navigationDeadline=performance.now()+(sim.navigationBudgetMs??3);
+  const pathDeadline=Math.min(sim.navigationDeadline,performance.now()+(sim.pathBudgetMs??1.8));
+  const queue=sim.navigationQueue??=[];let remaining=queue.length;
+  while(remaining-->0&&queue.length&&performance.now()<pathDeadline){
+    const task=queue.shift(),{p,ai,job}=task;
+    if(!p.alive||p.ai!==ai||ai.pathJob!==job)continue;
+    const slice=Math.min(pathDeadline,performance.now()+.45);let result;
+    do{result=job.next();}while(!result.done&&performance.now()<slice);
+    if(result.done){ai.pathJob=null;ai.pathResult=result.value;}else queue.push(task);
+  }
 }

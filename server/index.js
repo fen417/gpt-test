@@ -1,3 +1,4 @@
+import { PerformanceSamples } from '../shared/performance-samples.js';
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -17,14 +18,15 @@ const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 export function createGameServer(options={}){
   const env={...process.env,...options};
   const config={port:bounded(env.PORT,0,65535,8080),tickHz:bounded(env.TICK_HZ,30,60,60),snapshotHz:bounded(env.SNAPSHOT_HZ,10,20,20),
-    maxPlayers:Math.floor(bounded(env.MAX_PLAYERS,2,7,7)),maxBots:Math.floor(bounded(env.MAX_BOTS,0,12,12)),defaultBots:Math.floor(bounded(env.BOTS,0,12,8)),
+    maxPlayers:Math.floor(bounded(env.MAX_PLAYERS,2,7,7)),maxBots:Math.floor(bounded(env.MAX_BOTS,0,30,30)),defaultBots:Math.floor(bounded(env.BOTS,0,30,8)),
     reconnectMs:bounded(env.RECONNECT_SECONDS,5,120,30)*1000,emptyMs:bounded(env.EMPTY_ROOM_SECONDS,10,300,60)*1000};
+  const tickSamples=new PerformanceSamples(600),loopSamples=new PerformanceSamples(600);
   const origins=new Set(String(env.ALLOWED_ORIGINS??'').split(',').map(x=>x.trim()).filter(Boolean));
   const clients=new Set(),sessions=new Map();let room=null,nextPlayer=0,timer=null,maintenance=null,previous=0,accumulator=0,snapshotClock=0,tick=0,stopping=false;
   const totals={bytes:0,messages:0,snapshots:0,snapshotBytes:0,ticks:0,tickMs:0,tickMaxMs:0,skippedSnapshots:0,overruns:0,droppedSeconds:0};
   let intervalStart=performance.now(),intervalBytes=0,intervalMessages=0,intervalTicks=0,intervalTickMs=0,intervalMax=0,lastCpu=process.cpuUsage(),lastMetrics={};
   const stats=()=>({uptimeSeconds:Math.round(process.uptime()),room:room?{name:room.name,phase:room.phase,players:connected().length,bots:room.bots,mapId:room.mapId}:null,
-    ...lastMetrics,totalBytes:totals.bytes,totalMessages:totals.messages,averageSnapshotBytes:totals.snapshots?Math.round(totals.snapshotBytes/totals.snapshots):0,
+    ...lastMetrics,tickMs:tickSamples.summary(),loopDelayMs:loopSamples.summary(),totalBytes:totals.bytes,totalMessages:totals.messages,averageSnapshotBytes:totals.snapshots?Math.round(totals.snapshotBytes/totals.snapshots):0,
     tickLifetimeAverageMs:totals.ticks?+(totals.tickMs/totals.ticks).toFixed(3):0,tickLifetimeMaximumMs:+totals.tickMaxMs.toFixed(3),simulatedTicks:totals.ticks,
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
@@ -48,7 +50,7 @@ export function createGameServer(options={}){
   function connected(){return [...sessions.values()].filter(s=>s.client);}
   function send(c,data,kind='control'){
     const ws=c.ws;if(ws.readyState!==WebSocket.OPEN)return false;
-    if(kind==='snapshot'&&ws.bufferedAmount>32768){totals.skippedSnapshots++;return false;}
+    if(kind==='snapshot'&&ws.bufferedAmount>8192){totals.skippedSnapshots++;return false;}
     if(ws.bufferedAmount>262144){ws.close(1013,'Slow connection; reconnect');return false;}
     const packet=typeof data==='object'&&!(data instanceof Uint8Array)?encodeControl(data):data;
     const length=typeof packet==='string'?Buffer.byteLength(packet):packet.byteLength,bytes=wireBytes(length);
@@ -128,7 +130,7 @@ export function createGameServer(options={}){
   }
   function preparedSnapshot(){const sim=room.sim;return room.prepared=prepareSnapshot(sim.snapshot(),sim.map.size,room.prepared);}
   function snapshot(s,prepared,full=false){
-    if(!s.client||s.client.ws.bufferedAmount>32768){totals.skippedSnapshots++;return;}
+    if(!s.client||s.client.ws.bufferedAmount>8192){totals.skippedSnapshots++;return;}
     // Session ACK also advances while seated; movement-only player ACKs do not.
     const p=room.sim.players.get(s.id),packet=s.encoder.encode(prepared,{localId:s.id,inputAck:s.inputAck,tick,full,focus:p?.input?{aim:p.input.aim,classId:p.classId}:{}});
     if(send(s.client,packet.bytes,'snapshot')&&room.sim.winner!==null)s.finishedSequence=packet.sequence;
@@ -142,10 +144,13 @@ export function createGameServer(options={}){
   function events(s,now){
     const last=room.lastEvent;if(last<=s.eventAck)return;
     if(last===s.eventSent&&now-s.eventLastSent<500)return;
-    if(s.client.ws.bufferedAmount>65536)return; // Keep critical events in the log until acknowledged.
+    if(s.client.ws.bufferedAmount>8192)return; // Keep critical events in the log until acknowledged.
     if(s.eventAck<room.eventFloor){s.client.ws.close(1013,'Event baseline expired; reconnect');return;}
-    const batch=room.events.filter(e=>e.id>s.eventAck).slice(0,256),through=batch.at(-1)?.id??last;
-    if(send(s.client,encodeEvents(batch.filter(e=>visibleEvent(e,s)),through,s.encoder.dict),'event')){s.eventSent=through;s.eventLastSent=now;}
+    // WebSocket is ordered and reliable; do not resend in-flight events on each new shot.
+    const cursor=s.eventSent??s.eventAck;
+    if(last<=cursor)return;
+    const batch=room.events.filter(e=>e.id>cursor).slice(0,128),through=batch.at(-1)?.id??last;
+    if(send(s.client,encodeEvents(batch.filter(e=>visibleEvent(e,s)&&(!['shot','bulletImpact','dryFire','horn'].includes(e.type)||room.sim.time-e.time<.5)),through,s.encoder.dict),'event')){s.eventSent=through;s.eventLastSent=now;}
   }
   function simulationTick(dt){
     const begin=performance.now(),sim=room.sim,now=Date.now();
@@ -171,15 +176,16 @@ export function createGameServer(options={}){
     for(const s of connected())events(s,now);
     if(snapshotClock>=1/config.snapshotHz){snapshotClock%=1/config.snapshotHz;const prepared=preparedSnapshot();for(const s of connected())snapshot(s,prepared);}
     if(sim.winner!==null&&!room.ended){room.ended=true;const final=preparedSnapshot();for(const s of connected())snapshot(s,final);roomsChanged();}
-    const elapsed=performance.now()-begin;totals.ticks++;totals.tickMs+=elapsed;totals.tickMaxMs=Math.max(totals.tickMaxMs,elapsed);intervalTicks++;intervalTickMs+=elapsed;intervalMax=Math.max(intervalMax,elapsed);
+    const elapsed=performance.now()-begin;tickSamples.add(elapsed);totals.ticks++;totals.tickMs+=elapsed;totals.tickMaxMs=Math.max(totals.tickMaxMs,elapsed);intervalTicks++;intervalTickMs+=elapsed;intervalMax=Math.max(intervalMax,elapsed);
   }
   function pump(){
     if(!room?.sim||!connected().length||room.ended)return stopLoop();
-    const now=performance.now(),elapsed=(now-previous)/1000;totals.droppedSeconds+=Math.max(0,elapsed-.25);accumulator+=Math.min(.25,elapsed);previous=now;
-    // Bound catch-up to avoid a spiral; preserve real delta on an overloaded server.
+    const now=performance.now(),elapsed=(now-previous)/1000;loopSamples.add(Math.max(0,elapsed*1000-1000/config.tickHz));totals.droppedSeconds+=Math.max(0,elapsed-.25);accumulator+=Math.min(.25,elapsed);previous=now;
+    // Bound catch-up work while keeping every physics step fixed.
     const step=1/config.tickHz;let count=0;
     while(accumulator>=step&&count++<3){simulationTick(step);accumulator-=step;if(room.ended)return stopLoop();}
-    if(accumulator>=step){totals.overruns++;const remainder=Math.min(.1,accumulator);simulationTick(remainder);if(room.ended)return stopLoop();totals.droppedSeconds+=Math.max(0,accumulator-remainder);accumulator=0;}
+    if(accumulator>=step){totals.overruns++;// Never change the physics step under load; discard only whole overdue ticks.
+      const dropped=Math.floor(accumulator/step)*step;totals.droppedSeconds+=dropped;accumulator-=dropped;}
     timer=setTimeout(pump,Math.max(1,(step-accumulator)*1000));
   }
   function startLoop(){if(timer||!room?.sim||!connected().length)return;previous=performance.now();accumulator=0;snapshotClock=0;timer=setTimeout(pump,1000/config.tickHz);}
@@ -189,7 +195,7 @@ export function createGameServer(options={}){
     send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
     ws.on('pong',()=>{c.alive=true;c.lastSeen=Date.now();});
     ws.on('message',(raw,isBinary)=>{
-      const now=Date.now();c.lastSeen=now;if(now-c.window>1000){c.window=now;c.messages=0;}if(++c.messages>100){ws.close(1008,'Rate limit');return;}
+      const now=Date.now();c.lastSeen=now;if(now-c.window>1000){c.window=now;c.messages=0;}if(++c.messages>160){ws.close(1008,'Rate limit');return;}
       let requestId;try{
         if(isBinary){binary(c,raw);return;}
         const data=decodeControl(raw.toString());requestId=data.requestId;if(!data||typeof data!=='object')return;

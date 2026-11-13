@@ -158,9 +158,9 @@ export function createSurfaceMaterials(renderer, { useBump = true } = {}) {
 }
 
 // Local sectors keep a large quarry's props from sharing one map-wide bound.
-export function mapSector(matrix) {
+export function mapSector(matrix, size=96) {
   const position = matrix.elements;
-  return `${Math.floor(position[12] / 96)},${Math.floor(position[14] / 96)}`;
+  return `${Math.floor(position[12] / size)},${Math.floor(position[14] / size)}`;
 }
 
 export function addSectorInstances(scene, geometry, material, matrices, castShadow = false) {
