@@ -948,7 +948,7 @@ export class GameRenderer {
       }
       if (event.type === 'gadget') {
         if (event.playerId === localId) this.gadgetTimer = this.gadgetDuration;
-        else if(event.kind==='ammo'||event.kind==='beacon')soldierThrow(this.soldiers.get(event.playerId));
+        else if(event.kind==='ammo'||event.kind==='medkit'||event.kind==='beacon')soldierThrow(this.soldiers.get(event.playerId));
         continue;
       }
       if(event.type==='equipmentDestroyed'){
@@ -1268,7 +1268,9 @@ export class GameRenderer {
         }
         model.visible=true;
         const led=model.getObjectByName('equipment-status');if(led)led.visible=Math.sin(this.clock*4.5)>-.2;
-        model.position.set(item.x,item.y,item.z);
+        // The medical case is authored around its centre; its base must rest
+        // on the same authoritative support height as the ammo box.
+        model.position.set(item.x,item.y+(item.kind==='medkit'?.08:0),item.z);
         model.rotation.order='YXZ';
         model.rotation.y=item.yaw??Math.atan2(-item.vx,-item.vz);
         if(item.vy!==undefined)model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));

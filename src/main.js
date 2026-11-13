@@ -1,5 +1,5 @@
 ﻿import './style.css';
-import { CLASS_GADGET, GADGET_NAMES, selectedGadget } from '../shared/gadgets.js';
+import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isSupplyGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
 import {Simulation} from '../shared/simulation.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
@@ -380,6 +380,13 @@ function receive(next){
   }
   if(player)document.body.classList.toggle('team-1',player.team===1);
   if(!active||!player)return;
+  const requestedTool=selectedGadget(player.classId,toolSlot);
+  if(player.alive&&isSupplyGadget(requestedTool)&&gadgetCooldown(player,requestedTool)>0){
+    // Clear the persistent input selection as soon as placement is confirmed.
+    // The server finishes the gesture, then equips the primary weapon. This
+    // also reconciles guests whose input still requested the pistol/tool.
+    toolSlot=0;weaponSlot=1;aim=false;fire=false;fireTap=false;
+  }
   if(player.alive&&!wasAlive){
     const revived=state.events?.some(event=>event.type==='revive'&&event.playerId===localId&&!seen.has(event.id));
     weaponSlot=player.weaponSlot||1;toolSlot=0;yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;lastHp=player.hp;
@@ -628,7 +635,12 @@ document.addEventListener('keydown',event=>{
   if(local()?.alive&&!event.repeat&&(isBound('gadget',event.code)||isBound('secondaryGadget',event.code)||event.code==='Digit3'||event.code==='Digit4')){
     event.preventDefault();
     const slot=isBound('secondaryGadget',event.code)||event.code==='Digit4'?2:1;
-    if(selectedGadget(local().classId,slot))toolSlot=toolSlot===slot?0:slot;
+    const player=local(),kind=selectedGadget(player.classId,slot);
+    if(toolSlot===slot)toolSlot=0;
+    else if(kind){
+      if(isSupplyGadget(kind)&&gadgetCooldown(player,kind)>0)toast(`${GADGET_NAMES[kind]} · ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(gadgetCooldown(player,kind))}с`);
+      else toolSlot=slot;
+    }
     return;
   }
   if(event.ctrlKey||['ControlLeft','ControlRight','Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',keybinds.jump,keybinds.score,keybinds.crouch,keybinds.forward,keybinds.back,keybinds.left,keybinds.right].includes(event.code))event.preventDefault();
@@ -1101,7 +1113,7 @@ function hud(now){
       player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
   }
   text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);
-  let toolHint=player.heldGadget===CLASS_GADGET[player.classId]?' · В РУКАХ':' · ДОСТАТЬ';
+  let toolHint=player.heldGadget===CLASS_GADGET[player.classId]?' · В РУКАХ':player.gadgetCooldown>0?' · ГОТОВНОСТЬ ЧЕРЕЗ':' · ДОСТАТЬ';
   if(player.alive&&player.classId==='medic'){
     const casualty=state.players.filter(ally=>!ally.alive&&ally.team===player.team&&ally.respawnIn>0&&
       Math.hypot(ally.x-player.x,ally.z-player.z,ally.y-player.y)<3.1).sort((a,b)=>a.respawnIn-b.respawnIn)[0];

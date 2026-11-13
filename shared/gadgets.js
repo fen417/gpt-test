@@ -10,10 +10,17 @@ export const BEACON_LIFETIME = 120;
 export function selectedGadget(classId,slot) {
   return slot===1?CLASS_GADGET[classId]??null:slot===2?({assault:'launcher',medic:'medkit'}[classId]??null):null;
 }
+export const isSupplyGadget = kind => kind==='ammo'||kind==='medkit';
+export const gadgetCooldown = (p,kind) => Math.max(0,kind==='medkit'||kind==='launcher'
+  ? p.secondaryCooldown??0 : p.gadgetTime??p.gadgetCooldown??0);
+export const placingSupply = (p,time) => isSupplyGadget(p.gadgetAction)&&p.gadgetActionUntil>time;
 
 export function selectGadget(sim,p,slot) {
+  // Finish the short placement gesture before accepting another selection.
+  if(!p.vehicleId&&placingSupply(p,sim.time))return;
   const kind=p.vehicleId?null:selectedGadget(p.classId,slot);
   if(kind===(p.heldGadget??null))return;
+  if(isSupplyGadget(kind)&&gadgetCooldown(p,kind)>0)return;
   p.heldGadget=kind;p.pendingGadget=null;p.gadgetAction=null;p.gadgetActionUntil=0;p.gadgetTargetId=null;
   p.equipTime=.32;p.reloading=false;p.reloadTime=0;
   // Selecting gear while holding the trigger must not discharge it by accident.
@@ -31,6 +38,7 @@ function aimedAt(p,target) {
 }
 
 export function deployableBounds(item) {
+  if(item.kind==='medkit')return boxBounds({x:item.x,z:item.z,baseY:item.y,w:.29,d:.20,h:.23});
   return boxBounds({x:item.x,z:item.z,baseY:item.y,w:item.kind==='beacon'?.55:.65,d:.5,h:item.kind==='beacon'?1.04:.45});
 }
 
@@ -81,8 +89,9 @@ function place(sim,p,kind) {
   sim.deployables=sim.deployables.filter(item=>item.ownerId!==p.id||item.kind!==kind);
   sim.deployables.push({id:`${kind==='beacon'?'beacon':'crate'}:${++sim.eventId}`,kind,ownerId:p.id,team:p.team,x,y,z,yaw:p.yaw,
     hp:kind==='beacon'?70:120,expires:sim.time+(kind==='beacon'?BEACON_LIFETIME:60),supplyAt:sim.time});
-  beginAction(sim,p,kind,.75);
-  p.gadgetTime=kind==='beacon'?35:18;
+  beginAction(sim,p,kind,kind==='medkit'?.85:.75);
+  if(kind==='medkit')p.secondaryCooldown=15;
+  else p.gadgetTime=kind==='beacon'?35:18;
   return true;
 }
 
@@ -99,13 +108,7 @@ export function activateGadget(sim,p,secondary=false) {
       return true;
     }
     if(p.classId==='medic'){
-      beginAction(sim,p,'medkit',.85);p.secondaryCooldown=15;
-      for(const ally of sim.players.values()){
-        if(!ally.alive||ally.team!==p.team||distance(p,ally)>5.5||!sim.lineClear(eye(p),center(ally,1)))continue;
-        const amount=Math.min(45,100-ally.hp);ally.hp+=amount;
-        if(ally!==p&&amount>0)sim.awardScore(p,25,'ЛЕЧЕНИЕ СОЮЗНИКА',{kind:'heal'});
-      }
-      return true;
+      return place(sim,p,'medkit');
     }
     return false;
   }
@@ -258,14 +261,44 @@ export function updateEquipment(sim,dt) {
         if(sim.time>=(p.nextRepairScore??0)){sim.awardScore(p,15,'РЕМОНТ ТЕХНИКИ',{kind:'repair'});p.nextRepairScore=sim.time+1.5;}
       }
     }
-    if(sim.time>=p.gadgetActionUntil)p.gadgetAction=null;
+    if(sim.time>=p.gadgetActionUntil){
+      if(isSupplyGadget(p.gadgetAction)&&!p.vehicleId){
+        p.heldGadget=null;p.gadgetTargetId=null;
+        p.input.toolSlot=0;p.input.weaponSlot=1;
+        const alreadyPrimary=p.weaponSlot===1;
+        sim.equipWeapon(p,1);
+        if(alreadyPrimary){
+          p.equipTime=Math.max(p.equipTime,.32);
+          sim.event('equip',{playerId:p.id,weaponId:p.weaponId,x:p.x,z:p.z});
+        }
+      }
+      p.gadgetAction=null;
+    }
   }
   for(const item of sim.deployables){
-    if(item.hp<=0||item.expires<=sim.time||item.kind!=='ammo'||item.supplyAt>sim.time)continue;
-    item.supplyAt=sim.time+1;
+    if(item.hp<=0||item.expires<=sim.time||!isSupplyGadget(item.kind))continue;
+    if(item.supplyAt>sim.time)continue;
+    const healingSince=item.lastSupplyAt??sim.time-dt;
+    item.lastSupplyAt=sim.time;
+    // Medical proximity/visibility queries run at 10 Hz, not for every frame.
+    // Actual elapsed time still determines the amount of health restored.
+    item.supplyAt=sim.time+(item.kind==='medkit'?.1:1);
     const owner=sim.players.get(item.ownerId);
     for(const ally of sim.players.values()){
-      if(!ally.alive||ally.team!==item.team||distance(ally,item)>5.5||!sim.lineClear(center(item,.4),center(ally,.8)))continue;
+      if(!ally.alive||ally.team!==item.team||Math.hypot(distance(ally,item),ally.y-item.y)>5.5||
+          !sim.lineClear(center(item,item.kind==='medkit'?.12:.4),center(ally,.8)))continue;
+      if(item.kind==='medkit'){
+        // Intersect the active interval with the no-damage window. A shared
+        // per-player timestamp prevents overlapping kits from stacking heals.
+        const healingTime=Math.max(0,sim.time-Math.max(healingSince,ally.lastHurt+1,ally.medkitHealAt??-Infinity));
+        const amount=Math.min(10*healingTime,100-ally.hp);
+        if(amount<=0)continue;
+        ally.hp+=amount;ally.medkitHealAt=sim.time;
+        if(owner?.team===item.team&&ally!==owner&&sim.time>=(ally.nextHealScore??0)){
+          sim.awardScore(owner,25,'ЛЕЧЕНИЕ СОЮЗНИКА',{kind:'heal'});ally.nextHealScore=sim.time+5;
+        }
+        continue;
+      }
       const current=getWeapon(ally.classId,ally.weaponId),stowed=ally.weaponSlot===1?getSidearm(ally.sidearmId):getPrimaryWeapon(ally.classId,ally.primaryWeaponId);
       const before=ally.reserve+ally.stowedAmmo.reserve+ally.grenades+(ally.rockets??0);
       ally.reserve=Math.min(current.reserve,ally.reserve+20);ally.stowedAmmo.reserve=Math.min(stowed.reserve,ally.stowedAmmo.reserve+20);

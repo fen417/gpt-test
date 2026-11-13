@@ -7,7 +7,7 @@ import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import { slideVelocity } from './movement.js';
 import { boxBounds, rayAffineBox, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
-import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast } from './gadgets.js';
+import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast, placingSupply, selectedGadget, isSupplyGadget, gadgetCooldown } from './gadgets.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -1041,9 +1041,14 @@ export class Simulation {
       p.equipTime=Math.max(0,p.equipTime-dt);
       const mounted=p.vehicleId&&this.vehicles.find(v=>v.id===p.vehicleId);
       const personal=!mounted||VEHICLE_TYPES[mounted.type].seats[p.vehicleSeat].role==='passenger';
-      if(personal){
+      if(personal&&!placingSupply(p,this.time)){
         const backup=p.bot&&p.ammo+p.reserve===0&&p.stowedAmmo.ammo+p.stowedAmmo.reserve>0;
-        this.equipWeapon(p,i.weaponSlot||(backup?3-p.weaponSlot:0));
+        const tool=selectedGadget(p.classId,i.toolSlot);
+        // A delayed client input may still request the pre-placement pistol
+        // and supply slot. Keep the automatic return authoritative until the
+        // client clears that unavailable tool selection.
+        const usedSupply=!p.bot&&isSupplyGadget(tool)&&gadgetCooldown(p,tool)>0;
+        this.equipWeapon(p,usedSupply?1:i.weaponSlot||(backup?3-p.weaponSlot:0));
       }
       if(!p.bot)selectGadget(this,p,i.toolSlot);
       const c=getWeapon(p.classId,p.weaponId);
