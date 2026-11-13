@@ -107,33 +107,24 @@ export function materializeSnapshot(frame,context,time=frame.time){
   }}return out;
 }
 export class SnapshotEncoder{
-  constructor(size){this.size=size;this.dict=new Dictionary();this.history=new Map();this.sequence=0;this.ack=0;this.lastFull=-Infinity;this.due=new Map();this.presentation=new Map();}
+  constructor(size){this.size=size;this.dict=new Dictionary();this.history=new Map();this.sequence=0;this.ack=0;this.lastFull=-Infinity;}
   confirm(sequence,dictAck){if(sequence>=this.ack&&this.history.has(sequence))this.ack=sequence;this.dict.ack=Math.max(this.dict.ack,Math.min(dictAck,this.dict.strings.length-1));}
   encode(current,{localId,inputAck=0,tick=0,full=false,focus={}}={}){
     const base=this.history.get(this.ack);full||=!base||current.time-this.lastFull>=5;
     const next={...current,rows:{}},payload=new Writer(),origin=current.rows.players.get(localId);
     const own=origin?Object.fromEntries(SCHEMAS.players.map((f,i)=>[f.key,dequant(f.type,origin[i],this.size)])):null;
     for(const kind of COLLECTIONS){const schema=SCHEMAS[kind],prior=full?new Map():base.rows[kind],map=new Map(),updates=[];
-      for(const [id,original] of current.rows[kind]){let row=original,old=prior.get(id),motion=true;
+      for(const [id,original] of current.rows[kind]){let row=original,old=prior.get(id);
         const at=key=>{const i=schema.findIndex(f=>f.key===key);return i<0?null:dequant(schema[i].type,original[i],this.size);};
         const d=own?Math.hypot(at('x')-own.x,at('z')-own.z):0,scoped=focus.aim&&focus.classId==='recon';
         if((kind==='grenades'||kind==='rockets')&&own&&d>(scoped?320:kind==='grenades'?65:200)&&at('ownerId')!==localId&&at('owner')!==localId)continue;
-        const key=kind+'/'+id;
-        if(!full&&old&&id!==localId&&['players','vehicles'].includes(kind)){
-          // Distant infantry need the same motion cadence as nearby fighters.
-          // Lowering this to 10 Hz made the interpolation buffer run dry.
-          const hz=20;
-          motion=current.time>=(this.due.get(key)??0);if(motion)this.due.set(key,current.time+1/hz);
-        }
+        // The server already schedules snapshots. A second floating-point
+        // deadline here could discard every other movement update.
         if(kind==='players'&&id!==localId)row=row.map((v,i)=>PRIVATE.has(schema[i].key)?0:v);
-        // Interest throttling must retain the last presented pose, not roll back to an older ACK base.
-        const shown=this.presentation.get(key)??old;
-        if(!motion&&shown)row=row.map((v,i)=>MOVE.has(schema[i].key)?shown[i]:v);
-        if(kind==='players'||kind==='vehicles')this.presentation.set(key,row);
         map.set(id,row);const changed=[];for(let i=0;i<schema.length;i++)if(!old||!equal(row[i],old[i]))changed.push(i);
         if(changed.length)updates.push({id,row,changed});
       }
-      for(const id of prior.keys())if(!map.has(id)){updates.push({id});this.presentation.delete(kind+'/'+id);this.due.delete(kind+'/'+id);}next.rows[kind]=map;payload.u16(updates.length);
+      for(const id of prior.keys())if(!map.has(id))updates.push({id});next.rows[kind]=map;payload.u16(updates.length);
       for(const update of updates){payload.u16(this.dict.ref(update.id));payload.u8(update.row?1:0);if(!update.row)continue;
         const mask=new Uint8Array(Math.ceil(schema.length/8));for(const i of update.changed)mask[i>>3]|=1<<(i&7);payload.raw(mask);for(const i of update.changed)writeValue(payload,schema[i].type,update.row[i],this.dict);
       }

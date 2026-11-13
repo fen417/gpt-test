@@ -112,7 +112,10 @@ export class Multiplayer{
     return new Promise((resolve,reject)=>{
       if(this.ws?.readyState!==WebSocket.OPEN){reject(Error('Нет соединения с сервером.'));return;}
       const requestId=++this.requestId,timer=setTimeout(()=>{this.requests.delete(requestId);reject(Error('Сервер не ответил на запрос.'));},12000);
-      this.requests.set(requestId,{resolve,reject,timer});this.send({type,...data,requestId,protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION});
+      this.requests.set(requestId,{resolve,reject,timer});
+      if(!this.send({type,...data,requestId,protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION})){
+        clearTimeout(timer);this.requests.delete(requestId);reject(Error('Команда не отправлена: соединение восстанавливается.'));
+      }
     });
   }
   control(type,data={}){const sent=this.send({type,...data,protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION});if(!sent)this.onStatus('Команда не отправлена: соединение восстанавливается.');return sent;}
@@ -124,6 +127,7 @@ export class Multiplayer{
     await this.request('join',options);return this.roomName;
   }
   setLobbyLoadout(data){this.control('loadout',data);}
+  chooseLobbyTeam(team){return this.request('loadout',{team});}
   changeSquad(squadId){return this.request('squad',{squadId});}
   updateLobbySettings(data){this.control('settings',data);}
   startMatch(data={}){this.control('start',data);}
@@ -145,8 +149,11 @@ export class Multiplayer{
       if(this.lastArrival){const interval=now-this.lastArrival,expected=1000/(this.snapshotHz??20);this.jitter=this.jitter*.9+Math.abs(interval-expected)*.1;}
       this.lastArrival=now;this.targetInterpolationMs=clamp(1000/(this.snapshotHz??20)+10+this.jitter*1.5,55,140);
       for(const kind of ['players','vehicles'])for(const p of state[kind]){
-        const key=kind+'/'+p.id,track=this.motion.get(key)??{samples:[],period:.05};const last=track.samples.at(-1);
-        if(!last||p.motionAt>last.time){if(last)track.period=track.period*.8+clamp(p.motionAt-last.time,.04,.125)*.2;track.samples.push({time:p.motionAt,arrival:now,pose:p});if(track.samples.length>12)track.samples.shift();this.motion.set(key,track);}
+        const key=kind+'/'+p.id,track=this.motion.get(key)??{samples:[]};
+        // Every snapshot confirms the pose, including stationary entities.
+        // Otherwise restarting after a stop interpolates across the entire pause.
+        track.samples.push({time:frame.time,pose:p});
+        if(track.samples.length>12)track.samples.shift();this.motion.set(key,track);
       }
       const aliveKeys=new Set([...state.players.map(p=>'players/'+p.id),...state.vehicles.map(v=>'vehicles/'+v.id)]);for(const key of this.motion.keys())if(!aliveKeys.has(key))this.motion.delete(key);
       this.frames.push({frame,state,arrival:now});while(this.frames.length>40)this.frames.shift();
@@ -253,9 +260,7 @@ export class Multiplayer{
   sampleMotion(kind,current,renderTime,dt){
     const track=this.motion.get(kind+'/'+current.id);if(!track?.samples.length)return {...current};
     const samples=track.samples,last=samples.at(-1);
-    const extraDelay=Math.max(0,track.period+.01-this.interpolationMs/1000);
-    track.delay=(track.delay??extraDelay)+(extraDelay-(track.delay??extraDelay))*(1-Math.exp(-dt*2));
-    const target=Math.max(track.renderTime??-Infinity,renderTime-track.delay);track.renderTime=target;
+    const target=renderTime;
     let a=samples[0],b=last;for(let i=1;i<samples.length;i++){if(samples[i].time>=target){a=samples[i-1];b=samples[i];break;}a=samples[i];}
     const out={...current},span=b.time-a.time;
     if(a.pose.alive!==b.pose.alive||a.pose.vehicleId!==b.pose.vehicleId||Math.hypot(a.pose.x-b.pose.x,a.pose.z-b.pose.z)>8)return out;

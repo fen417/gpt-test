@@ -212,7 +212,12 @@ export function createGameServer(options={}){
           case 'join':join(c,data,requestId);break;
           case 'resume':join(c,data,requestId,true);break;
           case 'leave':detach(c,true);send(c,{type:'left',requestId});break;
-          case 'loadout':if(s&&room.phase==='lobby'){loadout(s,data);lobbyChanged();}break;
+          case 'loadout':
+            if(!s||room?.phase!=='lobby')throw Error('Выбор стороны доступен в лобби.');
+            if(data.team!==undefined&&data.team!==0&&data.team!==1)throw Error('Неизвестная сторона.');
+            loadout(s,data);lobbyChanged();
+            if(requestId!==undefined)send(c,{type:'loadout',requestId,team:s.team});
+            break;
           case 'squad':
             if(!s||room?.phase!=='match'||!room.sim.changeSquad(s.id,data.squadId))throw Error('Отряд заполнен или недоступен. Выберите свободное место.');
             send(c,{type:'squad',requestId,squadId:room.sim.players.get(s.id).squadId});break;

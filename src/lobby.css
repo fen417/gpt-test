@@ -28,6 +28,10 @@
 #lobby .lobby-host-tag{border:0;padding:3px 5px;border-radius:3px;background:#d6ec9b0d;color:#b2c598;letter-spacing:0;font-size:7px;}
 #lobby .lobby-player-row.is-bot{border:0;background:none;justify-content:space-between;color:#6f8662;font-size:8px;padding:7px 2px;}.lobby-empty{font-size:10px;line-height:1.7;color:#556e48;text-align:center;padding:8px;margin:0;}
 .lobby-switch-button{font-size:9px;color:#a9b99a;background:none;border:0;padding:5px 0;white-space:nowrap;}
+#lobby .lobby-team-choice{width:100%;margin-top:auto;min-height:38px;padding:9px 12px;border:1px solid #d6ec9b66;border-radius:6px;background:#d6ec9b12;color:#d6ec9b;font:600 12px 'IBM Plex Sans',Arial,sans-serif;cursor:pointer;}
+#lobby .lobby-team-choice:hover:not(:disabled){background:#d6ec9b25;border-color:#d6ec9b;}
+#lobby .lobby-team-choice:disabled{cursor:default;opacity:.65;}
+#lobby .lobby-team-choice[aria-pressed="true"]{background:#d6ec9b0a;border-color:transparent;}
 #lobby .lobby-classes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:16px;}
 #lobby .deploy-class-btn{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;min-height:78px;border:1px solid #ffffff18;border-radius:6px;background:#ffffff02;padding:10px;text-align:left;}
 #lobby .deploy-class-btn>span{font-size:19px;height:auto;color:#829477;line-height:1;}#lobby .deploy-class-btn b{font-size:10px;font-weight:500;margin:0;}#lobby .deploy-class-btn small{font-size:8px;color:#7b8c70;margin:0;}

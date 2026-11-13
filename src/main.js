@@ -31,6 +31,7 @@ let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let squadUI,weaponPreview,lobbyWeaponPreview;
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
+let lobbyTeamRequest=null,lobbyTeamMessage='';
 let fireTap=false, recoilPitch=0, recoilYaw=0;
 let scopeZoom=8;
 let weaponSlot=1;
@@ -329,11 +330,17 @@ function updateLobby(){
   text('lobby-capacity',`${humans.length} / ${capacity} игроков`);
   show('lobby-host-controls',isHost);
   show('lobby-start',isHost);
-  text('lobby-wait-note',isHost?'Все на месте? Начинай операцию.':'Ожидаем запуска операции создателем комнаты.');
+  text('lobby-wait-note',lobbyTeamMessage||(isHost?'Все на месте? Начинай операцию.':'Ожидаем запуска операции создателем комнаты.'));
+  $('lobby-start').disabled=Boolean(lobbyTeamRequest);
+  $('lobby-switch-team').disabled=Boolean(lobbyTeamRequest)||!local();
   for(const team of [0,1]){
     const teamHumans=humans.filter(p=>p.team===team).sort((a,b)=>Number(b.id===localId)-Number(a.id===localId));
     const teamBots=bots.filter(p=>p.team===team);
     $(`lobby-side-${team}`).classList.toggle('is-own-team',local()?.team===team);
+    const choice=$(`lobby-choose-team-${team}`),selected=local()?.team===team;
+    choice.disabled=selected||Boolean(lobbyTeamRequest)||!local();
+    choice.setAttribute('aria-pressed',String(selected));
+    choice.textContent=lobbyTeamRequest?.team===team?'Переходим…':selected?'Вы на этой стороне':`Выбрать сторону ${team===0?'A':'B'}`;
     text(`lobby-team${team}-count`,`Игроки: ${teamHumans.length} · Боты: ${teamBots.length}`);
     const container=$(`lobby-team-${team}`);
     const sig=JSON.stringify(teamHumans.map(p=>[p.id,p.name,p.classId,p.weaponId,p.connected]))+`:bots:${teamBots.length}:${state.ownerId}:${localId}:${state.difficulty}`;
@@ -375,6 +382,7 @@ function updateLobby(){
   }
 }
 function enterLobby(){
+  lobbyTeamRequest=null;lobbyTeamMessage='';
   closeMenuPanels();
   inLobby=true;active=false;setBusy(false);
   document.exitPointerLock?.();
@@ -564,7 +572,18 @@ $('server-form').addEventListener('submit',event=>{event.preventDefault();try{co
 for(const button of document.querySelectorAll('[data-class]'))button.addEventListener('click',()=>selectClass(button.dataset.class,true));
 for(const button of document.querySelectorAll('[data-deploy-class]'))button.addEventListener('click',()=>selectClass(button.dataset.deployClass,true));
 for(const button of document.querySelectorAll('[data-lobby-class]'))button.addEventListener('click',()=>selectClass(button.dataset.lobbyClass,true));
-$('lobby-switch-team').addEventListener('click',()=>{const p=local();if(!p)return;audio.click();multiplayer.setLobbyLoadout({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,team:1-p.team});});
+async function chooseLobbyTeam(team){
+  if(!inLobby||!local()||lobbyTeamRequest||local().team===team)return;
+  const pending={team,roomId:multiplayer.roomId};lobbyTeamRequest=pending;
+  lobbyTeamMessage='Сервер подтверждает выбор стороны…';audio.click();updateLobby();
+  try{
+    await multiplayer.chooseLobbyTeam(team);
+    if(lobbyTeamRequest===pending)lobbyTeamMessage=`Выбрана сторона ${team===0?'A':'B'}.`;
+  }catch(error){if(lobbyTeamRequest===pending)lobbyTeamMessage=error.message;}
+  finally{if(lobbyTeamRequest===pending){lobbyTeamRequest=null;if(inLobby&&multiplayer.roomId===pending.roomId)updateLobby();}}
+}
+for(const team of [0,1])$(`lobby-choose-team-${team}`).addEventListener('click',()=>chooseLobbyTeam(team));
+$('lobby-switch-team').addEventListener('click',()=>{const p=local();if(p)chooseLobbyTeam(1-p.team);});
 $('lobby-map').addEventListener('change',event=>multiplayer.updateLobbySettings({mapId:event.target.value}));
 $('lobby-difficulty').addEventListener('change',event=>{multiplayer.updateLobbySettings({difficulty:event.target.value,bots:Number($('lobby-population').value)});});
 $('lobby-population').addEventListener('change',event=>{multiplayer.updateLobbySettings({bots:Number(event.target.value),difficulty:$('lobby-difficulty').value});});

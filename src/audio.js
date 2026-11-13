@@ -195,7 +195,11 @@ export class CombatAudio {
     if(!parameter||!this.ctx)return;
     if(!immediate&&this._targets.get(parameter)===value)return;
     this._targets.set(parameter,value);
-    const now=this.ctx.currentTime;parameter.cancelScheduledValues(now);
+    const now=this.ctx.currentTime;
+    // Preserve the instantaneous value before replacing an unfinished ramp.
+    // Cancelling its start event can jump back to the previous intrinsic value.
+    if(parameter.cancelAndHoldAtTime)parameter.cancelAndHoldAtTime(now);
+    else{const held=parameter.value;parameter.cancelScheduledValues(now);parameter.setValueAtTime(held,now);}
     if(immediate)parameter.setValueAtTime(value,now);else parameter.setTargetAtTime(value,now,Math.max(.01,seconds));
   }
   _mix(immediate=false){
@@ -444,7 +448,7 @@ export class CombatAudio {
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')return;
       const id=Object.hasOwn(WEAPONS,classId)?classId:CLASS_SHOTS[classId]??'ar416',weapon=WEAPONS[id];
       const variation=weapon.rate*(.985+Math.random()*.03);
-      const gain=(isLocal?1.12:.80)*weapon.gain/(1+distance*.04);
+      const gain=(isLocal?.94:.64)*weapon.gain/(1+distance*.04);
       const time=this.ctx.currentTime+.008+Math.max(0,Math.min(.35,distance/343)-age);
       const variants=this._shotBuffers.get(weapon.sample);
       const buffer=variants?.[Math.floor(Math.random()*variants.length)];
@@ -526,6 +530,23 @@ export class CombatAudio {
           for(let i=0;i<data.length;i++)data[i]*=gain*Math.min(1,i/fade,(data.length-1-i)/fade);
         }
       }
+      if(name==='engine'||name==='rocket-flight'){
+        // Overlap the end with the start once during loading. A raw loop cut
+        // produces a click on every revolution, especially as pitch changes.
+        const fade=Math.min(Math.floor(buffer.length/4),Math.floor(buffer.sampleRate*.035));
+        if(fade>1){
+          const loop=context.createBuffer(buffer.numberOfChannels,buffer.length-fade,buffer.sampleRate);
+          for(let channel=0;channel<buffer.numberOfChannels;channel++){
+            const input=buffer.getChannelData(channel),output=loop.getChannelData(channel);
+            output.set(input.subarray(fade));
+            for(let i=0;i<fade;i++){
+              const t=i/(fade-1),index=output.length-fade+i;
+              output[index]=input[input.length-fade+i]*(1-t)+input[i]*t;
+            }
+          }
+          this._foley.set(name,loop);return;
+        }
+      }
       this._foley.set(name,buffer);
     }));
   }
@@ -597,8 +618,16 @@ export class CombatAudio {
     if(!state)return;
     if(state.time<this._lastStateTime-1){this.seen.clear();this._lastPosition=null;this._lastMovementTime=-1;this._pending=[];for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);}
     this._lastStateTime=state.time;
+    const latestShots=new Map();
+    for(const e of state.events||[])if(e.type==='shot'&&!this.seen.has(e.id)){
+      const previous=latestShots.get(e.playerId);
+      if(!previous||e.time>=previous.time)latestShots.set(e.playerId,e);
+    }
     for(const e of state.events||[]){
       if(this.seen.has(e.id))continue;this.seen.add(e.id);
+      // A delayed network batch must not play several attacks from the same
+      // weapon simultaneously. Keep its newest shot and discard stale attacks.
+      if(e.type==='shot'&&latestShots.get(e.playerId)!==e)continue;
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')continue;
       const own=local&&e.playerId===local.id;
       this._priority=own?3:1;
