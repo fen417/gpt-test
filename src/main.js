@@ -1,3 +1,4 @@
+import { drawBotDebug } from './bot-debug.js';
 ﻿import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isSupplyGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
@@ -24,7 +25,7 @@ let toolSlot=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
 let reviveAwaitingControl=false;
-const pendingDamage=new Map(),damageSummaryDelay=650;
+const pendingDamage=new Map(),damageSummaryDelay=1000;
 function showScore(event,now){
   if(now>scoreStreakExpires)scoreStreakTotal=0;
   scoreStreakTotal+=event.points;
@@ -56,6 +57,8 @@ const DEFAULT_BINDS={
   score:'Tab',
   interact:'KeyE',
   switchSeat:'KeyV',
+  horn:'KeyH',
+  orderAttack:'KeyB',orderDefend:'KeyN',orderFollow:'KeyJ',
 };
 const BIND_LABELS=[
   ['forward','Вперёд'],
@@ -72,6 +75,10 @@ const BIND_LABELS=[
   ['score','Таблица счёта'],
   ['interact','Сесть в технику / выйти'],
   ['switchSeat','Сменить место в технике'],
+  ['orderAttack','Отделение: атаковать точку по взгляду'],
+  ['orderDefend','Отделение: защищать ближайшую точку'],
+  ['orderFollow','Отделение: следовать за мной'],
+  ['horn','Сигнал / позвать ботов в транспорт'],
 ];
 let keybinds={...DEFAULT_BINDS};
 let listeningAction=null;
@@ -441,6 +448,7 @@ function receive(next){
     }
     if(event.type==='capture'&&state.points.some(p=>p.id===event.pointId))toast(`Точка ${event.pointId} ${event.team===player.team?'захвачена вашим отрядом':'под контролем противника'}`);
     if(event.type==='gadget'&&event.playerId===localId)toast(`${GADGET_NAMES[event.kind]??gadgetNames[player.classId]} · Активировано`);
+    if(event.type==='squadOrder'&&event.playerId===localId)toast(event.kind==='follow'?'ОТДЕЛЕНИЕ · СЛЕДОВАТЬ ЗА МНОЙ':`ОТДЕЛЕНИЕ · ${event.kind==='defend'?'ЗАЩИЩАТЬ':'АТАКОВАТЬ'} ${event.pointId??''}`);
     if(event.type==='revive'&&event.playerId===localId)toast('ТЕБЯ ВОСКРЕСИЛИ · Нажми на игру, чтобы продолжить');
   }
   while(seen.size>900)seen.delete(seen.keys().next().value);
@@ -482,7 +490,7 @@ function leave(resetStatus=true){
   document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов. Выбери класс и вступай в бой.');
 }
-function solo(){if(busy)return;multiplayer.close();const opts=prepare('solo');simulation=new Simulation({bots:opts.bots,difficulty:opts.difficulty,mapId:opts.mapId});localId='local';simulation.addPlayer(localId,opts.name,0,opts.classId,opts.weaponId,opts.sidearmId);state=simulation.snapshot();enter();}
+function solo(){if(busy)return;multiplayer.close();const opts=prepare('solo');simulation=new Simulation({bots:opts.bots,difficulty:opts.difficulty,mapId:opts.mapId,debugBots:new URLSearchParams(location.search).has('aiDebug')});localId='local';simulation.addPlayer(localId,opts.name,0,opts.classId,opts.weaponId,opts.sidearmId);state=simulation.snapshot();enter();}
 $('solo').addEventListener('click',solo);
 $('host').addEventListener('click',async()=>{if(busy)return;const opts=prepare('host');setBusy(true);try{room=await multiplayer.host({...opts,lobby:true});enterLobby();toast(`Лобби комнаты ${room} создано. Пригласи игроков и нажми «Начать матч».`);}catch(error){status(error.message,true);setBusy(false);}});
 $('room-code').addEventListener('input',event=>{event.target.value=event.target.value.replace(/\D+/g,'').slice(0,6);});
@@ -645,7 +653,7 @@ document.addEventListener('keydown',event=>{
   }
   if(event.ctrlKey||['ControlLeft','ControlRight','Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',keybinds.jump,keybinds.score,keybinds.crouch,keybinds.forward,keybinds.back,keybinds.left,keybinds.right].includes(event.code))event.preventDefault();
   keys.add(event.code);
-  if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('secondaryGadget',event.code)||isBound('grenade',event.code)||isBound('interact',event.code)||isBound('switchSeat',event.code))){
+  if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('secondaryGadget',event.code)||isBound('grenade',event.code)||isBound('interact',event.code)||isBound('switchSeat',event.code)||isBound('horn',event.code)||isBound('orderAttack',event.code)||isBound('orderDefend',event.code)||isBound('orderFollow',event.code))){
     pulses.add(event.code);
   }
 });
@@ -672,6 +680,8 @@ function input(){
     grenade:enabled&&pulses.has(keybinds.grenade),
     interact:enabled&&pulses.has(keybinds.interact),
     switchSeat:enabled&&pulses.has(keybinds.switchSeat),
+    horn:enabled&&pulses.has(keybinds.horn),
+    orderAttack:enabled&&pulses.has(keybinds.orderAttack),orderDefend:enabled&&pulses.has(keybinds.orderDefend),orderFollow:enabled&&pulses.has(keybinds.orderFollow),
   };
 }
 
@@ -1079,8 +1089,8 @@ function updateVehicleHud(player){
   const look=aimAngles();
   const canFire=canFirePassengerWeapon(vehicle,player.vehicleSeat,look.yaw,look.pitch);
   const controls=canExit?key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':''):'СБАВЬТЕ СКОРОСТЬ ДЛЯ ВЫХОДА';
-  const windowHint=seat.role==='passenger'&&!canFire?'\nПОВЕРНИТЕСЬ К БОКОВОМУ ОКНУ ДЛЯ СТРЕЛЬБЫ':'';
-  text('vehicle-prompt',controls+windowHint);
+  const windowHint=seat.role==='passenger'&&!canFire?'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО':'';
+  text('vehicle-prompt',controls+(seat.role==='driver'?'     '+formatKeyCode(keybinds.horn)+' · СИГНАЛ / ПОЗВАТЬ БОТОВ':'')+windowHint);
   if(seat.role==='passenger')return {role:seat.role,canFire};
   text('weapon-name',VEHICLE_TYPES[vehicle.type].name.toUpperCase()+' · '+seat.name.toUpperCase());
   const hp=Math.ceil(vehicle.hp/vehicle.maxHp*100);
@@ -1090,6 +1100,7 @@ function updateVehicleHud(player){
   return seat;
 }
 function hud(now){
+  drawBotDebug(state);
   const player=local();if(!player)return;
   const weapon=getWeapon(player.classId,player.weaponId);
   const mounted=updateVehicleHud(player);
@@ -1261,7 +1272,7 @@ function frame(now){
       accumulator+=dt;
       let steps=0;
       while(accumulator>=1/60&&steps<4){
-        simulation.setInput(localId,steps?{...lastInput,interact:false,switchSeat:false}:lastInput);
+        simulation.setInput(localId,steps?{...lastInput,interact:false,switchSeat:false,horn:false,orderAttack:false,orderDefend:false,orderFollow:false}:lastInput);
         simulation.step(1/60);accumulator-=1/60;steps++;
       }
       if(accumulator>1/60)accumulator=1/60;

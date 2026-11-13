@@ -142,7 +142,7 @@ body.team-1 .score-row.local{background:#a57b5f33}
 .keybind-row span{font-size:10px;color:#b8c9cd}
 .keybind-btn{min-width:74px;padding:5px 8px;background:#162831;border:1px solid var(--border);font-size:9px;font-weight:600;letter-spacing:.8px;color:var(--orange);text-align:center}
 .keybind-btn.listening{border-color:var(--cyan);background:#1b3e48;color:var(--cyan);animation:blink .8s infinite}
-.score-feed{position:absolute;left:50%;top:55.5%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;z-index:5;min-width:240px}
+.score-feed{position:absolute;left:50%;top:61%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;z-index:5;min-width:240px}
 .score-feed-total{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:700;letter-spacing:1.5px;color:#ffe09c;text-shadow:0 2px 12px #000d;margin-bottom:2px}
 .score-feed-item{display:flex;align-items:center;gap:10px;padding:3px 10px;background:linear-gradient(90deg,transparent,#091921cc 20%,#091921cc 80%,transparent);font-size:10px;letter-spacing:1.2px;color:#dfe9ea;animation:score-pop .22s ease-out}
 .score-feed-item b{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:var(--orange)}
@@ -229,3 +229,5 @@ body:has(.menu:not(.hidden)){overflow-y:auto}
 .patch-content h3 { font-size: 12px; color: var(--cyan); margin: 0 0 9px; }
 .patch-content ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; color: #c5d0d0; font-size: 12px; line-height: 1.65; }
 @media (max-width: 600px) { .patch-header { padding: 20px; } .patch-list { padding: 0 20px 16px; } .patch summary small { width: 100%; } }
+
+.ai-debug{position:fixed;left:12px;top:15%;max-height:65vh;max-width:440px;overflow:auto;pointer-events:none;z-index:100;background:#071318df;color:#b9f1e0;font:11px/1.35 monospace;padding:10px;white-space:pre-wrap}

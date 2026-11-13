@@ -14,7 +14,7 @@ const maxPlayers=Math.min(32,Math.max(2,Number(process.env.MAX_PLAYERS)||16));
 const botCount=Math.min(31,Math.max(0,Number(process.env.BOTS??23)||0));
 const difficulty=process.env.DIFFICULTY||'regular';
 const mapId=process.env.MAP_ID;
-let simulation=new Simulation({bots:botCount,difficulty,mapId});
+let simulation=new Simulation({bots:botCount,difficulty,mapId,debugBots:process.env.AI_DEBUG==='1'});
 let roundResetAt=0;
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp','.woff2':'font/woff2'};
 const server=http.createServer(async(req,res)=>{
@@ -61,7 +61,7 @@ wss.on('connection',(ws)=>{
       client.name=typeof message.name==='string'?message.name:'Боец';client.classId=typeof message.classId==='string'?message.classId:'assault';client.weaponId=typeof message.weaponId==='string'?message.weaponId:'';
       const player=simulation.addPlayer(client.id,client.name,undefined,client.classId,client.weaponId,message.sidearmId);client.joined=true;client.team=player.team;client.weaponId=player.primaryWeaponId;client.sidearmId=player.sidearmId;
       send(ws,{type:'welcome',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,id:client.id,team:player.team,difficulty:simulation.difficulty});send(ws,{type:'snapshot',state:simulation.snapshot()});
-    }else if(message.type==='input'&&client.joined){client.lastInput=now;const input=sanitizeInput(message.input);client.interact||=input.interact;client.switchSeat||=input.switchSeat;client.lastControls=input;}
+    }else if(message.type==='input'&&client.joined){client.lastInput=now;const input=sanitizeInput(message.input);client.interact||=input.interact;client.switchSeat||=input.switchSeat;client.horn||=input.horn;client.orderAttack||=input.orderAttack;client.orderDefend||=input.orderDefend;client.orderFollow||=input.orderFollow;client.lastControls=input;}
     else if(message.type==='respawn'&&client.joined){
       const validPoint=sanitizeSpawnPoint(simulation.map,message.pointId);
       if(simulation.respawn(client.id,message.classId,validPoint,message.weaponId,message.sidearmId)){
@@ -87,12 +87,12 @@ const loop=setInterval(()=>{
     if(!controls)continue;
     simulation.setInput(c.id,Date.now()-c.lastInput>350
       ?{yaw:controls.yaw,pitch:controls.pitch}
-      :{...controls,interact:c.interact,switchSeat:c.switchSeat});
-    c.interact=false;c.switchSeat=false;
+      :{...controls,interact:c.interact,switchSeat:c.switchSeat,horn:c.horn,orderAttack:c.orderAttack,orderDefend:c.orderDefend,orderFollow:c.orderFollow});
+    c.interact=false;c.switchSeat=false;c.horn=false;c.orderAttack=false;c.orderDefend=false;c.orderFollow=false;
   }
   simulation.step(dt);broadcastClock+=dt;
   if(broadcastClock>=1/20){broadcastClock%=1/20;const packet={type:'snapshot',state:simulation.snapshot()};for(const [ws,c]of clients)if(c.joined)send(ws,packet);}
-  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount,difficulty,mapId});for(const [ws,c]of clients)if(c.joined){const p=simulation.addPlayer(c.id,c.name,c.team,c.classId,c.weaponId,c.sidearmId);c.lastControls={yaw:p.yaw,pitch:p.pitch};c.lastInput=0;send(ws,{type:'roundReset'});}roundResetAt=0;}}
+  if(simulation.winner!==null){if(!roundResetAt)roundResetAt=now+12000;if(now>=roundResetAt){simulation=new Simulation({bots:botCount,difficulty,mapId,debugBots:process.env.AI_DEBUG==='1'});for(const [ws,c]of clients)if(c.joined){const p=simulation.addPlayer(c.id,c.name,c.team,c.classId,c.weaponId,c.sidearmId);c.lastControls={yaw:p.yaw,pitch:p.pitch};c.lastInput=0;send(ws,{type:'roundReset'});}roundResetAt=0;}}
   for(const [ws,c]of clients)if(Date.now()-c.lastSeen>120000||(!c.joined&&Date.now()-c.connectedAt>10000))ws.close(1001,'Connection timed out');
 },1000/60);
 server.listen(port,'0.0.0.0',()=>console.log(`RUBEZH server: http://localhost:${server.address().port} — WebSocket ws://localhost:${server.address().port} — ${botCount} bots`));

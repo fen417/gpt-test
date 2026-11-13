@@ -603,6 +603,12 @@ export class CombatAudio {
         if(e.type==='vehicleEnter'&&e.seat===0)this._tone(closed?28:43,.32,.10,{time:time+.05,type:'triangle',end:closed?49:67});
       }else if(e.type==='dryFire'&&own){
         this._mechanic('dry',this.ctx.currentTime,.21,.16);
+      }else if(e.type==='horn'){
+        const p=this._position(e,local);
+        this._tone(330,.45,.15*p.gain,{type:'sawtooth',pan:p.pan,attack:.025,end:325});
+        this._tone(415,.45,.10*p.gain,{type:'triangle',pan:p.pan,attack:.025});
+      }else if(e.type==='glassBreak'){
+        const p=this._position(e,local);this._noise(.19,.18*p.gain,{filter:'highpass',cutoff:2400,pan:p.pan});
       }else if(e.type==='equip'&&own){
         this._mechanic('lower',this.ctx.currentTime,.15,.13);
         this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);

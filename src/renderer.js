@@ -17,7 +17,7 @@ import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicle
 import { BulletMarks } from './bullet-marks.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
-  soldierHit, soldierThrow, beginDeath, animateDeath,
+  soldierHit, soldierThrow, beginDeath, animateDeath, poseSeatedSoldier,
 } from './soldier.js';
 
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
@@ -826,14 +826,6 @@ export class GameRenderer {
     for (const player of state.players) {
       if (player.id === localId) continue;
       active.add(player.id);
-      if (player.vehicleId && player.alive !== false) {
-        const soldier = this.soldiers.get(player.id);
-        if (soldier) {
-          soldier.group.removeFromParent();
-          soldier.initialized = false;
-        }
-        continue;
-      }
       const activeWeaponId = player.weaponId || defaultWeaponId(player.classId);
       let soldier = this.soldiers.get(player.id);
       const stowing = soldier && soldier.classId === player.classId && soldier.team === player.team &&
@@ -861,6 +853,29 @@ export class GameRenderer {
         this.soldiers.set(player.id, soldier);
       }
       const { group } = soldier;
+      if(player.vehicleId&&player.alive!==false){
+        const vehicle=state.vehicles.find(v=>v.id===player.vehicleId),rig=this.vehicleRigs.get(player.vehicleId);
+        if(!vehicle||!rig?.group.visible){group.removeFromParent();soldier.initialized=false;continue;}
+        const index=player.vehicleSeat,seat=VEHICLE_TYPES[vehicle.type].seats[index];
+        if(group.parent!==rig.body)rig.body.add(group);
+        group.userData.seatedActor=true;
+        group.position.set(seat.x,seat.height-1.65,seat.z);
+        const relativeYaw=vehicle.type==='humvee'&&index===1?(rig.turretYaw??0):0;
+        group.rotation.set(0,relativeYaw,0);group.visible=true;
+        const position=getVehicleSeatPose(vehicle,index),distSq=this.camera.position.distanceToSquared(this.scratchPosition.set(position.x,position.y,position.z))*viewScale**2;
+        soldier.body.geometry=distSq>(this.lowQuality?55:95)**2?soldier.distantGeometry:distSq>28**2?soldier.mediumGeometry:soldier.detailGeometry;
+        soldier.body.castShadow=!this.lowQuality&&distSq<48**2;
+        this.soldierBounds.center.set(position.x,position.y-.4,position.z);
+        group.visible=this.viewFrustum.intersectsSphere(this.soldierBounds)||Boolean(shadowFrustum?.intersectsSphere(this.soldierBounds)&&distSq<48**2);
+        poseSeatedSoldier(soldier,{vehicle,seat,index,relativeYaw:Math.atan2(Math.sin(player.yaw-vehicle.yaw-relativeYaw),Math.cos(player.yaw-vehicle.yaw-relativeYaw)),pitch:player.pitch,shotSeq:player.shotSeq,dt});
+        rig.riders[index].visible=false;soldier.seated=true;
+        continue;
+      }
+      if(soldier.seated){
+        group.userData.seatedActor=false;
+        group.removeFromParent();this.worldRoot.add(group);group.rotation.set(0,player.yaw,0);soldier.initialized=false;soldier.seated=false;
+        const shadow=group.getObjectByName('soldier-contact-shadow');if(shadow)shadow.visible=true;
+      }
       const externalScene = Boolean(group.parent && group.parent !== this.worldRoot);
       const alive = player.alive !== false;
       const target = this.scratchPosition.set(player.x, player.y || 0, player.z);

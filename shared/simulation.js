@@ -1,11 +1,14 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
 import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
-import { shouldSpawnVehicleBotAtBase, thinkVehicleBot } from './vehicle-ai.js';
+import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle } from './vehicle-ai.js';
+import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
+import { thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
+import { findBotPath } from './bot-navigation.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import { slideVelocity } from './movement.js';
-import { boxBounds, rayAffineBox, overlapsAffine, uprightBox } from './geometry.js';
+import { boxBounds, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
 import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast, placingSupply, selectedGadget, isSupplyGadget, gadgetCooldown } from './gadgets.js';
 
@@ -16,11 +19,11 @@ const names = ['Ворон','Север','Волк','Туман','Барс','К�
 const classKeys = Object.keys(CLASSES);
 const validClass = value => typeof value==='string' && Object.hasOwn(CLASSES,value);
 const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
-const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+
 const crouching = player => !player.vehicleId && Boolean(player.crouching || player.slideTime > 0 || player.input.crouch);
 const rayDir = { x: 0, y: 0, z: 0 };
-const scratchEye = { x: 0, y: 0, z: 0 };
-const scratchTarget = { x: 0, y: 0, z: 0 };
+
+
 
 export function sanitizeSpawnPoint(map,pointId) {
   // Beacon ownership, expiry, safety and available floor space are checked by respawn.
@@ -35,7 +38,8 @@ export function sanitizeInput(input = {}) {
     fire:input.fire===true,aim:input.aim===true,reload:input.reload===true,
     gadget:input.gadget===true,secondaryGadget:input.secondaryGadget===true,grenade:input.grenade===true,weaponSlot:input.weaponSlot===1||input.weaponSlot===2?input.weaponSlot:0,
     toolSlot:input.toolSlot===1||input.toolSlot===2?input.toolSlot:0,
-    interact:input.interact===true,switchSeat:input.switchSeat===true,
+    interact:input.interact===true,switchSeat:input.switchSeat===true,horn:input.horn===true,
+    orderAttack:input.orderAttack===true,orderDefend:input.orderDefend===true,orderFollow:input.orderFollow===true,
   };
 }
 
@@ -117,19 +121,9 @@ function overlaps(a,b) {
     && Math.abs(dx*b.sin+dz*b.cos)<b.d+a.w*s+a.d*c;
 }
 
-function rayVehicle(origin,direction,vehicle,maximum){
-  if(vehicle.modelRotation?.x||vehicle.modelRotation?.z)return rayAffineBox(origin,direction,vehicleShape(vehicle),maximum);
-  const {x,z,w,d,h,cos,sin}=footprint(vehicle);
-  const dx=origin.x-x,dz=origin.z-z;
-  return rayBox(
-    {x:dx*cos-dz*sin,y:origin.y-(vehicle.y??0),z:dx*sin+dz*cos},
-    {x:direction.x*cos-direction.z*sin,y:direction.y,z:direction.x*sin+direction.z*cos},
-    {minX:-w,maxX:w,minZ:-d,maxZ:d,h}, maximum,
-  );
-}
-
 export class Simulation {
-  constructor({ bots=23, difficulty='regular', mapId, random=Math.random }={}) {
+  constructor({ bots=23, difficulty='regular', mapId, random=Math.random, debugBots=false }={}) {
+    this.debugBots=debugBots;
     this.map=getMap(mapId);
     this.navigationHouses = this.map.theme === 'desert-village'
       ? this.map.structures.filter(structure => structure.kind.startsWith('village-house') || structure.kind === 'village-ruin')
@@ -235,6 +229,7 @@ export class Simulation {
   setInput(id,input){const p=this.players.get(id);if(p&&!p.bot)p.input=sanitizeInput(input);}
   respawn(id,classId,pointId,weaponId,sidearmId){
     const p=this.players.get(id);if(!p || p.alive || p.respawnIn>0)return false;
+    if(p.bot&&!pointId&&!shouldSpawnVehicleBotAtBase(this,p))pointId=botSpawnPoint(this,p)??undefined;
     const beacons=liveBeacons(this,p.team).filter(item=>![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,item)<8));
     if(p.bot&&!pointId&&beacons.length&&this.random()<.32)pointId=beacons[Math.floor(this.random()*beacons.length)].id;
     const beacon=beacons.find(item=>item.id===pointId);
@@ -261,6 +256,7 @@ export class Simulation {
     p.y=spawnY;
     Object.assign(p,{rockets:p.classId==='assault'?2:0,secondaryCooldown:0,gadgetTime:0,gadgetAction:null,gadgetActionUntil:0,
       pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null,heldGadget:null});
+    p.ai=null;p.botRideOrder=null;p.hornHeld=false;p.botCrewTarget=null;p.botCrewSenseAt=0;this.botTeamAt=0;
     p.velocityX=0;p.velocityZ=0;p.tickX=x;p.tickZ=z;
     p.botTransit = null;
     p.botLastHouse = null;
@@ -398,6 +394,11 @@ export class Simulation {
     if(!this.lineClear({x:p.x,y:p.y+1.25,z:p.z},{x:vehicle.x,y:vehicle.y+1.25,z:vehicle.z}))return false;
     vehicle.team=p.team;
     vehicle.seats[seat]=p.id;
+    if(!p.bot&&seat===0&&vehicle.pickupPlayerId===p.id){
+      vehicle.pickupUntil=0;vehicle.pickupPlayerId=null;
+      const origin=this.points.find(point=>dist(vehicle,point)<22)?.id??null;
+      for(const id of vehicle.seats){const ally=this.players.get(id);if(ally?.bot)ally.botRideOrder={driverId:p.id,vehicleId:vehicle.id,origin,holdUntil:this.time+8};}
+    }
     Object.assign(p,{vehicleId:vehicle.id,vehicleSeat:seat,reloading:false,reloadTime:0,invulnerableUntil:0});
     this.syncVehicleSeat(p,vehicle);
     this.event('vehicleEnter',{playerId:p.id,vehicleId:vehicle.id,seat});
@@ -426,9 +427,17 @@ export class Simulation {
   }
   updateVehicleActions(p){
     const {interact,switchSeat}=p.input;
+    if(p.input.horn&&!p.hornHeld&&p.vehicleSeat===0)honkVehicle(this,p);
+    p.hornHeld=p.input.horn;
     if(interact&&!p.interactHeld){
       if(p.vehicleId)this.dismountVehicle(p);
       else{
+        for(const v of this.vehicles){
+          const driver=this.players.get(v.seats[0]);
+          if(v.pickupPlayerId!==p.id||v.pickupUntil<this.time||!driver?.bot||dist(p,v)>vehicleBoardingRange(v))continue;
+          const free=v.seats.findIndex((id,index)=>index>0&&id===null);
+          if(free>=0){v.seats[free]=driver.id;v.seats[0]=null;driver.vehicleSeat=free;driver.botJourney=null;}
+        }
         const boarding=getVehicleBoardingSeat(p,this.vehicles);
         if(boarding)this.mountVehicle(p,boarding.vehicle,boarding.seat);
       }
@@ -500,6 +509,8 @@ export class Simulation {
   damageVehicle(vehicle,amount,attacker,kind){
     if(vehicle.hp<=0||this.winner!==null||attacker?.team===vehicle.team)return;
     const spec=VEHICLE_TYPES[vehicle.type];
+    vehicle.lastHurt=this.time;
+    if(kind==='blast')vehicle.lastBlastAt=this.time;
     vehicle.hp=Math.max(0,vehicle.hp-amount*(kind==='blast'?spec.blastArmor:spec.bulletArmor));
     if(vehicle.hp>0)return;
     vehicle.speed=0;vehicle.steer=0;vehicle.respawnIn=spec.respawn;vehicle.wreckTime=8;
@@ -519,6 +530,7 @@ export class Simulation {
     victim.hp=Math.max(0,victim.hp-amount);
     const dealt=prevHp-victim.hp;
     victim.lastHurt=this.time;
+    if(dealt>0)rememberBotDamage(this,victim,attacker);
     this.event('damage',{playerId:victim.id,attackerId:attacker?.id,amount:dealt,x:attacker?.x??victim.x,z:attacker?.z??victim.z});
     if(attacker&&attacker!==victim&&attacker.team!==victim.team&&dealt>0){
       this.awardScore(attacker,Math.max(1,Math.round(dealt)),'НАНЕСЕНИЕ УРОНА',{kind:'damage',victimId:victim.id});
@@ -631,9 +643,11 @@ export class Simulation {
       const distance=rayBox(origin,direction,box,closest);
       if(distance<closest){closest=distance;impact=impactMaterial(box.kind);impactBox=box;}
     }
+    const glassHits=[];
     for(const v of this.vehicles){
-      if(v.id===bullet.vehicleId||(v.hp<=0&&!(v.wreckTime>0)))continue;
-      const distance=rayVehicle(origin,direction,v,closest);
+      if(v.hp<=0&&!(v.wreckTime>0))continue;
+      for(const pane of rayVehicleGlass(origin,direction,v,closest))glassHits.push({vehicle:v,...pane});
+      const distance=rayVehicleArmor(origin,direction,v,closest);
       if(distance<closest){closest=distance;vehicle=v;impact='metal';}
     }
     for(const item of this.deployables){
@@ -646,12 +660,24 @@ export class Simulation {
     const minZ=Math.min(origin.z,endZ)-.24,maxZ=Math.max(origin.z,endZ)+.24;
     for(const other of this.players.values()){
       if(other.id===playerId||!other.alive||other.team===team)continue;
+      suppressBot(this,other,bullet,origin,direction,Math.min(length,closest));
+      if(other.vehicleId){
+        const transport=this.vehicles.find(v=>v.id===other.vehicleId);
+        if(!transport)continue;
+        const hit=rayVehicleCrew(origin,direction,transport,other.vehicleSeat,closest);
+        if(hit.distance<closest){closest=hit.distance;target=other;headshot=hit.headshot;vehicle=null;equipment=null;}
+        continue;
+      }
       if(other.x<minX||other.x>maxX||other.z<minZ||other.z>maxZ)continue;
       const crouch=crouching(other),headY=other.y+(crouch?1.06:EYE_HEIGHT);
       const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.15);
       const body=rayCapsule(origin,direction,other.x,other.z,other.y+.26,other.y+(crouch?.79:1.25),.24);
       const hit=Math.min(head,body);
       if(hit<closest){closest=hit;target=other;headshot=head<body;vehicle=null;equipment=null;}
+    }
+    for(const hit of glassHits)if(hit.distance<=closest&&!((hit.vehicle.glassBroken??0)&(1<<hit.id))){
+      hit.vehicle.glassBroken=(hit.vehicle.glassBroken??0)|(1<<hit.id);
+      this.event('glassBreak',{vehicleId:hit.vehicle.id,pane:hit.id,x:origin.x+direction.x*hit.distance,y:origin.y+direction.y*hit.distance,z:origin.z+direction.z*hit.distance});
     }
     bullet.age=age;
     if(!target&&!vehicle&&!impact&&age<bullet.life)return true;
@@ -731,25 +757,7 @@ export class Simulation {
     this.event('grenade',{playerId:p.id,x:p.x,y:p.y||0,z:p.z,yaw:p.yaw||0});
   }
   gridIndex(x,z){return clamp(Math.floor((z-this.gridOrigin)/this.gridCell),0,this.gridSize-1)*this.gridSize+clamp(Math.floor((x-this.gridOrigin)/this.gridCell),0,this.gridSize-1);}
-  pathfind(start,goal){
-    const source=this.gridIndex(start.x,start.z),target=this.gridIndex(goal.x,goal.z);
-    if(source===target)return [];
-    const size=this.gridSize,queue=this.pathQueue,prev=this.pathPrevious;
-    prev.fill(-1);prev[source]=source;queue[0]=source;
-    const targetX=target%size,targetZ=Math.floor(target/size);
-    let read=0,write=1,found=source,best=Infinity;
-    while(read<write){
-      const cur=queue[read++];if(cur===target){found=cur;break;}
-      const x=cur%size,z=Math.floor(cur/size),remaining=Math.abs(x-targetX)+Math.abs(z-targetZ);
-      if(remaining<best){found=cur;best=remaining;}
-      for(const [dx,dz]of neighbors){
-        const nx=x+dx,nz=z+dz,n=nz*size+nx;
-        if(nx<0||nx>=size||nz<0||nz>=size||this.blocked[n]||prev[n]!==-1)continue;
-        prev[n]=cur;queue[write++]=n;
-      }
-    }
-    const result=[];for(let cur=found;cur!==source&&cur!==-1;cur=prev[cur])result.push({x:this.gridOrigin+(cur%size+.5)*this.gridCell,z:this.gridOrigin+(Math.floor(cur/size)+.5)*this.gridCell});return result.reverse();
-  }
+  pathfind(start,goal){return findBotPath(this,start,goal);}
   pickObjectiveSpot(p,point){
     const slot=p.botSlot??0;
     const baseAngle=slot*2.3999632+this.random()*Math.PI*2;
@@ -779,245 +787,7 @@ export class Simulation {
     p.botHoldCrouch=(slot+Math.floor(this.time))%3===0;
     return bestSpot;
   }
-  assignBotRole(p){
-    if(p.botRole&&this.time<(p.botRoleUntil||0))return;
-    const r=this.random();
-    p.botRole=r<.35?'objective':r<.65?'fragger':r<.85?'flanker':'defender';
-    p.botRoleUntil=this.time+35+this.random()*55;
-  }
-  botRouteTarget(p, goal) {
-    if (!this.navigationHouses.length) return goal;
-    const laneSlot = Math.floor((p.botSlot ?? 0) / 2) % 10;
-    const lane = laneSlot < 3 ? -1 : laneSlot < 6 ? 1 : 0;
-    if (!lane || dist(p, goal) < 24) { p.botTransit = null; return goal; }
-    const objectiveId = p.botObjective?.id ?? 'combat';
-    if (p.botTransit?.objectiveId === objectiveId && this.time < p.botTransit.until) {
-      return p.botTransit.points[p.botTransit.index];
-    }
-    const direction = Math.sign(goal.z - p.z);
-    if (!direction) return goal;
-    const outer = Math.floor((p.botSlot ?? 0) / 6) % 2 === 1;
-    const laneX = lane * (outer ? 56 : 30);
-    let chosen = null, bestScore = Infinity;
-    for (const house of this.navigationHouses) {
-      const progress = (house.z - p.z) * direction;
-      if (Math.sign(house.x) !== lane || house.id === p.botLastHouse || progress < 12 || progress > 60 ||
-          (goal.z - house.z) * direction < 15) continue;
-      if (this.blocked[this.gridIndex(house.x, house.z)] || this.collides(house.x, house.z)) continue;
-      let occupied = 0;
-      for (const ally of this.players.values()) if (ally !== p && ally.team === p.team && ally.botTransit?.houseId === house.id) occupied++;
-      const score = Math.abs(progress - 30) + Math.abs(house.x - laneX) * .8 + occupied * 24;
-      if (score < bestScore) { chosen = house; bestScore = score; }
-    }
-    if (!chosen) { p.botTransit = null; return goal; }
-    let entry, exit;
-    if (chosen.doorAxis === 'x') {
-      const side = Math.sign(p.x - chosen.x) || -lane;
-      entry = { x: chosen.x + side * (chosen.w / 2 + 1.8), z: chosen.z };
-      exit = { x: chosen.x - side * (chosen.w / 2 + 1.8), z: chosen.z };
-    } else {
-      entry = { x: chosen.x, z: chosen.z - direction * (chosen.d / 2 + 1.8) };
-      exit = { x: chosen.x, z: chosen.z + direction * (chosen.d / 2 + 1.8) };
-    }
-    if (this.collides(entry.x, entry.z) || this.collides(exit.x, exit.z)) return goal;
-    p.botTransit = {
-      houseId: chosen.id, objectiveId, index: 0, until: this.time + 24,
-      points: [entry, { x: chosen.x, z: chosen.z }, exit],
-    };
-    return entry;
-  }
-  thinkBot(p,dt){
-    if(!p.alive)return;
-    p.input.secondaryGadget=false;
-    const visibleBeacon=this.deployables.some(item=>item.kind==='beacon'&&item.hp>0&&item.team!==p.team&&dist(p,item)<this.botSettings.awareness&&
-      Math.abs(angleDifference(Math.atan2(-(item.x-p.x),-(item.z-p.z)),p.yaw))<.9&&
-      this.lineClear({x:p.x,y:p.y+EYE_HEIGHT,z:p.z},{x:item.x,y:item.y+.4,z:item.z}));
-    if((!visibleBeacon||p.pendingGadget)&&thinkEquipment(this,p,dt))return;
-    if(thinkVehicleBot(this,p,dt))return;
-    if (p.botTransit) {
-      const route = p.botTransit;
-      if (dist(p, route.points[route.index]) < 1.65) {
-        route.index++;
-        p.botPath = [];
-        p.nextThink = 0;
-        if (route.index === route.points.length) { p.botLastHouse = route.houseId; p.botTransit = null; }
-      } else if (this.time >= route.until) {
-        p.botLastHouse = route.houseId; p.botTransit = null; p.nextThink = 0;
-      }
-    }
-    p.nextThink-=dt;const settings=this.botSettings;
-    let target=null,bestSquared=settings.awareness**2;
-    scratchEye.x=p.x;scratchEye.y=p.y+(crouching(p)?CROUCH_EYE_HEIGHT:EYE_HEIGHT);scratchEye.z=p.z;
-    const recentlyHurt=this.time-p.lastHurt<1.5;
-    for(const item of this.deployables){
-      if(item.kind!=='beacon'||item.hp<=0||item.team===p.team)continue;
-      const dx=item.x-p.x,dz=item.z-p.z,d2=dx*dx+dz*dz;
-      const yaw=Math.atan2(-dx,-dz);
-      if(d2<bestSquared&&Math.abs(angleDifference(yaw,p.yaw))<.9&&this.lineClear(scratchEye,{x:item.x,y:item.y+.4,z:item.z})){
-        target=item;bestSquared=d2;
-      }
-    }
-    const beaconTarget=Boolean(target);
-    for(const other of this.players.values())if(!beaconTarget&&other.alive&&other.team!==p.team){
-      const dx=other.x-p.x,dz=other.z-p.z,distanceSquared=dx*dx+dz*dz;
-      if(distanceSquared>=bestSquared||this.time<other.invulnerableUntil)continue;
-      const aware=distanceSquared<100||recentlyHurt||other.id===p.botTargetId||Math.abs(angleDifference(Math.atan2(-dx,-dz),p.yaw))<1.9;
-      if(aware){
-        scratchTarget.x=other.x;scratchTarget.y=other.y+(crouching(other)?.75:1.1);scratchTarget.z=other.z;
-        if(this.lineClear(scratchEye,scratchTarget)){
-          target=other;bestSquared=distanceSquared;
-        }
-      }
-    }
-    const input=p.input;
-    input.forward=0;input.strafe=0;input.sprint=false;input.crouch=false;input.jump=false;
-    input.fire=false;input.aim=false;input.reload=false;input.gadget=false;input.secondaryGadget=false;input.grenade=false;
-    if(target){
-      const best=Math.sqrt(bestSquared);
-      if(p.botTargetId!==target.id){p.botTargetId=target.id;p.botReactAt=this.time+settings.reaction+this.random()*settings.reactionVariance;p.botBurstAt=p.botReactAt;p.botAimPhase=this.random()*Math.PI*2;}
-      const solution=aimBullet(scratchEye,target,beaconTarget?.4:crouching(target)?.65:1.05,getWeapon(p.classId,p.weaponId).projectileSpeed);
-      const phase=p.botAimPhase+this.time*1.5;
-      // Error grows with distance, leaving visible near-misses rather than laser aim.
-      const error=settings.aimError*(.65+best/settings.awareness);
-      const wantedYaw=solution.yaw+Math.sin(phase)*error;
-      const wantedPitch=solution.pitch+Math.cos(phase*.83)*error*.5;
-      input.yaw=p.yaw+clamp(angleDifference(wantedYaw,p.yaw),-settings.turnSpeed*dt,settings.turnSpeed*dt);
-      input.pitch=p.pitch+clamp(wantedPitch-p.pitch,-dt*1.6,dt*1.6);input.aim=true;
-      const cycle=settings.burst+settings.pause,burstPhase=(this.time-p.botBurstAt)%cycle;
-      input.fire=this.time>=p.botReactAt&&burstPhase>=0&&burstPhase<settings.burst&&Math.abs(angleDifference(wantedYaw,input.yaw))<.1;
-      input.strafe=Math.sin(this.time*.8+p.botAimPhase)>.65?.35:0;
-      if(best>32)input.forward=.3;
-      if (p.botTransit && best > 12) {
-        while (p.botPath.length && dist(p, p.botPath[0]) < 1.4) p.botPath.shift();
-        const next = p.botPath[0];
-        if (next) {
-          const dx = next.x - p.x, dz = next.z - p.z, length = Math.max(.01, Math.hypot(dx, dz));
-          input.forward = (-Math.sin(input.yaw) * dx - Math.cos(input.yaw) * dz) / length * .65;
-          input.strafe = (Math.cos(input.yaw) * dx - Math.sin(input.yaw) * dz) / length * .65;
-        } else input.forward = 0;
-      }
-    }else{
-      p.botTargetId=null;
-      if(p.nextThink<=0&&this.botPathBudget>0){
-        this.botPathBudget--;
-        this.assignBotRole(p);
-        const role=p.botRole;
-        let fragSpot=null;
-        if(role==='fragger'){
-          const enemies=[];
-          for(const e of this.players.values())if(e.alive&&e.team!==p.team)enemies.push(e);
-          if(enemies.length){
-            enemies.sort((a,b)=>dist(p,a)-dist(p,b));
-            const prey=enemies[Math.floor(this.random()*Math.min(4,enemies.length))];
-            fragSpot={x:prey.x,z:prey.z};
-            for(let i=0;i<8;i++){
-              const a=this.random()*Math.PI*2,r=2+this.random()*6;
-              const tx=prey.x+Math.cos(a)*r,tz=prey.z+Math.sin(a)*r;
-              if(!this.collides(tx,tz,undefined,PLAYER_RADIUS+.35)&&!this.blocked[this.gridIndex(tx,tz)]){fragSpot={x:tx,z:tz};break;}
-            }
-          }
-        }
-        if(fragSpot){
-          p.botObjective=null;
-          p.botGoal=fragSpot;
-          p.botPath=this.pathfind(p,this.botRouteTarget(p,fragSpot));
-          p.botHoldCrouch=false;
-          p.nextThink=2.5+this.random()*2.5;
-        }else{
-          let bestObjective = null, bestScore = Infinity;
-          for (const point of this.points) {
-            let assigned = 0;
-            for (const ally of this.players.values()) {
-              if (ally !== p && ally.team === p.team && ally.botObjective?.id === point.id) assigned++;
-            }
-            let score;
-            if (role === 'flanker') score = dist(p, point) * 0.25 + this.random() * 140 + assigned * 6 + (point.id === p.botObjective?.id ? 80 : 0);
-            else if (role === 'defender') score = dist(p, point) + (point.owner === p.team ? (point.contested ? -200 : 0) : 260) + this.random() * 30 + assigned * 8;
-            else score = dist(p, point) + (point.owner === p.team ? 220 : 0) + this.random() * 25 + assigned * 12;
-            if (score < bestScore) { bestObjective = point; bestScore = score; }
-          }
-          const sameObjective=p.botObjective?.id===bestObjective?.id;
-          const insideZone=bestObjective&&dist(p,bestObjective)<CAPTURE_RADIUS-1.5;
-          p.botObjective=bestObjective;
-          if(bestObjective){
-            if(!sameObjective||!p.botGoal||!insideZone||p.botTransit||this.random()<.35){
-              p.botGoal=this.pickObjectiveSpot(p,bestObjective);
-              p.botPath=this.pathfind(p,this.botRouteTarget(p,p.botGoal));
-            }else{
-              p.botWatchYaw=(p.botWatchYaw??p.yaw)+((p.botSlot??0)%2?1:-1)*(.45+this.random()*.5);
-            }
-          }
-          p.nextThink=(role==='flanker'?6+this.random()*4:3+this.random()*2);
-        }
-      }
-      const goal=p.botTransit?.points[p.botTransit.index]||p.botGoal||p.botObjective;
-      while(p.botPath.length&&dist(p,p.botPath[0])<1.4)p.botPath.shift();
-      const next=p.botPath[0]||goal;
-      let sepX=0,sepZ=0;
-      for(const ally of this.players.values()){
-        if(ally===p||!ally.alive)continue;
-        const ax=p.x-ally.x,az=p.z-ally.z,d2=ax*ax+az*az;
-        if(d2<4.84&&d2>1e-6){
-          const d=Math.sqrt(d2),push=(2.2-d)/2.2;
-          sepX+=(ax/d)*push;sepZ+=(az/d)*push;
-        }
-      }
-      if(next&&dist(p,next)>1.35){
-        const moveX=(next.x-p.x)+sepX*1.8,moveZ=(next.z-p.z)+sepZ*1.8;
-        const wantedYaw=Math.atan2(-moveX,-moveZ);
-        input.yaw=p.yaw+clamp(angleDifference(wantedYaw,p.yaw),-settings.turnSpeed*dt,settings.turnSpeed*dt);
-        const facing=Math.abs(angleDifference(wantedYaw,input.yaw));input.forward=facing<.6?1:facing<1.1?.4:0;input.sprint=facing<.3&&dist(p,goal||next)>7;
-      }else{
-        const glance=Math.sin(this.time*1.1+(p.botSlot??0)*1.7)*.38;
-        const wantedYaw=(p.botWatchYaw??p.yaw)+glance;
-        input.yaw=p.yaw+clamp(angleDifference(wantedYaw,p.yaw),-settings.turnSpeed*.7*dt,settings.turnSpeed*.7*dt);
-        input.crouch=Boolean(p.botHoldCrouch);
-        if(Math.hypot(sepX,sepZ)>.15){
-          const sin=Math.sin(input.yaw),cos=Math.cos(input.yaw);
-          input.forward=clamp((-sin*sepX-cos*sepZ)*.7,-.5,.5);
-          input.strafe=clamp((cos*sepX-sin*sepZ)*.7,-.5,.5);
-        }
-      }
-    }
-    // Stuck detection: if the bot wanted to walk but barely moved, back off sideways and re-plan.
-    if(!p.botProbeAt||this.time-p.botProbeAt>=.9){
-      if(p.botProbeAt&&(p.botMoveTime||0)>.55&&!target){
-        const moved=Math.hypot(p.x-p.botProbeX,p.z-p.botProbeZ);
-        if(moved<.9){
-          p.botUnstuckUntil=this.time+.8;p.botUnstuckDir=this.random()<.5?-1:1;p.botPath=[];p.botGoal=null;p.nextThink=0;
-          p.botLastHouse=p.botTransit?.houseId??p.botLastHouse;p.botTransit=null;
-        }
-      }
-      p.botProbeAt=this.time;p.botProbeX=p.x;p.botProbeZ=p.z;p.botMoveTime=0;
-    }
-    if(!target&&this.time<(p.botUnstuckUntil||0)){
-      input.forward=-.5;input.strafe=p.botUnstuckDir||1;input.sprint=false;input.jump=(this.time*4)%1<.3;
-    }else if(input.forward>.3)p.botMoveTime=(p.botMoveTime||0)+dt;    if(p.ammo===0||(p.ammo<6&&!target))input.reload=true;
-    if(p.gadgetTime<=0&&this.time>=(p.nextGadgetAt||0)){
-      let use=false;
-      if(p.classId==='assault'){
-        use=p.reserve<getWeapon(p.classId,p.weaponId).reserve*.55;
-        for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&dist(p,ally)<7&&ally.reserve<30)use=true;
-      }else if(p.classId==='recon'){
-        const existing=this.deployables.find(item=>item.kind==='beacon'&&item.ownerId===p.id&&item.hp>0&&item.expires>this.time);
-        const fromBase=dist(p,this.map.spawns[p.team]);
-        use=!existing&&fromBase>35&&!target&&this.time>8+(p.botSlot??0)*.3;
-      }
-      if(use){input.gadget=true;p.nextGadgetAt=this.time+5;}
-    }
-    if(p.classId==='medic'&&p.secondaryCooldown<=0){
-      for(const ally of this.players.values())if(ally.alive&&ally.team===p.team&&ally.hp<65&&dist(p,ally)<5)input.secondaryGadget=true;
-    }
-    if(target&&p.grenades>0&&(p.grenadeCooldown||0)<=0&&this.time>=(p.nextGrenadeAt||0)&&this.time>=(p.botReactAt||0)+.35){
-      const d=Math.sqrt(bestSquared);
-      if(d>11&&d<25&&Math.abs(angleDifference(Math.atan2(-(target.x-p.x),-(target.z-p.z)),input.yaw))<.22){
-        input.grenade=true;
-        p.nextGrenadeAt=this.time+10+this.random()*6;
-      }
-    }
-    input.yaw=finite(input.yaw)%(Math.PI*2);
-    input.pitch=clamp(finite(input.pitch),-1.45,1.45);
-  }
+  thinkBot(p,dt){thinkInfantryBot(this,p,dt);}
   step(rawDt){
     const dt=clamp(finite(rawDt),0,.1);if(!dt)return;this.time+=dt;
     while(this.events.length&&this.time-this.events[0].time>=1.2)this.events.shift();
@@ -1026,6 +796,7 @@ export class Simulation {
     // Spread route planning across ticks when many bots spawn together.
     this.botPathBudget=2;
     updateEquipment(this,dt);
+    updateBotTeams(this);
     if(this.vehicles.length){
       for(const p of this.players.values()){
         if(!p.alive)continue;
@@ -1216,6 +987,7 @@ export class Simulation {
       };
     });
     return {
+      ...(this.debugBots?{aiDebug:botDebugSnapshot(this)}:{}),
       time:this.time,mapId:this.map.id,roundDuration:960,maxTickets:this.maxTickets,difficulty:this.difficulty,tickets:[...this.tickets],players,
       points:this.points.map(p=>({...p})),events:this.events.map(e=>({...e})),
       vehicles:this.vehicles.map(({home,gunCooldown,...v})=>({...v,seats:[...v.seats]})),

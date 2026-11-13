@@ -25,7 +25,7 @@ function parts(parent, materials, draw) {
     batches.get(mat).push(clone);
   };
   const prism = (mat,...params) => piece(boxGeometry,mat,...params);
-  const pane = (x,y,z,w,h,rx=0,ry=0) => piece(paneGeometry,'glass',x,y,z,w,h,1,rx,ry);
+  const pane = (x,y,z,w,h,rx=0,ry=0,id=0) => piece(paneGeometry,'glass'+id,x,y,z,w,h,1,rx,ry);
   const round = (mat,...params) => piece(roundedGeometry,mat,...params);
   const ball = (mat,...params) => piece(sphereGeometry,mat,...params);
   const ring = (mat,...params) => piece(ringGeometry,mat,...params);
@@ -150,12 +150,12 @@ function humveeGlazing({prism,pane,piece,tube}) {
       frame(0, 0, rail, length - 2 * rail);
       const paneWidth = (width - 3 * rail) / 2;
       for (const side of [-1, 1]) {
-        pane(side * (rail + paneWidth) / 2, midY, midZ, paneWidth, length - 2 * rail, pitch);
+        pane(side * (rail + paneWidth) / 2, midY, midZ, paneWidth, length - 2 * rail, pitch,0,side<0?0:1);
         tube('steel', .009, side * .34, 1.32, zAt(front, 1.32) - .022,
           side * .57, 1.54, zAt(front, 1.54) - .022);
       }
     } else {
-      pane(0, midY, midZ, width - 2 * rail, length - 2 * rail, pitch);
+      pane(0, midY, midZ, width - 2 * rail, length - 2 * rail, pitch,0,2);
     }
   }
 
@@ -185,7 +185,7 @@ function humveeGlazing({prism,pane,piece,tube}) {
   sideFrame.translate(0, 0, -.0225);
   for (const side of [-1, 1]) {
     piece(sideFrame, 'paint', side * windows.x, 0, 0, 1, 1, 1, 0, -H);
-    for (const window of sideWindows) pane(side * windows.x, windows.y, window.z, window.width, windows.height, 0, -H);
+    for (const [index,window] of sideWindows.entries()) pane(side * windows.x, windows.y, window.z, window.width, windows.height, 0, -H,3+(side>0?2:0)+index);
   }
   sideFrame.dispose();
 }
@@ -322,7 +322,7 @@ function addGloves(parent, materials, atv, gunner=false) {
 function rider(body, materials, seat, index, type) {
   const rider = new THREE.Group();
   const gunner = seat.role === 'gunner';
-  rider.position.set(seat.x,seat.height-.81,seat.z);
+  rider.position.set(seat.x,seat.height-.65,seat.z);
   body.add(rider);
   parts(rider,materials,({prism,round,ball,tube})=>{
     round('uniform',0,.33,.032,.40,.45,.24,-.13);
@@ -339,7 +339,7 @@ function rider(body, materials, seat, index, type) {
       const gripY=reachesControls?.36:.14;
       tube('uniform',.062,side*.24,.24,-.14,side*.26,gripY,gripZ);
       ball('rubber',side*.26,gripY,gripZ,.059,.047,.072);
-      if(type==='atv'){
+      {
         tube('uniform',.092,side*.13,.18,.02,side*.29,.12,-.20);
         tube('uniform',.071,side*.29,.12,-.20,side*.33,-.105,-.04);
         round('rubber',side*.33,-.115,-.098,.132,.13,.23);
@@ -372,6 +372,7 @@ export function createVehicleRig(type, material, teamColors) {
     skin: material(0xa2846d,.93,.01), brass: material(0x927045,.45,.68),
     badge: material(teamColors[0],.84,.1), wreck: material(0x333735,1,.1),
   };
+  for(let i=0;i<7;i++)materials['glass'+i]=materials.glass;
   const controls=atv?buildAtv(body,materials):buildHumvee(body,materials);
   const wheels = [];
   for(const side of [-1,1])for(const direction of [-1,1]){
@@ -420,9 +421,9 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
     wheel.tire.rotation.x-=vehicle.speed*dt/(wheel.radius*(vehicle.modelScale?.y??1));
   }
   for(let index=0;index<riders.length;index++){
-    riders[index].visible=!wrecked&&Boolean(vehicle.seats[index])&&vehicle.seats[index]!==player?.id
-      && (vehicle.type==='atv'||index===1);
+    riders[index].visible=!wrecked&&Boolean(vehicle.seats[index])&&vehicle.seats[index]!==player?.id;
   }
+  for(const mesh of body.children)if(/^glass\d$/.test(mesh.name))mesh.visible=!((vehicle.glassBroken??0)&(1<<Number(mesh.name.slice(5))));
   const localSeat=player?.vehicleId===vehicle.id?player.vehicleSeat:null;
   rig.driverGloves.visible=!wrecked&&localSeat===0;
   if(turret){
@@ -463,6 +464,8 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
 }
 
 export function disposeVehicleRig(rig) {
+  // Character geometry and skeletons belong to the soldier cache, not the car.
+  for(const child of [...rig.body.children])if(child.userData.seatedActor)child.removeFromParent();
   rig.group.removeFromParent();
   rig.group.traverse(node=>{if(node.geometry&&node.geometry!==sphereGeometry)node.geometry.dispose();});
   for(const material of rig.materialsToDispose)material.dispose();

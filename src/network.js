@@ -7,7 +7,7 @@ const ROOM_PREFIX = 'gpt-test-';
 const MAX_HUMANS = 16;
 const STEP = 1 / 60;
 const CONNECT_TIMEOUT = 18000;
-const PULSE_ACTIONS = ['jump', 'fire', 'reload', 'gadget', 'secondaryGadget', 'grenade', 'interact', 'switchSeat'];
+const PULSE_ACTIONS = ['jump', 'fire', 'reload', 'gadget', 'secondaryGadget', 'grenade', 'interact', 'switchSeat', 'horn', 'orderAttack', 'orderDefend', 'orderFollow'];
 const noOp = () => {};
 
 export function normalizeRoomCode(value) {
@@ -230,7 +230,7 @@ export class Multiplayer {
       this._botCount = Math.max(0, Math.min(31, Math.floor(Number(bots) || 0)));
       this._difficulty = ['recruit','regular','veteran'].includes(difficulty) ? difficulty : 'regular';
       this._mapId = getMap(mapId).id;
-      this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
+      this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId, debugBots:new URLSearchParams(location.search).has('aiDebug') });
       this._localId = 'host';
       const cls = playerClass(classId);
       this._simulation.addPlayer(this._localId, playerName(name), 0, cls, playerWeapon(cls, weaponId), sidearmId);
@@ -258,7 +258,7 @@ export class Multiplayer {
           this._flushHostInput();
           for (const guest of this._connections.values()) {
             if (!guest.joined) continue;
-            const controls = { ...guest.lastControls, interact: false, switchSeat: false };
+            const controls = { ...guest.lastControls, interact: false, switchSeat: false, horn: false, orderAttack: false, orderDefend: false, orderFollow: false };
             if (now - guest.lastInput > 350) Object.assign(controls, { forward: 0, strafe: 0, sprint: false, jump: false, fire: false, reload: false, grenade: false, gadget: false, secondaryGadget: false });
             else for (const action of guest.actions) controls[action] = true;
             this._simulation.setInput(guest.id, controls);
@@ -269,7 +269,7 @@ export class Multiplayer {
             if (!roundResetAt) roundResetAt = now + 12000;
             if (now >= roundResetAt) {
               const humans = this._simulation.snapshot().players.filter(player => !player.bot);
-              this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
+              this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId, debugBots:new URLSearchParams(location.search).has('aiDebug') });
               for (const player of humans) this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.primaryWeaponId, player.sidearmId);
               roundResetAt = 0;
               this.onStatus(`Комната ${code} · новый раунд`);
@@ -337,7 +337,7 @@ export class Multiplayer {
     if (difficulty !== undefined && ['recruit','regular','veteran'].includes(difficulty)) this._difficulty = difficulty;
     if (mapId !== undefined) this._mapId = getMap(mapId).id;
     const humans = this._simulation.snapshot().players.filter(player => !player.bot);
-    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
+    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId, debugBots:new URLSearchParams(location.search).has('aiDebug') });
     for (const player of humans) {
       this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.primaryWeaponId, player.sidearmId);
     }
@@ -351,7 +351,7 @@ export class Multiplayer {
     if (difficulty !== undefined && ['recruit','regular','veteran'].includes(difficulty)) this._difficulty = difficulty;
     if (mapId !== undefined) this._mapId = getMap(mapId).id;
     const humans = this._simulation.snapshot().players.filter(player => !player.bot);
-    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId });
+    this._simulation = new Simulation({ bots: this._botCount, difficulty: this._difficulty, mapId: this._mapId, debugBots:new URLSearchParams(location.search).has('aiDebug') });
     for (const player of humans) {
       this._simulation.addPlayer(player.id, player.name, player.team, player.classId, player.primaryWeaponId, player.sidearmId);
     }
@@ -630,7 +630,7 @@ export class Multiplayer {
   _flushHostInput() {
     if (!this._simulation || !this._localId) return;
     const stale = performance.now()-this._lastHostInput>350;
-    const input = stale ? sanitizeInput({yaw:this._hostControls.yaw,pitch:this._hostControls.pitch}) : { ...this._hostControls, interact: false, switchSeat: false };
+    const input = stale ? sanitizeInput({yaw:this._hostControls.yaw,pitch:this._hostControls.pitch}) : { ...this._hostControls, interact: false, switchSeat: false, horn: false, orderAttack: false, orderDefend: false, orderFollow: false };
     if(!stale)for (const action of this._hostActions) input[action] = true;
     this._hostActions.clear();
     this._simulation.setInput(this._localId, input);

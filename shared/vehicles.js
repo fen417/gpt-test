@@ -101,6 +101,12 @@ export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
   if (vehicle.type === 'atv') return true;
   // Fire out of the side window on this seat’s side of the cabin.
   const direction = vehicleAimDirection(vehicle, yaw, pitch);
+  const slope=.23/.49,denominator=direction.z-slope*direction.y;
+  const frontDistance=(-1.34+slope*(seat.height-1.26)-seat.z)/denominator;
+  if(frontDistance>0&&direction.z<0){
+    const x=seat.x+direction.x*frontDistance,y=seat.height+direction.y*frontDistance;
+    if(Math.abs(x)<.942&&Math.abs(x)>.024&&y>1.303&&y<1.707)return true;
+  }
   if (direction.x * Math.sign(seat.x) <= 0) return false;
   const windows = HUMVEE_SIDE_WINDOWS;
   const window = seat.z < 0 ? windows.front : windows.rear;
@@ -129,6 +135,6 @@ export function createVehicle(spawn) {
   return {
     ...spawn, home: spawn, hp: spec.maxHp, maxHp: spec.maxHp,
     speed: 0, steer: 0, seats: spec.seats.map(() => null), respawnIn: 0, wreckTime: 0,
-    aimYaw: spawn.yaw, aimPitch: 0, heat: 0, overheated: false, gunCooldown: 0, gunSeq: 0,
+    aimYaw: spawn.yaw, aimPitch: 0, heat: 0, overheated: false, gunCooldown: 0, gunSeq: 0, glassBroken:0,
   };
 }

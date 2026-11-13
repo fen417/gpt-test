@@ -2,6 +2,7 @@ import { getWeapon, getPrimaryWeapon, getSidearm, EYE_HEIGHT } from './world.js'
 import { VEHICLE_TYPES, vehicleShape } from './vehicles.js';
 import { boxBounds, rayAffineBox, uprightBox } from './geometry.js';
 import { rayCollider } from './asset-colliders.js';
+import { moveBot } from './bot-navigation.js';
 
 export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 'repair', recon: 'beacon' };
 export const GADGET_NAMES = { ammo: 'ЯЩИК ПАТРОНОВ', defibrillator: 'ДЕФИБРИЛЛЯТОР', repair: 'РЕМОНТНАЯ ГОРЕЛКА',
@@ -329,8 +330,12 @@ export function thinkEquipment(sim,p,dt) {
       let best=14;
       for(const ally of sim.players.values()){
         const d=distance(p,ally);
-        if(!ally.alive&&ally.team===p.team&&ally.respawnIn>.65+d/8&&Math.abs(ally.y-p.y)<1.7&&d<best){best=d;p.botJob={kind:'revive',id:ally.id};}
+        const reserved=ally.reviveReservedBy!==p.id&&ally.reviveReservedUntil>sim.time;
+        const threat=p.ai?.contact??p.ai?.memory;
+        const exposed=threat&&sim.time-threat.at<3&&distance(threat,ally)<18&&sim.lineClear(center(threat,1.2),center(ally,.4));
+        if(!reserved&&!exposed&&!ally.alive&&ally.team===p.team&&ally.respawnIn>.65+d/6&&Math.abs(ally.y-p.y)<1.7&&d<best){best=d;p.botJob={kind:'revive',id:ally.id};}
       }
+      if(p.botJob){const ally=sim.players.get(p.botJob.id);ally.reviveReservedBy=p.id;ally.reviveReservedUntil=sim.time+.65;}
     }else if(p.classId==='support'){
       const vehicle=repairTarget(sim,p,20);
       if(vehicle)p.botJob={kind:'repair',id:vehicle.id};
@@ -338,7 +343,8 @@ export function thinkEquipment(sim,p,dt) {
       let best=130;
       for(const vehicle of sim.vehicles){
         const d=distance(p,vehicle);
-        if(vehicle.hp>0&&vehicle.team!==p.team&&vehicle.team>=0&&d>10&&d<best&&sim.lineClear(eye(p),center(vehicle,.9))){best=d;p.botJob={kind:'launcher',id:vehicle.id};}
+        const visible=Math.abs(Math.atan2(Math.sin(Math.atan2(-(vehicle.x-p.x),-(vehicle.z-p.z))-p.yaw),Math.cos(Math.atan2(-(vehicle.x-p.x),-(vehicle.z-p.z))-p.yaw)))<1.4;
+        if(visible&&vehicle.hp>0&&vehicle.team!==p.team&&vehicle.team>=0&&d>10&&d<best&&sim.lineClear(eye(p),center(vehicle,.9))){best=d;p.botJob={kind:'launcher',id:vehicle.id};}
       }
     }
   }
@@ -354,11 +360,17 @@ export function thinkEquipment(sim,p,dt) {
     const wanted=Math.atan2(-(x-p.x),-(z-p.z)),delta=Math.atan2(Math.sin(wanted-p.yaw),Math.cos(wanted-p.yaw));
     input.yaw=p.yaw+Math.max(-dt*2.5,Math.min(dt*2.5,delta));
     input.pitch=Math.atan2(target.y+.9-(p.y+EYE_HEIGHT)+1.4*flight*flight,distance(p,{x,z}));
-    if(Math.abs(delta)<.08)input.secondaryGadget=true;
+    if(Math.abs(delta)<.08&&Math.abs(input.pitch-p.pitch)<.08)input.secondaryGadget=true;
     return true;
   }
   const reach=job.kind==='revive'?2.65:4.2;
-  if(distance(p,target)>reach){
+  let approach=target;
+  if(job.kind==='repair'){
+    const threat=p.ai?.memory,side=threat?Math.sign((p.x-threat.x)*Math.cos(target.yaw)-(p.z-threat.z)*Math.sin(target.yaw))||1:p.botSlot%2?1:-1;
+    approach={x:target.x+Math.cos(target.yaw)*side*2.4,y:target.y,z:target.z-Math.sin(target.yaw)*side*2.4};
+  }
+  if(distance(p,target)>reach||job.kind==='repair'&&distance(p,approach)>1.5){
+    if(p.ai){p.ai.goal=approach;moveBot(sim,p,approach,dt,{sprint:job.kind==='revive'});return true;}
     if(sim.botPathBudget>0&&sim.time>=(p.botJobPathAt??0)){
       sim.botPathBudget--;p.botPath=sim.pathfind(p,target);p.botJobPathAt=sim.time+.65;
     }

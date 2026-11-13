@@ -1,6 +1,7 @@
+import { rayVehicleArmor } from './vehicle-combat.js';
 import { TURRET_WEAPON, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange } from './vehicles.js';
 import { aimBullet } from './ballistics.js';
-import { getWeapon } from './world.js';
+import { getWeapon, EYE_HEIGHT } from './world.js';
 
 const routeGraphs = new WeakMap();
 const BASE_RANGE = 55;
@@ -54,7 +55,7 @@ function roadGraph(sim, vehicle) {
 
 function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
   const { nodes, radius, objectives, landmarks } = roadGraph(sim, vehicle);
-  const entries = [...nodes.values()].filter(node => node.id !== avoidNodeId && node.neighbors.length && distance(vehicle, node) < 48)
+  const entries = [...nodes.values()].filter(node => node.id !== avoidNodeId && node.neighbors.length && distance(vehicle, node) < 85)
     .sort((a, b) => distance(vehicle, a) - distance(vehicle, b))
     .filter(node => roadClear(sim, vehicle, node, radius)).slice(0, 4);
   if (!entries.length) return null;
@@ -92,7 +93,7 @@ function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
       if (ally !== p && ally.alive && ally.team === p.team && ally.vehicleSeat === 0
         && ally.botJourney?.destination === point.id) alliedDrivers++;
     }
-    const score = costs.get(stop) + (point.owner === p.team && !point.contested ? 100 : 0)
+    const score = costs.get(stop) + (vehicle.hp<vehicle.maxHp*.45?(point.owner===p.team?-180:250):point.owner === p.team && !point.contested ? 100 : 0)
       + alliedDrivers * 85 - (p.botObjective?.id === point.id ? 50 : 0) + sim.random() * 28;
     if (score < bestScore) {
       bestScore = score;
@@ -102,8 +103,17 @@ function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
   if (!destination) return null;
 
   let parking = nodes.get(objectives[destination.id]);
+  const threat=p.ai?.memory??vehicle.seats.map(id=>sim.players.get(id)?.botCrewTarget).find(Boolean);
+  if(threat){
+    const alternatives=[...nodes.values()].filter(node=>costs.has(node)&&distance(node,destination)<38&&distance(node,vehicle)>12);
+    alternatives.sort((a,b)=>{
+      const score=node=>costs.get(node)+distance(node,destination)*2+(sim.lineClear({x:threat.x,y:threat.y+1.2,z:threat.z},{x:node.x,y:sim.groundAt(node.x,node.z)+1,z:node.z})?65:0);
+      return score(a)-score(b);
+    });
+    if(alternatives.length)parking=alternatives[0];
+  }
   // A nearby landmark can serve as covered access to the same combat objective.
-  if (!destination.contested && sim.random() < .32) {
+  if (!threat&&!destination.contested && sim.random() < .32) {
     const directCost = costs.get(parking);
     const sideStop = landmarks
       .filter(({ site, parking: stop }) => {
@@ -205,6 +215,27 @@ function canBoard(p, vehicle) {
 
 function booking(sim, vehicle, seat) {
   return { vehicleId: vehicle.id, seat, path: null, expires: sim.time + 12 };
+}
+
+export function honkVehicle(sim,p){
+  const vehicle=sim.vehicles.find(v=>v.id===p.vehicleId);
+  if(!vehicle||p.vehicleSeat!==0||vehicle.hp<=0||sim.time<(vehicle.nextHornAt??0))return;
+  vehicle.nextHornAt=sim.time+1.2;
+  sim.event('horn',{playerId:p.id,vehicleId:vehicle.id,x:vehicle.x,y:vehicle.y+1,z:vehicle.z});
+  if(p.bot)return;
+  const origin=sim.points.find(point=>distance(vehicle,point)<22)?.id??null;
+  const reserved=reservationsFor(sim,vehicle,p);
+  const candidates=[...sim.players.values()].filter(ally=>ally.bot&&ally.alive&&ally.team===p.team&&!ally.vehicleId&&distance(ally,vehicle)<26&&!ally.pendingGadget)
+    .sort((a,b)=>distance(a,vehicle)-distance(b,vehicle));
+  for(let seat=1;seat<vehicle.seats.length;seat++){
+    const occupant=sim.players.get(vehicle.seats[seat]);
+    if(occupant?.bot){occupant.botRideOrder={driverId:p.id,vehicleId:vehicle.id,origin,holdUntil:sim.time+8};continue;}
+    if(vehicle.seats[seat]||reserved.has(seat))continue;
+    const ally=candidates.shift();if(!ally)break;
+    ally.botBoarding=booking(sim,vehicle,seat);ally.botBoarding.expires=sim.time+20;
+    ally.botRideOrder={driverId:p.id,vehicleId:vehicle.id,origin,holdUntil:sim.time+8};
+    ally.botJob=null;ally.botPath=[];ally.botVehicleRetryAt=0;
+  }
 }
 
 function findBaseBoardingTarget(sim, p) {
@@ -328,7 +359,24 @@ function steeringClear(sim, vehicle, throttle, steer, dt) {
 function drive(sim, p, vehicle, dt) {
   p.input.yaw = vehicle.yaw;
   p.input.pitch = 0;
-  if (atBase(sim, vehicle) && vehicle.seats.filter(Boolean).length < departureCrew(vehicle)) {
+  if(sim.time<(vehicle.pickupUntil??0))return;
+  if(sim.time-(vehicle.lastBlastAt??-100)<1.6&&vehicle.hp<vehicle.maxHp*.75){
+    if(steeringClear(sim,vehicle,-1,0,dt))p.input.forward=-.75;
+    return;
+  }
+  if(vehicle.hp<vehicle.maxHp*.62&&sim.time-(vehicle.lastHurt??-100)>2){
+    const engineer=vehicle.seats.map(id=>sim.players.get(id)).find(ally=>ally?.bot&&ally.classId==='support'&&ally!==p);
+    if(engineer&&!(vehicle.repairStopUntil>sim.time)&&sim.time>(vehicle.repairRetryAt??0)){
+      vehicle.repairStopUntil=sim.time+7;vehicle.repairRetryAt=sim.time+18;
+    }
+  }
+  if(vehicle.repairStopUntil>sim.time&&sim.time-(vehicle.lastHurt??-100)>1)return;
+  const gunner=sim.players.get(vehicle.seats[1]);
+  if(vehicle.type==='humvee'&&gunner?.botCrewTarget&&vehicle.hp>vehicle.maxHp*.55&&distance(vehicle,gunner.botCrewTarget)>20&&distance(vehicle,gunner.botCrewTarget)<55){
+    if(sim.time>(vehicle.supportRetryAt??0)){vehicle.supportUntil=sim.time+3;vehicle.supportRetryAt=sim.time+10;}
+    if(vehicle.supportUntil>sim.time)return;
+  }
+  if (atBase(sim, vehicle) && !vehicle.pickupPlayerId && vehicle.seats.filter(Boolean).length < departureCrew(vehicle)) {
     // Let an understaffed crew fall back to infantry rather than depart shorthanded.
     if ((sim.time - p.botVehicleSince > 15 || vehicle.hp < vehicle.maxHp * .22)
       && Math.abs(vehicle.speed) < 1.3) stopRiding(sim, p);
@@ -393,59 +441,53 @@ function drive(sim, p, vehicle, dt) {
   p.input.strafe = steer;
 }
 
-function aimCrew(sim, p, vehicle, dt) {
-  const seat = getVehicleSeatPose(vehicle, p.vehicleSeat);
-  const spec = VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
-  const gunner = spec.role === 'gunner';
-  if (gunner) seat.y -= .105;
-  const weapon = gunner ? TURRET_WEAPON : getWeapon(p.classId, p.weaponId);
-  let target = null, best = sim.botSettings.awareness * (gunner ? 1.35 : 1);
-  for(const item of sim.deployables){
-    if(item.kind!=='beacon'||item.hp<=0||item.team===p.team)continue;
-    const length=distance(seat,item);
-    if(length>=best)continue;
-    const {yaw,pitch}=aimBullet(seat,item,.4,weapon.projectileSpeed);
-    if(Math.abs(angleDifference(yaw,p.yaw))>1||(!gunner&&!canFirePassengerWeapon(vehicle,p.vehicleSeat,yaw,pitch))||
-      !sim.lineClear(seat,{x:item.x,y:item.y+.4,z:item.z}))continue;
-    target={id:item.id,yaw,pitch,equipment:true};best=length;
+function crewSight(sim,origin,to){
+  if(!sim.lineClear(origin,to))return false;
+  const length=Math.hypot(to.x-origin.x,to.y-origin.y,to.z-origin.z);if(length<.1)return true;
+  const direction={x:(to.x-origin.x)/length,y:(to.y-origin.y)/length,z:(to.z-origin.z)/length};
+  return !sim.vehicles.some(v=>(v.hp>0||v.wreckTime>0)&&rayVehicleArmor(origin,direction,v,length-.1)<length-.1);
+}
+function aimCrew(sim,p,vehicle,dt){
+  const seat=getVehicleSeatPose(vehicle,p.vehicleSeat),spec=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
+  const gunner=spec.role==='gunner',weapon=gunner?TURRET_WEAPON:getWeapon(p.classId,p.weaponId);
+  if(sim.time>=(p.botCrewSenseAt??0)){
+    p.botCrewSenseAt=sim.time+.18+(p.botSlot%3)*.01;
+    let selected=null,best=sim.botSettings.awareness*(gunner?1.6:1);
+    for(const enemy of sim.players.values()){
+      if(!enemy.alive||enemy.team===p.team||enemy.invulnerableUntil>sim.time)continue;
+      const length=distance(p,enemy);if(length>=best)continue;
+      const height=enemy.vehicleId?EYE_HEIGHT-.03:enemy.input.crouch?1.05:1.1;
+      const yaw=Math.atan2(-(enemy.x-seat.x),-(enemy.z-seat.z)),pitch=Math.atan2(enemy.y+height-seat.y,length);
+      if(Math.abs(angleDifference(yaw,p.yaw))>1.8||!gunner&&!canFirePassengerWeapon(vehicle,p.vehicleSeat,yaw,pitch)||!crewSight(sim,seat,{x:enemy.x,y:enemy.y+height,z:enemy.z}))continue;
+      const old=p.botCrewTarget,elapsed=old?.id===enemy.id?sim.time-old.at:0;
+      selected={id:enemy.id,x:enemy.x,y:enemy.y,z:enemy.z,height,at:sim.time,
+        velocityX:elapsed>.03?clamp((enemy.x-old.x)/elapsed,-12,12)*.7+(old.velocityX??0)*.3:0,
+        velocityZ:elapsed>.03?clamp((enemy.z-old.z)/elapsed,-12,12)*.7+(old.velocityZ??0)*.3:0};best=length;
+    }
+    if(!selected)for(const item of sim.deployables){
+      if(item.kind!=='beacon'||item.team===p.team||item.hp<=0||distance(p,item)>best||!crewSight(sim,seat,{x:item.x,y:item.y+.4,z:item.z}))continue;
+      const yaw=Math.atan2(-(item.x-seat.x),-(item.z-seat.z)),pitch=Math.atan2(item.y+.4-seat.y,distance(seat,item));
+      if(Math.abs(angleDifference(yaw,p.yaw))>1.2||!gunner&&!canFirePassengerWeapon(vehicle,p.vehicleSeat,yaw,pitch))continue;
+      selected={...item,height:.4,at:sim.time,velocityX:0,velocityZ:0};best=distance(p,item);
+    }
+    if(selected?.id!==p.botCrewTarget?.id)p.botVehicleReactAt=sim.time+sim.botSettings.reaction;
+    p.botCrewTarget=selected;
   }
-  for (const enemy of sim.players.values()) {
-    if(target?.equipment)break;
-    if (!enemy.alive || enemy.team === p.team || sim.time < enemy.invulnerableUntil) continue;
-    const length = distance(seat, enemy);
-    if (length >= best) continue;
-    const crouched = !enemy.vehicleId && enemy.input.crouch;
-    const height = crouched ? .72 : 1.08;
-    const aim = { x: enemy.x, y: enemy.y + height, z: enemy.z };
-    const { yaw, pitch } = aimBullet(seat, enemy, height, weapon.projectileSpeed);
-    if (!gunner && !canFirePassengerWeapon(vehicle, p.vehicleSeat, yaw, pitch)) continue;
-    if (!sim.lineClear(seat, aim)) continue;
-    target = { id: enemy.id, yaw, pitch };
-    best = length;
-  }
-  const targetId = target?.id ?? null;
-  if (targetId !== (p.botTargetId ?? null)) {
-    p.botTargetId = targetId;
-    p.botVehicleReactAt = sim.time + sim.botSettings.reaction * .65;
-  }
-  const phase = sim.time * 1.6 + (p.botSlot ?? 0) * .75;
-  const error = sim.botSettings.aimError;
-  const restingYaw = !gunner && vehicle.type === 'humvee' ? vehicle.yaw - Math.sign(spec.x) * Math.PI / 2 : vehicle.yaw;
-  const wantedYaw = target ? target.yaw + Math.sin(phase) * error : restingYaw + Math.sin(phase * .45) * (gunner ? 1.45 : .28);
-  const wantedPitch = target?.pitch ?? -.03;
-  const turn = sim.botSettings.turnSpeed * dt;
-  p.input.yaw += clamp(angleDifference(wantedYaw, p.yaw), -turn, turn);
-  p.input.pitch += clamp(wantedPitch - p.pitch, -turn, turn);
-  p.input.fire = Boolean(target) && sim.time >= (p.botVehicleReactAt ?? 0)
-    && (phase % 3.2) < (gunner ? 2.05 : 1.25) && Math.abs(angleDifference(wantedYaw, p.input.yaw)) < .12
-    && (gunner || canFirePassengerWeapon(vehicle, p.vehicleSeat, p.input.yaw, p.input.pitch));
-  if (!gunner) {
-    p.input.aim = Boolean(target);
-    p.input.reload = p.ammo === 0 || (p.ammo < 5 && !target);
-  }
+  const target=p.botCrewTarget,solution=target?aimBullet(seat,target,target.height,weapon.projectileSpeed):null;
+  const phase=sim.time*1.6+p.botSlot*.75,error=sim.botSettings.aimError;
+  const resting=!gunner&&vehicle.type==='humvee'?vehicle.yaw-Math.sign(spec.x)*Math.PI/2:vehicle.yaw;
+  const wantedYaw=solution?solution.yaw+Math.sin(phase)*error:resting+Math.sin(phase*.45)*(gunner?1.4:.25),wantedPitch=solution?.pitch??-.03;
+  const turn=sim.botSettings.turnSpeed*dt;
+  p.input.yaw=p.yaw+clamp(angleDifference(wantedYaw,p.yaw),-turn,turn);
+  p.input.pitch=p.pitch+clamp(wantedPitch-p.pitch,-turn,turn);
+  const heatLimit=target&&distance(p,target)<15?.94:.77;
+  p.input.fire=Boolean(target)&&sim.time>=(p.botVehicleReactAt??Infinity)&&Math.abs(angleDifference(wantedYaw,p.input.yaw))<.08&&Math.abs(wantedPitch-p.input.pitch)<.08
+    &&(gunner?vehicle.heat<heatLimit:(phase%1.25)<.55)&& (gunner||canFirePassengerWeapon(vehicle,p.vehicleSeat,p.input.yaw,p.input.pitch));
+  if(!gunner){p.input.aim=Boolean(target);p.input.reload=p.ammo===0||p.ammo<5&&!target;}
 }
 
 function nearbyInterest(sim, vehicle) {
+  if(!sim.map.vehicleRoutes)return sim.points.find(point=>distance(vehicle,point)<22)?.id??null;
   const { nodes, objectives, landmarks } = roadGraph(sim, vehicle);
   const near = (point, parking) => distance(vehicle, point) < 22 || (parking && distance(vehicle, parking) < 10);
   const point = sim.points.find(p => near(p, nodes.get(objectives[p.id])));
@@ -458,10 +500,33 @@ function nearbyInterest(sim, vehicle) {
 
 function ride(sim, p, vehicle, dt) {
   const driver = sim.players.get(vehicle.seats[0]);
+  const order=p.botRideOrder;
+  if(order?.vehicleId===vehicle.id){
+    if(driver?.id===order.driverId){
+      const arrived=sim.points.find(point=>point.id!==order.origin&&distance(vehicle,point)<20);
+      if(arrived&&sim.time>order.holdUntil&&Math.abs(vehicle.speed)<1.3){p.botRideOrder=null;stopRiding(sim,p,arrived.id);return;}
+      aimCrew(sim,p,vehicle,dt);return;
+    }
+    if(!driver&&Math.abs(vehicle.speed)<1.3){
+      const near=sim.points.some(point=>distance(vehicle,point)<22);
+      if(near){p.botRideOrder=null;stopRiding(sim,p);return;}
+      vehicle.seats[p.vehicleSeat]=null;vehicle.seats[0]=p.id;p.vehicleSeat=0;
+      p.botJourney=null;p.botRideOrder=null;
+      vehicle.pickupUntil=sim.time+3;vehicle.pickupPlayerId=order.driverId;
+      return;
+    }
+    if(driver?.bot){p.botRideOrder=null;p.botBoardedFrom={x:vehicle.x,z:vehicle.z};}
+    else {p.botRideOrder=null;stopRiding(sim,p);return;}
+  }
+  if(p.classId==='support'&&vehicle.repairStopUntil>sim.time&&Math.abs(vehicle.speed)<1.3){stopRiding(sim,p);return;}
   const emptySince = driver?.alive ? sim.time : (p.botDriverSeenAt ?? p.botVehicleSince);
   p.botDriverSeenAt = emptySince;
   p.botBoardedFrom ??= { x: vehicle.x, z: vehicle.z };
   if (Math.abs(vehicle.speed) < 1.3) {
+    if(!driver&&sim.time-emptySince>1.5&&p.hp>40&&vehicle.hp>vehicle.maxHp*.3){
+      vehicle.seats[p.vehicleSeat]=null;vehicle.seats[0]=p.id;p.vehicleSeat=0;
+      p.botJourney=null;vehicle.pickupUntil=sim.time+1.5;return;
+    }
     p.botStopSince ??= sim.time;
     const destination = driver?.botJourney;
     if (destination?.arrivedAt != null && p.botVehicleSince <= destination.arrivedAt
@@ -477,12 +542,22 @@ function ride(sim, p, vehicle, dt) {
 }
 
 export function thinkVehicleBot(sim, p, dt) {
-  if (!sim.map.vehicleRoutes || !sim.vehicles?.length) return false;
+  if (!sim.vehicles?.length) return false;
   const vehicle = p.vehicleId == null ? null : sim.vehicles.find(v => v.id === p.vehicleId);
   if (vehicle) {
     resetControls(p);
     p.botVehicleSince ??= sim.time;
-    if (p.vehicleSeat === 0) drive(sim, p, vehicle, dt);
+    if (p.vehicleSeat === 0){
+      if(sim.map.vehicleRoutes)drive(sim, p, vehicle, dt);
+      else if(sim.time>=(vehicle.pickupUntil??0)){
+        const goal=[...sim.points].sort((a,b)=>distance(vehicle,a)+(a.owner===p.team?100:0)-distance(vehicle,b)-(b.owner===p.team?100:0))[0];
+        if(goal){
+          if(distance(vehicle,goal)<18&&Math.abs(vehicle.speed)<1.3)stopRiding(sim,p,goal.id);
+          else {const error=angleDifference(yawToward(vehicle,goal),vehicle.yaw),steer=clamp(-error*1.6,-1,1);
+            if(steeringClear(sim,vehicle,1,steer,dt)){p.input.forward=.45;p.input.strafe=steer;}}
+        }
+      }
+    }
     else ride(sim, p, vehicle, dt);
     return true;
   }

@@ -738,6 +738,7 @@ export function createSoldierRig(owner, player) {
   group.add(marker);
   owner.contactShadowMat ??= new THREE.MeshBasicMaterial({ color: 0x0b1012, transparent: true, opacity: .32, depthWrite: false });
   const contactShadow = new THREE.Mesh(geometry().shadow, owner.contactShadowMat);
+  contactShadow.name='soldier-contact-shadow';
   contactShadow.rotation.x = -Math.PI / 2;
   contactShadow.position.y = .02;
   contactShadow.castShadow = false;
@@ -1076,6 +1077,37 @@ export function soldierHit(rig, fromX, fromZ) {
 
 export function soldierThrow(rig) {
   if (rig) rig.throwAge = 0;
+}
+
+// Reuse the same skinned character, equipment, team atlas and LODs in vehicles.
+// Foot locking is suspended while seated; no walking phase follows wheel speed.
+export function poseSeatedSoldier(rig,{vehicle,seat,index,relativeYaw,pitch,shotSeq,dt}){
+  rig.pose.position.set(0,0,0);rig.pose.rotation.set(0,0,0);
+  const controls=seat.role==='driver'||seat.role==='gunner',atv=vehicle.type==='atv';
+  rig.spine.rotation.set(atv&&controls?-.12:0,controls?0:clamp(relativeYaw,-.8,.8)*.3,0);
+  rig.head.rotation.set(clamp(pitch*.65,-.5,.5),clamp(relativeYaw,-1,1)*.7,0);
+  rig.rifle.scale.setScalar(controls?.001:1);
+  if(shotSeq!==rig.lastShot){rig.seatRecoil=.065;rig.lastShot=shotSeq;}
+  rig.seatRecoil=Math.max(0,(rig.seatRecoil??0)-dt);
+  rig.rifle.rotation.set(controls?0:clamp(pitch*.7,-.65,.65)+(rig.seatRecoil>0?.04:0),controls?0:clamp(relativeYaw,-1.6,1.6)-rig.spine.rotation.y,0);
+  rig.rifle.position.set(.12,.30,-.12);
+  rig.pose.updateMatrixWorld(true);
+  for(let i=0;i<2;i++){
+    const side=i===0?-1:1;
+    nominal.set(side*(atv?.33:.14),1.65-seat.height+(atv?.66:.65),atv?.24:-.31);
+    solveLimb(rig.legs[i],rig.knees[i],nominal,THIGH,SHIN,side*.4,.1,-1);
+    rig.ankles[i].quaternion.copy(rig.legs[i].quaternion).multiply(rig.knees[i].quaternion).invert();
+    if(controls){
+      const gunner=seat.role==='gunner';
+      handTarget.set(side*(gunner?.11:atv?.39:.19),1.65-seat.height+(gunner?2.16:atv?1.13:1.29)-WAIST,gunner?.07:atv?-.55:-.305);
+      solveLimb(rig.arms[i],rig.elbows[i],handTarget,UPPER_ARM,FOREARM,side*.7,-.2,.4);
+      rig.wrists[i].rotation.set(.15,side*.15,side*.08);
+    }
+  }
+  if(!controls)updateSoldierArms(rig);
+  rig.flash.visible=!controls&&rig.seatRecoil>0;rig.marker.visible=false;
+  const shadow=rig.group.getObjectByName('soldier-contact-shadow');if(shadow)shadow.visible=false;
+  rig.motion=null;rig.animationDt=0;rig.initialized=false;rig.alive=true;
 }
 
 function storeQuaternions(nodes) { return nodes.map(node => node.quaternion.clone()); }
