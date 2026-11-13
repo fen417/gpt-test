@@ -285,7 +285,7 @@ const landforms = [
 const relief = makeTerrain(size, landforms, 2);
 for (const structure of structures) structure.baseY = relief.heightAt(structure.x, structure.z);
 const terrainPadBlend=8;
-const terrainPads = structures.map(({ x, z, w, d, baseY }) => ({ x, z, w: w + 8, d: d + 8, height: baseY, blend: terrainPadBlend }));
+const terrainPads = structures.map(({ x, z, w, d, baseY }) => ({ x, z, w: w + 8, d: d + 8, protectedW:w+4, protectedD:d+4, height: baseY, blend: terrainPadBlend }));
 const ship = { x: 109, z: 0, w: 23, d: 126, beached: true, terrainPad: true };
 const shipPad = shipTerrainPad(ship, relief);
 terrainPads.push(shipPad);

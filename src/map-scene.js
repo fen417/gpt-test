@@ -6,7 +6,7 @@ import { addQuarryGround, addQuarryAsset, addQuarrySigns } from './quarry-visual
 import { addVillageGround, createVillageModelBuilder } from './village-visuals.js';
 import { addWarehouseDetails } from './visuals.js';
 import { createVehicleRig } from './vehicles.js';
-import { rotationMatrix } from '../shared/geometry.js';
+import { rotationMatrix, hasRotation } from '../shared/geometry.js';
 import { vehicleBodyTilt } from '../shared/vehicles.js';
 
 function fences(owner, map) {
@@ -98,7 +98,16 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
         } else if (assetMapId === 'village') {
           const terrain = { heightAt: (x, z) =>
             ((map.terrain?.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) ?? 0) - anchor.baseY) / scale.y };
-          villageModels(parts, kind === 'structure' ? [local] : [], kind === 'road' && !roadSurface ? [local] : [], terrain);
+          // Structure children keep their own authored rotation (ruin fragments
+          // and furniture). The parent group's rotation is applied only once.
+          const rotatedParts=kind==='structure'?parts.filter(p=>hasRotation(p.modelRotation)):[];
+          villageModels(parts.filter(p=>!rotatedParts.includes(p)), kind === 'structure' ? [local] : [], kind === 'road' && !roadSurface ? [local] : [], terrain);
+          for(const part of rotatedParts){
+            const child=new THREE.Group();child.position.set(part.x,part.baseY??0,part.z);
+            child.rotation.set(part.modelRotation.x??0,part.modelRotation.y??0,part.modelRotation.z??0);
+            group.add(child);owner.scene=child;
+            try{villageModels([{...part,x:0,z:0,baseY:0}],[],[],terrain);}finally{owner.scene=group;}
+          }
         } else {
           if (kind === 'structure') addWarehouseDetails(owner, [local]);
           const terrain = { heightAt: (x, z) =>

@@ -8,11 +8,11 @@ Selected from [Modern Military Weapons Sound Pack v0.2](https://hamsunqiu.itch.i
 | rifle-heavy / AK-12M | [seroutonin//deprived, AK variant 1](https://freesound.org/people/ser%C3%B8ut%C5%8Dnin--depriv%C9%99d/sounds/855841/), [variant 2](https://freesound.org/people/ser%C3%B8ut%C5%8Dnin--depriv%C9%99d/sounds/855842/) | ar_single_near_01/02.wav |
 | lmg / MG-36, Pecheneg, vehicle turret | [sidohzen, M16 bursts](https://freesound.org/people/sidohzen/sounds/165809/) | mg_single_near_01.wav, reports near 2.06 and 4.0 s |
 | smg-suppressed / VK-45 | [Clutvh, silenced pistol shot](https://freesound.org/people/Clutvh/sounds/627087/) | pi_hand_single_near_03.wav |
-| marksman, sniper / DMR-12, SV-98 | [LilMati, Sniper Rifle Instant Kill Shots 02](https://freesound.org/people/LilMati/sounds/524738/), [01](https://freesound.org/people/LilMati/sounds/524739/) | sr_single_near_01/02.wav, first and second reports |
+| marksman, sniper / DMR-12, SV-98 | qubodup, [M2010 field shot 1](https://freesound.org/people/qubodup/sounds/855606/), [shot 2](https://freesound.org/people/qubodup/sounds/855607/) | sr_single_near_03/04.wav; new 0.15 masters |
 | pistol / P-19 | [seroutonin//deprived, Glock reports](https://freesound.org/people/ser%C3%B8ut%C5%8Dnin--depriv%C9%99d/sounds/855652/) | pi_rev_single_near_04.wav, first and second reports |
 | pistol-heavy / M-50 | [LeMudCrab, Pistol Shot](https://freesound.org/people/LeMudCrab/sounds/163456/) | pi_hand_single_near_01.wav, two envelope variants |
 
-The game uses stereo PCM16 WAV at 44.1 kHz. Processing preserves the source stereo image, trims reports, removes DC, balances the initial report's RMS with peak headroom, and applies short edge fades. No saturation, hard clipping or peak reconstruction is applied. Weapon profiles adapt playback speed and level; the suppressed weapon has its own recording.
+The game uses mono or stereo PCM16 WAV at 44.1 kHz. Processing preserves the source stereo image, trims reports, removes DC, balances the initial report's RMS with peak headroom, and applies short edge fades. No saturation, hard clipping or peak reconstruction is applied. Weapon profiles adapt playback speed and level; the suppressed weapon has its own recording.
 
 The M16-derived machine-gun reports end at 0.28 seconds, before unrelated broadband noise in the source recording. Their final 70 ms fade smoothly to silence.
 
@@ -23,3 +23,5 @@ node scripts/prepare-gunshot-assets.mjs C:/path/to/extracted/curated
 ```
 
 The source archive and unused recordings are not shipped with the game.
+
+The 0.15 M2010 replacements are reproduced with scripts/prepare-combat-audio.mjs. DMR reports have a shorter, higher-pitched tail; SV-98 retains the longer field reflection. Offline loudness mastering retains true-peak headroom. The older prepare-gunshot-assets script reproduces the pre-0.15 sniper assets.

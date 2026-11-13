@@ -76,6 +76,9 @@ const FOLEY_SAMPLES = {
   'stone-R2': new URL('./assets/audio/foley/Fantozzi-StoneR2.ogg', import.meta.url),
   'stone-R3': new URL('./assets/audio/foley/Fantozzi-StoneR3.ogg', import.meta.url),
   'engine': new URL('./assets/audio/foley/engine-loop.wav', import.meta.url),
+  'rocket-launch-1': new URL('./assets/audio/foley/rocket-launch-1.ogg', import.meta.url),
+  'rocket-launch-2': new URL('./assets/audio/foley/rocket-launch-2.ogg', import.meta.url),
+  'rocket-flight': new URL('./assets/audio/foley/rocket-flight.ogg', import.meta.url),
   'explosion-heavy': new URL('./assets/audio/foley/explosion-heavy.ogg', import.meta.url),
   'explosion-grenade': new URL('./assets/audio/foley/explosion-grenade.ogg', import.meta.url),
 };
@@ -107,7 +110,7 @@ export class CombatAudio {
     this._shotBuffers = new Map();
     this._shotLoadFailures = 0;
     this._foley = new Map();
-    this._engineChannels = new Map();
+    this._engineChannels = new Map();this._rocketChannels=new Map();
     this._remoteSteps = new Map();
     this._stepCounts = new Map();
   }
@@ -121,7 +124,7 @@ export class CombatAudio {
   set enabled(v){this.setEnabled(v);}
   setMusicVolume(v){this._musicVolume=clamp(v);this._mix();}
   setEffectsVolume(v){this._effectsVolume=clamp(v);this._mix();}
-  setEnabled(v){this._enabled=Boolean(v);if(!this._enabled){this._pending=[];for(const voice of this._voices)this._releaseVoice(voice,true);}this._mix();}
+  setEnabled(v){this._enabled=Boolean(v);if(!this._enabled){this._stopRocketAudio();this._pending=[];for(const voice of this._voices)this._releaseVoice(voice,true);}this._mix();}
 
   async unlock(){
     if(this._disposed)return false;
@@ -153,13 +156,15 @@ export class CombatAudio {
     weaponHighpass.type='highpass';weaponHighpass.frequency.value=60;weaponHighpass.Q.value=.707;
     this._muffle=this._node(c.createBiquadFilter());this._muffle.type='lowpass';this._muffle.frequency.value=18000;
     const limiter=this._node(c.createDynamicsCompressor());
-    limiter.threshold.value=-4;limiter.knee.value=4;limiter.ratio.value=12;limiter.attack.value=.003;limiter.release.value=.12;
+    limiter.threshold.value=-6;limiter.knee.value=6;limiter.ratio.value=12;limiter.attack.value=.001;limiter.release.value=.12;
     this._music.connect(this._master);this._effects.connect(this._muffle).connect(this._master);
     this._localWeapon.connect(weaponHighpass).connect(this._master);
-    this._weapons.connect(this._master);
+    const battleCompressor=this._node(c.createDynamicsCompressor());
+    battleCompressor.threshold.value=-12;battleCompressor.knee.value=8;battleCompressor.ratio.value=4;battleCompressor.attack.value=.002;battleCompressor.release.value=.16;
+    this._weapons.connect(battleCompressor).connect(this._master);
     this._ambient.connect(this._effects);this._master.connect(limiter);
     this._analyser=this._node(c.createAnalyser());this._analyser.fftSize=256;this._analyser.smoothingTimeConstant=.1;
-    this._meter=new Float32Array(this._analyser.fftSize);limiter.connect(this._analyser).connect(c.destination);
+    this._meter=new Float32Array(this._analyser.fftSize);const output=this._node(c.createGain());output.gain.value=.8;limiter.connect(output).connect(this._analyser).connect(c.destination);
     this._reverbs={};const impulse=this._impulse();
     for(const bus of ['music','effects']){
       const convolver=this._node(c.createConvolver());convolver.buffer=impulse;
@@ -180,13 +185,13 @@ export class CombatAudio {
     this._target(this._master.gain,this._enabled?this._volume*.82:0,.055,immediate);
     this._target(this._effects.gain,this._effectsVolume*(this._paused?.35:1),.16,immediate);
     this._target(this._localWeapon.gain,this._effectsVolume*(this._paused?.35:1),.16,immediate);
-    this._target(this._weapons.gain,this._effectsVolume*(this._paused?.35:1),.16,immediate);
+    this._target(this._weapons.gain,this._effectsVolume*.7*(this._paused?.35:1),.16,immediate);
     this._target(this._music.gain,this._musicVolume*(this._mode==='menu'?1.64:.22),.9,immediate);
     this._target(this._ambient.gain,this._mode==='battle'?.24:.055,1.5,immediate);
   }
   setMode(mode){
     const next=mode==='battle'?'battle':'menu';if(next===this._mode)return;
-    this._mode=next;this._lastPosition=null;this._stride=0;this._falling=false;this._suppressedUntil=0;
+    this._stopRocketAudio();this._mode=next;this._lastPosition=null;this._stride=0;this._falling=false;this._suppressedUntil=0;
     this._pending=this._pending.filter(sound=>sound.options.bus==='music');
     for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);
     this.seen.clear();this._lastStateTime=-1;this._mix();
@@ -239,7 +244,7 @@ export class CombatAudio {
     if (voice.time >= now) { this._releaseVoice(voice, true); return true; }
     if (this._fadingVoices.size >= MAX_FADING_VOICES) return false;
     const gain = voice.release;
-    gain.cancelAndHoldAtTime?.(now);
+    if(gain.cancelAndHoldAtTime)gain.cancelAndHoldAtTime(now);else{const value=gain.value;gain.cancelScheduledValues(now);gain.setValueAtTime(value,now);}
     gain.setTargetAtTime(0, now, fade / 5);
     voice.end = Math.min(voice.end, now + fade);
     voice.source.stop(voice.end);
@@ -495,7 +500,7 @@ export class CombatAudio {
       if(name!=='engine'){
         let peak=0;
         for(let channel=0;channel<buffer.numberOfChannels;channel++)for(const value of buffer.getChannelData(channel))peak=Math.max(peak,Math.abs(value));
-        const gain=.78/Math.max(.01,peak);
+        const gain=Math.min(1,.78/Math.max(.01,peak));
         for(let channel=0;channel<buffer.numberOfChannels;channel++){
           const data=buffer.getChannelData(channel),fade=Math.max(1,Math.floor(buffer.sampleRate*.004));
           for(let i=0;i<data.length;i++)data[i]*=gain*Math.min(1,i/fade,(data.length-1-i)/fade);
@@ -578,7 +583,7 @@ export class CombatAudio {
       const own=local&&e.playerId===local.id;
       this._priority=own?3:1;
       if(e.type==='shot'){
-        if(!own&&Number.isFinite(e.time)&&state.time-e.time>.22)continue;
+        if(Number.isFinite(e.time)&&state.time-e.time>.22)continue;
         const p=this._position(e,local);
         if(p.distance<145){
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
@@ -614,12 +619,9 @@ export class CombatAudio {
         this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);
       }else if(e.type==='explosion')this._explosion(e,local);
       else if(e.type==='rocketLaunch'){
-        const p=this._position(e,local),buffer=this._shotBuffers.get('rifle-heavy')?.[0];
-        if(buffer&&this._admit({})){
-          const source=this.ctx.createBufferSource();source.buffer=buffer;source.playbackRate.value=.8;
-          this._voice(source,.34,(own?.75:.38)*p.gain,{sample:true,attack:.0005,tail:.06,cutoff:8000,pan:p.pan,bus:own?'localWeapon':'weapons'});
-        }
-        this._noise(.16,.035*p.gain,{filter:'highpass',cutoff:3000,pan:p.pan});
+        const p=this._position(e,local);
+        if(p.distance<180&&state.time-e.time<.3)this._sample('rocket-launch-'+(e.id%2+1),(own?.85:.55)*p.gain,{
+          pan:p.pan,rate:.98+Math.random()*.04,cutoff:own?0:10000/(1+p.distance*.018),bus:own?'localWeapon':'weapons',send:.04});
       }else if(e.type==='revive'&&(own||e.medicId===local?.id)){
         this._tone(1120,.06,.06,{end:1760});this._noise(.022,.06,{filter:'highpass',cutoff:4000});
       }
@@ -662,6 +664,7 @@ export class CombatAudio {
     }
     if(critical&&!paused&&now>=this._heartbeat){this._tone(59,.16,.1,{end:38});this._tone(52,.13,.065,{time:now+.19,end:34});this._heartbeat=now+.9;}
     this._updateEngine(state,local,inMenu||paused);
+    this._updateRocketAudio(state,local,inMenu||paused);
     const sliding=Boolean(canMove&&local.sliding&&!local.vehicleId);
     if(sliding&&now>=(this._slideSoundAt??0)){
       this._noise(this._sliding?.24:.32,this._sliding?.035:.085,{priority:1,color:'pink',filter:'bandpass',cutoff:1350,attack:.025,pan:-.12});
@@ -747,6 +750,36 @@ export class CombatAudio {
       this._noise(2.5,.035,{priority:0,color:'pink',cutoff:170,attack:.6,pan:Math.random()*1.5-.75,send:.5});
     }
   }
+  _stopRocketAudio(){
+    for(const channel of this._rocketChannels.values()){
+      const now=this.ctx.currentTime;channel.gain.gain.cancelScheduledValues(now);channel.gain.gain.setTargetAtTime(0,now,.015);channel.source.stop(now+.08);
+    }this._rocketChannels.clear();
+  }
+  _updateRocketAudio(state,local,silent){
+    const buffer=this._foley.get('rocket-flight'),now=this.ctx.currentTime;
+    if(silent||!local||!buffer){this._stopRocketAudio();return;}
+    if(this._rocketStateTime!==state?.time){this._rocketStateTime=state?.time;this._rocketArrival=now;}
+    const active=new Set(),age=Math.min(.08,now-this._rocketArrival);
+    const rockets=(state?.rockets??[]).filter(r=>Math.hypot(r.x-local.x,r.z-local.z)<100)
+      .sort((a,b)=>Math.hypot(a.x-local.x,a.z-local.z)-Math.hypot(b.x-local.x,b.z-local.z)).slice(0,4);
+    for(const r of rockets){
+      active.add(r.id);let channel=this._rocketChannels.get(r.id);
+      if(!channel){const c=this.ctx,source=c.createBufferSource(),gain=c.createGain(),filter=c.createBiquadFilter(),pan=c.createStereoPanner();
+        source.buffer=buffer;source.loop=true;gain.gain.value=0;filter.type='lowpass';filter.Q.value=.707;
+        source.connect(filter).connect(gain).connect(pan).connect(this._weapons);source.start();
+        source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();pan.disconnect();};
+        channel={source,gain,filter,pan};this._rocketChannels.set(r.id,channel);
+      }
+      const p=this._position({x:r.x+r.vx*age,z:r.z+r.vz*age},local);
+      this._target(channel.gain.gain,.3/(1+p.distance*.09),.025);
+      this._target(channel.filter.frequency,9500/(1+p.distance*.03),.03);this._target(channel.pan.pan,p.pan,.025);
+      const radial=((r.x-local.x)*r.vx+(r.z-local.z)*r.vz)/Math.max(1,p.distance);
+      this._target(channel.source.playbackRate,clamp(343/(343+radial),.8,1.25),.04);
+    }
+    for(const [id,channel] of this._rocketChannels)if(!active.has(id)){
+      channel.gain.gain.cancelScheduledValues(now);channel.gain.gain.setTargetAtTime(0,now,.015);channel.source.stop(now+.08);this._rocketChannels.delete(id);
+    }
+  }
   _updateEngine(state,local,silent){
     const now=this.ctx.currentTime;
     if(now<this._engineAt&&!silent)return;
@@ -798,6 +831,7 @@ export class CombatAudio {
     this._disposed=true;clearInterval(this._scheduler);this._scheduler=null;
     this._pending=[];
     for(const voice of [...this._voices,...this._fadingVoices])this._releaseVoice(voice,true);
+    this._stopRocketAudio();
     this._shotBuffers.clear();this._foley.clear();
     for(const channel of this._engineChannels.values()){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();}
     this._engineChannels.clear();this._remoteSteps.clear();this._stepCounts.clear();

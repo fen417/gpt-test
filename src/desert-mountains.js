@@ -71,7 +71,10 @@ export function desertMountain(owner, material, box, terrain) {
     const fine = noise(u * 25 + 50, v * 25 + 50, seed ^ 713);
     profile = Math.min(1, (profile + ridge * .16 + fine * .045) * edge);
     const floor = terrain?.heightAt(x, z) ?? box.baseY ?? 0;
-    const y = Math.max(floor - .18, (box.baseY ?? 0) + box.h * profile - .6);
+    // The perimeter must meet the terrain even when the authored ridge origin
+    // is several metres above it. Keep the silhouette in the interior.
+    const peak = Math.max(floor - .3, (box.baseY ?? 0) + box.h * profile - .6);
+    const y = floor - .3 + (peak - (floor - .3)) * edge;
     positions.push(x, y, z);
     const bedding = Math.sin(y * 1.1 + noise(u * 3 + 10, v * 3 + 10, seed) * 3);
     const tone = .83 + ridge * .1 + fine * .1 + bedding * .045;

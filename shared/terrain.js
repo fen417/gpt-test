@@ -34,6 +34,18 @@ export function makeTerrain(size, landforms, cell = 4, pads = []) {
     }
   }
 
+  // A neighbour's blending apron must never lift or excavate a foundation.
+  // Keep a grid-cell margin so triangle interpolation stays flat at the walls.
+  const protectedPads=pads.filter(p=>p.protectedW&&p.protectedD);
+  if(protectedPads.length)for(let iz=0;iz<width;iz++)for(let ix=0;ix<width;ix++){
+    const x=ix*cell-half,z=iz*cell-half;let selected=null,best=Infinity;
+    for(const pad of protectedPads){
+      const reach=Math.max(Math.abs(x-pad.x)/(pad.protectedW/2),Math.abs(z-pad.z)/(pad.protectedD/2));
+      if(reach<=1&&reach<best){best=reach;selected=pad;}
+    }
+    if(selected){heights[iz*width+ix]=selected.height;maxHeight=Math.max(maxHeight,selected.height);}
+  }
+
   function heightAt(x, z) {
     const gx = (x + half) / cell, gz = (z + half) / cell;
     if (gx < 0 || gz < 0 || gx >= width - 1 || gz >= width - 1) return 0;

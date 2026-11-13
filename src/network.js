@@ -1,3 +1,4 @@
+import { EquipmentPresentation } from './equipment-presentation.js';
 import { sanitizeInput, createPredictionWorld } from '../shared/simulation.js';
 import { EYE_HEIGHT } from '../shared/world.js';
 import { getVehicleSeatPose } from '../shared/vehicles.js';
@@ -128,6 +129,7 @@ export class Multiplayer{
   respawn(classId,pointId,weaponId,sidearmId){return this.control('respawn',{classId,pointId,weaponId,sidearmId});}
   initialize(data){
     this.context={mapId:data.mapId,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
+    this.equipmentPresentation=new EquipmentPresentation();this.equipmentRequestKey=null;this.equipmentRequestSequence=0;this.latestInputAck=0;
     this.decoder=new SnapshotDecoder(this.context);this.prediction=new Prediction(data.mapId);this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.interpolationMs=60;this.renderTime=null;this.targetInterpolationMs=60;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
   }
   acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0};}
@@ -138,7 +140,7 @@ export class Multiplayer{
     if(bytes[0]===MESSAGE.SNAPSHOT){
       const decodeBegin=performance.now(),result=this.decoder.decode(value);this.decodeMs=performance.now()-decodeBegin;if(result.missingBase){this.send(new Uint8Array([MESSAGE.RESYNC]));return;}
       const {frame,state,inputAck,sequence}=result;
-      if(sequence<=this.snapshotAck)return;this.snapshotAck=sequence;
+      if(sequence<=this.snapshotAck)return;this.snapshotAck=sequence;this.latestInputAck=inputAck;
       if(this.lastArrival){const interval=now-this.lastArrival,expected=1000/(this.snapshotHz??20);this.jitter=this.jitter*.9+Math.abs(interval-expected)*.1;}
       this.lastArrival=now;this.targetInterpolationMs=clamp(1000/(this.snapshotHz??20)+10+this.jitter*1.5,55,140);
       for(const kind of ['players','vehicles'])for(const p of state[kind]){
@@ -166,7 +168,10 @@ export class Multiplayer{
   advance(input,dt){
     this.reconcileLatest();
     if(this._phase!=='match'||this.state?.winner!=null||!this.prediction||this.ws?.readyState!==WebSocket.OPEN)return;
-    this.input=sanitizeInput(input);for(const key of pulses)if(input[key])this.pendingPulses[key]=true;
+    this.input=sanitizeInput(input);
+    const equipmentKey=this.input.weaponSlot+'/'+this.input.toolSlot;
+    if(equipmentKey!==this.equipmentRequestKey){this.equipmentRequestKey=equipmentKey;this.equipmentRequestSequence=this.sequence+1;}
+    for(const key of pulses)if(input[key])this.pendingPulses[key]=true;
     if(input.fire)this.pendingFire=true;
     this.accumulator=Math.min(.1,(this.accumulator??0)+dt);let count=0;
     while(this.accumulator>=INPUT_STEP&&count++<6){
@@ -226,6 +231,8 @@ export class Multiplayer{
     if(predicted?.vehicleId&&predicted.vehicleSeat===0){const vehicle=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId),index=render.vehicles.findIndex(v=>v.id===predicted.vehicleId);if(vehicle&&index>=0)render.vehicles[index]={...vehicle};}
     // Derive every seated body from the very same interpolated/predicted vehicle.
     for(const p of render.players)if(p.vehicleId){const vehicle=render.vehicles.find(v=>v.id===p.vehicleId);if(vehicle){const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);p.x=pose.x;p.y=pose.y-EYE_HEIGHT;p.z=pose.z;}}
+    const ownIndex=render.players.findIndex(p=>p.id===this.id);
+    if(ownIndex>=0)render.players[ownIndex]=this.equipmentPresentation.update(render.players[ownIndex],this.input,dt,this.equipmentRequestSequence,this.latestInputAck);
     return render;
   }
   sampleMotion(kind,current,renderTime,dt){

@@ -66,9 +66,9 @@ export const MAP_EDITS = { port: portEdits, quarry: quarryEdits, village: villag
 function mapLayoutRevision() {
   const hasChanges = Object.values(MAP_EDITS).some(({ moves, added, removed }) =>
     Object.keys(moves).length || Object.keys(added).length || removed.length);
-  if (!hasChanges) return '';
+  if (!hasChanges) return 'village-foundations-015b';
   let hash = 2166136261;
-  const layout = JSON.stringify(MAP_EDITS);
+  const layout = 'village-foundations-015b/'+JSON.stringify(MAP_EDITS);
   for (let i = 0; i < layout.length; i++) hash = Math.imul(hash ^ layout.charCodeAt(i), 16777619);
   return (hash >>> 0).toString(16);
 }
