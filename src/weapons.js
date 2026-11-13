@@ -556,11 +556,11 @@ export function createWeaponRig(owner = {}) {
 
   // Tailored sleeves: elbow volume, tapered wrists and oblique tension folds.
   const leftArm=new THREE.Group();leftArm.name='left-articulated-forearm';weapon.add(leftArm);
-  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.092,.09,.083,.071,.06,.047,.041].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.1,.88],folds:.105});
-  loft(leftArm,[[-.108,-.129,-.311],[-.095,-.119,-.34],[-.083,-.108,-.361]],[.049,.047,.044].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.07,.92],folds:.07});
+  loft(leftArm,[[-.40,-.47,.25],[-.29,-.32,.055],[-.18,-.20,-.16],[-.09,-.117,-.35]],[.092,.09,.083,.071,.06,.038,.031].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.1,.88],folds:.105});
+  loft(leftArm,[[-.108,-.129,-.311],[-.095,-.119,-.34],[-.083,-.108,-.361]],[.044,.037,.032].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.07,.92],folds:.07});
   for(let i=0;i<3;i++)curve(leftArm,[[-.206-i*.014,-.197-i*.012,-.123+i*.022],[-.17-i*.014,-.154-i*.012,-.16+i*.022],[-.135-i*.014,-.153-i*.012,-.167+i*.022]],.0025,cloth,8,6);
   loft(leftArm,[[-.18,-.157,-.161],[-.144,-.129,-.224],[-.115,-.105,-.28]],[.021,.03,.022],cloth,{segments:12,radial:10,ellipse:[1,.16],widthAxis:[1,0,0]});
-  const leftTab=rounded(leftArm,-.108,-.077,-.327,.039,.008,.024,cuff);leftTab.rotation.z=-.35;
+  const leftTab=rounded(leftArm,-.108,-.090,-.327,.034,.006,.022,cuff);leftTab.rotation.z=-.35;
   const rightArm=new THREE.Group();rightArm.name='right-articulated-forearm';weapon.add(rightArm);
   loft(rightArm,[[.27,-.48,.43],[.205,-.36,.3],[.12,-.26,.18],[.064,-.205,.116]],[.097,.094,.084,.073,.058,.047,.04].map(r=>r*ARM_BULK),cloth,{segments:32,radial:18,ellipse:[1.08,.9],folds:.09});
   loft(rightArm,[[.089,-.23,.151],[.074,-.212,.129],[.062,-.198,.112]],[.052,.049,.044].map(r=>r*CUFF_BULK),cuff,{segments:14,radial:24,ellipse:[1.06,.94],folds:.06});
@@ -826,7 +826,9 @@ export function createWeaponRig(owner = {}) {
   ];
   const palmLocal = new THREE.Vector3(...lp([-.035,-.043,-.423]));
   const pistolPalmLocal = new THREE.Vector3(-.050,.020,-.086);
-  const wristLocal = new THREE.Vector3(...lp([-.104,-.067,-.455]));
+  // Sleeve contact at the palm heel, not the source rig's sideways wrist pivot.
+  // The imported palm/fingers remain at their existing weapon contact points.
+  const wristLocal = new THREE.Vector3(...lp([-.064,-.073,-.444]));
   const pistolWristLocal = new THREE.Vector3(-.035,-.053,-.014);
   const restShoulder = new THREE.Vector3(-.40,-.47,.25);
   // Bring the elbow/sleeve inward; keep the fitted hand and wrist contact fixed.

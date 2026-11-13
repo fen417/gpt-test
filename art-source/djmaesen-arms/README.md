@@ -30,7 +30,10 @@ fits separate rifle, pistol and magazine hand poses in metres, poses fingers
 with the source skeleton and bakes connected trigger/release morphs. Source UVs
 and skinned normals are preserved. The supporting magazine hand is mirrored
 from the same artist's right-hand mesh; winding and normals are corrected.
-Each visible pair has about 12,200 triangles and uses one shared PBR material.
+The support sleeve meets the palm heel rather than the source wrist bone.
+Its covered wrist extension is cropped separately, preserving the existing
+palm and finger contact vertices. Rifle hands have about 11,400 triangles per
+pair; pistol reload hands about 12,200. Both use one shared PBR material.
 There is no GLB loading, skeleton solving or AnimationMixer in the frame loop.
 
 Game credit: `credits.html`, linked from the game menu.

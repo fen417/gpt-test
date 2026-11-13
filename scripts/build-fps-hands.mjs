@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 globalThis.self = globalThis;
 const root = new URL('../', import.meta.url);
 const poses = {
-  support: { source: 'rifle', side: 'L', scale: .45, rotation: [-.04, -Math.PI/2, 0], wrist: [-.104, -.067, -.455], origin: [-.018, -.075, -.36], index: [.063,.047,-.081], indexWrap: true, fingers: [[.058,.045,-.060],[.051,.043,-.042],[.036,.035,-.023]], fingerPole: [1,0,0], thumb: [-.038,.053,-.127], thumbDirection: [0,.08,-1] },
+  support: { source: 'rifle', side: 'L', scale: .45, rotation: [-.04, -Math.PI/2, 0], wrist: [-.104, -.067, -.455], cutStart: .045, origin: [-.018, -.075, -.36], index: [.063,.047,-.081], indexWrap: true, fingers: [[.058,.045,-.060],[.051,.043,-.042],[.036,.035,-.023]], fingerPole: [1,0,0], thumb: [-.038,.053,-.127], thumbDirection: [0,.08,-1] },
   trigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.202, .145], origin: [0, 0, 0], index: [.008, -.090, .018], fingers: [[-.024,-.149,.047],[-.024,-.178,.052],[-.022,-.199,.045]], thumb: [-.024,-.129,.055] },
   pistolSupport: { source: 'pistol', side: 'R', mirror: true, scale: .48, rotation: [.35, .02, 0], wrist: [-.035, -.053, -.014], origin: [0, 0, 0], index: [.002,.012,-.064], fingers: [[.004,-.003,-.060],[.002,-.019,-.057],[-.003,-.035,-.050]], thumb: [-.010,.050,-.047] },
   pistolTrigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.195, .175], origin: [0, 0, 0], index: [.006, -.122, .034], fingers: [[-.024,-.157,.081],[-.024,-.177,.087],[-.023,-.198,.092]], thumb: [-.024,-.136,.088] },
@@ -109,7 +109,9 @@ for (const [name, pose] of Object.entries(poses)) {
       for (let e = 0; e < 16; e++) skinMatrix.elements[e] += boneMatrix.elements[e] * weight;
     }
     mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld);
-    const cut = v.clone().sub(wrist).dot(wristAxis) + .065;
+    // The underhand sleeve now reaches the palm heel. Remove the old lateral
+    // wrist extension beneath it without moving any of the grip vertices.
+    const cut = v.clone().sub(wrist).dot(wristAxis) - (pose.cutStart ?? -.065);
     // Skin the authored normals as well as positions, retaining UV seam normals.
     skinMatrix.premultiply(mesh.bindMatrixInverse).multiply(mesh.bindMatrix).premultiply(mesh.matrixWorld);
     n.fromBufferAttribute(normal, i).applyNormalMatrix(nMatrix.getNormalMatrix(skinMatrix)).applyQuaternion(rotation).normalize();
