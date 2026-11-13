@@ -1,0 +1,29 @@
+[
+  {
+    "uid": "9452ce4cddde4110a4fd73e555a8e412",
+    "name": "Fps arms",
+    "author": "DJMaesen",
+    "authorURL": "https://sketchfab.com/bumstrum",
+    "license": "http://creativecommons.org/licenses/by/4.0/",
+    "modelURL": "https://sketchfab.com/3d-models/fps-arms-9452ce4cddde4110a4fd73e555a8e412",
+    "isDownloadable": true
+  },
+  {
+    "uid": "94be8385c402474cacd39bc096c6ca14",
+    "name": "FPS AK-74m animations",
+    "author": "Cransh",
+    "authorURL": "https://sketchfab.com/ccransh",
+    "license": "http://creativecommons.org/licenses/by/4.0/",
+    "modelURL": "https://sketchfab.com/3d-models/fps-ak-74m-animations-94be8385c402474cacd39bc096c6ca14",
+    "isDownloadable": true
+  },
+  {
+    "uid": "0d7a343dcb6f401197a73c91aee93f6d",
+    "name": "FPS pistol animations",
+    "author": "Cransh",
+    "authorURL": "https://sketchfab.com/ccransh",
+    "license": "http://creativecommons.org/licenses/by/4.0/",
+    "modelURL": "https://sketchfab.com/3d-models/fps-pistol-animations-0d7a343dcb6f401197a73c91aee93f6d",
+    "isDownloadable": true
+  }
+]

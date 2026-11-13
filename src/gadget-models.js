@@ -121,9 +121,14 @@ function build(kind,m) {
     }
     ring(0,.025,-.593,.057,.009,.017,m.metal);
     tube(0,.025,-.50,.043,.006,m.dark,'z');
-    box(0,-.075,.01,.045,.12,.085,m.dark);
+    // Open trigger guard: the index finger must meet the trigger, not a solid box.
+    box(0,-.028,.01,.045,.022,.085,m.dark);
+    box(0,-.075,-.028,.024,.08,.012,m.dark);
+    box(0,-.115,.01,.028,.014,.085,m.dark);
+    const trigger=box(0,-.070,.016,.008,.032,.008,m.metal);trigger.rotation.x=-.12;
     const grip=box(0,-.15,.06,.036,.12,.06,m.dark);grip.rotation.x=-.16;
-    box(0,-.085,-.20,.075,.035,.16,m.cloth);
+    for(const z of [-.26,-.14])box(0,-.027,z,.050,.034,.022,m.dark);
+    box(0,-.050,-.20,.075,.035,.16,m.cloth);
     for(const side of [-1,1]){
       box(side*.06,.025,-.34,.012,.075,.14,m.orange);
       for(let i=0;i<3;i++)box(side*.067,.025,-.37+i*.032,.003,.045,.013,m.white);

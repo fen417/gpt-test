@@ -1,0 +1,10 @@
+[
+  {
+    "sha256": "f66a03a316e8ac6a1505b21c3c7cf8ad4672fccaf1ce947a9ea5ed33600364fc",
+    "file": "arms-source.glb"
+  },
+  {
+    "sha256": "816f5aabef75c58d659728d3b8cac80ea4257475fc2dd325b00349b4fe3ab966",
+    "file": "pistol-source.glb"
+  }
+]

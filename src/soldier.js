@@ -9,7 +9,7 @@ import { gloveSurface } from './glove-geometry.js';
 import { anatomicalGeometry, reduceSoldierGeometry } from './soldier-anatomy.js';
 import { BODY_SECTIONS, BODY_BLEND, SHOULDER_X, HIP_X } from './soldier-proportions.js';
 import { soldierHeadGeometry, applySoldierHeadAtlas } from './soldier-head.js';
-import { HEAVY_GRIP_SECTIONS } from './pistol-grip.js';
+import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS } from './pistol-grip.js';
 import { SIDEARMS, weaponSwitchPose } from '../shared/world.js';
 
 // Each soldier draws one skinned mesh with three geometries bound to the same bones.
@@ -488,15 +488,15 @@ function makeRifle(spine, c, classId, weaponId = '') {
     const width=heavy ? .065 : .052, length=.124-muzzle;
     round(rifle,heavy?c.accent:c.steel,0,.011,(muzzle+.124)/2,width,.061,length);
     round(rifle,c.polymer,0,-.039,(muzzle+.12)/2,width*.84,.034,length*.92);
-    if(heavy)volume(rifle,c.polymer,HEAVY_GRIP_SECTIONS.map(([y,w,f,b,z])=>[y*.72,w*1.45,f*.86,b*.86,z*.86+.01]),
+    const gripSections=heavy?HEAVY_GRIP_SECTIONS:COMPACT_GRIP_SECTIONS;
+    volume(rifle,c.polymer,gripSections.map(([y,w,f,b,z])=>[y*.72,w*(heavy?1.45:1),f*.86,b*.86,z*.86+.01]),
       14,null,{anatomy:'pistolGrip',square:.48,caps:true});
-    else round(rifle,c.polymer,0,-.10,.091,width*.87,.115,.076,.2);
     block(rifle,c.polymer,0,-.104,.011,.037,.015,.078);
     block(rifle,c.polymer,0,-.079,-.025,.037,.053,.016);
     block(rifle,c.steel,0,.044,.103,.036,.012,.02);
     block(rifle,c.steel,0,.044,muzzle+.025,.015,.012,.019);
     along(rifle,c.rubber,0,.011,muzzle-.001,heavy ? .016 : .011,.006);
-    magazine.position.set(0,-.087,.091);
+    magazine.position.set(0,gripSections[0][0]*.72+.063,gripSections[0][4]*.86+.01);
     block(magazine,c.steel,0,-.04,0,heavy?.030:width*.72,.075,heavy?.046:.052);
     block(magazine,c.rubber,0,-.071,0,heavy?.058:width*.9,.014,heavy?.058:.067);
     for (const side of [-1,1]) {
@@ -682,9 +682,9 @@ function makeDistantGeometry(rig, c) {
   if(rig.pistol){
     const heavy=rig.weaponId==='m50';
     block(rifle,heavy?c.accent:c.steel,0,.011,heavy ? -.055 : -.024,heavy ? .065 : .052,.061,heavy ? .36 : .294);
-    if(heavy)volume(rifle,c.polymer,HEAVY_GRIP_SECTIONS.filter((_,i)=>i%2===0||i===5)
-      .map(([y,w,f,b,z])=>[y*.72,w*1.45,f*.86,b*.86,z*.86+.01]),8,null,{anatomy:'pistolGrip',square:.48,caps:true});
-    else block(rifle,c.polymer,0,-.10,.091,.052,.115,.076);
+    const gripSections=heavy?HEAVY_GRIP_SECTIONS:COMPACT_GRIP_SECTIONS;
+    volume(rifle,c.polymer,gripSections.filter((_,i)=>i%2===0||i===5)
+      .map(([y,w,f,b,z])=>[y*.72,w*(heavy?1.45:1),f*.86,b*.86,z*.86+.01]),8,null,{anatomy:'pistolGrip',square:.48,caps:true});
     block(magazine,c.polymer,0,-.059,0,heavy?.058:.05,.032,heavy?.058:.063);
     fitPistolMetalwork(rifle,magazine,heavy);
   }else{
