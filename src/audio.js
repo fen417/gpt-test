@@ -282,7 +282,8 @@ export class CombatAudio {
     let music=0,victim=null;
     for(const voice of this._voices){
       if(voice.bus==='music')music++;
-      if(voice.bus===bus && voice.priority<priority &&
+      const replaceTail=options.shot&&voice.shooterId!==undefined&&voice.priority===priority&&voice.time+.08<this.ctx.currentTime;
+      if(voice.bus===bus && (voice.priority<priority||replaceTail) &&
         (!victim || voice.priority<victim.priority ||
           (voice.priority===victim.priority && voice.end<victim.end))) victim=voice;
     }
@@ -307,10 +308,10 @@ export class CombatAudio {
     if(!this.ctx||!this._enabled||this.ctx.state!=='running'||!Number.isFinite(duration)||!Number.isFinite(gain)){try{source.disconnect();}catch{}return null;}
     const c=this.ctx,time=Math.max(c.currentTime,options.time??c.currentTime);
     const {end,nodes,envelope}=this._envelope(c,source,time,duration,gain,options);
-    let output=envelope,release=envelope.gain;
-    if(!release.cancelAndHoldAtTime){
-      const gate=c.createGain();output.connect(gate);output=gate;nodes.push(gate);release=gate.gain;
-    }
+    // Voice stealing fades a separate gain stage; it must never cancel or
+    // reconstruct the attack/decay automation of the recording itself.
+    const gate=c.createGain();envelope.connect(gate);nodes.push(gate);
+    let output=gate,release=gate.gain;
     if(c.createStereoPanner&&options.pan){const p=c.createStereoPanner();p.pan.value=clamp(options.pan,-1,1);output.connect(p);output=p;nodes.push(p);}
     const bus=options.bus==='music'?'music':'effects';
     output.connect(options.bus==='localWeapon'?this._localWeapon:options.bus==='weapons'?this._weapons:bus==='music'?this._music:this._effects);
@@ -449,22 +450,23 @@ export class CombatAudio {
       const id=Object.hasOwn(WEAPONS,classId)?classId:CLASS_SHOTS[classId]??'ar416',weapon=WEAPONS[id];
       const variation=weapon.rate*(.985+Math.random()*.03);
       const gain=(isLocal?.94:.64)*weapon.gain/(1+distance*.04);
-      const time=this.ctx.currentTime+.008+Math.max(0,Math.min(.35,distance/343)-age);
+      // Events already follow the presentation clock. Adding travel time here
+      // queues distant shots behind subsequent rounds from the same weapon.
+      const time=this.ctx.currentTime+.004;
       const variants=this._shotBuffers.get(weapon.sample);
       const buffer=variants?.[Math.floor(Math.random()*variants.length)];
       const cutoff=isLocal||distance<12?0:Math.max(1500,weapon.cutoff/(1+(distance-12)*.012));
       if(buffer){
-        if(!this._admit({}))return;
-        let overlapping=0,oldest=null;
-        for(const voice of this._voices)if(voice.shooterId===shooterId){
-          overlapping++;if(!oldest||voice.time<oldest.time)oldest=voice;
-        }
-        if(oldest&&overlapping>=(isLocal?2:1))this._fadeVoice(oldest,.028);
+        // Seek into late recordings instead of replaying several old attacks
+        // together or discarding every shot but the newest in a network batch.
+        const elapsed=Math.max(0,age-.035),offset=elapsed*variation;
+        const duration=Math.min(buffer.duration/variation,isLocal?1.2:distance>65?.3:.48)-elapsed;
+        if(duration<=.015)return;
+        if(!this._admit({shot:true}))return;
         const source=this.ctx.createBufferSource();
         source.buffer=buffer;source.playbackRate.value=variation;
-        const duration=Math.min(buffer.duration/variation,isLocal?1.2:distance>65?.38:.58);
         const voice=this._voice(source,duration,gain,{
-          time,pan,attack:.0002,sample:true,send:0,bus:isLocal?'localWeapon':'weapons',
+          time,offset,pan,attack:offset>0?.006:.001,sample:true,send:0,bus:isLocal?'localWeapon':'weapons',
           cutoff,q:.707,tail:isLocal?.075:.04,
         });
         if(voice)voice.shooterId=shooterId;
@@ -614,20 +616,16 @@ export class CombatAudio {
     }
     for(const id of this._remoteSteps.keys())if(!active.has(id)){this._remoteSteps.delete(id);this._stepCounts.delete(id);}
   }
-  events(state,local){
+  events(state,local,{immediate=false}={}){
     if(!state)return;
-    if(state.time<this._lastStateTime-1){this.seen.clear();this._lastPosition=null;this._lastMovementTime=-1;this._pending=[];for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);}
-    this._lastStateTime=state.time;
-    const latestShots=new Map();
-    for(const e of state.events||[])if(e.type==='shot'&&!this.seen.has(e.id)){
-      const previous=latestShots.get(e.playerId);
-      if(!previous||e.time>=previous.time)latestShots.set(e.playerId,e);
+    // Immediate local events use authority time; rendered events use the
+    // interpolation clock. Comparing those clocks can falsely reset deduplication.
+    if(!immediate){
+      if(state.time<this._lastStateTime-1){this.seen.clear();this._lastPosition=null;this._lastMovementTime=-1;this._pending=[];for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);}
+      this._lastStateTime=state.time;
     }
     for(const e of state.events||[]){
       if(this.seen.has(e.id))continue;this.seen.add(e.id);
-      // A delayed network batch must not play several attacks from the same
-      // weapon simultaneously. Keep its newest shot and discard stale attacks.
-      if(e.type==='shot'&&latestShots.get(e.playerId)!==e)continue;
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')continue;
       const own=local&&e.playerId===local.id;
       this._priority=own?3:1;
@@ -687,7 +685,9 @@ export class CombatAudio {
       else if(e.type==='roundEnd'&&local)(e.winner===local.team?[50,57,62,65]:[50,53,56,62]).forEach((note,index)=>this._tone(midi(note),2.5,.1,{time:this.ctx.currentTime+index*.12,type:'triangle',attack:.2,cutoff:1700,send:.45}));
     }
     this._priority=2;
-    while(this.seen.size>900)this.seen.delete(this.seen.keys().next().value);
+    // Exceed the server's 4096-event retention window so a retained event cannot
+    // be evicted and replayed on the next animation frame during a busy battle.
+    while(this.seen.size>8192)this.seen.delete(this.seen.keys().next().value);
   }
   update(dt,{state,local,moving=0,sprinting=false,crouching=false,aim=false,locked=false,inMenu=false,paused=false}={}){
     if(this._disposed)return;this.setMode(inMenu?'menu':'battle');

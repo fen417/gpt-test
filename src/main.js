@@ -493,7 +493,7 @@ function receive(next){
   while(seen.size>900)seen.delete(seen.keys().next().value);
   // Immediate local handling stays responsive; remote/projectile events use
   // the same presentation clock as their visuals below.
-  audio.events({...state,events:state.events?.filter(e=>e.playerId===localId&&e.type!=='explosion'&&e.type!=='rocketLaunch')},player);
+  audio.events({...state,events:state.events?.filter(e=>e.playerId===localId&&e.type!=='explosion'&&e.type!=='rocketLaunch')},player,{immediate:true});
   if(state.winner!==null&&state.winner!==undefined&&!finished){
     reviveAwaitingControl=false;show('revive-control-hint',false);
     finished=true;clearControls();document.exitPointerLock?.();show('pause',false);show('death',false);show('scoreboard',false);
