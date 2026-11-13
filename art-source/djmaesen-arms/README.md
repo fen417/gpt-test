@@ -35,9 +35,14 @@ Its covered wrist extension is cropped separately, preserving the existing
 palm and finger contact vertices. Rifle hands have about 11,400 triangles per
 pair; pistol reload hands about 12,200; supply-case hands about 10,900.
 All six poses use one shared PBR material. The supply pair uses mirrored
-left-hand meshes with corrected winding and normals, curled fingers at the
-near lower edge, and palms supporting the case from underneath. The case and
-hands share the same use-gesture transform; sleeves follow the wrist contacts.
+left-hand meshes with corrected winding and normals. Palms face inward against
+the lower case sides. Four fingers rise along each side with a shallow bend;
+opposing thumbs form horizontal supports beneath the bottom (mirrored L grips).
+All three thumb bones are solved together in a horizontal bend plane rather
+than directing its last phalanx independently. Joint lengths are preserved and
+successive phalanges curl in the same direction. Hand spacing follows each
+case's width. The case and hands share the same
+use-gesture transform; sleeves follow the wrist contacts with fitted cuffs.
 There is no GLB loading, skeleton solving or AnimationMixer in the frame loop.
 
 Game credit: `credits.html`, linked from the game menu.

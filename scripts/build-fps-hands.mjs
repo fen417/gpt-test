@@ -13,8 +13,10 @@ const poses = {
   trigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.202, .145], origin: [0, 0, 0], index: [.008, -.090, .018], fingers: [[-.024,-.149,.047],[-.024,-.178,.052],[-.022,-.199,.045]], thumb: [-.024,-.129,.055] },
   pistolSupport: { source: 'pistol', side: 'R', mirror: true, scale: .48, rotation: [.35, .02, 0], wrist: [-.035, -.053, -.014], origin: [0, 0, 0], index: [.002,.012,-.064], fingers: [[.004,-.003,-.060],[.002,-.019,-.057],[-.003,-.035,-.050]], thumb: [-.010,.050,-.047] },
   pistolTrigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.195, .175], origin: [0, 0, 0], index: [.006, -.122, .034], fingers: [[-.024,-.157,.081],[-.024,-.177,.087],[-.023,-.198,.092]], thumb: [-.024,-.136,.088] },
-  supplyLeft: { source:'rifle',side:'L',scale:.45,rotation:[0,0,0],wrist:SUPPLY_POSE.leftWrist,origin:[0,0,0],cutStart:.01,index:[-.088,.007,.106],indexWrap:true,fingers:[[-.068,.010,.108],[-.050,.008,.108],[-.035,.003,.107]],fingerPole:[0,0,1],thumb:[-.065,.018,.108],thumbDirection:[1,.05,0] },
-  supplyRight: { source:'rifle',side:'L',mirror:true,scale:.45,rotation:[0,0,0],wrist:SUPPLY_POSE.rightWrist,origin:[0,0,0],cutStart:.01,index:[.088,.007,.106],indexWrap:true,fingers:[[.068,.010,.108],[.050,.008,.108],[.035,.003,.107]],fingerPole:[0,0,1],thumb:[.065,.018,.108],thumbDirection:[-1,.05,0] },
+  // Palms face the case sides; fingers rise around its lower corners. The
+  // thumbs form horizontal shelves underneath (an L on each lower corner).
+  supplyLeft: { source:'rifle',side:'L',scale:.45,rotation:[Math.PI/2,0,-Math.PI/2],wrist:SUPPLY_POSE.leftWrist,origin:[0,0,0],cutStart:.01,index:[-.144,.117,.090],indexWrap:true,fingers:[[-.144,.108,.069],[-.144,.094,.051],[-.144,.071,.035]],fingerPole:[-1,0,0],thumb:[-.062,-.012,.085],thumbPole:[0,0,1] },
+  supplyRight: { source:'rifle',side:'L',mirror:true,scale:.45,rotation:[Math.PI/2,0,-Math.PI/2],wrist:SUPPLY_POSE.rightWrist,origin:[0,0,0],cutStart:.01,index:[.144,.117,.090],indexWrap:true,fingers:[[.144,.108,.069],[.144,.094,.051],[.144,.071,.035]],fingerPole:[1,0,0],thumb:[.062,-.012,.085],thumbPole:[0,0,1] },
 };
 const encoded = {};
 const pack = (values, Type, scale) => Buffer.from(new Type(values.map(v => Math.round(v * scale))).buffer).toString('base64');
@@ -32,7 +34,7 @@ for (const [name, pose] of Object.entries(poses)) {
   const rotation = new T.Quaternion().setFromEuler(new T.Euler(...pose.rotation));
   const target = new T.Vector3(...pose.wrist).sub(new T.Vector3(...pose.origin));
   const transform = p => { p.sub(wrist).multiplyScalar(pose.scale).applyQuaternion(rotation); if(pose.mirror) p.x *= -1; return p.add(target); };
-  function fingerIK(point, numbers=['007','006','005'], tipName='007_end', wrap=false) {
+  function fingerIK(point, numbers=['007','006','005'], tipName='007_end', wrap=false, bendPole=pose.fingerPole||[0,0,-1]) {
     const goal = new T.Vector3(...point).sub(target);
     if(pose.mirror) goal.x *= -1;
     goal.applyQuaternion(rotation.clone().invert()).divideScalar(pose.scale).add(wrist);
@@ -40,20 +42,21 @@ for (const [name, pose] of Object.entries(poses)) {
     if(wrap) {
       const bones=[...numbers].reverse().map(number=>gltf.scene.getObjectByName(`Bone_${pose.side}${number}`));
       const points=[...bones,tip].map(b=>b.getWorldPosition(new T.Vector3()));
-      const lengths=[0,1,2].map(i=>points[i].distanceTo(points[i+1])),anchor=points[0].clone();
+      const count=bones.length, lengths=bones.map((_,i)=>points[i].distanceTo(points[i+1])),anchor=points[0].clone();
       // Bend round the front strap, rather than taking a straight path through
       // the solid handle. FABRIK is build-time only; lengths stay unchanged.
-      const pole=new T.Vector3(...(pose.fingerPole||[0,0,-1])).applyQuaternion(rotation.clone().invert());
-      points[1].lerpVectors(anchor,goal,1/3).addScaledVector(pole,.085);
-      points[2].lerpVectors(anchor,goal,2/3).addScaledVector(pole,.065);
+      const pole=new T.Vector3(...bendPole);
+      if(pose.mirror) pole.x*=-1;
+      pole.applyQuaternion(rotation.clone().invert());
+      for(let i=1;i<count;i++) points[i].lerpVectors(anchor,goal,i/count).addScaledVector(pole,count===3?(i===1?.085:.065):.085);
       for(let pass=0;pass<32;pass++) {
-        points[3].copy(goal);
-        for(let i=2;i>=0;i--)points[i].sub(points[i+1]).setLength(lengths[i]).add(points[i+1]);
+        points[count].copy(goal);
+        for(let i=count-1;i>=0;i--)points[i].sub(points[i+1]).setLength(lengths[i]).add(points[i+1]);
         points[0].copy(anchor);
-        for(let i=1;i<4;i++)points[i].sub(points[i-1]).setLength(lengths[i-1]).add(points[i-1]);
+        for(let i=1;i<=count;i++)points[i].sub(points[i-1]).setLength(lengths[i-1]).add(points[i-1]);
       }
-      for(let i=0;i<3;i++) {
-        const bone=bones[i],next=i===2?tip:bones[i+1],pivot=bone.getWorldPosition(new T.Vector3());
+      for(let i=0;i<count;i++) {
+        const bone=bones[i],next=i===count-1?tip:bones[i+1],pivot=bone.getWorldPosition(new T.Vector3());
         const delta=new T.Quaternion().setFromUnitVectors(next.getWorldPosition(new T.Vector3()).sub(pivot).normalize(),points[i+1].clone().sub(pivot).normalize());
         const parent=bone.parent.getWorldQuaternion(new T.Quaternion());
         bone.quaternion.premultiply(parent.clone().invert().multiply(delta).multiply(parent));
@@ -81,7 +84,7 @@ for (const [name, pose] of Object.entries(poses)) {
       const length=bone.getWorldPosition(new T.Vector3()).distanceTo(tip.getWorldPosition(new T.Vector3()))*pose.scale;
       const forward=new T.Vector3(...(pose.thumbDirection||[-.10,.18,-1])).normalize();
       const distal=new T.Vector3(...pose.thumb).addScaledVector(forward,-length);
-      fingerIK(distal.toArray(),['021','020'],'022');
+      fingerIK(distal.toArray(),['021','020'],'022',Boolean(pose.thumbPole),pose.thumbPole);
       const pivot=bone.getWorldPosition(new T.Vector3());
       const direction=forward.clone();
       if(pose.mirror) direction.x*=-1;
@@ -90,7 +93,7 @@ for (const [name, pose] of Object.entries(poses)) {
       const parent=bone.parent.getWorldQuaternion(new T.Quaternion());
       bone.quaternion.premultiply(parent.clone().invert().multiply(delta).multiply(parent));
       gltf.scene.updateMatrixWorld(true);skeleton.update();
-    } else fingerIK(pose.thumb,['022','021','020'],'022_end');
+    } else fingerIK(pose.thumb,['022','021','020'],'022_end',Boolean(pose.thumbPole),pose.thumbPole);
   }
   if(pose.fingers) for(let i=0;i<3;i++) {
     const end=11+i*4, number=n=>String(n).padStart(3,'0');

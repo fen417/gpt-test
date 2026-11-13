@@ -9,9 +9,9 @@ export const LAUNCHER_POSE = {
   hip: [.13,-.14,-.52], ads: [-.05,-.125,-.45],
 };
 export const SUPPLY_POSE = {
-  leftWrist: [-.10,-.030,.13], rightWrist: [.10,-.030,.13],
+  leftWrist: [-.150,-.052,.102], rightWrist: [.150,-.052,.102],
   hip: [0,-.22,-.58], ads: [0,-.19,-.56],
   // Both cases put their bottom on y=0 and their near edge at z=.10.
-  ammo: { scale:.55, position:[0,0,.00375] },
-  medkit: { scale:1, position:[0,.080,.015] },
+  ammo: { scale:.55, position:[0,0,.00375], handSpread:.008 },
+  medkit: { scale:1, position:[0,.080,.015], handSpread:0 },
 };

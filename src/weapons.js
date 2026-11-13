@@ -855,12 +855,12 @@ export function createWeaponRig(owner = {}) {
   const rightRotation=new THREE.Quaternion().setFromUnitVectors(armAxis,rightAxis.normalize());
   const rightRestInverse=new THREE.Matrix4().compose(rightShoulder,rightRotation,new THREE.Vector3(1,1,1)).invert();
   const rightDirection=new THREE.Vector3(),rightScale=new THREE.Vector3(1,1,1);
-  const supplyLeftWrist=new THREE.Vector3(...SUPPLY_POSE.leftWrist),supplyRightWrist=new THREE.Vector3(...SUPPLY_POSE.rightWrist);
+  const supplyLeftWrist=new THREE.Vector3(),supplyRightWrist=new THREE.Vector3();
   rightArm.matrixAutoUpdate=false;
 
-  function fitLeftSleeve(wrist,overlap=.017) {
+  function fitLeftSleeve(wrist,overlap=.017,bulk=1) {
     wristDirection.copy(wrist).applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
-    armScale.z=(wristDirection.length()+overlap)/armLength;
+    armScale.set(bulk,bulk,(wristDirection.length()+overlap)/armLength);
     armRotation.setFromUnitVectors(armAxis,wristDirection.normalize());
     leftArm.matrix.compose(shoulder,armRotation,armScale).multiply(restArmInverse);
     leftArm.matrixWorldNeedsUpdate=true;
@@ -1052,20 +1052,24 @@ export function createWeaponRig(owner = {}) {
     if(usingTool&&gadgetKind==='defibrillator')rightHand.position.set(.05,.25,-.415-discharge*.09);
     if(usingSupply){
       // Both hands and the case share one movement, so the grip cannot drift
-      // through the object during the use gesture. Palms support its underside.
+      // through the object during the use gesture. Palms clasp its lower sides.
       const push=toolActive?Math.sin(THREE.MathUtils.clamp(toolProgress,0,1)*Math.PI):0;
       supplyRoot.position.set(0,-push*.025,-push*.09);supplyRoot.rotation.set(-push*.08,0,0);
+      const spread=SUPPLY_POSE[gadgetKind].handSpread;
+      supplyLeft.position.x=-spread;supplyRight.position.x=spread;
+      supplyLeftWrist.fromArray(SUPPLY_POSE.leftWrist).add(supplyLeft.position);
+      supplyRightWrist.fromArray(SUPPLY_POSE.rightWrist).add(supplyRight.position);
       leftHand.position.copy(supplyRoot.position);leftHand.quaternion.copy(supplyRoot.quaternion);
       rightHand.position.copy(supplyRoot.position);rightHand.quaternion.copy(supplyRoot.quaternion);
       supplyLeftMesh.morphTargetInfluences[0]=supplyRightMesh.morphTargetInfluences[0]=0;
       for(const kind of ['ammo','medkit'])heldTools[kind].visible=kind===gadgetKind;
-      fitLeftSleeve(supplyLeftWrist);
+      fitLeftSleeve(supplyLeftWrist,.017,.92);
     }
     rightArm.visible=!usingTool||usingSupply||gadgetKind==='defibrillator'||gadgetKind==='launcher';
     rightDirection.copy(usingSupply?supplyRightWrist:pistol&&!usingTool ? pistolWrist : rightWrist);
     if(pistol&&!usingTool)rightDirection.x-=.008;else rightDirection.applyQuaternion(rightHand.quaternion).add(rightHand.position);
     rightDirection.sub(rightShoulder);
-    rightScale.set(1,1,(rightDirection.length()+.014)/rightLength);
+    rightScale.set(usingSupply?.78:1,usingSupply?.78:1,(rightDirection.length()+.014)/rightLength);
     rightRotation.setFromUnitVectors(armAxis,rightDirection.normalize());
     rightArm.matrix.compose(rightShoulder,rightRotation,rightScale).multiply(rightRestInverse);
     if(usingTool&&gadgetKind==='repair'){
