@@ -1288,7 +1288,14 @@ function markers(){
 }
 function frame(now){
   requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;frames++;fpsClock+=elapsed;
-  if(fpsClock>=1){text('fps',`${Math.round(frames/fpsClock)} FPS`);fpsClock=0;frames=0;const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);canvas.dataset.renderStats=JSON.stringify(renderer.getStats?.()??{});if(mode==='server')canvas.dataset.networkStats=JSON.stringify(multiplayer.diagnostics());}
+  if(fpsClock>=1){
+    const network=mode==='server'?multiplayer.diagnostics():null;
+    const networkLabel=network?` · ПИНГ ${network.rttMs??'—'} мс · ОЧЕРЕДЬ ${network.pendingInputs}${network.server?.tickAverageMs!=null?` · ТИК ${network.server.tickAverageMs} мс`:''}`:'';
+    text('fps',`${Math.round(frames/fpsClock)} FPS${networkLabel}`);fpsClock=0;frames=0;
+    const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);
+    canvas.dataset.renderStats=JSON.stringify(renderer.getStats?.()??{});
+    if(network)canvas.dataset.networkStats=JSON.stringify(network);else delete canvas.dataset.networkStats;
+  }
   if(active){
     recoilPitch*=Math.exp(-dt*8);recoilYaw*=Math.exp(-dt*10);
     if(locked||(unlocked&&!unlockedPaused)){

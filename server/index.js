@@ -27,7 +27,7 @@ export function createGameServer(options={}){
     ...lastMetrics,totalBytes:totals.bytes,totalMessages:totals.messages,averageSnapshotBytes:totals.snapshots?Math.round(totals.snapshotBytes/totals.snapshots):0,
     tickLifetimeAverageMs:totals.ticks?+(totals.tickMs/totals.ticks).toFixed(3):0,tickLifetimeMaximumMs:+totals.tickMaxMs.toFixed(3),simulatedTicks:totals.ticks,
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
-    players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
+    players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
   const server=http.createServer((req,res)=>{
     if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
@@ -129,7 +129,8 @@ export function createGameServer(options={}){
   function preparedSnapshot(){const sim=room.sim;return room.prepared=prepareSnapshot(sim.snapshot(),sim.map.size,room.prepared);}
   function snapshot(s,prepared,full=false){
     if(!s.client||s.client.ws.bufferedAmount>32768){totals.skippedSnapshots++;return;}
-    const p=room.sim.players.get(s.id),packet=s.encoder.encode(prepared,{localId:s.id,inputAck:p?.inputAck??s.inputAck,tick,full,focus:p?.input?{aim:p.input.aim,classId:p.classId}:{}});
+    // Session ACK also advances while seated; movement-only player ACKs do not.
+    const p=room.sim.players.get(s.id),packet=s.encoder.encode(prepared,{localId:s.id,inputAck:s.inputAck,tick,full,focus:p?.input?{aim:p.input.aim,classId:p.classId}:{}});
     if(send(s.client,packet.bytes,'snapshot')&&room.sim.winner!==null)s.finishedSequence=packet.sequence;
   }
   function visibleEvent(e,s){

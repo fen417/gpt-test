@@ -47,7 +47,7 @@ class Prediction{
 // The room creator uses exactly the same connection and prediction as every guest.
 export class Multiplayer{
   constructor({onState=noop,onIdentity=noop,onStatus=noop,onError=noop,onRooms=noop}={}){
-    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;
+    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;this.recoveries=0;this.lastRecovery=null;
   }
   get mode(){return this._mode;}get phase(){return this._phase;}get canResume(){return !!(this.token||safeStorage.get('sector-resume:'+this.url));}get roomNameLabel(){return this.roomName??'';}
   async browse(url){await this.open(url);await this.request('list');return this.rooms;}
@@ -63,7 +63,7 @@ export class Multiplayer{
       const ws=new WebSocket(this.url);ws.binaryType='arraybuffer';this.ws=ws;let ready=false;
       const timeout=setTimeout(()=>{reject(Error('Сервер не отвечает. Проверьте его адрес или доступность.'));ws.close();},12000);
       ws.onmessage=event=>{
-        if(generation!==this.generation)return;
+        if(generation!==this.generation||ws!==this.ws)return;
         try{
           this.receivedBytes+=typeof event.data==='string'?new TextEncoder().encode(event.data).length:event.data.byteLength;
           if(typeof event.data!=='string'){this.binary(event.data);return;}
@@ -83,13 +83,13 @@ export class Multiplayer{
           }
           if(data.type==='lobby'){this._phase='lobby';this.state=data.state;this.ownerId=data.state.ownerId;this.onState(data.state);}
           if(data.type==='init')this.initialize(data);
-          if(data.type==='stats'){this.serverStats=data.stats;this.onStatus(`Сеть: ${Math.round(data.stats.bytesPerSecond??0)} Б/с · тик ${data.stats.tickAverageMs??0} мс`);}
+          if(data.type==='stats')this.serverStats=data.stats;
           const pending=this.requests.get(data.requestId);if(pending){clearTimeout(pending.timer);this.requests.delete(data.requestId);pending.resolve(data);}
         }catch(error){clearTimeout(timeout);if(!ready){reject(error);ws.close();}else{this.onStatus('Синхронизация восстанавливается…');this.send(new Uint8Array([MESSAGE.RESYNC]));}}
       };
       ws.onerror=()=>{if(!ready){clearTimeout(timeout);reject(Error('Не удалось подключиться к серверу. Проверьте WSS-адрес и запуск сервиса.'));}};
       ws.onclose=()=>{
-        clearTimeout(timeout);if(generation!==this.generation)return;clearInterval(this.pingTimer);clearInterval(this.flushTimer);
+        clearTimeout(timeout);if(generation!==this.generation||ws!==this.ws)return;clearInterval(this.pingTimer);clearInterval(this.flushTimer);
         for(const pending of this.requests.values()){clearTimeout(pending.timer);pending.reject(Error('Соединение прервано.'));}this.requests.clear();
         if(!ready)reject(Error('Сервер недоступен.'));
         if(this.manual)return;
@@ -102,7 +102,8 @@ export class Multiplayer{
     if(this.reconnecting)return;this.reconnecting=true;this.onStatus('Связь потеряна. Переподключение…');const started=performance.now();
     while(!this.manual&&generation===this.generation&&performance.now()-started<28000){
       await new Promise(resolve=>setTimeout(resolve,1000));
-      try{await this.connectSocket(generation);await this.request('resume',{token:this.token});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{}
+      if(this.manual||generation!==this.generation)break;
+      try{await this.connectSocket(generation);await this.request('resume',{token:this.token});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{if(!this.manual&&generation===this.generation)this.ws?.close();}
     }
     this.reconnecting=false;if(!this.manual&&generation===this.generation){this.token=null;safeStorage.set('sector-resume:'+this.url,null);this.onError('Время переподключения истекло. Войдите в комнату заново.');}
   }
@@ -127,7 +128,7 @@ export class Multiplayer{
   respawn(classId,pointId,weaponId,sidearmId){return this.control('respawn',{classId,pointId,weaponId,sidearmId});}
   initialize(data){
     this.context={mapId:data.mapId,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
-    this.decoder=new SnapshotDecoder(this.context);this.prediction=new Prediction(data.mapId);this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
+    this.decoder=new SnapshotDecoder(this.context);this.prediction=new Prediction(data.mapId);this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.interpolationMs=100;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
   }
   acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0};}
   binary(value){
@@ -163,7 +164,12 @@ export class Multiplayer{
     if(input.fire)this.pendingFire=true;
     this.accumulator=Math.min(.1,(this.accumulator??0)+dt);let count=0;
     while(this.accumulator>=INPUT_STEP&&count++<6){
-      if(this.prediction.pending.length>=120){this.ws.close(1013,'Prediction backlog');return;}
+      if(this.prediction.pending.length>=120){
+        this.recoveries++;this.lastRecovery='Prediction backlog';
+        this.onStatus('Сервер задерживает подтверждение команд. Переподключение…');
+        // Browser close() only accepts 1000 or application codes 3000–4999.
+        this.ws.close(4001,'Prediction backlog');return;
+      }
       const merged={...this.input,...this.pendingPulses,fire:this.input.fire||this.pendingFire};
       // Use exactly the quantized command the server receives, including angles.
       const packed=encodeInput([{sequence:++this.sequence,dt:INPUT_STEP,input:merged}],this.acks()),command=decodeInput(packed).frames[0];
@@ -180,7 +186,11 @@ export class Multiplayer{
   startTimers(){
     clearInterval(this.pingTimer);clearInterval(this.flushTimer);
     this.flushTimer=setInterval(()=>this.flush(),1000/30);
-    this.pingTimer=setInterval(()=>{const w=new Writer(9);w.u8(MESSAGE.PING);w.f64(performance.now());this.send(w.finish());},5000);
+    const poll=()=>{
+      const w=new Writer(9);w.u8(MESSAGE.PING);w.f64(performance.now());this.send(w.finish());
+      if(this.token&&this._phase==='match')this.send({type:'stats',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION});
+    };
+    poll();this.pingTimer=setInterval(poll,5000);
   }
   sample(now=performance.now()){
     if(!this.state||!this.frames.length||this.state.winner!=null)return this.state;
@@ -218,7 +228,7 @@ export class Multiplayer{
     if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.08,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;}}
     return out;
   }
-  diagnostics(){return {rttMs:Math.round(this.rtt),interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,receivedBytes:this.receivedBytes,server:this.serverStats};}
+  diagnostics(){return {rttMs:this.rtt?Math.round(this.rtt):null,interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,snapshotAgeMs:this.lastArrival?Math.round(performance.now()-this.lastArrival):null,bufferedBytes:this.ws?.bufferedAmount??0,recoveries:this.recoveries,lastRecovery:this.lastRecovery,receivedBytes:this.receivedBytes,server:this.serverStats};}
   close(forget=true){
     this.manual=true;this.generation++;clearInterval(this.pingTimer);clearInterval(this.flushTimer);
     if(this.ws?.readyState===WebSocket.OPEN&&this.token)this.control('leave');this.ws?.close();this.ws=null;
