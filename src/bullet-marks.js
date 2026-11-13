@@ -88,7 +88,11 @@ export class BulletMarks {
         this.raycaster.set(point.clone().addScaledVector(direction, -.15), direction);
         this.raycaster.far = 2.5;
       }
-      const hit = this.raycaster.intersectObject(surface, true).find(hit => hit.face);
+      // Decals attach to mesh faces, never to camera-facing labels or effects.
+      // Sprite.raycast requires a camera even if its hit would be discarded.
+      const meshes = [];
+      surface.traverse(object => { if (object.isMesh) meshes.push(object); });
+      const hit = this.raycaster.intersectObjects(meshes, false).find(hit => hit.face);
       if (hit) {
         point.copy(hit.point);
         const transform = hit.object.matrixWorld.clone();
