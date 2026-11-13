@@ -110,7 +110,7 @@ export class CombatAudio {
     this._shotBuffers = new Map();
     this._shotLoadFailures = 0;
     this._foley = new Map();
-    this._engineChannels = new Map();this._rocketChannels=new Map();
+    this._engineChannels = new Map();this._rocketChannels=new Map();this._rocketTracks=new Map();
     this._remoteSteps = new Map();
     this._stepCounts = new Map();
   }
@@ -497,7 +497,7 @@ export class CombatAudio {
       const response=await fetch(url);if(!response.ok)return;
       const buffer=await context.decodeAudioData(await response.arrayBuffer());
       if(this._disposed)return;
-      if(name!=='engine'){
+      if(name!=='engine'&&name!=='rocket-flight'){
         let peak=0;
         for(let channel=0;channel<buffer.numberOfChannels;channel++)for(const value of buffer.getChannelData(channel))peak=Math.max(peak,Math.abs(value));
         const gain=Math.min(1,.78/Math.max(.01,peak));
@@ -753,30 +753,46 @@ export class CombatAudio {
   _stopRocketAudio(){
     for(const channel of this._rocketChannels.values()){
       const now=this.ctx.currentTime;channel.gain.gain.cancelScheduledValues(now);channel.gain.gain.setTargetAtTime(0,now,.015);channel.source.stop(now+.08);
-    }this._rocketChannels.clear();
+    }this._rocketChannels.clear();this._rocketTracks.clear();this._rocketStateTime=null;
   }
   _updateRocketAudio(state,local,silent){
     const buffer=this._foley.get('rocket-flight'),now=this.ctx.currentTime;
     if(silent||!local||!buffer){this._stopRocketAudio();return;}
+    if(state.time<(this._rocketStateTime??0)-1)this._stopRocketAudio();
     if(this._rocketStateTime!==state?.time){this._rocketStateTime=state?.time;this._rocketArrival=now;}
-    const active=new Set(),age=Math.min(.08,now-this._rocketArrival);
-    const rockets=(state?.rockets??[]).filter(r=>Math.hypot(r.x-local.x,r.z-local.z)<100)
-      .sort((a,b)=>Math.hypot(a.x-local.x,a.z-local.z)-Math.hypot(b.x-local.x,b.z-local.z)).slice(0,4);
-    for(const r of rockets){
-      active.add(r.id);let channel=this._rocketChannels.get(r.id);
-      if(!channel){const c=this.ctx,source=c.createBufferSource(),gain=c.createGain(),filter=c.createBiquadFilter(),pan=c.createStereoPanner();
+    const age=Math.min(.15,now-this._rocketArrival),time=state.time+age;
+    // Keep tracking between snapshots and outside network interest range.
+    // A launch starts the motor; its explosion (or maximum lifetime) ends it.
+    for(const e of state.events??[])if(e.type==='rocketLaunch'&&!this._rocketTracks.has(e.rocketId)&&time<e.time+4)
+      this._rocketTracks.set(e.rocketId,{...e,id:e.rocketId,at:e.time,expires:e.time+4});
+    for(const r of state.rockets??[])this._rocketTracks.set(r.id,{...r,at:state.time,expires:r.lifeAt??state.time+r.life});
+    for(const e of state.events??[])if(e.type==='explosion'&&e.rocketId)this._rocketTracks.delete(e.rocketId);
+    const listener=this.ctx.listener,yaw=local.yaw??0,pitch=local.pitch??0,eye=(local.y??0)+(local.crouch?1.05:1.58);
+    const forward=[-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch)];
+    const up=[Math.sin(yaw)*Math.sin(pitch),Math.cos(pitch),Math.cos(yaw)*Math.sin(pitch)];
+    if(listener.positionX){
+      for(const [axis,value] of [['X',local.x],['Y',eye],['Z',local.z]])this._target(listener['position'+axis],value,.015);
+      for(let i=0;i<3;i++){const axis='XYZ'[i];this._target(listener['forward'+axis],forward[i],.015);this._target(listener['up'+axis],up[i],.015);}
+    }else{listener.setPosition(local.x,eye,local.z);listener.setOrientation(...forward,...up);}
+    for(const [id,r] of this._rocketTracks){
+      if(time>=r.expires){this._rocketTracks.delete(id);continue;}
+      let channel=this._rocketChannels.get(id);
+      if(!channel){const c=this.ctx,source=c.createBufferSource(),gain=c.createGain(),filter=c.createBiquadFilter(),pan=c.createPanner();
         source.buffer=buffer;source.loop=true;gain.gain.value=0;filter.type='lowpass';filter.Q.value=.707;
-        source.connect(filter).connect(gain).connect(pan).connect(this._weapons);source.start();
+        pan.panningModel='equalpower';pan.distanceModel='inverse';pan.refDistance=4;pan.rolloffFactor=1;pan.maxDistance=400;
+        source.connect(filter).connect(gain).connect(pan).connect(this._effects);source.start();
         source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();pan.disconnect();};
-        channel={source,gain,filter,pan};this._rocketChannels.set(r.id,channel);
+        channel={source,gain,filter,pan};this._rocketChannels.set(id,channel);
       }
-      const p=this._position({x:r.x+r.vx*age,z:r.z+r.vz*age},local);
-      this._target(channel.gain.gain,.3/(1+p.distance*.09),.025);
-      this._target(channel.filter.frequency,9500/(1+p.distance*.03),.03);this._target(channel.pan.pan,p.pan,.025);
-      const radial=((r.x-local.x)*r.vx+(r.z-local.z)*r.vz)/Math.max(1,p.distance);
+      const elapsed=Math.max(0,time-r.at),x=r.x+r.vx*elapsed,y=r.y+r.vy*elapsed-1.4*elapsed**2,z=r.z+r.vz*elapsed;
+      const distance=Math.hypot(x-local.x,y-eye,z-local.z);
+      this._target(channel.gain.gain,.65,.02);this._target(channel.filter.frequency,11000/(1+distance*.012),.03);
+      if(channel.pan.positionX){for(const [axis,value] of [['X',x],['Y',y],['Z',z]])this._target(channel.pan['position'+axis],value,.015);}
+      else channel.pan.setPosition(x,y,z);
+      const radial=((x-local.x)*r.vx+(y-eye)*r.vy+(z-local.z)*r.vz)/Math.max(1,distance);
       this._target(channel.source.playbackRate,clamp(343/(343+radial),.8,1.25),.04);
     }
-    for(const [id,channel] of this._rocketChannels)if(!active.has(id)){
+    for(const [id,channel] of this._rocketChannels)if(!this._rocketTracks.has(id)){
       channel.gain.gain.cancelScheduledValues(now);channel.gain.gain.setTargetAtTime(0,now,.015);channel.source.stop(now+.08);this._rocketChannels.delete(id);
     }
   }

@@ -84,3 +84,5 @@ visual reference sources, not imported meshes, animations or textures.
 The two-handed carrying/deployment silhouette informed the ammo-box and
 medical-bag poses. Only the existing licensed hand meshes are used; no
 Battlefield art, textures or animation files are redistributed.
+
+The defibrillator uses an additional mirrored pair of baked hand poses from the same licensed source. Their closed fingers fit the paddle handles; the wrist anchors are shared with the viewmodel in src/gadget-poses.js. Regenerate with scripts/build-fps-hands.mjs.

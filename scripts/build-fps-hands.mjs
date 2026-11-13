@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { SUPPLY_POSE } from '../src/gadget-poses.js';
+import { SUPPLY_POSE, DEFIB_POSE } from '../src/gadget-poses.js';
 
 globalThis.self = globalThis;
 const root = new URL('../', import.meta.url);
@@ -19,6 +19,18 @@ const poses = {
   supplyRight: { source:'rifle',side:'L',mirror:true,scale:.45,rotation:[Math.PI/2,0,-Math.PI/2],wrist:SUPPLY_POSE.rightWrist,origin:[0,0,0],cutStart:.01,index:[.144,.117,.090],indexWrap:true,fingers:[[.144,.108,.069],[.144,.094,.051],[.144,.071,.035]],fingerPole:[1,0,0],thumb:[.062,-.012,.085],thumbPole:[0,0,1] },
 };
 const encoded = {};
+// A matched pair of closed grips around the horizontal paddle handles.
+for(const [name,mirror] of [['defibLeft',false],['defibRight',true]])poses[name]={
+  source:'rifle',side:'L',mirror,scale:.45,rotation:[0,0,-.04],
+  wrist:mirror?DEFIB_POSE.rightWrist:DEFIB_POSE.leftWrist,origin:[0,0,0],cutStart:.015,
+  index:[.020,.070,-.047],indexWrap:true,
+  fingers:[[.024,.068,-.020],[.024,.068,.006],[.024,.070,.030]],
+  fingerPole:[1,0,0],thumb:[-.025,.102,-.030],thumbPole:[0,1,0],
+};
+// Mirror targets along with the wrist; the baking transform mirrors the mesh.
+poses.defibRight.index=poses.defibRight.index.map((v,i)=>i===0?-v:v);
+poses.defibRight.fingers=poses.defibRight.fingers.map(p=>p.map((v,i)=>i===0?-v:v));
+poses.defibRight.thumb[0]*=-1;poses.defibRight.fingerPole[0]*=-1;
 const pack = (values, Type, scale) => Buffer.from(new Type(values.map(v => Math.round(v * scale))).buffer).toString('base64');
 for (const [name, pose] of Object.entries(poses)) {
   const buffer = fs.readFileSync(new URL(`art-source/djmaesen-arms/${pose.source}-arms.glb`, root));

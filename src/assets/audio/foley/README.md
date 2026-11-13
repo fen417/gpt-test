@@ -23,3 +23,5 @@ Trimmed silence, high-pass filtered at 35 Hz, loudness mastered with true-peak h
 Rocket Launch Pack by **dklon**, https://opengameart.org/content/rocket-launch-pack, licensed under **CC BY 3.0**, https://creativecommons.org/licenses/by/3.0/ . Source rocket_launch_1.wav and rocket_launch_2.wav. Changes: trimmed leading silence, EQ, loudness mastering, tail fades, Vorbis encoding. The flight loop extracts the sustained jet of rocket_launch_2.wav and crossfades its seam; playback position and Doppler pitch follow the rocket. Credit is also displayed on the game's credits page. No endorsement by the original author is implied.
 
 Reproduce with scripts/prepare-combat-audio.mjs (staging directory and ffmpeg path arguments).
+
+The flight loop uses a moving 3D sound source with distance attenuation and Doppler pitch. Launch/snapshot tracking keeps it alive until the corresponding explosion or the rocket's four-second lifetime, including between snapshots and outside snapshot interest range. The authored crossfade is preserved rather than adding a dip at each loop seam.

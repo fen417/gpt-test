@@ -12,7 +12,7 @@ import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
-import { LAUNCHER_POSE, SUPPLY_POSE } from './gadget-poses.js';
+import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicles.js';
@@ -1747,7 +1747,7 @@ export class GameRenderer {
       );
       if(gadgetKind){
         const launcher=gadgetKind==='launcher';
-        const framing=launcher?LAUNCHER_POSE:(gadgetKind==='ammo'||gadgetKind==='medkit')?SUPPLY_POSE:null;
+        const framing=launcher?LAUNCHER_POSE:gadgetKind==='defibrillator'?DEFIB_POSE:(gadgetKind==='ammo'||gadgetKind==='medkit')?SUPPLY_POSE:null;
         this.weapon.position.set(
           lerp(framing?.hip[0]??.08,framing?.ads[0]??.02,this.aimAmount)+Math.sin(cycle)*.007*bob-this.swayX,
           lerp(framing?.hip[1]??-.27,framing?.ads[1]??-.22,this.aimAmount)-this.landDip*.4-lowered*.42,

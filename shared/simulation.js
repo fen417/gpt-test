@@ -479,7 +479,9 @@ export class Simulation {
         continue;
       }
       const spec=VEHICLE_TYPES[vehicle.type];
+      const before={x:vehicle.x,y:vehicle.y??0,z:vehicle.z,yaw:vehicle.yaw,speed:vehicle.speed};
       this.moveVehicle(vehicle,this.players.get(vehicle.seats[0])?.input,dt);
+      this.runOverPlayers(vehicle,before,dt);
       for(const id of vehicle.seats){
         const passenger=this.players.get(id);
         if(passenger)this.syncVehicleSeat(passenger,vehicle);
@@ -494,6 +496,34 @@ export class Simulation {
       }else{
         vehicle.aimYaw=vehicle.yaw;vehicle.aimPitch=0;
       }
+    }
+  }
+  runOverPlayers(vehicle,before,dt){
+    const driver=this.players.get(vehicle.seats[0]);
+    const travelled=Math.hypot(vehicle.x-before.x,vehicle.z-before.z);
+    if(!driver?.alive||travelled<.005)return;
+    const speed=Math.max(Math.abs(before.speed),Math.abs(vehicle.speed),travelled/dt);
+    if(speed<2.5)return;
+    const turn=angleDifference(vehicle.yaw,before.yaw);
+    const dimensions=getVehicleDimensions(vehicle),reach=Math.hypot(dimensions.width,dimensions.length)/2+PLAYER_RADIUS;
+    const steps=Math.max(1,Math.ceil(travelled/.3),Math.ceil(Math.abs(turn)/.08));
+    // Sweep the actual body, including height, so fast vehicles cannot tunnel
+    // through infantry or hit someone standing above/below the vehicle.
+    const shapes=[];
+    for(let n=0;n<=steps;n++){
+      const t=n/steps;
+      shapes.push(vehicleShape({...vehicle,x:before.x+(vehicle.x-before.x)*t,
+        y:before.y+(vehicle.y-before.y)*t,z:before.z+(vehicle.z-before.z)*t,yaw:before.yaw+turn*t}));
+    }
+    vehicle.runOverHits??=new Map();
+    for(const [id,until] of vehicle.runOverHits)if(until<=this.time)vehicle.runOverHits.delete(id);
+    for(const victim of this.players.values()){
+      if(!victim.alive||victim.vehicleId||victim.team===driver.team||vehicle.runOverHits.has(victim.id))continue;
+      if(Math.hypot(victim.x-vehicle.x,victim.z-vehicle.z)>reach+travelled)continue;
+      const body=uprightBox(victim.x,victim.y,victim.z,PLAYER_RADIUS,victim.crouching?1.05:EYE_HEIGHT);
+      if(!shapes.some(shape=>overlapsAffine(body,shape)))continue;
+      vehicle.runOverHits.set(victim.id,this.time+.65);
+      this.damage(victim,Math.min(180,(speed-2)*12*(vehicle.type==='humvee'?1.15:1)),driver,{weapon:'НАЕЗД'});
     }
   }
   damageVehicle(vehicle,amount,attacker,kind){
@@ -1009,7 +1039,7 @@ export class Simulation {
       ...(this.debugBots?{aiDebug:botDebugSnapshot(this)}:{}),
       time:this.time,mapId:this.map.id,roundDuration:960,maxTickets:this.maxTickets,difficulty:this.difficulty,tickets:[...this.tickets],players,
       points:this.points.map(p=>({...p})),events:this.events.map(e=>({...e})),
-      vehicles:this.vehicles.map(({home,gunCooldown,...v})=>({...v,seats:[...v.seats]})),
+      vehicles:this.vehicles.map(({home,gunCooldown,runOverHits,...v})=>({...v,seats:[...v.seats]})),
       deployables:this.deployables.map(item=>({...item})),
       rockets:this.rockets.map(rocket=>({...rocket})),
       grenades:this.grenades.map(g=>({id:g.id,x:g.x,y:g.y,z:g.z,team:g.team,ownerId:g.owner,fuse:g.fuse,yaw:g.yaw||0})),winner:this.winner,

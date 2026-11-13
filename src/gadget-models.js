@@ -82,6 +82,21 @@ function build(kind,m) {
     box(0,.47,.01,.17,.035,.07,m.dark);
     wire([[-.13,.11,.12],[-.18,.3,.12],[-.14,.46,.06],[.03,.46,.06]],.008);
     box(-.11,.15,-.12,.055,.08,.02,m.white);
+  }else if(kind==='defibrillator-paddle'){
+    box(0,0,0,.105,.018,.14,m.metal);
+    box(0,.017,0,.112,.022,.145,m.orange);
+    for(const z of [-.045,.045])box(0,.050,z,.038,.060,.024,m.dark);
+    box(0,.084,0,.042,.025,.112,m.dark);
+    for(const z of [-.03,-.015,0,.015,.03])box(0,.098,z,.043,.004,.004,m.cloth);
+    box(-.028,.038,-.035,.019,.012,.025,m.red);
+    tube(0,.026,.075,.008,.025,m.dark,'z');
+  }else if(kind==='defibrillator-unit'){
+    box(0,0,0,.21,.095,.14,m.white);
+    box(0,-.04,0,.215,.02,.145,m.dark);
+    box(0,.050,0,.12,.012,.075,m.dark);
+    box(0,.057,0,.09,.004,.052,m.blue);
+    for(const x of [-.08,.08])box(x,.051,0,.022,.013,.03,m.orange);
+    for(const x of [-.065,.065])tube(x,.015,-.076,.011,.018,m.dark,'z');
   }else if(kind.startsWith('defibrillator')){
     const sides=kind==='defibrillator-left'?[-1]:kind==='defibrillator-right'?[1]:[-1,1];
     for(const side of sides){

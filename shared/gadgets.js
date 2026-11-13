@@ -184,7 +184,7 @@ export function damageDeployable(sim,item,amount,attacker) {
 }
 
 export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null) {
-  const rocket=kind==='rocket',radius=rocket?8:10;
+  const rocket=kind==='rocket',radius=rocket?9:10;
   sim.event('explosion',{...origin,kind,playerId:owner?.id,...(rocketId?{rocketId}:{})});
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team===team)continue;
