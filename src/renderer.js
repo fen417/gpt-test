@@ -941,7 +941,9 @@ export class GameRenderer {
       soldier.body.castShadow = !distant && !this.lowQuality && distSq < 48 * 48;
       soldier.rifle.scale.setScalar(1);
       const mustReset = reset || respawned || returning;
-      const reducedRate = !externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
+      const animationMoving=Math.hypot(player.x-(soldier.animationX??player.x),player.z-(soldier.animationZ??player.z))>.001||player.moveSpeed>.05;
+      soldier.animationX=player.x;soldier.animationZ=player.z;
+      const reducedRate = !animationMoving&&!externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
       const animationInterval = distant ? 1 / 20 : 1 / 30;
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
       if (!reducedRate || previousRig || mustReset || soldier.animationDt >= animationInterval) {
@@ -1030,8 +1032,8 @@ export class GameRenderer {
       if (event.type === 'explosion') {
         const x = event.x || 0, y = event.y ?? 0.6, z = event.z || 0;
         const flight=this.rocketMeshes.get(event.rocketId)?.userData.flight;
-        if(flight){flight.impact={x,y,z,at:this.clock,event};flight.from.copy(this.rocketMeshes.get(event.rocketId).position);}
-        else this.explosionVisual(event,state);
+        if(flight){const model=this.rocketMeshes.get(event.rocketId);flight.impact={x,y,z,at:this.clock,event,rendered:true};flight.from.set(x,y,z);model.position.set(x,y,z);model.visible=false;flight.exhaust.visible=false;flight.halo.visible=false;}
+        this.explosionVisual(event,state);
       }
     }
     while (this.seenEvents.size > 900) {
@@ -1235,7 +1237,9 @@ export class GameRenderer {
         flight.from.copy(model.position);flight.to.set(item.x,item.y,item.z);flight.phase=0;
         flight.interval=clamp(state.time-flight.sampleTime,1/60,.075);flight.sampleTime=state.time;
       }
-      flight.phase+=dt;model.position.lerpVectors(flight.from,flight.to,clamp(flight.phase/flight.interval,0,1));
+      // Network sampling has already interpolated the projectile. A second
+      // lerp here made it trail behind the authoritative impact and its sound.
+      model.position.set(item.x,item.y,item.z);
       model.rotation.y=Math.atan2(-item.vx,-item.vz);model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));
       model.visible=true;flight.exhaust.visible=true;flight.halo.visible=true;flight.halo.scale.setScalar(clamp(this.camera.position.distanceTo(model.position)*.006,.5,1.2));
       const flicker=1+Math.sin(this.clock*90)*.12;
@@ -1250,7 +1254,7 @@ export class GameRenderer {
         flight.impact??={x:model.position.x,y:model.position.y,z:model.position.z,at:this.clock};
         const impact=flight.impact,progress=clamp((this.clock-impact.at)/.05,0,1);
         model.position.set(lerp(flight.from.x,impact.x,progress),lerp(flight.from.y,impact.y,progress),lerp(flight.from.z,impact.z,progress));
-        model.visible=progress<1;flight.exhaust.visible=false;flight.halo.visible=false;
+        model.visible=progress<1&&!impact.rendered;flight.exhaust.visible=false;flight.halo.visible=false;
         if(progress===1&&impact.event&&!impact.rendered){this.explosionVisual(impact.event,state);impact.rendered=true;}
         if(this.clock-impact.at>.45){flight.line.removeFromParent();flight.line.geometry.dispose();model.removeFromParent();this.rocketMeshes.delete(id);continue;}
       }

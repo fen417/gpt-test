@@ -10,7 +10,7 @@ import { Reader, Writer } from '../shared/binary.js';
 
 const bounded=(value,min,max,fallback)=>Number.isFinite(Number(value))?Math.max(min,Math.min(max,Number(value))):fallback;
 const clean=(s,fallback,max=40)=>String(s??fallback).replace(/[<>\x00-\x1f\x7f]/g,'').trim().slice(0,max)||fallback;
-const pulses=['fire','interact','switchSeat','horn','orderAttack','orderDefend','orderFollow','grenade','reload','gadget','secondaryGadget'];
+const pulses=['fire','interact','switchSeat','horn','order','grenade','reload','gadget','secondaryGadget'];
 const token=()=>randomBytes(24).toString('base64url');
 const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 
@@ -164,6 +164,8 @@ export function createGameServer(options={}){
       }
       p.networkControlled=true;p.networkIdle=!s.client||now-s.lastInput>350;
       p.networkFrames=frames.length?frames:null;
+      const orderFrame=frames.find(f=>f.input.order);
+      p.orderAim=orderFrame?{yaw:orderFrame.input.yaw,pitch:orderFrame.input.pitch}:null;
       if(controls)sim.setInput(s.id,controls);
       else if(p.networkIdle)sim.setInput(s.id,{yaw:p.yaw,pitch:p.pitch});
       // Pulse actions must not repeat during a tick without a fresh command.

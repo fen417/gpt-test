@@ -4,7 +4,7 @@ import { thinkVehicleBot } from './vehicle-ai.js';
 import { thinkEquipment, liveBeacons } from './gadgets.js';
 import { findCover, moveBot, elevatedSpots } from './bot-navigation.js';
 import { rayVehicleArmor } from './vehicle-combat.js';
-import {SQUAD_NAMES} from './squads.js';
+import {SQUAD_NAMES,aimedSquadPoint} from './squads.js';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const angle=v=>Math.atan2(Math.sin(v),Math.cos(v));
@@ -59,17 +59,15 @@ export function updateBotTeams(sim){
   }
   for(const p of sim.players.values()){
     if(p.bot||!p.alive)continue;
-    const i=p.input,command=i.orderAttack?1:i.orderDefend?2:i.orderFollow?3:0;
-    if(command&&!p.botCommandHeld){
+    const command=p.input.order;
+    if(command&&!p.botCommandHeld&&sim.time>=(p.nextSquadCommandAt??0)){
       const squad=sim.botTeams[p.team].squads.find(s=>s.members.includes(p));
       if(squad&&p.squadLeader){
-        const candidates=sim.points.map(point=>({point,cost:Math.abs(angle(Math.atan2(-(point.x-p.x),-(point.z-p.z))-p.yaw))*100+distance(p,point)*.15}));
-        candidates.sort((a,b)=>a.cost-b.cost);
-        const point=command===2?[...sim.points].sort((a,b)=>distance(p,a)-distance(p,b))[0]:candidates[0]?.point;
-        squad.order={kind:command===3?'follow':command===2?'defend':'attack',pointId:command===3?null:point?.id,playerId:p.id,until:Infinity};
+        const point=aimedSquadPoint(sim,p);p.nextSquadCommandAt=sim.time+.3;
+        squad.order={kind:point?(point.owner===p.team?'defend':'attack'):'follow',pointId:point?.id??null,playerId:p.id,until:Infinity};
         sim.squadOrders??=new Map();sim.squadOrders.set(squad.id,squad.order);
-        if(point&&command!==3)squad.objective=point;
-        for(const ally of squad.members)if(ally.bot){const ai=state(sim,ally);ai.decideAt=0;ai.pathUntil=0;ai.goalUntil=0;ally.nextThink=0;ally.botJourney=null;ally.botBoarding=null;ally.botRideOrder=null;}
+        if(point)squad.objective=point;
+        for(const ally of squad.members)if(ally.bot){const ai=state(sim,ally);ai.decideAt=0;ai.pathUntil=0;ai.repathAt=0;ai.pathJob=null;ai.pathResult=null;ai.pathGoal=null;ai.pathJobGoal=null;ai.goalUntil=0;ai.goal=null;ai.cover=null;ai.flankDestination=null;ally.botPath=[];ally.nextThink=0;ally.botJourney=null;ally.botBoarding=null;ally.botRideOrder=null;}
         sim.event('squadOrder',{playerId:p.id,kind:squad.order.kind,pointId:squad.order.pointId});
       }
     }
@@ -169,10 +167,18 @@ function objectiveGoal(sim,p){
   const ai=p.ai,squad=ai.squad,order=squad?.order;
   if(order?.kind==='follow'){
     const leader=sim.players.get(order.playerId);
-    if(leader?.alive&&!leader.vehicleId){const side=ai.squadSlot%2?1:-1;return {x:leader.x+Math.cos(leader.yaw)*side*3+Math.sin(leader.yaw)*4,y:leader.y,z:leader.z-Math.sin(leader.yaw)*side*3+Math.cos(leader.yaw)*4};}
+    if(leader){const side=ai.squadSlot%2?1:-1;return {x:leader.x+Math.cos(leader.yaw)*side*3+Math.sin(leader.yaw)*4,y:leader.y,z:leader.z-Math.sin(leader.yaw)*side*3+Math.cos(leader.yaw)*4};}
   }
   const point=squad?.objective??sim.points[0];if(!point)return null;
   p.botObjective=point;
+  if(order?.pointId){
+    for(let n=0;n<12;n++){
+      const bearing=(ai.squadSlot+n*.31)*2.399,radius=CAPTURE_RADIUS*(order.kind==='defend'?.55:.3)*(1-n/16);
+      const x=point.x+Math.cos(bearing)*radius,z=point.z+Math.sin(bearing)*radius,y=sim.groundAt(x,z);
+      if(!sim.collides(x,z,y+.025))return {x,y,z};
+    }
+    return {x:point.x,y:sim.groundAt(point.x,point.z),z:point.z};
+  }
   const leader=squad?.leader;
   if(!order&&ai.role==='medic'&&leader?.alive&&leader!==p&&!leader.vehicleId&&distance(p,leader)>7&&distance(p,leader)<45&&distance(p,point)>CAPTURE_RADIUS){
     const side=ai.peekSide;
@@ -209,6 +215,11 @@ function objectiveGoal(sim,p){
 function decide(sim,p){
   const ai=p.ai,target=ai.contact,threat=target??ai.memory;
   ai.decideAt=sim.time+(sim.difficulty==='recruit'?.38:sim.difficulty==='veteran'?.18:.25)+(p.botSlot%4)*.025;
+  if(ai.squad?.order){
+    ai.cover=null;ai.flankDestination=null;ai.mode='squad-order';
+    if(!ai.goal||sim.time>=(ai.goalUntil??0)||ai.squad.order.kind==='follow'){ai.goal=objectiveGoal(sim,p);ai.goalUntil=sim.time+1;}
+    p.botGoal=ai.goal;return;
+  }
   if(ai.cover&&sim.time>(ai.coverUntil??0)){ai.lastCover=ai.cover;ai.cover=null;ai.peekSide*=-1;}
   if(threat&&(p.hp<45*ai.caution||ai.pressure>.5/ai.caution||target&&distance(p,target)>18)&&!ai.cover&&sim.time>=(ai.coverSearchAt??0)){
     ai.coverSearchAt=sim.time+1.4/ai.caution;
@@ -286,6 +297,12 @@ export function thinkInfantryBot(sim,p,dt){
   }
   if(p.gadgetAction&&p.gadgetAction!=='repair'){ai.mode='use-equipment';return;}
   if(sim.time>=ai.decideAt)decide(sim,p);
+  if(ai.squad?.order){
+    const target=ai.contact;if(target)aim(sim,p,target,dt);
+    if(ai.goal)moveBot(sim,p,ai.goal,dt,{sprint:!target,look:!target});
+    if(p.ammo===0){p.input.reload=true;p.input.fire=false;}
+    return;
+  }
   if(equipment(sim,p,dt))return;
   if(!ai.squad?.order&&!ai.contact&&ai.pressure<.25&&thinkVehicleBot(sim,p,dt)){ai.mode='board';return;}
   const target=ai.contact;

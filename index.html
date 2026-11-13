@@ -13,7 +13,7 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu menu-home">
-    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.15</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
+    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.16</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
     <div class="home-content">
       <section class="home-hero" aria-labelledby="home-title"><div class="home-kicker"><i></i> ПЕХОТА. ТЕХНИКА. ЗАХВАТ ТЕРРИТОРИИ.</div><h1 id="home-title">КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1><p>Свой отряд. Свой маршрут. Твой следующий бой.</p>
         <nav class="home-nav" aria-label="Главное меню"><button id="open-solo" class="home-play" aria-haspopup="dialog"><span class="nav-index">01</span><span><b>Одиночная игра</b><small>Твой сектор. Твои правила.</small></span><span class="nav-arrow">↗</span></button><button id="join-toggle" class="home-play" aria-haspopup="dialog"><span class="nav-index">02</span><span><b>Сетевая игра</b><small>Найти бой или собрать друзей</small></span><span class="nav-arrow">↗</span></button><button id="menu-settings" class="home-play" aria-haspopup="dialog"><span class="nav-index">03</span><span><b>Настройки</b><small>Изображение, звук и управление</small></span><span class="nav-arrow">↗</span></button></nav>
@@ -34,7 +34,7 @@
           <button class="class-card" data-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>Маяк высадки</small></button>
         </div>
         <div class="field-label weapon-select-label">ОРУЖИЕ КЛАССА</div>
-        <section class="weapon-preview-stage" aria-label="Просмотр оружия"><div class="weapon-preview-toolbar"><div class="weapon-preview-slots" role="group" aria-label="Оружие для просмотра"><button type="button" data-preview-slot="primary" aria-pressed="true">Основное</button><button type="button" data-preview-slot="sidearm" aria-pressed="false">Пистолет</button></div><button id="weapon-preview-reset" type="button" aria-label="Сбросить поворот оружия">Сбросить ракурс ↺</button></div><canvas id="weapon-preview" tabindex="0" aria-label="3D-модель выбранного оружия"></canvas><div class="weapon-preview-caption"><strong id="weapon-preview-name"></strong><span id="weapon-preview-hint">Потяни, чтобы повернуть</span></div></section>
+        <section class="weapon-preview-stage" aria-label="Просмотр оружия"><div class="weapon-preview-toolbar"><div class="weapon-preview-slots" role="group" aria-label="Оружие для просмотра"><button type="button" data-preview-slot="primary" aria-pressed="true">Основное</button><button type="button" data-preview-slot="sidearm" aria-pressed="false">Пистолет</button></div><button id="weapon-preview-reset" class="weapon-preview-reset" type="button" aria-label="Сбросить поворот оружия">Сбросить ракурс ↺</button></div><canvas id="weapon-preview" class="weapon-preview-canvas" tabindex="0" aria-label="3D-модель выбранного оружия"></canvas><div class="weapon-preview-caption"><strong id="weapon-preview-name"></strong><span id="weapon-preview-hint">Потяни, чтобы повернуть</span></div></section>
         <div id="menu-weapons" class="weapon-picker" role="group" aria-label="Выбор оружия"></div>
         <label class="sidearm-picker">ПИСТОЛЕТ <select id="menu-sidearm"></select></label>
 </section></div>
@@ -70,7 +70,7 @@
     <button id="revive-control-hint" type="button" class="revive-control-hint hidden">ТЕБЯ ВОСКРЕСИЛИ<span>НАЖМИ, ЧТОБЫ ВЕРНУТЬСЯ В БОЙ</span></button>
     <div id="vehicle-prompt" class="vehicle-prompt hidden"></div><div id="capture-notice" class="capture-notice"></div><div id="damage-flash" class="damage-flash"></div>
     <div class="bottom-left"><div class="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas><span class="map-north">N</span><span id="minimap-name" class="map-name">SECTOR 09</span></div><div class="health-line"><span>✚</span><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div></div><span id="protection-label" class="protection-label"></span></div>
-    <aside class="squad-hud" aria-label="Твой отряд"><header><span id="squad-hud-name">ОТРЯД</span><small id="squad-hud-key">O · ОТРЯДЫ</small></header><div id="squad-hud-members"></div></aside><div class="bottom-center"><span id="gadget-label">Q · ЯЩИК ПАТРОНОВ</span><span id="secondary-gadget-label">X · ПТ-90</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
+    <aside class="squad-hud" aria-label="Твой отряд"><header><span id="squad-hud-name">ОТРЯД</span><small id="squad-hud-key">O · ОТРЯДЫ</small></header><p id="squad-order-text" aria-live="polite"></p><div id="squad-hud-members"></div></aside><div class="bottom-center"><span id="gadget-label">3 · ЯЩИК ПАТРОНОВ</span><span id="secondary-gadget-label">X · ПТ-90</span><span id="grenade-label">G · ГРАНАТА</span><span id="reload-label">R · ПЕРЕЗАРЯДКА</span></div>
     <div class="bottom-right"><span id="weapon-name">AR-4</span><div class="ammo-count"><strong id="ammo">30</strong><span>/ <b id="reserve">150</b></span></div><small id="ammo-status">АВТОМАТИЧЕСКИЙ ОГОНЬ</small><div class="hud-stats"><span id="kd">0 ОЧК · 0/0/0</span><span id="fps">60 FPS</span></div></div>
     <div id="scoreboard" class="scoreboard hidden">
       <div class="scoreboard-head"><h2>ТАБЛИЦА МАТЧА</h2><span id="scoreboard-tickets">600 : 600</span></div>
@@ -109,7 +109,7 @@
       </section>
       <section id="settings-controls" class="settings-page hidden" role="tabpanel" aria-labelledby="tab-controls" tabindex="0"><div class="settings-page-heading"><h3>Управление</h3><p>Твои клавиши. Твоя реакция.</p></div>
         <label class="setting-row" for="sensitivity"><span><b>Чувствительность мыши</b></span><span class="setting-control"><input id="sensitivity" type="range" min="0.3" max="2" step="0.05" value="0.8" /><output for="sensitivity" data-range-value="sensitivity"></output></span></label>
-        <div class="bindings-heading"><h4>Клавиши</h4><button type="button" id="reset-binds" class="panel-secondary">Сбросить</button></div><div id="keybinds-grid" class="keybinds-grid" role="group" aria-label="Переназначение клавиш"></div><p id="controls-help" class="controls-help"></p>
+        <button id="keyboard-fullscreen" type="button" class="panel-secondary">Игровой полноэкранный режим ↗</button><p class="controls-help">Защищает Ctrl+W и другие сочетания браузера при разрешённом захвате клавиатуры. Esc — выход.</p><div class="bindings-heading"><h4>Клавиши</h4><button type="button" id="reset-binds" class="panel-secondary">Сбросить</button></div><div id="keybinds-grid" class="keybinds-grid" role="group" aria-label="Переназначение клавиш"></div><p id="controls-help" class="controls-help"></p>
       </section>
     </div></div><footer class="settings-footer"><div class="settings-session"><button id="pause-squads" class="panel-secondary hidden" data-open-squads>Отряды</button><button id="leave" class="panel-secondary">Покинуть бой</button><button id="unlocked" class="panel-secondary">Без захвата мыши</button></div><span class="settings-save-note">Изменения сохраняются автоматически</span><button id="resume" class="panel-primary">Готово <span>↗</span></button></footer>
   </div></section>
@@ -183,56 +183,11 @@
       </div>
     </div>
   </section>
-  <section id="lobby" class="overlay lobby-overlay hidden" aria-label="Лобби мультиплеера">
+  <section id="lobby" class="overlay lobby-overlay hidden" aria-label="Сетевое лобби">
     <div class="lobby-card">
-      <header class="lobby-header">
-        <div>
-          <div class="eyebrow"><span></span> СЕТЕВОЕ ЛОББИ // СЕКТОР 09</div>
-          <h2 id="lobby-title">СБОР БОЕВОЙ ГРУППЫ</h2>
-          <p id="lobby-status" class="lobby-sub">Ожидание подключения бойцов…</p>
-        </div>
-        <div class="lobby-code-box">
-          <small>КОМНАТА</small>
-          <div class="lobby-code-row">
-            <strong id="lobby-code">Операция</strong>
-            <button type="button" id="lobby-copy" class="small-button">ССЫЛКА НА ИГРУ</button>
-          </div>
-          <span class="lobby-join-hint">Друзья найдут эту комнату в браузере комнат, в том числе во время боя</span>
-        </div>
-      </header>
+      <header class="lobby-header"><div class="lobby-heading"><span id="lobby-title" class="section-kicker">СЕТЕВАЯ ИГРА / ЛОББИ</span><h2 id="lobby-code">Операция</h2><p id="lobby-status" class="lobby-sub">Собираем бойцов…</p></div><div class="lobby-header-actions"><span id="lobby-role-badge" class="lobby-role-badge">Участник</span><button type="button" id="lobby-copy" class="panel-secondary">Скопировать ссылку ↗</button></div></header>
       <div class="lobby-grid">
-        <div class="lobby-teams">
-          <div class="lobby-team friendly-team">
-            <div class="lobby-team-head">
-              <span>ОТРЯД «АЛЬФА» · СОЮЗНИКИ</span>
-              <small id="lobby-team0-count">0 бойцов</small>
-            </div>
-            <div id="lobby-team-0" class="lobby-roster"></div>
-          </div>
-          <div class="lobby-team enemy-team">
-            <div class="lobby-team-head">
-              <span>ОТРЯД «БРАВО» · ПРОТИВНИК</span>
-              <small id="lobby-team1-count">0 бойцов</small>
-            </div>
-            <div id="lobby-team-1" class="lobby-roster"></div>
-          </div>
-        </div>
-        <aside class="lobby-sidebar">
-          <div class="deploy-box">
-            <div class="deploy-box-title"><span>ВАША СТОРОНА И СПЕЦИАЛИЗАЦИЯ</span><small id="lobby-role-badge">СОЗДАТЕЛЬ КОМНАТЫ</small></div>
-            <button type="button" id="lobby-switch-team" class="outline-button lobby-team-btn">СМЕНИТЬ КОМАНДУ ⇄</button>
-            <div class="deploy-classes lobby-classes">
-              <button type="button" class="deploy-class-btn active" data-lobby-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>AR-416</small></button>
-              <button type="button" class="deploy-class-btn" data-lobby-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>MCX-9</small></button>
-              <button type="button" class="deploy-class-btn" data-lobby-class="support" aria-pressed="false"><span>⚒</span><b>Инженер</b><small>MG-36</small></button>
-              <button type="button" class="deploy-class-btn" data-lobby-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
-            </div>
-            <div id="lobby-weapons" class="weapon-picker compact" role="group" aria-label="Выбор оружия в лобби"></div>
-            <label class="sidearm-picker">ПИСТОЛЕТ <select id="lobby-sidearm"></select></label>
-          </div>
-          <div id="lobby-host-controls" class="deploy-box">
-            <div class="deploy-box-title"><span>ПАРАМЕТРЫ ОПЕРАЦИИ</span><small>НАСТРОЙКИ КОМНАТЫ</small></div>
-            <div class="operation-options lobby-options">
+        <div class="lobby-operation-column"><section class="lobby-operation-card"><div class="lobby-section-heading"><h3><span>01</span> Операция</h3><span>Захват территории</span></div><div class="lobby-map-summary"><img id="lobby-map-art" alt="" width="160" height="100" /><div><span class="section-kicker">ПОЛЕ БОЯ</span><h4 id="lobby-map-name"></h4><p id="lobby-map-info"></p></div></div><p id="lobby-bot-summary" class="lobby-operation-facts"></p><div id="lobby-host-controls" class="lobby-settings"><div class="lobby-settings-label">Параметры матча <span>Доступны создателю</span></div><div class="operation-options lobby-options">
               <label class="map-choice" for="lobby-map">КАРТА<select id="lobby-map"></select></label>
               <label for="lobby-difficulty">СЛОЖНОСТЬ БОТОВ
                 <select id="lobby-difficulty">
@@ -242,17 +197,18 @@
                 </select>
               </label>
               <label for="lobby-population">БОТЫ В МАТЧЕ
-                <select id="lobby-population"><option value="0" >Без ботов</option><option value="1" >1 ботов</option><option value="2" >2 ботов</option><option value="3" >3 ботов</option><option value="4" >4 ботов</option><option value="5" >5 ботов</option><option value="6" >6 ботов</option><option value="7" >7 ботов</option><option value="8" selected>8 ботов</option><option value="9" >9 ботов</option><option value="10" >10 ботов</option><option value="11" >11 ботов</option><option value="12" >12 ботов</option><option value="13" >13 ботов</option><option value="14" >14 ботов</option><option value="15" >15 ботов</option><option value="16" >16 ботов</option><option value="17" >17 ботов</option><option value="18" >18 ботов</option><option value="19" >19 ботов</option><option value="20" >20 ботов</option><option value="21" >21 ботов</option><option value="22" >22 ботов</option><option value="23" >23 ботов</option><option value="24" >24 ботов</option><option value="25" >25 ботов</option><option value="26" >26 ботов</option><option value="27" >27 ботов</option><option value="28" >28 ботов</option><option value="29" >29 ботов</option><option value="30" >30 ботов</option></select>
+                <select id="lobby-population"><option value="0" >Без ботов</option><option value="1" >1</option><option value="2" >2</option><option value="3" >3</option><option value="4" >4</option><option value="5" >5</option><option value="6" >6</option><option value="7" >7</option><option value="8" selected>8</option><option value="9" >9</option><option value="10" >10</option><option value="11" >11</option><option value="12" >12</option><option value="13" >13</option><option value="14" >14</option><option value="15" >15</option><option value="16" >16</option><option value="17" >17</option><option value="18" >18</option><option value="19" >19</option><option value="20" >20</option><option value="21" >21</option><option value="22" >22</option><option value="23" >23</option><option value="24" >24</option><option value="25" >25</option><option value="26" >26</option><option value="27" >27</option><option value="28" >28</option><option value="29" >29</option><option value="30" >30</option></select>
               </label>
+            </div></div></section><div class="lobby-section-heading lobby-teams-heading"><h3><span>02</span> Состав команд</h3><span id="lobby-capacity"></span></div><div class="lobby-teams"><section class="lobby-team" id="lobby-side-0" aria-labelledby="lobby-team0-label"><header class="lobby-team-head"><span class="lobby-side-letter">A</span><div><h3 id="lobby-team0-label">Сторона A</h3><small id="lobby-team0-count">Нет игроков</small></div><span class="lobby-current-label">Твоя сторона</span></header><div id="lobby-team-0" class="lobby-roster"></div></section><section class="lobby-team" id="lobby-side-1" aria-labelledby="lobby-team1-label"><header class="lobby-team-head"><span class="lobby-side-letter">B</span><div><h3 id="lobby-team1-label">Сторона B</h3><small id="lobby-team1-count">Нет игроков</small></div><span class="lobby-current-label">Твоя сторона</span></header><div id="lobby-team-1" class="lobby-roster"></div></section></div></div>
+        <section class="lobby-loadout-card"><div class="lobby-section-heading"><h3><span>03</span> Твой боец</h3><button type="button" id="lobby-switch-team" class="lobby-switch-button">Сменить сторону ⇄</button></div><div class="deploy-classes lobby-classes">
+              <button type="button" class="deploy-class-btn active" data-lobby-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>AR-416</small></button>
+              <button type="button" class="deploy-class-btn" data-lobby-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>MCX-9</small></button>
+              <button type="button" class="deploy-class-btn" data-lobby-class="support" aria-pressed="false"><span>⚒</span><b>Инженер</b><small>MG-36</small></button>
+              <button type="button" class="deploy-class-btn" data-lobby-class="recon" aria-pressed="false"><span>◎</span><b>Разведчик</b><small>DMR-12</small></button>
             </div>
-          </div>
-          <div class="deploy-box deploy-actions">
-            <p id="lobby-wait-note" class="lobby-wait-note">Когда все игроки будут готовы, начните операцию.</p>
-            <button type="button" id="lobby-start" class="deploy-button"><span>НАЧАТЬ МАТЧ</span><span>↗</span></button>
-            <button type="button" id="lobby-leave" class="outline-button">Покинуть комнату</button>
-          </div>
-        </aside>
+            <section class="weapon-preview-stage" aria-label="Просмотр оружия в лобби"><div class="weapon-preview-toolbar"><div class="weapon-preview-slots" role="group" aria-label="Оружие для просмотра"><button type="button" data-preview-slot="primary" aria-pressed="true">Основное</button><button type="button" data-preview-slot="sidearm" aria-pressed="false">Пистолет</button></div><button id="lobby-weapon-preview-reset" class="weapon-preview-reset" type="button" aria-label="Сбросить поворот оружия">Сбросить ракурс ↺</button></div><canvas id="lobby-weapon-preview" class="weapon-preview-canvas" tabindex="0" aria-label="3D-модель выбранного оружия"></canvas><div class="weapon-preview-caption"><strong id="lobby-weapon-preview-name"></strong><span id="lobby-weapon-preview-hint">Потяни, чтобы повернуть</span></div></section><div class="field-label">ОСНОВНОЕ ОРУЖИЕ</div><div id="lobby-weapons" class="weapon-picker" role="group" aria-label="Выбор оружия в лобби"></div><label class="sidearm-picker">ПИСТОЛЕТ<select id="lobby-sidearm"></select></label></section>
       </div>
+      <footer class="lobby-footer"><button type="button" id="lobby-leave" class="panel-secondary">← Покинуть комнату</button><p id="lobby-wait-note">Ожидаем запуска операции.</p><button type="button" id="lobby-start" class="panel-primary"><span>Начать операцию</span><span>↗</span></button></footer>
     </div>
   </section>
   <section id="result" class="overlay hidden">

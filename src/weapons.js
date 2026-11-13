@@ -1124,7 +1124,11 @@ export function createWeaponRig(owner = {}) {
     // Menus use a rigid copy of the actual equipped model, without hands,
     // sleeves, muzzle effects or gadget geometry. GPU assets stay shared.
     update({classId,weaponId,reloadPhase:1,reloadEmpty:false});
-    return (visiblePistol?visiblePistol.root:rifleAssembly).clone(true);
+    const model=(visiblePistol?visiblePistol.root:rifleAssembly).clone(true);
+    // The gameplay rig uses VIEWMODEL_LAYER. Standalone preview cameras and
+    // their lights use the default layer; change the copy, never the live rig.
+    model.traverse(object=>object.layers.set(0));model.visible=true;
+    return model;
   }
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},

@@ -4,6 +4,18 @@ export const SQUAD_COLOR='#91dc78';
 export const sameSquad=(a,b)=>Boolean(a&&b&&a.team===b.team&&a.squadId>0&&a.squadId===b.squadId);
 export const squadMembers=(players,team,id)=>[...players].filter(p=>p.team===team&&p.squadId===id);
 
+export function aimedSquadPoint(sim,p){
+  const yaw=p.orderAim?.yaw??p.input?.yaw??p.yaw,pitch=p.orderAim?.pitch??p.input?.pitch??p.pitch;
+  const originY=p.y+(p.crouching?1.05:1.58),cos=Math.cos(pitch),forward={x:-Math.sin(yaw)*cos,y:Math.sin(pitch),z:-Math.cos(yaw)*cos};
+  let best=null,alignment=Math.cos(.115);
+  for(const point of sim.points){
+    const dx=point.x-p.x,dy=(point.y??sim.groundAt(point.x,point.z))+5-originY,dz=point.z-p.z,length=Math.hypot(dx,dy,dz);
+    if(length<1)continue;const dot=(dx*forward.x+dy*forward.y+dz*forward.z)/length;
+    if(dot>alignment){alignment=dot;best=point;}
+  }
+  return best;
+}
+
 export function reconcileSquads(sim){
   for(let team=0;team<2;team++){
     const members=[...sim.players.values()].filter(p=>p.team===team),groups=Array.from({length:SQUAD_NAMES.length},()=>[]),unassigned=[];

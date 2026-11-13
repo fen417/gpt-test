@@ -20,17 +20,18 @@ export function mountSquadUI({getState,getLocalId,getKey,getOrderKeys,onOpen,onC
   function update(state=getState(),localId=getLocalId()){
     const local=state?.players.find(p=>p.id===localId);if(!local)return;
     const team=state.players.filter(p=>p.team===local.team),own=team.filter(p=>sameSquad(local,p)).sort((a,b)=>Number(b.squadLeader)-Number(a.squadLeader));
-    const sig=JSON.stringify(own.map(p=>[p.id,p.name,p.classId,p.hp,p.alive,p.squadLeader]))+local.squadId+getKey();
+    const sig=JSON.stringify(own.map(p=>[p.id,p.name,p.classId,p.hp,p.alive,p.squadLeader]))+local.squadId+getKey()+local.orderKind+local.orderPointId;
     if(sig!==hudSignature){
       hudSignature=sig;get('squad-hud-name').textContent=`${SQUAD_NAMES[local.squadId-1]??'ОТРЯД'} · ${own.length}/${SQUAD_SIZE}`;
       get('squad-hud-key').textContent=`${getKey()} · ОТРЯДЫ`;
       get('squad-hud-members').replaceChildren(...own.map(p=>memberRow(p,localId)));
+      get('squad-order-text').textContent=local.orderKind==='follow'?'ЗА ЛИДЕРОМ':local.orderPointId?`${local.orderKind==='defend'?'ОБОРОНА':'ЗАХВАТ'} · ${local.orderPointId}`:'';
     }
     if(!get('squad-panel').open)return;
     const panelSig=JSON.stringify(team.map(p=>[p.id,p.name,p.classId,p.hp,p.alive,p.squadId,p.squadLeader]))+pending+JSON.stringify(getOrderKeys());
     if(panelSignature===panelSig)return;panelSignature=panelSig;
     const keys=getOrderKeys();
-    get('squad-current').textContent=local.squadLeader?`Ты — лидер. ${keys.attack}: штурм · ${keys.defend}: оборона · ${keys.follow}: за мной.`:'Команды ботам отдаёт лидер отряда.';
+    get('squad-current').textContent=local.squadLeader?`${keys.order}: на свою точку — оборона, на вражескую — захват, вне точек — за мной.`:'Команды ботам отдаёт лидер отряда.';
     const cards=SQUAD_NAMES.map((name,index)=>{
       const id=index+1,members=team.filter(p=>p.squadId===id).sort((a,b)=>Number(b.squadLeader)-Number(a.squadLeader)),current=local.squadId===id;
       const card=el('article','squad-card'+(current?' current':'')),header=el('header','');header.append(el('h3','',name),el('span','',`${members.length}/${SQUAD_SIZE}`));card.append(header);

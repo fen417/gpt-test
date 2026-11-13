@@ -1,4 +1,4 @@
-# Binary protocol 24
+# Binary protocol 25
 
 All integers use little-endian byte order. Dynamic packets are `Uint8Array`/`ArrayBuffer`, encoded with bounds-checked `DataView`. WebSocket compression is disabled. Maximum client payload: 8192 bytes. JSON is reserved for control messages; each client control carries protocol + map layout revision.
 
@@ -32,10 +32,12 @@ Events have numeric type, event ID u32, simulation time f32, presence mask and t
 
 Before snapshot encoding, bufferedAmount over 8 KiB skips an obsolete optional snapshot. Event sending pauses over 8 KiB while events remain in the log. A queue above 256 KiB or congestion longer than five seconds causes reconnect instead of unbounded latency. Slow clients cannot block the room. The dictionary and snapshot history are per connection; prepared quantized world rows are shared across recipients for each snapshot cadence.
 
-JSON control types also have numeric wire IDs: hello=16, rooms=17, list=18, create=19, join=20, resume=21, welcome=22, lobby=23, settings=24, loadout=25, start=26, init=27, respawn=28, leave=29, left=30, error=31, stats=32. Human-readable names are used only inside code. Room listing is pushed only when room composition/settings/match status change. Requests use requestId. An opaque internal room ID is selected by clicking the listing, never typed as a join code. Resume tokens are random 192-bit secrets stored per tab, sent only over the same secure connection, and never included in public room lists/metrics.
+JSON control types also have numeric wire IDs: hello=16, rooms=17, list=18, create=19, join=20, resume=21, welcome=22, lobby=23, settings=24, loadout=25, start=26, init=27, respawn=28, leave=29, left=30, error=31, stats=32, squad=33. Human-readable names are used only inside code. Room listing is pushed only when room composition/settings/match status change. Requests use requestId. An opaque internal room ID is selected by clicking the listing, never typed as a join code. Resume tokens are random 192-bit secrets stored per tab, sent only over the same secure connection, and never included in public room lists/metrics.
 
 Metrics count actual transmitted application bytes plus WS framing, and include every recipient. They exclude TCP/TLS/IP overhead. No bandwidth/FPS claim follows from the format alone: measure the real room on the actual Northflank resource.
 
 Client presentation uses a monotonic shared playback clock, with a slowly adapted 55–140 ms buffer (60 ms at steady 20 Hz). RTT is measured separately and is not added again to the playback buffer. Per-entity histories share that clock; bounded extrapolation lasts at most 80 ms. Multiple snapshots received before a frame are all decoded for delta baselines, but only the latest authority is replayed. Event sent/ACK cursors are separate: reliable WebSocket delivery does not resend in-flight events when new shots arrive. Old cosmetic shot/impact/horn events may be omitted after 500 ms; damage, kills and match outcomes remain reliable.
 
 Protocol 24 adds public player squadId/squadLeader fields and deployable squadId. The squad control request changes the authenticated player's squad during a match; the server checks team membership and the four-person capacity before accepting it. Client and server must be updated together.
+
+Protocol 25 adds the contextual order input flag, player orderKind/orderPointId, reviveSeq, jumpFatigue and jumpCooldownAt. Local movement prediction shares jump fatigue/cooldown with authority. Motion updates use 20 Hz at all distances; projectile events and sound follow presentation time.

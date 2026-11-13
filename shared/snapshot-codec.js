@@ -7,16 +7,16 @@ const CONTROL_NAMES=Object.fromEntries(Object.entries(CONTROL).map(([name,id])=>
 export function encodeControl(message){const type=CONTROL[message.type];if(type===undefined)throw Error('Unknown control message');return JSON.stringify({...message,type});}
 export function decodeControl(value){const data=JSON.parse(value);if(!data||typeof data!=='object'||!Object.hasOwn(CONTROL_NAMES,data.type))throw Error('Некорректное сообщение. Обновите игру.');return {...data,type:CONTROL_NAMES[data.type]};}
 export const INPUT_STEP=16667/1e6;
-export const INPUT_FLAGS=['sprint','crouch','jump','fire','aim','reload','gadget','secondaryGadget','grenade','interact','switchSeat','horn','orderAttack','orderDefend','orderFollow'];
+export const INPUT_FLAGS=['sprint','crouch','jump','fire','aim','reload','gadget','secondaryGadget','grenade','interact','switchSeat','horn','order'];
 const BOOLS=['alive','reloading','crouch','sliding','sprint','aim','grounded','bot','protected','spotted'];
-const PRIVATE=new Set(['vy','slideVx','slideVz','slideAt','slideCooldownAt','controlFlags','velocityX','velocityZ','moveSpeed']);
+const PRIVATE=new Set(['vy','slideVx','slideVz','slideAt','slideCooldownAt','controlFlags','velocityX','velocityZ','moveSpeed','jumpFatigue','jumpCooldownAt']);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),finite=v=>Number.isFinite(Number(v))?Number(v):0;
 const specs=rows=>rows.trim().split(/\s+/).map(row=>{const [key,type]=row.split(':');return {key,type};});
 export const SCHEMAS={
-  players:specs(`name:r team:u8 squadId:u8 squadLeader:u8 classId:r weaponId:r primaryWeaponId:r sidearmId:r weaponSlot:u8 equipAt:f32
+  players:specs(`name:r team:u8 squadId:u8 squadLeader:u8 orderKind:r orderPointId:r reviveSeq:u16 classId:r weaponId:r primaryWeaponId:r sidearmId:r weaponSlot:u8 equipAt:f32
     x:x y:y z:z yaw:a pitch:a motionAt:f32 hp:u8 ammo:u8 reserve:u16 kills:u16 deaths:u16 assists:u16 score:u32 respawnAt:f32
     reloadAt:f32 shotSeq:u16 spread:s slideYaw:a gadgetAt:f32 secondaryAt:f32 rockets:u8 heldGadget:r gadgetAction:r
-    gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v`),
+    gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v jumpFatigue:s jumpCooldownAt:f32`),
   vehicles:specs(`type:r team:u8 x:x y:y z:z yaw:a motionAt:f32 bodyPitch:a bodyRoll:a scaleX:scale scaleY:scale scaleZ:scale
     rotationX:a rotationZ:a hp:u16 maxHp:u16 speed:v steer:signed heat:s overheated:u8 aimYaw:a aimPitch:a
     gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32`),
@@ -77,7 +77,7 @@ export function prepareSnapshot(state,size,previous){
         equipAt:clock(state.time,source.equipTime),respawnAt:clock(state.time,source.respawnIn),
         reloadAt:source.reloading?clock(state.time,(1-source.reloadProgress)*getWeapon(source.classId,source.weaponId).reload):0,
         gadgetAt:clock(state.time,source.gadgetCooldown),secondaryAt:clock(state.time,source.secondaryCooldown),actionAt:clock(state.time,source.gadgetActionRemaining),
-        slideAt:clock(state.time,source.slideTime),slideCooldownAt:clock(state.time,source.slideCooldown)};
+        slideAt:clock(state.time,source.slideTime),slideCooldownAt:clock(state.time,source.slideCooldown),jumpCooldownAt:clock(state.time,source.jumpCooldown)};
       else if(kind==='vehicles')item={...source,motionAt:Math.fround(state.time),scaleX:source.modelScale?.x??1,scaleY:source.modelScale?.y??1,scaleZ:source.modelScale?.z??1,
         rotationX:source.modelRotation?.x??0,rotationZ:source.modelRotation?.z??0,respawnAt:clock(state.time,source.respawnIn),wreckAt:clock(state.time,source.wreckTime)};
       else if(kind==='grenades')item={...source,fuseAt:clock(state.time,source.fuse)};else if(kind==='rockets')item={...source,lifeAt:clock(state.time,source.life)};
@@ -98,7 +98,7 @@ export function materializeSnapshot(frame,context,time=frame.time){
     if(kind==='players'){
       BOOLS.forEach((key,i)=>p[key]=Boolean(p.flags&(1<<i)));
       p.equipTime=Math.max(0,p.equipAt-time);p.respawnIn=Math.max(0,p.respawnAt-time);p.gadgetCooldown=Math.max(0,p.gadgetAt-time);p.secondaryCooldown=Math.max(0,p.secondaryAt-time);p.gadgetActionRemaining=Math.max(0,p.actionAt-time);
-      p.reloadProgress=p.reloading?clamp(1-(p.reloadAt-time)/getWeapon(p.classId,p.weaponId).reload,0,1):0;p.slideTime=Math.max(0,p.slideAt-time);p.slideCooldown=Math.max(0,p.slideCooldownAt-time);
+      p.reloadProgress=p.reloading?clamp(1-(p.reloadAt-time)/getWeapon(p.classId,p.weaponId).reload,0,1):0;p.slideTime=Math.max(0,p.slideAt-time);p.slideCooldown=Math.max(0,p.slideCooldownAt-time);p.jumpCooldown=Math.max(0,p.jumpCooldownAt-time);
       p.jumpHeld=Boolean(p.controlFlags&1);p.crouchHeld=Boolean(p.controlFlags&2);p.wasSprinting=Boolean(p.controlFlags&4);p.crouching=p.crouch;
     }else if(kind==='vehicles'){
       p.modelScale={x:p.scaleX,y:p.scaleY,z:p.scaleZ};p.modelRotation={x:p.rotationX,y:0,z:p.rotationZ};p.respawnIn=Math.max(0,p.respawnAt-time);p.wreckTime=Math.max(0,p.wreckAt-time);
@@ -120,8 +120,9 @@ export class SnapshotEncoder{
         if((kind==='grenades'||kind==='rockets')&&own&&d>(scoped?320:kind==='grenades'?65:200)&&at('ownerId')!==localId&&at('owner')!==localId)continue;
         const key=kind+'/'+id;
         if(!full&&old&&id!==localId&&['players','vehicles'].includes(kind)){
-          const facing=own&&Math.abs(Math.atan2(Math.sin(Math.atan2(-(at('x')-own.x),-(at('z')-own.z))-own.yaw),Math.cos(Math.atan2(-(at('x')-own.x),-(at('z')-own.z))-own.yaw)))<1.25;
-          const hz=scoped||current.active.has(id)||d<150||facing&&d<300?20:10;
+          // Distant infantry need the same motion cadence as nearby fighters.
+          // Lowering this to 10 Hz made the interpolation buffer run dry.
+          const hz=20;
           motion=current.time>=(this.due.get(key)??0);if(motion)this.due.set(key,current.time+1/hz);
         }
         if(kind==='players'&&id!==localId)row=row.map((v,i)=>PRIVATE.has(schema[i].key)?0:v);

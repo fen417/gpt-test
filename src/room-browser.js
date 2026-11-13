@@ -1,10 +1,6 @@
 import { MAPS } from '../shared/world.js';
+import {MAP_ART as mapArt} from './map-art.js';
 
-const mapArt={
-  port:new URL('./assets/maps/port.svg',import.meta.url).href,
-  quarry:new URL('./assets/maps/quarry.svg',import.meta.url).href,
-  village:new URL('./assets/maps/village.svg',import.meta.url).href,
-};
 const difficulties={recruit:'Новобранцы',regular:'Обычные бойцы',veteran:'Ветераны'};
 const modes={conquest:'Захват территории'};
 const get=id=>document.getElementById(id);

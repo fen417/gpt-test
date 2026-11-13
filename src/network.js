@@ -9,7 +9,7 @@ import { Reader, Writer } from '../shared/binary.js';
 export { sanitizeInput };
 const noop=()=>{},clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const difference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
-const pulses=['jump','reload','gadget','secondaryGadget','grenade','interact','switchSeat','horn','orderAttack','orderDefend','orderFollow'];
+const pulses=['jump','reload','gadget','secondaryGadget','grenade','interact','switchSeat','horn','order'];
 const safeStorage={get(key){try{return sessionStorage.getItem(key);}catch{return null;}},set(key,value){try{value?sessionStorage.setItem(key,value):sessionStorage.removeItem(key);}catch{}}};
 export function normalizeServerUrl(value){
   const url=new URL(String(value).trim());if(!['ws:','wss:'].includes(url.protocol)||url.username||url.password)throw Error('Укажите публичный WSS-адрес игрового сервера.');
@@ -217,14 +217,28 @@ export class Multiplayer{
     let left=this.frames[0],right=latest;
     for(let i=1;i<this.frames.length;i++)if(this.frames[i].frame.time>=target){left=this.frames[i-1];right=this.frames[i];break;}else left=this.frames[i];
     const span=right.frame.time-left.frame.time,alpha=span>0?clamp((target-left.frame.time)/span,0,1):1;
-    const a=left.state,b=right.state,render={...this.state,time:Math.max(0,target),events:this.events};
-    for(const kind of ['grenades','rockets']){
+    const a=left.state,b=right.state,render={...this.state,time:Math.max(0,target),events:this.events.filter(e=>e.time<=target+.001||(e.playerId===this.id&&e.type!=='rocketLaunch'&&e.type!=='explosion'))};
+    for(const kind of ['grenades']){
       const older=new Map(a[kind].map(p=>[p.id,p]));render[kind]=b[kind].map(p=>{
         const before=older.get(p.id);if(!before||before.alive!==p.alive||before.vehicleId!==p.vehicleId||Math.hypot(p.x-before.x,p.z-before.z)>8)return p;
         const out={...p};for(const key of ['x','y','z'])out[key]=before[key]+(p[key]-before[key])*alpha;
         for(const key of ['yaw','pitch','bodyPitch','bodyRoll','aimYaw','aimPitch'])if(Number.isFinite(p[key]))out[key]=before[key]+difference(p[key],before[key])*alpha;
         return out;
       });
+    }
+    // Keep rockets alive on the presentation timeline until their actual
+    // explosion, even when the newer snapshot has already removed them.
+    const beforeRockets=new Map(a.rockets.map(r=>[r.id,r])),afterRockets=new Map(b.rockets.map(r=>[r.id,r]));
+    render.rockets=[];
+    for(const id of new Set([...beforeRockets.keys(),...afterRockets.keys()])){
+      const before=beforeRockets.get(id),after=afterRockets.get(id),source=before??after;
+      const explosion=this.events.find(e=>e.type==='explosion'&&e.rocketId===id);
+      if(explosion&&explosion.time<=target+.001||source.lifeAt<=target||source.lifeAt-4>target+.001)continue;
+      const out={...source};
+      if(before&&after&&span>0){for(const axis of ['x','y','z'])out[axis]=before[axis]+(after[axis]-before[axis])*alpha;}
+      else if(before&&explosion){const t=clamp((target-left.frame.time)/Math.max(.001,explosion.time-left.frame.time),0,1);for(const axis of ['x','y','z'])out[axis]=before[axis]+(explosion[axis]-before[axis])*t;}
+      else{const elapsed=clamp(target-(before?left.frame.time:right.frame.time),-.1,.12);out.x+=source.vx*elapsed;out.y+=source.vy*elapsed-1.4*elapsed*elapsed;out.z+=source.vz*elapsed;}
+      render.rockets.push(out);
     }
     for(const kind of ['players','vehicles'])render[kind]=this.state[kind].map(p=>this.sampleMotion(kind,p,target,dt));
     const predicted=this.prediction.sample(dt);
@@ -248,7 +262,7 @@ export class Multiplayer{
     const alpha=span>0?clamp((target-a.time)/span,0,1):1;
     for(const key of ['x','y','z'])out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;
     for(const key of ['yaw','pitch','bodyPitch','bodyRoll','aimYaw','aimPitch'])if(Number.isFinite(current[key]))out[key]=a.pose[key]+difference(b.pose[key],a.pose[key])*alpha;
-    if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.08,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;}}
+    if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;if(kind==='players'&&!out.grounded)out.y+=(last.pose.y-previous.pose.y)/interval*extra;}}
     return out;
   }
   diagnostics(){return {decodeMs:this.decodeMs??0,replayedInputs:this.replayedInputs??0,correctionMs:this.correctionMs??0,correctionDistance:this.correctionDistance??0,bufferUnderruns:this.bufferUnderruns??0,renderAgeMs:this.state&&this.renderTime!=null?Math.round((this.state.time-this.renderTime)*1000):null,rttMs:this.rtt?Math.round(this.rtt):null,interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,snapshotAgeMs:this.lastArrival?Math.round(performance.now()-this.lastArrival):null,bufferedBytes:this.ws?.bufferedAmount??0,recoveries:this.recoveries,lastRecovery:this.lastRecovery,receivedBytes:this.receivedBytes,server:this.serverStats};}

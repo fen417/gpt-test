@@ -40,7 +40,7 @@ export function sanitizeInput(input = {}) {
     gadget:input.gadget===true,secondaryGadget:input.secondaryGadget===true,grenade:input.grenade===true,weaponSlot:input.weaponSlot===1||input.weaponSlot===2?input.weaponSlot:0,
     toolSlot:input.toolSlot===1||input.toolSlot===2?input.toolSlot:0,
     interact:input.interact===true,switchSeat:input.switchSeat===true,horn:input.horn===true,
-    orderAttack:input.orderAttack===true,orderDefend:input.orderDefend===true,orderFollow:input.orderFollow===true,
+    order:input.order===true,
   };
 }
 
@@ -240,7 +240,7 @@ export class Simulation {
     if(!placed)return false;
     p.damagers=new Map();p.spottedBy=null;
     Object.assign(p,{x,y:this.groundAt(x,z),z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:wep.mag,reserve:wep.reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
-    Object.assign(p,{bloom:0,moveSpeed:0,lastShotAt:-Infinity,fireHeld:false,vehicleId:null,vehicleSeat:null,interactHeld:false,switchSeatHeld:false});
+    Object.assign(p,{bloom:0,moveSpeed:0,jumpFatigue:0,jumpCooldown:0,lastShotAt:-Infinity,fireHeld:false,vehicleId:null,vehicleSeat:null,interactHeld:false,switchSeatHeld:false});
     Object.assign(p,{slideTime:0,slideCooldown:0,slideVx:0,slideVz:0,crouchHeld:false,crouching:false,wasSprinting:false});
     p.y=spawnY;
     Object.assign(p,{rockets:p.classId==='assault'?2:0,secondaryCooldown:0,gadgetTime:0,gadgetAction:null,gadgetActionUntil:0,
@@ -813,13 +813,17 @@ export class Simulation {
   // Shared by authority and local movement prediction; no combat or AI runs here.
   movePlayer(p,i,dt){
     if(!dt||!p.alive||p.vehicleId)return;
+    const wasGrounded=p.grounded;
+    p.jumpFatigue=Math.max(0,(p.jumpFatigue??0)-(p.grounded?.4*dt:0));
+    p.jumpCooldown=Math.max(0,(p.jumpCooldown??0)-dt);
     p.yaw=i.yaw;p.pitch=i.pitch;
     const c=getWeapon(p.classId,p.weaponId);
       const slide=slideVelocity(p,i,c,dt,(x,z)=>this.groundAt(x,z));
       p.crouching=Boolean(i.crouch||slide||(p.crouching&&this.collides(p.x,p.z,p.y)));
       const bodyHeight=p.crouching?CROUCH_EYE_HEIGHT+.12:EYE_HEIGHT;
-      const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.55:i.aim?.7:1);
+      const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.3:i.aim?.7:1);
       if(p.crouching)speed=c.speed*.5;
+      speed*=1-p.jumpFatigue*.22;
       const dx=slide?slide.vx*dt:(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
       const dz=slide?slide.vz*dt:(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
       const oldX=p.x,oldZ=p.z;
@@ -847,7 +851,9 @@ export class Simulation {
       const ground=this.groundAt(p.x,p.z);
       p.moveSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/dt;
       if(slide&&p.moveSpeed<Math.hypot(slide.vx,slide.vz)*.5)p.slideTime=0;
-      if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
+      if(i.jump&&p.grounded&&!p.jumpHeld&&p.jumpCooldown===0&&p.jumpFatigue<.92){
+        p.vy=6*(1-p.jumpFatigue*.5);p.jumpFatigue=Math.min(1,p.jumpFatigue+.42);p.grounded=false;
+      }p.jumpHeld=i.jump;
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
       if(p.vy<=0)for(const box of this.floorBoxes(p.x,p.z,PLAYER_RADIUS)){
         if(box.obb||box.parts){
@@ -858,6 +864,7 @@ export class Simulation {
         if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
       }
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
+      if(!wasGrounded&&p.grounded)p.jumpCooldown=.22;
     p.velocityX=(p.x-oldX)/dt;p.velocityZ=(p.z-oldZ)/dt;
   }
   floorBoxes(x,z,radius){
@@ -1024,7 +1031,7 @@ export class Simulation {
       const wep=getWeapon(p.classId,p.weaponId);
       return {
         id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,primaryWeaponId:p.primaryWeaponId,sidearmId:p.sidearmId,weaponSlot:p.weaponSlot,equipTime:p.equipTime,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
-        hp:p.hp,alive:p.alive,squadId:p.squadId,squadLeader:p.squadLeader,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
+        hp:p.hp,alive:p.alive,reviveSeq:p.reviveSeq??0,orderKind:this.squadOrders?.get(p.team+'/'+p.squadId)?.kind??null,orderPointId:this.squadOrders?.get(p.team+'/'+p.squadId)?.pointId??null,squadId:p.squadId,squadLeader:p.squadLeader,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
         shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
         slideYaw:p.slideTime>0?Math.atan2(-p.slideVx,-p.slideVz):p.yaw,sprint:!p.vehicleId&&!crouching(p)&&p.input.sprint&&p.moveSpeed>wep.speed,
@@ -1033,7 +1040,7 @@ export class Simulation {
         gadgetAction:p.gadgetAction,gadgetActionRemaining:Math.max(0,(p.gadgetActionUntil??0)-this.time),gadgetTargetId:p.gadgetTargetId,
         grenades:p.grenades,spotted:p.spottedUntil>this.time,
         vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,
-        networkActive:p.alive&&(!p.grounded||this.time-(p.lastShotAt??-10)<.5),vy:p.vy,velocityX:p.velocityX,velocityZ:p.velocityZ,moveSpeed:p.moveSpeed,
+        networkActive:p.alive&&(!p.grounded||this.time-(p.lastShotAt??-10)<.5),vy:p.vy,jumpFatigue:p.jumpFatigue??0,jumpCooldown:p.jumpCooldown??0,velocityX:p.velocityX,velocityZ:p.velocityZ,moveSpeed:p.moveSpeed,
         slideTime:p.slideTime,slideCooldown:p.slideCooldown,slideVx:p.slideVx,slideVz:p.slideVz,
         controlFlags:(p.jumpHeld?1:0)|(p.crouchHeld?2:0)|(p.wasSprinting?4:0),
       };

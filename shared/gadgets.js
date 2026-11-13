@@ -119,7 +119,7 @@ export function activateGadget(sim,p,secondary=false) {
     if(!ally)return false;
     beginAction(sim,p,'defibrillator',.7,ally.id);
     p.pendingGadget={kind:'defibrillator',targetId:ally.id,at:sim.time+.55};
-    p.gadgetTime=1.5;
+    p.gadgetTime=6;
     return true;
   }
   if(p.classId==='support'){
@@ -137,7 +137,7 @@ function finishRevive(sim,p,job) {
   if(!ally||ally.alive||ally.team!==p.team||ally.respawnIn<=0||sim.time>=ally.downedUntil||
       Math.hypot(distance(p,ally),p.y-ally.y)>3.1||!sim.lineClear(eye(p),center(ally,.35)))return;
   if(sim.collides(ally.x,ally.z,ally.y,.4,1.05))return;
-  Object.assign(ally,{alive:true,hp:65,respawnIn:0,downedUntil:0,reloading:false,reloadTime:0,vy:0,
+  Object.assign(ally,{alive:true,reviveSeq:((ally.reviveSeq??0)+1)&65535,hp:65,respawnIn:0,downedUntil:0,reloading:false,reloadTime:0,vy:0,
     grounded:true,crouching:true,slideTime:0,invulnerableUntil:sim.time+.8,lastHurt:sim.time,fireHeld:false,botJob:null,
     gadgetAction:null,gadgetActionUntil:0,pendingGadget:null,heldGadget:null});
   ally.input={...ally.input,forward:0,strafe:0,fire:false,grenade:false,gadget:false,secondaryGadget:false,crouch:true};
