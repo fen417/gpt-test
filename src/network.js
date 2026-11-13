@@ -56,7 +56,7 @@ export class Multiplayer{
     url=normalizeServerUrl(url||this.url||await configuredServerUrl());
     if(this.ws?.readyState===WebSocket.OPEN&&this.url===url)return;
     if(this.connecting&&this.url===url)return this.connecting;
-    this.close(false);this.url=url;this.manual=false;this._mode='server';const generation=this.generation;
+    this.close(false);this.rtt=0;this.url=url;this.manual=false;this._mode='server';const generation=this.generation;
     this.connecting=this.connectSocket(generation).finally(()=>{this.connecting=null;});return this.connecting;
   }
   connectSocket(generation){

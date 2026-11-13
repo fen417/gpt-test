@@ -59,7 +59,7 @@ export function createGameServer(options={}){
     if(kind==='snapshot'){totals.snapshots++;totals.snapshotBytes+=length;}return true;
   }
   function error(c,message,requestId,code='request'){send(c,{type:'error',message,requestId,code});}
-  function listing(){return room?[{id:room.id,name:room.name,mapId:room.mapId,map:getMap(room.mapId).name,mode:'conquest',ownerId:room.ownerId,maxPlayers:room.maxPlayers,players:connected().length,reserved:sessions.size,bots:room.bots,status:room.phase==='lobby'?'Ожидание игроков':room.sim?.winner!==null?'Матч завершён':'В бою'}]:[];}
+  function listing(){return room?[{id:room.id,name:room.name,mapId:room.mapId,map:getMap(room.mapId).name,mode:room.mode,difficulty:room.difficulty,ownerId:room.ownerId,maxPlayers:room.maxPlayers,players:connected().length,reserved:sessions.size,bots:room.bots,status:room.phase==='lobby'?'Ожидание игроков':room.sim?.winner!==null?'Матч завершён':'В бою'}]:[];}
   function roomsChanged(){const data={type:'rooms',rooms:listing()};for(const c of clients)send(c,data);}
   function lobby(){
     if(!room)return;const map=getMap(room.mapId),players=[...sessions.values()].map(s=>({id:s.id,name:s.name,team:s.team,classId:s.classId,weaponId:s.weaponId,primaryWeaponId:s.weaponId,sidearmId:s.sidearmId,alive:false,hp:100,bot:false,connected:!!s.client,kills:0,deaths:0,score:0}));
@@ -206,7 +206,7 @@ export function createGameServer(options={}){
           case 'create':
             if(data.gameMode&&data.gameMode!=='conquest')throw Error('Доступен режим «Захват территории».');
             if(room){error(c,'На сервере уже есть комната. Присоединитесь к ней в браузере комнат.',requestId,'room_exists');send(c,{type:'rooms',rooms:listing()});break;}
-            room={id:token(),name:clean(data.roomName,'Операция друзей'),mapId:getMap(data.mapId).id,mode:'conquest',bots:Math.min(config.defaultBots,config.maxBots),maxPlayers:config.maxPlayers,difficulty:'regular',phase:'lobby',ownerId:null,sim:null,epoch:0,emptyAt:0};settings(data);join(c,data,requestId);break;
+            room={id:token(),name:clean(data.roomName,'Операция «Рубеж»'),mapId:getMap(data.mapId).id,mode:'conquest',bots:Math.min(config.defaultBots,config.maxBots),maxPlayers:config.maxPlayers,difficulty:'regular',phase:'lobby',ownerId:null,sim:null,epoch:0,emptyAt:0};settings(data);join(c,data,requestId);break;
           case 'join':join(c,data,requestId);break;
           case 'resume':join(c,data,requestId,true);break;
           case 'leave':detach(c,true);send(c,{type:'left',requestId});break;

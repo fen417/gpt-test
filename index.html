@@ -12,23 +12,21 @@
   <canvas id="game" aria-label="Трёхмерное поле боя"></canvas>
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
-  <main id="menu" class="menu">
-    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST · ALPHA <span id="build-version">0.14</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
-    <div class="menu-content">
-      <section class="intro">
-        <div class="eyebrow"><span></span> ЗАХВАТ ТЕРРИТОРИИ</div>
-        <h1>КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1>
-        <p class="lead">Удерживайте точки и перекрывайте маршруты противника.</p>
-        <div class="map-caption"><span class="cross-icon">⌖</span><div><strong id="menu-map-name"></strong><small id="menu-map-info"></small></div></div>
-        <div class="operation-stats"><div><strong id="menu-map-points"></strong><span>КОНТРОЛЬНЫХ ТОЧЕК</span></div><div><strong>04</strong><span>БОЕВЫХ КЛАССА</span></div><div><strong>32</strong><span>БОЙЦА С БОТАМИ</span></div></div>
-        <div class="now-playing"><span class="track-line"></span><span id="track-label">♫ AFTER THE RAIN · ORIGINAL SCORE</span></div>
+  <main id="menu" class="menu menu-home">
+    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.15</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
+    <div class="home-content">
+      <section class="home-hero" aria-labelledby="home-title"><div class="home-kicker"><i></i> ПЕХОТА. ТЕХНИКА. ЗАХВАТ ТЕРРИТОРИИ.</div><h1 id="home-title">КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1><p>Свой отряд. Свой маршрут. Твой следующий бой.</p>
+        <nav class="home-nav" aria-label="Главное меню"><button id="open-solo" class="home-play" aria-haspopup="dialog"><span class="nav-index">01</span><span><b>Одиночная игра</b><small>Твой сектор. Твои правила.</small></span><span class="nav-arrow">↗</span></button><button id="join-toggle" class="home-play" aria-haspopup="dialog"><span class="nav-index">02</span><span><b>Сетевая игра</b><small>Найти бой или собрать друзей</small></span><span class="nav-arrow">↗</span></button><button id="menu-settings" class="home-settings" aria-haspopup="dialog"><span>Настройки</span><span>↗</span></button></nav>
       </section>
-      <section class="deploy-panel" aria-labelledby="deploy-title">
-        <div class="panel-top"><span>ГОТОВНОСТЬ К ВЫСАДКЕ</span><span class="tag">01 / 03</span></div>
-        <h2 id="deploy-title">Вступить в бой</h2>
-        <label class="field-label" for="callsign">ПОЗЫВНОЙ</label><input id="callsign" maxlength="20" value="Rookie" autocomplete="nickname" spellcheck="false" />
+      <aside class="home-location"><span class="scene-label">В ОБЪЕКТИВЕ</span><div class="map-caption"><span class="cross-icon">⌖</span><div><strong id="menu-map-name"></strong><small id="menu-map-info"></small></div></div><span class="scene-rule"></span><span class="scene-label">ЖИВОЙ СЕКТОР / SECTOR 09</span></aside>
+    </div>
+    <footer class="menu-footer"><div><p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p><div class="now-playing"><span class="track-line"></span><span id="track-label">♫ AFTER THE RAIN · ORIGINAL SCORE</span></div></div><div class="menu-footer-actions"><button id="menu-changelog" class="small-button" aria-haspopup="dialog">Что нового ↗</button><a class="small-button" href="./credits.html" target="_blank" rel="noopener">Авторы ↗</a></div></footer>
+  </main>
+  <dialog id="single-player-panel" class="menu-dialog" aria-labelledby="single-title">
+    <header class="menu-panel-header"><div><span class="section-kicker">ИГРАТЬ / 01</span><h2 id="single-title">Одиночная игра</h2><p>Подготовь снаряжение. Выбери поле боя.</p></div><button class="panel-close" data-close-dialog="single-player-panel" aria-label="Закрыть одиночную игру">×</button></header>
+    <div class="solo-layout"><section class="solo-operation"><h3><span>01</span> Операция</h3>        <label class="field-label" for="callsign">ПОЗЫВНОЙ</label><input id="callsign" maxlength="20" value="Rookie" autocomplete="nickname" spellcheck="false" />
         <div class="operation-options"><label class="map-choice" for="map-select">КАРТА<select id="map-select"></select></label><label for="difficulty">СЛОЖНОСТЬ БОТОВ<select id="difficulty"><option value="recruit">Новобранцы</option><option value="regular" selected>Обычные бойцы</option><option value="veteran">Ветераны</option></select></label><label for="population">ПЛОТНОСТЬ БОЯ<select id="population"><option value="15">16 бойцов</option><option value="23" selected>24 бойца</option><option value="31">32 бойца</option></select></label></div>
-        <div class="field-label class-label">СПЕЦИАЛИЗАЦИЯ <span id="class-weapon">AR-4 · ШТУРМОВАЯ ВИНТОВКА</span></div>
+<div class="operation-summary"><strong id="menu-map-points">05</strong><span>контрольных точек<br>в режиме «Захват территории»</span></div></section><section class="solo-loadout"><h3><span>02</span> Твой боец</h3>        <div class="field-label class-label">СПЕЦИАЛИЗАЦИЯ <span id="class-weapon">AR-4 · ШТУРМОВАЯ ВИНТОВКА</span></div>
         <div id="classes" class="classes">
           <button class="class-card active" data-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>Патроны и противотанковый гранатомёт</small></button>
           <button class="class-card" data-class="medic" aria-pressed="false"><span>✚</span><b>Медик</b><small>Воскрешение и лечение</small></button>
@@ -38,23 +36,25 @@
         <div class="field-label weapon-select-label">ОРУЖИЕ КЛАССА</div>
         <div id="menu-weapons" class="weapon-picker" role="group" aria-label="Выбор оружия"></div>
         <label class="sidearm-picker">ПИСТОЛЕТ <select id="menu-sidearm"></select></label>
-        <button id="solo" class="deploy-button"><span>НА ПОЛЕ БОЯ</span><span>↗</span></button>
-        <div class="solo-note">Мгновенный бой с ботами · Без регистрации</div>
-        <div class="network-divider"><span>ИЛИ ИГРА С ДРУЗЬЯМИ</span></div>
-        <div class="network-actions"><button id="host" class="outline-button">СОЗДАТЬ КОМНАТУ <span>+</span></button><button id="join-toggle" class="outline-button">БРАУЗЕР КОМНАТ <span>→</span></button></div>
-        <form id="create-room" class="room-create hidden">
-          <label>НАЗВАНИЕ<input id="room-name" maxlength="40" value="Операция друзей" required /></label>
+</section></div>
+    <footer class="menu-panel-footer"><div><span class="section-kicker">БЕЗ РЕГИСТРАЦИИ / ПРОТИВ БОТОВ</span><p id="solo-status" class="panel-status" role="status"></p></div><button id="solo" class="panel-primary"><span>Начать операцию</span><span>↗</span></button></footer>
+  </dialog>
+  <dialog id="multiplayer-panel" class="menu-dialog browser-dialog" aria-labelledby="browser-title">
+    <header class="menu-panel-header"><div><span class="section-kicker">ИГРАТЬ / 02</span><h2 id="browser-title">Браузер комнат</h2><p>Найди свой бой. Или начни новый.</p></div><div class="panel-header-actions"><button id="host" class="panel-primary compact">＋ Создать комнату</button><button class="panel-close" data-close-dialog="multiplayer-panel" aria-label="Закрыть браузер комнат">×</button></div></header>
+    <div class="browser-tools"><label class="browser-search"><span class="sr-only">Поиск по названию комнаты</span><input id="rooms-search" type="search" placeholder="Найти комнату…" autocomplete="off" /></label><button id="rooms-refresh" class="panel-secondary" aria-label="Обновить комнаты">↻ Обновить</button><label class="browser-identity">Позывной<input id="network-callsign" maxlength="20" autocomplete="nickname" spellcheck="false" /></label></div>
+    <div class="browser-filters"><label>Карта<select id="rooms-map"><option value="">Все карты</option></select></label><label>Режим<select id="rooms-mode"><option value="">Все режимы</option><option value="conquest">Захват территории</option></select></label><label>Боты<select id="rooms-bots"><option value="">Любые</option><option value="on">С ботами</option><option value="off">Без ботов</option></select></label><label>Пинг<select id="rooms-ping"><option value="">Любой</option><option value="60">До 60 мс</option><option value="100">До 100 мс</option><option value="150">До 150 мс</option></select></label><label class="filter-toggle"><input id="rooms-available" type="checkbox" />Есть места</label><button id="rooms-reset" class="filter-reset">Сбросить</button></div>
+    <section id="room-browser" class="room-browser" aria-label="Доступные комнаты"><div class="browser-results"><p id="rooms-note" role="status">Выбери комнату для подключения.</p><span id="rooms-count"></span></div><div id="room-list"></div></section>
+    <footer class="browser-footer">        <details class="server-details"><summary>Адрес игрового сервера</summary><form id="server-form" class="inline-form"><label class="sr-only" for="server-url">Публичный WSS-адрес</label><input id="server-url" placeholder="wss://ваш-сервис.code.run/ws" /><button class="outline-button">СОХРАНИТЬ</button></form></details>
+<p id="network-status" class="panel-status" role="status"></p><small>Пинг измеряется до игрового сервера.</small></footer>
+  </dialog>
+  <dialog id="create-room-panel" class="menu-dialog create-dialog" aria-labelledby="create-title"><header class="menu-panel-header"><div><span class="section-kicker">ТВОЙ ОТРЯД / ТВОИ ПРАВИЛА</span><h2 id="create-title">Новая комната</h2></div><button class="panel-close" data-close-dialog="create-room-panel" aria-label="Закрыть создание комнаты">×</button></header><div class="create-dialog-body">        <form id="create-room" class="room-create">
+          <label>Название комнаты<span class="room-name-field"><input id="room-name" maxlength="40" value="Операция «Рубеж»" required /><button id="room-name-random" type="button" aria-label="Предложить другое название" title="Случайное название">⤨</button></span></label>
           <div class="operation-options"><label>КАРТА<select id="room-map"></select></label><label>РЕЖИМ<select id="room-mode"><option value="conquest">Захват территории</option></select></label></div>
           <div class="operation-options"><label>ИГРОКОВ<select id="room-max"><option value="2" >2</option><option value="3" >3</option><option value="4" >4</option><option value="5" >5</option><option value="6" >6</option><option value="7" selected>7</option></select></label><label>БОТОВ<select id="room-bots"><option value="0" >Без ботов</option><option value="1" >1</option><option value="2" >2</option><option value="3" >3</option><option value="4" >4</option><option value="5" >5</option><option value="6" >6</option><option value="7" >7</option><option value="8" selected>8</option><option value="9" >9</option><option value="10" >10</option><option value="11" >11</option><option value="12" >12</option><option value="13" >13</option><option value="14" >14</option><option value="15" >15</option><option value="16" >16</option><option value="17" >17</option><option value="18" >18</option><option value="19" >19</option><option value="20" >20</option><option value="21" >21</option><option value="22" >22</option><option value="23" >23</option><option value="24" >24</option><option value="25" >25</option><option value="26" >26</option><option value="27" >27</option><option value="28" >28</option><option value="29" >29</option><option value="30" >30</option></select></label></div>
+          <label class="room-difficulty-label">Сложность ботов<select id="room-difficulty"><option value="recruit">Новобранцы</option><option value="regular" selected>Обычные бойцы</option><option value="veteran">Ветераны</option></select></label>
           <button type="submit" class="outline-button">СОЗДАТЬ И ВОЙТИ →</button>
         </form>
-        <section id="room-browser" class="room-browser hidden" aria-label="Браузер комнат"><p id="rooms-note" role="status">Подключение к серверу…</p><div id="room-list"></div></section>
-        <details class="server-details"><summary>Адрес игрового сервера</summary><form id="server-form" class="inline-form"><label class="sr-only" for="server-url">Публичный WSS-адрес</label><input id="server-url" placeholder="wss://ваш-сервис.code.run/ws" /><button class="outline-button">СОХРАНИТЬ</button></form></details>
-        <p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p>
-      </section>
-    </div>
-    <footer class="menu-footer"><span><b>W A S D</b> ДВИЖЕНИЕ <b>МЫШЬ</b> ОБЗОР <b>ЛКМ / ПКМ</b> ОГОНЬ / ПРИЦЕЛ</span><div class="menu-footer-actions"><button id="menu-changelog" class="small-button" aria-haspopup="dialog">ИСТОРИЯ ОБНОВЛЕНИЙ</button><a class="small-button" href="./credits.html" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">АВТОРЫ АССЕТОВ</a><span>ИГРА ДЛЯ ПК</span></div></footer>
-  </main>
+<p id="create-status" class="panel-status" role="status"></p></div></dialog>
   <dialog id="patch-notes" class="patch-notes" aria-labelledby="patch-title">
     <header class="patch-header"><div><span class="eyebrow">SECTOR 09</span><h2 id="patch-title">История обновлений</h2></div><button id="close-changelog" class="small-button" aria-label="Закрыть историю обновлений">✕</button></header>
     <div id="patch-list" class="patch-list"></div>
@@ -87,26 +87,30 @@
       <small>Удерживай TAB · Сортировка по боевым очкам (Убийства / Потери / Ассисты)</small>
     </div>
   </section>
-  <section id="pause" class="overlay hidden"><div class="overlay-card"><div class="eyebrow">SECTOR 09</div><h2 id="pause-title">Бой продолжается</h2><p id="pause-description">Вернись в сектор. Твой отряд ждёт.</p><button id="resume" class="deploy-button">ПРОДОЛЖИТЬ <span>→</span></button><button id="unlocked" class="outline-button">Играть без захвата мыши</button>
+  <section id="pause" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title"><div class="overlay-card settings-card">
+    <header class="menu-panel-header"><div><span class="section-kicker">SECTOR 09 / ПАРАМЕТРЫ</span><h2 id="pause-title">Настройки</h2><p id="pause-description">Подстрой игру под себя.</p></div><button id="settings-close" class="panel-close" aria-label="Закрыть настройки">×</button></header>
+    <div class="settings-layout"><nav class="settings-nav" role="tablist" aria-label="Разделы настроек" aria-orientation="vertical"><button id="tab-picture" role="tab" aria-controls="settings-picture" aria-selected="true" data-settings-tab="picture"><span>01</span> Изображение</button><button id="tab-audio" role="tab" aria-controls="settings-audio" aria-selected="false" tabindex="-1" data-settings-tab="audio"><span>02</span> Звук</button><button id="tab-controls" role="tab" aria-controls="settings-controls" aria-selected="false" tabindex="-1" data-settings-tab="controls"><span>03</span> Управление</button></nav>
     <div class="settings">
-      <div class="settings-section">ОБЗОР И ИЗОБРАЖЕНИЕ</div>
-      <label>Чувствительность <input id="sensitivity" type="range" min="0.3" max="2" value="0.8" step="0.05" /></label>
-      <label>Угол обзора <input id="fov" type="range" min="70" max="100" value="85" step="1" /></label>
-      <label>Графика (пресет) <select id="quality"><option value="high">Максимальная</option><option value="low">Экономичная</option></select></label>
-      <label>Тени <select id="gfx-shadows"><option value="auto">Авто</option><option value="off">Выкл.</option><option value="low">Низкие (512)</option><option value="medium">Средние (1024)</option><option value="high">Высокие (2048)</option></select></label>
-      <label>Разрешение рендера <select id="gfx-resolution"><option value="auto">Авто</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150% (SSAA)</option></select></label>
-      <label>Сглаживание MSAA <select id="gfx-aa"><option value="auto">Авто</option><option value="on">Вкл.</option><option value="off">Выкл.</option></select></label>
-      <small class="gfx-note">Сглаживание применяется после перезагрузки страницы. Разрешение 125–150% тоже сглаживает картинку, но нагружает GPU.</small>
-      <label>Яркость <input id="brightness" type="range" min="0.8" max="1.3" value="1" step="0.05" /></label>
-      <label>Качание камеры <input id="camera-shake" type="checkbox" checked /></label>
-      <div class="settings-section">ЗВУК И МУЗЫКА</div>
-      <label>Общая громкость <input id="volume" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
-      <label>Музыка меню <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.45" /></label>
-      <label>Звуки боя <input id="effects-volume" type="range" min="0" max="1" step="0.05" value="0.7" /></label>
-      <div class="settings-section keybinds-header"><span>УПРАВЛЕНИЕ И КЛАВИШИ</span><button type="button" id="reset-binds" class="small-button">СБРОС</button></div>
-      <div id="keybinds-grid" class="keybinds-grid" role="group" aria-label="Переназначение клавиш"></div>
-    </div>
-    <p id="controls-help" class="controls-help">WASD — движение · Shift — бег · C — присесть<br>Пробел — прыжок · R — перезарядка · Q — способность<br>G — граната · Tab — счёт · Esc — меню</p><button id="leave" class="outline-button">Покинуть бой</button></div></section>
+      <section id="settings-picture" class="settings-page" role="tabpanel" aria-labelledby="tab-picture" tabindex="0"><div class="settings-page-heading"><h3>Изображение</h3><p>Баланс чёткости и плавности.</p></div>
+        <label class="setting-row" for="quality"><span><b>Качество графики</b><small>Готовый профиль изображения.</small></span><span class="setting-control"><select id="quality"><option value="high">Максимальное</option><option value="low">Экономичное</option></select></span></label>
+        <label class="setting-row" for="gfx-shadows"><span><b>Тени</b><small>Детализация теней окружения.</small></span><span class="setting-control"><select id="gfx-shadows"><option value="auto">Авто</option><option value="off">Выкл.</option><option value="low">Низкие</option><option value="medium">Средние</option><option value="high">Высокие</option></select></span></label>
+        <label class="setting-row" for="gfx-resolution"><span><b>Масштаб изображения</b><small>Больше — чётче. Меньше — выше FPS.</small></span><span class="setting-control"><select id="gfx-resolution"><option value="auto">Авто</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150%</option></select></span></label>
+        <label class="setting-row" for="gfx-aa"><span><b>Сглаживание</b><small>Изменение вступит в силу после перезагрузки страницы.</small></span><span class="setting-control"><select id="gfx-aa"><option value="auto">Авто</option><option value="on">Вкл.</option><option value="off">Выкл.</option></select></span></label>
+        <label class="setting-row" for="fov"><span><b>Угол обзора</b><small>Сколько пространства попадает в кадр.</small></span><span class="setting-control"><input id="fov" type="range" min="70" max="100" step="1" value="85" /><output for="fov" data-range-value="fov"></output></span></label>
+        <label class="setting-row" for="brightness"><span><b>Яркость</b></span><span class="setting-control"><input id="brightness" type="range" min="0.8" max="1.3" step="0.05" value="1" /><output for="brightness" data-range-value="brightness"></output></span></label>
+        <label class="setting-row" for="camera-shake"><span><b>Качание камеры</b><small>Движение камеры при беге и взрывах.</small></span><span class="setting-control"><input id="camera-shake" type="checkbox" checked /></span></label>
+      </section>
+      <section id="settings-audio" class="settings-page hidden" role="tabpanel" aria-labelledby="tab-audio" tabindex="0"><div class="settings-page-heading"><h3>Звук</h3><p>Услышь всё, что имеет значение.</p></div>
+        <label class="setting-row" for="volume"><span><b>Общая громкость</b><small>Все звуки игры.</small></span><span class="setting-control"><input id="volume" type="range" min="0" max="1" step="0.05" value="0.5" /><output for="volume" data-range-value="volume"></output></span></label>
+        <label class="setting-row" for="music-volume"><span><b>Музыка</b><small>Громкость музыкального сопровождения.</small></span><span class="setting-control"><input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.45" /><output for="music-volume" data-range-value="music-volume"></output></span></label>
+        <label class="setting-row" for="effects-volume"><span><b>Звуки боя</b><small>Оружие, шаги, техника и окружение.</small></span><span class="setting-control"><input id="effects-volume" type="range" min="0" max="1" step="0.05" value="0.7" /><output for="effects-volume" data-range-value="effects-volume"></output></span></label>
+      </section>
+      <section id="settings-controls" class="settings-page hidden" role="tabpanel" aria-labelledby="tab-controls" tabindex="0"><div class="settings-page-heading"><h3>Управление</h3><p>Твои клавиши. Твоя реакция.</p></div>
+        <label class="setting-row" for="sensitivity"><span><b>Чувствительность мыши</b></span><span class="setting-control"><input id="sensitivity" type="range" min="0.3" max="2" step="0.05" value="0.8" /><output for="sensitivity" data-range-value="sensitivity"></output></span></label>
+        <div class="bindings-heading"><h4>Клавиши</h4><button type="button" id="reset-binds" class="panel-secondary">Сбросить</button></div><div id="keybinds-grid" class="keybinds-grid" role="group" aria-label="Переназначение клавиш"></div><p id="controls-help" class="controls-help"></p>
+      </section>
+    </div></div><footer class="settings-footer"><div class="settings-session"><button id="leave" class="panel-secondary">Покинуть бой</button><button id="unlocked" class="panel-secondary">Без захвата мыши</button></div><span class="settings-save-note">Изменения сохраняются автоматически</span><button id="resume" class="panel-primary">Готово <span>↗</span></button></footer>
+  </div></section>
   <section id="death" class="overlay deploy-overlay hidden" aria-label="Тактический экран дислокации">
     <div class="deploy-hud">
       <header class="deploy-topbar">

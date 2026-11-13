@@ -9,6 +9,9 @@ import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSid
 import {Multiplayer,configuredServerUrl,normalizeServerUrl} from './network.js';
 import {CombatAudio} from './audio.js';
 import {mountChangelog} from './changelog.js';
+import './menu.css';
+import {mountMenuPanels,closeMenuPanels} from './menu-panels.js';
+import {mountRoomBrowser} from './room-browser.js';
 import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
 
 const $=id=>document.getElementById(id);
@@ -85,7 +88,7 @@ const BIND_LABELS=[
 let keybinds={...DEFAULT_BINDS};
 let listeningAction=null;
 const selectedWeapons={assault:'ar416',medic:'mcx9',support:'mg36',recon:'dmr12'};
-function status(message,error=false){text('status',message);$('status').classList.toggle('error',error);}
+function status(message,error=false){for(const id of ['status','solo-status','network-status','create-status']){text(id,message);$(id).classList.toggle('error',error);}}
 function toast(message){text('toast',message);show('toast');clearTimeout(toastTimer);toastTimer=setTimeout(()=>show('toast',false),4500);}
 function save(key,value){try{localStorage.setItem(`sector09-${key}`,value);}catch{}}
 function read(key,fallback){try{return localStorage.getItem(`sector09-${key}`)??fallback;}catch{return fallback;}}
@@ -232,7 +235,7 @@ function setMusic(){audio.setMusicVolume?.(musicMuted?0:musicVolume);musicUI();}
 document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('#music-toggle'))unlockAudio();},{once:true});
 document.addEventListener('keydown',event=>{if(!event.target.closest?.('#music-toggle'))unlockAudio();},{once:true});
 function local(){return state?.players.find(p=>p.id===localId);}
-function setBusy(value){busy=value;for(const id of ['solo','host','join-toggle'])$(id).disabled=value;}
+function setBusy(value){busy=value;for(const id of ['solo','open-solo','host','join-toggle'])$(id).disabled=value;}
 function clearControls(){keys.clear();pulses.clear();fire=false;fireTap=false;aim=false;recoilPitch=0;recoilYaw=0;if(active&&localId){const neutral={yaw,pitch};simulation?.setInput(localId,neutral);multiplayer.clearInput(neutral);}}
 function aimAngles(){
   return { yaw:yaw+recoilYaw, pitch:Math.max(-1.45,Math.min(1.45,pitch+recoilPitch)) };
@@ -351,6 +354,7 @@ function updateLobby(){
   }
 }
 function enterLobby(){
+  closeMenuPanels();
   inLobby=true;active=false;setBusy(false);
   document.exitPointerLock?.();
   show('menu',false);show('hud',false);show('pause',false);show('death',false);show('result',false);show('lobby',true);
@@ -466,6 +470,7 @@ function receive(next){
   }
 }
 const multiplayer=new Multiplayer({onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
+const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
 function prepare(which){
   reviveAwaitingControl=false;show('revive-control-hint',false);
@@ -474,6 +479,7 @@ function prepare(which){
   const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value};
 }
 function enter(){
+  closeMenuPanels();
   inLobby=false;active=true;setBusy(false);show('menu',false);show('lobby',false);show('hud');show('pause',false);show('death',false);show('result',false);document.body.style.overflow='hidden';
   document.body.classList.add('in-battle');audio.setMode?.('battle');
   text('pause-title','Бой продолжается');text('pause-description','Вернись в сектор. Твой отряд ждёт.');$('resume').firstChild.textContent='ПРОДОЛЖИТЬ ';show('unlocked');show('leave');
@@ -493,7 +499,7 @@ function leave(resetStatus=true){
   reviveAwaitingControl=false;show('revive-control-hint',false);
   active=false;inLobby=false;clearControls();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
   document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
-  show('scoreboard',false);if(resetStatus)status('Сектор готов. Выбери класс и вступай в бой.');
+  show('scoreboard',false);if(resetStatus)status('Сектор готов к высадке.');
 }
 function solo(){if(busy)return;multiplayer.close();const opts=prepare('solo');simulation=new Simulation({bots:opts.bots,difficulty:opts.difficulty,mapId:opts.mapId,debugBots:new URLSearchParams(location.search).has('aiDebug')});localId='local';simulation.addPlayer(localId,opts.name,0,opts.classId,opts.weaponId,opts.sidearmId);state=simulation.snapshot();enter();}
 $('solo').addEventListener('click',solo);
@@ -503,29 +509,28 @@ async function serverAddress(){
   return normalizeServerUrl(url);
 }
 function renderRooms(rooms){
-  text('rooms-note',rooms.length?'Одна общая комната · Матч рассчитывает сервер':'Комнат пока нет. Создайте первую.');
-  $('room-list').replaceChildren(...rooms.map(item=>{
-    const row=document.createElement('article');row.className='room-row';
-    const name=document.createElement('strong');name.textContent=item.name;
-    const meta=document.createElement('small');meta.textContent=item.map+' · Захват территории · '+item.players+'/'+item.maxPlayers+' игроков · '+item.bots+' ботов · '+item.status;
-    const button=document.createElement('button');button.className='outline-button';button.textContent='ПОДКЛЮЧИТЬСЯ →';button.disabled=item.reserved>=item.maxPlayers&&!multiplayer.canResume;
-    button.addEventListener('click',async()=>{if(busy)return;const opts=prepare('server');setBusy(true);try{room=await multiplayer.join({...opts,roomId:item.id,url:await serverAddress()});if(multiplayer.phase==='lobby')enterLobby();else enter();}catch(error){status(error.message,true);setBusy(false);}});
-    row.append(name,meta,button);return row;
-  }));
+  text('rooms-note','Доступные комнаты');roomBrowser.render(rooms);
+}
+async function joinRoom(item){
+  if(busy)return;const opts=prepare('server');setBusy(true);
+  try{room=await multiplayer.join({...opts,roomId:item.id,url:await serverAddress()});if(multiplayer.phase==='lobby')enterLobby();else enter();}
+  catch(error){status(error.message,true);setBusy(false);}
+}
+async function refreshRooms(){
+  text('rooms-note','Обновляем список…');
+  try{await multiplayer.browse(await serverAddress());}
+  catch(error){text('rooms-note',error.message);status(error.message,true);}
 }
 for(const map of Object.values(MAPS))$('room-map').add(new Option(map.name,map.id));
 $('room-map').value=$('map-select').value;
 configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
-$('host').addEventListener('click',()=>{show('create-room',$('create-room').classList.contains('hidden'));show('room-browser',false);$('room-map').value=$('map-select').value;});
+$('host').addEventListener('click',()=>{$('room-map').value=$('map-select').value;});
 $('create-room').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const opts=prepare('server');setBusy(true);
-  try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId:$('room-map').value,gameMode:$('room-mode').value,maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value)});enterLobby();}
+  try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId:$('room-map').value,gameMode:$('room-mode').value,maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
   catch(error){status(error.message,true);setBusy(false);if(multiplayer.rooms.length){show('room-browser');renderRooms(multiplayer.rooms);}}
 });
-$('join-toggle').addEventListener('click',async()=>{
-  show('room-browser');show('create-room',false);text('rooms-note','Подключение к серверу…');
-  try{await multiplayer.browse(await serverAddress());}catch(error){text('rooms-note',error.message);status(error.message,true);}
-});
+$('join-toggle').addEventListener('click',refreshRooms);
 $('server-form').addEventListener('submit',event=>{event.preventDefault();try{const url=normalizeServerUrl($('server-url').value);save('server-url',url);multiplayer.close();status('Адрес сохранён. Откройте браузер комнат или создайте комнату.');}catch(error){status(error.message,true);}});
 for(const button of document.querySelectorAll('[data-class]'))button.addEventListener('click',()=>selectClass(button.dataset.class,true));
 for(const button of document.querySelectorAll('[data-deploy-class]'))button.addEventListener('click',()=>selectClass(button.dataset.deployClass,true));
@@ -539,7 +544,7 @@ $('lobby-start').addEventListener('click',()=>{if(state?.ownerId!==localId)retur
 $('lobby-leave').addEventListener('click',()=>leave());
 $('spawn-point').addEventListener('change',event=>selectSpawnPoint(event.target.value,true));
 $('resume').addEventListener('click',()=>{if(!active){show('pause',false);return;}audio.unlock();requestControl();});
-$('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подготовь обзор и звук перед высадкой.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause');});
+$('menu-settings').addEventListener('click',()=>{text('pause-title','Настройки');text('pause-description','Подстрой игру под себя.');$('resume').firstChild.textContent='ГОТОВО ';show('unlocked',false);show('leave',false);show('pause');});
 $('unlocked').addEventListener('click',()=>{unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
 for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>{
   if(id!=='result-leave'&&performance.now()-lastFireClick<600)return;
@@ -585,6 +590,7 @@ $('reset-binds')?.addEventListener('click',()=>{
 });
 $('sound-toggle').addEventListener('click',()=>{audio.enabled=!audio.enabled;text('sound-toggle',audio.enabled?'ЗВУК ВКЛ.':'ЗВУК ВЫКЛ.');$('sound-toggle').setAttribute('aria-pressed',String(audio.enabled));unlockAudio();musicUI();});
 $('music-toggle').addEventListener('click',()=>{if(audioStarted)musicMuted=!musicMuted;else musicMuted=false;save('music-muted',musicMuted);unlockAudio();setMusic();});
+mountMenuPanels(()=>{unlockAudio();audio.click();});
 canvas.addEventListener('click',()=>{if(active&&!locked)requestControl();});
 $('revive-control-hint').addEventListener('click',()=>requestControl());
 document.addEventListener('pointerlockchange',()=>{
@@ -627,6 +633,7 @@ document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(ev
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{
   if($('patch-notes').open)return;
+  if(document.querySelector('dialog.menu-dialog[open]'))return;
   if(listeningAction){
     event.preventDefault();
     event.stopPropagation();
@@ -1340,5 +1347,5 @@ try{
   if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';document.body.classList.toggle('low-quality',true);}
   initializeMapPickers();
   setBattleMap(DEFAULT_MAP_ID,true);
-  selectClass(selectedClass,false);updateKeybindUI();audio.setMode?.('menu');status('Сектор готов. Выбери класс и вступай в бой.');requestAnimationFrame(frame);
+  selectClass(selectedClass,false);updateKeybindUI();audio.setMode?.('menu');status('Сектор готов к высадке.');requestAnimationFrame(frame);
 }catch(error){console.error(error);status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);$('solo').disabled=true;$('host').disabled=true;}
