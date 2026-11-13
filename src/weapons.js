@@ -783,7 +783,8 @@ export function createWeaponRig(owner = {}) {
   const pistols={p19:buildPistol(false),m50:buildPistol(true)};
 
   const rifleGlove=new THREE.Group();
-  for(const child of [...leftHand.children])if(child.isMesh)rifleGlove.add(child);
+  // Only the rifle grip belongs here; gadget grips have independent visibility.
+  rifleGlove.add(supportGlove);
   leftHand.add(rifleGlove);
   const pistolGlove=new THREE.Group();leftHand.add(pistolGlove);
   pistolGlove.name='pistol-support-glove';
@@ -799,7 +800,15 @@ export function createWeaponRig(owner = {}) {
   // Merge each rigid island by material. Articulated groups remain independent.
   function batch(group){
     for(const child of [...group.children])if(child.isGroup)batch(child);
-    const materials=new Map();for(const child of group.children)if(child.isMesh&&!Array.isArray(child.material)){if(!materials.has(child.material))materials.set(child.material,[]);materials.get(child.material).push(child);}
+    const materials=new Map();
+    for(const child of group.children){
+      if(!child.isMesh||child.isSkinnedMesh||Array.isArray(child.material))continue;
+      // Grip meshes share a material but not visibility or morph animation.
+      // Merging them would leave all poses permanently visible in one mesh.
+      if(Object.values(child.geometry.morphAttributes).some(targets=>targets.length))continue;
+      if(!materials.has(child.material))materials.set(child.material,[]);
+      materials.get(child.material).push(child);
+    }
     for(const [material,meshes]of materials){if(meshes.length<2)continue;const parts=meshes.map(m=>{m.updateMatrix();const g=m.geometry.clone().applyMatrix4(m.matrix);const n=g.index?g.toNonIndexed():g; if(n!==g)g.dispose();return n;});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!geometry)continue;ownedGeometries.add(geometry);const merged=new THREE.Mesh(geometry,material);merged.name=`batched-${material.name}`;group.add(merged);for(const m of meshes)m.removeFromParent();}
   }
   for(const island of [receiver,handguard,barrelCore,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,...Object.values(variantDetails),scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight,...Object.values(pistols).map(p=>p.root)])batch(island);
