@@ -231,3 +231,11 @@ body:has(.menu:not(.hidden)){overflow-y:auto}
 @media (max-width: 600px) { .patch-header { padding: 20px; } .patch-list { padding: 0 20px 16px; } .patch summary small { width: 100%; } }
 
 .ai-debug{position:fixed;left:12px;top:15%;max-height:65vh;max-width:440px;overflow:auto;pointer-events:none;z-index:100;background:#071318df;color:#b9f1e0;font:11px/1.35 monospace;padding:10px;white-space:pre-wrap}
+.room-create,.room-browser{margin-top:14px;padding:14px;border:1px solid #4b5b56;background:rgba(15,26,27,.94);border-radius:4px}
+.room-create>label,.room-create .operation-options label{display:flex;flex-direction:column;gap:6px;font-size:10px;letter-spacing:1px;color:var(--muted,#a7b3ac)}
+.room-create .operation-options{margin:12px 0;grid-template-columns:1fr 1fr}
+.room-create>.outline-button{width:100%}
+.room-row{display:grid;gap:8px;padding:12px 0;border-top:1px solid #42514d}
+.room-row strong{font-size:15px;overflow-wrap:anywhere}.room-row small,.room-browser p{color:#b1bdb6;font-size:12px;line-height:1.5}
+.room-row .outline-button{justify-self:start;padding:10px 16px}
+.lobby-code-row strong{font-size:20px;letter-spacing:1px;overflow-wrap:anywhere}.lobby-code-box{max-width:360px}

@@ -7,3 +7,10 @@ dist
 .env
 .env.*
 !.env.example
+*.7z
+art-source
+public
+src
+test
+docs
+README*

@@ -1,339 +1,61 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { EventEmitter } from 'node:events';
-import { Multiplayer, normalizeRoomCode, sanitizeInput } from '../src/network.js';
-import { Simulation } from '../shared/simulation.js';
-import { MAP, PROTOCOL_VERSION } from '../shared/world.js';
+import {sanitizeInput} from '../shared/simulation.js';
+import {SnapshotEncoder,SnapshotDecoder,prepareSnapshot,encodeInput,decodeInput,encodeControl,decodeControl} from '../shared/snapshot-codec.js';
+import {normalizeServerUrl} from '../src/network.js';
 
-test('room codes accept copied PeerJS IDs and reject invalid destinations', () => {
-  assert.equal(normalizeRoomCode(' gpt-test-481209 '), '481209');
-  assert.equal(normalizeRoomCode('902341'), '902341');
-  for (const invalid of ['', '12345', '1234567', 'ABC234', '../123', '12 345', 'https://example.com']) {
-    assert.throws(() => normalizeRoomCode(invalid), /6 цифр/);
-  }
+// Replaces the retired browser-host/room-code transport checks.
+test('server URLs and untrusted controls are constrained',()=>{
+  assert.equal(normalizeServerUrl('wss://example.com'),'wss://example.com/ws');
+  assert.throws(()=>normalizeServerUrl('https://example.com'));
+  const input=sanitizeInput({forward:999,strafe:-999,yaw:Infinity,pitch:NaN,fire:'true',reload:true,x:1000,hp:999});
+  assert.equal(input.forward,1);assert.equal(input.strafe,-1);assert.equal(input.yaw,0);assert.equal(input.pitch,0);assert.equal(input.fire,false);assert.equal(input.reload,true);assert.equal(input.hp,undefined);
+});
+test('deltas inherit the acknowledged state, not an unacknowledged send',()=>{
+  const base={time:1,tickets:[600,600],winner:null,players:[{id:'p1',name:'Friend',team:0,classId:'assault',weaponId:'ar416',alive:true,hp:100,x:10,y:0,z:20}],points:[],vehicles:[]};
+  const encoder=new SnapshotEncoder(1000),decoder=new SnapshotDecoder({size:1000,mapId:'port'});
+  const prepared=prepareSnapshot(base,1000),first=encoder.encode(prepared,{localId:'p1'});decoder.decode(first.bytes);
+  encoder.confirm(first.sequence,decoder.dict.strings.length-1);
+  const changed=prepareSnapshot({...base,time:1.05,players:[{...base.players[0],hp:50,x:12}]},1000,prepared);
+  encoder.encode(changed,{localId:'p1'}); // Deliberately unacknowledged and never delivered.
+  const restored=prepareSnapshot({...base,time:1.1},1000,changed),packet=encoder.encode(restored,{localId:'p1'}),result=decoder.decode(packet.bytes);
+  assert.equal(result.state.players[0].hp,100);assert.ok(Math.abs(result.state.players[0].x-10)<.02);
+  decoder.history.clear();assert.equal(decoder.decode(packet.bytes).missingBase,true);
+  encoder.ack=0;assert.equal(decoder.decode(encoder.encode(restored,{localId:'p1'}).bytes).missingBase,undefined);
+});
+test('input frames preserve sequence, action flags and compact quantized controls',()=>{
+  const bytes=encodeInput([{sequence:42,dt:.016667,input:{forward:1,strafe:-1,yaw:1,pitch:.4,fire:true,grenade:true,weaponSlot:2,toolSlot:1}}],{snapshotAck:8,eventAck:9,dictAck:10});
+  const decoded=decodeInput(bytes);assert.equal(decoded.snapshotAck,8);assert.equal(decoded.frames[0].sequence,42);assert.equal(decoded.frames[0].input.grenade,true);assert.equal(decoded.frames[0].input.weaponSlot,2);assert.ok(Math.abs(decoded.frames[0].input.yaw-1)<.0001);
 });
 
-test('untrusted controls cannot carry teleportation, non-finite angles or truthy strings', () => {
-  const input = sanitizeInput({
-    forward: 999, strafe: -999, yaw: Infinity, pitch: NaN,
-    fire: 'true', grenade: 1, reload: true, x: 3000, hp: 999,
-  });
-  assert.equal(input.forward, 1);
-  assert.equal(input.strafe, -1);
-  assert.equal(input.yaw, 0);
-  assert.equal(input.pitch, 0);
-  assert.equal(input.fire, false);
-  assert.equal(input.grenade, false);
-  assert.equal(input.reload, true);
-  assert.ok(!('x' in input));
-  assert.ok(!('hp' in input));
-  assert.deepEqual(sanitizeInput(null), sanitizeInput({}));
-});
-
-test('short button presses survive until next network update while movement releases immediately', () => {
-  const session = new Multiplayer();
-  session._mode = 'peer';
-  session.sendInput({ forward: 1, fire: true, grenade: true, yaw: 0.5 });
-  session.sendInput({ forward: 0, fire: false, grenade: false, yaw: 0.6 });
-  assert.equal(session._nextInput.forward, 0);
-  assert.equal(session._nextInput.fire, true);
-  assert.equal(session._nextInput.grenade, true);
-  assert.equal(session._nextInput.yaw, 0.6);
-  session.close();
-});
-
-test('host action pulses survive render frames before an authoritative step and release afterwards', () => {
-  const session = new Multiplayer();
-  session._mode = 'host';
-  session._simulation = new Simulation({ bots: 0 });
-  session._localId = 'host';
-  const player = session._simulation.addPlayer('host', 'Host', 0, 'medic');
-  player.hp = 40;
-  player.ammo -= 5;
-  session.sendInput({ forward: 1, grenade: true, gadget: true, reload: true, jump: true });
-  session.sendInput({ forward: 0, grenade: false, gadget: false, reload: false, jump: false });
-  session._flushHostInput();
-  session._simulation.step(1 / 60);
-  assert.equal(player.grenades, 1);
-  assert.equal(player.reloading, true);
-  assert.ok(player.gadgetTime > 0);
-  assert.ok(player.hp > 40);
-  assert.ok(player.y > 0);
-  assert.equal(player.input.forward, 0);
-  session._flushHostInput();
-  session._simulation.step(1 / 60);
-  assert.equal(player.input.grenade, false);
-  assert.equal(player.input.gadget, false);
-  assert.equal(player.input.reload, false);
-  assert.equal(player.input.jump, false);
-  assert.equal(player.grenades, 1);
-  session.close();
-});
-
-test('host respawn emits authoritative acknowledgement synchronously and clears pending actions', () => {
-  let acknowledged;
-  const session = new Multiplayer({ onState: state => { acknowledged = state; } });
-  session._mode = 'host';
-  session._simulation = new Simulation({ bots: 0 });
-  session._localId = 'host';
-  const player = session._simulation.addPlayer('host', 'Host', 0, 'assault');
-  player.alive = false;
-  player.hp = 0;
-  player.respawnIn = 0;
-  session.sendInput({ grenade: true });
-  assert.equal(session.respawn('medic'), true);
-  assert.equal(acknowledged.players.find(p => p.id === 'host').alive, true);
-  assert.equal(acknowledged.players.find(p => p.id === 'host').classId, 'medic');
-  assert.equal(session._hostActions.size, 0);
-  session.close();
-});
-
-test('backgrounded host controls expire and explicit release cannot replay queued actions',()=>{
-  const session=new Multiplayer();session._mode='host';session._localId='host';session._simulation=new Simulation({bots:0});
-  const player=session._simulation.addPlayer('host','Host',0);session.sendInput({forward:1,fire:true,grenade:true,yaw:.7});
-  session._lastHostInput=performance.now()-500;session._flushHostInput();
-  assert.equal(player.input.forward,0);assert.equal(player.input.fire,false);assert.equal(player.input.grenade,false);assert.equal(player.input.yaw,.7);
-  session.sendInput({forward:1,grenade:true});session.clearInput({yaw:.9});session._flushHostInput();
-  assert.equal(player.input.forward,0);assert.equal(player.input.grenade,false);assert.equal(player.input.yaw,.9);session.close();
-});
-
-test('peer rooms select chunked binary transport for firefight snapshots larger than the JSON channel limit', async () => {
-  const simulation = new Simulation({ bots: 14 });
-  simulation.addPlayer('host', 'Host', 0);
-  simulation.addPlayer('guest', 'Guest', 1);
-  for (let n = 0; n < 100; n++) simulation.event('shot', {
-    playerId: 'host', x: 12.123456, y: 1.65, z: 10.123456,
-    tx: 50.123456, ty: 1.65, tz: 30.123456, hit: false,
-  });
-  const largeState = simulation.snapshot();
-  assert.ok(new TextEncoder().encode(JSON.stringify({ type: 'snapshot', state: largeState })).byteLength > 16300);
-  let options;
-  let received;
-  const connection = new EventEmitter();
-  connection.open = true;
-  connection.send = message => {
-    if (message.type === 'join') {
-      assert.equal(message.protocol,PROTOCOL_VERSION);
-      connection.emit('data', { type: 'welcome', id: 'guest', protocol:PROTOCOL_VERSION });
-      connection.emit('data', { type: 'snapshot', state: largeState });
-    }
-  };
-  connection.close = () => { connection.open = false; connection.emit('close'); };
-  const peer = new EventEmitter();
-  peer.connect = (id, selectedOptions) => {
-    assert.equal(id, 'gpt-test-482910');
-    options = selectedOptions;
-    queueMicrotask(() => connection.emit('open'));
-    return connection;
-  };
-  peer.destroy = () => {};
-  const session = new Multiplayer({ onState: state => { received = state; } });
-  session._openPeer = async () => { session._peer = peer; return peer; };
-  try {
-    await session.join({ code: '482910', name: 'Guest' });
-    assert.equal(options.serialization, 'binary');
-    assert.equal(options.reliable, true);
-    assert.equal(received.events.length, largeState.events.length);
-    assert.equal(session.mode, 'peer');
-  } finally { session.close(); }
-});
-
-test('closing a session invalidates asynchronous callbacks and cleans transports', () => {
-  const session = new Multiplayer();
-  const generation = session._begin('peer');
-  const cleaned = [];
-  session._connection = { close() { cleaned.push('data'); } };
-  session._peer = { destroy() { cleaned.push('peer'); } };
-  session._socket = { close() { cleaned.push('socket'); } };
-  session._pending.add(reason => cleaned.push(reason));
-  session.close('test cancellation');
-  assert.equal(session.mode, 'offline');
-  assert.equal(session._active(generation), false);
-  assert.deepEqual(cleaned, ['test cancellation', 'data', 'peer', 'socket']);
-  assert.equal(session._pending.size, 0);
-  assert.equal(session._nextInput, null);
-  session.close();
-});
-
-test('respawn requests support every capture point on the expanded map',()=>{
-  const session=new Multiplayer();session._mode='peer';const sent=[];session._send=message=>sent.push(message);
-  for(const point of MAP.points)session.respawn('medic',point.id);
-  assert.deepEqual(sent.map(message=>message.pointId),MAP.points.map(point=>point.id));
-  session.respawn('medic','INVALID');assert.equal(sent.at(-1).pointId,undefined);session.close();
-});
-
-test('dedicated transport rejects HTTP and insecure remote servers on an HTTPS page', async () => {
-  const session = new Multiplayer();
-  await assert.rejects(session.connect({ url: 'https://example.com' }), /ws:\/\//);
-  const oldLocation = globalThis.location;
-  try {
-    globalThis.location = { protocol: 'https:' };
-    await assert.rejects(session.connect({ url: 'ws://example.com' }), /wss:\/\//);
-    assert.equal(session.mode, 'offline');
-  } finally {
-    if (oldLocation === undefined) delete globalThis.location;
-    else globalThis.location = oldLocation;
-  }
-});
-
-test('two real WebSocket sessions receive a shared authoritative match and player movement', { timeout: 15000 }, async () => {
-  const port = 22000 + Math.floor(Math.random() * 30000);
-  const server = spawn(process.execPath, ['server/index.js'], {
-    cwd: new URL('..', import.meta.url),
-    env: { ...process.env, PORT: String(port), BOTS: '0' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let firstState;
-  let secondState;
-  let firstId;
-  let secondId;
-  const first = new Multiplayer({ onState: state => { firstState = state; }, onIdentity: id => { firstId = id; } });
-  const second = new Multiplayer({ onState: state => { secondState = state; }, onIdentity: id => { secondId = id; } });
-  const waitFor = predicate => new Promise((resolve, reject) => {
-    const start = performance.now();
-    const poll = setInterval(() => {
-      if (predicate()) { clearInterval(poll); resolve(); }
-      else if (performance.now() - start > 4000) { clearInterval(poll); reject(new Error('Network condition timed out')); }
-    }, 20);
-  });
-  try {
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Test server did not start')), 4000);
-      server.stdout.once('data', () => { clearTimeout(timer); resolve(); });
-      server.once('error', error => { clearTimeout(timer); reject(error); });
-      server.once('exit', code => { clearTimeout(timer); reject(new Error(`Test server exited ${code}`)); });
+test('one authoritative room survives creator loss, resumes players and pauses empty', {timeout:6000},async()=>{
+  const {createGameServer}=await import('../server/index.js');
+  const {WebSocket}=await import('ws');const {once}=await import('node:events');
+  const {PROTOCOL_VERSION,MAP_LAYOUT_REVISION}=await import('../shared/world.js');
+  const {decodeEvents,encodeAck,MESSAGE}=await import('../shared/snapshot-codec.js');
+  const app=createGameServer({PORT:0,BOTS:8});const address=await app.listen(),sockets=[];
+  const delay=ms=>new Promise(r=>setTimeout(r,ms));
+  const until=async(predicate)=>{const end=Date.now()+2500;while(!predicate()){if(Date.now()>end)throw Error('Room check timed out');await delay(10);}};
+  const connect=async()=>{
+    const socket=new WebSocket(`ws://127.0.0.1:${address.port}/ws`),client={socket,messages:[],latest:null};sockets.push(socket);
+    socket.on('message',(raw,binary)=>{
+      if(!binary){const m=decodeControl(raw.toString());client.messages.push(m);if(m.type==='welcome')client.identity=m;if(m.type==='init'){client.decoder=new SnapshotDecoder(m);client.eventAck=m.eventAck;client.epoch=m.epoch;}return;}
+      if(raw[0]===MESSAGE.SNAPSHOT){const result=client.decoder.decode(raw);assert.ok(!result.missingBase);client.latest=result;socket.send(encodeAck(result.sequence,client.eventAck,client.decoder.dict.strings.length-1,client.epoch));}
+      else if(raw[0]===MESSAGE.EVENTS){const result=decodeEvents(raw,client.decoder.dict);client.eventAck=result.through;socket.send(encodeAck(client.latest?.sequence??0,client.eventAck,client.decoder.dict.strings.length-1));}
     });
-    await first.connect({ url: `ws://127.0.0.1:${port}`, name: 'Net Alpha', classId: 'assault' });
-    await second.connect({ url: `ws://127.0.0.1:${port}`, name: 'Net Bravo', classId: 'medic' });
-    await waitFor(() => firstState?.players.length === 2 && secondState?.players.length === 2);
-    assert.notEqual(firstId, secondId);
-    assert.ok(secondState.players.some(player => player.id === firstId && player.name === 'Net Alpha'));
-    const before = firstState.players.find(player => player.id === firstId);
-    first.sendInput({ forward: 1, yaw: 0, pitch: 0 });
-    await waitFor(() => {
-      const player = secondState.players.find(p => p.id === firstId);
-      return player && Math.hypot(player.x - before.x, player.z - before.z) > 0.3;
-    });
-    first.close();
-    await waitFor(() => secondState.players.length === 1);
-    assert.equal(secondState.players[0].id, secondId);
-  } finally {
-    first.close();
-    second.close();
-    server.kill();
-  }
-});
-
-test('host lobby waits for players, supports team/class switching, starts match, and allows join-in-progress and online respawn on capture points', async () => {
-  let hostState;
-  let guest1State;
-  let guest2State;
-  let guest1Id;
-  let guest2Id;
-
-  const hostPeer = new EventEmitter();
-  hostPeer.destroy = () => {};
-
-  const createLinkedPair = (peerName) => {
-    const clientConn = new EventEmitter();
-    const hostConn = new EventEmitter();
-    clientConn.open = true;
-    hostConn.open = true;
-    hostConn.peer = peerName;
-    clientConn.send = msg => queueMicrotask(() => hostConn.emit('data', structuredClone(msg)));
-    hostConn.send = msg => queueMicrotask(() => clientConn.emit('data', structuredClone(msg)));
-    clientConn.close = () => { clientConn.open = false; hostConn.open = false; clientConn.emit('close'); hostConn.emit('close'); };
-    hostConn.close = clientConn.close;
-    return { clientConn, hostConn };
+    await once(socket,'open');return client;
   };
-
-  const hostSession = new Multiplayer({ onState: s => { hostState = s; } });
-  hostSession._openPeer = async () => { hostSession._peer = hostPeer; return hostPeer; };
-
-  const guest1Session = new Multiplayer({ onState: s => { guest1State = s; }, onIdentity: id => { guest1Id = id; } });
-  const guest2Session = new Multiplayer({ onState: s => { guest2State = s; }, onIdentity: id => { guest2Id = id; } });
-
-  const makeGuestPeer = (peerName) => {
-    const p = new EventEmitter();
-    p.destroy = () => {};
-    p.connect = () => {
-      const { clientConn, hostConn } = createLinkedPair(peerName);
-      hostPeer.emit('connection', hostConn);
-      queueMicrotask(() => { hostConn.emit('open'); clientConn.emit('open'); });
-      return clientConn;
-    };
-    return p;
-  };
-
-  guest1Session._openPeer = async () => { const p = makeGuestPeer('guest-1'); guest1Session._peer = p; return p; };
-  guest2Session._openPeer = async () => { const p = makeGuestPeer('guest-2'); guest2Session._peer = p; return p; };
-
-  const flush = () => new Promise(resolve => setTimeout(resolve, 25));
-
-  try {
-    const code = await hostSession.host({ name: 'Commander', classId: 'assault', bots: 4, difficulty: 'regular', lobby: true });
-    assert.equal(hostSession.phase, 'lobby');
-    assert.equal(hostState.lobby, true);
-    assert.equal(hostState.time, 0);
-
-    await guest1Session.join({ code, name: 'SquadMate', classId: 'medic' });
-    await flush();
-    assert.equal(guest1Session.phase, 'lobby');
-    assert.equal(guest1State.lobby, true);
-    assert.ok(guest1State.players.some(p => p.id === guest1Id && p.classId === 'medic'));
-
-    // Switch team and class in lobby
-    guest1Session.setLobbyLoadout({ classId: 'recon', team: 0 });
-    await flush();
-    const g1InLobby = hostState.players.find(p => p.id === guest1Id);
-    assert.equal(g1InLobby.classId, 'recon');
-    assert.equal(g1InLobby.team, 0);
-
-    // Host starts the match
-    assert.equal(hostSession.startMatch({ bots: 2, difficulty: 'veteran' }), true);
-    await flush();
-    assert.equal(hostSession.phase, 'battle');
-    assert.equal(hostState.lobby, false);
-    assert.equal(guest1Session.phase, 'battle');
-    assert.equal(guest1State.lobby, false);
-    assert.equal(guest1State.difficulty, 'veteran');
-
-    // Advance battle time and have Guest 2 join in progress!
-    for (let i = 0; i < 45; i++) hostSession._simulation.step(0.05);
-    hostSession._broadcastSnapshot();
-    await flush();
-    assert.ok(hostState.time >= 1.9);
-
-    await guest2Session.join({ code, name: 'LateJoiner', classId: 'support' });
-    await flush();
-    assert.equal(guest2Session.phase, 'battle');
-    assert.equal(guest2State.lobby, false);
-    assert.ok(guest2State.time >= 1.9);
-    assert.ok(guest2State.players.some(p => p.id === guest2Id && p.name === 'LateJoiner'));
-
-    // Verify online respawn on a captured point with class change for Guest 1
-    const pointC = hostSession._simulation.points.find(p => p.id === 'C');
-    const g1Sim = hostSession._simulation.players.get(guest1Id);
-    pointC.owner = g1Sim.team;
-    pointC.progress = g1Sim.team === 0 ? -1 : 1;
-    pointC.contested = false;
-    g1Sim.alive = false;
-    g1Sim.hp = 0;
-    g1Sim.respawnIn = 0;
-    hostSession._broadcastSnapshot();
-    await flush();
-    assert.equal(guest1State.players.find(p => p.id === guest1Id).alive, false);
-
-    guest1Session.respawn('support', 'C');
-    await flush();
-    const g1Respawned = guest1State.players.find(p => p.id === guest1Id);
-    assert.equal(g1Respawned.alive, true);
-    assert.equal(g1Respawned.classId, 'support');
-    assert.ok(Math.hypot(g1Respawned.x - pointC.x, g1Respawned.z - pointC.z) < 20);
-  } finally {
-    guest1Session.close();
-    guest2Session.close();
-    hostSession.close();
-  }
+  const control=(c,type,data={})=>c.socket.send(encodeControl({type,protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,...data}));
+  try{
+    const a=await connect();control(a,'create',{roomName:'Friends',mapId:'village',bots:8,maxPlayers:7});await until(()=>a.identity);
+    const b=await connect();control(b,'create');await until(()=>b.messages.some(m=>m.code==='room_exists'));
+    control(b,'join',{roomId:app.room.id});await until(()=>b.identity);control(a,'start');await until(()=>b.latest);
+    assert.equal(b.latest.state.mapId,'village');assert.equal(b.latest.state.players.length,10);
+    const before=app.room.sim.time,identity=a.identity;a.socket.terminate();await until(()=>app.room.ownerId===b.identity.id);await delay(50);assert.ok(app.room.sim.time>before);
+    const resumed=await connect();control(resumed,'resume',{token:identity.token});await until(()=>resumed.latest);assert.equal(resumed.identity.id,identity.id);
+    const previousEpoch=app.room.epoch;app.room.sim.tickets=[0,600];await until(()=>b.latest.state.winner!==null);const ended=app.room.sim.time;await delay(25);assert.equal(app.room.sim.time,ended);
+    control(b,'start');b.socket.send(encodeAck(9999,9999,999,previousEpoch));await until(()=>app.room.epoch===previousEpoch+1&&b.latest.state.winner===null);assert.equal(b.socket.readyState,WebSocket.OPEN);
+    resumed.socket.terminate();b.socket.terminate();await until(()=>app.stats().room.players===0);const paused=app.room.sim.time;await delay(45);assert.equal(app.room.sim.time,paused);
+    assert.ok(app.stats().totalBytes>0);assert.ok(app.stats().simulatedTicks>0);
+  }finally{for(const socket of sockets)socket.terminate();await app.close();}
 });

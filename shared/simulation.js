@@ -128,22 +128,7 @@ export class Simulation {
     this.navigationHouses = this.map.theme === 'desert-village'
       ? this.map.structures.filter(structure => structure.kind.startsWith('village-house') || structure.kind === 'village-ruin')
       : [];
-    this.colliders=getAssetColliders(this.map);
-    this.hasRotatedGeometry=this.colliders.some(box=>box.obb||box.parts);
-    this.stepHeight=this.map.stepHeight??(this.hasRotatedGeometry ? .3 : 0);
-    // Static broad phase: movement queries touch nearby cells, not every
-    // warehouse/container on the map for every actor and axis each tick.
-    this.collisionCell=16;
-    this.collisionSize=Math.ceil(this.map.size/this.collisionCell);
-    this.collisionBins=Array.from({length:this.collisionSize**2},()=>[]);
-    const bin=value=>Math.max(0,Math.min(this.collisionSize-1,Math.floor((value+this.map.size/2)/this.collisionCell)));
-    for(const box of this.colliders)for(let z=bin(box.minZ);z<=bin(box.maxZ);z++)
-      for(let x=bin(box.minX);x<=bin(box.maxX);x++)this.collisionBins[z*this.collisionSize+x].push(box);
-    this.colliders.forEach((box,index)=>{box.collisionIndex=index;});
-    this.rayCandidates=[];
-    this.rayVisited=new Uint32Array(this.colliders.length);
-    this.rayVisit=0;
-    this.grenadeColliders=this.colliders.map(box=>expandCollider(box,.12));
+    initializeCollisionWorld(this);
     this.random=random;this.time=0;this.players=new Map();this.maxTickets=600;this.tickets=[600,600];
     this.difficulty=typeof difficulty==='string'&&Object.hasOwn(DIFFICULTIES,difficulty)?difficulty:'regular';
     this.botSettings=DIFFICULTIES[this.difficulty];
@@ -460,20 +445,9 @@ export class Simulation {
     }
     p.interactHeld=interact;p.switchSeatHeld=switchSeat;
   }
-  updateVehicles(dt){
-    for(const vehicle of this.vehicles){
-      if(vehicle.hp<=0){
-        vehicle.wreckTime=Math.max(0,vehicle.wreckTime-dt);
-        vehicle.respawnIn=Math.max(0,vehicle.respawnIn-dt);
-        const home=vehicle.home;
-        if(vehicle.respawnIn<=0&&!this.vehicleCollides(vehicle,home.x,home.z,home.yaw)&&
-          ![...this.players.values()].some(p=>p.alive&&dist(p,home)<2.8)){
-          Object.assign(vehicle,this.createMapVehicle(home));
-        }
-        continue;
-      }
-      const spec=VEHICLE_TYPES[vehicle.type],driver=this.players.get(vehicle.seats[0]);
-      const throttle=driver?.input.forward??0, steering=driver?.input.strafe??0;
+  moveVehicle(vehicle,input,dt){
+      const spec=VEHICLE_TYPES[vehicle.type];
+      const throttle=input?.forward??0, steering=input?.strafe??0;
       vehicle.steer=steering;
       const target=throttle>=0?throttle*spec.maxSpeed:throttle*spec.reverseSpeed;
       const slowing=vehicle.speed!==0&&(Math.sign(target)!==Math.sign(vehicle.speed)||Math.abs(target)<Math.abs(vehicle.speed));
@@ -490,6 +464,21 @@ export class Simulation {
         Object.assign(vehicle,{x,y:this.groundAt(x,z),z,yaw});
       }
       Object.assign(vehicle,vehicleBodyTilt(vehicle,this.map.terrain));
+  }
+  updateVehicles(dt){
+    for(const vehicle of this.vehicles){
+      if(vehicle.hp<=0){
+        vehicle.wreckTime=Math.max(0,vehicle.wreckTime-dt);
+        vehicle.respawnIn=Math.max(0,vehicle.respawnIn-dt);
+        const home=vehicle.home;
+        if(vehicle.respawnIn<=0&&!this.vehicleCollides(vehicle,home.x,home.z,home.yaw)&&
+          ![...this.players.values()].some(p=>p.alive&&dist(p,home)<2.8)){
+          Object.assign(vehicle,this.createMapVehicle(home));
+        }
+        continue;
+      }
+      const spec=VEHICLE_TYPES[vehicle.type];
+      this.moveVehicle(vehicle,this.players.get(vehicle.seats[0])?.input,dt);
       for(const id of vehicle.seats){
         const passenger=this.players.get(id);
         if(passenger)this.syncVehicleSeat(passenger,vehicle);
@@ -787,6 +776,70 @@ export class Simulation {
     p.botHoldCrouch=(slot+Math.floor(this.time))%3===0;
     return bestSpot;
   }
+  // Shared by authority and local movement prediction; no combat or AI runs here.
+  movePlayer(p,i,dt){
+    if(!dt||!p.alive||p.vehicleId)return;
+    p.yaw=i.yaw;p.pitch=i.pitch;
+    const c=getWeapon(p.classId,p.weaponId);
+      const slide=slideVelocity(p,i,c,dt,(x,z)=>this.groundAt(x,z));
+      p.crouching=Boolean(i.crouch||slide||(p.crouching&&this.collides(p.x,p.z,p.y)));
+      const bodyHeight=p.crouching?CROUCH_EYE_HEIGHT+.12:EYE_HEIGHT;
+      const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.55:i.aim?.7:1);
+      if(p.crouching)speed=c.speed*.5;
+      const dx=slide?slide.vx*dt:(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
+      const dz=slide?slide.vz*dt:(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
+      const oldX=p.x,oldZ=p.z;
+      const substeps=slide?Math.max(1,Math.ceil(Math.hypot(dx,dz)/.2)):1;
+      for(let moveStep=0;moveStep<substeps;moveStep++){
+      const stepX=dx/substeps,stepZ=dz/substeps;
+      let followsGround=p.grounded&&p.y<=this.groundAt(p.x,p.z)+.025;
+      const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
+      let walkX=followsGround?this.groundAt(p.x+stepX,p.z):p.y;
+      const groundX=walkX;
+      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX,bodyHeight);
+      if(!this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x+stepX,p.z,walkX))){
+        p.x+=stepX;
+        if(walkX>groundX+.0001){p.y=walkX;followsGround=false;}
+      }
+      let walkZ=followsGround?this.groundAt(p.x,p.z+stepZ):p.y;
+      const groundZ=walkZ;
+      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ,bodyHeight);
+      if(!this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x,p.z+stepZ,walkZ))){
+        p.z+=stepZ;
+        if(walkZ>groundZ+.0001){p.y=walkZ;followsGround=false;}
+      }
+      if(followsGround)p.y=this.groundAt(p.x,p.z);
+      }
+      const ground=this.groundAt(p.x,p.z);
+      p.moveSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/dt;
+      if(slide&&p.moveSpeed<Math.hypot(slide.vx,slide.vz)*.5)p.slideTime=0;
+      if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
+      const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
+      if(p.vy<=0)for(const box of this.floorBoxes(p.x,p.z,PLAYER_RADIUS)){
+        if(box.obb||box.parts){
+          floor=Math.max(floor,rotatedFloor(box,p.x,p.z,nextY-.01,oldY+.01,PLAYER_RADIUS));
+          continue;
+        }
+        const support=PLAYER_RADIUS*(['village-stair','village-floor'].includes(box.kind)?1:.6);
+        if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
+      }
+      p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
+    p.velocityX=(p.x-oldX)/dt;p.velocityZ=(p.z-oldZ)/dt;
+  }
+  floorBoxes(x,z,radius){
+    const half=this.map.size/2,cell=this.collisionCell,size=this.collisionSize;
+    const loX=Math.floor((x-radius+half)/cell),hiX=Math.floor((x+radius+half)/cell);
+    const loZ=Math.floor((z-radius+half)/cell),hiZ=Math.floor((z+radius+half)/cell);
+    if(loX<0||loZ<0||hiX>=size||hiZ>=size)return this.colliders;
+    const out=this.floorCandidates;out.length=0;
+    this.floorVisit=(this.floorVisit+1)>>>0;
+    if(!this.floorVisit){this.floorVisited.fill(0);this.floorVisit=1;}
+    for(let iz=loZ;iz<=hiZ;iz++)for(let ix=loX;ix<=hiX;ix++)for(const box of this.collisionBins[iz*size+ix]){
+      if(this.floorVisited[box.collisionIndex]===this.floorVisit)continue;
+      this.floorVisited[box.collisionIndex]=this.floorVisit;out.push(box);
+    }
+    return out;
+  }
   thinkBot(p,dt){thinkInfantryBot(this,p,dt);}
   step(rawDt){
     const dt=clamp(finite(rawDt),0,.1);if(!dt)return;this.time+=dt;
@@ -794,7 +847,7 @@ export class Simulation {
     if(this.winner!==null)return;
     for(const p of this.players.values()){p.tickX=p.x;p.tickZ=p.z;}
     // Spread route planning across ticks when many bots spawn together.
-    this.botPathBudget=2;
+    this.botPathBudget=this.pathRequestsPerTick??2;
     updateEquipment(this,dt);
     updateBotTeams(this);
     if(this.vehicles.length){
@@ -846,49 +899,10 @@ export class Simulation {
         continue;
       }
       this.updateReload(p,c,dt);
-      const slide=slideVelocity(p,i,c,dt,(x,z)=>this.groundAt(x,z));
-      p.crouching=Boolean(i.crouch||slide||(p.crouching&&this.collides(p.x,p.z,p.y)));
-      const bodyHeight=p.crouching?CROUCH_EYE_HEIGHT+.12:EYE_HEIGHT;
-      const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.55:i.aim?.7:1);
-      if(p.crouching)speed=c.speed*.5;
-      const dx=slide?slide.vx*dt:(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
-      const dz=slide?slide.vz*dt:(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
-      const oldX=p.x,oldZ=p.z;
-      const substeps=slide?Math.max(1,Math.ceil(Math.hypot(dx,dz)/.2)):1;
-      for(let moveStep=0;moveStep<substeps;moveStep++){
-      const stepX=dx/substeps,stepZ=dz/substeps;
-      let followsGround=p.grounded&&p.y<=this.groundAt(p.x,p.z)+.025;
-      const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
-      let walkX=followsGround?this.groundAt(p.x+stepX,p.z):p.y;
-      const groundX=walkX;
-      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX,bodyHeight);
-      if(!this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x+stepX,p.z,walkX))){
-        p.x+=stepX;
-        if(walkX>groundX+.0001){p.y=walkX;followsGround=false;}
-      }
-      let walkZ=followsGround?this.groundAt(p.x,p.z+stepZ):p.y;
-      const groundZ=walkZ;
-      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ,bodyHeight);
-      if(!this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x,p.z+stepZ,walkZ))){
-        p.z+=stepZ;
-        if(walkZ>groundZ+.0001){p.y=walkZ;followsGround=false;}
-      }
-      if(followsGround)p.y=this.groundAt(p.x,p.z);
-      }
-      const ground=this.groundAt(p.x,p.z);
-      p.moveSpeed=Math.hypot(p.x-oldX,p.z-oldZ)/dt;
-      if(slide&&p.moveSpeed<Math.hypot(slide.vx,slide.vz)*.5)p.slideTime=0;
-      if(i.jump&&p.grounded&&!p.jumpHeld){p.vy=6;p.grounded=false;}p.jumpHeld=i.jump;
-      const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
-      if(p.vy<=0)for(const box of this.colliders){
-        if(box.obb||box.parts){
-          floor=Math.max(floor,rotatedFloor(box,p.x,p.z,nextY-.01,oldY+.01,PLAYER_RADIUS));
-          continue;
-        }
-        const support=PLAYER_RADIUS*(['village-stair','village-floor'].includes(box.kind)?1:.6);
-        if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
-      }
-      p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
+      if(p.networkFrames){
+        for(const frame of p.networkFrames){this.movePlayer(p,frame.input,frame.dt);p.inputAck=frame.sequence;}
+        p.networkFrames=null;
+      }else if(!p.networkControlled||p.networkIdle)this.movePlayer(p,i,dt);
       this.firePersonalWeapon(p,c,pressed,firing);
       if(p.heldGadget&&i.fire&&!i.sprint&&(pressed||p.heldGadget==='repair')){
         activateGadget(this,p,p.heldGadget==='launcher'||p.heldGadget==='medkit');
@@ -984,6 +998,9 @@ export class Simulation {
         gadgetAction:p.gadgetAction,gadgetActionRemaining:Math.max(0,(p.gadgetActionUntil??0)-this.time),gadgetTargetId:p.gadgetTargetId,
         grenades:p.grenades,spotted:p.spottedUntil>this.time,
         vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,
+        networkActive:p.alive&&(!p.grounded||this.time-(p.lastShotAt??-10)<.5),vy:p.vy,velocityX:p.velocityX,velocityZ:p.velocityZ,moveSpeed:p.moveSpeed,
+        slideTime:p.slideTime,slideCooldown:p.slideCooldown,slideVx:p.slideVx,slideVz:p.slideVz,
+        controlFlags:(p.jumpHeld?1:0)|(p.crouchHeld?2:0)|(p.wasSprinting?4:0),
       };
     });
     return {
@@ -996,4 +1013,29 @@ export class Simulation {
       grenades:this.grenades.map(g=>({id:g.id,x:g.x,y:g.y,z:g.z,team:g.team,ownerId:g.owner,fuse:g.fuse,yaw:g.yaw||0})),winner:this.winner,
     };
   }
+}
+
+function initializeCollisionWorld(world){
+    world.colliders=getAssetColliders(world.map);
+    world.hasRotatedGeometry=world.colliders.some(box=>box.obb||box.parts);
+    world.stepHeight=world.map.stepHeight??(world.hasRotatedGeometry ? .3 : 0);
+    // Static broad phase: movement queries touch nearby cells, not every
+    // warehouse/container on the map for every actor and axis each tick.
+    world.collisionCell=16;
+    world.collisionSize=Math.ceil(world.map.size/world.collisionCell);
+    world.collisionBins=Array.from({length:world.collisionSize**2},()=>[]);
+    const bin=value=>Math.max(0,Math.min(world.collisionSize-1,Math.floor((value+world.map.size/2)/world.collisionCell)));
+    for(const box of world.colliders)for(let z=bin(box.minZ);z<=bin(box.maxZ);z++)
+      for(let x=bin(box.minX);x<=bin(box.maxX);x++)world.collisionBins[z*world.collisionSize+x].push(box);
+    world.colliders.forEach((box,index)=>{box.collisionIndex=index;});
+    world.rayCandidates=[];
+    world.rayVisited=new Uint32Array(world.colliders.length);
+    world.rayVisit=0;
+    world.grenadeColliders=world.colliders.map(box=>expandCollider(box,.12));
+  world.floorCandidates=[];world.floorVisited=new Uint32Array(world.colliders.length);world.floorVisit=0;
+}
+// Collision-only view: no bots, pathfinding grid, combat, or match simulation on clients.
+export function createPredictionWorld(mapId){
+  const world=Object.create(Simulation.prototype);world.map=getMap(mapId);world.vehicles=[];
+  initializeCollisionWorld(world);return world;
 }

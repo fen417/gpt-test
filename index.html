@@ -13,7 +13,7 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu">
-    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST · ALPHA <span id="build-version">0.10</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
+    <header class="masthead"><a class="brand" href="./"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST · ALPHA <span id="build-version">0.14</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button><button id="menu-settings" class="small-button" aria-label="Настройки изображения и звука">⚙</button></div></header>
     <div class="menu-content">
       <section class="intro">
         <div class="eyebrow"><span></span> ЗАХВАТ ТЕРРИТОРИИ</div>
@@ -41,9 +41,15 @@
         <button id="solo" class="deploy-button"><span>НА ПОЛЕ БОЯ</span><span>↗</span></button>
         <div class="solo-note">Мгновенный бой с ботами · Без регистрации</div>
         <div class="network-divider"><span>ИЛИ ИГРА С ДРУЗЬЯМИ</span></div>
-        <div class="network-actions"><button id="host" class="outline-button">Создать комнату <span>+</span></button><button id="join-toggle" class="outline-button">Войти по коду <span>→</span></button></div>
-        <form id="join-form" class="hidden inline-form"><label class="sr-only" for="room-code">Код комнаты</label><input id="room-code" placeholder="КОД ИЗ 6 ЦИФР" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" /><button type="submit" class="outline-button">ВОЙТИ →</button></form>
-        <details class="server-details"><summary>Выделенный сервер</summary><form id="server-form" class="inline-form"><label class="sr-only" for="server-url">Адрес сервера</label><input id="server-url" placeholder="wss://your-server.example" /><button class="outline-button">→</button></form></details>
+        <div class="network-actions"><button id="host" class="outline-button">СОЗДАТЬ КОМНАТУ <span>+</span></button><button id="join-toggle" class="outline-button">БРАУЗЕР КОМНАТ <span>→</span></button></div>
+        <form id="create-room" class="room-create hidden">
+          <label>НАЗВАНИЕ<input id="room-name" maxlength="40" value="Операция друзей" required /></label>
+          <div class="operation-options"><label>КАРТА<select id="room-map"></select></label><label>РЕЖИМ<select id="room-mode"><option value="conquest">Захват территории</option></select></label></div>
+          <div class="operation-options"><label>ИГРОКОВ<select id="room-max"><option value="2" >2</option><option value="3" >3</option><option value="4" >4</option><option value="5" >5</option><option value="6" >6</option><option value="7" selected>7</option></select></label><label>БОТОВ<select id="room-bots"><option value="0" >Без ботов</option><option value="1" >1</option><option value="2" >2</option><option value="3" >3</option><option value="4" >4</option><option value="5" >5</option><option value="6" >6</option><option value="7" >7</option><option value="8" selected>8</option><option value="9" >9</option><option value="10" >10</option><option value="11" >11</option><option value="12" >12</option></select></label></div>
+          <button type="submit" class="outline-button">СОЗДАТЬ И ВОЙТИ →</button>
+        </form>
+        <section id="room-browser" class="room-browser hidden" aria-label="Браузер комнат"><p id="rooms-note" role="status">Подключение к серверу…</p><div id="room-list"></div></section>
+        <details class="server-details"><summary>Адрес игрового сервера</summary><form id="server-form" class="inline-form"><label class="sr-only" for="server-url">Публичный WSS-адрес</label><input id="server-url" placeholder="wss://ваш-сервис.code.run/ws" /><button class="outline-button">СОХРАНИТЬ</button></form></details>
         <p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p>
       </section>
     </div>
@@ -180,12 +186,12 @@
           <p id="lobby-status" class="lobby-sub">Ожидание подключения бойцов…</p>
         </div>
         <div class="lobby-code-box">
-          <small>КОД КОМНАТЫ</small>
+          <small>КОМНАТА</small>
           <div class="lobby-code-row">
-            <strong id="lobby-code">------</strong>
-            <button type="button" id="lobby-copy" class="small-button">КОПИРОВАТЬ</button>
+            <strong id="lobby-code">Операция</strong>
+            <button type="button" id="lobby-copy" class="small-button">ССЫЛКА НА ИГРУ</button>
           </div>
-          <span class="lobby-join-hint">Другие игроки также смогут войти по этому коду во время боя</span>
+          <span class="lobby-join-hint">Друзья найдут эту комнату в браузере комнат, в том числе во время боя</span>
         </div>
       </header>
       <div class="lobby-grid">
@@ -207,7 +213,7 @@
         </div>
         <aside class="lobby-sidebar">
           <div class="deploy-box">
-            <div class="deploy-box-title"><span>ВАША СТОРОНА И СПЕЦИАЛИЗАЦИЯ</span><small id="lobby-role-badge">ХОСТ КОМНАТЫ</small></div>
+            <div class="deploy-box-title"><span>ВАША СТОРОНА И СПЕЦИАЛИЗАЦИЯ</span><small id="lobby-role-badge">СОЗДАТЕЛЬ КОМНАТЫ</small></div>
             <button type="button" id="lobby-switch-team" class="outline-button lobby-team-btn">СМЕНИТЬ КОМАНДУ ⇄</button>
             <div class="deploy-classes lobby-classes">
               <button type="button" class="deploy-class-btn active" data-lobby-class="assault" aria-pressed="true"><span>⌖</span><b>Штурмовик</b><small>AR-416</small></button>
@@ -219,7 +225,7 @@
             <label class="sidearm-picker">ПИСТОЛЕТ <select id="lobby-sidearm"></select></label>
           </div>
           <div id="lobby-host-controls" class="deploy-box">
-            <div class="deploy-box-title"><span>ПАРАМЕТРЫ ОПЕРАЦИИ</span><small>НАСТРОЙКИ ХОСТА</small></div>
+            <div class="deploy-box-title"><span>ПАРАМЕТРЫ ОПЕРАЦИИ</span><small>НАСТРОЙКИ КОМНАТЫ</small></div>
             <div class="operation-options lobby-options">
               <label class="map-choice" for="lobby-map">КАРТА<select id="lobby-map"></select></label>
               <label for="lobby-difficulty">СЛОЖНОСТЬ БОТОВ
@@ -230,12 +236,7 @@
                 </select>
               </label>
               <label for="lobby-population">БОТЫ В МАТЧЕ
-                <select id="lobby-population">
-                  <option value="0">Без ботов (только игроки)</option>
-                  <option value="15">16 бойцов с ботами</option>
-                  <option value="23" selected>24 бойца с ботами</option>
-                  <option value="31">32 бойца с ботами</option>
-                </select>
+                <select id="lobby-population"><option value="0" >Без ботов</option><option value="1" >1 ботов</option><option value="2" >2 ботов</option><option value="3" >3 ботов</option><option value="4" >4 ботов</option><option value="5" >5 ботов</option><option value="6" >6 ботов</option><option value="7" >7 ботов</option><option value="8" selected>8 ботов</option><option value="9" >9 ботов</option><option value="10" >10 ботов</option><option value="11" >11 ботов</option><option value="12" >12 ботов</option></select>
               </label>
             </div>
           </div>

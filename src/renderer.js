@@ -763,7 +763,7 @@ export class GameRenderer {
 
   updateVehicles(state, player, dt, view) {
     const active = new Set();
-    const blend = 1 - Math.exp(-dt * 22);
+    const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
       active.add(vehicle.id);
@@ -807,11 +807,11 @@ export class GameRenderer {
     return mounted;
   }
 
-  updateSoldiers(state, localId, dt) {
+  updateSoldiers(state, localId, dt, networkInterpolated=false) {
     const active = this.activeSoldiers;
     active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
-    const blend = this.scoped ? 1 : 1 - Math.exp(-dt * 18);
+    const blend = networkInterpolated || this.scoped ? 1 : 1 - Math.exp(-dt * 18);
     let shadowFrustum = null;
     if (this.renderer.shadowMap.enabled) {
       this.sun.updateMatrixWorld();
@@ -1673,7 +1673,8 @@ export class GameRenderer {
         if (this.cameraPlayerId !== localId || this.cameraAlive !== isAlive || this.cameraAnchor.distanceToSquared(target) > 64) {
           this.cameraAnchor.copy(target);
           this.lastYaw = yaw; this.lastPitch = pitch;
-        } else this.cameraAnchor.lerp(target, 1 - Math.exp(-dt * 28));
+        } else if(view.networkInterpolated)this.cameraAnchor.copy(target);
+        else this.cameraAnchor.lerp(target, 1 - Math.exp(-dt * 28));
         this.cameraPlayerId = localId; this.cameraAlive = isAlive;
         const anchor = this.scoped ? target : this.cameraAnchor;
         const sway = shake && !this.scoped;
@@ -1789,7 +1790,7 @@ export class GameRenderer {
         }
       }
     }
-    this.updateSoldiers(state, localId, dt); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
+    this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
     this.atmosphere.sky.position.copy(this.camera.position);
     this.drawScene();
   }

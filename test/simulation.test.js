@@ -1,10 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
-import { MAP, CLASSES, DIFFICULTIES, PROTOCOL_VERSION } from '../shared/world.js';
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
-import { WebSocket } from 'ws';
+import { MAP, CLASSES, DIFFICULTIES } from '../shared/world.js';
 
 const make=()=>new Simulation({bots:0,random:()=>.5});
 const advance=(sim,seconds)=>{for(let n=0;n<seconds*20;n++)sim.step(.05);};
@@ -142,24 +139,4 @@ test('a full bot round remains finite, navigates the map, and reaches a winner',
 });
 test('snapshots do not leak mutable player state',()=>{
   const sim=make();const p=sim.addPlayer('a','Alice',0);const state=sim.snapshot();state.players[0].hp=0;state.tickets[0]=0;state.points[0].owner=1;assert.equal(p.hp,100);assert.equal(sim.tickets[0],300);assert.equal(sim.points[0].owner,-1);
-});
-
-test('real WebSocket server joins players, simulates inputs, rejects client positions and disconnects', {timeout:10000},async(t)=>{
-  const child=spawn(process.execPath,['server/index.js'],{cwd:new URL('../',import.meta.url),env:{...process.env,PORT:'0',BOTS:'0'},stdio:['ignore','pipe','pipe']});
-  t.after(()=>child.kill());
-  const port=await new Promise((resolve,reject)=>{let logs='';child.stdout.on('data',chunk=>{logs+=chunk;const match=logs.match(/localhost:(\d+)/);if(match)resolve(Number(match[1]));});child.once('error',reject);child.once('exit',code=>reject(new Error(`server exited ${code}`)));});
-  const health=await(await fetch(`http://localhost:${port}/health`)).json();assert.equal(health.ok,true);
-  const a=new WebSocket(`ws://localhost:${port}`), b=new WebSocket(`ws://localhost:${port}`);t.after(()=>{a.terminate();b.terminate();});
-  const incoming=new Map([[a,[]],[b,[]]]);for(const socket of [a,b])socket.on('message',raw=>incoming.get(socket).push(JSON.parse(raw)));
-  await Promise.all([once(a,'open'),once(b,'open')]);
-  const packet=async(socket,predicate)=>{const limit=Date.now()+2500;while(Date.now()<limit){const list=incoming.get(socket),index=list.findIndex(predicate);if(index>=0)return list.splice(index,1)[0];await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Timed out waiting for server packet');};
-  a.send('invalid json');a.send(JSON.stringify({type:'join',protocol:PROTOCOL_VERSION,name:'Alice',classId:'assault'}));b.send(JSON.stringify({type:'join',protocol:PROTOCOL_VERSION,name:'Bob',classId:'medic'}));
-  const welcomeA=await packet(a,p=>p.type==='welcome'),welcomeB=await packet(b,p=>p.type==='welcome');assert.notEqual(welcomeA.id,welcomeB.id);
-  assert.equal(welcomeA.protocol,PROTOCOL_VERSION);assert.equal(welcomeA.difficulty,'regular');
-  const old=new WebSocket(`ws://localhost:${port}`);t.after(()=>old.terminate());incoming.set(old,[]);old.on('message',raw=>incoming.get(old).push(JSON.parse(raw)));await once(old,'open');old.send(JSON.stringify({type:'join',name:'Old cached client'}));const mismatch=await packet(old,p=>p.type==='error');assert.match(mismatch.message,/Обновите страницу/);
-  const before=(await packet(a,p=>p.type==='snapshot'&&p.state.players.length===2)).state.players.find(p=>p.id===welcomeA.id);
-  a.send(JSON.stringify({type:'input',input:{forward:1,yaw:0,x:99999,z:99999,hp:99999}}));
-  const moved=await packet(a,p=>p.type==='snapshot'&&p.state.players.some(q=>q.id===welcomeA.id&&q.z<before.z-.15));const after=moved.state.players.find(p=>p.id===welcomeA.id);
-  assert(Math.abs(after.x)<MAP.size/2);assert(Math.abs(after.z)<MAP.size/2);assert.equal(after.hp,100);assert.equal(after.classId,'assault');
-  b.close();const left=await packet(a,p=>p.type==='snapshot'&&p.state.players.length===1);assert.equal(left.state.players[0].id,welcomeA.id);
 });

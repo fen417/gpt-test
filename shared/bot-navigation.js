@@ -93,7 +93,9 @@ export function findBotPath(sim,start,goal){
   let best=source,bestRange=distance(source,target)+Math.abs(source.y-target.y)*3,expanded=0;
   const context=start.ai,threat=context?.contact??context?.memory;
   let riskBudget=32;
-  while(open.values.length&&expanded++<6500){
+  const deadline=sim.pathBudgetMs?performance.now()+sim.pathBudgetMs:Infinity;
+  while(open.values.length&&expanded++<(sim.pathExpansionLimit??6500)){
+    if((expanded&31)===0&&performance.now()>deadline)break;
     const {node}=open.pop();if(closed.has(node.id))continue;closed.add(node.id);
     const range=distance(node,target)+Math.abs(node.y-target.y)*3;
     if(range<bestRange){best=node;bestRange=range;}if(node===target)break;
