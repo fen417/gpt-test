@@ -1,0 +1,307 @@
+{
+  "beforeBytes": 782527,
+  "afterBytes": 4407263,
+  "before": [
+    {
+      "file": "src/assets/surfaces/asphalt-normal.ktx2",
+      "bytes": 30412
+    },
+    {
+      "file": "src/assets/surfaces/asphalt-normal.webp",
+      "bytes": 39870
+    },
+    {
+      "file": "src/assets/surfaces/asphalt.ktx2",
+      "bytes": 55274
+    },
+    {
+      "file": "src/assets/surfaces/asphalt.webp",
+      "bytes": 71608
+    },
+    {
+      "file": "src/assets/surfaces/brick-normal.ktx2",
+      "bytes": 10204
+    },
+    {
+      "file": "src/assets/surfaces/brick-normal.webp",
+      "bytes": 9046
+    },
+    {
+      "file": "src/assets/surfaces/brick.ktx2",
+      "bytes": 44452
+    },
+    {
+      "file": "src/assets/surfaces/brick.webp",
+      "bytes": 34960
+    },
+    {
+      "file": "src/assets/surfaces/cloth-normal.ktx2",
+      "bytes": 13296
+    },
+    {
+      "file": "src/assets/surfaces/cloth-normal.webp",
+      "bytes": 13692
+    },
+    {
+      "file": "src/assets/surfaces/cloth.ktx2",
+      "bytes": 36242
+    },
+    {
+      "file": "src/assets/surfaces/cloth.webp",
+      "bytes": 29818
+    },
+    {
+      "file": "src/assets/surfaces/concrete-normal.ktx2",
+      "bytes": 4957
+    },
+    {
+      "file": "src/assets/surfaces/concrete-normal.webp",
+      "bytes": 4226
+    },
+    {
+      "file": "src/assets/surfaces/concrete.ktx2",
+      "bytes": 41662
+    },
+    {
+      "file": "src/assets/surfaces/concrete.webp",
+      "bytes": 31638
+    },
+    {
+      "file": "src/assets/surfaces/ground-normal.ktx2",
+      "bytes": 21853
+    },
+    {
+      "file": "src/assets/surfaces/ground-normal.webp",
+      "bytes": 25356
+    },
+    {
+      "file": "src/assets/surfaces/ground.ktx2",
+      "bytes": 55766
+    },
+    {
+      "file": "src/assets/surfaces/ground.webp",
+      "bytes": 70276
+    },
+    {
+      "file": "src/assets/surfaces/metal-normal.ktx2",
+      "bytes": 5483
+    },
+    {
+      "file": "src/assets/surfaces/metal-normal.webp",
+      "bytes": 3960
+    },
+    {
+      "file": "src/assets/surfaces/metal.ktx2",
+      "bytes": 42023
+    },
+    {
+      "file": "src/assets/surfaces/metal.webp",
+      "bytes": 16726
+    },
+    {
+      "file": "src/assets/surfaces/wood-normal.ktx2",
+      "bytes": 9024
+    },
+    {
+      "file": "src/assets/surfaces/wood-normal.webp",
+      "bytes": 5162
+    },
+    {
+      "file": "src/assets/surfaces/wood.ktx2",
+      "bytes": 36579
+    },
+    {
+      "file": "src/assets/surfaces/wood.webp",
+      "bytes": 18962
+    }
+  ],
+  "after": [
+    {
+      "file": "src/assets/surfaces/asphalt-normal.ktx2",
+      "bytes": 221224
+    },
+    {
+      "file": "src/assets/surfaces/asphalt-normal.webp",
+      "bytes": 39870
+    },
+    {
+      "file": "src/assets/surfaces/asphalt.ktx2",
+      "bytes": 55274
+    },
+    {
+      "file": "src/assets/surfaces/asphalt.webp",
+      "bytes": 71608
+    },
+    {
+      "file": "src/assets/surfaces/brick-normal.ktx2",
+      "bytes": 162557
+    },
+    {
+      "file": "src/assets/surfaces/brick-normal.webp",
+      "bytes": 9046
+    },
+    {
+      "file": "src/assets/surfaces/brick.ktx2",
+      "bytes": 44452
+    },
+    {
+      "file": "src/assets/surfaces/brick.webp",
+      "bytes": 34960
+    },
+    {
+      "file": "src/assets/surfaces/cloth-normal.ktx2",
+      "bytes": 163816
+    },
+    {
+      "file": "src/assets/surfaces/cloth-normal.webp",
+      "bytes": 13692
+    },
+    {
+      "file": "src/assets/surfaces/cloth.ktx2",
+      "bytes": 36242
+    },
+    {
+      "file": "src/assets/surfaces/cloth.webp",
+      "bytes": 29818
+    },
+    {
+      "file": "src/assets/surfaces/concrete-normal.ktx2",
+      "bytes": 150523
+    },
+    {
+      "file": "src/assets/surfaces/concrete-normal.webp",
+      "bytes": 4226
+    },
+    {
+      "file": "src/assets/surfaces/concrete.ktx2",
+      "bytes": 41662
+    },
+    {
+      "file": "src/assets/surfaces/concrete.webp",
+      "bytes": 31638
+    },
+    {
+      "file": "src/assets/surfaces/ground-normal.ktx2",
+      "bytes": 378544
+    },
+    {
+      "file": "src/assets/surfaces/ground-normal.webp",
+      "bytes": 21452
+    },
+    {
+      "file": "src/assets/surfaces/ground.ktx2",
+      "bytes": 663099
+    },
+    {
+      "file": "src/assets/surfaces/ground.webp",
+      "bytes": 106908
+    },
+    {
+      "file": "src/assets/surfaces/metal-normal.ktx2",
+      "bytes": 135515
+    },
+    {
+      "file": "src/assets/surfaces/metal-normal.webp",
+      "bytes": 3960
+    },
+    {
+      "file": "src/assets/surfaces/metal.ktx2",
+      "bytes": 42023
+    },
+    {
+      "file": "src/assets/surfaces/metal.webp",
+      "bytes": 16726
+    },
+    {
+      "file": "src/assets/surfaces/village-sand-normal.ktx2",
+      "bytes": 627428
+    },
+    {
+      "file": "src/assets/surfaces/village-sand-normal.webp",
+      "bytes": 34942
+    },
+    {
+      "file": "src/assets/surfaces/village-sand.ktx2",
+      "bytes": 672361
+    },
+    {
+      "file": "src/assets/surfaces/village-sand.webp",
+      "bytes": 90686
+    },
+    {
+      "file": "src/assets/surfaces/village-stucco-normal.ktx2",
+      "bytes": 194935
+    },
+    {
+      "file": "src/assets/surfaces/village-stucco-normal.webp",
+      "bytes": 23112
+    },
+    {
+      "file": "src/assets/surfaces/village-stucco.ktx2",
+      "bytes": 50477
+    },
+    {
+      "file": "src/assets/surfaces/village-stucco.webp",
+      "bytes": 44192
+    },
+    {
+      "file": "src/assets/surfaces/wood-normal.ktx2",
+      "bytes": 129592
+    },
+    {
+      "file": "src/assets/surfaces/wood-normal.webp",
+      "bytes": 5162
+    },
+    {
+      "file": "src/assets/surfaces/wood.ktx2",
+      "bytes": 36579
+    },
+    {
+      "file": "src/assets/surfaces/wood.webp",
+      "bytes": 18962
+    }
+  ],
+  "build": {
+    "schema": 1,
+    "createdAt": "2026-11-14T14:34:15.957Z",
+    "initialJsGzipBytes": 513306,
+    "audioBytes": 2440042,
+    "budgets": {
+      "initialJsGzipBytes": 700000,
+      "audioBytes": 2500000
+    },
+    "initial": [
+      {
+        "file": "assets/game-C-cDTjO2.js",
+        "bytes": 350584,
+        "gzipBytes": 142797
+      },
+      {
+        "file": "assets/modulepreload-polyfill-B5Qt9EMX.js",
+        "bytes": 711,
+        "gzipBytes": 399
+      },
+      {
+        "file": "assets/renderer-B8KEUHTT.js",
+        "bytes": 243183,
+        "gzipBytes": 97185
+      },
+      {
+        "file": "assets/vendor-three-DcqrMhLo.js",
+        "bytes": 654593,
+        "gzipBytes": 180169
+      },
+      {
+        "file": "assets/soldier-Cn8JFHlD.js",
+        "bytes": 151877,
+        "gzipBytes": 73588
+      },
+      {
+        "file": "assets/vendor-meshopt-C-EjcZg-.js",
+        "bytes": 53605,
+        "gzipBytes": 19168
+      }
+    ],
+    "pass": true
+  }
+}

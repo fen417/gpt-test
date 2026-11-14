@@ -46,3 +46,7 @@ Remaining acceptance work before graphics tuning: record three maps × low/high 
 Ordered phase results, measured regressions, tradeoffs and remaining hardware acceptance are in [implementation-status.md](implementation-status.md). Reproduce composition with `node scripts/measure-world.mjs`; it counts the complete static scene, not visible draw calls or FPS. Normal `npm run build` now enforces initial-JS/audio transfer budgets and verifies that solo authority is bundled as a Worker. Bundle reports are CI artifacts.
 
 Three is pinned to 0.181.2 because CachedShadows patches shadow rendering internals. Updating it requires the Node regression suite plus a real browser shadow/context-loss render check. The hardware FPS/visual/audio acceptance matrix remains a separate requirement; successful CI does not establish HD 610 performance or subjective online audio quality.
+
+## Revision of 0.16
+
+See [revision-016-results.md](revision-016-results.md) for the follow-up audit, reproduced playback/audio defects, high-quality rendering changes and the explicit HD 610 limitation. `?perf` now records AA/AF and audio delivery/load/voice-budget counters as well as playback-clock recoveries. Modelled audio time is not a real-device listening test; exported browser smoke data is not a matched route benchmark.
