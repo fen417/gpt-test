@@ -26,6 +26,8 @@ export const SCHEMAS={
   points:specs('name:r x:x z:z owner:i8 progress:signed contested:u8 spawnBlocked:u8'),
 };
 const COLLECTIONS=Object.keys(SCHEMAS),MOVE=new Set(['x','y','z','yaw','pitch','bodyPitch','bodyRoll','speed','steer','aimYaw','aimPitch','vy','slideVx','slideVz','motionAt']);
+const INDEX=Object.fromEntries(COLLECTIONS.map(kind=>[kind,Object.fromEntries(SCHEMAS[kind].map((field,index)=>[field.key,index]))]));
+const publicPlayers=new WeakMap();
 const equal=(a,b)=>Array.isArray(a)?Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>v===b[i]):a===b;
 const clock=(t,left)=>left>0?Math.round((t+left)*100)/100:0;
 function quant(type,value,size){
@@ -112,15 +114,19 @@ export class SnapshotEncoder{
   encode(current,{localId,inputAck=0,tick=0,full=false,focus={}}={}){
     const base=this.history.get(this.ack);full||=!base||current.time-this.lastFull>=5;
     const next={...current,rows:{}},payload=new Writer(),origin=current.rows.players.get(localId);
-    const own=origin?Object.fromEntries(SCHEMAS.players.map((f,i)=>[f.key,dequant(f.type,origin[i],this.size)])):null;
+    const own=origin?{x:dequant('x',origin[INDEX.players.x],this.size),z:dequant('z',origin[INDEX.players.z],this.size)}:null;
     for(const kind of COLLECTIONS){const schema=SCHEMAS[kind],prior=full?new Map():base.rows[kind],map=new Map(),updates=[];
       for(const [id,original] of current.rows[kind]){let row=original,old=prior.get(id);
-        const at=key=>{const i=schema.findIndex(f=>f.key===key);return i<0?null:dequant(schema[i].type,original[i],this.size);};
-        const d=own?Math.hypot(at('x')-own.x,at('z')-own.z):0,scoped=focus.aim&&focus.classId==='recon';
-        if((kind==='grenades'||kind==='rockets')&&own&&d>(scoped?320:kind==='grenades'?65:200)&&at('ownerId')!==localId&&at('owner')!==localId)continue;
+        if((kind==='grenades'||kind==='rockets')&&own){
+          const indices=INDEX[kind],dx=dequant(schema[indices.x].type,original[indices.x],this.size)-own.x,dz=dequant(schema[indices.z].type,original[indices.z],this.size)-own.z;
+          const range=focus.aim&&focus.classId==='recon'?320:kind==='grenades'?65:200;
+          if(dx*dx+dz*dz>range*range&&original[indices.ownerId]!==localId)continue;
+        }
         // The server already schedules snapshots. A second floating-point
         // deadline here could discard every other movement update.
-        if(kind==='players'&&id!==localId)row=row.map((v,i)=>PRIVATE.has(schema[i].key)?0:v);
+        if(kind==='players'&&id!==localId){
+          let publicRow=publicPlayers.get(original);if(!publicRow){publicRow=original.map((v,i)=>PRIVATE.has(schema[i].key)?0:v);publicPlayers.set(original,publicRow);}row=publicRow;
+        }
         map.set(id,row);const changed=[];for(let i=0;i<schema.length;i++)if(!old||!equal(row[i],old[i]))changed.push(i);
         if(changed.length)updates.push({id,row,changed});
       }

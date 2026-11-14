@@ -1,0 +1,7 @@
+{
+  "node": "v24.22.1",
+  "scenario": "bench-sim with --trace-gc; traced timing excluded from performance comparison",
+  "events": 329,
+  "maxPauseMs": 10.51,
+  "over5Ms": 3
+}

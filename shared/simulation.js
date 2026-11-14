@@ -18,7 +18,7 @@ import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDe
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
 const dist = (a,b) => Math.hypot(a.x-b.x,a.z-b.z);
-const names = ['Ворон','Север','Волк','Туман','Барс','Кедр','Скат','Риф','Шторм','Каскад','Искра','Дозор','Сокол','Беркут','Гранит'];
+const names = ['Ворон','Север','Волк','Туман','Барс','Кедр','Скат','Риф','Шторм','Каскад','Искра','Дозор','Сокол','Беркут','Гранит','Рубеж','Буря','Сталь','Клык','Рысь','Орион','Кречет','Ветер','Топаз','Сапсан','Радар','Леший','Коршун','Факел','Ястреб','Бастион','Буран'];
 const classKeys = Object.keys(CLASSES);
 const validClass = value => typeof value==='string' && Object.hasOwn(CLASSES,value);
 const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));

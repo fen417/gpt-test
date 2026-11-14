@@ -2,19 +2,19 @@ import { SpatialIndex } from './spatial-index.js';
 import { rayCollider } from './asset-colliders.js';
 import { EYE_HEIGHT, PLAYER_RADIUS } from './world.js';
 
-const caches=new WeakMap(),distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+const caches=new WeakMap(),distance=(a,b)=>{const x=a.x-b.x,z=a.z-b.z;return Math.sqrt(x*x+z*z);};
 const down={x:0,y:-1,z:0};
 function navigation(sim){
   if(caches.has(sim))return caches.get(sim);
   const size=sim.gridSize,cell=sim.gridCell,origin=sim.gridOrigin;
-  const ground=new Map(),layers=new Map(),cover=[],nodes=[];
+  const ground=new Map(),layers=new Map(),cover=[],nodes=[],byId=[];
   const key=(x,z)=>Math.floor((z-origin)/cell)*size+Math.floor((x-origin)/cell);
   const insert=(x,y,z)=>{
     const crouch=sim.collides(x,z,y+.025,PLAYER_RADIUS+.04,EYE_HEIGHT);
     if(crouch&&sim.collides(x,z,y+.025,PLAYER_RADIUS+.04,1.1))return;
     const k=key(x,z),list=layers.get(k)??[];
     if(list.some(n=>distance(n,{x,z})<.25&&Math.abs(n.y-y)<.15))return;
-    const node={id:'s'+nodes.length,x,y,z,ground:false,crouch};nodes.push(node);list.push(node);layers.set(k,list);
+    const node={id:size*size+nodes.length,x,y,z,ground:false,crouch};nodes.push(node);byId[node.id]=node;list.push(node);layers.set(k,list);
   };
   for(const b of sim.colliders){
     if(b.kind==='village-stair')insert(b.x,b.h,b.z);
@@ -43,8 +43,8 @@ function navigation(sim){
     const id=iz*size+ix;if(ground.has(id))return ground.get(id);
     const x=origin+(ix+.5)*cell,z=origin+(iz+.5)*cell,y=sim.groundAt(x,z);
     const crouch=sim.collides(x,z,y+.025,PLAYER_RADIUS+.05,EYE_HEIGHT);
-    const node=crouch&&sim.collides(x,z,y+.025,PLAYER_RADIUS+.05,1.1)?null:{id:'g'+id,x,y,z,ground:true,crouch};
-    ground.set(id,node);return node;
+    const node=crouch&&sim.collides(x,z,y+.025,PLAYER_RADIUS+.05,1.1)?null:{id,x,y,z,ground:true,crouch};
+    ground.set(id,node);if(node)byId[id]=node;return node;
   };
   const nearby=(point,radius=1)=>{
     const ix=Math.floor((point.x-origin)/cell),iz=Math.floor((point.z-origin)/cell),out=[];
@@ -55,7 +55,7 @@ function navigation(sim){
     }
     return out;
   };
-  const result={ground,layers,cover,nodes,nearby,coverIndex:new SpatialIndex(cover),nodeIndex:new SpatialIndex(nodes),edges:new Map()};caches.set(sim,result);return result;
+  const result={ground,layers,cover,nodes,byId,capacity:size*size+nodes.length,workspaces:[],adjacency:new Map(),nearby,coverIndex:new SpatialIndex(cover),nodeIndex:new SpatialIndex(nodes),edges:new Map()};caches.set(sim,result);return result;
 }
 
 export function walkableSegment(sim,a,b,dynamic=true){
@@ -78,9 +78,18 @@ export function walkableSegment(sim,a,b,dynamic=true){
 }
 
 class Heap{
-  values=[];
-  push(value){const a=this.values;a.push(value);let i=a.length-1;while(i){const p=(i-1)>>1;if(a[p].f<=value.f)break;a[i]=a[p];i=p;}a[i]=value;}
-  pop(){const a=this.values,first=a[0],last=a.pop();if(a.length){let i=0;while(i*2+1<a.length){let c=i*2+1;if(c+1<a.length&&a[c+1].f<a[c].f)c++;if(a[c].f>=last.f)break;a[i]=a[c];i=c;}a[i]=last;}return first;}
+  constructor(size){this.ids=new Int32Array(size);this.scores=new Float64Array(size);this.length=0;}
+  push(id,f){if(this.length===this.ids.length){const ids=new Int32Array(this.ids.length*2),scores=new Float64Array(this.ids.length*2);ids.set(this.ids);scores.set(this.scores);this.ids=ids;this.scores=scores;}let i=this.length++;while(i){const p=(i-1)>>1;if(this.scores[p]<=f)break;this.ids[i]=this.ids[p];this.scores[i]=this.scores[p];i=p;}this.ids[i]=id;this.scores[i]=f;}
+  pop(){const first=this.ids[0],id=this.ids[--this.length],f=this.scores[this.length];if(this.length){let i=0;while(i*2+1<this.length){let c=i*2+1;if(c+1<this.length&&this.scores[c+1]<this.scores[c])c++;if(this.scores[c]>=f)break;this.ids[i]=this.ids[c];this.scores[i]=this.scores[c];i=c;}this.ids[i]=id;this.scores[i]=f;}return first;}
+}
+function workspace(nav){const work=nav.workspaces.pop()??{g:new Float64Array(nav.capacity),seen:new Uint32Array(nav.capacity),closed:new Uint32Array(nav.capacity),previous:new Int32Array(nav.capacity),heap:new Heap(nav.capacity),generation:0};work.generation=(work.generation+1)>>>0;if(!work.generation){work.seen.fill(0);work.closed.fill(0);work.generation=1;}work.heap.length=0;return work;}
+function* neighbors(sim,nav,node){
+  if(nav.adjacency.has(node.id))return nav.adjacency.get(node.id);
+  const list=[];for(const next of nav.nearby(node)){
+    yield;if(next===node||distance(node,next)>sim.gridCell*1.5+.1||(!node.ground||!next.ground)&&Math.abs(next.y-node.y)>.35)continue;
+    if(walkableSegment(sim,node,next,false))list.push(next.id);
+  }
+  const result=Int32Array.from(list);nav.adjacency.set(node.id,result);return result;
 }
 
 function* pathJob(sim,start,goal){
@@ -94,51 +103,47 @@ function* pathJob(sim,start,goal){
     }return best;
   }
   const source=yield* nearest(start,true),target=yield* nearest(goal,false);if(!source||!target)return [];
-  const open=new Heap(),costs=new Map([[source.id,0]]),previous=new Map(),closed=new Set();
-  open.push({node:source,f:distance(source,target)});
+  const work=workspace(nav),generation=work.generation,open=work.heap;work.g[source.id]=0;work.seen[source.id]=generation;
+  try{
+  open.push(source.id,distance(source,target));
   let best=source,bestRange=distance(source,target)+Math.abs(source.y-target.y)*3,expanded=0;
   const context=start.ai,threat=context?.contact??context?.memory;
   let riskBudget=32;
 
-  while(open.values.length&&expanded++<(sim.pathExpansionLimit??6500)){
+  while(open.length&&expanded++<(sim.pathExpansionLimit??6500)){
     yield;
-    const {node}=open.pop();if(closed.has(node.id))continue;closed.add(node.id);
+    const node=nav.byId[open.pop()];if(work.closed[node.id]===generation)continue;work.closed[node.id]=generation;
     const range=distance(node,target)+Math.abs(node.y-target.y)*3;
     if(range<bestRange){best=node;bestRange=range;}if(node===target)break;
-    for(const next of nav.nearby(node)){
-      yield;
-      if(next===node||closed.has(next.id)||distance(node,next)>sim.gridCell*1.5+.1)continue;
-      if(sim.vehicleAt(next.x,next.z,next.y))continue;
-      if((!node.ground||!next.ground)&&Math.abs(next.y-node.y)>.35)continue;
-      const edge=node.id+'>'+next.id;
-      let clear=nav.edges.get(edge);
-      if(clear===undefined){clear=walkableSegment(sim,node,next,false);nav.edges.set(edge,clear);}
-      if(!clear)continue;
+    for(const nextId of yield* neighbors(sim,nav,node)){
+      yield;const next=nav.byId[nextId];
+      if(work.closed[nextId]===generation||sim.vehicleAt(next.x,next.z,next.y))continue;
       let risk=0;
       if(threat&&distance(next,threat)<65&&riskBudget-->0&&sim.lineClear({x:next.x,y:next.y+1.1,z:next.z},{x:threat.x,y:threat.y+1.1,z:threat.z}))risk+=context?.mode==='retreat'?14:4;
       if(context?.blockedSpot&&sim.time<context.blockedSpot.until&&distance(next,context.blockedSpot)<3)risk+=35;
       const squad=sim.botTeams?.[start.team]?.members??[];
       for(const ally of squad)if(ally!==start&&ally.alive&&ally.ai?.goal&&distance(next,ally.ai.goal)<1.6)risk+=1.5;
-      const cost=costs.get(node.id)+distance(node,next)+Math.abs(next.y-node.y)*2+risk*(context?.caution??1);
-      if(cost>=(costs.get(next.id)??Infinity))continue;
-      costs.set(next.id,cost);previous.set(next.id,node);open.push({node:next,f:cost+range});
+      const cost=work.g[node.id]+distance(node,next)+Math.abs(next.y-node.y)*2+risk*(context?.caution??1);
+      if(cost>=(work.seen[next.id]===generation?work.g[next.id]:Infinity))continue;
+      work.seen[next.id]=generation;work.g[next.id]=cost;work.previous[next.id]=node.id;open.push(next.id,cost+range);
     }
   }
   const path=[];let current=best;
-  while(current&&current!==source){path.push({x:current.x,y:current.y,z:current.z,crouch:current.crouch});current=previous.get(current.id);}path.reverse();
+  while(current&&current!==source){path.push({x:current.x,y:current.y,z:current.z,crouch:current.crouch});current=nav.byId[work.previous[current.id]];}path.reverse();
   yield;
   if(best===target&&walkableSegment(sim,target,goal))path.push({x:goal.x,y:goal.y??sim.groundAt(goal.x,goal.z),z:goal.z,crouch:target.crouch});
   const smooth=[];let anchor={x:start.x,y:start.y,z:start.z};
   for(let i=0;i<path.length;){yield;let end=i;while(end+1<path.length&&end<i+5&&path[end].crouch===path[end+1].crouch&&Math.abs(path[end+1].y-anchor.y)<.3&&walkableSegment(sim,anchor,path[end+1]))end++;
     smooth.push(path[end]);anchor=path[end];i=end+1;}
   return smooth;
+  }finally{nav.workspaces.push(work);}
 }
 
 export function findCover(sim,p,threat,{retreat=false,fire=false}={}){
   const nav=navigation(sim),ai=p.ai;let best=null,score=Infinity;
   const eye={x:threat.x,y:(threat.y??sim.groundAt(threat.x,threat.z))+1.2,z:threat.z};
   const radius=retreat?24:17;
-  const candidates=nav.coverIndex.query(p.x-radius,p.z-radius,p.x+radius,p.z+radius).filter(c=>distance(c,p)<(retreat?24:17)&&Math.abs(c.y-p.y)<2).sort((a,b)=>distance(a,p)-distance(b,p)).slice(0,32);
+  const candidates=nav.coverIndex.query(p.x-radius,p.z-radius,p.x+radius,p.z+radius,nav.coverCandidates??=[]).filter(c=>distance(c,p)<(retreat?24:17)&&Math.abs(c.y-p.y)<2).sort((a,b)=>distance(a,p)-distance(b,p)).slice(0,32);
   for(const point of candidates){
     if(performance.now()>(sim.navigationDeadline??Infinity))break;
     if(sim.lineClear(eye,{x:point.x,y:point.y+1,z:point.z}))continue;
@@ -203,7 +208,7 @@ export function findBotPath(sim,start,goal){if(start.bot&&start.ai)return resume
 function resumeBotPath(sim,p,goal){
   const ai=p.ai;
   const changed=!ai.pathJobGoal||distance(ai.pathJobGoal,goal)>2||Math.abs((ai.pathJobGoal.y??0)-(goal.y??0))>.6;
-  if(changed||ai.pathJobStart&&distance(ai.pathJobStart,p)>3){ai.pathJob=null;ai.pathResult=null;}
+  if(changed||ai.pathJobStart&&distance(ai.pathJobStart,p)>3){ai.pathJob?.return();ai.pathJob=null;ai.pathResult=null;}
   if(ai.pathResult){const path=ai.pathResult;ai.pathResult=null;return path;}
   if(!ai.pathJob){
     ai.pathJob=pathJob(sim,{...p}, {...goal});ai.pathJobGoal={...goal};ai.pathJobStart={x:p.x,z:p.z};
@@ -217,7 +222,7 @@ export function beginNavigationTick(sim){
   const queue=sim.navigationQueue??=[];let remaining=queue.length;
   while(remaining-->0&&queue.length&&performance.now()<pathDeadline){
     const task=queue.shift(),{p,ai,job}=task;
-    if(!p.alive||p.ai!==ai||ai.pathJob!==job)continue;
+    if(!p.alive||p.ai!==ai||ai.pathJob!==job){job.return();continue;}
     const slice=Math.min(pathDeadline,performance.now()+.45);let result;
     do{result=job.next();}while(!result.done&&performance.now()<slice);
     if(result.done){ai.pathJob=null;ai.pathResult=result.value;}else queue.push(task);

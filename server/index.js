@@ -80,7 +80,7 @@ export function createGameServer(options={}){
   function initialize(s){
     const sim=room.sim;s.encoder=new SnapshotEncoder(sim.map.size);s.eventAck=sim.eventId;s.eventSent=sim.eventId;s.eventLastSent=0;s.inputQueue=[];s.inputReceived=0;s.inputAck=0;s.credit=0;s.heldInput=null;s.finishedSequence=0;s.lastInput=Date.now();
     const p=sim.players.get(s.id);if(p){p.networkControlled=true;p.networkFrames=[];p.networkIdle=true;p.inputAck=0;sim.setInput(s.id,{yaw:p.yaw,pitch:p.pitch});}
-    send(s.client,{type:'init',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,mapId:sim.map.id,size:sim.map.size,difficulty:room.difficulty,roomName:room.name,ownerId:room.ownerId,epoch:room.epoch,eventAck:sim.eventId,inputHz:60,snapshotHz:config.snapshotHz});
+    send(s.client,{type:'init',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,mapId:sim.map.id,size:sim.map.size,difficulty:room.difficulty,roomName:room.name,ownerId:room.ownerId,epoch:room.epoch,eventAck:sim.eventId,inputHz:60,snapshotHz:effectiveSnapshotHz});
     snapshot(s,preparedSnapshot(),true);
   }
   function join(c,data,requestId,resume=false){

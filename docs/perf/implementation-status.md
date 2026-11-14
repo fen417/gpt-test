@@ -33,6 +33,17 @@ Validation: 72/72 tests, including bounded rewind against a running target, revi
 
 Benchmark caught an implementation regression from copying complete player objects per bullet/target. Replaced this with direct immutable historical-pose reads before proceeding. New isolated protocol-26 baseline with history enabled is phase-3-server.json: step p99 port 3.386, quarry 4.961, village 4.216 ms; maximum 9.910/20.004/11.134 ms. This is a new scenario versus phase 0, not an optimization win. Phase 4 will compare against this baseline. Human online feel and mounted combat still require multiplayer gameplay acceptance.
 
+## Phase 4
+
+- A* uses integer node IDs, Float64 costs (preserve original tie precision), generation-stamped typed workspaces and a typed heap. Static adjacency is cached lazily with generator yields, preserving the navigation time budget. Cancelled/completed jobs return workspaces to the pool. All 28 saved spawn-to-objective paths on all maps match exactly.
+- Distance hot path uses sqrt(dx²+dz²). Spatial queries use numeric bins and generation stamps rather than temporary string keys/Sets. Snapshot schema indices are precomputed; non-owner sanitized rows are shared immutably across recipient encoders.
+- Solo authority now owns construction, fixed ticks and combat in a dedicated Worker. Input/snapshots/events reuse the network codec; ArrayBuffers transfer ownership. Pause/visibility stops solo ticks, catch-up is capped at two steps, and respawn/squad changes are asynchronous requests. Local movement/fire cosmetics reuse client prediction. Expanded bot names to 32 unique call signs.
+- No flow-field replacement was added: measured p99 is already below the 6 ms target and reference routes are preserved. Retained events/snapshot baselines remain immutable; pooling them without lifetime ownership would corrupt reliable delivery. Scratch arrays/workspaces/pose slots are reused where safe.
+
+Measurement against the same protocol-26/history-enabled scenario: step p99 port 3.386→2.392, quarry 4.961→3.461, village 4.216→3.234 ms; average encode 0.125/0.122/0.111→0.049/0.057/0.050 ms. Village maximum 11.134→4.095 ms; quarry still has a 12.909 ms outlier. See phase-4-server.json. Trace-GC run recorded a maximum 10.51 ms pause across the three-map construction/simulation sequence; the ≤5 ms GC criterion is not claimed achieved.
+
+Validation: exact route equivalence, existing authoritative network checks, real Node worker-thread loopback construction/movement/pause/squad test and production worker bundle. Full suite initially exposed timer reordering in the development jitter simulator; per-direction FIFO dispatch fixed it, then all nine combat/network focused checks passed. Final unified suite is rerun in phase 6.
+
 ## Remaining ordered phases
 
 2. Single post pass, inexpensive static ground shadows, texture/material presets.
