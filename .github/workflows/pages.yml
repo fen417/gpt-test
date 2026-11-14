@@ -20,6 +20,25 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Test on Node 24
+        run: npm test
+      - name: Restore previous benchmark
+        uses: actions/cache@v4
+        with:
+          path: .perf-ci/baseline.json
+          key: perf-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ github.sha }}
+          restore-keys: |
+            perf-v1-${{ runner.os }}-${{ runner.arch }}-node24-
+      - name: Benchmark simulation and flag regressions
+        run: npm run bench -- --ci --baseline .perf-ci/baseline.json --output .perf-ci/current.json
+      - name: Keep benchmark for next comparison
+        run: node -e "require('node:fs').copyFileSync('.perf-ci/current.json','.perf-ci/baseline.json')"
+      - name: Upload performance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-performance
+          path: .perf-ci/current.json
       - run: npm run build
         env:
           VITE_SERVER_URL: ${{ vars.SECTOR_SERVER_URL }}
