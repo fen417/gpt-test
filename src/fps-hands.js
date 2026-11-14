@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FPS_HANDS } from './fps-hands-data.js';
+export {loadFPSHands} from './fps-hands-data.js';
 
 const geometries = new Map();
 let textures;
@@ -24,11 +25,9 @@ export function fpsHandTextures() {
   return textures;
 }
 
-function unpack(text, Type, scale) {
-  const binary = atob(text), bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < bytes.length; i++) bytes[i] = binary.charCodeAt(i);
-  const packed = new Type(bytes.buffer);
-  return scale === 1 ? packed : Float32Array.from(packed, value => value / scale);
+function unpack(bytes,Type,scale){
+  const packed=new Type(bytes.buffer,bytes.byteOffset,bytes.byteLength/Type.BYTES_PER_ELEMENT);
+  return scale===1?packed:Float32Array.from(packed,value=>value/scale);
 }
 
 export function createFPSHand(pose, material) {

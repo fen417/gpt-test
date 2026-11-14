@@ -7,6 +7,7 @@ import { smoothRingSeams, tailoredGeometry } from './character-geometry.js';
 import { updateFootContacts } from './soldier-locomotion.js';
 import { gloveSurface } from './glove-geometry.js';
 import { anatomicalGeometry } from './soldier-anatomy.js';
+import {createAssetRig} from './soldier-assets.js';
 import { simplifySoldier } from './soldier-lod.js';
 import { BODY_SECTIONS, BODY_BLEND, SHOULDER_X, HIP_X } from './soldier-proportions.js';
 import { soldierHeadGeometry, applySoldierHeadAtlas } from './soldier-head.js';
@@ -702,6 +703,7 @@ export function createSoldierRig(owner, player) {
   const team = player.team ? 1 : 0, classId = player.classId, weaponId = player.weaponId || '';
   const pistol=SIDEARMS.includes(weaponId);
   const c = palette(team), material = soldierMaterial(owner);
+  const asset=createAssetRig(owner,player,material);if(asset){updateSoldierArms(asset);return asset;}
   const group = new THREE.Group();
   const pose = bone('pelvis'); group.add(pose);
   const spine = bone('spine'); pose.add(spine);

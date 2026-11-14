@@ -1,0 +1,22 @@
+[
+  {
+    "classId": "assault",
+    "proceduralMs": 502.6833,
+    "loadedMs": 4.46530000000007
+  },
+  {
+    "classId": "medic",
+    "proceduralMs": 267.5010000000001,
+    "loadedMs": 1.2221999999999298
+  },
+  {
+    "classId": "support",
+    "proceduralMs": 245.93239999999992,
+    "loadedMs": 0.9967000000001462
+  },
+  {
+    "classId": "recon",
+    "proceduralMs": 208.06050000000005,
+    "loadedMs": 1.0119999999999436
+  }
+]

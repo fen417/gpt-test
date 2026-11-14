@@ -42,7 +42,7 @@ test('score starts after audio unlock whether menu mode is set before or afterwa
     audio.setMode('menu');assert.equal(audio.getStats().state,'locked');
     assert.equal(await audio.unlock(),true);audio.setMode('menu');
     assert.equal(audio.getStats().musicPlaying,true);
-    assert.equal(audio._menuTrack.paused,false,'menu MP3 starts after user gesture');
+    assert.equal(audio._menuTrack.paused,false,'menu recording starts after user gesture');
     const context=audio.ctx;await audio.unlock();assert.equal(audio.ctx,context);
     assert.equal(audio._ambientSources.length,3);
   });
@@ -63,6 +63,19 @@ test('master mute, score mute and effects levels adjust independent live buses',
   audio.enabled=false;assert.equal(audio._master.gain.value,0);assert.equal(audio.getStats().musicPlaying,false);
   audio.setEnabled(true);assert.equal(audio._master.gain.value,.8*.82);
   audio.volume=9;audio.effectsVolume=-2;assert.equal(audio.volume,1);assert.equal(audio.effectsVolume,0);
+}));
+
+test('one short reverb is disconnected on low and fallback decoding is attempted',async()=>withAudio(async audio=>{
+  await audio.unlock();
+  assert.equal(audio._convolver.buffer.duration,.7);
+  for(const bus of Object.values(audio._reverbs))assert.equal(bus.connections[0],audio._convolver);
+  audio.update(.02,{quality:'low'});assert.equal(audio._convolver.connections.length,0);
+  audio.update(.02,{quality:'medium'});assert.equal(audio._convolver.connections[0],audio._reverbWet);
+  const previous=globalThis.fetch,requests=[];
+  globalThis.fetch=async url=>{if(typeof url==='string')requests.push(url);return {ok:true,arrayBuffer:async()=>new ArrayBuffer(8)};};
+  let calls=0;const buffer={duration:1},context={decodeAudioData:async()=>{if(!calls++)throw Error('unsupported codec');return buffer;}};
+  try{assert.equal(await audio._loadRecording({url:'primary',fallback:'fallback'},context),buffer);assert.deepEqual(requests,['primary','fallback']);}
+  finally{globalThis.fetch=previous;}
 }));
 
 test('complete 32-bar arrangement schedules finite envelopes and releases voices without accumulating buffers',async()=>withAudio(async audio=>{

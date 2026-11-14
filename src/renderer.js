@@ -1,5 +1,6 @@
 ﻿import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
+import {soldierAssetKey,soldierAssetState,requestSoldierAsset} from './soldier-assets.js';
 import {GroundShadows} from './ground-shadows.js';
 import {PostPass} from './post-pass.js';
 import {FarSoldiers} from './far-soldiers.js';
@@ -759,6 +760,8 @@ export class GameRenderer {
     const key = `${player.team}:${player.classId}:${weaponId}`;
     let template = this.soldierTemplates.get(key);
     if (!template) {
+      const assetKey=soldierAssetKey({...player,weaponId});
+      if(soldierAssetState(assetKey)===undefined){requestSoldierAsset(assetKey);return null;}
       if(this.templatesBuiltFrame>=1)return null;this.templatesBuiltFrame++;
       template = createSoldierRig(this, { ...player, weaponId });
       if (!this.integratedGpu) template.group.traverse(optimizeLighting);

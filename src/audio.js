@@ -2,7 +2,7 @@
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
 import { getMap } from '../shared/world.js';
 export const MENU_MUSIC_TITLE = 'Quiet Resolve';
-const MENU_MUSIC_URL=new URL('./assets/audio/music/quiet-resolve.mp3',import.meta.url);
+const MENU_MUSIC_URL=new URL('./assets/audio/music/quiet-resolve.m4a',import.meta.url);
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
 const midi = n => 440 * 2 ** ((n - 69) / 12);
 const BEAT = 60 / 82, EPSILON = .00001, MAX_VOICES = 56, MUSIC_VOICES = 14;
@@ -28,39 +28,40 @@ const WEAPONS = {
   turret: { sample: 'lmg', rate: .84, gain: 1.10, cutoff: 14500 },
 };
 const CLASS_SHOTS = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
+const recording=(url,fallback)=>({url,fallback});
 const SHOT_SAMPLES = {
   'rifle-light': [
-    new URL('./assets/audio/gunshots/rifle-light-1.wav', import.meta.url),
-    new URL('./assets/audio/gunshots/rifle-light-2.wav', import.meta.url),
+    recording(new URL('./assets/audio/gunshots/rifle-light-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/rifle-light-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/rifle-light-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/rifle-light-2.m4a',import.meta.url)),
   ],
   'rifle-heavy': [
-    new URL('./assets/audio/gunshots/rifle-heavy-1.wav', import.meta.url),
-    new URL('./assets/audio/gunshots/rifle-heavy-2.wav', import.meta.url),
+    recording(new URL('./assets/audio/gunshots/rifle-heavy-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/rifle-heavy-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/rifle-heavy-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/rifle-heavy-2.m4a',import.meta.url)),
   ],
   'smg': [
-    new URL('./assets/audio/gunshots/smg-1.wav', import.meta.url),
-    new URL('./assets/audio/gunshots/smg-2.wav', import.meta.url),
+    recording(new URL('./assets/audio/gunshots/smg-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/smg-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/smg-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/smg-2.m4a',import.meta.url)),
   ],
-  'smg-suppressed': [new URL('./assets/audio/gunshots/smg-suppressed-1.wav',import.meta.url)],
+  'smg-suppressed': [recording(new URL('./assets/audio/gunshots/smg-suppressed-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/smg-suppressed-1.m4a',import.meta.url))],
   'lmg': [
-    new URL('./assets/audio/gunshots/lmg-1.wav',import.meta.url),
-    new URL('./assets/audio/gunshots/lmg-2.wav',import.meta.url),
+    recording(new URL('./assets/audio/gunshots/lmg-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/lmg-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/lmg-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/lmg-2.m4a',import.meta.url)),
   ],
   'marksman': [
-    new URL('./assets/audio/gunshots/marksman-1.wav', import.meta.url),
-    new URL('./assets/audio/gunshots/marksman-2.wav', import.meta.url),
+    recording(new URL('./assets/audio/gunshots/marksman-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/marksman-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/marksman-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/marksman-2.m4a',import.meta.url)),
   ],
   'sniper': [
-    new URL('./assets/audio/gunshots/sniper-1.wav', import.meta.url),
-    new URL('./assets/audio/gunshots/sniper-2.wav', import.meta.url),
+    recording(new URL('./assets/audio/gunshots/sniper-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/sniper-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/sniper-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/sniper-2.m4a',import.meta.url)),
   ],
   'pistol': [
-    new URL('./assets/audio/gunshots/pistol-1.wav', import.meta.url),
-    new URL('./assets/audio/gunshots/pistol-2.wav', import.meta.url),
+    recording(new URL('./assets/audio/gunshots/pistol-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/pistol-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/pistol-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/pistol-2.m4a',import.meta.url)),
   ],
   'pistol-heavy': [
-    new URL('./assets/audio/gunshots/pistol-heavy-1.wav', import.meta.url),
-    new URL('./assets/audio/gunshots/pistol-heavy-2.wav', import.meta.url),
+    recording(new URL('./assets/audio/gunshots/pistol-heavy-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/pistol-heavy-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/pistol-heavy-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/pistol-heavy-2.m4a',import.meta.url)),
   ],
 };
 const FOLEY_SAMPLES = {
@@ -76,7 +77,7 @@ const FOLEY_SAMPLES = {
   'stone-R1': new URL('./assets/audio/foley/Fantozzi-StoneR1.ogg', import.meta.url),
   'stone-R2': new URL('./assets/audio/foley/Fantozzi-StoneR2.ogg', import.meta.url),
   'stone-R3': new URL('./assets/audio/foley/Fantozzi-StoneR3.ogg', import.meta.url),
-  'engine': new URL('./assets/audio/foley/engine-loop.wav', import.meta.url),
+  'engine': recording(new URL('./assets/audio/foley/engine-loop.ogg',import.meta.url),new URL('./assets/audio/foley/engine-loop.m4a',import.meta.url)),
   'rocket-launch-1': new URL('./assets/audio/foley/rocket-launch-1.ogg', import.meta.url),
   'rocket-launch-2': new URL('./assets/audio/foley/rocket-launch-2.ogg', import.meta.url),
   'rocket-flight': new URL('./assets/audio/foley/rocket-flight.ogg', import.meta.url),
@@ -169,13 +170,13 @@ export class CombatAudio {
     this._analyser=this._node(c.createAnalyser());this._analyser.fftSize=256;this._analyser.smoothingTimeConstant=.1;
     this._meter=new Float32Array(this._analyser.fftSize);const output=this._node(c.createGain());output.gain.value=.8;limiter.connect(output).connect(this._analyser).connect(c.destination);
     this._reverbs={};const impulse=this._impulse();
-    for(const bus of ['music','effects']){
-      const convolver=this._node(c.createConvolver());convolver.buffer=impulse;
-      const wet=this._node(c.createGain());wet.gain.value=bus==='music'?.32:.16;
-      convolver.connect(wet).connect(bus==='music'?this._music:this._effects);this._reverbs[bus]=convolver;
-    }
+    this._convolver=this._node(c.createConvolver());this._convolver.buffer=impulse;
+    this._reverbWet=this._node(c.createGain());this._reverbWet.gain.value=.17;
+    this._convolver.connect(this._reverbWet).connect(this._master);
+    for(const bus of ['music','effects']){const send=this._node(c.createGain());send.connect(this._convolver);this._reverbs[bus]=send;}
+    this._reverbConnected=true;
     // Stream the MP3 rather than retaining a full decoded song in memory.
-    this._menuTrack=new Audio(MENU_MUSIC_URL.href);this._menuTrack.loop=true;this._menuTrack.preload='auto';
+    this._menuTrack=new Audio(MENU_MUSIC_URL.href);this._menuTrack.loop=true;this._menuTrack.preload='metadata';
     const trackGain=this._node(c.createGain());trackGain.gain.value=.45;
     this._node(c.createMediaElementSource(this._menuTrack)).connect(trackGain).connect(this._music);
     this._mix(true);this._noiseBuffer('white');this._startAmbient();
@@ -211,6 +212,7 @@ export class CombatAudio {
     this._target(this._weapons.gain,this._effectsVolume*.7*(this._paused?.35:1),.16,immediate);
     this._target(this._music.gain,this._musicVolume*(this._mode==='menu'?1.64:.22),.9,immediate);
     this._target(this._ambient.gain,this._mode==='battle'?.24:.055,1.5,immediate);
+    this._target(this._reverbs.music.gain,this._musicVolume*(this._mode==='menu'?1.64:.22),.1,immediate);this._target(this._reverbs.effects.gain,this._effectsVolume*(this._paused?.35:1),.1,immediate);
     this._syncMenuMusic();
   }
   setMode(mode){
@@ -235,7 +237,7 @@ export class CombatAudio {
     this._buffers.set(color,buffer);return buffer;
   }
   _impulse(){
-    const length=Math.ceil(this.ctx.sampleRate*1.8),buffer=this.ctx.createBuffer(2,length,this.ctx.sampleRate);let seed=90713;
+    const length=Math.ceil(this.ctx.sampleRate*.7),buffer=this.ctx.createBuffer(2,length,this.ctx.sampleRate);let seed=90713;
     for(let channel=0;channel<2;channel++){
       const data=buffer.getChannelData(channel);
       for(let i=0;i<length;i++){seed=(Math.imul(seed,1664525)+1013904223)|0;data[i]=((seed>>>0)/2147483648-1)*Math.exp(-i/(length*.19))*.33;}
@@ -413,11 +415,7 @@ export class CombatAudio {
     const context = this.ctx;
     await Promise.all(Object.entries(SHOT_SAMPLES).map(async ([name, urls]) => {
       const results = await Promise.allSettled(urls.map(async url => {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Firearm recording unavailable');
-        const data = await response.arrayBuffer();
-        if (this._disposed) return null;
-        return context.decodeAudioData(data);
+        if(this._disposed)return null;return this._loadRecording(url,context);
       }));
       if (this._disposed) return;
       const buffers = [];
@@ -518,11 +516,16 @@ export class CombatAudio {
       attack:.001,decay:.009,decayGain:.22,send:.13});
     if(ring)this._tone(ring,duration*.85,.04*p.gain,{time:time+.002,end:ring*.76,pan:p.pan,send:.16});
   }
+  async _loadRecording(sample,context){
+    let failure;for(const url of sample.url?[sample.url,sample.fallback]:[sample])try{
+      const response=await fetch(url);if(!response.ok)throw Error('Audio asset '+response.status);
+      return await context.decodeAudioData(await response.arrayBuffer());
+    }catch(error){failure=error;}throw failure;
+  }
   async _prepareFoley(){
     const context=this.ctx;
     await Promise.allSettled(Object.entries(FOLEY_SAMPLES).map(async ([name,url])=>{
-      const response=await fetch(url);if(!response.ok)return;
-      const buffer=await context.decodeAudioData(await response.arrayBuffer());
+      const buffer=await this._loadRecording(url,context);
       if(this._disposed)return;
       if(name!=='engine'&&name!=='rocket-flight'){
         let peak=0;
@@ -691,8 +694,9 @@ export class CombatAudio {
     // be evicted and replayed on the next animation frame during a busy battle.
     while(this.seen.size>8192)this.seen.delete(this.seen.keys().next().value);
   }
-  update(dt,{state,local,moving=0,sprinting=false,crouching=false,aim=false,locked=false,inMenu=false,paused=false}={}){
+  update(dt,{state,local,moving=0,sprinting=false,crouching=false,aim=false,locked=false,inMenu=false,paused=false,quality='high'}={}){
     if(this._disposed)return;this.setMode(inMenu?'menu':'battle');
+    if(this.ctx){const connected=quality!=='low';if(connected!==this._reverbConnected){for(const send of Object.values(this._reverbs)){send.disconnect();if(connected)send.connect(this._convolver);}this._convolver.disconnect();if(connected)this._convolver.connect(this._reverbWet);this._reverbConnected=connected;}}
     if(paused!==this._paused){this._paused=paused;this._mix();}
     if(this.ctx&&this.ctx.state!=='running'&&this.ctx.state!=='closed'&&!this._resuming&&performance.now()>this._resumeAt){
       this._resumeAt=performance.now()+2000;this._resuming=true;

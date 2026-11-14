@@ -51,3 +51,13 @@ Validation: exact route equivalence, existing authoritative network checks, real
 4. Measured navigation/encoding allocation reduction, solo worker and bounded catch-up.
 5. External binary assets, bundle/audio budgets, loading and audio-thread cost.
 6. Version/dependency/metrics audit and final regression checks.
+
+## Phase 5
+
+- External gzip binaries replace 1.9 MB of base64 hand literals. All source bytes match the eight original poses. Original authoring data and attribution remain in art-source; fetch/decompression is cached and uses native streams with a small lazy fallback.
+- Prepared 32 soldier templates offline. Runtime loads only requested class/team/weapon combinations and shares typed geometry buffers across clones. Exact three-LOD attributes, indices, skin weights, inverse bind matrices and animated/death bone transforms match the procedural source. Template installation/instantiation measured 1.0–4.5 ms versus 208–503 ms procedural construction on this PC, excluding network/decompression. Team-specific templates remain separate to preserve their existing geometry; uniform-only team recolouring was not substituted.
+- Split Three/meshoptimizer/compression chunks, added a bundle visualizer and enforced 700,000-byte initial-JS gzip / 2,500,000-byte total runtime audio budgets in the build and CI. Current result: 510,114 / 2,440,042 bytes. The separate hands/soldier assets are not counted as JavaScript; these limits do not describe total first-session transfer or startup time.
+- Runtime recordings use Opus plus AAC fallback. Original WAV/MP3 sources are preserved outside the runtime tree. Quiet Resolve remains complete (198 seconds), metadata preload, starts after a gesture; AAC 75 kbps stereo was needed to meet the combined audio budget. This is a quality/transfer tradeoff for listening review, not a claim of lossless sound.
+- One 0.7-second convolution replaces two 1.8-second convolutions, with independent volume sends and complete reverb disconnection on low. Existing voice limits, deduplication and smooth loop release remain. Automated tests verify reconnect/disconnect and fallback decoding; actual audio-thread CPU and perceived crackle require listening on the target device.
+
+Validation: production build and size budgets passed; binary/rig equivalence tests and all eight audio tests passed. See phase-5-soldiers.json and phase-5-size.json. All runtime asset generation commands are in package.json; regenerated assets are committed so normal npm ci/build does not run authoring tools.
