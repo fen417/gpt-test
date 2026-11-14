@@ -15,8 +15,8 @@ class AudioNode {
   constructor(context){this.context=context;this.connections=[];this.gain=new Parameter(1);this.frequency=new Parameter(440);this.detune=new Parameter();this.pan=new Parameter();this.Q=new Parameter(1);this.playbackRate=new Parameter(1);for(const p of ['threshold','knee','ratio','attack','release'])this[p]=new Parameter();}
   connect(node){this.connections.push(node);return node;}
   disconnect(){this.connections=[];this.disconnected=true;}
-  start(time=0,offset=0){assert.ok(time>=0);assert.ok(offset>=0);this.started=time;this.context.sources.add(this);}
-  stop(time){if(time===undefined){this.finished=true;this.onended?.();}else{assert.ok(time>=this.started);this.stopped=time;}}
+  start(time=0,offset=0){assert.ok(time>=0);assert.ok(offset>=0);this.started=time;this.offset=offset;this.context.sources.add(this);}
+  stop(time){if(time===undefined){this.finished=true;this.context.sources.delete(this);this.onended?.();}else{assert.ok(time>=this.started);this.stopped=time;}}
   getFloatTimeDomainData(array){array.fill(0);}
 }
 class FakeContext {
@@ -137,4 +137,23 @@ test('authority and presentation clocks do not reset sound deduplication',async(
   audio.events({time:4,events:[]},local,{immediate:true});
   audio.events({time:1.1,events:[event]},local);
   assert.equal(audio._voices.size,count,'a slow presentation clock must not replay a retained event');
+}));
+
+test('six minutes of delayed bot reports keep their attacks, deduplicate batches and release voice slots',async()=>withAudio(async audio=>{
+  await audio.unlock();audio.setMode('battle');clearInterval(audio._scheduler);audio._scheduler=null;
+  audio._shotBuffers.set('rifle-light',[audio.ctx.createBuffer(1,5280,8000)]);
+  const local={id:'local',x:0,y:0,z:0,yaw:0,hp:100,alive:true};let id=0;
+  for(let frame=1;frame<=3600;frame++){
+    const time=frame/10;audio.ctx.currentTime=time; // Deliberately withhold onended callbacks.
+    const events=[];
+    for(let bot=0;bot<4;bot++)for(const age of [.42,.34,.26])events.push({id:++id,type:'shot',playerId:'bot'+bot,time:time-age,x:30+bot,z:0,weaponId:'ar416'});
+    audio.events({time,events},local);audio.events({time,events},local);
+    if(frame%60===0){
+      const voices=[...audio._voices].filter(voice=>voice.shooterId!==undefined);
+      assert.ok(voices.length>0&&voices.length<=24,'expired voices cannot permanently exhaust the pool');
+      assert.ok(voices.every(voice=>voice.source.offset===0),'delayed reports retain their attack');
+    }
+  }
+  const stats=audio.getStats();assert.equal(stats.shots.played,3600*4);assert.equal(stats.shots.coalesced,3600*8);assert.equal(stats.shots.stale,0);assert.equal(stats.shots.budget,0);
+  audio.ctx.currentTime=365;audio._reapVoices();assert.equal(audio._voices.size,0);
 }));

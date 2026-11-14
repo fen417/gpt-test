@@ -112,6 +112,8 @@ export class CombatAudio {
     this._fadingVoices = new Set();
     this._shotBuffers = new Map();
     this._shotLoadFailures = 0;
+    this._foleyLoadFailures=0;
+    this._shotStats={received:0,played:0,coalesced:0,stale:0,distant:0,budget:0,unavailable:0};
     this._foley = new Map();
     this._engineChannels = new Map();this._rocketChannels=new Map();this._rocketTracks=new Map();
     this._remoteSteps = new Map();
@@ -175,7 +177,7 @@ export class CombatAudio {
     this._convolver.connect(this._reverbWet).connect(this._master);
     for(const bus of ['music','effects']){const send=this._node(c.createGain());send.connect(this._convolver);this._reverbs[bus]=send;}
     this._reverbConnected=true;
-    // Stream the MP3 rather than retaining a full decoded song in memory.
+    // Stream the recording rather than retaining a full decoded song in memory.
     this._menuTrack=new Audio(MENU_MUSIC_URL.href);this._menuTrack.loop=true;this._menuTrack.preload='metadata';
     const trackGain=this._node(c.createGain());trackGain.gain.value=.45;
     this._node(c.createMediaElementSource(this._menuTrack)).connect(trackGain).connect(this._music);
@@ -448,7 +450,7 @@ export class CombatAudio {
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')return;
       const id=Object.hasOwn(WEAPONS,classId)?classId:CLASS_SHOTS[classId]??'ar416',weapon=WEAPONS[id];
       const variation=weapon.rate*(.985+Math.random()*.03);
-      const gain=(isLocal?.94:.64)*weapon.gain/(1+distance*.04);
+      const gain=(isLocal?.94:.80)*weapon.gain/(1+distance*.04);
       // Events already follow the presentation clock. Adding travel time here
       // queues distant shots behind subsequent rounds from the same weapon.
       const time=this.ctx.currentTime+.004;
@@ -456,19 +458,17 @@ export class CombatAudio {
       const buffer=variants?.[Math.floor(Math.random()*variants.length)];
       const cutoff=isLocal||distance<12?0:Math.max(1500,weapon.cutoff/(1+(distance-12)*.012));
       if(buffer){
-        // Seek into late recordings instead of replaying several old attacks
-        // together or discarding every shot but the newest in a network batch.
-        const elapsed=Math.max(0,age-.035),offset=elapsed*variation;
-        const duration=Math.min(buffer.duration/variation,isLocal?1.2:distance>65?.3:.48)-elapsed;
-        if(duration<=.015)return;
-        if(!this._admit({shot:true}))return;
+        // Presentation already chose the audible shot for this frame. Seeking
+        // into a late report removes its attack and can leave only a quiet tail.
+        const duration=Math.min(buffer.duration/variation,isLocal?1.2:distance>65?.3:.48);
+        if(!this._admit({shot:true})){this._shotStats.budget++;return;}
         const source=this.ctx.createBufferSource();
         source.buffer=buffer;source.playbackRate.value=variation;
         const voice=this._voice(source,duration,gain,{
-          time,offset,pan,attack:offset>0?.006:.001,sample:true,send:0,bus:isLocal?'localWeapon':'weapons',
+          time,pan,attack:.001,sample:true,send:0,bus:isLocal?'localWeapon':'weapons',
           cutoff,q:.707,tail:isLocal?.075:.04,
         });
-        if(voice)voice.shooterId=shooterId;
+        if(voice){voice.shooterId=shooterId;this._shotStats.played++;}
       }else{
         this._noise(.055,gain*.7,{time,pan,bus:isLocal?'localWeapon':'weapons',filter:'highpass',cutoff:900,attack:.0003,decay:.004,decayGain:.12});
       }
@@ -524,7 +524,7 @@ export class CombatAudio {
   }
   async _prepareFoley(){
     const context=this.ctx;
-    await Promise.allSettled(Object.entries(FOLEY_SAMPLES).map(async ([name,url])=>{
+    const results=await Promise.allSettled(Object.entries(FOLEY_SAMPLES).map(async ([name,url])=>{
       const buffer=await this._loadRecording(url,context);
       if(this._disposed)return;
       if(name!=='engine'&&name!=='rocket-flight'){
@@ -555,6 +555,7 @@ export class CombatAudio {
       }
       this._foley.set(name,buffer);
     }));
+    this._foleyLoadFailures+=results.filter(result=>result.status==='rejected').length;
   }
   _sample(name,gain,options={}){
     const buffer=this._foley.get(name);
@@ -628,21 +629,30 @@ export class CombatAudio {
       if(state.time<this._lastStateTime-1){this.seen.clear();this._lastPosition=null;this._lastMovementTime=-1;this._pending=[];for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);}
       this._lastStateTime=state.time;
     }
+    // Only one attack per remote shooter when a delayed frame receives a burst.
+    // The latest eligible event wins; regular automatic fire is unaffected.
+    const shots=new Map();
+    for(const e of state.events??[])if(e.type==='shot'&&!e.confirmedCosmetic&&!this.seen.has(e.id)){
+      const previous=shots.get(e.playerId);
+      if(!previous||(e.time??0)>=(previous.time??0))shots.set(e.playerId,e);
+    }
     for(const e of state.events||[]){
       if(this.seen.has(e.id))continue;this.seen.add(e.id);
       if(e.confirmedCosmetic)continue;
-      if(!this.ctx||!this._enabled||this.ctx.state!=='running')continue;
+      if(!this.ctx||!this._enabled||this.ctx.state!=='running'){if(e.type==='shot')this._shotStats.unavailable++;continue;}
       const own=local&&e.playerId===local.id;
       this._priority=own?3:1;
       if(e.type==='shot'){
-        if(Number.isFinite(e.time)&&state.time-e.time>.22)continue;
+        this._shotStats.received++;
+        if(shots.get(e.playerId)!==e){this._shotStats.coalesced++;continue;}
+        if(Number.isFinite(e.time)&&state.time-e.time>.5){this._shotStats.stale++;continue;}
         const p=this._position(e,local);
         if(p.distance<145){
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
           const profile=e.mounted?'turret':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
           this.shot(p.distance,profile,p.pan,Boolean(own),age,e.playerId);
-        }
+        }else this._shotStats.distant++;
       }else if(e.type==='bulletImpact'){
         if(state.time-e.time>.25)continue;
         if(!own)this._nearMiss(e,local);
@@ -896,7 +906,7 @@ export class CombatAudio {
     return {state:this.ctx?.state||'locked',mode:this._mode,score:this._mode==='menu'?MENU_MUSIC_TITLE:'AFTER THE RAIN',activeVoices:this._voices.size,queuedSounds:this._pending.length,voiceLimit:MAX_VOICES,
       musicPlaying:Boolean(this.ctx?.state==='running'&&this._enabled&&this._volume>0&&this._musicVolume>0&&(this._mode==='menu'?this._menuTrack&&!this._menuTrack.paused:this._scheduler)),
       master:this._volume,music:this._musicVolume,effects:this._effectsVolume,peak,rms,
-      shotSamples:[...this._shotBuffers.values()].reduce((count, variants)=>count+variants.length,0),shotLoadFailures:this._shotLoadFailures};
+      shotSamples:[...this._shotBuffers.values()].reduce((count, variants)=>count+variants.length,0),shotLoadFailures:this._shotLoadFailures,shotGroups:[...this._shotBuffers].filter(([,variants])=>variants.length).map(([name])=>name),foleyLoadFailures:this._foleyLoadFailures,shots:{...this._shotStats},fadingVoices:this._fadingVoices.size};
   }
   dispose(){
     this._disposed=true;clearInterval(this._scheduler);this._scheduler=null;

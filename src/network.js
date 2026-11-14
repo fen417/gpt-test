@@ -143,7 +143,7 @@ export class Multiplayer{
     this.awaitingResync=false;
     this.context={mapId:data.mapId,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
     this.equipmentPresentation=new EquipmentPresentation();this.equipmentRequestKey=null;this.equipmentRequestSequence=0;this.latestInputAck=0;
-    this.decoder=new SnapshotDecoder(this.context);this.localEvents=[];this.prediction=new Prediction(data.mapId,event=>{this.localEvents.push(event);this.onLocalShot(event);},{predictShots:this.predictShots});this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.interpolationMs=Math.max(40,1000/(data.snapshotHz??20)+10);this.renderTime=null;this.targetInterpolationMs=this.interpolationMs;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
+    this.decoder=new SnapshotDecoder(this.context);this.localEvents=[];this.prediction=new Prediction(data.mapId,event=>{this.localEvents.push(event);this.onLocalShot(event);},{predictShots:this.predictShots});this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.playbackRecoveries=0;this.interpolationMs=Math.max(40,1000/(data.snapshotHz??20)+10);this.renderTime=null;this.targetInterpolationMs=this.interpolationMs;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
   }
   acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0,viewTime:this.renderTime??(this.state?.time??0)-this.interpolationMs/1000,interpolationMs:this.interpolationMs};}
   binary(value){
@@ -225,7 +225,13 @@ export class Multiplayer{
     const latest=this.frames.at(-1),dt=Math.max(0,Math.min(.25,(now-this.lastSample)/1000));this.lastSample=now;
     this.interpolationMs+=( (this.targetInterpolationMs??60)-this.interpolationMs)*(1-Math.exp(-dt*2));
     const desired=latest.frame.time+Math.min(.2,(now-latest.arrival)/1000)-this.interpolationMs/1000;
-    if(this.renderTime==null)this.renderTime=desired;
+    // A stalled/background frame must not leave playback behind the 1.3 s
+    // event history. Capping dt otherwise accumulates permanent silent time,
+    // including solo sessions which use this same presentation path.
+    if(this.renderTime==null||desired-this.renderTime-dt>.25){
+      if(this.renderTime!=null)this.playbackRecoveries=(this.playbackRecoveries??0)+1;
+      this.renderTime=desired;
+    }
     else this.renderTime=Math.min(latest.frame.time+.08,Math.max(this.renderTime,this.renderTime+dt*(1+clamp((desired-this.renderTime-dt)*2,-.15,.15))));
     const target=this.renderTime;
     if(target>latest.frame.time&&!this.underrun){this.bufferUnderruns++;this.underrun=true;}else if(target<=latest.frame.time)this.underrun=false;
@@ -279,7 +285,7 @@ export class Multiplayer{
     if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;if(kind==='players'&&!out.grounded)out.y+=(last.pose.y-previous.pose.y)/interval*extra;}}
     return out;
   }
-  diagnostics(){return {decodeMs:this.decodeMs??0,replayedInputs:this.replayedInputs??0,correctionMs:this.correctionMs??0,correctionDistance:this.correctionDistance??0,bufferUnderruns:this.bufferUnderruns??0,renderAgeMs:this.state&&this.renderTime!=null?Math.round((this.state.time-this.renderTime)*1000):null,rttMs:this.rtt?Math.round(this.rtt):null,jitterMs:Math.round((this.jitter??0)*100)/100,interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,snapshotAgeMs:this.lastArrival?Math.round(performance.now()-this.lastArrival):null,bufferedBytes:this.ws?.bufferedAmount??0,recoveries:this.recoveries,lastRecovery:this.lastRecovery,receivedBytes:this.receivedBytes,server:this.serverStats};}
+  diagnostics(){return {playbackRecoveries:this.playbackRecoveries??0,decodeMs:this.decodeMs??0,replayedInputs:this.replayedInputs??0,correctionMs:this.correctionMs??0,correctionDistance:this.correctionDistance??0,bufferUnderruns:this.bufferUnderruns??0,renderAgeMs:this.state&&this.renderTime!=null?Math.round((this.state.time-this.renderTime)*1000):null,rttMs:this.rtt?Math.round(this.rtt):null,jitterMs:Math.round((this.jitter??0)*100)/100,interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,snapshotAgeMs:this.lastArrival?Math.round(performance.now()-this.lastArrival):null,bufferedBytes:this.ws?.bufferedAmount??0,recoveries:this.recoveries,lastRecovery:this.lastRecovery,receivedBytes:this.receivedBytes,server:this.serverStats};}
   close(forget=true){
     this.manual=true;this.generation++;clearInterval(this.pingTimer);clearInterval(this.flushTimer);
     if(this.ws?.readyState===WebSocket.OPEN&&this.token)this.control('leave');this.ws?.close();this.ws=null;

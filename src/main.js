@@ -1379,13 +1379,13 @@ function frame(now){
   requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;frames++;fpsClock+=elapsed;
   if(active)frameTimes.add(elapsed*1000);
   if(fpsClock>=1){
-    const network=mode==='server'?multiplayer.diagnostics():null;
-    const networkLabel=network?` · ПИНГ ${network.rttMs??'—'} мс · ОЧЕРЕДЬ ${network.pendingInputs}${network.server?.tickAverageMs!=null?` · ТИК ${network.server.tickAverageMs} мс`:''}`:'';
+    const network=(simulation?.client??(mode==='server'?multiplayer:null))?.diagnostics()??null;
+    const networkLabel=mode==='server'&&network?` · ПИНГ ${network.rttMs??'—'} мс · ОЧЕРЕДЬ ${network.pendingInputs}${network.server?.tickAverageMs!=null?` · ТИК ${network.server.tickAverageMs} мс`:''}`:'';
     text('fps',`${Math.round(frames/fpsClock)} FPS${networkLabel}`);fpsClock=0;frames=0;
     const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);
     const renderStats={...renderer.getStats?.(),frameMs:frameTimes.summary(),cpuMs:cpuTimes.summary(),renderMs:renderTimes.summary(),simulationMs:simulationTimes.summary()};
     canvas.dataset.renderStats=JSON.stringify(renderStats);
-    perfPanel.update({...renderStats,active:active&&$('pause').classList.contains('hidden')&&$('death').classList.contains('hidden')&&!document.hidden,mapId:currentMap.id,quality,mode,settings:{...gfx,fov},population:state?.players.length??0,network,audio:audioStats,heapBytes:performance.memory?.usedJSHeapSize??null,viewport:{width:innerWidth,height:innerHeight}});
+    perfPanel.update({...renderStats,active:active&&$('pause').classList.contains('hidden')&&$('death').classList.contains('hidden')&&!document.hidden,mapId:renderer.map?.id??currentMap.id,quality,mode,settings:{...gfx,fov},population:state?.players.length??0,network,audio:audioStats,heapBytes:performance.memory?.usedJSHeapSize??null,viewport:{width:innerWidth,height:innerHeight}});
     if(network)canvas.dataset.networkStats=JSON.stringify(network);else delete canvas.dataset.networkStats;
   }
   const paused=document.hidden||!$('pause').classList.contains('hidden');

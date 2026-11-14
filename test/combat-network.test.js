@@ -7,6 +7,24 @@ import { Prediction,Multiplayer } from '../src/network.js';
 import { encodeInput,decodeInput,SnapshotEncoder,SnapshotDecoder,prepareSnapshot } from '../shared/snapshot-codec.js';
 import { SimulatedSocket } from '../src/network-simulator.js';
 
+test('presentation rejoins current shots after a two-second frame stall and sustained slow frames',()=>{
+  const client=new Multiplayer();client.id='local';client.interpolationMs=client.targetInterpolationMs=43;
+  client.prediction={sample:()=>null,hasPlayed:()=>false};client.motion=new Map();client.renderTime=10;client.lastSample=1000;
+  const receive=(time,now)=>{
+    const state={time,winner:null,players:[],vehicles:[],rockets:[],grenades:[]};
+    client.state=state;client.frames=[{frame:{time},state,arrival:now}];
+    client.events=[{id:Math.round(time*100),type:'shot',playerId:'bot',time:time-.06}];
+    client.publish();return client.sample(now);
+  };
+  const afterStall=receive(12,3000);
+  assert.ok(afterStall.events.some(e=>e.type==='shot'),'current shots must remain audible after a missed frame');
+  assert.ok(12-afterStall.time<.25,'playback cannot remain behind event retention');
+  for(let i=1;i<=120;i++){
+    const frame=receive(12+i/3,3000+i*1000/3);
+    assert.ok(12+i/3-frame.time<.35,'3 FPS must not accumulate an ever-growing playback delay');
+  }
+});
+
 test('a running target is hit at the viewed position with bounded rewind',()=>{
   const run=lagCompensation=>{
     const sim=new Simulation({bots:0,lagCompensation,random:()=>.5}),a=sim.addPlayer('a','a',0),b=sim.addPlayer('b','b',1);
