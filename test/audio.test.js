@@ -128,6 +128,21 @@ test('automatic fire keeps preceding recordings alive and does not queue distanc
   assert.equal([...audio._voices].filter(v=>v.shooterId==='bot').length,2);
 }));
 
+test('PT-90 explosion report starts on its presentation event at every audible distance',async()=>withAudio(async audio=>{
+  await audio.unlock();audio.setMode('battle');
+  const buffer=audio.ctx.createBuffer(1,8000,8000);audio._foley.set('explosion-heavy',buffer);
+  const local={id:'local',x:0,y:0,z:0,yaw:0,alive:true};audio.ctx.advance(10);
+  for(const distance of [0,50,120,200]){
+    const previous=new Set(audio._voices);
+    audio.events({time:10,events:[{id:2000+distance,type:'explosion',kind:'rocket',rocketId:'rocket'+distance,playerId:'remote',x:distance,z:0,time:10}]},local);
+    const voice=[...audio._voices].find(voice=>!previous.has(voice)&&voice.source.buffer===buffer);
+    assert.ok(voice,'the recorded explosion is created');
+    assert.equal(voice.source.buffer,buffer);assert.equal(voice.source.started,10,'no additional distance timer after the visual explosion');
+  }
+  audio._foley.delete('explosion-heavy');audio._explosion({kind:'rocket',x:120,z:0},local);
+  assert.equal([...audio._voices].at(-1).source.started,10,'procedural fallback is also synchronized');
+}));
+
 test('authority and presentation clocks do not reset sound deduplication',async()=>withAudio(async audio=>{
   await audio.unlock();audio.setMode('battle');
   const local={id:'local',x:0,y:0,z:0,yaw:0,hp:100,alive:true};

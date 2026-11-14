@@ -565,9 +565,12 @@ export class CombatAudio {
     return true;
   }
   _explosion(event,local){
-    const p=this._position(event,local),time=this.ctx.currentTime+Math.min(.35,p.distance/343);
+    // Rocket sound shares the visual explosion's presentation event. Do not
+    // append propagation delay after that event has already been displayed.
+    const rocket=event.kind==='rocket'||Boolean(event.rocketId);
+    const p=this._position(event,local),time=this.ctx.currentTime+(rocket?0:Math.min(.35,p.distance/343));
     if(p.distance>220)return;
-    const heavy=event.kind==='rocket'||Boolean(event.vehicleId);
+    const heavy=rocket||Boolean(event.vehicleId);
     const played=this._sample(heavy?'explosion-heavy':'explosion-grenade',(heavy?.8:.68)*p.gain,{
       time,pan:p.pan,rate:heavy?.94:1.04,cutoff:p.distance<15?0:Math.max(1200,14000/(1+p.distance*.022)),send:.06,
     });

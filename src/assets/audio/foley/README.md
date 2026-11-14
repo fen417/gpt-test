@@ -27,3 +27,9 @@ Reproduce with scripts/prepare-combat-audio.mjs (staging directory and ffmpeg pa
 The flight loop uses a moving 3D sound source with distance attenuation and Doppler pitch. Launch/snapshot tracking keeps it alive until the corresponding explosion or the rocket's four-second lifetime, including between snapshots and outside snapshot interest range. The authored crossfade is preserved rather than adding a dip at each loop seam.
 
 Runtime WAV masters were moved to `art-source/audio/` and encoded as Opus with AAC fallback by `scripts/prepare-runtime-audio.mjs`. Source attribution and licensing above apply to these derived files. Existing Ogg foley sources are retained.
+
+## Explosion onset alignment (0.16)
+
+The heavy recording contained approximately 604 ms of quiet pre-blast rumble before its audible attack. `npm run assets:explosion` regenerates the runtime Ogg from the unchanged compressed master preserved at `art-source/audio/foley/explosion-heavy.ogg`, with a 3 ms attack lead and 1 ms cut fade. The strong attack now begins approximately 3 ms into the file. Attribution above also covers the preserved master. Timing measurements are in `docs/perf/pt90-explosion-alignment.json`.
+
+PT-90 explosion reports are scheduled on the visual explosion presentation event, without a second distance-propagation timer. Other explosion propagation rules remain as before.

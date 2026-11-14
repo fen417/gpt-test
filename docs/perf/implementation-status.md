@@ -72,3 +72,7 @@ Isolated final authority benchmark (30 bots, 7 active synthetic humans, 60 Hz; 2
 ## Follow-up revision of 0.16
 
 The user's second audit and the disappearing-audio investigation are recorded in [revision-016-results.md](revision-016-results.md). This supersedes phase-2/phase-5 texture and post-AA choices: high now uses MSAA, ground and normals have UASTC assets, far gait advances continuously, and playback catches up after long frame stalls. Version 0.16 and protocol 26 are retained. HD 610 acceptance is still unavailable on the RTX 3070 workstation.
+
+## PT-90 explosion follow-up
+
+The heavy/rocket recording's strong attack began 606.7 ms into the file, despite earlier silence trimming. The preserved original was realigned with 3 ms lead; the new attack is at 3.0 ms. Rocket presentation also added up to 350 ms of distance delay for remote explosions; this extra timer is removed for rocket events. Four audible distances and the synthesis fallback are covered by the audio test. Focused audio suite: 10/10; production build and transfer budgets passed. See pt90-explosion-alignment.json and `npm run assets:explosion`. Game version remains 0.16.

@@ -15,7 +15,8 @@
     "assets:soldiers": "node scripts/bake-soldiers.mjs",
     "assets:surfaces": "node scripts/bake-surfaces.mjs",
     "assets:shadows": "node scripts/bake-ground-shadows.mjs",
-    "assets:audio": "node scripts/prepare-runtime-audio.mjs"
+    "assets:audio": "node scripts/prepare-runtime-audio.mjs",
+    "assets:explosion": "node scripts/align-explosion-audio.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3",
