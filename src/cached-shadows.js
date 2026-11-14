@@ -21,6 +21,10 @@ export class CachedShadows {
     this.native=owner.renderer.shadowMap.render;
     owner.renderer.shadowMap.render=(lights,scene,camera)=>{
       if(scene!==owner.scene||!owner.worldRoot?.visible||!owner.renderer.shadowMap.enabled)return native(lights,scene,camera);
+      if(owner.shadowDynamicOnly){
+        const casters=[];owner.staticRoot?.traverse(mesh=>{if(mesh.castShadow){casters.push(mesh);mesh.castShadow=false;}});
+        try{return native(lights,scene,camera);}finally{for(const mesh of casters)mesh.castShadow=true;}
+      }
       // Run inside WebGLRenderer.render, with its render-state stack active.
       const hidden=owner.interiorVisibility.hidden;
       for(const mesh of hidden)mesh.visible=true;

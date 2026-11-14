@@ -1,5 +1,7 @@
 ﻿import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
+import {GroundShadows} from './ground-shadows.js';
+import {PostPass} from './post-pass.js';
 import {FarSoldiers} from './far-soldiers.js';
 import {AdaptiveResolution} from './adaptive-resolution.js';
 import { GpuTimer } from './gpu-timer.js';
@@ -54,7 +56,7 @@ function boundedPointLights(shader) {
 }
 
 function optimizeLighting(object) {
-  if (object.material?.isMeshStandardMaterial) object.material.onBeforeCompile = boundedPointLights;
+  if ((object.material?.isMeshStandardMaterial||object.material?.isMeshLambertMaterial)) object.material.onBeforeCompile = boundedPointLights;
 }
 
 function detectIntegratedGpu(renderer) {
@@ -218,7 +220,7 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
-    this.gpuTimer=new GpuTimer(this.renderer.getContext());
+    this.gpuTimer=new GpuTimer(this.renderer.getContext());this.postPass=new PostPass(this.renderer);
     this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
     if (canvas && typeof canvas.addEventListener === 'function') {
@@ -292,7 +294,9 @@ export class GameRenderer {
       red: material(0xd93832, 0.45, 0.1, { emissive: 0x991815, emissiveIntensity: 0.35 }),
       green: material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 }),
     };
+    this.groundShadows=new GroundShadows();
     this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.integratedGpu?2:4 });
+    this.surfaces.ready.then(()=>{this.surfacesReady=true;}).catch(error=>{this.surfacesReady=true;console.error('Surface assets failed',error);});
     for (const m of [this.surfaces.asphalt, this.surfaces.asphalt._lowMaterial]) {
       if (m) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
     }
@@ -522,6 +526,18 @@ export class GameRenderer {
     this.sun.color.set(map.sunColor ?? 0xffd7a4);
     this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .23 : 0;
     this.staticRoot = world.root;
+    this.groundShadows.setMap(map);
+    const shadowMaterials=new Map();
+    this.staticRoot.traverse(mesh=>{
+      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material))return;
+      const source=mesh.material._highMaterial??mesh.material;
+      if(!shadowMaterials.has(source)){
+        const high=source.clone(),low=(source._lowMaterial??source).clone();
+        high.onBeforeCompile=source.onBeforeCompile;low.onBeforeCompile=(source._lowMaterial??source).onBeforeCompile;
+        pairMaterials(high,low);this.groundShadows.apply(high);this.groundShadows.apply(low);shadowMaterials.set(source,high);
+      }
+      mesh.material=shadowMaterials.get(source);
+    });
     this.flags = world.flags;
     this.portWater = world.water;
     for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }
@@ -814,6 +830,7 @@ export class GameRenderer {
 
   updateSoldiers(state, localId, dt, networkInterpolated=false) {
     this.farSoldiers??=new FarSoldiers(this.worldRoot);this.farSoldiers.begin(this.clock);
+    if(!this.surfacesReady)return;
     const active = this.activeSoldiers;
     active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
@@ -912,7 +929,7 @@ export class GameRenderer {
       this.soldierBounds.center.copy(group.position);
       this.soldierBounds.center.y += .9;
       const distSq = local ? (player.x - local.x) ** 2 + (player.z - local.z) ** 2 : 0;
-      const shadowVisible = !this.lowQuality && distSq < 48 * 48 && shadowFrustum?.intersectsSphere(this.soldierBounds);
+      const shadowVisible = (this.quality==='medium'?distSq<20**2:!this.lowQuality&&distSq<48**2) && shadowFrustum?.intersectsSphere(this.soldierBounds);
       const visible = externalScene || ((alive || soldier.deathAge < 4.1) &&
         (this.viewFrustum.intersectsSphere(this.soldierBounds) || shadowVisible));
       if (!visible) {
@@ -938,7 +955,7 @@ export class GameRenderer {
       soldier.body.geometry = distant ? soldier.distantGeometry
         : projectedDistanceSq > nearLimit ** 2 ? soldier.mediumGeometry : soldier.detailGeometry;
       if(!externalScene&&!this.scoped&&projectedDistanceSq>80**2&&this.farSoldiers.add(soldier)){soldier.body.visible=false;soldier.flash.visible=false;continue;}
-      soldier.body.castShadow = !distant && !this.lowQuality && distSq < 48 * 48;
+      soldier.body.castShadow = !distant && (this.quality==='medium'?distSq<20**2:!this.lowQuality&&distSq<48**2);
       soldier.rifle.scale.setScalar(1);
       const mustReset = reset || respawned || returning;
       const animationMoving=Math.hypot(player.x-(soldier.animationX??player.x),player.z-(soldier.animationZ??player.z))>.001||player.moveSpeed>.05;
@@ -1400,7 +1417,7 @@ export class GameRenderer {
 
   applyShadows() {
     const mode = this.gfx.shadows;
-    const level = mode === 'auto' ? (this.lowQuality ? 'off' : (this.integratedGpu ? 'medium' : 'high')) : mode;
+    const level = mode === 'auto' ? (this.quality==='medium'?'low':this.lowQuality?'off':this.integratedGpu?'medium':'high') : mode;
     const size = { low: 512, medium: 1024, high: 2048 }[level] || 0;
     const on = size > 0;
     this.renderer.shadowMap.enabled = on;
@@ -1484,7 +1501,7 @@ export class GameRenderer {
     }
     if(!menu)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
-    try{drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);}
+    try{this.postPass.begin();drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.lowQuality?'low':'high');}
     finally{if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
   }
 
@@ -1511,7 +1528,10 @@ export class GameRenderer {
     if (this.map.shoreX !== undefined && this.portWater) {
       this.portWater.offset.set((this.clock * .011) % 1, (this.clock * .017) % 1);
     }
-    const low = view.quality === 'low';
+    const previousQuality=this.quality;this.quality=view.quality??'high';this.shadowDynamicOnly=this.quality==='medium';
+    this.groundShadows.uniforms.groundShadowStrength.value=this.quality==='high'?0:.32;
+    const low = this.quality !== 'high';
+    if(previousQuality!==this.quality)this.applyShadows();
     if (this.lowQuality !== low) {
       this.applyQuality(low);
     }
@@ -1849,6 +1869,6 @@ export class GameRenderer {
     skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();
     this.atmosphere.target.dispose();
-    this.gpuTimer.dispose();this.renderer.dispose();
+    this.groundShadows.dispose();this.postPass.dispose();this.gpuTimer.dispose();this.renderer.dispose();
   }
 }

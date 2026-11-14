@@ -18,6 +18,8 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "1.1.1",
+    "basis_universal": "1.16.4-1",
     "vite": "^7.2.2"
   },
   "engines": {

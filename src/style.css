@@ -239,3 +239,6 @@ body:has(.menu:not(.hidden)){overflow-y:auto}
 .room-row strong{font-size:15px;overflow-wrap:anywhere}.room-row small,.room-browser p{color:#b1bdb6;font-size:12px;line-height:1.5}
 .room-row .outline-button{justify-self:start;padding:10px 16px}
 .lobby-code-row strong{font-size:20px;letter-spacing:1px;overflow-wrap:anywhere}.lobby-code-box{max-width:360px}
+
+/* Applied in the single WebGL post pass instead of live CSS compositing. */
+.screen-noise,.vignette{display:none!important;}

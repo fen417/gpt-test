@@ -13,6 +13,15 @@ Measurements: `phase-1-soldiers-before.json` versus `phase-1-soldiers-after.json
 
 Validation: 61/61 Node 24 tests; production build passed. Added LOD budget, resolution recovery/CPU protection and shadow-hook idempotence checks. Risks to review in browser: small-detail loss at LOD boundaries, new-template appearance during first-use construction, far figures have reduced animation detail.
 
+## Phase 2
+
+- Added a single full-screen triangle for FXAA, bounded contrast-adaptive sharpening, ACES exposure/tone mapping, output colour conversion, grain and vignette. World and viewmodel share the same half-float target; counters include the post draw. Removed CSS grain/vignette layers.
+- Built static 256px ground-shadow masks for all three maps from authoritative colliders and the actual sun direction. Low/medium sample these masks on eligible ground receivers; no per-frame ray work. Medium adds nearby actor shadows; high retains the existing PBR/cached shadow path.
+- Prepared seven 512px albedo and normal sets offline. KTX2 has all ten mip levels; WebP is the decode fallback. Basis transcoder is local and worker count is bounded to one. Procedural painting is skipped during normal startup. High uses normal maps; the low/medium path keeps Lambert lighting. High/low material variants are retained to preserve high PBR rather than replacing all high materials with Lambert.
+- Added the medium graphics preset; fixed low ↔ medium shadow switching independently of material switching.
+
+Validation: 63/63 tests and production build. Browser loaded the menu and a 31-bot port match without captured errors; saved local screenshot. The hidden browser throttled rendering, so its frame timings are not an FPS comparison. Geometry generation still has first-use spikes; external templates are tracked under phase 5. No claim of ≤1 ms post cost or fixed-point visual equivalence on HD 610 yet.
+
 ## Remaining ordered phases
 
 2. Single post pass, inexpensive static ground shadows, texture/material presets.

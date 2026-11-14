@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
 
 function rand(seed) { return () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; }; }
 function texture(draw, repeat = 1, size = 256) {
@@ -68,15 +69,24 @@ export function clonePairedMaterial(source, color, emissive = null, emissiveInte
   return highClone;
 }
 
-export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:anisotropyLimit=4 } = {}) {
-  const concrete = texture((ctx, s, random) => {
+export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:anisotropyLimit=4, bake=false } = {}) {
+  const pending=[],names=['concrete','brick','metal','asphalt','ground','cloth','wood'];let slot=0;
+  const compressed=bake?null:new KTX2Loader().setTranscoderPath(new URL('basis/',document.baseURI).href).setWorkerLimit(1).detectSupport(renderer);
+  const surfaceTexture=(draw,repeat=1)=>{
+    if(bake)return texture(draw,repeat,512);
+    const name=names[slot++],map=new THREE.Texture();map.colorSpace=THREE.SRGBColorSpace;map.wrapS=map.wrapT=THREE.RepeatWrapping;map.repeat.set(repeat,repeat);
+    const loaded=name==='cloth'?new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}.webp`,import.meta.url).href):compressed.loadAsync(new URL(`./assets/surfaces/${name}.ktx2`,import.meta.url).href);
+    pending.push(loaded.catch(()=>new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}.webp`,import.meta.url).href)).then(image=>{map.image=image.image;map.mipmaps=image.mipmaps;map.format=image.format;map.type=image.type;map.isCompressedTexture=image.isCompressedTexture;map.generateMipmaps=!image.isCompressedTexture;map.needsUpdate=true;}));
+    return map;
+  };
+  const concrete = surfaceTexture((ctx, s, random) => {
     ctx.fillStyle = '#b7b6ab'; ctx.fillRect(0, 0, s, s); grain(ctx, s, random, 18000, 0.12); stains(ctx, s, random);
     ctx.strokeStyle = 'rgba(50,55,48,.25)'; ctx.lineWidth = 1.5;
     ctx.strokeRect(1, 1, s - 2, s - 2);
     for (let i = 0; i < 9; i++) { const x = random() * s, y = random() * s; ctx.fillStyle = 'rgba(40,44,39,.3)'; ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill(); }
     for (let i = 0; i < 4; i++) { let x = random() * s, y = random() * s; ctx.lineWidth = .6; ctx.beginPath(); ctx.moveTo(x, y); for (let j = 0; j < 10; j++) { x += random() * 12 - 6; y += random() * 14; ctx.lineTo(x, y); } ctx.stroke(); }
   });
-  const brick = texture((ctx, s, random) => {
+  const brick = surfaceTexture((ctx, s, random) => {
     ctx.fillStyle = '#7f8176'; ctx.fillRect(0, 0, s, s);
     const row = s / 16, col = s / 4;
     for (let y = 0; y < 17; y++) for (let x = -1; x < 5; x++) {
@@ -87,7 +97,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     }
     grain(ctx, s, random, 16000, .14); stains(ctx, s, random);
   });
-  const metal = texture((ctx, s, random) => {
+  const metal = surfaceTexture((ctx, s, random) => {
     ctx.fillStyle = '#b0b6ad'; ctx.fillRect(0, 0, s, s);
     for (let x = 0; x < s; x++) {
       const value = Math.sin(x / s * Math.PI * 32);
@@ -97,13 +107,13 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     for (let y = 8; y < s; y += s - 16) for (let x = 6; x < s; x += 24) { ctx.fillStyle = '#4f5e58'; ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill(); }
     grain(ctx, s, random, 9000, .08); stains(ctx, s, random, '98,62,30');
   });
-  const asphalt = texture((ctx, s, random) => {
+  const asphalt = surfaceTexture((ctx, s, random) => {
     ctx.fillStyle = '#616b6d'; ctx.fillRect(0, 0, s, s); grain(ctx, s, random, 28000, .32); stains(ctx, s, random, '10,17,21');
     ctx.strokeStyle = 'rgba(21,27,29,.8)';
     for (let i = 0; i < 6; i++) { let x = random() * s, y = random() * s; ctx.lineWidth = random() * 1.1 + .4; ctx.beginPath(); ctx.moveTo(x, y); for (let j = 0; j < 12; j++) { x += random() * 20 - 10; y += random() * 20 - 10; ctx.lineTo(x, y); } ctx.stroke(); }
     ctx.strokeStyle = 'rgba(24,29,31,.16)'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(s * .28, 0); ctx.lineTo(s * .32, s); ctx.moveTo(s * .68, 0); ctx.lineTo(s * .72, s); ctx.stroke();
   });
-  const ground = texture((ctx, s, random) => {
+  const ground = surfaceTexture((ctx, s, random) => {
     ctx.fillStyle = '#8f9381'; ctx.fillRect(0, 0, s, s); grain(ctx, s, random, 28000, .3); stains(ctx, s, random, '26,31,23');
     for (let i = 0; i < 650; i++) {
       const x = random() * s, y = random() * s;
@@ -111,7 +121,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
       ctx.fillRect(x, y, random() * 2.2 + .8, random() * 1.6 + .6);
     }
   });
-  const cloth = texture((ctx, s, random) => {
+  const cloth = surfaceTexture((ctx, s, random) => {
     ctx.fillStyle = '#b5b39a'; ctx.fillRect(0, 0, s, s);
     // Rounded, overlapping camouflage islands keep the fabric readable on
     // curved limbs; a separate fine weave avoids jagged shards.
@@ -130,7 +140,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     }
     grain(ctx, s, random, 16000, .075);
   });
-  const wood = texture((ctx, s, random) => {
+  const wood = surfaceTexture((ctx, s, random) => {
     ctx.fillStyle = '#ad956d'; ctx.fillRect(0, 0, s, s);
     for (let x = 0; x < s; x += 32) { ctx.fillStyle = 'rgba(38,30,18,.45)'; ctx.fillRect(x, 0, 2, s); ctx.fillStyle = 'rgba(231,206,152,.2)'; ctx.fillRect(x + 2, 0, 1.5, s); }
     for (let i = 0; i < 450; i++) { const x = random() * s, y = random() * s; ctx.strokeStyle = `rgba(62,40,18,${random() * .17})`; ctx.lineWidth = .4 + random() * .8; ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x - 3, y + 10, x + 3, y + 24, x, y + 36 + random() * 50); ctx.stroke(); }
@@ -139,9 +149,17 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
   const anisotropy = Math.min(anisotropyLimit, renderer.capabilities.getMaxAnisotropy());
   for (const map of [concrete, brick, metal, asphalt, ground, cloth, wood]) map.anisotropy = anisotropy;
   const make = (map, color, tile, roughness = .9, metalness = 0, bump = .05) => {
+    const normalMap=bake?null:new THREE.Texture();
+    if(normalMap){
+      const name=names[[concrete,brick,metal,asphalt,ground,cloth,wood].indexOf(map)];
+      normalMap.wrapS=normalMap.wrapT=THREE.RepeatWrapping;normalMap.anisotropy=anisotropy;
+      pending.push(compressed.loadAsync(new URL(`./assets/surfaces/${name}-normal.ktx2`,import.meta.url).href).catch(()=>new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}-normal.webp`,import.meta.url).href)).then(image=>{normalMap.image=image.image;normalMap.mipmaps=image.mipmaps;normalMap.format=image.format;normalMap.type=image.type;normalMap.isCompressedTexture=image.isCompressedTexture;normalMap.generateMipmaps=!image.isCompressedTexture;normalMap.needsUpdate=true;}));
+    }
+
     const highMat = new THREE.MeshStandardMaterial({
       map, color, roughness, metalness,
-      bumpMap: useBump ? map : null,
+      normalMap,normalScale:new THREE.Vector2(.25,.25),
+      bumpMap: useBump&&!normalMap ? map : null,
       bumpScale: useBump ? bump : 0,
     });
     const lowMat = new THREE.MeshLambertMaterial({ map, color });
@@ -154,6 +172,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     metal: make(metal, 0x657977, 2.4, .56, .6, .045), asphalt: make(asphalt, 0x747f85, 8, .78, .08, .025),
     ground: make(ground, 0x9da58d, 9, .98, 0, .045), cloth: make(cloth, 0x7c8979, .65, .98, 0, .012), wood: make(wood, 0xc9b594, 2, .95, 0, .04),
     maps: { concrete, brick, metal, asphalt, ground, cloth, wood },
+    ready:Promise.all(pending).finally(()=>compressed?.dispose()),
   };
 }
 

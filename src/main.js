@@ -619,7 +619,7 @@ $('respawn').addEventListener('click',triggerRespawn);
 $('sensitivity').value=read('sensitivity','0.8');sensitivity=Number($('sensitivity').value);
 $('sensitivity').addEventListener('input',event=>{sensitivity=Number(event.target.value);save('sensitivity',sensitivity);});
 $('quality').value=read('quality','high');quality=$('quality').value;
-document.body.classList.toggle('low-quality',quality==='low');
+document.body.classList.toggle('low-quality',quality!=='high');
 $('quality').addEventListener('change',event=>{quality=event.target.value;document.body.classList.toggle('low-quality',quality==='low');save('quality',quality);});
 for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution']]){const el=$(id);const stored=read(id,'auto');el.value=[...el.options].some(o=>o.value===stored)?stored:'auto';gfx[key]=el.value;el.addEventListener('change',event=>{gfx[key]=event.target.value;save(id,gfx[key]);});}
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
