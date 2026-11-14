@@ -32,6 +32,7 @@ const canvas=$('game');
 const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),reset:()=>{for(const samples of [frameTimes,cpuTimes,renderTimes,simulationTimes])samples.reset();renderer?.gpuTimer.samples.reset();}});
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let squadUI,weaponPreview,lobbyWeaponPreview;
+let tankHud,tankHudLoading,vehicleThirdPerson=true;
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let lobbyTeamRequest=null,lobbyTeamMessage='';
@@ -74,7 +75,7 @@ const DEFAULT_BINDS={
   grenade:'KeyG',
   score:'Tab',
   interact:'KeyE',
-  switchSeat:'KeyV',
+  switchSeat:'KeyF',vehicleCamera:'KeyV',
   horn:'KeyH',
   order:'KeyQ',squad:'KeyO',
 };
@@ -92,6 +93,7 @@ const BIND_LABELS=[
   ['score','Таблица счёта'],
   ['interact','Сесть в технику / выйти'],
   ['switchSeat','Сменить место в технике'],
+  ['vehicleCamera','Камера водителя танка'],
   ['squad','Открыть отряды'],
   ['order','Отряд: команда по наведению / за мной'],
   ['horn','Сигнал / позвать ботов в транспорт'],
@@ -106,6 +108,7 @@ function read(key,fallback){try{return localStorage.getItem(`sector09-${key}`)??
 try{
   const savedBinds=JSON.parse(read('keybinds','{}'));
   if(savedBinds&&typeof savedBinds==='object'){
+    if(savedBinds.switchSeat==='KeyV'&&!savedBinds.vehicleCamera)savedBinds.switchSeat='KeyF';
     for(const k of Object.keys(DEFAULT_BINDS)){
       if(k!=='gadget'&&typeof savedBinds[k]==='string'&&savedBinds[k])keybinds[k]=savedBinds[k];
     }
@@ -117,6 +120,7 @@ try{
     }
   }
 }catch{}
+vehicleThirdPerson=read('vehicle-camera','third')!=='first';
 function formatKeyCode(code){
   if(!code)return '—';
   if(code.startsWith('Key'))return code.slice(3).toUpperCase();
@@ -470,8 +474,10 @@ function receive(next){
       }
     }
     if(event.type==='rocketLaunch'&&event.playerId===localId){recoilPitch=Math.min(.12,recoilPitch+.065);}
+    if(event.type==='ricochet'&&event.playerId===localId){hitUntil=nowPerf+100;$('hitmarker').classList.add('ricochet');}
     if(event.type==='bulletImpact'&&event.playerId===localId&&(event.hit||event.vehicleHit||event.equipmentHit)){
       hitUntil=nowPerf+(event.headshot?190:130);
+      $('hitmarker').classList.remove('ricochet');
       $('hitmarker').classList.toggle('headshot',!!event.headshot);
     }
     if(event.type==='vehicleDestroyed'&&event.attackerId===localId)toast(VEHICLE_TYPES[event.vehicleType]?.name+' · Цель уничтожена');
@@ -694,6 +700,8 @@ document.addEventListener('mousemove',event=>{
 });
 let lastFireClick=0;
 document.addEventListener('wheel',event=>{
+  const player=local(),vehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
+  if(active&&player?.alive&&vehicle?.type==='tank'&&player.vehicleSeat===1&&event.deltaY){event.preventDefault();weaponSlot=weaponSlot===1?2:1;toolSlot=0;return;}
   if(!active||!aim||!local()?.alive||local()?.heldGadget||local()?.weaponId!=='sv98'||
     (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
   event.preventDefault();
@@ -704,6 +712,7 @@ document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(ev
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{
   if($('patch-notes').open)return;
+  if(active&&!event.repeat&&isBound('vehicleCamera',event.code)){const p=local(),v=state?.vehicles.find(v=>v.id===p?.vehicleId);if(v?.type==='tank'&&p.vehicleSeat===0){event.preventDefault();vehicleThirdPerson=!vehicleThirdPerson;save('vehicle-camera',vehicleThirdPerson?'third':'first');return;}}
   if(document.querySelector('dialog.menu-dialog[open]'))return;
   if(listeningAction){
     event.preventDefault();
@@ -773,10 +782,11 @@ document.addEventListener('visibilitychange',()=>{clearControls();if(document.hi
 function input(){
   const enabled=!!((locked||(unlocked&&!unlockedPaused))&&local()?.alive&&!finished);
   const firing=enabled&&(fire||fireTap);
+  const player=local(),vehicle=state?.vehicles.find(v=>v.id===player?.vehicleId),angles=aimAngles();
   return {
     forward:enabled?Number(isActionHeld('forward'))-Number(isActionHeld('back')):0,
     strafe:enabled?Number(isActionHeld('right'))-Number(isActionHeld('left')):0,
-    ...aimAngles(),
+    ...angles,yaw:vehicle?.type==='tank'&&player.vehicleSeat===0?vehicle.yaw:angles.yaw,
     sprint:enabled&&isActionHeld('sprint')&&!aim&&!firing,
     crouch:enabled&&isActionHeld('crouch'),
     jump:enabled&&isActionHeld('jump'),
@@ -1201,8 +1211,8 @@ function updateVehicleHud(player){
   const look=aimAngles();
   const canFire=canFirePassengerWeapon(vehicle,player.vehicleSeat,look.yaw,look.pitch);
   const controls=canExit?key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':''):'СБАВЬТЕ СКОРОСТЬ ДЛЯ ВЫХОДА';
-  const windowHint=seat.role==='passenger'&&!canFire?'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО':'';
-  text('vehicle-prompt',controls+(seat.role==='driver'?'     '+formatKeyCode(keybinds.horn)+' · СИГНАЛ / ПОЗВАТЬ БОТОВ':'')+windowHint);
+  const windowHint=seat.role==='passenger'&&!canFire?(vehicle.type==='tank'?'\nСТРЕЛЯЙТЕ НАРУЖУ СО СВОЕГО БОРТА':'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО'):'';
+  text('vehicle-prompt',controls+(seat.role==='driver'?'     '+formatKeyCode(keybinds.horn)+' · СИГНАЛ / ПОЗВАТЬ БОТОВ':'')+(seat.role==='driver'&&vehicle.type==='tank'?'     '+formatKeyCode(keybinds.vehicleCamera)+' · КАМЕРА':'')+windowHint);
   if(seat.role==='passenger')return {role:seat.role,canFire};
   text('weapon-name',VEHICLE_TYPES[vehicle.type].name.toUpperCase()+' · '+seat.name.toUpperCase());
   const hp=Math.ceil(vehicle.hp/vehicle.maxHp*100);
@@ -1406,7 +1416,9 @@ function frame(now){
   const renderState=active?(simulation?simulation.sample(now):multiplayer.sample(now)):null;
   const renderPlayer=renderState?.players.find(p=>p.id===localId);
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
-  if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
+  if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),vehicleThirdPerson,vehicleCameraYaw:yaw,networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
+  if(renderer.map?.id==='quarry'&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
+  tankHud?.update(active?renderState:null,renderPlayer,renderer,now,{zoom:aim,thirdPerson:vehicleThirdPerson,cameraKey:formatKeyCode(keybinds.vehicleCamera),seatKey:formatKeyCode(keybinds.switchSeat)});
   renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);

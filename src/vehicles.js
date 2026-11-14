@@ -15,6 +15,7 @@ const H = Math.PI / 2;
 let tankLibrary,tankLoading;const tankPool=[];
 export function warmTankAssets(renderer){return tankLoading??=import('./tank-model.js').then(async library=>{await library.loadTankAtlas(renderer);tankLibrary=library;for(let i=0;i<2;i++)tankPool.push(library.createTankRig());}).catch(error=>{tankLoading=null;throw error;});}
 export const tankAssetsReady=()=>Boolean(tankLibrary);
+export function placeTankCamera(owner,mounted,view,dt){tankLibrary.placeTankDriverCamera(owner,mounted,view,dt);}
 
 function parts(parent, materials, draw) {
   const batches = new Map();

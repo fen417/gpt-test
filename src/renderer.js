@@ -25,7 +25,7 @@ import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
-import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady } from './vehicles.js';
+import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera } from './vehicles.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
@@ -495,7 +495,7 @@ export class GameRenderer {
   }
 
   setMap(mapId) {
-    if(mapId==='quarry')warmTankAssets(this.renderer).catch(error=>console.error('Tank assets:',error));
+    if(mapId==='quarry'&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
     let world = this.worlds.get(map.id);
@@ -1628,12 +1628,14 @@ export class GameRenderer {
       }
       this.updateSunShadow(focusX, focusZ);
     } else if (mounted && !passenger) {
-      this.placeVehicleCamera(mounted, seat, view.yaw ?? player.yaw, view.pitch ?? player.pitch, shake);
+      if(mounted.vehicle.type==='tank'&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankCamera(this,mounted,view,dt);
+      else{if(this.tankCamera)this.tankCamera.initialized=false;this.placeVehicleCamera(mounted, seat, view.yaw ?? player.yaw, view.pitch ?? player.pitch, shake);}
       this.weapon.visible = false;
       this.viewWeaponTarget = null;
       this.wallStow = this.aimAmount = this.sprintBlend = 0;
-      if (Math.abs(this.camera.fov - baseFov) > .03 || this.camera.near !== .045) {
-        this.camera.fov = baseFov;
+      const mountedFov=mounted.vehicle.type==='tank'&&seat.role==='gunner'&&view.aim?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov)/2)/3)):baseFov;
+      if (Math.abs(this.camera.fov - mountedFov) > .03 || this.camera.near !== .045) {
+        this.camera.fov = mountedFov;
         this.camera.near = .045;
         this.camera.updateProjectionMatrix();
       }

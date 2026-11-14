@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
+export {placeTankDriverCamera} from './tank-camera.js';
 
 // Original procedural armour. Rigid details are merged per articulated island.
 const wheelAxis=new THREE.Vector3(1,0,0),position=new THREE.Vector3(),scale=new THREE.Vector3(),quaternion=new THREE.Quaternion(),matrix=new THREE.Matrix4();
 let atlas,atlasPromise;
-export function loadTankAtlas(renderer){return atlasPromise??=new KTX2Loader().setTranscoderPath(import.meta.env.BASE_URL+'basis/').detectSupport(renderer).loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href).then(texture=>{atlas=texture;texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy());}).catch(error=>{atlasPromise=null;throw error;});}
+export function loadTankAtlas(renderer){if(atlasPromise)return atlasPromise;const loader=new KTX2Loader().setWorkerLimit(1).setTranscoderPath(import.meta.env.BASE_URL+'basis/').detectSupport(renderer);return atlasPromise=loader.loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href).then(texture=>{atlas=texture;texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy());}).catch(error=>{atlasPromise=null;throw error;}).finally(()=>loader.dispose());}
 function island(parent,material,draw){
   const parts=[];
   const piece=(geometry,x,y,z,sx,sy,sz,color=0x788368,rx=0,ry=0,rz=0)=>{
@@ -33,11 +34,11 @@ function buildLevel(level,material){
       }
     }
   });
-  const turretMesh=island(turret,material,({box,cylinder})=>{
+  const turretMesh=island(turret,material,({box,cylinder,piece})=>{
     cylinder(0,-.03,0,1.16,.16,0x303b30,level===2?8:12);
-    box(0,.25,.05,2.28,.58,2.5,0x707d60);
+    piece(new THREE.CylinderGeometry(.92,1.25,.62,8),0,.27,.1,1,1,1.16,0x707d60,0,Math.PI/8);
     for(const side of [-1,1])box(side*.99,.29,-.77,.65,.57,1.27,0x879471,-.12,side*.23);
-    box(0,.36,1.3,2.4,.59,.62,0x616e56);box(0,.6,.27,2,.13,1.9,0x889276);
+    box(0,.36,1.3,2.4,.59,.62,0x616e56);cylinder(0,.6,.27,.98,.13,0x889276,8);
     if(!level){for(const side of [-1,1])for(let i=0;i<4;i++)box(side*1.26,.34,-.57+i*.48,.18,.39,.4,i%2?0x4a5745:0x7a8866,0,side*.15);
       box(.73,.81,-.27,.26,.26,.4,0x2a3830);box(.73,.84,-.49,.22,.11,.04,0x8cb0a5);
       box(-.85,.98,1.07,.035,.72,.035,0x2c332e);}
