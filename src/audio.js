@@ -186,9 +186,10 @@ export class CombatAudio {
     if(!play){track.pause();return;}
     if(!track.paused||this._menuPlayPending)return;
     this._menuPlayPending=true;
-    track.play().catch(()=>{}).finally(()=>{
+    track.play().then(()=>true,()=>false).then(played=>{
       this._menuPlayPending=false;
       if(this._disposed||this._mode!=='menu'||!this._enabled||this._volume<=0||this._musicVolume<=0)track.pause();
+      else if(played&&track.paused)this._syncMenuMusic();
     });
   }
   _target(parameter,value,seconds=.1,immediate=false){

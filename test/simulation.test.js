@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, sanitizeInput } from '../shared/simulation.js';
-import { MAP, CLASSES, DIFFICULTIES } from '../shared/world.js';
+import { activateGadget } from '../shared/gadgets.js';
+import { MAP, CLASSES, DIFFICULTIES, CAPTURE_RADIUS } from '../shared/world.js';
 
 const make=()=>new Simulation({bots:0,random:()=>.5});
 const advance=(sim,seconds)=>{for(let n=0;n<seconds*20;n++)sim.step(.05);};
@@ -30,7 +31,7 @@ test('untrusted input is bounded and non-finite values cannot corrupt simulation
 test('diagonal input does not grant extra movement speed and walls stop movement',()=>{
   const sim=make();const p=sim.addPlayer('a','Alice',0);p.x=0;p.z=130;
   sim.setInput('a',{forward:1,strafe:1});advance(sim,1);assert(Math.abs(Math.hypot(p.x,p.z-130)-CLASSES.assault.speed)<.01);
-  const warehouse=MAP.boxes.find(b=>b.kind==='factory'&&b.z===145);p.x=0;p.z=warehouse.z;sim.setInput('a',{strafe:1});advance(sim,12);assert(p.x<warehouse.x-warehouse.w/2,'warehouse blocks eastward motion');
+  const warehouse=MAP.boxes.find(b=>b.kind==='port-wall'&&b.x>20&&b.w>10&&b.h>3);p.x=0;p.z=warehouse.z;sim.setInput('a',{strafe:1});advance(sim,12);assert(p.x<warehouse.x-warehouse.w/2,'warehouse blocks eastward motion');
 });
 test('authoritative shots consume ammunition immediately and damage enemies on arrival',()=>{
   const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=30;b.x=0;b.z=20;
@@ -42,7 +43,7 @@ test('authoritative shots consume ammunition immediately and damage enemies on a
   advance(sim,.5);assert.equal(b.alive,false);assert.equal(a.kills,1);assert.equal(b.deaths,1);assert.equal(sim.tickets[1],tickets-1);
 });
 test('solid cover blocks bullets; allies cannot receive friendly fire',()=>{
-  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);const cover=MAP.boxes.find(box=>box.kind==='factory'&&box.z===-145);a.x=b.x=cover.x;a.z=cover.z+cover.d/2+5;b.z=cover.z-cover.d/2-5;a.invulnerableUntil=b.invulnerableUntil=0;
+  const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);const cover=MAP.boxes.find(box=>box.kind==='port-wall'&&box.w>10&&box.h>3);a.x=b.x=cover.x;a.z=cover.z+cover.d/2+5;b.z=cover.z-cover.d/2-5;a.invulnerableUntil=b.invulnerableUntil=0;
   sim.setInput('a',{yaw:0,fire:true,aim:true});advance(sim,1);assert.equal(b.hp,100);
   a.x=0;a.z=30;b.x=0;b.z=20;b.team=0;advance(sim,1);assert.equal(b.hp,100);
 });
@@ -69,10 +70,18 @@ test('death enforces respawn delay then restores correct class loadout',()=>{
 test('reload transfers finite reserve ammo',()=>{
   const sim=make();const p=sim.addPlayer('a','Alice',0);p.ammo=3;p.reserve=8;sim.setInput('a',{reload:true});advance(sim,2.3);assert.equal(p.ammo,11);assert.equal(p.reserve,0);
 });
-test('medic and support gadgets have bounded supply and cooldown',()=>{
-  const sim=make();const medic=sim.addPlayer('m','Medic',0,'medic');const ally=sim.addPlayer('a','Alice',0);ally.hp=20;sim.setInput('m',{gadget:true});sim.step(.05);assert.equal(ally.hp,75);sim.step(.05);assert.equal(ally.hp,75);
-  const support=sim.addPlayer('s','Support',0,'support');ally.reserve=0;sim.setInput('s',{gadget:true});sim.step(.05);assert.equal(ally.reserve,60);assert(support.gadgetTime>0);
+test('medical and ammo supplies heal gradually and enforce placement cooldowns',()=>{
+  const sim=make(),medic=sim.addPlayer('m','Medic',0,'medic'),ally=sim.addPlayer('a','Ally',0),assault=sim.addPlayer('s','Supply',0,'assault');
+  for(const p of [medic,ally,assault]){p.x=0;p.z=30;p.y=sim.groundAt(0,30);p.equipTime=0;}
+  ally.hp=20;ally.lastHurt=0;ally.reserve=0;
+  assert.equal(activateGadget(sim,medic,true),true);
+  assert.equal(activateGadget(sim,medic,true),false,'cannot place another kit during cooldown');
+  assert.equal(ally.hp,20,'placement does not instantly heal');
+  advance(sim,2);assert(ally.hp>20&&ally.hp<50,'kit heals progressively');
+  assert.equal(activateGadget(sim,assault),true);assert.equal(activateGadget(sim,assault),false);
+  advance(sim,1.1);assert(ally.reserve>0);assert(assault.gadgetTime>0);
 });
+
 test('grenades explode once and damage nearby enemies',()=>{
   const sim=make();const a=sim.addPlayer('a','Alice',0);const b=sim.addPlayer('b','Bob',1);a.x=0;a.z=30;b.x=0;b.z=25;
   a.invulnerableUntil=b.invulnerableUntil=0;
@@ -104,26 +113,19 @@ test('spawn protection blocks damage for two seconds and ends on firing',()=>{
 });
 test('bots navigate and capture during a running round',()=>{
   const sim=new Simulation({bots:8,random:()=>.5});advance(sim,55);assert(sim.snapshot().players.some(p=>Math.abs(p.z)<100));assert(sim.points.some(p=>p.owner!==-1));
-  // Verify bots capturing the same objective spread out instead of stacking on one pixel
-  const pointC=sim.points.find(p=>p.id==='C');
-  const squad=[...sim.players.values()].filter(p=>p.team===0).slice(0,4);
-  for(const [idx,bot] of squad.entries()){
-    bot.alive=true;bot.hp=100;bot.x=-3+idx*2;bot.z=10;bot.botObjective=pointC;
-    bot.botGoal=sim.pickObjectiveSpot(bot,pointC);
-    bot.botPath=sim.pathfind(bot,bot.botGoal);
-    bot.nextThink=10;
-  }
-  // Hide enemy bots far away so squad captures peacefully
-  for(const bot of sim.players.values())if(bot.team===1){bot.x=0;bot.z=-160;bot.nextThink=99;}
-  advance(sim,6);
-  for(let i=0;i<squad.length;i++){
-    assert(Math.hypot(squad[i].x-pointC.x,squad[i].z-pointC.z)<12,'bot stays within capture radius');
-    assert(Math.hypot(squad[i].x-pointC.x,squad[i].z-pointC.z)>1.5,'bot does not stand on exact flag center pixel');
-    for(let j=i+1;j<squad.length;j++){
-      assert(Math.hypot(squad[i].x-squad[j].x,squad[i].z-squad[j].z)>1.4,'bots maintain separation while capturing');
-    }
-  }
 });
+
+test('ordered squad bots spread around the objective without combat distractions',()=>{
+  const sim=new Simulation({bots:4,random:()=>.5}),point=sim.points.find(p=>p.id==='C');
+  const squad=[...sim.players.values()].filter(p=>p.team===0);
+  for(const bot of sim.players.values())if(bot.team===1){bot.alive=false;bot.respawnIn=100;}
+  for(const [i,bot] of squad.entries()){bot.x=-3+i*4;bot.z=10;bot.y=0;bot.squadId=1;}
+  sim.squadOrders=new Map([['0/1',{kind:'attack',pointId:point.id,until:100}]]);
+  advance(sim,6);
+  for(const bot of squad){const d=Math.hypot(bot.x-point.x,bot.z-point.z);assert(d<CAPTURE_RADIUS,'ordered bot stays within capture radius');assert(d>1.5,'bot avoids standing on the flag centre');}
+  for(let i=0;i<squad.length;i++)for(let j=i+1;j<squad.length;j++)assert(Math.hypot(squad[i].x-squad[j].x,squad[i].z-squad[j].z)>1.4,'bots maintain separation');
+});
+
 test('a full bot round remains finite, navigates the map, and reaches a winner',()=>{
   let seed=1;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   const sim=new Simulation({bots:24,random});const visited=new Map([...sim.players.keys()].map(id=>[id,new Set()]));
@@ -138,5 +140,5 @@ test('a full bot round remains finite, navigates the map, and reaches a winner',
   assert([...sim.players.values()].reduce((sum,p)=>sum+p.kills,0)>50);
 });
 test('snapshots do not leak mutable player state',()=>{
-  const sim=make();const p=sim.addPlayer('a','Alice',0);const state=sim.snapshot();state.players[0].hp=0;state.tickets[0]=0;state.points[0].owner=1;assert.equal(p.hp,100);assert.equal(sim.tickets[0],300);assert.equal(sim.points[0].owner,-1);
+  const sim=make();const p=sim.addPlayer('a','Alice',0);const originalTickets=sim.tickets[0];const state=sim.snapshot();state.players[0].hp=0;state.tickets[0]=0;state.points[0].owner=1;assert.equal(p.hp,100);assert.equal(sim.tickets[0],originalTickets);assert.equal(sim.points[0].owner,-1);
 });

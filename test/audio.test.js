@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CombatAudio, ORIGINAL_SCORE } from '../src/audio.js';
+import { CombatAudio, MENU_MUSIC_TITLE } from '../src/audio.js';
 
 class Parameter {
   constructor(value=0){this.value=value;this.events=[];}
@@ -25,29 +25,29 @@ class FakeContext {
   createGain(){return this._node();}createOscillator(){return this._node();}
   createBufferSource(){return this._node();}createBiquadFilter(){return this._node();}
   createConvolver(){return this._node();}createDynamicsCompressor(){return this._node();}
-  createStereoPanner(){return this._node();}createAnalyser(){return this._node();}
-  createBuffer(channels,length,sampleRate){const arrays=Array.from({length:channels},()=>new Float32Array(length));const b={length,sampleRate,getChannelData:i=>arrays[i]};this.buffers.push(b);return b;}
+  createMediaElementSource(){return this._node();}createStereoPanner(){return this._node();}createAnalyser(){return this._node();}
+  createBuffer(channels,length,sampleRate){const arrays=Array.from({length:channels},()=>new Float32Array(length));const b={length,sampleRate,numberOfChannels:channels,duration:length/sampleRate,getChannelData:i=>arrays[i]};this.buffers.push(b);return b;}
   async resume(){this.state='running';}async close(){this.state='closed';}
   advance(time){this.currentTime=time;for(const source of this.sources)if(!source.finished&&source.stopped<=time){source.finished=true;source.onended?.();}}
 }
 async function withAudio(fn,Context=FakeContext){
-  const previous=globalThis.AudioContext;globalThis.AudioContext=Context;
+  const previous=globalThis.AudioContext,previousAudio=globalThis.Audio;globalThis.AudioContext=Context;globalThis.Audio=class{paused=true;async play(){this.paused=false;}pause(){this.paused=true;}removeAttribute(){}load(){}};
   const audio=new CombatAudio();
-  try{await fn(audio);}finally{audio.dispose();if(previous===undefined)delete globalThis.AudioContext;else globalThis.AudioContext=previous;}
+  try{await fn(audio);}finally{audio.dispose();if(previousAudio===undefined)delete globalThis.Audio;else globalThis.Audio=previousAudio;if(previous===undefined)delete globalThis.AudioContext;else globalThis.AudioContext=previous;}
 }
 
 test('score starts after audio unlock whether menu mode is set before or afterwards',async()=>{
-  assert.equal(ORIGINAL_SCORE,'AFTER THE RAIN');
+  assert.equal(MENU_MUSIC_TITLE,'Quiet Resolve');
   await withAudio(async audio=>{
     audio.setMode('menu');assert.equal(audio.getStats().state,'locked');
     assert.equal(await audio.unlock(),true);audio.setMode('menu');
     assert.equal(audio.getStats().musicPlaying,true);
-    assert.ok(audio.getStats().activeVoices>0);
+    assert.equal(audio._menuTrack.paused,false,'menu MP3 starts after user gesture');
     const context=audio.ctx;await audio.unlock();assert.equal(audio.ctx,context);
-    assert.equal(audio._ambientSources.length,2);
+    assert.equal(audio._ambientSources.length,3);
   });
   await withAudio(async audio=>{
-    await audio.unlock();audio.setMode('battle');audio.setMode('menu');
+    await audio.unlock();audio.setMode('battle');audio.setMode('menu');await Promise.resolve();await Promise.resolve();
     assert.equal(audio.getStats().mode,'menu');assert.equal(audio.getStats().musicPlaying,true);
   });
 });
@@ -66,7 +66,7 @@ test('master mute, score mute and effects levels adjust independent live buses',
 }));
 
 test('complete 32-bar arrangement schedules finite envelopes and releases voices without accumulating buffers',async()=>withAudio(async audio=>{
-  await audio.unlock();clearInterval(audio._scheduler);audio._scheduler=null;
+  await audio.unlock();audio.setMode('battle');clearInterval(audio._scheduler);audio._scheduler=null;
   let maximum=0;
   for(let eighth=0;eighth<256;eighth++){
     const time=1+eighth*(60/82)/2;audio.ctx.advance(time);audio._musicTick(eighth,time+.02);
@@ -77,7 +77,7 @@ test('complete 32-bar arrangement schedules finite envelopes and releases voices
   assert.ok(audio.ctx.created.some(node=>node.type==='highpass'));
   assert.equal(audio.ctx.buffers.length,3,'one impulse and two cached noise buffers');
   audio.ctx.advance(110);assert.equal(audio._voices.size,0);
-  assert.equal(audio._ambientSources.length,2);
+  assert.equal(audio._ambientSources.length,3);
 }));
 
 test('busy combat caps voices, deduplicates repeated snapshots and cleans all resources',async()=>withAudio(async audio=>{
@@ -103,3 +103,25 @@ test('soundscape works without StereoPanner and tracks real movement rather than
     audio.shot(12,'recon',-.5);audio._explosion({x:3,z:4},local);audio.click();
   },MonoContext);
 });
+
+test('automatic fire keeps preceding recordings alive and does not queue distance delay',async()=>withAudio(async audio=>{
+  await audio.unlock();audio.setMode('battle');
+  audio._shotBuffers.set('rifle-light',[audio.ctx.createBuffer(1,8000,8000)]);
+  audio.shot(100,'ar416',0,false,0,'bot');
+  const first=[...audio._voices].find(v=>v.shooterId==='bot');
+  assert(first.time<=audio.ctx.currentTime+.01,'presentation already supplies the network delay');
+  audio.ctx.advance(.1);audio.shot(100,'ar416',0,false,0,'bot');
+  assert(audio._voices.has(first),'next round must not truncate the preceding recording');
+  assert.equal([...audio._voices].filter(v=>v.shooterId==='bot').length,2);
+}));
+
+test('authority and presentation clocks do not reset sound deduplication',async()=>withAudio(async audio=>{
+  await audio.unlock();audio.setMode('battle');
+  const local={id:'local',x:0,y:0,z:0,yaw:0,hp:100,alive:true};
+  const event={id:9,type:'shot',playerId:local.id,time:1,x:0,z:0,weaponId:'ar416'};
+  audio.events({time:1,events:[event]},local);
+  const count=audio._voices.size;
+  audio.events({time:4,events:[]},local,{immediate:true});
+  audio.events({time:1.1,events:[event]},local);
+  assert.equal(audio._voices.size,count,'a slow presentation clock must not replay a retained event');
+}));

@@ -29,9 +29,11 @@ test('close cover detection retracts the gun for forward walls but ignores walls
   assert.equal(distanceToCover(eye,direction,[{x:0,z:-.9,w:2,d:.2,h:1}]),1.6);
 });
 
-test('soldier rig bakes into a single skinned mesh and animates locomotion, strafe twist, throw, flinch and death',()=>{
-  const fakeCanvas={width:8,height:8,getContext:()=>({fillStyle:'',fillRect(){},drawImage(){}})};
-  const prevDoc=globalThis.document;
+test('soldier rig bakes into a single skinned mesh and animates locomotion, strafe twist, throw, flinch and death',async()=>{
+  const fakeCanvas={width:8,height:8,getContext:()=>({fillStyle:'',fillRect(){},drawImage(){},beginPath(){},closePath(){},moveTo(){},lineTo(){},fill(){},stroke(){},arc(){},save(){},restore(){},translate(){},rotate(){},scale(){},getImageData(x,y,w,h){return {data:new Uint8ClampedArray(w*h*4)};},putImageData(){}})};
+  const prevDoc=globalThis.document,prevImage=globalThis.Image,prevImageData=globalThis.ImageData;
+  globalThis.Image=class{set src(value){queueMicrotask(()=>this.onload?.());}};
+  globalThis.ImageData=class{constructor(data,width,height){Object.assign(this,{data,width,height});}};
   globalThis.document={createElement:()=>fakeCanvas};
   try{
     const owner={};
@@ -52,7 +54,10 @@ test('soldier rig bakes into a single skinned mesh and animates locomotion, stra
       beginDeath(rig,0);animateDeath(rig,{age:.5});
       assert(Math.abs(rig.group.rotation.x)>.2,'death animation topples the soldier');
     }
+    await owner.soldierHeadReady;
   }finally{
+    if(prevImage===undefined)delete globalThis.Image;else globalThis.Image=prevImage;
+    if(prevImageData===undefined)delete globalThis.ImageData;else globalThis.ImageData=prevImageData;
     if(prevDoc===undefined)delete globalThis.document;else globalThis.document=prevDoc;
   }
 });
