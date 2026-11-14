@@ -224,7 +224,7 @@ export function beginNavigationTick(sim){
   while(remaining-->0&&queue.length&&performance.now()<pathDeadline){
     const task=queue.shift(),{p,ai,job}=task;
     if(!p.alive||p.ai!==ai||ai.pathJob!==job){job.return();continue;}
-    const slice=Math.min(pathDeadline,performance.now()+.45);let result;
+    const slice=Number.isFinite(pathDeadline)?Math.min(pathDeadline,performance.now()+.45):Infinity;let result;
     do{result=job.next();}while(!result.done&&performance.now()<slice);
     if(result.done){ai.pathJob=null;ai.pathResult=result.value;}else queue.push(task);
   }

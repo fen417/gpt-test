@@ -8,6 +8,7 @@ const node=(id,x,z)=>{nodes.push({id,x,z});return id;};
 const track=(...ids)=>{for(let i=1;i<ids.length;i++)edges.push([ids[i-1],ids[i]]);};
 for(const sign of [-1,1]){
   const end=sign<0?'north':'south';node(end+'-junction',0,sign*240);
+  node(end+'-tank',0,sign*335);track(end+'-tank',end+'-junction');
   for(const [suffix,x] of [['atv',18],['atv-2',28],['humvee',-18],['humvee-2',-28]]){
     node(end+'-'+suffix,x*sign,sign*347);node(end+'-'+suffix+'-merge',x*sign,sign*319);
     track(end+'-'+suffix,end+'-'+suffix+'-merge',end+'-junction');
@@ -76,5 +77,6 @@ for(const s of structures)s.baseY=terrain.heightAt(s.x,s.z);
 for(const p of points)p.y=terrain.heightAt(p.x,p.z);
 for(const n of navigationNodes)n.y=terrain.heightAt(n.x,n.z);
 const vehicleSpawns=[];
+for(const team of [0,1]){const n=nodes.find(n=>n.id===(team?'north':'south')+'-tank');vehicleSpawns.push({id:n.id,type:'tank',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
 for(const team of [0,1])for(const type of ['atv','atv-2','humvee','humvee-2']){const end=team?'north':'south',n=nodes.find(n=>n.id===end+'-'+type);vehicleSpawns.push({id:n.id,type:type.startsWith('atv')?'atv':'humvee',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
 export const QUARRY_MAP={id:'quarry',name:'Карьер «Перевал»',size,fogDensity:.00195,terrain,landforms,boxes,structures,roads,points,navigationNodes,spawns:[{x:0,z:358},{x:0,z:-358}],vehicleSpawns,vehicleRoutes:{nodes,edges,objectives,stops:{}},landmarks:[],districts:points,signs:[{x:0,z:-380,name:'ПЕРЕВАЛ',note:'СЕВЕРНЫЙ ПАРК',baseSign:true,yaw:0},{x:0,z:380,name:'ПЕРЕВАЛ',note:'ЮЖНЫЙ ПАРК',baseSign:true,yaw:Math.PI}]};

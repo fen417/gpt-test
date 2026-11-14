@@ -1,5 +1,7 @@
 import {createNetworkSocket} from './network-simulator.js';
 import {predictPersonalFire} from '../shared/fire-control.js';
+import {advanceTankSystems,fireTank} from '../shared/tank.js';
+import {BULLET_GRAVITY} from '../shared/ballistics.js';
 import { EquipmentPresentation } from './equipment-presentation.js';
 import { sanitizeInput, createPredictionWorld } from '../shared/simulation.js';
 import { EYE_HEIGHT } from '../shared/world.js';
@@ -29,7 +31,7 @@ export class Prediction{
   constructor(mapId,onShot=noop,{predictShots=true}={}){this.predictShots=predictShots;this.world=createPredictionWorld(mapId);this.onShot=onShot;this.played=new Set();this.reset();}
   reset(){this.player=null;this.pending=[];this.offset={x:0,y:0,z:0};}
   reconcile(authority,ack,vehicles,time=0){
-    this.world.vehicles=vehicles.map(v=>({...v}));
+    this.world.vehicles=vehicles.map(v=>({...v,gunCooldown:Math.max(0,(v.gunReadyAt??0)-time)}));
     const old=this.player,visual=old?{x:old.x+this.offset.x,y:old.y+this.offset.y,z:old.z+this.offset.z}:null;
     const discontinuity=!old||old.alive!==authority.alive||old.vehicleId!==authority.vehicleId||Math.hypot(old.x-authority.x,old.z-authority.z)>4;
     this.pending=this.pending.filter(f=>f.sequence>ack);this.player={...authority,input:{},reloadTime:Math.max(0,(authority.reloadAt??0)-time),gadgetActionUntil:authority.actionAt??0};this.time=time;
@@ -41,7 +43,15 @@ export class Prediction{
     this.time=(this.time??0)+frame.dt;
     if(!this.player?.alive)return;
     this.player.input=frame.input;
-    if(this.player.vehicleId){const vehicle=this.world.vehicles.find(v=>v.id===this.player.vehicleId);if(vehicle&&this.player.vehicleSeat===0){this.world.moveVehicle(vehicle,frame.input,frame.dt);this.world.syncVehicleSeat(this.player,vehicle);}}
+    if(this.player.vehicleId){const vehicle=this.world.vehicles.find(v=>v.id===this.player.vehicleId);if(vehicle&&this.player.vehicleSeat===0){this.world.moveVehicle(vehicle,frame.input,frame.dt);this.world.syncVehicleSeat(this.player,vehicle);}
+      else if(vehicle?.type==='tank'&&this.player.vehicleSeat===1){
+        this.world.time=this.time;vehicle.gunCooldown=Math.max(-frame.dt,(vehicle.gunCooldown??0)-frame.dt);vehicle.heat=Math.max(0,vehicle.heat-frame.dt*.26);if(vehicle.heat<=.3)vehicle.overheated=false;
+        advanceTankSystems(this.world,vehicle,this.player,frame.dt);this.world.rockets=[];
+        this.world.event=(type,payload)=>{const event={...payload,type,time:this.time,playerId:this.player.id,id:-this.time*100000,weaponId:type==='cannonShot'?'tank-cannon':'tank-mg',predicted:true};if(emit&&!this.hasPlayed(event)){this.played.add(event.weaponId+'/'+event.shotSeq);this.onShot(event);}};
+        this.world.launchBullet=(p,w,origin,yaw,pitch,v)=>this.world.event('shot',{...origin,playerId:p.id,shotSeq:v.gunSeq,vehicleId:v.id,mounted:true,team:p.team});
+        if(this.predictShots)fireTank(this.world,this.player,vehicle,frame.dt);
+      }
+    }
     else{this.world.movePlayer(this.player,frame.input,frame.dt);this.player.crouch=this.player.crouching;this.player.sliding=this.player.slideTime>0;
       const event=this.predictShots?predictPersonalFire(this.player,frame.input,frame.dt,this.time):null;
       if(event&&emit&&!this.hasPlayed(event)){this.played.add(event.weaponId+'/'+event.shotSeq);while(this.played.size>512)this.played.delete(this.played.values().next().value);this.onShot(event);}
@@ -174,7 +184,7 @@ export class Multiplayer{
       this.eventAck=Math.max(this.eventAck,decoded.through);this.publish();this.ackSoon();
     }
   }
-  publish(){if(!this.state)return;this.events=this.events.filter(e=>e.time>this.state.time-1.3);this.state.events=this.events.map(event=>event.type==='shot'&&event.playerId===this.id&&this.prediction?.hasPlayed(event)?{...event,confirmedCosmetic:true}:event);this.onState(this.state);}
+  publish(){if(!this.state)return;this.events=this.events.filter(e=>e.time>this.state.time-1.3);this.state.events=this.events.map(event=>['shot','cannonShot'].includes(event.type)&&event.playerId===this.id&&this.prediction?.hasPlayed(event)?{...event,confirmedCosmetic:true}:event);this.onState(this.state);}
   ackSoon(){this.ackDirty=true;}
   sendInput(input,dt=INPUT_STEP){this.advance(input,dt);}
   reconcileLatest(){
@@ -238,7 +248,7 @@ export class Multiplayer{
     let left=this.frames[0],right=latest;
     for(let i=1;i<this.frames.length;i++)if(this.frames[i].frame.time>=target){left=this.frames[i-1];right=this.frames[i];break;}else left=this.frames[i];
     const span=right.frame.time-left.frame.time,alpha=span>0?clamp((target-left.frame.time)/span,0,1):1;
-    const a=left.state,b=right.state,render={...this.state,time:Math.max(0,target),events:this.events.filter(e=>e.time<=target+.001||(e.playerId===this.id&&e.type!=='rocketLaunch'&&e.type!=='explosion')).map(event=>event.type==='shot'&&event.playerId===this.id&&this.prediction.hasPlayed(event)?{...event,confirmedCosmetic:true}:event)};
+    const a=left.state,b=right.state,render={...this.state,time:Math.max(0,target),events:this.events.filter(e=>e.time<=target+.001||(e.playerId===this.id&&e.type!=='rocketLaunch'&&e.type!=='explosion')).map(event=>['shot','cannonShot'].includes(event.type)&&event.playerId===this.id&&this.prediction.hasPlayed(event)?{...event,confirmedCosmetic:true}:event)};
     render.events.push(...(this.localEvents??[]));this.localEvents=[];
     for(const kind of ['grenades']){
       const older=new Map(a[kind].map(p=>[p.id,p]));render[kind]=b[kind].map(p=>{
@@ -259,13 +269,14 @@ export class Multiplayer{
       const out={...source};
       if(before&&after&&span>0){for(const axis of ['x','y','z'])out[axis]=before[axis]+(after[axis]-before[axis])*alpha;}
       else if(before&&explosion){const t=clamp((target-left.frame.time)/Math.max(.001,explosion.time-left.frame.time),0,1);for(const axis of ['x','y','z'])out[axis]=before[axis]+(explosion[axis]-before[axis])*t;}
-      else{const elapsed=clamp(target-(before?left.frame.time:right.frame.time),-.1,.12);out.x+=source.vx*elapsed;out.y+=source.vy*elapsed-1.4*elapsed*elapsed;out.z+=source.vz*elapsed;}
+      else{const elapsed=clamp(target-(before?left.frame.time:right.frame.time),-.1,.12);out.x+=source.vx*elapsed;out.y+=source.vy*elapsed-(source.kind===1?BULLET_GRAVITY*.5:1.4)*elapsed*elapsed;out.z+=source.vz*elapsed;}
       render.rockets.push(out);
     }
     for(const kind of ['players','vehicles'])render[kind]=this.state[kind].map(p=>this.sampleMotion(kind,p,target,dt));
     const predicted=this.prediction.sample(dt);
     if(predicted?.alive&&(!predicted.vehicleId||predicted.vehicleSeat===0)){const index=render.players.findIndex(p=>p.id===this.id);if(index>=0)render.players[index]={...this.state.players.find(p=>p.id===this.id),...predicted,yaw:this.input.yaw??predicted.yaw,pitch:this.input.pitch??predicted.pitch};}
     if(predicted?.vehicleId&&predicted.vehicleSeat===0){const vehicle=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId),index=render.vehicles.findIndex(v=>v.id===predicted.vehicleId);if(vehicle&&index>=0)render.vehicles[index]={...vehicle};}
+    if(predicted?.vehicleId&&predicted.vehicleSeat===1){const v=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId),out=render.vehicles.find(v=>v.id===predicted.vehicleId);if(v?.type==='tank'&&out)for(const key of ['aimYaw','aimPitch','wantedYaw','wantedPitch','weapon','weaponReadyAt','cannonAmmo','cannonReadyAt','cannonSeq','gunSeq','heat','overheated'])out[key]=v[key];}
     // Derive every seated body from the very same interpolated/predicted vehicle.
     for(const p of render.players)if(p.vehicleId){const vehicle=render.vehicles.find(v=>v.id===p.vehicleId);if(vehicle){const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);p.x=pose.x;p.y=pose.y-EYE_HEIGHT;p.z=pose.z;}}
     const ownIndex=render.players.findIndex(p=>p.id===this.id);

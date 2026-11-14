@@ -129,6 +129,9 @@ test('ordered squad bots spread around the objective without combat distractions
 test('a full bot round remains finite, navigates the map, and reaches a winner',()=>{
   let seed=1;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   const sim=new Simulation({bots:24,random});const visited=new Map([...sim.players.keys()].map(id=>[id,new Set()]));
+  // Gameplay assertions need deterministic path completion, independent of
+  // competing test workers and the host's wall-clock scheduling.
+  sim.navigationBudgetMs=sim.pathBudgetMs=Infinity;
   const duration=sim.snapshot().roundDuration;
   for(let tick=0;tick<(duration+1)*60&&sim.winner===null;tick++){
     sim.step(1/60);

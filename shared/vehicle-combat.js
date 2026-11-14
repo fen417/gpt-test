@@ -22,6 +22,8 @@ const shield=[box(0,-.063,-.29,.81,.24,.069,-.09),...[-1,1].flatMap(s=>[
   box(s*.277,.069,-.29,.26,.23,.075,-.09),box(s*.39,-.03,-.14,.073,.36,.39)])];
 const atv=[box(0,.58,.02,.64,.50,1.48),box(0,.82,-.65,.83,.29,.85,.13),box(0,.73,.55,.64,.22,.99),
   ...[-1,1].flatMap(side=>[-1,1].map(end=>box(side*.54,.31,end*.73,.28,.60,.60)))];
+const tank=[box(0,1,.1,3.12,1.15,6.8),box(-1.5,.6,.05,.6,.82,6.7),box(1.5,.6,.05,.6,.82,6.7)];
+const tankTurret=[box(0,.3,.12,2.4,.76,2.9),box(0,.35,-1.9,.22,.22,3.3)];
 const crew=Object.fromEntries(Object.entries(VEHICLE_TYPES).map(([type,spec])=>[type,spec.seats.map(seat=>[
   box(seat.x,seat.height-.005,seat.z-.028,.26,.28,.25),box(seat.x,seat.height-.32,seat.z+.02,.43,.49,.31),
   box(seat.x,seat.height-.67,seat.z-.12,.45,.27,.44)])]));
@@ -39,7 +41,12 @@ export function vehicleRay(v,origin,direction){
 }
 export function rayVehicleArmor(origin,direction,v,maximum){
   const ray=vehicleRay(v,origin,direction);let hit=Infinity;
-  for(const shape of v.type==='humvee'?humvee:atv)hit=Math.min(hit,rayAffineBox(ray.origin,ray.direction,shape,Math.min(hit,maximum)));
+  for(const shape of v.type==='tank'?tank:v.type==='humvee'?humvee:atv)hit=Math.min(hit,rayAffineBox(ray.origin,ray.direction,shape,Math.min(hit,maximum)));
+  if(v.type==='tank'){
+    const yaw=(v.aimYaw??v.yaw)-v.yaw,c=Math.cos(yaw),s=Math.sin(yaw),x=ray.origin.x,z=ray.origin.z+.4;
+    const local={x:x*c-z*s,y:ray.origin.y-1.72,z:x*s+z*c},dir={x:ray.direction.x*c-ray.direction.z*s,y:ray.direction.y,z:ray.direction.x*s+ray.direction.z*c};
+    for(const shape of tankTurret)hit=Math.min(hit,rayAffineBox(local,dir,shape,Math.min(hit,maximum)));
+  }
   if(v.type==='humvee'){
     const aim=vehicleAimDirection(v,v.aimYaw??v.yaw,0),yaw=Math.atan2(-aim.x,-aim.z),c=Math.cos(yaw),s=Math.sin(yaw);
     const x=ray.origin.x,z=ray.origin.z-.19;

@@ -4,6 +4,11 @@ const driver = { name: 'Водитель', role: 'driver' };
 const passenger = { name: 'Пассажир', role: 'passenger' };
 
 export const VEHICLE_TYPES = {
+  tank:{name:'Танк Т-72 «Рубеж»',width:3.6,length:7,height:2.8,maxHp:2400,bulletImmune:true,bulletArmor:0,blastArmor:1,respawn:120,
+    maxSpeed:13,reverseSpeed:4.5,acceleration:4.5,brake:9,turnRate:1,maxSlope:32*Math.PI/180,boardRange:5,
+    armorZones:{front:.55,side:1,rear:1.6,top:1.6,track:1},
+    seats:[{...driver,x:-.62,z:-1.9,height:2.0},{name:'Стрелок',role:'gunner',x:.45,z:-.4,height:2.9},
+      {...passenger,x:-1.13,z:1.6,height:2.3},{...passenger,x:1.13,z:1.6,height:2.3},{...passenger,x:0,z:2.75,height:2.3}]},
   atv: {
     name: 'Квадроцикл', width: 1.38, length: 2.34, height: 1.17,
     maxHp: 425, bulletArmor: .48, blastArmor: 1, respawn: 32,
@@ -39,7 +44,7 @@ export function getVehicleDimensions(vehicle) {
   return { width: spec.width * scale.x, length: spec.length * scale.z, height: spec.height * scale.y };
 }
 export function vehicleBoardingRange(vehicle) {
-  return VEHICLE_BOARD_RANGE * Math.max(1, vehicle.modelScale?.x ?? 1, vehicle.modelScale?.z ?? 1);
+  return (VEHICLE_TYPES[vehicle.type].boardRange??VEHICLE_BOARD_RANGE) * Math.max(1, vehicle.modelScale?.x ?? 1, vehicle.modelScale?.z ?? 1);
 }
 export function vehicleBodyTilt(vehicle, terrain) {
   const bodyPitch=vehicle.modelRotation?.x??0,bodyRoll=vehicle.modelRotation?.z??0;
@@ -99,6 +104,7 @@ export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
   const seat = VEHICLE_TYPES[vehicle.type]?.seats[seatIndex];
   if (seat?.role !== 'passenger') return false;
   if (vehicle.type === 'atv') return true;
+  if(vehicle.type==='tank'){const d=vehicleAimDirection(vehicle,yaw,pitch);return seat.x===0?d.z>.25:Math.sign(seat.x)*d.x>.35&&d.z>-.75;}
   // Fire out of the side window on this seat’s side of the cabin.
   const direction = vehicleAimDirection(vehicle, yaw, pitch);
   const slope=.23/.49,denominator=direction.z-slope*direction.y;
@@ -136,5 +142,6 @@ export function createVehicle(spawn) {
     ...spawn, home: spawn, hp: spec.maxHp, maxHp: spec.maxHp,
     speed: 0, steer: 0, seats: spec.seats.map(() => null), respawnIn: 0, wreckTime: 0,
     aimYaw: spawn.yaw, aimPitch: 0, heat: 0, overheated: false, gunCooldown: 0, gunSeq: 0, glassBroken:0,
+    ...(spawn.type==='tank'?{wantedYaw:spawn.yaw,wantedPitch:0,weapon:0,weaponReadyAt:0,cannonAmmo:24,cannonReadyAt:0,cannonSeq:0,leftTrack:0,rightTrack:0,burning:false}:{}),
   };
 }

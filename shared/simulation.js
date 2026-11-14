@@ -10,6 +10,7 @@ import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWI
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import {shotTrajectory,shotRandom,advanceFireClock,weaponSpread} from './fire-control.js';
 import {PoseHistory} from './pose-history.js';
+import {moveTank,advanceTankSystems,fireTank} from './tank.js';
 import { slideVelocity } from './movement.js';
 import { boxBounds, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
@@ -428,11 +429,12 @@ export class Simulation {
     if(switchSeat&&!p.switchSeatHeld&&p.vehicleId){
       const vehicle=this.vehicles.find(v=>v.id===p.vehicleId);
       const oldSeat=p.vehicleSeat;
-      if(Math.abs(vehicle.speed)<4.5){
+      if(Math.abs(vehicle.speed)<(vehicle.type==='tank'?3:4.5)&&this.time>=(p.nextSeatSwitch??0)){
         for(let n=1;n<vehicle.seats.length;n++){
           const seat=(oldSeat+n)%vehicle.seats.length;
           if(vehicle.seats[seat]!==null)continue;
           vehicle.seats[oldSeat]=null;vehicle.seats[seat]=p.id;p.vehicleSeat=seat;
+          if(vehicle.type==='tank')p.nextSeatSwitch=this.time+1.5;
           if(VEHICLE_TYPES[vehicle.type].seats[seat].role!=='passenger'){
             p.reloading=false;p.reloadTime=0;
           }
@@ -444,6 +446,7 @@ export class Simulation {
     p.interactHeld=interact;p.switchSeatHeld=switchSeat;
   }
   moveVehicle(vehicle,input,dt){
+      if(vehicle.type==='tank'){moveTank(this,vehicle,input,dt);Object.assign(vehicle,vehicleBodyTilt(vehicle,this.map.terrain));return;}
       const spec=VEHICLE_TYPES[vehicle.type];
       const throttle=input?.forward??0, steering=input?.strafe??0;
       vehicle.steer=steering;
@@ -487,6 +490,7 @@ export class Simulation {
       vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown-dt);
       vehicle.heat=Math.max(0,vehicle.heat-dt*(vehicle.overheated?.28:.26));
       if(vehicle.overheated&&vehicle.heat<=.3)vehicle.overheated=false;
+      if(vehicle.type==='tank'){advanceTankSystems(this,vehicle,gunner?.alive?gunner:null,dt);continue;}
       if(gunner?.alive){
         vehicle.aimYaw=gunner.input.yaw;
         vehicle.aimPitch=clamp(gunner.input.pitch,TURRET_WEAPON.minPitch,TURRET_WEAPON.maxPitch);
@@ -624,9 +628,9 @@ export class Simulation {
   launchBullet(p,weapon,origin,yaw,pitch,firingVehicle=null,trace=false){
     const speed=weapon.projectileSpeed, horizontal=speed*Math.cos(pitch);
     const velocity={vx:-Math.sin(yaw)*horizontal,vy:Math.sin(pitch)*speed,vz:-Math.cos(yaw)*horizontal};
-    const life=weapon.range/speed, mounted=weapon===TURRET_WEAPON;
+    const life=weapon.range/speed, mounted=Boolean(firingVehicle&&p.vehicleSeat===1);
     const shotSeq=mounted?firingVehicle.gunSeq:p.shotSeq;
-    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq,...origin,
+    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:mounted&&firingVehicle.type==='tank'?'tank-mg':p.weaponId,team:p.team,shotSeq,...origin,
       ...(trace||shotSeq%3===0?{...velocity,life}:{}),...(firingVehicle?{vehicleId:firingVehicle.id,mounted}:{})});
     this.bullets.push({...origin,...velocity,life,weapon,age:0,time:this.time,shotId:this.eventId,
       playerId:p.id,team:p.team,vehicleId:firingVehicle?.id,rewind:!p.bot?Math.max(0,Math.min(.2,p.shotRewind??0)):0});
@@ -919,7 +923,7 @@ export class Simulation {
         const seat=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
         if(seat.role==='gunner'){
           p.pitch=vehicle.aimPitch;
-          this.shootTurret(p,vehicle,dt);
+          if(vehicle.type==='tank')fireTank(this,p,vehicle,dt);else this.shootTurret(p,vehicle,dt);
         }else if(seat.role==='passenger'){
           this.updateReload(p,c,dt);
           this.firePersonalWeapon(p,c,pressed,firing&&canFirePassengerWeapon(vehicle,p.vehicleSeat,p.yaw,p.pitch),vehicle);

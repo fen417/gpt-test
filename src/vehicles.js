@@ -12,6 +12,9 @@ const cylinderGeometry = new THREE.CylinderGeometry(1, 1, 1, 16);
 const sphereGeometry = new THREE.SphereGeometry(1, 12, 8);
 const ringGeometry = new THREE.TorusGeometry(1, .10, 8, 24);
 const H = Math.PI / 2;
+let tankLibrary,tankLoading;const tankPool=[];
+export function warmTankAssets(renderer){return tankLoading??=import('./tank-model.js').then(async library=>{await library.loadTankAtlas(renderer);tankLibrary=library;for(let i=0;i<2;i++)tankPool.push(library.createTankRig());}).catch(error=>{tankLoading=null;throw error;});}
+export const tankAssetsReady=()=>Boolean(tankLibrary);
 
 function parts(parent, materials, draw) {
   const batches = new Map();
@@ -355,6 +358,11 @@ const riderColors = [
 ];
 
 export function createVehicleRig(type, material, teamColors) {
+  if(type==='tank'){
+    if(tankLibrary)return tankPool.pop()??tankLibrary.createTankRig();
+    const group=new THREE.Group(),body=new THREE.Group(),m=new THREE.MeshLambertMaterial({color:0x788368});group.add(body);const hull=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.4,7),m);hull.position.y=1;body.add(hull);
+    return{tankPending:true,group,body,riders:[],materialsToDispose:new Set([m])};
+  }
   const group = new THREE.Group(), body = new THREE.Group();
   group.add(body);
   const atv = type === 'atv';
@@ -389,6 +397,7 @@ export function createVehicleRig(type, material, teamColors) {
 }
 
 export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality, terrain) {
+  if(rig.tank){tankLibrary.updateTankRig(rig,vehicle,player,dt,blend,view,quality,terrain);return;}
   const {group,body,controls,wheels,turret,riders,paintMeshes,materials,teamColors}=rig;
   group.scale.set(vehicle.modelScale?.x??1,vehicle.modelScale?.y??1,vehicle.modelScale?.z??1);
   const reset = !rig.initialized || Math.hypot(group.position.x-vehicle.x,group.position.z-vehicle.z)>8;

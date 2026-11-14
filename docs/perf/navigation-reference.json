@@ -862,7 +862,7 @@
         "crouch": false
       },
       {
-        "x": 2,
+        "x": 6,
         "y": 0,
         "z": 330,
         "crouch": false
@@ -874,31 +874,31 @@
         "crouch": false
       },
       {
-        "x": 10,
+        "x": 6,
         "y": 0,
         "z": 282,
         "crouch": false
       },
       {
-        "x": 10,
+        "x": 6,
         "y": 0,
         "z": 258,
         "crouch": false
       },
       {
-        "x": 10,
+        "x": 6,
         "y": 0,
         "z": 234,
         "crouch": false
       },
       {
-        "x": 10,
+        "x": 6,
         "y": 0,
         "z": 210,
         "crouch": false
       },
       {
-        "x": 10,
+        "x": 6,
         "y": 0,
         "z": 186,
         "crouch": false
@@ -995,7 +995,7 @@
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": 330,
         "crouch": false
@@ -1570,55 +1570,55 @@
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -330,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -306,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -282,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -258,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -234,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -210,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -186,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -162,
         "crouch": false
       },
       {
-        "x": -2,
+        "x": -6,
         "y": 0,
         "z": -138,
         "crouch": false
@@ -1793,19 +1793,19 @@
         "crouch": false
       },
       {
-        "x": -10,
+        "x": -14,
         "y": 0,
         "z": -282,
         "crouch": false
       },
       {
-        "x": -10,
+        "x": -14,
         "y": 0,
         "z": -258,
         "crouch": false
       },
       {
-        "x": -10,
+        "x": -14,
         "y": 0,
         "z": -234,
         "crouch": false
@@ -1938,7 +1938,7 @@
         "crouch": false
       },
       {
-        "x": 2,
+        "x": 6,
         "y": 0,
         "z": -330,
         "crouch": false

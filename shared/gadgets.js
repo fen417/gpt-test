@@ -3,6 +3,7 @@ import { VEHICLE_TYPES, vehicleShape } from './vehicles.js';
 import { boxBounds, rayAffineBox, uprightBox } from './geometry.js';
 import { rayCollider } from './asset-colliders.js';
 import { moveBot } from './bot-navigation.js';
+import {TANK_CANNON} from './tank.js';
 
 export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 'repair', recon: 'beacon' };
 export const GADGET_NAMES = { ammo: 'ЯЩИК ПАТРОНОВ', defibrillator: 'ДЕФИБРИЛЛЯТОР', repair: 'РЕМОНТНАЯ ГОРЕЛКА',
@@ -184,20 +185,20 @@ export function damageDeployable(sim,item,amount,attacker) {
 }
 
 export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null) {
-  const rocket=kind==='rocket',radius=rocket?9:10;
+  const rocket=kind==='rocket',cannon=kind==='cannon',radius=cannon?TANK_CANNON.radius:rocket?9:10;
   sim.event('explosion',{...origin,kind,playerId:owner?.id,...(rocketId?{rocketId}:{})});
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team===team)continue;
     const d=Math.hypot(distance(origin,vehicle),origin.y-vehicle.y-.8);
-    if(vehicle===directVehicle)sim.damageVehicle(vehicle,760,owner,'blast');
-    else if(d<radius&&sim.lineClear(origin,center(vehicle,.8)))sim.damageVehicle(vehicle,(rocket?480:240)*(1-d/radius),owner,'blast');
+    if(vehicle===directVehicle)sim.damageVehicle(vehicle,cannon&&vehicle.type==='tank'?900:760,owner,'blast',origin);
+    else if(d<radius&&sim.lineClear(origin,center(vehicle,.8)))sim.damageVehicle(vehicle,(rocket||cannon?480:240)*(1-d/radius),owner,'blast',origin);
   }
   for(const player of sim.players.values()){
     if(!player.alive||(player.team===team&&player.id!==owner?.id))continue;
     const d=Math.hypot(distance(origin,player),origin.y-player.y-.8);
     const vehicle=sim.vehicles.find(v=>v.id===player.vehicleId);
     const enclosed=vehicle?.type==='humvee'&&player.vehicleSeat!==1;
-    if(d<radius&&sim.lineClear(origin,center(player,.8)))sim.damage(player,(rocket?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:rocket?'ПТ-90':'ГРАНАТА'});
+    if(d<radius&&sim.lineClear(origin,center(player,.8)))sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА'});
   }
   for(const item of sim.deployables){
     const d=Math.hypot(distance(origin,item),origin.y-item.y-.3);
@@ -207,9 +208,10 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
 
 function updateRockets(sim,dt) {
   for(const rocket of sim.rockets){
-    const dx=rocket.vx*dt,dy=(rocket.vy-1.4*dt)*dt,dz=rocket.vz*dt,length=Math.hypot(dx,dy,dz);
-    const direction={x:dx/length,y:dy/length,z:dz/length};
-    let nearest=length,hit=false,direct=null;
+    const gravity=rocket.kind===1?TANK_CANNON.gravity:2.8;
+    const dx=rocket.vx*dt,dy=(rocket.vy-gravity*.5*dt)*dt,dz=rocket.vz*dt,length=Math.hypot(dx,dy,dz);
+    const direction=length>0?{x:dx/length,y:dy/length,z:dz/length}:{x:0,y:-1,z:0};
+    let nearest=length,hit=false,direct=null,playerHit=null;
     const ground=sim.map.terrain?.raycast(rocket,direction,length)??(direction.y<0?-rocket.y/direction.y:Infinity);
     if(ground>=0&&ground<nearest){nearest=ground;hit=true;}
     for(const box of sim.rayBoxes(rocket,direction,nearest)){
@@ -217,25 +219,26 @@ function updateRockets(sim,dt) {
       if(d<nearest){nearest=d;hit=true;direct=null;}
     }
     for(const vehicle of sim.vehicles){
-      if(vehicle.hp<=0)continue;
+      if(vehicle.hp<=0||vehicle.id===rocket.vehicleId)continue;
       const d=rayAffineBox(rocket,direction,vehicleShape(vehicle),nearest);
       if(d<nearest){nearest=d;direct=vehicle;hit=true;}
     }
     for(const player of sim.players.values()){
       if(!player.alive||player.id===rocket.ownerId||player.team===rocket.team)continue;
       const d=rayAffineBox(rocket,direction,uprightBox(player.x,player.y,player.z,.28,1.5),nearest);
-      if(d<nearest){nearest=d;direct=null;hit=true;}
+      if(d<nearest){nearest=d;direct=null;hit=true;playerHit=player;}
     }
     for(const item of sim.deployables){
       if(item.hp<=0||item.team===rocket.team)continue;
       const d=rayCollider(rocket,direction,deployableBounds(item),nearest);
-      if(d<nearest){nearest=d;direct=null;hit=true;}
+      if(d<nearest){nearest=d;direct=null;hit=true;playerHit=null;}
     }
     rocket.x+=direction.x*Math.max(0,nearest-(hit?.08:0));rocket.y+=direction.y*Math.max(0,nearest-(hit?.08:0));
-    rocket.z+=direction.z*Math.max(0,nearest-(hit?.08:0));rocket.vy-=2.8*dt;rocket.life-=dt;
+    rocket.z+=direction.z*Math.max(0,nearest-(hit?.08:0));rocket.vy-=gravity*dt;rocket.life-=dt;
     if(hit||rocket.life<=0){
       const owner=sim.players.get(rocket.ownerId);
-      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,'rocket',direct,rocket.team,rocket.id);
+      if(rocket.kind===1&&playerHit)sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ'});
+      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,rocket.kind===1?'cannon':'rocket',direct,rocket.team,rocket.id);
       rocket.life=0;
     }
   }

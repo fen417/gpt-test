@@ -683,6 +683,8 @@ export class CombatAudio {
         this._mechanic('lower',this.ctx.currentTime,.15,.13);
         this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);
       }else if(e.type==='explosion')this._explosion(e,local);
+      else if(e.type==='cannonShot'&&!e.confirmedCosmetic)this._explosion({...e,kind:'rocket'},local);
+      else if(e.type==='ricochet'){const p=this._position(e,local);if(p.distance<90)this._noise(.04,.045*p.gain,{filter:'bandpass',cutoff:3500,pan:p.pan});}
       else if(e.type==='rocketLaunch'){
         const p=this._position(e,local);
         if(p.distance<180&&state.time-e.time<.3)this._sample('rocket-launch-'+(e.id%2+1),(own?.85:.55)*p.gain,{
@@ -833,7 +835,7 @@ export class CombatAudio {
     // A launch starts the motor; its explosion (or maximum lifetime) ends it.
     for(const e of state.events??[])if(e.type==='rocketLaunch'&&!this._rocketTracks.has(e.rocketId)&&time<e.time+4)
       this._rocketTracks.set(e.rocketId,{...e,id:e.rocketId,at:e.time,expires:e.time+4});
-    for(const r of state.rockets??[])this._rocketTracks.set(r.id,{...r,at:state.time,expires:r.lifeAt??state.time+r.life});
+    for(const r of state.rockets??[])if(r.kind!==1)this._rocketTracks.set(r.id,{...r,at:state.time,expires:r.lifeAt??state.time+r.life});
     for(const e of state.events??[])if(e.type==='explosion'&&e.rocketId)this._rocketTracks.delete(e.rocketId);
     const listener=this.ctx.listener,yaw=local.yaw??0,pitch=local.pitch??0,eye=(local.y??0)+(local.crouch?1.05:1.58);
     const forward=[-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch)];
@@ -885,7 +887,7 @@ export class CombatAudio {
       const own=vehicle.id===local.vehicleId,spatial=this._position(vehicle,local),speed=Math.abs(vehicle.speed);
       const gear=Math.min(4,1+Math.floor(speed/4.5)),load=(speed-(gear-1)*4.5)/4.5;
       const acceleration=Math.max(0,speed-channel.speed);
-      const rate=(vehicle.type==='atv'?1.06:.68)+load*(vehicle.type==='atv'?.74:.48)+Math.min(.15,acceleration*.3);
+      const rate=(vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);
       this._target(channel.source.playbackRate,rate,.12);
       this._target(channel.filter.frequency,(own?9500:6500)/(1+spatial.distance*.022),.1);
       this._target(channel.gain.gain,(own?.30:.18)/(1+spatial.distance*.07)*(1+Math.min(1,speed/14)*.55),.12);

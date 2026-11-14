@@ -19,10 +19,10 @@ export const SCHEMAS={
     gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v jumpFatigue:s jumpCooldownAt:f32 bloom:s shotReadyAt:f32 lastShotAt:f32`),
   vehicles:specs(`type:r team:u8 x:x y:y z:z yaw:a motionAt:f32 bodyPitch:a bodyRoll:a scaleX:scale scaleY:scale scaleZ:scale
     rotationX:a rotationZ:a hp:u16 maxHp:u16 speed:v steer:signed heat:s overheated:u8 aimYaw:a aimPitch:a
-    gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32`),
+    gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32 wantedYaw:a wantedPitch:a weapon:u8 weaponReadyAt:f32 cannonAmmo:u8 cannonReadyAt:f32 cannonSeq:u16 leftTrack:u8 rightTrack:u8 burning:u8 gunReadyAt:f32`),
   deployables:specs('kind:r ownerId:r team:u8 squadId:u8 x:x y:y z:z yaw:a hp:u8 expires:f32'),
   grenades:specs('team:u8 ownerId:r x:f32 y:f32 z:f32 fuseAt:f32 yaw:a'),
-  rockets:specs('ownerId:r team:u8 x:f32 y:f32 z:f32 vx:v vy:v vz:v lifeAt:f32'),
+  rockets:specs('ownerId:r team:u8 kind:u8 vehicleId:r x:f32 y:f32 z:f32 vx:v vy:v vz:v lifeAt:f32'),
   points:specs('name:r x:x z:z owner:i8 progress:signed contested:u8 spawnBlocked:u8'),
 };
 const COLLECTIONS=Object.keys(SCHEMAS),MOVE=new Set(['x','y','z','yaw','pitch','bodyPitch','bodyRoll','speed','steer','aimYaw','aimPitch','vy','slideVx','slideVz','motionAt']);
@@ -81,7 +81,7 @@ export function prepareSnapshot(state,size,previous){
         gadgetAt:clock(state.time,source.gadgetCooldown),secondaryAt:clock(state.time,source.secondaryCooldown),actionAt:clock(state.time,source.gadgetActionRemaining),
         slideAt:clock(state.time,source.slideTime),slideCooldownAt:clock(state.time,source.slideCooldown),jumpCooldownAt:clock(state.time,source.jumpCooldown)};
       else if(kind==='vehicles')item={...source,motionAt:Math.fround(state.time),scaleX:source.modelScale?.x??1,scaleY:source.modelScale?.y??1,scaleZ:source.modelScale?.z??1,
-        rotationX:source.modelRotation?.x??0,rotationZ:source.modelRotation?.z??0,respawnAt:clock(state.time,source.respawnIn),wreckAt:clock(state.time,source.wreckTime)};
+        rotationX:source.modelRotation?.x??0,rotationZ:source.modelRotation?.z??0,respawnAt:clock(state.time,source.respawnIn),wreckAt:clock(state.time,source.wreckTime),gunReadyAt:clock(state.time,source.gunCooldown)};
       else if(kind==='grenades')item={...source,fuseAt:clock(state.time,source.fuse)};else if(kind==='rockets')item={...source,lifeAt:clock(state.time,source.life)};
       const id=String(source.id),schema=SCHEMAS[kind],row=schema.map(({key,type})=>quant(type,item[key],size)),old=previous?.rows[kind]?.get(id);
       if(['players','vehicles'].includes(kind)&&old){
@@ -155,11 +155,12 @@ export class SnapshotDecoder{
     return {frame,state:materializeSnapshot(frame,this.context),inputAck,tick,sequence};
   }
 }
-const EVENT_TYPES=['shot','bulletImpact','damage','score','kill','reload','equip','grenade','gadget','revive','rocketLaunch','explosion','spawn','vehicleEnter','vehicleExit','vehicleDestroyed','equipmentDestroyed','capture','roundEnd','horn','glassBreak','squadOrder','dryFire'];
+const EVENT_TYPES=['shot','bulletImpact','damage','score','kill','reload','equip','grenade','gadget','revive','rocketLaunch','explosion','spawn','vehicleEnter','vehicleExit','vehicleDestroyed','equipmentDestroyed','capture','roundEnd','horn','glassBreak','squadOrder','dryFire','cannonShot','ricochet'];
 const EVENT_SPEC=Object.fromEntries(specs(`playerId:r attackerId:r victimId:r killerId:r medicId:r team:u8 classId:r weaponId:r weapon:r kind:r reason:r points:u16 total:u32 shotSeq:u16
   x:f32 y:f32 z:f32 tx:f32 ty:f32 tz:f32 vx:v vy:v vz:v life:f32 duration:f32 yaw:a pitch:a amount:f32 headshot:u8 hit:u8 vehicleHit:u8 equipmentHit:u8 mounted:u8 empty:u8
   vehicleId:r vehicleType:r equipmentId:r rocketId:r impact:r impactBoxId:r impactVehicleId:r dx:signed dy:signed dz:signed targetId:r pointId:r killer:r victim:r seat:u8 pane:u8 winner:u8 shotId:u32 flight:f32`).map(f=>[f.key,f]));
 const EVENT_KEYS={shot:'playerId classId weaponId team shotSeq x y z vx vy vz life vehicleId mounted',
+  cannonShot:'playerId vehicleId weaponId shotSeq x y z',ricochet:'playerId vehicleId x y z',
   bulletImpact:'shotId playerId team weaponId x y z tx ty tz flight headshot hit impact vehicleHit equipmentHit impactBoxId impactVehicleId dx dy dz',
   damage:'playerId attackerId amount x z',score:'playerId points total reason kind victimId victim pointId',kill:'killer victim killerId victimId weapon team headshot',
   reload:'playerId classId weaponId duration empty x z',equip:'playerId kind weaponId x z',grenade:'playerId x y z yaw',gadget:'playerId classId kind team x y z yaw duration targetId',

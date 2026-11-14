@@ -25,7 +25,7 @@ import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
-import { createVehicleRig, disposeVehicleRig, updateVehicleRig } from './vehicles.js';
+import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady } from './vehicles.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
@@ -495,6 +495,7 @@ export class GameRenderer {
   }
 
   setMap(mapId) {
+    if(mapId==='quarry')warmTankAssets(this.renderer).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
     let world = this.worlds.get(map.id);
@@ -780,6 +781,7 @@ export class GameRenderer {
     const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
+      if(vehicle.type==='tank'&&!tankAssetsReady())continue;
       active.add(vehicle.id);
       let rig = this.vehicleRigs.get(vehicle.id);
       const local = player?.vehicleId === vehicle.id && player.alive !== false;
@@ -877,7 +879,7 @@ export class GameRenderer {
         if(group.parent!==rig.body)rig.body.add(group);
         group.userData.seatedActor=true;
         group.position.set(seat.x,seat.height-1.65,seat.z);
-        const relativeYaw=vehicle.type==='humvee'&&index===1?(rig.turretYaw??0):0;
+        const relativeYaw=index===1?(rig.tank?vehicle.aimYaw-vehicle.yaw:rig.turretYaw??0):0;
         group.rotation.set(0,relativeYaw,0);group.visible=true;
         const position=getVehicleSeatPose(vehicle,index),distSq=this.camera.position.distanceToSquared(this.scratchPosition.set(position.x,position.y,position.z))*viewScale**2;
         soldier.body.geometry=distSq>(this.lowQuality?55:95)**2?soldier.distantGeometry:distSq>28**2?soldier.mediumGeometry:soldier.detailGeometry;
@@ -885,7 +887,7 @@ export class GameRenderer {
         this.soldierBounds.center.set(position.x,position.y-.4,position.z);
         group.visible=this.viewFrustum.intersectsSphere(this.soldierBounds)||Boolean(shadowFrustum?.intersectsSphere(this.soldierBounds)&&distSq<48**2);
         poseSeatedSoldier(soldier,{vehicle,seat,index,relativeYaw:Math.atan2(Math.sin(player.yaw-vehicle.yaw-relativeYaw),Math.cos(player.yaw-vehicle.yaw-relativeYaw)),pitch:player.pitch,shotSeq:player.shotSeq,dt});
-        rig.riders[index].visible=false;soldier.seated=true;
+        if(rig.riders[index])rig.riders[index].visible=false;soldier.seated=true;
         continue;
       }
       if(soldier.seated){
@@ -1257,9 +1259,10 @@ export class GameRenderer {
       model.position.set(item.x,item.y,item.z);
       model.rotation.y=Math.atan2(-item.vx,-item.vz);model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));
       model.visible=true;flight.exhaust.visible=true;flight.halo.visible=true;flight.halo.scale.setScalar(clamp(this.camera.position.distanceTo(model.position)*.006,.5,1.2));
+      if(item.kind===1){flight.exhaust.visible=flight.halo.visible=false;model.scale.setScalar(.5);}
       const flicker=1+Math.sin(this.clock*90)*.12;
       flight.exhaust.scale.set(.105*flicker,.105*flicker,.46*flicker);
-      if(flight.smokePosition.distanceToSquared(model.position)>1.7**2&&this.effects.length<120&&this.camera.position.distanceToSquared(model.position)<160**2){
+      if(item.kind!==1&&flight.smokePosition.distanceToSquared(model.position)>1.7**2&&this.effects.length<120&&this.camera.position.distanceToSquared(model.position)<160**2){
         this.smoke(model.position.x,model.position.y,model.position.z,.36,.85,0xc9c5b9);flight.smokePosition.copy(model.position);
       }
     }
