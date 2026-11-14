@@ -1,5 +1,6 @@
 ﻿import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
+import { GpuTimer } from './gpu-timer.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
@@ -214,6 +215,7 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
+    this.gpuTimer=new GpuTimer(this.renderer.getContext());
     this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
     if (canvas && typeof canvas.addEventListener === 'function') {
@@ -221,6 +223,7 @@ export class GameRenderer {
         event.preventDefault();
       }, false);
       canvas.addEventListener('webglcontextrestored', () => {
+        const enabled=this.gpuTimer.enabled;this.gpuTimer=new GpuTimer(this.renderer.getContext());this.gpuTimer.enabled=enabled;
         this.cachedShadows.disposeTargets();this.cachedShadows.size=null;this.cachedShadows.install(this);
         this.cachedShadows.invalidate();
         this.sun.shadow.needsUpdate = true;
@@ -1484,8 +1487,9 @@ export class GameRenderer {
       }
     }
     if(!menu)this.interiorVisibility.apply(this);
+    const timing=this.gpuTimer.begin();
     try{drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);}
-    finally{this.interiorVisibility.restore();}
+    finally{if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
   }
 
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
@@ -1818,7 +1822,7 @@ export class GameRenderer {
     this.drawScene();
   }
 
-  getStats() { return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu }; }
+  getStats() { return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
 
   project(x, y, z) {
     const position = this.scratchPosition.set(x, y, z).project(this.camera);
@@ -1860,6 +1864,6 @@ export class GameRenderer {
     skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();
     this.atmosphere.target.dispose();
-    this.renderer.dispose();
+    this.gpuTimer.dispose();this.renderer.dispose();
   }
 }
