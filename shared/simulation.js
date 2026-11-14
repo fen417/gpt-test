@@ -10,7 +10,7 @@ import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWI
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import {shotTrajectory,shotRandom,advanceFireClock,weaponSpread} from './fire-control.js';
 import {PoseHistory} from './pose-history.js';
-import {moveTank,advanceTankSystems,fireTank} from './tank.js';
+import {moveTank,advanceTankSystems,fireTank,tankArmorZone} from './tank.js';
 import { slideVelocity } from './movement.js';
 import { boxBounds, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
@@ -490,7 +490,11 @@ export class Simulation {
       vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown-dt);
       vehicle.heat=Math.max(0,vehicle.heat-dt*(vehicle.overheated?.28:.26));
       if(vehicle.overheated&&vehicle.heat<=.3)vehicle.overheated=false;
-      if(vehicle.type==='tank'){advanceTankSystems(this,vehicle,gunner?.alive?gunner:null,dt);continue;}
+      if(vehicle.type==='tank'){
+        vehicle.burning=vehicle.hp<vehicle.maxHp*.25&&this.time>=(vehicle.extinguishedUntil??0);
+        if(vehicle.burning)this.damageVehicle(vehicle,12*dt,null,'fire');
+        advanceTankSystems(this,vehicle,gunner?.alive?gunner:null,dt);continue;
+      }
       if(gunner?.alive){
         vehicle.aimYaw=gunner.input.yaw;
         vehicle.aimPitch=clamp(gunner.input.pitch,TURRET_WEAPON.minPitch,TURRET_WEAPON.maxPitch);
@@ -527,14 +531,24 @@ export class Simulation {
       this.damage(victim,Math.min(180,(speed-2)*12*(vehicle.type==='humvee'?1.15:1)),driver,{weapon:'НАЕЗД'});
     }
   }
-  damageVehicle(vehicle,amount,attacker,kind){
+  damageVehicle(vehicle,amount,attacker,kind,origin=null){
     if(vehicle.hp<=0||this.winner!==null||attacker?.team===vehicle.team)return;
     const spec=VEHICLE_TYPES[vehicle.type];
+    if(kind==='bullet'&&spec.bulletImmune){
+      if(this.time>=(vehicle.nextRicochet??0)){this.event('ricochet',{playerId:attacker?.id,vehicleId:vehicle.id,...(origin??{x:vehicle.x,y:vehicle.y+1,z:vehicle.z})});vehicle.nextRicochet=this.time+.1;}
+      return{ricochet:true,amount:0};
+    }
+    let zoneMultiplier=1;
+    if(vehicle.type==='tank'&&kind==='blast'){
+      const zone=tankArmorZone(vehicle,origin);zoneMultiplier=spec.armorZones[zone.includes('Track')?'track':zone];
+      if(zone.includes('Track'))vehicle[zone]=Math.min(100,vehicle[zone]+amount/600*100);
+    }
+    const previousHp=vehicle.hp;
     vehicle.lastHurt=this.time;
     if(kind==='blast')vehicle.lastBlastAt=this.time;
-    vehicle.hp=Math.max(0,vehicle.hp-amount*(kind==='blast'?spec.blastArmor:spec.bulletArmor));
-    if(vehicle.hp>0)return;
-    vehicle.speed=0;vehicle.steer=0;vehicle.respawnIn=spec.respawn;vehicle.wreckTime=8;
+    vehicle.hp=Math.max(0,vehicle.hp-amount*(kind==='bullet'?spec.bulletArmor:spec.blastArmor)*zoneMultiplier);
+    if(vehicle.hp>0)return{ricochet:false,amount:previousHp-vehicle.hp};
+    vehicle.speed=0;vehicle.steer=0;vehicle.respawnIn=spec.respawn;vehicle.wreckTime=vehicle.type==='tank'?20:8;
     for(const id of [...vehicle.seats]){
       const passenger=this.players.get(id);
       if(!passenger)continue;
@@ -543,6 +557,10 @@ export class Simulation {
     }
     this.event('vehicleDestroyed',{vehicleId:vehicle.id,vehicleType:vehicle.type,attackerId:attacker?.id,x:vehicle.x,y:vehicle.y+.65,z:vehicle.z});
     this.event('explosion',{x:vehicle.x,y:vehicle.y+.65,z:vehicle.z,vehicleId:vehicle.id});
+    if(vehicle.type==='tank')for(const p of this.players.values()){
+      const d=Math.hypot(p.x-vehicle.x,p.z-vehicle.z,p.y-vehicle.y);
+      if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:'ВЗРЫВ ТАНКА'});
+    }
     if(attacker)this.awardScore(attacker,100,'УНИЧТОЖЕНИЕ ТЕХНИКИ',{kind:'vehicle'});
   }
   damage(victim,amount,attacker,meta={}){
@@ -703,7 +721,7 @@ export class Simulation {
     if(!target&&!vehicle&&!impact&&age<bullet.life)return true;
     const hit=Boolean(target&&this.time>=target.invulnerableUntil);
     if(target)impact=hit?'flesh':'shield';
-    const vehicleHit=Boolean(vehicle?.hp>0&&vehicle.team!==team);
+    const struckVehicle=Boolean(vehicle?.hp>0&&vehicle.team!==team),vehicleHit=struckVehicle&&!VEHICLE_TYPES[vehicle.type].bulletImmune;
     const flight=start+dt*closest/length;
     this.event('bulletImpact',{shotId:bullet.shotId,playerId,team,weaponId:weapon.id,x,y,z,flight,
       tx:origin.x+direction.x*closest,ty:origin.y+direction.y*closest,tz:origin.z+direction.z*closest,
@@ -715,7 +733,7 @@ export class Simulation {
     const shooter=this.players.get(playerId),attacker=shooter?.team===team?shooter:null;
     const falloff=clamp(1-Math.max(0,flight*weapon.projectileSpeed-35)/300,.65,1);
     if(hit)this.damage(target,weapon.damage*falloff*(headshot?2:1),attacker,{headshot,weapon:weapon.weapon});
-    if(vehicleHit)this.damageVehicle(vehicle,weapon.damage*falloff,attacker,'bullet');
+    if(struckVehicle)this.damageVehicle(vehicle,weapon.damage*falloff,attacker,'bullet',{x:origin.x+direction.x*closest,y:origin.y+direction.y*closest,z:origin.z+direction.z*closest});
     if(equipment)damageDeployable(this,equipment,weapon.damage*falloff,attacker);
     return false;
   }

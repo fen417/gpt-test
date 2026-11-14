@@ -35,10 +35,10 @@ export function pillbox(x,z,yaw,id){
   const parent='structure:'+id,sign=yaw===Math.PI?-1:1;
   structures.push({id,x,z,w:6,d:5,h:2.8,kind:'pillbox',facing:yaw,color:'#77796f'});pads.push({x,z,w:8,d:7,blend:3});
   const part=(px,pz,w,d,h,y=0)=>add(x+px*sign,z+pz*sign,w,d,h,'wall','#77796f',{editorParent:parent,baseY:y,...(y>0?{overhead:true}:{})});
-  part(0,-2.2,4.8,.6,1.3);part(0,-2.2,4.8,.6,1.15,1.65);
-  for(const s of [-1,1])part(s*1.9,-2.2,1,.6,.35,1.3);
-  part(2.7,0,.6,3.8,1.3);part(2.7,0,.6,3.8,1.15,1.65);
-  for(const s of [-1,1])part(2.7,s*1.35,.6,1.1,.35,1.3);
+  part(0,-2.2,4.8,.6,1.3);part(0,-2.2,4.8,.6,.98,1.82);
+  for(const s of [-1,1])part(s*1.9,-2.2,1,.6,.52,1.3);
+  part(2.7,0,.6,3.8,1.3);part(2.7,0,.6,3.8,.98,1.82);
+  for(const s of [-1,1])part(2.7,s*1.35,.6,1.1,.52,1.3);
   part(-2.7,0,.6,5,2.8);
   for(const s of [-1,1])part(s*1.825,2.2,2.35,.6,2.8);
   part(0,2.2,1.3,.6,.7,2.1);part(0,0,6,5,.5,2.3);
@@ -79,4 +79,4 @@ for(const n of navigationNodes)n.y=terrain.heightAt(n.x,n.z);
 const vehicleSpawns=[];
 for(const team of [0,1]){const n=nodes.find(n=>n.id===(team?'north':'south')+'-tank');vehicleSpawns.push({id:n.id,type:'tank',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
 for(const team of [0,1])for(const type of ['atv','atv-2','humvee','humvee-2']){const end=team?'north':'south',n=nodes.find(n=>n.id===end+'-'+type);vehicleSpawns.push({id:n.id,type:type.startsWith('atv')?'atv':'humvee',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
-export const QUARRY_MAP={id:'quarry',name:'Карьер «Перевал»',size,fogDensity:.00195,terrain,landforms,boxes,structures,roads,points,navigationNodes,spawns:[{x:0,z:358},{x:0,z:-358}],vehicleSpawns,vehicleRoutes:{nodes,edges,objectives,stops:{}},landmarks:[],districts:points,signs:[{x:0,z:-380,name:'ПЕРЕВАЛ',note:'СЕВЕРНЫЙ ПАРК',baseSign:true,yaw:0},{x:0,z:380,name:'ПЕРЕВАЛ',note:'ЮЖНЫЙ ПАРК',baseSign:true,yaw:Math.PI}]};
+export const QUARRY_MAP={id:'quarry',name:'Карьер «Перевал»',size,fogDensity:.00195,terrain,landforms,boxes,structures,roads,points,navigationNodes,supplySpawns:points.map(p=>({id:'map-ammo-'+p.id,x:p.x,z:p.z+((p.z>0?1:-1)*14)})),spawns:[{x:0,z:358},{x:0,z:-358}],vehicleSpawns,vehicleRoutes:{nodes,edges,objectives,stops:{}},landmarks:[],districts:points,signs:[{x:0,z:-380,name:'ПЕРЕВАЛ',note:'СЕВЕРНЫЙ ПАРК',baseSign:true,yaw:0},{x:0,z:380,name:'ПЕРЕВАЛ',note:'ЮЖНЫЙ ПАРК',baseSign:true,yaw:Math.PI}]};

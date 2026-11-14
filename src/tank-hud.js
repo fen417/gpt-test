@@ -30,7 +30,7 @@ export class TankHud{
     const remaining=Math.max(0,v.cannonReadyAt-state.time),ready=state.time>=v.weaponReadyAt&&(v.weapon===1?!v.overheated:remaining===0&&v.cannonAmmo>0);
     this.text('ready',ready?'ГОТОВ':state.time<v.weaponReadyAt?'СМЕНА':v.weapon===1?'ОХЛАЖДЕНИЕ':v.cannonAmmo?remaining.toFixed(1)+' С':'НЕТ СНАРЯДОВ');
     this.refs.reload.style.strokeDashoffset=String(101*Math.min(1,remaining/TANK_CANNON.reload));this.element.querySelector('.tank-heat i').style.transform=`scaleX(${v.heat})`;
-    this.text('alert',v.burning?'ПОЖАР · НУЖЕН РЕМОНТ':Math.max(v.leftTrack,v.rightTrack)>=80?'ГУСЕНИЦА РАЗРУШЕНА':Math.max(v.leftTrack,v.rightTrack)>=40?'ПОВРЕЖДЕНА ГУСЕНИЦА':'');
+    this.text('alert',state.players.some(p=>p.gadgetAction==='repair'&&p.gadgetTargetId===v.id)?'ИНЖЕНЕР · ИДЁТ РЕМОНТ':v.burning?'ПОЖАР · НУЖЕН РЕМОНТ':Math.max(v.leftTrack,v.rightTrack)>=80?'ГУСЕНИЦА РАЗРУШЕНА':Math.max(v.leftTrack,v.rightTrack)>=40?'ПОВРЕЖДЕНА ГУСЕНИЦА':'');
     for(const [key,value] of [['track-left',v.leftTrack],['track-right',v.rightTrack],['hull',100-v.hp/v.maxHp*100]])this.refs[key].style.fill=value>=80?'#e07456':value>=40?'#d4b06a':'#b7cf99';
     this.refs.turret.setAttribute('transform',`rotate(${-(v.aimYaw-v.yaw)*180/Math.PI} 65 68)`);
     const crew=v.seats.map((id,i)=>`${i+1} · ${id?state.players.find(p=>p.id===id)?.name??'Боец':'Свободно'}`).join('\n');this.text('crew',crew);

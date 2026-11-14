@@ -5,6 +5,11 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),angle=(a,b)=>Math.atan2(Math.sin(
 export const TANK_CANNON={speed:190,reload:3.2,ammo:24,gravity:BULLET_GRAVITY,radius:7,damage:150,vehicleDamage:900};
 export const TANK_MG={weapon:'СПАРЕННЫЙ ПУЛЕМЁТ',range:280,damage:26,interval:.09,spread:.014,projectileSpeed:410,heatPerShot:.045,minPitch:-.15,maxPitch:.35};
 export function tankDropAngle(distance){return .5*Math.asin(clamp(TANK_CANNON.gravity*distance/(TANK_CANNON.speed**2),-1,1));}
+export function tankArmorZone(v,origin){
+  if(!origin)return'side';const dx=origin.x-v.x,dz=origin.z-v.z,c=Math.cos(v.yaw),s=Math.sin(v.yaw),x=dx*c-dz*s,z=dx*s+dz*c,y=origin.y-(v.y??0);
+  if(y>2.25)return'top';if(Math.abs(x)>1.2&&y<1.15)return x<0?'leftTrack':'rightTrack';
+  return Math.abs(z)/3.5>Math.abs(x)/1.8?(z<0?'front':'rear'):'side';
+}
 export function tankMuzzle(v){const pitch=v.aimPitch??0,c=Math.cos(pitch),range=4.27;return{x:v.x-Math.sin(v.aimYaw)*c*range,y:(v.y??0)+2.06+Math.sin(pitch)*range,z:v.z-Math.cos(v.aimYaw)*c*range};}
 export function moveTank(sim,v,input,dt){
   const spec=VEHICLE_TYPES.tank,throttle=clamp(input?.forward??0,-1,1);let steer=clamp(input?.strafe??0,-1,1);

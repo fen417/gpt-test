@@ -78,9 +78,11 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   rig.body.rotation.set(v.bodyPitch??0,0,v.bodyRoll??0);
   rig.travel.value.x+=(v.speed-(v.steer??0)*1.8)*dt*.35;rig.travel.value.y+=(v.speed+(v.steer??0)*1.8)*dt*.35;
   const delta=(v.aimYaw??v.yaw)-group.rotation.y;
+  rig.wreckAge=v.hp<=0?(rig.wreckAge??0)+dt:0;
   for(const [index,l] of rig.levels.entries()){
     l.group.visible=index===rig.level;l.body.rotation.copy(rig.body.rotation);
     l.turret.rotation.y=Math.atan2(Math.sin(delta),Math.cos(delta));l.gun.rotation.x=v.aimPitch??0;
+    l.turret.position.y=1.72+(v.hp<=0?Math.max(0,Math.min(3,rig.wreckAge*8)-Math.max(0,rig.wreckAge-.35)*5):0);l.turret.rotation.z=v.hp<=0?Math.min(.55,rig.wreckAge):0;
     if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;
     l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleId===v.id&&p.vehicleSeat===0&&!view.vehicleThirdPerson);
     l.hull.castShadow=l.turretMesh.castShadow=index===1&&distance<48;

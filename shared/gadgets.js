@@ -72,7 +72,7 @@ export function reviveTarget(sim,p) {
 export function repairTarget(sim,p,maxDistance=5,aimed=false) {
   let found=null,best=maxDistance;
   for(const vehicle of sim.vehicles){
-    if(vehicle.hp<=0||vehicle.team!==p.team||vehicle.hp>=VEHICLE_TYPES[vehicle.type].maxHp)continue;
+    if(vehicle.hp<=0||vehicle.team!==p.team||vehicle.hp>=VEHICLE_TYPES[vehicle.type].maxHp&&!(vehicle.leftTrack>0||vehicle.rightTrack>0))continue;
     const d=distance(p,vehicle);
     if(d<best&&(!aimed||aimedAt(p,center(vehicle,.9)))&&sim.lineClear(eye(p),center(vehicle,.9))){found=vehicle;best=d;}
   }
@@ -191,7 +191,10 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     if(vehicle.hp<=0||vehicle.team===team)continue;
     const d=Math.hypot(distance(origin,vehicle),origin.y-vehicle.y-.8);
     if(vehicle===directVehicle)sim.damageVehicle(vehicle,cannon&&vehicle.type==='tank'?900:760,owner,'blast',origin);
-    else if(d<radius&&sim.lineClear(origin,center(vehicle,.8)))sim.damageVehicle(vehicle,(rocket||cannon?480:240)*(1-d/radius),owner,'blast',origin);
+    else if(d<radius&&sim.lineClear(origin,center(vehicle,.8))){
+      const distance=vehicle.type==='tank'?Math.max(0,d-1.8):d,damage=rocket||cannon?480:vehicle.type==='tank'?300:240;
+      sim.damageVehicle(vehicle,damage*(1-distance/radius),owner,'blast',origin);
+    }
   }
   for(const player of sim.players.values()){
     if(!player.alive||(player.team===team&&player.id!==owner?.id))continue;
@@ -246,6 +249,10 @@ function updateRockets(sim,dt) {
 }
 
 export function updateEquipment(sim,dt) {
+  if(sim.time>=(sim.mapSupplyAt??0)){
+    sim.mapSupplyAt=sim.time+30;
+    for(const point of sim.map.supplySpawns??[])if(!sim.deployables.some(item=>item.id===point.id&&item.hp>0))sim.deployables.push({...point,kind:'ammo',team:-1,squadId:0,ownerId:null,y:sim.groundAt(point.x,point.z),yaw:0,hp:255,expires:1e9});
+  }
   for(const p of sim.players.values()){
     p.secondaryCooldown=Math.max(0,(p.secondaryCooldown??0)-dt);
     if(!p.alive){p.pendingGadget=null;p.gadgetAction=null;continue;}
@@ -262,6 +269,7 @@ export function updateEquipment(sim,dt) {
       if(vehicle){
         const amount=Math.min(65*dt,VEHICLE_TYPES[vehicle.type].maxHp-vehicle.hp);
         vehicle.hp+=amount;p.gadgetActionUntil=sim.time+.25;
+        if(vehicle.type==='tank'){vehicle.leftTrack=Math.max(0,vehicle.leftTrack-65*dt/6);vehicle.rightTrack=Math.max(0,vehicle.rightTrack-65*dt/6);vehicle.burning=false;vehicle.extinguishedUntil=sim.time+2;}
         if(sim.time>=(p.nextRepairScore??0)){sim.awardScore(p,15,'РЕМОНТ ТЕХНИКИ',{kind:'repair'});p.nextRepairScore=sim.time+1.5;}
       }
     }
@@ -288,8 +296,9 @@ export function updateEquipment(sim,dt) {
     // Actual elapsed time still determines the amount of health restored.
     item.supplyAt=sim.time+(item.kind==='medkit'?.1:1);
     const owner=sim.players.get(item.ownerId);
+    if(item.kind==='ammo')for(const v of sim.vehicles)if(v.type==='tank'&&v.hp>0&&(item.team<0||v.team===item.team)&&distance(v,item)<7&&sim.time>=(v.nextShellSupply??0)&&sim.lineClear(center(item,.4),center(v,.8))){v.cannonAmmo=Math.min(24,v.cannonAmmo+1);v.nextShellSupply=sim.time+3;}
     for(const ally of sim.players.values()){
-      if(!ally.alive||ally.team!==item.team||Math.hypot(distance(ally,item),ally.y-item.y)>5.5||
+      if(!ally.alive||(item.team>=0&&ally.team!==item.team)||Math.hypot(distance(ally,item),ally.y-item.y)>5.5||
           !sim.lineClear(center(item,item.kind==='medkit'?.12:.4),center(ally,.8)))continue;
       if(item.kind==='medkit'){
         // Intersect the active interval with the no-damage window. A shared
