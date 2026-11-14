@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "version": "0.16",
+  "protocol": 26,
+  "createdAt": "2026-11-14T09:20:06.951Z",
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "win32",
+    "arch": "x64",
+    "cpu": "11th Gen Intel(R) Core(TM) i9-11900F @ 2.50GHz"
+  },
+  "scenario": {
+    "ticks": 2400,
+    "bots": 30,
+    "humans": 7,
+    "tickHz": 60,
+    "snapshotHz": 20,
+    "lagCompensation": true,
+    "seed": 417,
+    "input": "moving, aiming, shooting, reloading, respawning",
+    "ack": "immediate simulated reliable ACK"
+  },
+  "maps": [
+    {
+      "mapId": "port",
+      "constructionMs": 119.261,
+      "stepMs": {
+        "avg": 1.506,
+        "p95": 2.751,
+        "p99": 3.386,
+        "max": 9.91
+      },
+      "encodeMs": {
+        "avg": 0.125,
+        "p95": 0.215,
+        "p99": 0.355,
+        "max": 2.547
+      },
+      "snapshotBytes": {
+        "avg": 820.405,
+        "p95": 843,
+        "p99": 914,
+        "max": 6229
+      },
+      "wallMs": 4651.836,
+      "cpuMsPerSimSecond": 192.95,
+      "events": 3147
+    },
+    {
+      "mapId": "quarry",
+      "constructionMs": 128.676,
+      "stepMs": {
+        "avg": 2.097,
+        "p95": 3.936,
+        "p99": 4.961,
+        "max": 20.004
+      },
+      "encodeMs": {
+        "avg": 0.122,
+        "p95": 0.215,
+        "p99": 0.371,
+        "max": 1.889
+      },
+      "snapshotBytes": {
+        "avg": 1009.051,
+        "p95": 1062,
+        "p99": 1093,
+        "max": 6851
+      },
+      "wallMs": 6048.272,
+      "cpuMsPerSimSecond": 215.625,
+      "events": 2771
+    },
+    {
+      "mapId": "village",
+      "constructionMs": 169.599,
+      "stepMs": {
+        "avg": 2.43,
+        "p95": 3.651,
+        "p99": 4.216,
+        "max": 11.134
+      },
+      "encodeMs": {
+        "avg": 0.111,
+        "p95": 0.174,
+        "p99": 0.23,
+        "max": 4.081
+      },
+      "snapshotBytes": {
+        "avg": 832.245,
+        "p95": 893,
+        "p99": 936,
+        "max": 6142
+      },
+      "wallMs": 6763.677,
+      "cpuMsPerSimSecond": 223.45,
+      "events": 3297
+    }
+  ],
+  "warnings": [
+    "quarry: target exceeded (p99 <= 6 ms, max <= 10 ms)",
+    "village: target exceeded (p99 <= 6 ms, max <= 10 ms)"
+  ]
+}

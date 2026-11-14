@@ -981,6 +981,7 @@ export class GameRenderer {
       const key = event.id ?? `${event.type}:${event.playerId}:${event.time}:${event.x}:${event.z}`;
       if (this.seenEvents.has(key)) continue;
       this.seenEvents.add(key);
+      if(event.confirmedCosmetic)continue;
       if (event.type === 'damage' && event.playerId !== localId) {
         soldierHit(this.soldiers.get(event.playerId), event.x ?? 0, event.z ?? 0);
         continue;

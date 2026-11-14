@@ -627,6 +627,7 @@ export class CombatAudio {
     }
     for(const e of state.events||[]){
       if(this.seen.has(e.id))continue;this.seen.add(e.id);
+      if(e.confirmedCosmetic)continue;
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')continue;
       const own=local&&e.playerId===local.id;
       this._priority=own?3:1;

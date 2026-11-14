@@ -11,10 +11,10 @@ const args=process.argv.slice(2),option=(name,fallback)=>{const i=args.indexOf(n
 const ticks=Number(option('--ticks',2400)),bots=30,humans=7,dt=1/60;
 if(!Number.isInteger(ticks)||ticks<60)throw Error('--ticks must be an integer >= 60');
 const summary=values=>{const sorted=[...values].sort((a,b)=>a-b),round=n=>Number(n.toFixed(3));return {avg:round(values.reduce((a,b)=>a+b,0)/values.length),p95:round(sorted[Math.ceil(sorted.length*.95)-1]),p99:round(sorted[Math.ceil(sorted.length*.99)-1]),max:round(sorted.at(-1))};};
-const report={schema:1,version:GAME_VERSION,protocol:PROTOCOL_VERSION,createdAt:new Date().toISOString(),environment:{node:process.version,platform:platform(),arch:arch(),cpu:cpus()[0]?.model},scenario:{ticks,bots,humans,tickHz:60,snapshotHz:20,seed:417,input:'moving, aiming, shooting, reloading, respawning',ack:'immediate simulated reliable ACK'},maps:[],warnings:[]};
+const report={schema:1,version:GAME_VERSION,protocol:PROTOCOL_VERSION,createdAt:new Date().toISOString(),environment:{node:process.version,platform:platform(),arch:arch(),cpu:cpus()[0]?.model},scenario:{ticks,bots,humans,tickHz:60,snapshotHz:20,lagCompensation:true,seed:417,input:'moving, aiming, shooting, reloading, respawning',ack:'immediate simulated reliable ACK'},maps:[],warnings:[]};
 for(const mapId of ['port','quarry','village']){
   let seed=417;const random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
-  const constructAt=performance.now(),sim=new Simulation({bots,mapId,random});
+  const constructAt=performance.now(),sim=new Simulation({bots,mapId,random,lagCompensation:true});
   const constructionMs=performance.now()-constructAt;
   const players=Array.from({length:humans},(_,i)=>sim.addPlayer('bench-'+i,'Benchmark '+i,i%2));
   const encoders=players.map(()=>new SnapshotEncoder(sim.map.size));

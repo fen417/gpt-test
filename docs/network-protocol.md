@@ -1,4 +1,4 @@
-# Binary protocol 25
+# Binary protocol 26
 
 All integers use little-endian byte order. Dynamic packets are `Uint8Array`/`ArrayBuffer`, encoded with bounds-checked `DataView`. WebSocket compression is disabled. Maximum client payload: 8192 bytes. JSON is reserved for control messages; each client control carries protocol + map layout revision.
 
@@ -6,7 +6,7 @@ All integers use little-endian byte order. Dynamic packets are `Uint8Array`/`Arr
 |---:|---|---|
 | 1 SNAPSHOT | server → client | flags, sequence u32, acknowledged baseline u32, time f32, processed input u32, tick u32, tickets u16×2, winner i8, max tickets/duration u16, dictionary definitions, entity deltas |
 | 2 EVENTS | server → client | dictionary definitions, delivered-through event u32, count u16, events |
-| 3 INPUT | client → server | round epoch u32, snapshot ACK u32, event ACK u32, dictionary ACK u16, frame count u8, command frames |
+| 3 INPUT | client → server | round epoch u32, snapshot ACK u32, event ACK u32, dictionary ACK u16, viewed server time f32, interpolation ms u8, frame count u8, command frames |
 | 4 ACK | client → server | round epoch u32, snapshot u32, event u32, dictionary u16 |
 | 5 PING | client → server | monotonic client timestamp f64 |
 | 6 PONG | server → client | echoed timestamp f64 |
@@ -36,8 +36,14 @@ JSON control types also have numeric wire IDs: hello=16, rooms=17, list=18, crea
 
 Metrics count actual transmitted application bytes plus WS framing, and include every recipient. They exclude TCP/TLS/IP overhead. No bandwidth/FPS claim follows from the format alone: measure the real room on the actual Northflank resource.
 
-Client presentation uses a monotonic shared playback clock, with a slowly adapted 55–140 ms buffer (60 ms at steady 20 Hz). RTT is measured separately and is not added again to the playback buffer. Per-entity histories share that clock; bounded entity extrapolation lasts at most 120 ms (the shared playback clock is capped at 80 ms beyond the latest snapshot). Multiple snapshots received before a frame are all decoded for delta baselines, but only the latest authority is replayed. Event sent/ACK cursors are separate: reliable WebSocket delivery does not resend in-flight events when new shots arrive. Old cosmetic shot/impact/horn events may be omitted after 500 ms; damage, kills and match outcomes remain reliable.
+Client presentation uses a monotonic shared playback clock, with a slowly adapted 40–140 ms buffer (approximately 43 ms at steady 30 Hz, 60 ms at 20 Hz). RTT is measured separately and is not added again to the playback buffer. Per-entity histories share that clock; bounded entity extrapolation lasts at most 120 ms (the shared playback clock is capped at 80 ms beyond the latest snapshot). Multiple snapshots received before a frame are all decoded for delta baselines, but only the latest authority is replayed. Event sent/ACK cursors are separate: reliable WebSocket delivery does not resend in-flight events when new shots arrive. Old cosmetic shot/impact/horn events may be omitted after 500 ms; damage, kills and match outcomes remain reliable.
 
 Protocol 24 adds public player squadId/squadLeader fields and deployable squadId. The squad control request changes the authenticated player's squad during a match; the server checks team membership and the four-person capacity before accepting it. Client and server must be updated together.
 
 Protocol 25 adds the contextual order input flag, player orderKind/orderPointId, reviveSeq, jumpFatigue and jumpCooldownAt. Local movement prediction shares jump fatigue/cooldown with authority. Motion updates use 20 Hz at all distances; projectile events and sound follow presentation time.
+
+Protocol 26 adds private bloom/shot-ready/last-shot state for cosmetic firearm replay and fire-held bit 3 in the owning control flags. Local personal firearm prediction shares cadence and deterministic spread with authority; no client damage or hit result is accepted. Shot confirmations suppress already-played cosmetics by weapon and shot sequence.
+
+Input presentation metadata is bounded against a snapshot actually sent to the session. The server records a 24-frame pose history (approximately 400 ms at 60 Hz), rewinds target player/vehicle poses by at most 200 ms for projectile collision, and keeps static geometry/current damage authority. Teleport/revive/team/seat discontinuities are not interpolated. Set LAG_COMPENSATION=0 to disable rewind. The selected view time already accounts for the client's interpolation; server code does not blindly add RTT a second time.
+
+Default maximum snapshot frequency is 30 Hz (SNAPSHOT_HZ accepts 10–30). A five-second mean simulation step above 4 ms lowers it to 20 Hz; below 3 ms permits recovery. Stats report the effective frequency. Prediction queue overflow asks for RESYNC, clears obsolete input and receives an immediate full snapshot instead of closing the WebSocket. The socket uses TCP_NODELAY.

@@ -28,7 +28,7 @@ const show=(id,visible=true)=>$(id).classList.toggle('hidden',!visible);
 const text=(id,value)=>{const node=$(id),next=String(value);if(node.textContent!==next)node.textContent=next;};
 const audio=new CombatAudio();
 const canvas=$('game');
-const perfPanel=mountPerfPanel({reset:()=>{for(const samples of [frameTimes,cpuTimes,renderTimes,simulationTimes])samples.reset();renderer?.gpuTimer.samples.reset();}});
+const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),reset:()=>{for(const samples of [frameTimes,cpuTimes,renderTimes,simulationTimes])samples.reset();renderer?.gpuTimer.samples.reset();}});
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let squadUI,weaponPreview,lobbyWeaponPreview;
 let currentMap=getMap(DEFAULT_MAP_ID);
@@ -460,7 +460,7 @@ function receive(next){
   const nowPerf=performance.now();
   for(const event of state.events??[]){
     if(seen.has(event.id))continue;seen.add(event.id);
-    if(event.type==='shot'&&event.playerId===localId){
+    if(event.type==='shot'&&event.playerId===localId&&!event.confirmedCosmetic){
       const weapon=getWeapon(event.classId||player.classId,event.weaponId||player.weaponId);
       const impulse=(event.mounted ? .008 : weapon.recoil)*(aim?.76:1)*(lastInput.crouch?.87:1);
       if(player.alive){
@@ -504,7 +504,12 @@ function receive(next){
     show('result');
   }
 }
-const multiplayer=new Multiplayer({onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
+const multiplayer=new Multiplayer({predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:event=>{
+  const player=local();if(!player?.alive)return;const weapon=getWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
+  recoilPitch=Math.min(.12,recoilPitch+impulse);recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin(event.shotSeq*2.1)*impulse*.31));
+  audio.events({time:event.time,events:[event],players:state.players},player,{immediate:true});
+  text('ammo',multiplayer.prediction.player.ammo);
+},onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
 function prepare(which){
@@ -1218,7 +1223,7 @@ function hud(now){
   text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;
   if(personalWeapon){
     const tool=player.heldGadget;
-    text('ammo',tool?(tool==='launcher'?player.rockets:'—'):player.ammo);text('reserve',tool?(tool==='launcher'?'РАКЕТЫ':'СНАРЯЖЕНИЕ'):player.reserve);
+    text('ammo',tool?(tool==='launcher'?player.rockets:'—'):(mode==='server'&&multiplayer.prediction?.player?.weaponId===player.weaponId?multiplayer.prediction.player.ammo:player.ammo));text('reserve',tool?(tool==='launcher'?'РАКЕТЫ':'СНАРЯЖЕНИЕ'):player.reserve);
     text('weapon-name',tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`);
     const cooldown=tool==='launcher'||tool==='medkit'?player.secondaryCooldown:player.gadgetCooldown;
     text('ammo-status',player.equipTime>0?'СМЕНА СНАРЯЖЕНИЯ…':tool?(cooldown>0?`ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(cooldown)}с`:tool==='repair'?'УДЕРЖИВАЙ ЛКМ · РЕМОНТ':tool==='launcher'&&player.rockets===0?'НЕТ РАКЕТ · НУЖЕН ЯЩИК ПАТРОНОВ':tool==='launcher'?'ПКМ · ПРИЦЕЛ · ЛКМ · ВЫСТРЕЛ':'ЛКМ · ПРИМЕНИТЬ · 1 / 2 · ОРУЖИЕ'):player.reloading?'ПЕРЕЗАРЯДКА…':

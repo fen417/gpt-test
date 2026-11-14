@@ -22,6 +22,17 @@ Validation: 61/61 Node 24 tests; production build passed. Added LOD budget, reso
 
 Validation: 63/63 tests and production build. Browser loaded the menu and a 31-bot port match without captured errors; saved local screenshot. The hidden browser throttled rendering, so its frame timings are not an FPS comparison. Geometry generation still has first-use spikes; external templates are tracked under phase 5. No claim of ≤1 ms post cost or fixed-point visual equivalence on HD 610 yet.
 
+## Phase 3
+
+- Protocol 26 carries viewed server time/interpolation, owning weapon clock/bloom and trigger state. History is bounded to 24 frames; projectile target poses rewind at most 200 ms against an actually sent snapshot. Current static cover and damage authority remain server-side; revive/team/teleport discontinuities are excluded.
+- Immediate personal firearm prediction uses shared cadence, magazine/reload logic and deterministic ID/shot-sequence spread. Predicted sounds/recoil/casings/traces are deduplicated on confirmation. Mounted turret cosmetic prediction is not substituted for authoritative turret heat/fire rules. LAG_COMPENSATION=0 disables rewind; ?predictShots=0 disables personal shot cosmetics for comparison.
+- Snapshot ceiling/default 30 Hz, with 20 Hz fallback when five-second mean step exceeds 4 ms and recovery below 3 ms. Steady playback buffer is about 43 ms at 30 Hz. TCP_NODELAY is explicit. Input backlog requests a full resync and drops obsolete commands instead of reconnecting.
+- Development ?perf panel includes RTT +50/+100/+150 presets, jitter and a 2-second network pause. Simulator preserves TCP ordering and is excluded from production behavior.
+
+Validation: 72/72 tests, including bounded rewind against a running target, revive discontinuity, exact predicted/authoritative burst cadence and traces, private gun fields, no duplicate cosmetics, ordered simulated delays/jitter and soft recovery. Full-round test now uses the actual 960-second match limit rather than assuming every seeded round must finish before 600 seconds. Build passed.
+
+Benchmark caught an implementation regression from copying complete player objects per bullet/target. Replaced this with direct immutable historical-pose reads before proceeding. New isolated protocol-26 baseline with history enabled is phase-3-server.json: step p99 port 3.386, quarry 4.961, village 4.216 ms; maximum 9.910/20.004/11.134 ms. This is a new scenario versus phase 0, not an optimization win. Phase 4 will compare against this baseline. Human online feel and mounted combat still require multiplayer gameplay acceptance.
+
 ## Remaining ordered phases
 
 2. Single post pass, inexpensive static ground shadows, texture/material presets.

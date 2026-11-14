@@ -9,14 +9,14 @@ export function decodeControl(value){const data=JSON.parse(value);if(!data||type
 export const INPUT_STEP=16667/1e6;
 export const INPUT_FLAGS=['sprint','crouch','jump','fire','aim','reload','gadget','secondaryGadget','grenade','interact','switchSeat','horn','order'];
 const BOOLS=['alive','reloading','crouch','sliding','sprint','aim','grounded','bot','protected','spotted'];
-const PRIVATE=new Set(['vy','slideVx','slideVz','slideAt','slideCooldownAt','controlFlags','velocityX','velocityZ','moveSpeed','jumpFatigue','jumpCooldownAt']);
+const PRIVATE=new Set(['vy','slideVx','slideVz','slideAt','slideCooldownAt','controlFlags','velocityX','velocityZ','moveSpeed','jumpFatigue','jumpCooldownAt','bloom','shotReadyAt','lastShotAt']);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),finite=v=>Number.isFinite(Number(v))?Number(v):0;
 const specs=rows=>rows.trim().split(/\s+/).map(row=>{const [key,type]=row.split(':');return {key,type};});
 export const SCHEMAS={
   players:specs(`name:r team:u8 squadId:u8 squadLeader:u8 orderKind:r orderPointId:r reviveSeq:u16 classId:r weaponId:r primaryWeaponId:r sidearmId:r weaponSlot:u8 equipAt:f32
     x:x y:y z:z yaw:a pitch:a motionAt:f32 hp:u8 ammo:u8 reserve:u16 kills:u16 deaths:u16 assists:u16 score:u32 respawnAt:f32
     reloadAt:f32 shotSeq:u16 spread:s slideYaw:a gadgetAt:f32 secondaryAt:f32 rockets:u8 heldGadget:r gadgetAction:r
-    gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v jumpFatigue:s jumpCooldownAt:f32`),
+    gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v jumpFatigue:s jumpCooldownAt:f32 bloom:s shotReadyAt:f32 lastShotAt:f32`),
   vehicles:specs(`type:r team:u8 x:x y:y z:z yaw:a motionAt:f32 bodyPitch:a bodyRoll:a scaleX:scale scaleY:scale scaleZ:scale
     rotationX:a rotationZ:a hp:u16 maxHp:u16 speed:v steer:signed heat:s overheated:u8 aimYaw:a aimPitch:a
     gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32`),
@@ -74,7 +74,7 @@ export function prepareSnapshot(state,size,previous){
   for(const kind of COLLECTIONS){const map=new Map();result.rows[kind]=map;
     for(const source of state[kind]??[]){let item=source;
       if(kind==='players')item={...source,motionAt:Math.fround(state.time),flags:BOOLS.reduce((bits,key,i)=>bits|(source[key]?1<<i:0),0),
-        equipAt:clock(state.time,source.equipTime),respawnAt:clock(state.time,source.respawnIn),
+        shotReadyAt:clock(state.time,source.cooldown),equipAt:clock(state.time,source.equipTime),respawnAt:clock(state.time,source.respawnIn),
         reloadAt:source.reloading?clock(state.time,(1-source.reloadProgress)*getWeapon(source.classId,source.weaponId).reload):0,
         gadgetAt:clock(state.time,source.gadgetCooldown),secondaryAt:clock(state.time,source.secondaryCooldown),actionAt:clock(state.time,source.gadgetActionRemaining),
         slideAt:clock(state.time,source.slideTime),slideCooldownAt:clock(state.time,source.slideCooldown),jumpCooldownAt:clock(state.time,source.jumpCooldown)};
@@ -98,8 +98,8 @@ export function materializeSnapshot(frame,context,time=frame.time){
     if(kind==='players'){
       BOOLS.forEach((key,i)=>p[key]=Boolean(p.flags&(1<<i)));
       p.equipTime=Math.max(0,p.equipAt-time);p.respawnIn=Math.max(0,p.respawnAt-time);p.gadgetCooldown=Math.max(0,p.gadgetAt-time);p.secondaryCooldown=Math.max(0,p.secondaryAt-time);p.gadgetActionRemaining=Math.max(0,p.actionAt-time);
-      p.reloadProgress=p.reloading?clamp(1-(p.reloadAt-time)/getWeapon(p.classId,p.weaponId).reload,0,1):0;p.slideTime=Math.max(0,p.slideAt-time);p.slideCooldown=Math.max(0,p.slideCooldownAt-time);p.jumpCooldown=Math.max(0,p.jumpCooldownAt-time);
-      p.jumpHeld=Boolean(p.controlFlags&1);p.crouchHeld=Boolean(p.controlFlags&2);p.wasSprinting=Boolean(p.controlFlags&4);p.crouching=p.crouch;
+      p.reloadProgress=p.reloading?clamp(1-(p.reloadAt-time)/getWeapon(p.classId,p.weaponId).reload,0,1):0;p.slideTime=Math.max(0,p.slideAt-time);p.slideCooldown=Math.max(0,p.slideCooldownAt-time);p.jumpCooldown=Math.max(0,p.jumpCooldownAt-time);p.cooldown=Math.max(0,p.shotReadyAt-time);
+      p.jumpHeld=Boolean(p.controlFlags&1);p.crouchHeld=Boolean(p.controlFlags&2);p.wasSprinting=Boolean(p.controlFlags&4);p.crouching=p.crouch;p.fireHeld=Boolean(p.controlFlags&8);
     }else if(kind==='vehicles'){
       p.modelScale={x:p.scaleX,y:p.scaleY,z:p.scaleZ};p.modelRotation={x:p.rotationX,y:0,z:p.rotationZ};p.respawnIn=Math.max(0,p.respawnAt-time);p.wreckTime=Math.max(0,p.wreckAt-time);
     }else if(kind==='grenades')p.fuse=Math.max(0,p.fuseAt-time);else if(kind==='rockets')p.life=Math.max(0,p.lifeAt-time);
@@ -180,15 +180,15 @@ export function quantizedInput(sequence,input,dt=INPUT_STEP){
   for(const key of INPUT_FLAGS)command[key]=Boolean(input[key]);
   return {sequence,dt:clamp(Math.round(dt*1e6),1000,50000)/1e6,input:command};
 }
-export function encodeInput(frames,{snapshotAck=0,eventAck=0,dictAck=0,epoch=0}={}){
-  const w=new Writer(512);w.u8(MESSAGE.INPUT);w.u32(epoch);w.u32(snapshotAck);w.u32(eventAck);w.u16(dictAck);w.u8(frames.length);
+export function encodeInput(frames,{snapshotAck=0,eventAck=0,dictAck=0,epoch=0,viewTime=0,interpolationMs=60}={}){
+  const w=new Writer(512);w.u8(MESSAGE.INPUT);w.u32(epoch);w.u32(snapshotAck);w.u32(eventAck);w.u16(dictAck);w.f32(viewTime);w.u8(clamp(Math.round(interpolationMs),0,200));w.u8(frames.length);
   for(const {sequence,dt,input} of frames){w.u32(sequence);w.u16(clamp(Math.round(dt*1e6),1000,50000));w.i8(Math.round(clamp(input.forward??0,-1,1)*127));w.i8(Math.round(clamp(input.strafe??0,-1,1)*127));
     w.i16(quant('a',input.yaw,1));w.i16(quant('a',input.pitch,1));w.u16(INPUT_FLAGS.reduce((bits,key,i)=>bits|(input[key]?1<<i:0),0));w.u8((input.weaponSlot??0)|((input.toolSlot??0)<<4));
   }return w.finish();
 }
 export function decodeInput(value){
-  const r=new Reader(value);if(r.u8()!==MESSAGE.INPUT)throw Error('Not input');const epoch=r.u32(),snapshotAck=r.u32(),eventAck=r.u32(),dictAck=r.u16(),count=r.u8();if(count>8)throw Error('Input frame limit');const frames=[];
+  const r=new Reader(value);if(r.u8()!==MESSAGE.INPUT)throw Error('Not input');const epoch=r.u32(),snapshotAck=r.u32(),eventAck=r.u32(),dictAck=r.u16(),viewTime=r.f32(),interpolationMs=r.u8(),count=r.u8();if(count>8)throw Error('Input frame limit');const frames=[];
   for(let i=0;i<count;i++){const sequence=r.u32(),dt=r.u16()/1e6,forward=r.i8()/127,strafe=r.i8()/127,yaw=r.i16()/32767*Math.PI,pitch=r.i16()/32767*Math.PI,flags=r.u16(),slots=r.u8(),input={forward,strafe,yaw,pitch,weaponSlot:slots&15,toolSlot:slots>>4};INPUT_FLAGS.forEach((key,n)=>input[key]=Boolean(flags&(1<<n)));frames.push({sequence,dt,input});}
-  r.done();return {epoch,snapshotAck,eventAck,dictAck,frames};
+  r.done();return {epoch,snapshotAck,eventAck,dictAck,viewTime,interpolationMs,frames};
 }
 export function encodeAck(snapshotAck,eventAck,dictAck,epoch=0){const w=new Writer(16);w.u8(MESSAGE.ACK);w.u32(epoch);w.u32(snapshotAck);w.u32(eventAck);w.u16(dictAck);return w.finish();}

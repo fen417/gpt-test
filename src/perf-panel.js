@@ -2,7 +2,7 @@ import { GAME_VERSION } from '../shared/releases.js';
 import { PROTOCOL_VERSION } from '../shared/world.js';
 import './perf-panel.css';
 
-export function mountPerfPanel({reset}={}){
+export function mountPerfPanel({reset,simulatePause}={}){
   if(!new URLSearchParams(location.search).has('perf'))return {enabled:false,update(){}};
   const panel=document.createElement('aside');panel.className='perf-panel';panel.setAttribute('aria-label','Производительность');
   const title=document.createElement('strong');title.textContent='SECTOR 09 · PERF';
@@ -18,7 +18,15 @@ export function mountPerfPanel({reset}={}){
     const url=URL.createObjectURL(new Blob([JSON.stringify(report(),null,2)],{type:'application/json'}));
     const link=document.createElement('a');link.href=url;link.download=`sector09-perf-${latest?.mapId??'menu'}-${latest?.quality??'unknown'}-${Date.now()}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
-  panel.append(title,values,record,download,note);document.body.append(panel);
+  panel.append(title,values,record,download,note);
+  if(import.meta.env?.DEV){
+    const presets=document.createElement('select');presets.setAttribute('aria-label','Эмуляция RTT');
+    for(const [value,label] of [['0','Сеть без эмуляции'],['25','RTT +50 мс'],['50','RTT +100 мс'],['75','RTT +150 мс']])presets.add(new Option(label,value));
+    presets.value=new URLSearchParams(location.search).get('netDelay')??'0';
+    presets.onchange=()=>{const url=new URL(location.href);url.searchParams.set('netDelay',presets.value);url.searchParams.set('netJitter','15');location.href=url.href;};
+    const pause=document.createElement('button');pause.textContent='Пауза сети 2 с';pause.onclick=()=>simulatePause?.(2000);panel.append(presets,pause);
+  }
+document.body.append(panel);
   panel.addEventListener('mousedown',event=>event.stopPropagation());
   const ms=value=>value==null?'н/д':Number(value).toFixed(2);
   return {enabled:true,update(data){

@@ -1,3 +1,5 @@
+import {createNetworkSocket} from './network-simulator.js';
+import {predictPersonalFire} from '../shared/fire-control.js';
 import { EquipmentPresentation } from './equipment-presentation.js';
 import { sanitizeInput, createPredictionWorld } from '../shared/simulation.js';
 import { EYE_HEIGHT } from '../shared/world.js';
@@ -23,32 +25,37 @@ export async function configuredServerUrl(){
   return value?normalizeServerUrl(value):'';
 }
 
-class Prediction{
-  constructor(mapId){this.world=createPredictionWorld(mapId);this.reset();}
+export class Prediction{
+  constructor(mapId,onShot=noop,{predictShots=true}={}){this.predictShots=predictShots;this.world=createPredictionWorld(mapId);this.onShot=onShot;this.played=new Set();this.reset();}
   reset(){this.player=null;this.pending=[];this.offset={x:0,y:0,z:0};}
-  reconcile(authority,ack,vehicles){
+  reconcile(authority,ack,vehicles,time=0){
     this.world.vehicles=vehicles.map(v=>({...v}));
     const old=this.player,visual=old?{x:old.x+this.offset.x,y:old.y+this.offset.y,z:old.z+this.offset.z}:null;
     const discontinuity=!old||old.alive!==authority.alive||old.vehicleId!==authority.vehicleId||Math.hypot(old.x-authority.x,old.z-authority.z)>4;
-    this.pending=this.pending.filter(f=>f.sequence>ack);this.player={...authority,input:{}};
+    this.pending=this.pending.filter(f=>f.sequence>ack);this.player={...authority,input:{},reloadTime:Math.max(0,(authority.reloadAt??0)-time),gadgetActionUntil:authority.actionAt??0};this.time=time;
     for(const frame of this.pending)this.step(frame);
     if(visual&&!discontinuity&&!authority.vehicleId){this.offset.x=visual.x-this.player.x;this.offset.y=visual.y-this.player.y;this.offset.z=visual.z-this.player.z;}
     else this.offset.x=this.offset.y=this.offset.z=0;
   }
-  step(frame){
+  step(frame,emit=false){
+    this.time=(this.time??0)+frame.dt;
     if(!this.player?.alive)return;
     this.player.input=frame.input;
     if(this.player.vehicleId){const vehicle=this.world.vehicles.find(v=>v.id===this.player.vehicleId);if(vehicle&&this.player.vehicleSeat===0){this.world.moveVehicle(vehicle,frame.input,frame.dt);this.world.syncVehicleSeat(this.player,vehicle);}}
-    else{this.world.movePlayer(this.player,frame.input,frame.dt);this.player.crouch=this.player.crouching;this.player.sliding=this.player.slideTime>0;}
+    else{this.world.movePlayer(this.player,frame.input,frame.dt);this.player.crouch=this.player.crouching;this.player.sliding=this.player.slideTime>0;
+      const event=this.predictShots?predictPersonalFire(this.player,frame.input,frame.dt,this.time):null;
+      if(event&&emit&&!this.hasPlayed(event)){this.played.add(event.weaponId+'/'+event.shotSeq);while(this.played.size>512)this.played.delete(this.played.values().next().value);this.onShot(event);}
+    }
   }
-  add(frame){this.pending.push(frame);this.step(frame);}
+  hasPlayed(event){return this.played.has(event.weaponId+'/'+event.shotSeq);}
+  add(frame){this.pending.push(frame);this.step(frame,true);}
   sample(dt){if(!this.player)return null;const decay=Math.exp(-dt*18);this.offset.x*=decay;this.offset.y*=decay;this.offset.z*=decay;return {...this.player,x:this.player.x+this.offset.x,y:this.player.y+this.offset.y,z:this.player.z+this.offset.z};}
 }
 
 // The room creator uses exactly the same connection and prediction as every guest.
 export class Multiplayer{
-  constructor({onState=noop,onIdentity=noop,onStatus=noop,onError=noop,onRooms=noop}={}){
-    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;this.recoveries=0;this.lastRecovery=null;
+  constructor({onState=noop,onIdentity=noop,onStatus=noop,onError=noop,onRooms=noop,onLocalShot=noop,predictShots=true}={}){
+    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms,onLocalShot,predictShots});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;this.recoveries=0;this.lastRecovery=null;
   }
   get mode(){return this._mode;}get phase(){return this._phase;}get canResume(){return !!(this.token||safeStorage.get('sector-resume:'+this.url));}get roomNameLabel(){return this.roomName??'';}
   async browse(url){await this.open(url);await this.request('list');return this.rooms;}
@@ -61,7 +68,7 @@ export class Multiplayer{
   }
   connectSocket(generation){
     return new Promise((resolve,reject)=>{
-      const ws=new WebSocket(this.url);ws.binaryType='arraybuffer';this.ws=ws;let ready=false;
+      const ws=createNetworkSocket(this.url);ws.binaryType='arraybuffer';this.ws=ws;let ready=false;
       const timeout=setTimeout(()=>{reject(Error('Сервер не отвечает. Проверьте его адрес или доступность.'));ws.close();},12000);
       ws.onmessage=event=>{
         if(generation!==this.generation||ws!==this.ws)return;
@@ -84,7 +91,7 @@ export class Multiplayer{
           }
           if(data.type==='lobby'){this._phase='lobby';this.state=data.state;this.ownerId=data.state.ownerId;this.onState(data.state);}
           if(data.type==='init')this.initialize(data);
-          if(data.type==='stats')this.serverStats=data.stats;
+          if(data.type==='stats'){this.serverStats=data.stats;if(data.stats.snapshotHz)this.snapshotHz=data.stats.snapshotHz;}
           const pending=this.requests.get(data.requestId);if(pending){clearTimeout(pending.timer);this.requests.delete(data.requestId);pending.resolve(data);}
         }catch(error){clearTimeout(timeout);if(!ready){reject(error);ws.close();}else{this.onStatus('Синхронизация восстанавливается…');this.send(new Uint8Array([MESSAGE.RESYNC]));}}
       };
@@ -133,11 +140,12 @@ export class Multiplayer{
   startMatch(data={}){this.control('start',data);}
   respawn(classId,pointId,weaponId,sidearmId){return this.control('respawn',{classId,pointId,weaponId,sidearmId});}
   initialize(data){
+    this.awaitingResync=false;
     this.context={mapId:data.mapId,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
     this.equipmentPresentation=new EquipmentPresentation();this.equipmentRequestKey=null;this.equipmentRequestSequence=0;this.latestInputAck=0;
-    this.decoder=new SnapshotDecoder(this.context);this.prediction=new Prediction(data.mapId);this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.interpolationMs=60;this.renderTime=null;this.targetInterpolationMs=60;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
+    this.decoder=new SnapshotDecoder(this.context);this.localEvents=[];this.prediction=new Prediction(data.mapId,event=>{this.localEvents.push(event);this.onLocalShot(event);},{predictShots:this.predictShots});this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.interpolationMs=Math.max(40,1000/(data.snapshotHz??20)+10);this.renderTime=null;this.targetInterpolationMs=this.interpolationMs;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
   }
-  acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0};}
+  acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0,viewTime:this.renderTime??(this.state?.time??0)-this.interpolationMs/1000,interpolationMs:this.interpolationMs};}
   binary(value){
     const bytes=new Uint8Array(value),now=performance.now();
     if(bytes[0]===MESSAGE.PONG){const r=new Reader(value);r.u8();const sample=now-r.f64();if(sample>=0&&sample<30000)this.rtt=this.rtt?this.rtt*.8+sample*.2:sample;return;}
@@ -145,9 +153,10 @@ export class Multiplayer{
     if(bytes[0]===MESSAGE.SNAPSHOT){
       const decodeBegin=performance.now(),result=this.decoder.decode(value);this.decodeMs=performance.now()-decodeBegin;if(result.missingBase){this.send(new Uint8Array([MESSAGE.RESYNC]));return;}
       const {frame,state,inputAck,sequence}=result;
+      if(this.awaitingResync&&(bytes[1]&1))this.awaitingResync=false;
       if(sequence<=this.snapshotAck)return;this.snapshotAck=sequence;this.latestInputAck=inputAck;
       if(this.lastArrival){const interval=now-this.lastArrival,expected=1000/(this.snapshotHz??20);this.jitter=this.jitter*.9+Math.abs(interval-expected)*.1;}
-      this.lastArrival=now;this.targetInterpolationMs=clamp(1000/(this.snapshotHz??20)+10+this.jitter*1.5,55,140);
+      this.lastArrival=now;this.targetInterpolationMs=clamp(1000/(this.snapshotHz??20)+10+this.jitter*1.5,40,140);
       for(const kind of ['players','vehicles'])for(const p of state[kind]){
         const key=kind+'/'+p.id,track=this.motion.get(key)??{samples:[]};
         // Every snapshot confirms the pose, including stationary entities.
@@ -158,24 +167,24 @@ export class Multiplayer{
       const aliveKeys=new Set([...state.players.map(p=>'players/'+p.id),...state.vehicles.map(v=>'vehicles/'+v.id)]);for(const key of this.motion.keys())if(!aliveKeys.has(key))this.motion.delete(key);
       this.frames.push({frame,state,arrival:now});while(this.frames.length>40)this.frames.shift();
       if(state.winner!=null)this.prediction.pending=[];
-      const own=state.players.find(p=>p.id===this.id);if(own)this.pendingAuthority={own,inputAck,vehicles:state.vehicles};
+      const own=state.players.find(p=>p.id===this.id);if(own)this.pendingAuthority={own,inputAck,vehicles:state.vehicles,time:state.time};
       this.state=state;this.publish();this.ackSoon();
     }else if(bytes[0]===MESSAGE.EVENTS){
       const decoded=decodeEvents(value,this.decoder.dict);for(const event of decoded.events)if(event.id>this.eventAck)this.events.push(event);
       this.eventAck=Math.max(this.eventAck,decoded.through);this.publish();this.ackSoon();
     }
   }
-  publish(){if(!this.state)return;this.events=this.events.filter(e=>e.time>this.state.time-1.3);this.state.events=this.events;this.onState(this.state);}
+  publish(){if(!this.state)return;this.events=this.events.filter(e=>e.time>this.state.time-1.3);this.state.events=this.events.map(event=>event.type==='shot'&&event.playerId===this.id&&this.prediction?.hasPlayed(event)?{...event,confirmedCosmetic:true}:event);this.onState(this.state);}
   ackSoon(){this.ackDirty=true;}
   sendInput(input,dt=INPUT_STEP){this.advance(input,dt);}
   reconcileLatest(){
     const pending=this.pendingAuthority;if(!pending)return;this.pendingAuthority=null;
-    const begin=performance.now();this.replayedInputs=this.prediction.pending.filter(f=>f.sequence>pending.inputAck).length;this.prediction.reconcile(pending.own,pending.inputAck,pending.vehicles);
+    const begin=performance.now();this.replayedInputs=this.prediction.pending.filter(f=>f.sequence>pending.inputAck).length;this.prediction.reconcile(pending.own,pending.inputAck,pending.vehicles,pending.time);
     this.correctionMs=performance.now()-begin;this.correctionDistance=Math.hypot(this.prediction.offset.x,this.prediction.offset.y,this.prediction.offset.z);
   }
   advance(input,dt){
     this.reconcileLatest();
-    if(this._phase!=='match'||this.state?.winner!=null||!this.prediction||this.ws?.readyState!==WebSocket.OPEN)return;
+    if(this._phase!=='match'||this.state?.winner!=null||!this.prediction||this.ws?.readyState!==WebSocket.OPEN||this.awaitingResync)return;
     this.input=sanitizeInput(input);
     const equipmentKey=this.input.weaponSlot+'/'+this.input.toolSlot;
     if(equipmentKey!==this.equipmentRequestKey){this.equipmentRequestKey=equipmentKey;this.equipmentRequestSequence=this.sequence+1;}
@@ -185,9 +194,8 @@ export class Multiplayer{
     while(this.accumulator>=INPUT_STEP&&count++<6){
       if(this.prediction.pending.length>=120){
         this.recoveries++;this.lastRecovery='Prediction backlog';
-        this.onStatus('Сервер задерживает подтверждение команд. Переподключение…');
-        // Browser close() only accepts 1000 or application codes 3000–4999.
-        this.ws.close(4001,'Prediction backlog');return;
+        this.onStatus('Сервер задерживает подтверждение команд. Восстанавливаем состояние…');
+        this.prediction.pending=[];this.sentSequence=this.sequence;this.awaitingResync=true;this.send(new Uint8Array([MESSAGE.RESYNC]));return;
       }
       const merged={...this.input,...this.pendingPulses,fire:this.input.fire||this.pendingFire};
       // Use exactly the quantized command the server receives, including angles.
@@ -224,7 +232,8 @@ export class Multiplayer{
     let left=this.frames[0],right=latest;
     for(let i=1;i<this.frames.length;i++)if(this.frames[i].frame.time>=target){left=this.frames[i-1];right=this.frames[i];break;}else left=this.frames[i];
     const span=right.frame.time-left.frame.time,alpha=span>0?clamp((target-left.frame.time)/span,0,1):1;
-    const a=left.state,b=right.state,render={...this.state,time:Math.max(0,target),events:this.events.filter(e=>e.time<=target+.001||(e.playerId===this.id&&e.type!=='rocketLaunch'&&e.type!=='explosion'))};
+    const a=left.state,b=right.state,render={...this.state,time:Math.max(0,target),events:this.events.filter(e=>e.time<=target+.001||(e.playerId===this.id&&e.type!=='rocketLaunch'&&e.type!=='explosion')).map(event=>event.type==='shot'&&event.playerId===this.id&&this.prediction.hasPlayed(event)?{...event,confirmedCosmetic:true}:event)};
+    render.events.push(...(this.localEvents??[]));this.localEvents=[];
     for(const kind of ['grenades']){
       const older=new Map(a[kind].map(p=>[p.id,p]));render[kind]=b[kind].map(p=>{
         const before=older.get(p.id);if(!before||before.alive!==p.alive||before.vehicleId!==p.vehicleId||Math.hypot(p.x-before.x,p.z-before.z)>8)return p;

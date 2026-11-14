@@ -8,6 +8,8 @@ import { thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSp
 import { findBotPath, prepareNavigation, beginNavigationTick } from './bot-navigation.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
+import {shotTrajectory,shotRandom,advanceFireClock,weaponSpread} from './fire-control.js';
+import {PoseHistory} from './pose-history.js';
 import { slideVelocity } from './movement.js';
 import { boxBounds, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
@@ -91,14 +93,6 @@ function rayCapsule(origin, direction, x, z, bottom, top, radius) {
   return nearest;
 }
 
-function weaponSpread(player) {
-  const weapon = getWeapon(player.classId, player.weaponId), input = player.input;
-  const movement = clamp(player.moveSpeed / weapon.speed, 0, 1);
-  return weapon.spread * (input.aim ? .24 : .66) * (crouching(player) ? .81 : 1)
-    * (1 + movement * (input.aim ? .85 : 1.3)) * (player.slideTime > 0 ? 1.45 : 1) * (player.grounded ? 1 : 2)
-    * (1 + player.bloom) * (player.bot ? 1.45 : 1);
-}
-
 function impactMaterial(kind) {
   if (kind === 'village-wood' || kind === 'village-awning' || kind === 'village-palm') return 'wood';
   if (kind === 'village-barrels') return 'metal';
@@ -123,8 +117,8 @@ function overlaps(a,b) {
 }
 
 export class Simulation {
-  constructor({ bots=23, difficulty='regular', mapId, random=Math.random, debugBots=false }={}) {
-    this.debugBots=debugBots;
+  constructor({ bots=23, difficulty='regular', mapId, random=Math.random, debugBots=false, lagCompensation=false }={}) {
+    this.debugBots=debugBots;this.poseHistory=lagCompensation?new PoseHistory():null;
     this.map=getMap(mapId);
     this.navigationHouses = this.map.theme === 'desert-village'
       ? this.map.structures.filter(structure => structure.kind.startsWith('village-house') || structure.kind === 'village-ruin')
@@ -610,13 +604,7 @@ export class Simulation {
     p.ammo--;p.shotSeq++;p.cooldown+=c.interval;
     const eye=crouching(p)?CROUCH_EYE_HEIGHT:EYE_HEIGHT;
     const origin=vehicle?getVehicleSeatPose(vehicle,p.vehicleSeat):{x:p.x,y:p.y+eye,z:p.z};
-    const angle = this.random() * Math.PI * 2;
-    const radius = Math.sqrt(this.random()) * weaponSpread(p);
-    const yaw = p.yaw + Math.cos(angle) * radius;
-    // Bots already aim along the compensated launch angle returned by aimBullet.
-    const scoped = Boolean(c.zeroRange && input.aim && !p.bot);
-    const borePitch = scoped ? zeroedBulletPitch(p.pitch, c.zeroRange, c.projectileSpeed) : p.pitch;
-    const pitch = borePitch + Math.sin(angle) * radius;
+    const {yaw,pitch,scoped}=shotTrajectory(p);
     p.lastShotAt = this.time;
     p.bloom = Math.min(1.25, p.bloom + (input.aim ? .16 : .23));
     this.launchBullet(p,c,origin,yaw,pitch,vehicle,scoped);
@@ -628,7 +616,7 @@ export class Simulation {
     if(vehicle.heat>=1)vehicle.overheated=true;
     vehicle.gunSeq++;
     const spread=TURRET_WEAPON.spread*(1+vehicle.heat*.6+Math.abs(vehicle.speed)*.034);
-    const angle=this.random()*Math.PI*2, radius=Math.sqrt(this.random())*spread;
+    const random=shotRandom(p.id,vehicle.gunSeq,'turret'),angle=random()*Math.PI*2,radius=Math.sqrt(random())*spread;
     const yaw=vehicle.aimYaw+Math.cos(angle)*radius,pitch=vehicle.aimPitch+Math.sin(angle)*radius;
     const origin=getVehicleSeatPose(vehicle,1);
     this.launchBullet(p,TURRET_WEAPON,origin,yaw,pitch,vehicle);
@@ -641,7 +629,7 @@ export class Simulation {
     this.event('shot',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,team:p.team,shotSeq,...origin,
       ...(trace||shotSeq%3===0?{...velocity,life}:{}),...(firingVehicle?{vehicleId:firingVehicle.id,mounted}:{})});
     this.bullets.push({...origin,...velocity,life,weapon,age:0,time:this.time,shotId:this.eventId,
-      playerId:p.id,team:p.team,vehicleId:firingVehicle?.id});
+      playerId:p.id,team:p.team,vehicleId:firingVehicle?.id,rewind:!p.bot?Math.max(0,Math.min(.2,p.shotRewind??0)):0});
   }
   updateBullets(){
     let active=0;
@@ -666,11 +654,13 @@ export class Simulation {
       const distance=rayBox(origin,direction,box,closest);
       if(distance<closest){closest=distance;impact=impactMaterial(box.kind);impactBox=box;}
     }
+    const rewindTime=this.time-(bullet.rewind??0);
+    const historicVehicle=v=>bullet.rewind&&this.poseHistory?{...v,...this.poseHistory.sample('vehicles',v.id,rewindTime)}:v;
     const glassHits=[];
     for(const v of this.vehicles){
       if(v.hp<=0&&!(v.wreckTime>0))continue;
-      for(const pane of rayVehicleGlass(origin,direction,v,closest))glassHits.push({vehicle:v,...pane});
-      const distance=rayVehicleArmor(origin,direction,v,closest);
+      for(const pane of rayVehicleGlass(origin,direction,historicVehicle(v),closest))glassHits.push({vehicle:v,...pane});
+      const distance=rayVehicleArmor(origin,direction,historicVehicle(v),closest);
       if(distance<closest){closest=distance;vehicle=v;impact='metal';}
     }
     for(const item of this.deployables){
@@ -684,17 +674,20 @@ export class Simulation {
     for(const other of this.players.values()){
       if(other.id===playerId||!other.alive||other.team===team)continue;
       suppressBot(this,other,bullet,origin,direction,Math.min(length,closest));
-      if(other.vehicleId){
-        const transport=this.vehicles.find(v=>v.id===other.vehicleId);
+      const historical=bullet.rewind&&this.poseHistory?this.poseHistory.sample('players',other.id,rewindTime):other;
+      if(!historical||historical.alive===false)continue;
+      const pose=historical;
+      if(pose.vehicleId){
+        const transportSource=this.vehicles.find(v=>v.id===pose.vehicleId),transport=transportSource&&historicVehicle(transportSource);
         if(!transport)continue;
-        const hit=rayVehicleCrew(origin,direction,transport,other.vehicleSeat,closest);
+        const hit=rayVehicleCrew(origin,direction,transport,pose.vehicleSeat,closest);
         if(hit.distance<closest){closest=hit.distance;target=other;headshot=hit.headshot;vehicle=null;equipment=null;}
         continue;
       }
-      if(other.x<minX||other.x>maxX||other.z<minZ||other.z>maxZ)continue;
-      const crouch=crouching(other),headY=other.y+(crouch?1.06:EYE_HEIGHT);
-      const head=raySphere(origin,direction,{x:other.x,y:headY,z:other.z},.15);
-      const body=rayCapsule(origin,direction,other.x,other.z,other.y+.26,other.y+(crouch?.79:1.25),.24);
+      if(pose.x<minX||pose.x>maxX||pose.z<minZ||pose.z>maxZ)continue;
+      const crouch=crouching(pose),headY=pose.y+(crouch?1.06:EYE_HEIGHT);
+      const head=raySphere(origin,direction,{x:pose.x,y:headY,z:pose.z},.15);
+      const body=rayCapsule(origin,direction,pose.x,pose.z,pose.y+.26,pose.y+(crouch?.79:1.25),.24);
       const hit=Math.min(head,body);
       if(hit<closest){closest=hit;target=other;headshot=head<body;vehicle=null;equipment=null;}
     }
@@ -918,13 +911,7 @@ export class Simulation {
       }
       if(!p.bot)selectGadget(this,p,i.toolSlot);
       const c=getWeapon(p.classId,p.weaponId);
-      const pressed = i.fire && !p.fireHeld;
-      p.fireHeld = i.fire;
-      // Carry the fractional tick remainder through a burst so cadence stays on spec.
-      const firing = !p.heldGadget && i.fire && !i.sprint && p.equipTime===0 && !i.gadget && !i.secondaryGadget && !(p.gadgetActionUntil>this.time);
-      const continuous = firing && (p.bot || !c.semiAuto) && !pressed && !p.reloading;
-      p.cooldown = Math.max(continuous ? -dt : 0, p.cooldown - dt);
-      p.bloom = Math.max(0, p.bloom - dt * (this.time - p.lastShotAt > .16 ? 3.6 : .4));
+      const {pressed,firing}=advanceFireClock(p,c,i,dt,this.time);
       p.gadgetTime=Math.max(0,p.gadgetTime-dt);p.grenadeCooldown=Math.max(0,(p.grenadeCooldown||0)-dt);
       if(p.vehicleId){
         p.slideTime=0;p.crouching=false;p.crouchHeld=i.crouch;p.wasSprinting=false;
@@ -959,6 +946,7 @@ export class Simulation {
       p.velocityX=(p.x-p.tickX)/dt;
       p.velocityZ=(p.z-p.tickZ)/dt;
     }
+    this.poseHistory?.capture(this.time,this.players,this.vehicles);
     this.updateBullets();
     for(const grenade of this.grenades){
       grenade.fuse-=dt;grenade.vy-=14*dt;
@@ -1033,7 +1021,7 @@ export class Simulation {
         id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,primaryWeaponId:p.primaryWeaponId,sidearmId:p.sidearmId,weaponSlot:p.weaponSlot,equipTime:p.equipTime,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
         hp:p.hp,alive:p.alive,reviveSeq:p.reviveSeq??0,orderKind:this.squadOrders?.get(p.team+'/'+p.squadId)?.kind??null,orderPointId:this.squadOrders?.get(p.team+'/'+p.squadId)?.pointId??null,squadId:p.squadId,squadLeader:p.squadLeader,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
-        shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
+        cooldown:p.cooldown,bloom:p.bloom,lastShotAt:p.lastShotAt,shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
         slideYaw:p.slideTime>0?Math.atan2(-p.slideVx,-p.slideVz):p.yaw,sprint:!p.vehicleId&&!crouching(p)&&p.input.sprint&&p.moveSpeed>wep.speed,
         aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
         gadgetCooldown:p.gadgetTime,secondaryCooldown:p.secondaryCooldown,rockets:p.rockets,heldGadget:p.heldGadget,
@@ -1042,7 +1030,7 @@ export class Simulation {
         vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,
         networkActive:p.alive&&(!p.grounded||this.time-(p.lastShotAt??-10)<.5),vy:p.vy,jumpFatigue:p.jumpFatigue??0,jumpCooldown:p.jumpCooldown??0,velocityX:p.velocityX,velocityZ:p.velocityZ,moveSpeed:p.moveSpeed,
         slideTime:p.slideTime,slideCooldown:p.slideCooldown,slideVx:p.slideVx,slideVz:p.slideVz,
-        controlFlags:(p.jumpHeld?1:0)|(p.crouchHeld?2:0)|(p.wasSprinting?4:0),
+        controlFlags:(p.jumpHeld?1:0)|(p.crouchHeld?2:0)|(p.wasSprinting?4:0)|(p.fireHeld?8:0),
       };
     });
     return {

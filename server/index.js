@@ -1,3 +1,4 @@
+import {validatedRewind} from '../shared/pose-history.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -17,7 +18,7 @@ const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 // One process, one in-memory room. Importing this module never opens a port.
 export function createGameServer(options={}){
   const env={...process.env,...options};
-  const config={port:bounded(env.PORT,0,65535,8080),tickHz:bounded(env.TICK_HZ,30,60,60),snapshotHz:bounded(env.SNAPSHOT_HZ,10,20,20),
+  const config={port:bounded(env.PORT,0,65535,8080),tickHz:bounded(env.TICK_HZ,30,60,60),snapshotHz:bounded(env.SNAPSHOT_HZ,10,30,30),
     maxPlayers:Math.floor(bounded(env.MAX_PLAYERS,2,7,7)),maxBots:Math.floor(bounded(env.MAX_BOTS,0,30,30)),defaultBots:Math.floor(bounded(env.BOTS,0,30,8)),
     reconnectMs:bounded(env.RECONNECT_SECONDS,5,120,30)*1000,emptyMs:bounded(env.EMPTY_ROOM_SECONDS,10,300,60)*1000};
   const tickSamples=new PerformanceSamples(600),loopSamples=new PerformanceSamples(600);
@@ -25,7 +26,8 @@ export function createGameServer(options={}){
   const clients=new Set(),sessions=new Map();let room=null,nextPlayer=0,timer=null,maintenance=null,previous=0,accumulator=0,snapshotClock=0,tick=0,stopping=false;
   const totals={bytes:0,messages:0,snapshots:0,snapshotBytes:0,ticks:0,tickMs:0,tickMaxMs:0,skippedSnapshots:0,overruns:0,droppedSeconds:0};
   let intervalStart=performance.now(),intervalBytes=0,intervalMessages=0,intervalTicks=0,intervalTickMs=0,intervalMax=0,lastCpu=process.cpuUsage(),lastMetrics={};
-  const stats=()=>({uptimeSeconds:Math.round(process.uptime()),room:room?{name:room.name,phase:room.phase,players:connected().length,bots:room.bots,mapId:room.mapId}:null,
+  let effectiveSnapshotHz=config.snapshotHz;
+  const stats=()=>({snapshotHz:effectiveSnapshotHz,uptimeSeconds:Math.round(process.uptime()),room:room?{name:room.name,phase:room.phase,players:connected().length,bots:room.bots,mapId:room.mapId}:null,
     ...lastMetrics,tickMs:tickSamples.summary(),loopDelayMs:loopSamples.summary(),totalBytes:totals.bytes,totalMessages:totals.messages,averageSnapshotBytes:totals.snapshots?Math.round(totals.snapshotBytes/totals.snapshots):0,
     tickLifetimeAverageMs:totals.ticks?+(totals.tickMs/totals.ticks).toFixed(3):0,tickLifetimeMaximumMs:+totals.tickMaxMs.toFixed(3),simulatedTicks:totals.ticks,
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
@@ -45,7 +47,7 @@ export function createGameServer(options={}){
   const wss=new WebSocketServer({noServer:true,maxPayload:8192,perMessageDeflate:false});
   server.on('upgrade',(req,socket,head)=>{
     if(stopping||req.url!=='/ws'||clients.size>=24||(origins.size&&!origins.has(req.headers.origin))){socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');socket.destroy();return;}
-    wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));
+    socket.setNoDelay(true);wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));
   });
   function connected(){return [...sessions.values()].filter(s=>s.client);}
   function send(c,data,kind='control'){
@@ -106,7 +108,7 @@ export function createGameServer(options={}){
     if(room){if(room.ownerId===s.id)room.ownerId=connected()[0]?.id??s.id;if(!connected().length){room.emptyAt=Date.now();stopLoop();}lobbyChanged();}
   }
   function startMatch(){
-    stopLoop();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId});
+    stopLoop();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId,lagCompensation:env.LAG_COMPENSATION!=='0'});
     sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.5;
     room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;
     for(const s of sessions.values())sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
@@ -122,10 +124,11 @@ export function createGameServer(options={}){
       for(const frame of packet.frames){
         if(frame.sequence<=s.inputReceived)continue;
         if(frame.sequence>s.inputReceived+512||frame.dt<.001||frame.dt>.05||s.inputQueue.length>=120)throw Error('Input queue invalid');
+        frame.rewindSeconds=validatedRewind(room.sim.time,s.encoder.history.get(packet.snapshotAck),packet.viewTime);
         frame.input=sanitizeInput(frame.input);s.inputReceived=frame.sequence;s.inputQueue.push(frame);
       }s.lastInput=Date.now();
     }else if(type===MESSAGE.ACK){if(r.u32()!==room.epoch)return;acknowledge(s,r.u32(),r.u32(),r.u16());r.done();}
-    else if(type===MESSAGE.RESYNC){r.done();s.encoder.ack=0;}
+    else if(type===MESSAGE.RESYNC){r.done();s.encoder.ack=0;s.inputQueue=[];s.credit=0;s.heldInput=null;room.sim.setInput(s.id,{});snapshot(s,preparedSnapshot(),true);}
     else throw Error('Unknown packet');
   }
   function preparedSnapshot(){const sim=room.sim;return room.prepared=prepareSnapshot(sim.snapshot(),sim.map.size,room.prepared);}
@@ -162,6 +165,7 @@ export function createGameServer(options={}){
         if(!controls)controls={...f.input};else{const prior=controls;controls={...f.input};for(const action of pulses)if(prior[action])controls[action]=true;}
         s.inputAck=f.sequence;s.heldInput=f.input;
       }
+      p.shotRewind=frames.at(-1)?.rewindSeconds??p.shotRewind??0;
       p.networkControlled=true;p.networkIdle=!s.client||now-s.lastInput>350;
       p.networkFrames=frames.length?frames:null;
       const orderFrame=frames.find(f=>f.input.order);
@@ -176,7 +180,7 @@ export function createGameServer(options={}){
     for(const e of sim.events)if(e.id>room.lastEvent){room.events.push(e);room.lastEvent=e.id;}
     while(room.events.length>4096||(room.events.length&&sim.time-room.events[0].time>12))room.eventFloor=room.events.shift().id;
     for(const s of connected())events(s,now);
-    if(snapshotClock>=1/config.snapshotHz){snapshotClock%=1/config.snapshotHz;const prepared=preparedSnapshot();for(const s of connected())snapshot(s,prepared);}
+    if(snapshotClock>=1/effectiveSnapshotHz){snapshotClock%=1/effectiveSnapshotHz;const prepared=preparedSnapshot();for(const s of connected())snapshot(s,prepared);}
     if(sim.winner!==null&&!room.ended){room.ended=true;const final=preparedSnapshot();for(const s of connected())snapshot(s,final);roomsChanged();}
     const elapsed=performance.now()-begin;tickSamples.add(elapsed);totals.ticks++;totals.tickMs+=elapsed;totals.tickMaxMs=Math.max(totals.tickMaxMs,elapsed);intervalTicks++;intervalTickMs+=elapsed;intervalMax=Math.max(intervalMax,elapsed);
   }
@@ -243,6 +247,7 @@ export function createGameServer(options={}){
       lastMetrics={bytesPerSecond:Math.round(intervalBytes/elapsed),messagesPerSecond:+(intervalMessages/elapsed).toFixed(1),tickAverageMs:intervalTicks?+(intervalTickMs/intervalTicks).toFixed(3):0,tickMaximumMs:+intervalMax.toFixed(3),cpuCorePercent:+((cpu.user+cpu.system)/1e6/elapsed*100).toFixed(1),rssBytes:process.memoryUsage().rss};
       for(const s of sessions.values()){s.bps=Math.round(s.intervalBytes/elapsed);s.intervalBytes=0;}
       intervalStart=performance.now();intervalBytes=intervalMessages=intervalTicks=intervalTickMs=intervalMax=0;
+      if(config.snapshotHz>20){if(lastMetrics.tickAverageMs>4)effectiveSnapshotHz=20;else if(lastMetrics.tickAverageMs<3)effectiveSnapshotHz=config.snapshotHz;}
       if(env.LOG_METRICS==='1'&&room?.sim)console.log(JSON.stringify({type:'metrics',...lastMetrics}));
     }
   },1000);maintenance.unref();

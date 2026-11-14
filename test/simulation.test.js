@@ -129,14 +129,15 @@ test('ordered squad bots spread around the objective without combat distractions
 test('a full bot round remains finite, navigates the map, and reaches a winner',()=>{
   let seed=1;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   const sim=new Simulation({bots:24,random});const visited=new Map([...sim.players.keys()].map(id=>[id,new Set()]));
-  for(let tick=0;tick<36000&&sim.winner===null;tick++){
+  const duration=sim.snapshot().roundDuration;
+  for(let tick=0;tick<(duration+1)*60&&sim.winner===null;tick++){
     sim.step(1/60);
     for(const p of sim.players.values()){
       assert([p.x,p.y,p.z,p.hp].every(Number.isFinite));assert(Math.abs(p.x)<=MAP.size/2&&Math.abs(p.z)<=MAP.size/2);
       visited.get(p.id).add(`${Math.floor(p.x/10)},${Math.floor(p.z/10)}`);
     }
   }
-  assert.notEqual(sim.winner,null);assert(sim.time>200&&sim.time<600);assert([...visited.values()].every(cells=>cells.size>15));
+  assert.notEqual(sim.winner,null);assert(sim.time>200&&sim.time<=961);assert([...visited.values()].every(cells=>cells.size>15));
   assert([...sim.players.values()].reduce((sum,p)=>sum+p.kills,0)>50);
 });
 test('snapshots do not leak mutable player state',()=>{
