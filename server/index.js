@@ -1,7 +1,8 @@
 import {validatedRewind} from '../shared/pose-history.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import http from 'node:http';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import {canReadMetrics} from './metrics-access.js';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput, sanitizeSpawnPoint } from '../shared/simulation.js';
@@ -35,11 +36,7 @@ export function createGameServer(options={}){
   const server=http.createServer((req,res)=>{
     if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
-      const expected=env.METRICS_TOKEN,received=(req.headers.authorization??'').replace(/^Bearer /,'');
-      const local=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-      const expectedBytes=Buffer.from(expected??''),receivedBytes=Buffer.from(received);
-      const authorized=expected?receivedBytes.length===expectedBytes.length&&timingSafeEqual(receivedBytes,expectedBytes):local;
-      if(!authorized){res.writeHead(403);res.end('Forbidden');return;}
+      if(!canReadMetrics(req,env)){res.writeHead(403);res.end('Forbidden');return;}
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(stats()));return;
     }
     res.writeHead(404,{'Content-Type':'text/plain'});res.end('SECTOR 09 game server. WebSocket: /ws');

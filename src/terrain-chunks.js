@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import {MeshoptSimplifier} from 'meshoptimizer/simplifier';
+await MeshoptSimplifier.ready;
 
 // Partition the original indexed grid AFTER roads have attached UV1/materials.
 // Copy original normals/UVs verbatim: no terrain seams or appearance changes.
-export function partitionTerrain(parent, geometry, cells = 24) {
+export function partitionTerrain(parent, geometry, cells = 48) {
   const meshes=parent.children.filter(o=>o.isMesh&&o.geometry===geometry);
   const width=geometry.parameters.widthSegments,height=geometry.parameters.heightSegments;
   for(let z=0;z<height;z+=cells)for(let x=0;x<width;x+=cells){
@@ -20,6 +22,11 @@ export function partitionTerrain(parent, geometry, cells = 24) {
       const a=j*(w+1)+i,b=a+w+1;indices.push(a,b,a+1,b,b+1,a+1);
     }
     chunk.setIndex(indices);chunk.computeBoundingSphere();chunk.userData.owned=true;
+    const positions=chunk.attributes.position.array,scale=MeshoptSimplifier.getScale(positions,3);
+    // Keep every boundary vertex: neighbouring chunks still meet exactly.
+    // Interior vertices may be removed only within a 5 mm geometric bound.
+    const [reduced,error]=MeshoptSimplifier.simplify(Uint32Array.from(indices),positions,3,Math.max(6,Math.floor(indices.length*.15/3)*3),.005/Math.max(scale,1),['LockBorder']);
+    chunk.setIndex(new THREE.BufferAttribute(reduced,1));chunk.userData.terrainError=error*scale;
     for(const mesh of meshes){const tile=new THREE.Mesh(chunk,mesh.material);
       tile.position.copy(mesh.position);tile.rotation.copy(mesh.rotation);tile.scale.copy(mesh.scale);
       tile.receiveShadow=mesh.receiveShadow;tile.castShadow=mesh.castShadow;tile.renderOrder=mesh.renderOrder;

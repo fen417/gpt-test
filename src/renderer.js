@@ -1,3 +1,4 @@
+import {batchStaticWorld} from './static-batching.js';
 ﻿import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
 import {soldierAssetKey,soldierAssetState,requestSoldierAsset} from './soldier-assets.js';
@@ -56,8 +57,12 @@ function boundedPointLights(shader) {
     .replace('#include <lights_fragment_begin>', boundedLightFragment);
 }
 
-function optimizeLighting(object) {
-  if ((object.material?.isMeshStandardMaterial||object.material?.isMeshLambertMaterial)) object.material.onBeforeCompile = boundedPointLights;
+const optimizedLighting=new WeakSet();
+export function optimizeLighting(object) {
+  const material=object.material;
+  if (!(material?.isMeshStandardMaterial||material?.isMeshLambertMaterial)||optimizedLighting.has(material))return;
+  optimizedLighting.add(material);const previous=material.onBeforeCompile;
+  material.onBeforeCompile=(shader,renderer)=>{previous.call(material,shader,renderer);boundedPointLights(shader);};
 }
 
 function detectIntegratedGpu(renderer) {
@@ -532,9 +537,12 @@ export class GameRenderer {
     this.staticRoot.traverse(mesh=>{
       if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material))return;
       const source=mesh.material._highMaterial??mesh.material;
+      if(source.userData.groundShadowPatched)return;
       if(!shadowMaterials.has(source)){
         const high=source.clone(),low=(source._lowMaterial??source).clone();
         high.onBeforeCompile=source.onBeforeCompile;low.onBeforeCompile=(source._lowMaterial??source).onBeforeCompile;
+        high.customProgramCacheKey=source.customProgramCacheKey;low.customProgramCacheKey=(source._lowMaterial??source).customProgramCacheKey;
+        if(source.roadMask)high.roadMask=low.roadMask=source.roadMask;
         pairMaterials(high,low);this.groundShadows.apply(high);this.groundShadows.apply(low);shadowMaterials.set(source,high);
       }
       mesh.material=shadowMaterials.get(source);
@@ -681,29 +689,7 @@ export class GameRenderer {
   }
 
   mergeStaticWorld(existing) {
-    // Batch immutable map details by material, keeping animated flags separate.
-    this.scene.updateMatrixWorld(true);
-    const dynamic = new Set([...this.flags.values()].map(f => f.group));
-    const batches = new Map();
-    for (const root of this.scene.children) if (!existing.has(root)) root.traverse(object => {
-      if (!object.isMesh || object.isInstancedMesh || object.userData.noBatch || Array.isArray(object.material)) return;
-      for (let node = object; node; node = node.parent) if (dynamic.has(node) || node === this.camera) return;
-      const sector = mapSector(object.matrixWorld, this.map?.id==='village'?32:96);
-      const key = `${object.material.uuid}:${object.castShadow}:${object.receiveShadow}:${!!object.geometry.index}:${sector}`;
-      if (!batches.has(key)) batches.set(key, []);
-      batches.get(key).push(object);
-    });
-    for (const meshes of batches.values()) {
-      if (meshes.length < 2) continue;
-      const sources = meshes.map(mesh => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
-      const geometry = mergeGeometries(sources, false);
-      sources.forEach(source => source.dispose());
-      if (!geometry) continue;
-      geometry.computeBoundingSphere();
-      const combined = new THREE.Mesh(geometry, meshes[0].material);
-      combined.castShadow = meshes[0].castShadow; combined.receiveShadow = meshes[0].receiveShadow;
-      meshes.forEach(mesh => { mesh.removeFromParent(); if (mesh.geometry.userData.owned) mesh.geometry.dispose(); }); this.scene.add(combined);
-    }
+    batchStaticWorld(this.scene,{excluded:new Set([...existing,...[...this.flags.values()].map(f=>f.group),this.camera]),sectorSize:this.staticSectorSize??96});
   }
 
   makeFlag(point) {
@@ -1058,7 +1044,7 @@ export class GameRenderer {
         this.explosionVisual(event,state);
       }
     }
-    while (this.seenEvents.size > 900) {
+    while (this.seenEvents.size > 8192) {
       this.seenEvents.delete(this.seenEvents.keys().next().value);
     }
   }
@@ -1506,7 +1492,7 @@ export class GameRenderer {
     if(!menu)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
     try{this.postPass.begin();drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.lowQuality?'low':'high');}
-    finally{if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
+    finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
   }
 
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
@@ -1831,7 +1817,7 @@ export class GameRenderer {
     this.drawScene();
   }
 
-  getStats() { return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
+  getStats() { return { shadowsEnabled:this.renderer.shadowMap.enabled,shadowMode:this.gfx.shadows,worldCalls:this.renderer.info.worldRender?.calls,worldTriangles:this.renderer.info.worldRender?.triangles, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
 
   project(x, y, z) {
     const position = this.scratchPosition.set(x, y, z).project(this.camera);

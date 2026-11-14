@@ -14,7 +14,11 @@ export class SimulatedSocket {
     const at=Math.max(now+delay,this.pausedUntil,this[lane]);this[lane]=at+.01;
     const queue=this.lanes[lane];queue.push({at,callback});if(queue.length===1)this.arm(lane);
   }
-  arm(lane){const queue=this.lanes[lane];if(!queue.length)return;const timer=setTimeout(()=>{this.timers.delete(timer);queue.shift().callback();this.arm(lane);},Math.max(0,queue[0].at-performance.now()));this.timers.add(timer);}
+  arm(lane){const queue=this.lanes[lane];if(!queue.length)return;const timer=setTimeout(()=>{
+    this.timers.delete(timer);let remaining=256;
+    while(queue.length&&queue[0].at<=performance.now()&&remaining-->0)queue.shift().callback();
+    this.arm(lane);
+  },Math.max(0,queue[0].at-performance.now()));this.timers.add(timer);}
   send(data){
     const copy=typeof data==='string'?data:data.slice(0),bytes=typeof copy==='string'?new TextEncoder().encode(copy).byteLength:copy.byteLength;this.queueBytes+=bytes;
     this.schedule('sentAt',()=>{this.queueBytes-=bytes;if(this.readyState===1)this.socket.send(copy);});

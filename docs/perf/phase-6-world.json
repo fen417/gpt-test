@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "method": "All static meshes, no frustum/occlusion culling, no actors/viewmodel/shadow passes. Composition counts, not FPS.",
+  "maps": [
+    {
+      "mapId": "port",
+      "meshes": 238,
+      "materialDraws": 238,
+      "triangles": 151958,
+      "terrainTriangles": 0,
+      "maxTerrainReportedError": 0
+    },
+    {
+      "mapId": "quarry",
+      "meshes": 619,
+      "materialDraws": 619,
+      "triangles": 377442,
+      "terrainTriangles": 0,
+      "maxTerrainReportedError": 0
+    },
+    {
+      "mapId": "village",
+      "meshes": 217,
+      "materialDraws": 217,
+      "triangles": 365744,
+      "terrainTriangles": 70456,
+      "maxTerrainReportedError": 0.0049947003135457635
+    }
+  ]
+}

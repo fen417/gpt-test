@@ -38,6 +38,7 @@ export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot){
   renderer.info.autoReset=false;renderer.info.reset();
   try{
     renderer.autoClear=true;camera.layers.set(0);renderer.render(scene,camera);
+    if(renderer.info.render)renderer.info.worldRender={...renderer.info.render};
     if(weapon?.visible){
       // A solid scene background forces Three.js to clear color even with autoClear off.
       scene.background=null;

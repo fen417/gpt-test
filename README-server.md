@@ -13,7 +13,7 @@
    ```text
    PORT=8080
    TICK_HZ=60
-   SNAPSHOT_HZ=20
+   SNAPSHOT_HZ=30
    MAX_PLAYERS=7
    BOTS=8
    MAX_BOTS=30
@@ -63,7 +63,7 @@ Value: wss://ВАШ-ДОМЕН.code.run/ws
 | Параметр | Значение по умолчанию | Границы |
 |---|---:|---|
 | `TICK_HZ` | 60 | 30–60 Гц, независимо от сети |
-| `SNAPSHOT_HZ` | 20 | 10–20 Гц |
+| `SNAPSHOT_HZ` | 30 | 10–30 Гц; автоматический переход к 20 Гц при нагрузке |
 | Команды клиента | 60 шагов/с | Упаковка примерно в 30 сообщений/с |
 | Реальные игроки | 7 | 2–7 |
 | Боты | 8 | 0–30, либо меньше через `MAX_BOTS` |
@@ -101,7 +101,7 @@ JSON.parse(document.getElementById('game').dataset.networkStats)
 
 ## Фактический трафик и CPU
 
-`GET /metrics` требует `Authorization: Bearer METRICS_TOKEN`. Если секрет не задан, доступ разрешён только с loopback внутри контейнера. Endpoint не публикует токены игроков. Есть:
+`GET /metrics` требует `Authorization: Bearer METRICS_TOKEN`. Без секрета endpoint закрыт. Для прямого локального запуска можно явно задать `METRICS_ALLOW_LOCAL=1`; запросы с заголовками прокси при этом отклоняются. За обратным прокси задавайте токен и оставляйте локальный обход выключенным: loopback-адрес может принадлежать публичному прокси. Endpoint не публикует токены игроков. Есть:
 
 - `bytesPerSecond`, `messagesPerSecond`, `totalBytes`, `totalMessages`;
 - `averageSnapshotBytes`, `skippedSnapshots`, `overruns`;

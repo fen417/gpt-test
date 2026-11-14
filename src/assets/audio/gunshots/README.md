@@ -25,3 +25,5 @@ node scripts/prepare-gunshot-assets.mjs C:/path/to/extracted/curated
 The source archive and unused recordings are not shipped with the game.
 
 The 0.15 M2010 replacements are reproduced with scripts/prepare-combat-audio.mjs. DMR reports have a shorter, higher-pitched tail; SV-98 retains the longer field reflection. Offline loudness mastering retains true-peak headroom. The older prepare-gunshot-assets script reproduces the pre-0.15 sniper assets.
+
+Runtime WAV masters were moved to `art-source/audio/` and encoded as Opus with AAC fallback by `scripts/prepare-runtime-audio.mjs`. Source attribution and licensing above apply to these derived files. Existing Ogg foley sources are retained.

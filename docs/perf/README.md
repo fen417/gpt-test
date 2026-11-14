@@ -40,3 +40,9 @@ Final local run on Node v24.22.1: **59/59 tests passed**, 17.23 s. The three add
 `development-port-high.json` contains a 112-sample browser smoke recording: stationary player at the port spawn, 31 bots, high quality, 1101×883 viewport. The GPU extension and download both worked; no browser errors were captured. This is validation of collection/export only, not the six-map/quality route matrix or an FPS improvement claim. The CPU profile was recorded while this browser smoke test overlapped, so its timings must not be compared with the isolated server baseline. It still points to `pathJob` (17.4% self time) as a later investigation target.
 
 Remaining acceptance work before graphics tuning: record three maps × low/high on HD 610 at 1366×768 and a comparable moving route on the development PC. Check the public GitHub Actions run after pushing; local tests do not establish hosted CI success.
+
+## Current implementation and limits
+
+Ordered phase results, measured regressions, tradeoffs and remaining hardware acceptance are in [implementation-status.md](implementation-status.md). Reproduce composition with `node scripts/measure-world.mjs`; it counts the complete static scene, not visible draw calls or FPS. Normal `npm run build` now enforces initial-JS/audio transfer budgets and verifies that solo authority is bundled as a Worker. Bundle reports are CI artifacts.
+
+Three is pinned to 0.181.2 because CachedShadows patches shadow rendering internals. Updating it requires the Node regression suite plus a real browser shadow/context-loss render check. The hardware FPS/visual/audio acceptance matrix remains a separate requirement; successful CI does not establish HD 610 performance or subjective online audio quality.

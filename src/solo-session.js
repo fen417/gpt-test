@@ -3,9 +3,10 @@ import { decodeControl,encodeControl } from '../shared/snapshot-codec.js';
 import { PROTOCOL_VERSION,MAP_LAYOUT_REVISION } from '../shared/world.js';
 
 export class SoloSession {
-  constructor(options,{onState=()=>{},onLocalShot=()=>{},WorkerClass=globalThis.Worker}={}){
+  constructor(options,{onState=()=>{},onLocalShot=()=>{},WorkerClass}={}){
     this.client=new Multiplayer({onLocalShot});this.client.id='local';this.client.token='solo';this.paused=true;
-    this.worker=new WorkerClass(new URL('./solo-worker.js',import.meta.url),{type:'module'});
+    // Keep the literal Worker constructor so Vite bundles the worker imports.
+    this.worker=WorkerClass?new WorkerClass(new URL('./solo-worker.js',import.meta.url),{type:'module'}):new Worker(new URL('./solo-worker.js',import.meta.url),{type:'module'});
     this.ready=new Promise((resolve,reject)=>{this.resolveReady=resolve;this.rejectReady=reject;});
     this.readyTimer=setTimeout(()=>this.rejectReady(Error('Симуляция не ответила при загрузке.')),15000);
     this.client.ws={readyState:1,bufferedAmount:0,send:data=>{if(typeof data==='string')this.worker.postMessage(data);else{const copy=data.slice();this.worker.postMessage(copy.buffer,[copy.buffer]);}},close:()=>this.worker.terminate()};

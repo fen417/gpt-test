@@ -10,7 +10,7 @@ export class GroundShadows {
   }
   apply(material){
     if(!material?.isMaterial||material.userData.groundShadowPatched)return;
-    material.userData.groundShadowPatched=true;const previous=material.onBeforeCompile;
+    material.userData.groundShadowPatched=true;const previous=material.onBeforeCompile,previousKey=material.customProgramCacheKey();
     material.onBeforeCompile=(shader,renderer)=>{
       previous.call(material,shader,renderer);Object.assign(shader.uniforms,this.uniforms);
       shader.vertexShader='varying vec2 bakedWorldXZ;\n'+shader.vertexShader.replace('#include <project_vertex>',`vec4 bakedPosition=vec4(transformed,1.0);
@@ -28,7 +28,7 @@ export class GroundShadows {
         float detail=sin(bakedWorldXZ.x*43.0)*sin(bakedWorldXZ.y*39.0);
         diffuseColor.rgb*=1.0+detail*0.018;`);
     };
-    material.customProgramCacheKey=()=>`ground-shadow-v1-${material.type}`;material.needsUpdate=true;
+    material.customProgramCacheKey=()=>`ground-shadow-v1-${material.type}-${previousKey}`;material.needsUpdate=true;
   }
   dispose(){for(const texture of this.textures.values())texture.dispose();}
 }

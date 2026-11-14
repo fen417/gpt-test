@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "createdAt": "2026-11-14T13:43:18.296Z",
+  "initialJsGzipBytes": 511847,
+  "audioBytes": 2440042,
+  "budgets": {
+    "initialJsGzipBytes": 700000,
+    "audioBytes": 2500000
+  },
+  "initial": [
+    {
+      "file": "assets/game-5QzDMCxq.js",
+      "bytes": 348714,
+      "gzipBytes": 142204
+    },
+    {
+      "file": "assets/modulepreload-polyfill-B5Qt9EMX.js",
+      "bytes": 711,
+      "gzipBytes": 399
+    },
+    {
+      "file": "assets/renderer-DGe_kqM3.js",
+      "bytes": 239863,
+      "gzipBytes": 96335
+    },
+    {
+      "file": "assets/vendor-three-DcqrMhLo.js",
+      "bytes": 654593,
+      "gzipBytes": 180169
+    },
+    {
+      "file": "assets/soldier-Cl0Toz6P.js",
+      "bytes": 151844,
+      "gzipBytes": 73572
+    },
+    {
+      "file": "assets/vendor-meshopt-C-EjcZg-.js",
+      "bytes": 53605,
+      "gzipBytes": 19168
+    }
+  ],
+  "pass": true
+}

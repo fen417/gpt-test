@@ -44,14 +44,6 @@ Measurement against the same protocol-26/history-enabled scenario: step p99 port
 
 Validation: exact route equivalence, existing authoritative network checks, real Node worker-thread loopback construction/movement/pause/squad test and production worker bundle. Full suite initially exposed timer reordering in the development jitter simulator; per-direction FIFO dispatch fixed it, then all nine combat/network focused checks passed. Final unified suite is rerun in phase 6.
 
-## Remaining ordered phases
-
-2. Single post pass, inexpensive static ground shadows, texture/material presets.
-3. Authoritative lag compensation, immediate local cosmetic firing, deterministic spread, resilient snapshot timing.
-4. Measured navigation/encoding allocation reduction, solo worker and bounded catch-up.
-5. External binary assets, bundle/audio budgets, loading and audio-thread cost.
-6. Version/dependency/metrics audit and final regression checks.
-
 ## Phase 5
 
 - External gzip binaries replace 1.9 MB of base64 hand literals. All source bytes match the eight original poses. Original authoring data and attribution remain in art-source; fetch/decompression is cached and uses native streams with a small lazy fallback.
@@ -61,3 +53,18 @@ Validation: exact route equivalence, existing authoritative network checks, real
 - One 0.7-second convolution replaces two 1.8-second convolutions, with independent volume sends and complete reverb disconnection on low. Existing voice limits, deduplication and smooth loop release remain. Automated tests verify reconnect/disconnect and fallback decoding; actual audio-thread CPU and perceived crackle require listening on the target device.
 
 Validation: production build and size budgets passed; binary/rig equivalence tests and all eight audio tests passed. See phase-5-soldiers.json and phase-5-size.json. All runtime asset generation commands are in package.json; regenerated assets are committed so normal npm ci/build does not run authoring tools.
+
+## Phase 6
+
+- Pinned Three to the already-used 0.181.2 patch. CachedShadows installation/uninstallation is covered by a regression test; it deliberately depends on Three's shadow internals. On upgrades, rerun a real WebGL shadow/context-loss check. A forced context loss/restore was not exercised in this environment.
+- Metrics are denied by default without a token, including loopback peers which may be reverse proxies. Explicit METRICS_ALLOW_LOCAL=1 permits only direct local requests without forwarding headers; keep it disabled behind proxies. Constant-time bearer validation remains. Added direct/proxy/spoofed-address tests; no client secret is introduced.
+- Preserved deterministic firearm spread and documented the one-room/7-human/30-bot server boundary. Synchronized snapshot settings, protocol 26, current controls, Node 24 and deployment/budget documentation.
+- Fixed a composed shader hook being overwritten by point-light optimization; kept distinct program cache keys for road/ground shadow variants. Prevented repeated ground-material clones on map revisits. Idle far soldiers no longer walk in place.
+- Fixed UI clicks incorrectly restarting the anti-misfire timer, and a stale solo setInput call after moving authority to Worker. Production browser testing caught a Worker bundling failure hidden by the development server: the literal Worker constructor now makes Vite bundle all shared imports. Build checks reject a missing worker chunk.
+- Follow-up to the measured village draw-call overrun: static opaque surfaces now batch across paint colours using exact linear vertex colours, retaining geometry groups, materials, transforms and negative-scale winding. Terrain uses larger seamless chunks with locked borders, a 5 mm simplifier error target, and road colour blending in the ground pass instead of a duplicate transparent terrain pass. The count for the entire static village is 1372 meshes / 660104 triangles before this follow-up, versus 217 / 365744 afterward. This counts every mesh without visibility culling and excludes actors/viewmodels/shadow passes; it is not an FPS result. Full composition for each map is in phase-6-world.json.
+
+Validation so far: 81/81 Node 24 tests; production build and asset budgets pass. Real production browser startup caught and resolved issues missed by unit tests. Target HD 610 and a matched moving-route GPU comparison are unavailable, so frame time and universal ≤300 draws / ≤250k triangle acceptance remain open. High shadows count extra draws/triangles; arbitrary camera positions and crowded near spawns can exceed the proposed budgets. No claim that all rendering or GC budgets are met. Mounted-turret cosmetics remain server-confirmed; no flow fields or uniform-only team geometry replacement was added where the measured/code-preservation tradeoff did not justify it.
+
+Final local verification: 81/81 tests passed on Node v24.22.1 (26.58 s). Build: 511847 bytes of initial JS gzip and 2440042 bytes of all runtime audio, both within budget; see phase-6-size.json. Port, quarry and village production startup, quality changes, pause/clear controls and returning to the menu were exercised. Final client console had no captured errors after the identified fixes. Background-browser throttling produced one-second frames, so these UI runs do not constitute FPS measurements. The observed village view still exceeded the proposed draw/triangle limits (about 329 calls / 416k triangles with actors/viewmodel); these targets remain explicitly unfulfilled, rather than being inferred from reduced static counts.
+
+Isolated final authority benchmark (30 bots, 7 active synthetic humans, 60 Hz; 20 Hz encoding for baseline comparability): step p99 port/quarry/village 2.660 / 3.552 / 3.425 ms; max 7.749 / 20.101 / 6.986 ms. The p99 target passes on this PC; the quarry maximum does not. Reports retain that warning. This does not establish the same limits on a 0.5-vCPU hosted instance. Public server health before publishing still advertised protocol 25; client and server must move together to 26.

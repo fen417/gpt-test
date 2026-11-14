@@ -11,6 +11,8 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GameRenderer} from '../src/renderer.js';
+import {loadFPSHands} from '../src/fps-hands.js';
+await loadFPSHands();
 const canvas=document.getElementById('review'),owner=new GameRenderer(canvas),webgl=owner.renderer;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x17252b);scene.environment=owner.scene.environment;scene.environmentIntensity=.7;
 const camera=new THREE.PerspectiveCamera(43,1,.025,50),controls=new OrbitControls(camera,canvas);camera.layers.enable(1);controls.enableDamping=true;controls.minDistance=.35;controls.maxDistance=7;controls.target.set(0,1,0);

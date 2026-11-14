@@ -249,7 +249,7 @@ document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('#mus
 document.addEventListener('keydown',event=>{if(!event.target.closest?.('#music-toggle'))unlockAudio();},{once:true});
 function local(){return state?.players.find(p=>p.id===localId);}
 function setBusy(value){busy=value;for(const id of ['solo','open-solo','host','join-toggle'])$(id).disabled=value;}
-function clearControls(){keys.clear();pulses.clear();fire=false;fireTap=false;aim=false;recoilPitch=0;recoilYaw=0;if(active&&localId){const neutral={yaw,pitch};simulation?.setInput(localId,neutral);multiplayer.clearInput(neutral);}}
+function clearControls(){keys.clear();pulses.clear();fire=false;fireTap=false;aim=false;recoilPitch=0;recoilYaw=0;if(active&&localId){const neutral={yaw,pitch};simulation?.client.clearInput(neutral);multiplayer.clearInput(neutral);}}
 function aimAngles(){
   return { yaw:yaw+recoilYaw, pitch:Math.max(-1.45,Math.min(1.45,pitch+recoilPitch)) };
 }
@@ -494,7 +494,7 @@ function receive(next){
     if(event.type==='squadOrder'&&event.playerId===localId)toast(event.kind==='follow'?'ОТРЯД · СЛЕДОВАТЬ ЗА МНОЙ':`ОТРЯД · ${event.kind==='defend'?'ОБОРОНЯТЬ':'ЗАХВАТИТЬ'} ${event.pointId??''}`);
     if(event.type==='revive'&&event.playerId===localId)toast('ТЕБЯ ВОСКРЕСИЛИ · Нажми на игру, чтобы продолжить');
   }
-  while(seen.size>900)seen.delete(seen.keys().next().value);
+  while(seen.size>8192)seen.delete(seen.keys().next().value);
   // Immediate local handling stays responsive; remote/projectile events use
   // the same presentation clock as their visuals below.
   audio.events({...state,events:state.events?.filter(e=>e.playerId===localId&&e.type!=='explosion'&&e.type!=='rocketLaunch')},player,{immediate:true});
@@ -699,7 +699,7 @@ document.addEventListener('wheel',event=>{
   event.preventDefault();
   scopeZoom=Math.max(6,Math.min(12,scopeZoom-Math.sign(event.deltaY)));
 },{passive:false});
-document.addEventListener('mousedown',event=>{if(event.button===0&&active)lastFireClick=performance.now();if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
+document.addEventListener('mousedown',event=>{if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){lastFireClick=performance.now();fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{

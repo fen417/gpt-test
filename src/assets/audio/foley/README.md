@@ -25,3 +25,5 @@ Rocket Launch Pack by **dklon**, https://opengameart.org/content/rocket-launch-p
 Reproduce with scripts/prepare-combat-audio.mjs (staging directory and ffmpeg path arguments).
 
 The flight loop uses a moving 3D sound source with distance attenuation and Doppler pitch. Launch/snapshot tracking keeps it alive until the corresponding explosion or the rocket's four-second lifetime, including between snapshots and outside snapshot interest range. The authored crossfade is preserved rather than adding a dip at each loop seam.
+
+Runtime WAV masters were moved to `art-source/audio/` and encoded as Opus with AAC fallback by `scripts/prepare-runtime-audio.mjs`. Source attribution and licensing above apply to these derived files. Existing Ogg foley sources are retained.

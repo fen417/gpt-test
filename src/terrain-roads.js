@@ -70,23 +70,22 @@ export function terrainRoads(owner, ground, span, roads, source, color) {
     uv1[i * 2 + 1] = positions.getY(i) / span + .5;
   }
   ground.geometry.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
-  const material = clonePairedMaterial(source, color);
+  const material = clonePairedMaterial(source, source.color);
+  const tint=new THREE.Color(color),multiplier=new THREE.Vector3(tint.r/Math.max(source.color.r,.00001),tint.g/Math.max(source.color.g,.00001),tint.b/Math.max(source.color.b,.00001));
+  ground.geometry.setAttribute('roadUv',new THREE.BufferAttribute(uv1,2));
   for (const m of [material, material._lowMaterial]) if (m) {
-    m.alphaMap = mask;
-    m.transparent = true;
-    m.depthWrite = false;
-    m.alphaTest = .015;
-    m.polygonOffset = true;
-    m.polygonOffsetFactor = -1;
-    m.polygonOffsetUnits = -2;
+    const previous=m.onBeforeCompile;
+    m.onBeforeCompile=(shader,renderer)=>{
+      previous.call(m,shader,renderer);shader.uniforms.roadMask={value:mask};shader.uniforms.roadMultiplier={value:multiplier};
+      shader.vertexShader='attribute vec2 roadUv;varying vec2 bakedRoadUv;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nbakedRoadUv=roadUv;');
+      shader.fragmentShader='uniform sampler2D roadMask;uniform vec3 roadMultiplier;varying vec2 bakedRoadUv;\n'+shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=mix(vec3(1.0),roadMultiplier,texture2D(roadMask,bakedRoadUv).g);');
+    };
+    m.customProgramCacheKey=()=>`terrain-road-v1-${m.type}`;
+    m.userData.roadMask=mask.uuid;m.userData.roadMultiplier=multiplier.toArray();
+    // Disposal discovers the custom sampler through this non-shader field.
+    m.roadMask=mask;
   }
-  const overlay = new THREE.Mesh(ground.geometry, material);
-  overlay.rotation.copy(ground.rotation);
-  overlay.position.copy(ground.position);
-  overlay.receiveShadow = true;
-  overlay.userData.noBatch = true;
-  overlay.renderOrder = 1;
-  owner.scene.add(overlay);
+  ground.material=material;
   const update = nextRoads => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);

@@ -62,8 +62,11 @@ for(const delayMs of [25,50,75])test(`development transport preserves TCP order 
   class Socket{readyState=1;bufferedAmount=0;sent=[];send(data){this.sent.push(data);}close(){this.onclose?.({});}}
   const socket=new SimulatedSocket('ws://local',{Socket,delayMs,jitterMs:15}),received=[];socket.onmessage=e=>received.push(e.data);
   for(let i=0;i<4;i++){socket.send(String(i));socket.socket.onmessage({data:String(i)});}
-  await new Promise(resolve=>setTimeout(resolve,delayMs+50));
-  assert.deepEqual(socket.socket.sent,['0','1','2','3']);assert.deepEqual(received,['0','1','2','3']);socket.close();
+  try{
+    const until=performance.now()+3000;
+    while((socket.socket.sent.length<4||received.length<4)&&performance.now()<until)await new Promise(resolve=>setTimeout(resolve,10));
+    assert.deepEqual(socket.socket.sent,['0','1','2','3']);assert.deepEqual(received,['0','1','2','3']);
+  }finally{socket.close();}
 });
 
 test('prediction backlog requests a full state without closing the socket',()=>{
