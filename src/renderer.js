@@ -1766,7 +1766,7 @@ export class GameRenderer {
         -reloadMotion * .22 + rifleSprint * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
         -reloadMotion * .47 + rifleSprint * .24 + Math.sin(cycle) * weaponBob * .018 - actionTilt * .36 + lowered * .24,
       );
-      if(pistol&&!gadgetKind)applyPistolSprintPose(this.weapon,this.sprintBlend,this.aimAmount,this.reloadAmount,kick,cycle);
+      const pistolSprint=pistol&&!gadgetKind?applyPistolSprintPose(this.weapon,this.sprintBlend,this.aimAmount,this.reloadAmount,kick,cycle):0;
       if(gadgetKind){
         const launcher=gadgetKind==='launcher';
         const framing=launcher?LAUNCHER_POSE:gadgetKind==='defibrillator'?DEFIB_POSE:(gadgetKind==='ammo'||gadgetKind==='medkit')?SUPPLY_POSE:null;
@@ -1778,6 +1778,7 @@ export class GameRenderer {
         this.weapon.rotation.set(kick*.09+Math.cos(cycle)*bob*.009-lowered*.4,-this.swayX*.3,Math.sin(cycle)*bob*.008);
       }
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
+      this.weaponRig.anchorPistolArm(pistolSprint);
     }
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);

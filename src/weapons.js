@@ -924,9 +924,28 @@ export function createWeaponRig(owner = {}) {
   const rightRotation=new THREE.Quaternion().setFromUnitVectors(armAxis,rightAxis.normalize());
   const rightRestInverse=new THREE.Matrix4().compose(rightShoulder,rightRotation,new THREE.Vector3(1,1,1)).invert();
   const rightDirection=new THREE.Vector3(),rightScale=new THREE.Vector3(1,1,1);
+  const pistolShoulderCamera=new THREE.Vector3(.42,-.52,.12),pistolShoulderLocal=new THREE.Vector3();
+  const pistolArmInverse=new THREE.Matrix4();
   const supplyLeftWrist=new THREE.Vector3(),supplyRightWrist=new THREE.Vector3();
   const defibLeftWrist=new THREE.Vector3(...DEFIB_POSE.leftWrist),defibRightWrist=new THREE.Vector3(...DEFIB_POSE.rightWrist);
   rightArm.matrixAutoUpdate=false;
+
+  function fitRightSleeve(origin=rightShoulder,bulk=1){
+    rightScale.set(bulk,bulk,(rightDirection.length()+.014)/rightLength);
+    rightRotation.setFromUnitVectors(armAxis,rightDirection.normalize());
+    rightArm.matrix.compose(origin,rightRotation,rightScale).multiply(rightRestInverse);
+    rightArm.matrixWorldNeedsUpdate=true;
+  }
+
+  // Called after the final held-weapon transform, including cover retraction.
+  // The wrist stays with the glove; the upper end stays behind the camera.
+  function anchorPistolArm(weight){
+    if(!visiblePistol||!pistolRight.visible||weight<=0)return;
+    weapon.updateMatrix();pistolArmInverse.copy(weapon.matrix).invert();
+    pistolShoulderLocal.copy(pistolShoulderCamera).applyMatrix4(pistolArmInverse).lerp(rightShoulder,1-weight);
+    rightDirection.copy(pistolWrist);rightDirection.x-=.008;rightDirection.sub(pistolShoulderLocal);
+    fitRightSleeve(pistolShoulderLocal);
+  }
 
   function fitLeftSleeve(wrist,overlap=.017,bulk=1) {
     wristDirection.copy(wrist).applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
@@ -1155,9 +1174,7 @@ export function createWeaponRig(owner = {}) {
     rightDirection.copy(usingDefib?defibRightWrist:usingSupply?supplyRightWrist:pistol&&!usingTool ? pistolWrist : rightWrist);
     if(pistol&&!usingTool)rightDirection.x-=.008;else rightDirection.applyQuaternion(rightHand.quaternion).add(rightHand.position);
     rightDirection.sub(rightShoulder);
-    rightScale.set(usingSupply?.78:1,usingSupply?.78:1,(rightDirection.length()+.014)/rightLength);
-    rightRotation.setFromUnitVectors(armAxis,rightDirection.normalize());
-    rightArm.matrix.compose(rightShoulder,rightRotation,rightScale).multiply(rightRestInverse);
+    fitRightSleeve(rightShoulder,usingSupply?.78:1);
     if(usingTool&&gadgetKind==='repair'){
       const flame=heldTools.repair.getObjectByName('tool-flame');
       if(flame){flame.visible=toolActive;flame.scale.setScalar(.8+Math.sin(clock*47)*.15);}
@@ -1187,5 +1204,5 @@ export function createWeaponRig(owner = {}) {
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,dispose,createPreviewModel};
+    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
 }

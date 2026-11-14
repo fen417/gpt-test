@@ -14,6 +14,12 @@ reload and recoil blend out that stance. The firing hand stays on its existing
 grip; sprint does not introduce a second hand. These are presentation changes;
 movement speed and combat rules are unchanged.
 
+The first published stance rotated the shoulder endpoint into the frame and
+exposed the closed end of the sleeve. The correction moves the raised pistol
+further right and refits the sleeve after the final weapon transform: the wrist
+follows the glove, and the shoulder blends to a camera-relative point behind the
+near plane. This includes cover retraction and does not add geometry or draws.
+
 ## Rendering cost
 
 Measured in the compiled review scene, with loaded FPS hands, idle/sprint and
@@ -33,9 +39,13 @@ These counters do not establish gameplay FPS or performance on other GPUs.
 
 ## Verification and preview
 
-- Node tests: 89 passed, including sprint direction and cancellation during aim,
+- Node tests: sprint direction and cancellation during aim,
   reload and recoil, plus existing viewmodel depth/cover/material checks.
-- Production build: initial JS 514,505 / 700,000 gzip bytes; runtime audio
+- Regression check uses the actual sleeve mesh, including the shoulder rim and
+  cuff, through five sprint blend values, four gait phases, both pistols and
+  FOV 65/85/105. Its cut edge stays outside the image and its cuff stays on the
+  glove. This replaces relying on barrel orientation alone to accept the pose.
+- Corrected production build: initial JS 514,649 / 700,000 gzip bytes; runtime audio
   2,429,751 / 2,500,000 bytes. Version stays 0.16, protocol stays 26.
 - Browser review: both pistols in sprint and ADS, reload framing, firing and Low
   material compatibility. No console errors matching the production preview's

@@ -4,6 +4,7 @@
 <label>Оружие <select id="weapon"><option value="p19">P-19</option><option value="m50">M-50 «Орёл»</option></select></label>
 <label>Движение <select id="pose"><option value="idle">Ожидание</option><option value="run">Бег</option><option value="aim">Прицеливание</option><option value="reload">Перезарядка</option><option value="fire">Выстрел</option></select></label>
 <label>Качество <select id="quality"><option value="high">High</option><option value="low">Low</option></select></label>
+<label>Угол обзора <select id="fov"><option value="65">65°</option><option value="85" selected>85°</option><option value="105">105°</option></select></label>
 <button id="freeze">Остановить позу</button><output id="metrics"></output></aside>
 <script type="module">
 import {GameRenderer} from '../src/renderer.js';
@@ -17,7 +18,7 @@ document.querySelector('#freeze').onclick=()=>{freeze=!freeze;document.querySele
 function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,(now-last)/1000);last=now;if(freeze)return;time+=dt;
  const pose=document.querySelector('#pose').value,weaponId=document.querySelector('#weapon').value,p=state.players[0];
  Object.assign(p,{weaponId,sidearmId:weaponId,reloading:pose==='reload',reloadProgress:pose==='reload'?(time/2)%1:0,shotSeq:pose==='fire'?Math.floor(time*2):0,sprint:pose==='run'});state.time=time;
- renderer.render(state,p.id,dt,{yaw:0,pitch:0,quality:document.querySelector('#quality').value,fov:85,aim:pose==='aim',sprint:pose==='run',move:pose==='run'?1:0,shake:false,gfx:{shadows:'auto',resolution:'1'}});
+ renderer.render(state,p.id,dt,{yaw:0,pitch:0,quality:document.querySelector('#quality').value,fov:Number(document.querySelector('#fov').value),aim:pose==='aim',sprint:pose==='run',move:pose==='run'?1:0,shake:false,gfx:{shadows:'auto',resolution:'1'}});
  const stats=renderer.getStats();document.querySelector('#metrics').textContent=`${weaponId} / ${pose}\n${stats.calls-(renderer.renderer.info.worldRender?.calls??0)-1} draws · ${stats.triangles-(renderer.renderer.info.worldRender?.triangles??0)} triangles\n${renderer.weapon.position.toArray().map(v=>v.toFixed(3)).join(', ')}\n${renderer.weapon.rotation.toArray().slice(0,3).map(v=>v.toFixed(3)).join(', ')}`;
 }requestAnimationFrame(frame);
 </script></html>
