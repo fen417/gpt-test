@@ -40,6 +40,9 @@ test('soldier rig bakes into a single skinned mesh and animates locomotion, stra
     for(const classId of ['assault','medic','support','recon'])for(const team of [0,1]){
       const template=createSoldierRig(owner,{id:'t',team,classId,x:0,y:0,z:0,shotSeq:0});
       const rig=cloneSoldierRig(template,{id:'p',team,classId,x:0,y:0,z:0,shotSeq:0});
+      assert(rig.detailGeometry.index.count/3<=8000,'near soldier triangle budget');
+      assert(rig.mediumGeometry.index.count/3<=3000,'medium soldier triangle budget');
+      assert(rig.distantGeometry.index.count/3<=800,'far soldier triangle budget');
       let skinnedCount=0;
       rig.group.traverse(n=>{if(n.isSkinnedMesh)skinnedCount++;});
       assert.equal(skinnedCount,1,'each soldier should use a single SkinnedMesh for 1 draw call');

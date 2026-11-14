@@ -44,7 +44,7 @@ body:has(dialog.menu-dialog[open]),body:has(#pause:not(.hidden)){overflow:hidden
 
 .menu-dialog{width:min(960px,calc(100vw - 48px));max-width:none;max-height:calc(100dvh - 64px);padding:0;border:1px solid #ffffff20;border-radius:14px;background:#151c18;color:#f0f1e9;box-shadow:0 35px 120px #0009;overflow:auto;scrollbar-width:thin;scrollbar-color:#66705f #151c18;}
 .menu-dialog[open]{animation:panel-arrive .22s ease-out;}
-.menu-dialog::backdrop{background:#080e0b9c;backdrop-filter:blur(5px);}
+.menu-dialog::backdrop{background:#080e0b9c;backdrop-filter:none;}
 .menu-panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:30px 32px 26px;border-bottom:1px solid var(--menu-line);}
 .menu-panel-header h2{font-family:'IBM Plex Sans',Arial,sans-serif;font-size:30px;line-height:1.2;letter-spacing:-.9px;font-weight:500;text-transform:none;margin:10px 0 0;}
 .menu-panel-header p{font-size:12px;color:var(--menu-muted);margin:10px 0 0;line-height:1.6;}
@@ -146,7 +146,7 @@ body:has(dialog.menu-dialog[open]),body:has(#pause:not(.hidden)){overflow:hidden
 .room-name-field input{flex:1;width:100%;}
 #room-name-random{border:1px solid #ffffff20;border-radius:6px;background:transparent;width:43px;flex:0 0 43px;font-size:20px;color:var(--menu-accent);}
 
-#pause.overlay{background:#080e0bbd;backdrop-filter:blur(5px);padding:24px;}
+#pause.overlay{background:#080e0bbd;backdrop-filter:none;padding:24px;}
 #pause .overlay-card{width:min(960px,100%);max-width:none;max-height:calc(100dvh - 48px);padding:0;border:1px solid #ffffff20;border-radius:14px;background:#151c18;overflow:auto;scrollbar-color:#66705f #151c18;}
 #pause .menu-panel-header h2{font-size:30px;margin:10px 0 0;}
 #pause .settings-layout{display:grid;grid-template-columns:210px 1fr;min-height:360px;}

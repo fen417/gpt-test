@@ -15,7 +15,10 @@ export class CachedShadows {
   }
   invalidate(){this.key=null;}
   install(owner){
+    if(this.installed===owner.renderer.shadowMap)return;
+    this.uninstall();this.installed=owner.renderer.shadowMap;
     const native=owner.renderer.shadowMap.render.bind(owner.renderer.shadowMap);
+    this.native=owner.renderer.shadowMap.render;
     owner.renderer.shadowMap.render=(lights,scene,camera)=>{
       if(scene!==owner.scene||!owner.worldRoot?.visible||!owner.renderer.shadowMap.enabled)return native(lights,scene,camera);
       // Run inside WebGLRenderer.render, with its render-state stack active.
@@ -24,6 +27,7 @@ export class CachedShadows {
       try{this.render(owner,native);}finally{for(const mesh of hidden)mesh.visible=false;}
     };
   }
+  uninstall(){if(this.installed){this.installed.render=this.native;this.installed=null;}}
   render(owner,renderShadow) {
     const {renderer,scene,camera,sun,staticRoot,flags}=owner;
     if(!renderer.shadowMap.enabled||!staticRoot)return;
@@ -70,5 +74,5 @@ export class CachedShadows {
     } finally {renderer.setRenderTarget(target);renderer.autoClear=autoClear;camera.layers.mask=mask;}
   }
   disposeTargets(){this.dynamic?.dispose();this.combined?.dispose();this.staticLight.shadow.map?.dispose();this.staticLight.shadow.map=null;this.dynamic=null;}
-  dispose(){this.disposeTargets();this.quad.geometry.dispose();this.material.dispose();}
+  dispose(){this.uninstall();this.disposeTargets();this.quad.geometry.dispose();this.material.dispose();}
 }

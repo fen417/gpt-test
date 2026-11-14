@@ -6,7 +6,8 @@ import { drawTeamEmblem } from './logos.js';
 import { smoothRingSeams, tailoredGeometry } from './character-geometry.js';
 import { updateFootContacts } from './soldier-locomotion.js';
 import { gloveSurface } from './glove-geometry.js';
-import { anatomicalGeometry, reduceSoldierGeometry } from './soldier-anatomy.js';
+import { anatomicalGeometry } from './soldier-anatomy.js';
+import { simplifySoldier } from './soldier-lod.js';
 import { BODY_SECTIONS, BODY_BLEND, SHOULDER_X, HIP_X } from './soldier-proportions.js';
 import { soldierHeadGeometry, applySoldierHeadAtlas } from './soldier-head.js';
 import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS } from './pistol-grip.js';
@@ -748,9 +749,12 @@ export function createSoldierRig(owner, player) {
     team: player.team, classId, weaponId, pistol, lastX: player.x, lastZ: player.z, initialized: false, deathAge: 0, alive: true,
     recoil: 0, flinch: 0, flinchSide: 0, lastShot: player.shotSeq, seed: 0, stepIndex: 0,
   };
-  rig.detailGeometry = body.geometry;
-  rig.mediumGeometry = reduceSoldierGeometry(rig.detailGeometry, .014);
-  rig.distantGeometry = makeDistantGeometry(rig, c);
+  const original=body.geometry;
+  rig.detailGeometry=simplifySoldier(original,8000);
+  rig.mediumGeometry=simplifySoldier(original,3000,.08);
+  const distant=makeDistantGeometry(rig,c);
+  rig.distantGeometry=simplifySoldier(distant,800,.12);
+  body.geometry=rig.detailGeometry;original.dispose();distant.dispose();
   updateSoldierArms(rig);
   return rig;
 }

@@ -1,5 +1,7 @@
 ﻿import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
+import {FarSoldiers} from './far-soldiers.js';
+import {AdaptiveResolution} from './adaptive-resolution.js';
 import { GpuTimer } from './gpu-timer.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
@@ -57,9 +59,9 @@ function optimizeLighting(object) {
 
 function detectIntegratedGpu(renderer) {
   try {
-    let gl = renderer?.getContext?.();
+    let gl = renderer?.getContext?.(), temporary=false;
     if (!gl && typeof document !== 'undefined') {
-      const probe = document.createElement('canvas');
+      temporary=true;const probe = document.createElement('canvas');
       probe.width = probe.height = 1;
       gl = probe.getContext('webgl2', { powerPreference: 'high-performance' })
         || probe.getContext('webgl', { powerPreference: 'high-performance' });
@@ -67,6 +69,7 @@ function detectIntegratedGpu(renderer) {
     if (!gl) return false;
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
     const name = `${(debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) || ''} ${gl.getParameter(gl.RENDERER) || ''} ${gl.getParameter(gl.VENDOR) || ''}`;
+    if(temporary)gl.getExtension('WEBGL_lose_context')?.loseContext();
     return /\bintel\b(?!.*arc)|uhd|hd\s*graphics|hd\s*\d{3,4}|iris|llvmpipe|swiftshader|mesa|mali|adreno|radeon\(tm\)\s*graphics|vega/i.test(name);
   } catch {
     return false;
@@ -147,7 +150,7 @@ export class GameRenderer {
     this.clock = 0;
     this.frameCount = 0;
     this.smoothDt = 0.0166;
-    this.adaptiveScale = 1;
+    this.adaptiveScale = 1;this.resolutionController=new AdaptiveResolution();
     this.scaleCooldown = 0;
     this.soldiers = new Map();
     this.soldierTemplates = new Map();
@@ -289,7 +292,7 @@ export class GameRenderer {
       red: material(0xd93832, 0.45, 0.1, { emissive: 0x991815, emissiveIntensity: 0.35 }),
       green: material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 }),
     };
-    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true });
+    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.integratedGpu?2:4 });
     for (const m of [this.surfaces.asphalt, this.surfaces.asphalt._lowMaterial]) {
       if (m) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
     }
@@ -383,18 +386,6 @@ export class GameRenderer {
   // Pre-build all soldier rigs, effect pools and compile shaders upfront so
   // spawning bots, shooting or throwing grenades never stalls a frame.
   warmup() {
-    for (const team of [0, 1]) {
-      for (const classId of Object.keys(CLASSES)) {
-        for (const weaponId of [...CLASS_WEAPONS[classId], ...SIDEARMS]) {
-          const key = `${team}:${classId}:${weaponId}`;
-          if (!this.soldierTemplates.has(key)) {
-            const template = createSoldierRig(this, { id: key, team, classId, weaponId, x: 0, y: 0, z: 0, shotSeq: 0 });
-            if (!this.integratedGpu) template.group.traverse(optimizeLighting);
-            this.soldierTemplates.set(key, template);
-          }
-        }
-      }
-    }
     for (let i = 0; i < 16; i++) this.effectPools.tracer.push(this.createTracerEffect());
     for (let i = 0; i < 12; i++) this.effectPools.shell.push({ mesh: new THREE.Mesh(this.geo.shell, this.shellMaterial), type: 'shell' });
     for (let i = 0; i < 36; i++) this.effectPools.smoke.push({
@@ -545,6 +536,7 @@ export class GameRenderer {
   }
 
   clearMapDynamics() {
+    this.farSoldiers?.clear();
     this.bulletMarks.clear();
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
@@ -751,6 +743,7 @@ export class GameRenderer {
     const key = `${player.team}:${player.classId}:${weaponId}`;
     let template = this.soldierTemplates.get(key);
     if (!template) {
+      if(this.templatesBuiltFrame>=1)return null;this.templatesBuiltFrame++;
       template = createSoldierRig(this, { ...player, weaponId });
       if (!this.integratedGpu) template.group.traverse(optimizeLighting);
       this.soldierTemplates.set(key, template);
@@ -820,6 +813,7 @@ export class GameRenderer {
   }
 
   updateSoldiers(state, localId, dt, networkInterpolated=false) {
+    this.farSoldiers??=new FarSoldiers(this.worldRoot);this.farSoldiers.begin(this.clock);
     const active = this.activeSoldiers;
     active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
@@ -831,7 +825,7 @@ export class GameRenderer {
       this.sun.shadow.updateMatrices(this.sun);
       shadowFrustum = this.sun.shadow.getFrustum();
     }
-    const distantLimit = this.lowQuality ? 55 : (this.integratedGpu ? 70 : 95);
+    const distantLimit = this.lowQuality ? 22 : 35;
     // Use projected size so magnification keeps distant targets detailed.
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
@@ -854,6 +848,7 @@ export class GameRenderer {
       }
       if (!soldier) {
         soldier = this.makeSoldier(player);
+        if(!soldier)continue;
         if (previousRig) {
           soldier.group.position.copy(previousRig.group.position);
           soldier.group.rotation.copy(previousRig.group.rotation);
@@ -926,21 +921,23 @@ export class GameRenderer {
       }
       const returning = !group.parent;
       if (returning) this.worldRoot.add(group);
-      group.visible = true;
+      group.visible = true;soldier.body.visible=true;
       if (!alive) {
         soldier.body.geometry = soldier.detailGeometry;
         animateDeath(soldier, { age: soldier.deathAge });
         continue;
       }
+      soldier.body.visible=true;
       const crouched = player.crouching || player.crouch;
       const projectedDistanceSq = this.camera.position.distanceToSquared(this.soldierBounds.center) * viewScale ** 2;
       const wasDistant = soldier.body.geometry === soldier.distantGeometry;
       const lodThreshold = distantLimit * (wasDistant ? .94 : 1.06);
       const distant = !externalScene && Boolean(local) && projectedDistanceSq > lodThreshold ** 2;
       const wasMedium = soldier.body.geometry === soldier.mediumGeometry;
-      const nearLimit = (this.lowQuality ? 17 : 28) * (wasMedium ? .94 : 1.06);
+      const nearLimit = (this.lowQuality ? 8 : 12) * (wasMedium ? .94 : 1.06);
       soldier.body.geometry = distant ? soldier.distantGeometry
         : projectedDistanceSq > nearLimit ** 2 ? soldier.mediumGeometry : soldier.detailGeometry;
+      if(!externalScene&&!this.scoped&&projectedDistanceSq>80**2&&this.farSoldiers.add(soldier)){soldier.body.visible=false;soldier.flash.visible=false;continue;}
       soldier.body.castShadow = !distant && !this.lowQuality && distSq < 48 * 48;
       soldier.rifle.scale.setScalar(1);
       const mustReset = reset || respawned || returning;
@@ -958,6 +955,7 @@ export class GameRenderer {
       soldier.marker.visible = player.team === localTeam;
       soldier.marker.position.y = (crouched ? 1.55 : 1.94) + Math.sin(this.clock * 2) * .025;
     }
+    this.farSoldiers.end();
     for (const [id, soldier] of this.soldiers) if (!active.has(id)) { this.removeSoldier(soldier); this.soldiers.delete(id); }
   }
 
@@ -1390,9 +1388,7 @@ export class GameRenderer {
     const dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 1.5);
     const ratio = this.gfx.resolution !== 'auto'
       ? clamp(Number(this.gfx.resolution) || 1, 0.5, 2)
-      : this.lowQuality
-      ? clamp((this.integratedGpu ? 0.68 : 0.78) * (this.adaptiveScale || 1), 0.55, 1)
-      : dpr;
+      : this.resolutionController.ratio(this.viewportWidth??innerWidth,this.lowQuality?1:dpr);
     if (this.currentPixelRatio !== ratio) {
       this.currentPixelRatio = ratio;
       this.renderer.setPixelRatio(ratio);
@@ -1507,6 +1503,7 @@ export class GameRenderer {
   }
 
   render(state, localId, dt, view = {}) {
+    this.templatesBuiltFrame=0;
     this.setMap(state?.mapId ?? view.mapId);
     const rawDt = dt || 0.016;
     dt = Math.min(rawDt, 0.1); this.clock += dt;
@@ -1524,19 +1521,7 @@ export class GameRenderer {
       this.applyShadows();
       this.updatePixelRatio();
     }
-    if (low && this.gfx.resolution === 'auto' && rawDt > 0.004 && rawDt < 0.09) {
-      this.smoothDt = lerp(this.smoothDt, rawDt, 0.08);
-      if (this.scaleCooldown > 0) this.scaleCooldown -= dt;
-      else if (this.smoothDt > 0.021 && this.adaptiveScale > 0.75) {
-        this.adaptiveScale = Math.max(0.75, Number((this.adaptiveScale - 0.07).toFixed(2)));
-        this.scaleCooldown = 0.85;
-        this.updatePixelRatio();
-      } else if (this.smoothDt < 0.0167 && this.adaptiveScale < 1) {
-        this.adaptiveScale = Math.min(1, Number((this.adaptiveScale + 0.04).toFixed(2)));
-        this.scaleCooldown = 1.6;
-        this.updatePixelRatio();
-      }
-    }
+    if(state?.players&&!view.paused&&this.gfx.resolution==='auto'&&this.resolutionController.update(rawDt,this.lastCpuMs??0,this.gpuTimer.summary()?.p95??null)){this.adaptiveScale=this.resolutionController.scale;this.updatePixelRatio();}
     const baseFov = clamp(Number(view.fov) || 85, 65, 105), shake = view.shake !== false;
     this.renderer.toneMappingExposure = 1.06 * clamp(Number(view.brightness) || 1, .6, 1.5);
     if (!state?.players) {

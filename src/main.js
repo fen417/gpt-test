@@ -38,6 +38,7 @@ let fireTap=false, recoilPitch=0, recoilYaw=0;
 let scopeZoom=8;
 let weaponSlot=1;
 let toolSlot=0;
+let lastWorldFrame=0;
 let mode='solo',room='',lastFrame=performance.now(),accumulator=0,hudClock=0,fpsClock=0,frames=0,unlocked=false,unlockedPaused=false;
 let wasAlive=false,lastHp=100,hitUntil=0,damageUntil=0,feed=[],scoreFeed=[],scoreStreakTotal=0,scoreStreakExpires=0,seen=new Set(),toastTimer;
 let reviveAwaitingControl=false;
@@ -1375,6 +1376,7 @@ function frame(now){
     perfPanel.update({...renderStats,active:active&&$('pause').classList.contains('hidden')&&$('death').classList.contains('hidden')&&!document.hidden,mapId:currentMap.id,quality,mode,settings:{...gfx,fov},population:state?.players.length??0,network,audio:audioStats,heapBytes:performance.memory?.usedJSHeapSize??null,viewport:{width:innerWidth,height:innerHeight}});
     if(network)canvas.dataset.networkStats=JSON.stringify(network);else delete canvas.dataset.networkStats;
   }
+  const paused=!$('pause').classList.contains('hidden');
   if(active){
     recoilPitch*=Math.exp(-dt*8);recoilYaw*=Math.exp(-dt*10);
     if(locked||(unlocked&&!unlockedPaused)){
@@ -1383,7 +1385,7 @@ function frame(now){
     }
     lastInput=input();
     const simulationBegin=performance.now();
-    if(simulation){
+    if(simulation&&!paused){
       accumulator+=dt;
       let steps=0;
       while(accumulator>=1/60&&steps<4){
@@ -1392,14 +1394,15 @@ function frame(now){
       }
       if(accumulator>1/60)accumulator=1/60;
       if(steps){receive(simulation.snapshot());pulses.clear();fireTap=false;}
-    }else{multiplayer.advance(lastInput,dt);pulses.clear();fireTap=false;}
+    }else if(!simulation){multiplayer.advance(lastInput,dt);pulses.clear();fireTap=false;}else accumulator=0;
     simulationTimes.add(performance.now()-simulationBegin);
   }
   const currentPlayer=local();
   const renderBegin=performance.now();
   const renderState=active?(simulation?state:multiplayer.sample(now)):null;
   const renderPlayer=renderState?.players.find(p=>p.id===localId);
-  renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),networkInterpolated:mode==='server',aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+  const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
+  if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),networkInterpolated:mode==='server',aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
   renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
@@ -1411,7 +1414,7 @@ function frame(now){
   if(renderState)audio.events(renderState,renderPlayer);
   audio.update?.(dt,{state:renderState??state,local:renderPlayer??local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
-  if(active)cpuTimes.add(performance.now()-cpuBegin);
+  if(active){renderer.lastCpuMs=performance.now()-cpuBegin;cpuTimes.add(renderer.lastCpuMs);}
 }
 try{
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto')});renderer.resize();window.addEventListener('resize',()=>renderer.resize());

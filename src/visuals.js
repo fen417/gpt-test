@@ -68,7 +68,7 @@ export function clonePairedMaterial(source, color, emissive = null, emissiveInte
   return highClone;
 }
 
-export function createSurfaceMaterials(renderer, { useBump = true } = {}) {
+export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:anisotropyLimit=4 } = {}) {
   const concrete = texture((ctx, s, random) => {
     ctx.fillStyle = '#b7b6ab'; ctx.fillRect(0, 0, s, s); grain(ctx, s, random, 18000, 0.12); stains(ctx, s, random);
     ctx.strokeStyle = 'rgba(50,55,48,.25)'; ctx.lineWidth = 1.5;
@@ -136,7 +136,7 @@ export function createSurfaceMaterials(renderer, { useBump = true } = {}) {
     for (let i = 0; i < 450; i++) { const x = random() * s, y = random() * s; ctx.strokeStyle = `rgba(62,40,18,${random() * .17})`; ctx.lineWidth = .4 + random() * .8; ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x - 3, y + 10, x + 3, y + 24, x, y + 36 + random() * 50); ctx.stroke(); }
     grain(ctx, s, random, 9000, .09); stains(ctx, s, random);
   });
-  const anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  const anisotropy = Math.min(anisotropyLimit, renderer.capabilities.getMaxAnisotropy());
   for (const map of [concrete, brick, metal, asphalt, ground, cloth, wood]) map.anisotropy = anisotropy;
   const make = (map, color, tile, roughness = .9, metalness = 0, bump = .05) => {
     const highMat = new THREE.MeshStandardMaterial({

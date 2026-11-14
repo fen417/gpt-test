@@ -1,4 +1,4 @@
-#lobby{--menu-accent:#d6ec9b;--menu-ink:#111813;--menu-muted:#9da6a1;--menu-line:#ffffff14;color:#f0f1e9;background:#080e0bbd;backdrop-filter:blur(5px);padding:24px;}
+#lobby{--menu-accent:#d6ec9b;--menu-ink:#111813;--menu-muted:#9da6a1;--menu-line:#ffffff14;color:#f0f1e9;background:#080e0bbd;backdrop-filter:none;padding:24px;}
 #lobby .lobby-card{width:min(1160px,100%);max-height:calc(100dvh - 48px);padding:0;gap:0;border:1px solid #ffffff20;border-radius:14px;background:#151c18;box-shadow:0 35px 120px #0009;overflow:hidden;}
 #lobby .lobby-header{padding:26px 30px;margin:0;border-bottom:1px solid var(--menu-line);gap:25px;flex-shrink:0;align-items:center;}
 #lobby .lobby-header h2{font-family:'IBM Plex Sans',Arial,sans-serif;font-size:30px;font-weight:500;text-transform:none;letter-spacing:-.8px;line-height:1.3;margin:8px 0;overflow-wrap:anywhere;}
