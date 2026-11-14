@@ -378,7 +378,7 @@ for (const [i, x, z] of [[0,-13,-143],[1,10,-96],[2,-21,-74],[3,12,-35],[4,-18,2
 
 export const VILLAGE_MAP = rotateMapAssets({
   id: 'village', name: 'Деревня «Сухой ветер»', theme: 'desert-village', layoutVersion: 3, size,
-  fogDensity: .0034, fogColor: '#d0bea1', sunColor: '#ffe4b4', navigationCell: 2, stepHeight: .3,
+  fogDensity: .0028, fogColor: '#d0bea1', sunColor: '#ffe4b4', navigationCell: 2, stepHeight: .3,
   playArea: { minX: -82, maxX: 82, minZ: -173, maxZ: 173 },
   terrain, landforms, terrainPads, terrainPadBlend, boxes, structures, roads, points, landmarks, districts: [...points, ...landmarks],
   ship,

@@ -2,29 +2,38 @@ import * as THREE from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 export class PostPass {
-  constructor(renderer){
+  constructor(renderer,{antialias='auto'}={}){
+    this.antialias=antialias;
     this.renderer=renderer;this.target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:true});
-    const fragment=FXAAShader.fragmentShader.replace('void main() {',`uniform float sharpen;uniform float grain;uniform float time;
-      #include <tonemapping_pars_fragment>
-      void main() {`).replace('gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );',`
-      vec3 colour=ApplyFXAA(tDiffuse,resolution.xy,vUv).rgb;
-      vec3 a=texture2D(tDiffuse,vUv+vec2(resolution.x,0.0)).rgb,b=texture2D(tDiffuse,vUv-vec2(resolution.x,0.0)).rgb;
-      vec3 c=texture2D(tDiffuse,vUv+vec2(0.0,resolution.y)).rgb,d=texture2D(tDiffuse,vUv-vec2(0.0,resolution.y)).rgb;
-      vec3 low=min(colour,min(min(a,b),min(c,d))),high=max(colour,max(max(a,b),max(c,d)));
-      colour=clamp(colour+(colour-(a+b+c+d)*0.25)*sharpen,low,high);
-      colour=ACESFilmicToneMapping(colour);
-      float vignette=smoothstep(0.8,0.1,distance(vUv,vec2(0.5)));
+    this.maxSamples=Math.min(4,renderer.capabilities?.maxSamples??0);
+    const gl=renderer.getContext?.();
+    if(gl?.getInternalformatParameter){const supported=gl.getInternalformatParameter(gl.RENDERBUFFER,gl.RGBA16F,gl.SAMPLES);this.maxSamples=Math.max(0,...Array.from(supported??[]).filter(value=>value<=this.maxSamples));}
+    // FXAA must compare tone-mapped display luminance, not linear HDR values.
+    const fragment=('#include <tonemapping_pars_fragment>\nuniform float useFxaa;uniform float sharpen;uniform float grain;uniform float time;\n'+FXAAShader.fragmentShader)
+      .replace('return texture( tex2D, uv );','vec4 texel=texture(tex2D,uv);return linearToOutputTexel(vec4(ACESFilmicToneMapping(texel.rgb),texel.a));')
+      .replace('gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );',`
+      vec3 colour=useFxaa>0.5?ApplyFXAA(tDiffuse,resolution.xy,vUv).rgb:Sample(tDiffuse,vUv).rgb;
+      if(sharpen>0.0){
+        vec3 a=Sample(tDiffuse,vUv+vec2(resolution.x,0.0)).rgb,b=Sample(tDiffuse,vUv-vec2(resolution.x,0.0)).rgb;
+        vec3 c=Sample(tDiffuse,vUv+vec2(0.0,resolution.y)).rgb,d=Sample(tDiffuse,vUv-vec2(0.0,resolution.y)).rgb;
+        vec3 low=min(colour,min(min(a,b),min(c,d))),high=max(colour,max(max(a,b),max(c,d)));
+        colour=clamp(colour+(colour-(a+b+c+d)*0.25)*sharpen,low,high);
+      }
+      float vignette=1.0-smoothstep(0.1,0.8,distance(vUv,vec2(0.5)));
       colour*=mix(0.92,1.0,vignette);
       colour+=(fract(sin(dot(gl_FragCoord.xy+time,vec2(12.9898,78.233)))*43758.5453)-0.5)*grain;
       gl_FragColor=vec4(colour,1.0);
-      #include <colorspace_fragment>
       `);
-    this.material=new THREE.ShaderMaterial({vertexShader:FXAAShader.vertexShader,fragmentShader:fragment,toneMapped:false,depthTest:false,depthWrite:false,uniforms:{tDiffuse:{value:this.target.texture},resolution:{value:new THREE.Vector2()},sharpen:{value:.12},grain:{value:.0015},time:{value:0},toneMappingExposure:{value:1.06}}});
+    this.material=new THREE.ShaderMaterial({vertexShader:FXAAShader.vertexShader,fragmentShader:fragment,toneMapped:false,depthTest:false,depthWrite:false,uniforms:{tDiffuse:{value:this.target.texture},resolution:{value:new THREE.Vector2()},useFxaa:{value:1},sharpen:{value:.12},grain:{value:.0015},time:{value:0},toneMappingExposure:{value:1.06}}});
     const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,2,0,0,2],2));
     this.scene=new THREE.Scene();this.scene.add(new THREE.Mesh(geometry,this.material));this.camera=new THREE.Camera();
     this.size=new THREE.Vector2();
   }
-  begin(){
+  begin(quality='high'){
+    const samples=quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
+    if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
+    this.material.uniforms.useFxaa.value=this.antialias==='off'?0:quality==='high'&&samples>0?0:1;
+    this.material.uniforms.sharpen.value=quality==='high'?0:.12;
     const r=this.renderer;r.getDrawingBufferSize(this.size);
     if(this.target.width!==this.size.x||this.target.height!==this.size.y)this.target.setSize(this.size.x,this.size.y);
     this.material.uniforms.resolution.value.set(1/this.size.x,1/this.size.y);

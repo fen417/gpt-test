@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
+import {drawVillageSurface} from './village-surface-paint.js';
 
 function rand(seed) { return () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; }; }
 function texture(draw, repeat = 1, size = 256) {
@@ -69,12 +70,12 @@ export function clonePairedMaterial(source, color, emissive = null, emissiveInte
   return highClone;
 }
 
-export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:anisotropyLimit=4, bake=false } = {}) {
-  const pending=[],names=['concrete','brick','metal','asphalt','ground','cloth','wood'];let slot=0;
+export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:anisotropyLimit=Infinity, bake=false } = {}) {
+  const pending=[],names=['concrete','brick','metal','asphalt','ground','cloth','wood','village-sand','village-stucco'];let slot=0;
   const compressed=bake?null:new KTX2Loader().setTranscoderPath(new URL('basis/',document.baseURI).href).setWorkerLimit(1).detectSupport(renderer);
   const surfaceTexture=(draw,repeat=1)=>{
-    if(bake)return texture(draw,repeat,512);
-    const name=names[slot++],map=new THREE.Texture();map.colorSpace=THREE.SRGBColorSpace;map.wrapS=map.wrapT=THREE.RepeatWrapping;map.repeat.set(repeat,repeat);
+    const name=names[slot++];if(bake)return texture(draw,repeat,name==='ground'||name==='village-sand'?1024:512);
+    const map=new THREE.Texture();map.colorSpace=THREE.SRGBColorSpace;map.wrapS=map.wrapT=THREE.RepeatWrapping;map.repeat.set(repeat,repeat);
     const loaded=name==='cloth'?new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}.webp`,import.meta.url).href):compressed.loadAsync(new URL(`./assets/surfaces/${name}.ktx2`,import.meta.url).href);
     pending.push(loaded.catch(()=>new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}.webp`,import.meta.url).href)).then(image=>{map.image=image.image;map.mipmaps=image.mipmaps;map.format=image.format;map.type=image.type;map.isCompressedTexture=image.isCompressedTexture;map.generateMipmaps=!image.isCompressedTexture;map.needsUpdate=true;}));
     return map;
@@ -146,16 +147,19 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     for (let i = 0; i < 450; i++) { const x = random() * s, y = random() * s; ctx.strokeStyle = `rgba(62,40,18,${random() * .17})`; ctx.lineWidth = .4 + random() * .8; ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x - 3, y + 10, x + 3, y + 24, x, y + 36 + random() * 50); ctx.stroke(); }
     grain(ctx, s, random, 9000, .09); stains(ctx, s, random);
   });
+  const villageSand=surfaceTexture((ctx,size)=>drawVillageSurface(ctx,size,false)),villageStucco=surfaceTexture((ctx,size)=>drawVillageSurface(ctx,size,true));
   const anisotropy = Math.min(anisotropyLimit, renderer.capabilities.getMaxAnisotropy());
-  for (const map of [concrete, brick, metal, asphalt, ground, cloth, wood]) map.anisotropy = anisotropy;
-  const make = (map, color, tile, roughness = .9, metalness = 0, bump = .05) => {
+  for (const map of [concrete, brick, metal, asphalt, ground, cloth, wood,villageSand,villageStucco]) map.anisotropy = anisotropy;
+  const normalTexture=name=>{
     const normalMap=bake?null:new THREE.Texture();
     if(normalMap){
-      const name=names[[concrete,brick,metal,asphalt,ground,cloth,wood].indexOf(map)];
       normalMap.wrapS=normalMap.wrapT=THREE.RepeatWrapping;normalMap.anisotropy=anisotropy;
       pending.push(compressed.loadAsync(new URL(`./assets/surfaces/${name}-normal.ktx2`,import.meta.url).href).catch(()=>new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}-normal.webp`,import.meta.url).href)).then(image=>{normalMap.image=image.image;normalMap.mipmaps=image.mipmaps;normalMap.format=image.format;normalMap.type=image.type;normalMap.isCompressedTexture=image.isCompressedTexture;normalMap.generateMipmaps=!image.isCompressedTexture;normalMap.needsUpdate=true;}));
     }
-
+    return normalMap;
+  };
+  const make = (map, color, tile, roughness = .9, metalness = 0, bump = .05) => {
+    const normalMap=normalTexture(names[[concrete,brick,metal,asphalt,ground,cloth,wood].indexOf(map)]);
     const highMat = new THREE.MeshStandardMaterial({
       map, color, roughness, metalness,
       normalMap,normalScale:new THREE.Vector2(.25,.25),
@@ -171,7 +175,8 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     concrete: make(concrete, 0x969b92, 4, .96, 0, .07), brick: make(brick, 0xc3bca8, 3, .96, 0, .08),
     metal: make(metal, 0x657977, 2.4, .56, .6, .045), asphalt: make(asphalt, 0x747f85, 8, .78, .08, .025),
     ground: make(ground, 0x9da58d, 9, .98, 0, .045), cloth: make(cloth, 0x7c8979, .65, .98, 0, .012), wood: make(wood, 0xc9b594, 2, .95, 0, .04),
-    maps: { concrete, brick, metal, asphalt, ground, cloth, wood },
+    villageNormals:{sand:normalTexture('village-sand'),stucco:normalTexture('village-stucco')},
+    maps: { concrete, brick, metal, asphalt, ground, cloth, wood,'village-sand':villageSand,'village-stucco':villageStucco },
     ready:Promise.all(pending).finally(()=>compressed?.dispose()),
   };
 }

@@ -7,6 +7,7 @@ import {optimizeLighting} from '../src/renderer.js';
 import * as THREE from 'three';
 import {batchStaticWorld} from '../src/static-batching.js';
 import {partitionTerrain} from '../src/terrain-chunks.js';
+import {applyTextureFiltering} from '../src/texture-quality.js';
 
 test('adaptive resolution has hysteresis, CPU protection and a physical width floor',()=>{
   const gpu=new AdaptiveResolution();for(let i=0;i<40;i++)gpu.update(.03,4,25);
@@ -16,6 +17,12 @@ test('adaptive resolution has hysteresis, CPU protection and a physical width fl
   assert.equal(gpu.scale,1,'60 Hz vsync must allow resolution recovery');
   const cpu=new AdaptiveResolution();for(let i=0;i<120;i++)cpu.update(.03,25,4);
   assert.equal(cpu.scale,1,'reducing pixels cannot solve a CPU bottleneck');
+});
+
+test('high restores maximum anisotropy for shared and paired maps after low',()=>{
+  const root=new THREE.Group(),map=new THREE.Texture(),normalMap=new THREE.Texture(),high=new THREE.MeshStandardMaterial({map,normalMap}),low=new THREE.MeshLambertMaterial({map});high._lowMaterial=low;low._highMaterial=high;root.add(new THREE.Mesh(new THREE.BoxGeometry(),high));
+  assert.equal(applyTextureFiltering([root],[],'low',16),2);assert.equal(map.anisotropy,2);
+  assert.equal(applyTextureFiltering([root],[],'high',16),16);assert.equal(map.anisotropy,16);assert.equal(normalMap.anisotropy,16);
 });
 
 test('cached shadow installation is idempotent and disposal restores native rendering',()=>{

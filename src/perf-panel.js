@@ -40,9 +40,12 @@ document.body.append(panel);
       `Кадр avg/p95/p99: ${ms(data.frameMs.avg)} / ${ms(data.frameMs.p95)} / ${ms(data.frameMs.p99)} мс`,
       `CPU p95: ${ms(data.cpuMs.p95)} · GPU p95: ${ms(data.gpuMs?.p95)} мс`,
       `Draw calls: ${data.calls} · Треугольники: ${data.triangles}`,
+      `AA: ${data.postSamples??0}× MSAA · FXAA: ${data.fxaa?'да':'нет'} · AF: ${data.anisotropy??'—'}×`,
       `Геометрии: ${data.geometries} · Текстуры: ${data.textures} · Масштаб: ${ms(data.pixelRatio)}`,
       `JS heap: ${data.heapBytes==null?'н/д':(data.heapBytes/1048576).toFixed(1)+' МБ'}`,
       `RTT: ${data.network?.rttMs??'—'} · jitter: ${ms(data.network?.jitterMs)} мс · replay: ${data.network?.replayedInputs??0}`,
+      `Звук: ${data.audio?.shots?.played??0}/${data.audio?.shots?.received??0} · старые: ${data.audio?.shots?.stale??0} · лимит: ${data.audio?.shots?.budget??0} · загрузка: ${data.audio?.shotGroups?.length??0}/9`,
+      `Восстановления часов: ${data.network?.playbackRecoveries??0}`,
       `Просадки >33 мс: ${data.frameMs.over33} / ${data.frameMs.count}`].join('\n');
   }};
 }

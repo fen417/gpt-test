@@ -1,4 +1,5 @@
 import {batchStaticWorld} from './static-batching.js';
+import {applyTextureFiltering} from './texture-quality.js';
 ﻿import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
 import {soldierAssetKey,soldierAssetState,requestSoldierAsset} from './soldier-assets.js';
@@ -226,7 +227,7 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
-    this.gpuTimer=new GpuTimer(this.renderer.getContext());this.postPass=new PostPass(this.renderer);
+    this.gpuTimer=new GpuTimer(this.renderer.getContext());this.postPass=new PostPass(this.renderer,{antialias});
     this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
     if (canvas && typeof canvas.addEventListener === 'function') {
@@ -301,7 +302,7 @@ export class GameRenderer {
       green: material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 }),
     };
     this.groundShadows=new GroundShadows();
-    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.integratedGpu?2:4 });
+    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.renderer.capabilities.getMaxAnisotropy() });
     this.surfaces.ready.then(()=>{this.surfacesReady=true;}).catch(error=>{this.surfacesReady=true;console.error('Surface assets failed',error);});
     for (const m of [this.surfaces.asphalt, this.surfaces.asphalt._lowMaterial]) {
       if (m) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
@@ -530,7 +531,7 @@ export class GameRenderer {
     this.scene.fog.color.set(map.fogColor ?? 0x9aa7a7);
     this.scene.background.set(map.fogColor ?? 0x9aa7a7);
     this.sun.color.set(map.sunColor ?? 0xffd7a4);
-    this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .23 : 0;
+    this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
     this.staticRoot = world.root;
     this.groundShadows.setMap(map);
     const shadowMaterials=new Map();
@@ -551,6 +552,7 @@ export class GameRenderer {
     this.portWater = world.water;
     for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }
     this.worldRoot.add(this.staticRoot);
+    this.updateTextureFiltering();
     if (this.lowQuality !== undefined) this.staticRoot.traverse(object => {
       const mat = object.material;
       const next = this.lowQuality ? mat?._lowMaterial : mat?._highMaterial;
@@ -750,6 +752,7 @@ export class GameRenderer {
       if(soldierAssetState(assetKey)===undefined){requestSoldierAsset(assetKey);return null;}
       if(this.templatesBuiltFrame>=1)return null;this.templatesBuiltFrame++;
       template = createSoldierRig(this, { ...player, weaponId });
+      applyTextureFiltering([template.group],[],this.quality??'high',this.renderer.capabilities.getMaxAnisotropy());
       if (!this.integratedGpu) template.group.traverse(optimizeLighting);
       this.soldierTemplates.set(key, template);
     }
@@ -831,7 +834,7 @@ export class GameRenderer {
       this.sun.shadow.updateMatrices(this.sun);
       shadowFrustum = this.sun.shadow.getFrustum();
     }
-    const distantLimit = this.lowQuality ? 22 : 35;
+    const distantLimit = this.quality==='high'?60:this.quality==='medium'?35:22;
     // Use projected size so magnification keeps distant targets detailed.
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
@@ -940,13 +943,19 @@ export class GameRenderer {
       const lodThreshold = distantLimit * (wasDistant ? .94 : 1.06);
       const distant = !externalScene && Boolean(local) && projectedDistanceSq > lodThreshold ** 2;
       const wasMedium = soldier.body.geometry === soldier.mediumGeometry;
-      const nearLimit = (this.lowQuality ? 8 : 12) * (wasMedium ? .94 : 1.06);
+      const nearLimit = (this.quality==='high'?24:this.quality==='medium'?12:8) * (wasMedium ? .94 : 1.06);
       soldier.body.geometry = distant ? soldier.distantGeometry
         : projectedDistanceSq > nearLimit ** 2 ? soldier.mediumGeometry : soldier.detailGeometry;
-      if(!externalScene&&!this.scoped&&projectedDistanceSq>80**2&&this.farSoldiers.add(soldier)){soldier.body.visible=false;soldier.flash.visible=false;continue;}
+      const mustReset = reset || respawned || returning;
+      soldier.marker.material.color.setHex(sameSquad(local,player)?0x91dc78:player.team===localTeam?0x79c5d2:TEAM_COLORS[player.team]??COLORS.friendly);
+      soldier.marker.visible=player.team===localTeam;
+      soldier.marker.position.y=(crouched?1.55:1.94)+Math.sin(this.clock*2)*.025;
+      if(!externalScene&&!this.scoped&&projectedDistanceSq>(this.quality==='high'?140:this.quality==='medium'?100:80)**2){
+        animateSoldier(soldier,{dt,player,reset:mustReset,lightweight:true});soldier.animationDt=0;
+        if(this.farSoldiers.add(soldier)){soldier.body.visible=false;soldier.flash.visible=false;continue;}
+      }
       soldier.body.castShadow = !distant && (this.quality==='medium'?distSq<20**2:!this.lowQuality&&distSq<48**2);
       soldier.rifle.scale.setScalar(1);
-      const mustReset = reset || respawned || returning;
       const animationMoving=Math.hypot(player.x-(soldier.animationX??player.x),player.z-(soldier.animationZ??player.z))>.001||player.moveSpeed>.05;
       soldier.animationX=player.x;soldier.animationZ=player.z;
       const reducedRate = !animationMoving&&!externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
@@ -957,9 +966,6 @@ export class GameRenderer {
         soldier.animationDt = 0;
       }
       if (distant) soldier.flash.visible = false;
-      soldier.marker.material.color.setHex(sameSquad(local,player)?0x91dc78:player.team===localTeam?0x79c5d2:TEAM_COLORS[player.team]??COLORS.friendly);
-      soldier.marker.visible = player.team === localTeam;
-      soldier.marker.position.y = (crouched ? 1.55 : 1.94) + Math.sin(this.clock * 2) * .025;
     }
     this.farSoldiers.end();
     for (const [id, soldier] of this.soldiers) if (!active.has(id)) { this.removeSoldier(soldier); this.soldiers.delete(id); }
@@ -1447,6 +1453,11 @@ export class GameRenderer {
     this.resize();
   }
 
+  updateTextureFiltering(){
+    if(!this.surfaces)return;
+    this.textureAnisotropy=applyTextureFiltering([this.scene,...[...this.worlds.values()].map(world=>world.root)],Object.values(this.surfaces).filter(value=>value?.isMaterial),this.quality??'high',this.renderer.capabilities.getMaxAnisotropy());
+  }
+
   resize() {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
@@ -1491,7 +1502,7 @@ export class GameRenderer {
     }
     if(!menu)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
-    try{this.postPass.begin();drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.lowQuality?'low':'high');}
+    try{this.postPass.begin(this.quality);drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.quality);}
     finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
   }
 
@@ -1521,7 +1532,7 @@ export class GameRenderer {
     const previousQuality=this.quality;this.quality=view.quality??'high';this.shadowDynamicOnly=this.quality==='medium';
     this.groundShadows.uniforms.groundShadowStrength.value=this.quality==='high'?0:.32;
     const low = this.quality !== 'high';
-    if(previousQuality!==this.quality)this.applyShadows();
+    if(previousQuality!==this.quality){this.applyShadows();this.updateTextureFiltering();}
     if (this.lowQuality !== low) {
       this.applyQuality(low);
     }
@@ -1817,7 +1828,7 @@ export class GameRenderer {
     this.drawScene();
   }
 
-  getStats() { return { shadowsEnabled:this.renderer.shadowMap.enabled,shadowMode:this.gfx.shadows,worldCalls:this.renderer.info.worldRender?.calls,worldTriangles:this.renderer.info.worldRender?.triangles, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
+  getStats() { return {postSamples:this.postPass.target.samples,fxaa:Boolean(this.postPass.material.uniforms.useFxaa.value),anisotropy:this.textureAnisotropy,shadowsEnabled:this.renderer.shadowMap.enabled,shadowMode:this.gfx.shadows,worldCalls:this.renderer.info.worldRender?.calls,worldTriangles:this.renderer.info.worldRender?.triangles, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
 
   project(x, y, z) {
     const position = this.scratchPosition.set(x, y, z).project(this.camera);

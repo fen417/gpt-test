@@ -23,10 +23,7 @@ export class GroundShadows {
         vec2 shadowUv=bakedWorldXZ/groundSpan+0.5;
         float inside=step(0.0,shadowUv.x)*step(shadowUv.x,1.0)*step(0.0,shadowUv.y)*step(shadowUv.y,1.0);
         float lightMask=texture2D(groundShadow,clamp(shadowUv,0.0,1.0)).r;
-        diffuseColor.rgb*=1.0-groundShadowStrength*(1.0-lightMask)*inside;
-        // Fine, world-anchored variation avoids an extra detail texture fetch.
-        float detail=sin(bakedWorldXZ.x*43.0)*sin(bakedWorldXZ.y*39.0);
-        diffuseColor.rgb*=1.0+detail*0.018;`);
+        diffuseColor.rgb*=1.0-groundShadowStrength*(1.0-lightMask)*inside;`);
     };
     material.customProgramCacheKey=()=>`ground-shadow-v1-${material.type}-${previousKey}`;material.needsUpdate=true;
   }

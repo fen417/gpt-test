@@ -975,7 +975,7 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
 
 // The renderer sets the interpolated root position/yaw first. Foot contacts
 // use that same motion, so server snapshot cadence does not reset the stride.
-export function animateSoldier(rig, { dt, player, reset = false, terrain = null }) {
+export function animateSoldier(rig, { dt, player, reset = false, terrain = null, lightweight = false }) {
   dt = clamp(Number(dt) || 1 / 60, .001, .1);
   const { position } = rig.group, yaw = rig.group.rotation.y;
   const crouched = Boolean(player.crouch || player.crouching || player.sliding);
@@ -1018,6 +1018,9 @@ export function animateSoldier(rig, { dt, player, reset = false, terrain = null 
   motion.hipYaw = fresh ? hipTarget : lerp(motion.hipYaw, hipTarget, 1 - Math.exp(-dt * 16));
   motion.lean = lerp(motion.lean, clamp(-lateralSpeed * .01, -.055, .055) * (1 - motion.crouch * .5), 1 - Math.exp(-dt * 14));
   updateFootContacts(motion, position, yaw, dt);
+  // Instanced bodies still advance the same gait and planted feet. Skip only
+  // terrain sampling and bone IK, so returning to a skinned LOD does not reset.
+  if(lightweight)return;
   // Apply local ground differences only while standing on terrain. Roofs,
   // vehicle seats and airborne characters retain their authoritative height.
   const ground = terrain?.heightAt(position.x, position.z);
