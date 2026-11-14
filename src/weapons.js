@@ -634,9 +634,13 @@ export function createWeaponRig(owner = {}) {
   const defibCables=[createEquipmentCable(equipmentPalette.dark),createEquipmentCable(equipmentPalette.dark)];
   for(const cable of defibCables){weapon.add(cable.mesh);ownedGeometries.add(cable.geometry);cable.mesh.visible=false;}
   const defibStart=new THREE.Vector3(),defibEnd=new THREE.Vector3();
-  const pistolFrame=mat('pistol-polymer-frame',0x262c2b,.85,.06,{bumpMap:polymerGrain,bumpScale:.0003});
-  const pistolSlide=mat('pistol-blued-slide',0x394148,.51,.69,{bumpMap:metalGrain,bumpScale:.00018});
-  const heavySlide=mat('pistol-brushed-slide',0x969a94,.39,.76,{bumpMap:metalGrain,bumpScale:.00016});
+  const pistolFrame=mat('pistol-polymer-frame',0x3b4039,.88,.035,{bumpMap:polymerGrain,bumpScale:.00024});
+  const pistolSlide=mat('pistol-blued-slide',0x303e49,.43,.72,{bumpMap:metalGrain,bumpScale:.00013});
+  const pistolChamfer=mat('pistol-machined-chamfers',0x65737b,.38,.74,{bumpMap:metalGrain,bumpScale:.00009});
+  const pistolInset=mat('pistol-recessed-controls',0x141c22,.64,.45);
+  const heavySlide=mat('pistol-brushed-slide',0x89969e,.33,.82,{bumpMap:metalGrain,bumpScale:.00012});
+  const heavyFrame=mat('pistol-heavy-frame',0x3e4a53,.48,.72,{bumpMap:metalGrain,bumpScale:.00012});
+  const pistolBox=new RoundedBoxGeometry(1,1,1,1,.07);ownedGeometries.add(pistolBox);
   const sightDot=mat('pistol-sight-dots',0xd5ddbd,.83,.04,{emissive:0x485442,emissiveIntensity:.36});
   function slideSection(parent,points,from,to,finish,opening=0){
     const section=new THREE.Shape(points.map(([x,y])=>new THREE.Vector2(x,y)));
@@ -646,11 +650,15 @@ export function createWeaponRig(owner = {}) {
       section.holes.push(hole);
     }
     return mesh(parent,new THREE.ExtrudeGeometry(section,{
-      depth:to-from,bevelEnabled:false,curveSegments:14,
-    }),finish,0,0,from);
+      depth:to-from-.0016,bevelEnabled:true,bevelSegments:1,bevelSize:.0008,bevelThickness:.0008,curveSegments:14,
+    }),finish,0,0,from+.0008);
   }
   function buildPistol(heavy){
     const root=new THREE.Group(), slide=new THREE.Group(), magazine=new THREE.Group(), ejection=new THREE.Group();
+    root.name=heavy?'m50-viewmodel':'p19-viewmodel';slide.name='pistol-slide';magazine.name='pistol-magazine';ejection.name='pistol-ejection';
+    // Small bevelled fittings need one segment; the former shared rifle boxes
+    // spent 300 triangles on every pin and button, obscuring the larger forms.
+    const rounded=(parent,x,y,z,w,h,d,material)=>{const m=mesh(parent,pistolBox,material,x,y,z);m.scale.set(w,h,d);return m;};
     root.add(slide,magazine);slide.add(ejection);weapon.add(root);root.visible=false;
     const front=heavy?-.248:-.181, width=heavy?.075:.059, rear=.136, gripWidth=heavy?.066:.060;
     const gripSections=(heavy?HEAVY_GRIP_SECTIONS:COMPACT_GRIP_SECTIONS).map(([y,w,f,b,z])=>[y,w*(heavy?1.5:1),f,b,z]);
@@ -659,7 +667,7 @@ export function createWeaponRig(owner = {}) {
       const [halfWidth,,,center] = gripSection(y);
       return [halfWidth, center];
     };
-    const finish=heavy?heavySlide:pistolSlide, frame=heavy?metal:pistolFrame;
+    const finish=heavy?heavySlide:pistolSlide, frame=heavy?heavyFrame:pistolFrame;
     const half=width/2, shoulder=half-(heavy?.011:.006);
     rounded(root,0,-.035,(front+rear)/2,width*.87,.034,rear-front-.022,frame);
     mesh(root,anatomicalGeometry(gripSections,24,{anatomy:'pistolGrip',square:.48,caps:true}),frame);
@@ -670,7 +678,9 @@ export function createWeaponRig(owner = {}) {
     profile(root,[[-.026,-.052],[frontStrap(-.052)+.012,-.052],[frontStrap(-.124)+.009,-.124],[-.018,-.124],[-.033,-.097]],gripWidth*.76,frame,{
       holes:[[[-.016,-.073],[frontStrap(-.070)-.005,-.070],[frontStrap(-.107)-.004,-.107],[-.008,-.110],[-.021,-.094]]],bevel:.002,
     });
-    curve(root,[[0,-.052,.027],[0,-.089,.017],[0,-.103,.021]],.0035,edge);
+    const trigger=new THREE.Group();trigger.name='pistol-trigger';root.add(trigger);
+    curve(trigger,[[0,-.052,.027],[0,-.089,.017],[0,-.103,.021]],.0035,pistolChamfer);
+    if(!heavy)profile(trigger,[[.020,-.062],[.018,-.092],[.022,-.100],[.026,-.091],[.026,-.064]],.004,pistolInset,{bevel:.0004});
     for(const side of [-1,1]){
       const points=[],uvs=[],indices=[];
       for(let row=0;row<=16;row++)for(let col=0;col<=8;col++){
@@ -684,6 +694,15 @@ export function createWeaponRig(owner = {}) {
       }
       const cheek=new THREE.BufferGeometry();cheek.setAttribute('position',new THREE.Float32BufferAttribute(points,3));cheek.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));cheek.setIndex(indices);cheek.computeVertexNormals();
       mesh(root,cheek,heavy?rubber:pistolFrame);
+      if(!heavy){
+        // Stippled inset, thumb ledge and moulded border form a real grip panel.
+        for(let row=0;row<9;row++){
+          const y=-.119-row*.010,[w,f,b,z]=gripSection(y);
+          for(let col=0;col<3;col++)detail(root,side*(w+.0018),y,z+(col-1)*.010,.0018,.003,.004,pistolInset);
+        }
+        const [w,,,z]=gripSection(-.166);
+        profile(root,[[z-.012,-.151],[z+.012,-.151],[z+.016,-.174],[z,-.184],[z-.016,-.174]],.0018,pistolInset,{x:side*(w+.002),bevel:.0004});
+      }
       for(let row=0;heavy&&row<12;row++)for(let col=0;col<5;col++){
         const y=-.109-row*.010,[w,f,b,z]=gripSection(y);
         detail(root,side*(w+.0023),y,z+THREE.MathUtils.lerp(-f*.6,b*.6,col/4),.0016,.0022,.0026,serrated);
@@ -701,15 +720,25 @@ export function createWeaponRig(owner = {}) {
     const silhouette=[[-shoulder,-.018],[shoulder,-.018],[half,-.009],[half,.031],
       [shoulder,.047],[-shoulder,.047],[-half,.031],[-half,-.009]];
     // Solid nose and rear. Only the middle section opens into the ejection recess.
-    slideSection(slide,silhouette,front,-.06,finish,bore+.0075);
+    const barrelShroud=root; // Fixed parts share the frame's rigid material batches.
+    slideSection(heavy?barrelShroud:slide,silhouette,front,-.06,finish,bore+.0075);
     slideSection(slide,silhouette,.027,rear,finish);
     slideSection(slide,[[-shoulder,-.018],[shoulder,-.018],[half,-.009],[half,.002],
       [-half+.011,.002],[-half+.011,.043],[-shoulder,.047],[-half,.031],[-half,-.009]],-.06,.027,finish);
     rounded(slide,0,.004,-.017,width*.69,.009,.073,dark);
-    rounded(slide,0,.014,rear+.001,width*.76,.047,.008,heavy?metal:dark);
-    rounded(slide,0,.027,rear+.006,width*.43,.015,.004,heavy?edge:pistolSlide);
+    // Recessed rear plate and separately bevelled shoulders, visible when running.
+    profile(slide,[[rear+.002,-.010],[rear+.002,.023],[rear+.005,.029],[rear+.009,.022],[rear+.009,-.010]],width*.65,pistolInset,{bevel:.0007});
+    rounded(slide,0,.013,rear+.010,width*.37,.022,.003,heavy?heavyFrame:pistolSlide);
+    for(let n=0;n<5;n++)detail(slide,0,.006+n*.003,rear+.012,width*.26,.0008,.0006,pistolChamfer);
     if(heavy){
-      rounded(slide,0,.048,(front-.066)/2,width*.43,.012,-.066-front,finish);
+      profile(barrelShroud,[[front-.002,.038],[front+.017,.058],[-.074,.058],[-.058,.043]],width*.49,finish,{bevel:.0013});
+      for(const side of [-1,1]){
+        profile(barrelShroud,[[front+.017,.029],[front+.154,.029],[front+.153,.036],[front+.028,.040]],.0017,pistolChamfer,{x:side*half*.87,bevel:.0004});
+        for(let n=0;n<3;n++){
+          const z=front+.028+n*.020;
+          profile(barrelShroud,[[z,.045],[z+.013,.045],[z+.014,.050],[z+.002,.054]],.0015,pistolInset,{x:side*width*.205,bevel:.0002});
+        }
+      }
       rounded(root,0,-.067,(front-.071)/2,width*.84,.023,-.071-front,frame);
       profile(root,[[.123,-.026],[.139,.013],[.151,.008],[.139,-.032]],.018,metal,{bevel:.001});
       for(const side of [-1,1]){
@@ -721,9 +750,11 @@ export function createWeaponRig(owner = {}) {
       // The accessory rail grows out of a solid dust cover, not three floating bars.
       rounded(root,0,-.058,front+.053,width*.76,.017,.071,pistolFrame);
       for(let n=0;n<3;n++)rounded(root,0,-.068,front+.038+n*.012,width*.66,.003,.004,dark);
+      profile(root,[[front+.006,-.030],[front+.027,-.045],[.024,-.046],[.043,-.029]],width*.79,pistolFrame,{bevel:.001});
     }
     cylinder(root,0,.012,(front+.047)/2,bore+.004,.023-front,edge);
-    ring(root,0,.012,front-.004,bore+.006,bore,.015,edge);
+    ring(root,0,.012,front-.004,bore+.006,bore,.015,pistolChamfer);
+    ring(root,0,.012,front-.008,bore+.002,bore*.95,.003,pistolInset);
     cylinder(root,0,.012,front+.006,bore*.96,.003,dark);
     cylinder(root,0,-.022,front+.01,heavy?.009:.007,.022,metal);
     rounded(root,0,.018,-.017,width*.61,.033,.079,metal);
@@ -736,30 +767,52 @@ export function createWeaponRig(owner = {}) {
         cut.rotation.x=heavy?.09:.23;
       }
       if(heavy)for(let n=0;n<5;n++){
-        detail(slide,side*(half+.0004),.012,front+.039+n*.011,.0014,.026,.0034,dark);
+        detail(barrelShroud,side*(half+.0004),.012,front+.039+n*.011,.0014,.026,.0034,dark);
       }
       rounded(root,side*(half+.001),-.036,.079,.009,.010,.026,metal);
-      rounded(slide,side*.017,.052,.109,.009,.014,.026,dark);
-      detail(slide,side*.017,.053,.123,.004,.004,.002,sightDot);
+      const sightX=side*(heavy?.012:.011);
+      profile(slide,[[.095,.043],[.099,.060],[.122,.060],[.130,.048],[.130,.043]],.008,pistolInset,{x:sightX,bevel:.0006});
+      detail(slide,sightX,.055,.130,.0035,.0035,.001,sightDot);
+    }
+    // Long top chamfers catch light without increasing the slide's bulk.
+    for(const side of [-1,1]){
+      const x=side*(shoulder+.0018),top=heavy?barrelShroud:slide;
+      profile(top,[[front+.016,.043],[-.072,.043],[-.072,.047],[front+.018,.047]],.002,pistolChamfer,{x,bevel:.0003});
+      profile(slide,[[.035,.043],[.096,.043],[.098,.047],[.035,.047]],.002,pistolChamfer,{x,bevel:.0003});
+      const stop=rounded(root,side*(half+.003),-.029,.052,.004,.010,.052,pistolInset);stop.rotation.x=-.12;
+      for(let n=0;n<4;n++)detail(root,side*(half+.0053),-.030+n*.0025,.058,.0008,.0008,.028,pistolChamfer);
+    }
+    const hammer=new THREE.Group();hammer.name='pistol-hammer';hammer.position.set(0,-.018,rear+.006);root.add(hammer);
+    if(heavy){
+      profile(hammer,[[0,0],[.018,.013],[.031,.008],[.027,-.007],[.007,-.014]],.013,heavyFrame,{bevel:.001});
+      for(let n=0;n<4;n++)detail(hammer,0,.009,.010+n*.004,.014,.0015,.0016,pistolChamfer);
+    }
+    if(!heavy){
+      for(let n=0;n<9;n++)detail(slide,0,.0475,-.068+n*.018,width*.37,.0009,.002,pistolInset);
+      // A narrow extractor, pin ends and a barrel hood make the chamber readable.
+      profile(slide,[[-.056,.015],[.027,.015],[.030,.026],[-.047,.028]],.002,pistolInset,{x:half+.001,bevel:.0005});
+      detail(root,0,.037,-.020,width*.48,.0015,.054,pistolChamfer);
     }
     // Slide serrations, textured grip and inset controls read properly at FOV 70-95.
     for(const side of [-1,1]){
       const x=side*(half+.0007);
-      profile(slide,[[front+.021,-.004],[front+.115,-.004],[front+.113,.007],[front+.028,.009]],
+      const nose=heavy?barrelShroud:slide;
+      profile(nose,[[front+.021,-.004],[front+.115,-.004],[front+.113,.007],[front+.028,.009]],
         .0015,heavy?dark:metal,{x,bevel:.0003});
       for(let n=0;n<8;n++){
         const z=front+.024+n*.010;
-        const cut=detail(slide,side*(half+.0018),.018,z,.0012,.028,.0024,dark);
+        const cut=detail(nose,side*(half+.0018),.018,z,.0012,.028,.0024,dark);
         cut.rotation.x=heavy?-.12:.19;
       }
       const pinSide=gripAt(-.076)[0];
       cylinder(root,side*(pinSide+.0015),-.076,.068,.006,.003,metal,'x',12);
       cylinder(root,side*(pinSide+.003),-.076,.068,.003,.003,dark,'x',10);
-      detail(slide,side*(half+.002),.026,.008,.002,.018,.037,heavy?paint:barrelFinish);
+      detail(slide,side*(half+.002),.026,.008,.0012,.014,.032,heavy?heavyFrame:pistolInset);
     }
-    engraving(slide,heavy?'M50':'P19',-.077,.026,heavy?.0031:.00275,-half-.0006);
-    rounded(slide,0,.052,front+.027,.006,.014,.017,dark);
-    detail(slide,0,.054,front+.035,.004,.004,.002,sightDot);
+    const nose=heavy?barrelShroud:slide;
+    engraving(nose,heavy?'M50':'P19',-.077,.026,heavy?.0031:.00275,-half-.0006);
+    rounded(nose,0,.052,front+.027,.006,.014,.017,dark);
+    detail(nose,0,.054,front+.035,.004,.004,.002,sightDot);
     const magazineHome=new THREE.Vector3(0,gripSections[0][0]-.007,gripSections[0][4]);
     magazine.position.copy(magazineHome);
     const topZ=gripAt(-.09)[1]-magazineHome.z;
@@ -778,7 +831,7 @@ export function createWeaponRig(owner = {}) {
     const modelMatrix=root.matrix.clone();
     const muzzlePoint=new THREE.Vector3(0,.012,front).applyMatrix4(modelMatrix);
     const sightPoint=new THREE.Vector3(0,.054,.123).applyMatrix4(modelMatrix);
-    return {root,slide,magazine,magazineHome,ejection,front:muzzlePoint.z,boreY:muzzlePoint.y,sightY:sightPoint.y,heavy,modelMatrix};
+    return {root,slide,hammer,trigger,magazine,magazineHome,ejection,front:muzzlePoint.z,boreY:muzzlePoint.y,sightY:sightPoint.y,heavy,modelMatrix};
   }
   const pistols={p19:buildPistol(false),m50:buildPistol(true)};
 
@@ -1045,6 +1098,7 @@ export function createWeaponRig(owner = {}) {
     if(pistol){
       const travel=pistol.heavy ? .041 : .027;
       pistol.slide.position.z=Math.max(kick*travel,reloadEmpty?travel*.85:0,charging*travel);
+      pistol.trigger.rotation.x=-kick*.12;pistol.hammer.rotation.x=-kick*.34+charging*.22;
       pistolGripMesh.morphTargetInfluences[0]=THREE.MathUtils.clamp(kick,0,1);
     }
     const usingTool=Boolean(gadgetKind&&gadgetPhase>0&&gadgetPhase<1);

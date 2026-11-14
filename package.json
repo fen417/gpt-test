@@ -8,6 +8,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build && node scripts/check-budgets.mjs",
     "preview": "vite preview --host 127.0.0.1",
+    "preview:pistols": "vite build --config scripts/pistol-preview.config.mjs && vite preview --config scripts/pistol-preview.config.mjs",
     "start": "node server/index.js",
     "test": "node --test test/*.test.js",
     "bench": "node scripts/bench-sim.mjs",

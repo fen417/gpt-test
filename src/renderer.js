@@ -1,6 +1,7 @@
 import {batchStaticWorld} from './static-batching.js';
 import {applyTextureFiltering} from './texture-quality.js';
-﻿import * as THREE from 'three';
+import {applyPistolSprintPose} from './pistol-pose.js';
+import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
 import {soldierAssetKey,soldierAssetState,requestSoldierAsset} from './soldier-assets.js';
 import {GroundShadows} from './ground-shadows.js';
@@ -1753,16 +1754,19 @@ export class GameRenderer {
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetKind?0:gadgetPhase) * Math.PI);
       const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(this.weaponRig.sightType);
       const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:-.27;
+      const rifleSprint=pistol?0:this.sprintBlend;
+      const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(
-        lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * bob - this.swayX + this.sprintBlend * .035 + actionTilt * .055 + lowered * .06,
-        lerp(pistol ? -.105 : -.23, pistol ? -this.weaponRig.pistolSightHeight : -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * bob - this.swayY - reloadMotion * .10 - this.sprintBlend * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
+        lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * weaponBob - this.swayX + rifleSprint * .035 + actionTilt * .055 + lowered * .06,
+        lerp(pistol ? -.105 : -.23, pistol ? -this.weaponRig.pistolSightHeight : -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
         lerp(pistol ? -.50 : -.42, adsZ, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
       );
       this.weapon.rotation.set(
-        kick * (pistol ? .089 : .062) - reloadMotion * .39 - this.sprintBlend * .25 + Math.cos(cycle) * bob * .022 - actionTilt * .18 - lowered * .72,
-        -reloadMotion * .22 + this.sprintBlend * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
-        -reloadMotion * .47 + this.sprintBlend * .24 + Math.sin(cycle) * bob * .018 - actionTilt * .36 + lowered * .24,
+        kick * (pistol ? .089 : .062) - reloadMotion * .39 - rifleSprint * .25 + Math.cos(cycle) * weaponBob * .022 - actionTilt * .18 - lowered * .72,
+        -reloadMotion * .22 + rifleSprint * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
+        -reloadMotion * .47 + rifleSprint * .24 + Math.sin(cycle) * weaponBob * .018 - actionTilt * .36 + lowered * .24,
       );
+      if(pistol&&!gadgetKind)applyPistolSprintPose(this.weapon,this.sprintBlend,this.aimAmount,this.reloadAmount,kick,cycle);
       if(gadgetKind){
         const launcher=gadgetKind==='launcher';
         const framing=launcher?LAUNCHER_POSE:gadgetKind==='defibrillator'?DEFIB_POSE:(gadgetKind==='ammo'||gadgetKind==='medkit')?SUPPLY_POSE:null;

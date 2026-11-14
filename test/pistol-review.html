@@ -1,0 +1,23 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><base href="/"><title>SECTOR 09 · Пистолеты</title>
+<style>body{margin:0;background:#111a18;color:#e0e6da;font:14px Arial}canvas{width:100vw;height:100vh;display:block}aside{position:fixed;top:16px;left:16px;padding:16px;background:#101814e8;border:1px solid #52614b;border-radius:9px}label{display:block;margin:8px 0}select,button{padding:8px;background:#243027;color:#dce9c5;border:1px solid #657352}output{display:block;margin-top:12px;font:12px monospace;white-space:pre}p{font-size:12px;color:#a2b59c}</style>
+<canvas id="view"></canvas><aside><b>ПИСТОЛЕТЫ · 0.16</b><p>Настоящие модели и позы из игры</p>
+<label>Оружие <select id="weapon"><option value="p19">P-19</option><option value="m50">M-50 «Орёл»</option></select></label>
+<label>Движение <select id="pose"><option value="idle">Ожидание</option><option value="run">Бег</option><option value="aim">Прицеливание</option><option value="reload">Перезарядка</option><option value="fire">Выстрел</option></select></label>
+<label>Качество <select id="quality"><option value="high">High</option><option value="low">Low</option></select></label>
+<button id="freeze">Остановить позу</button><output id="metrics"></output></aside>
+<script type="module">
+import {GameRenderer} from '../src/renderer.js';
+import {loadFPSHands} from '../src/fps-hands.js';
+import {Simulation} from '../shared/simulation.js';
+document.querySelector('#metrics').textContent='Загрузка рук…';await loadFPSHands();document.querySelector('#metrics').textContent='Создание сцены…';const canvas=document.querySelector('#view'),renderer=new GameRenderer(canvas);document.querySelector('#metrics').textContent='Загрузка текстур…';renderer.surfaces.ready.catch(console.error);document.querySelector('#metrics').textContent='Подготовка позы…';
+const sim=new Simulation({mapId:'village',bots:0}),player=sim.addPlayer('preview','Боец',0,'assault');
+const state=sim.snapshot();let time=0,last=performance.now(),freeze=false;
+Object.assign(state.players[0],{weaponSlot:2,weaponId:'p19',heldGadget:null,equipTime:0});
+document.querySelector('#freeze').onclick=()=>{freeze=!freeze;document.querySelector('#freeze').textContent=freeze?'Продолжить':'Остановить позу';};
+function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,(now-last)/1000);last=now;if(freeze)return;time+=dt;
+ const pose=document.querySelector('#pose').value,weaponId=document.querySelector('#weapon').value,p=state.players[0];
+ Object.assign(p,{weaponId,sidearmId:weaponId,reloading:pose==='reload',reloadProgress:pose==='reload'?(time/2)%1:0,shotSeq:pose==='fire'?Math.floor(time*2):0,sprint:pose==='run'});state.time=time;
+ renderer.render(state,p.id,dt,{yaw:0,pitch:0,quality:document.querySelector('#quality').value,fov:85,aim:pose==='aim',sprint:pose==='run',move:pose==='run'?1:0,shake:false,gfx:{shadows:'auto',resolution:'1'}});
+ const stats=renderer.getStats();document.querySelector('#metrics').textContent=`${weaponId} / ${pose}\n${stats.calls-(renderer.renderer.info.worldRender?.calls??0)-1} draws · ${stats.triangles-(renderer.renderer.info.worldRender?.triangles??0)} triangles\n${renderer.weapon.position.toArray().map(v=>v.toFixed(3)).join(', ')}\n${renderer.weapon.rotation.toArray().slice(0,3).map(v=>v.toFixed(3)).join(', ')}`;
+}requestAnimationFrame(frame);
+</script></html>
