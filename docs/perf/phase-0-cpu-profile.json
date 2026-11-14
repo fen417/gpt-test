@@ -1,0 +1,107 @@
+{
+  "node": "v24.22.1",
+  "scenario": "bench-sim 2400 ticks/map; profiler enabled; development browser capture overlapped, timings are not a performance comparison",
+  "sampledMs": 18081.452,
+  "top": [
+    {
+      "functionName": "pathJob",
+      "selfMs": 3145.61,
+      "sharePercent": 17.4
+    },
+    {
+      "functionName": "(anonymous)",
+      "selfMs": 1326.93,
+      "sharePercent": 7.34
+    },
+    {
+      "functionName": "beginNavigationTick",
+      "selfMs": 1173.22,
+      "sharePercent": 6.49
+    },
+    {
+      "functionName": "encode",
+      "selfMs": 1103.46,
+      "sharePercent": 6.1
+    },
+    {
+      "functionName": "distance",
+      "selfMs": 956.87,
+      "sharePercent": 5.29
+    },
+    {
+      "functionName": "nearby",
+      "selfMs": 600.8,
+      "sharePercent": 3.32
+    },
+    {
+      "functionName": "(garbage collector)",
+      "selfMs": 576.04,
+      "sharePercent": 3.19
+    },
+    {
+      "functionName": "step",
+      "selfMs": 478.94,
+      "sharePercent": 2.65
+    },
+    {
+      "functionName": "thinkInfantryBot",
+      "selfMs": 477.28,
+      "sharePercent": 2.64
+    },
+    {
+      "functionName": "collides",
+      "selfMs": 461.88,
+      "sharePercent": 2.55
+    },
+    {
+      "functionName": "boxBounds",
+      "selfMs": 422.31,
+      "sharePercent": 2.34
+    },
+    {
+      "functionName": "moveBot",
+      "selfMs": 401.56,
+      "sharePercent": 2.22
+    },
+    {
+      "functionName": "walkableSegment",
+      "selfMs": 368,
+      "sharePercent": 2.04
+    },
+    {
+      "functionName": "inverseMatrix",
+      "selfMs": 350.63,
+      "sharePercent": 1.94
+    },
+    {
+      "functionName": "movePlayer",
+      "selfMs": 332.3,
+      "sharePercent": 1.84
+    },
+    {
+      "functionName": "rayAffineBox",
+      "selfMs": 328.14,
+      "sharePercent": 1.81
+    },
+    {
+      "functionName": "footprint",
+      "selfMs": 323.54,
+      "sharePercent": 1.79
+    },
+    {
+      "functionName": "vehicleCollides",
+      "selfMs": 315.58,
+      "sharePercent": 1.75
+    },
+    {
+      "functionName": "advanceBullet",
+      "selfMs": 268.9,
+      "sharePercent": 1.49
+    },
+    {
+      "functionName": "now",
+      "selfMs": 227.59,
+      "sharePercent": 1.26
+    }
+  ]
+}
