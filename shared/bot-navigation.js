@@ -16,6 +16,7 @@ function navigation(sim){
     if(list.some(n=>distance(n,{x,z})<.25&&Math.abs(n.y-y)<.15))return;
     const node={id:size*size+nodes.length,x,y,z,ground:false,crouch};nodes.push(node);byId[node.id]=node;list.push(node);layers.set(k,list);
   };
+  for(const point of sim.map.navigationNodes??[])insert(point.x,point.y??sim.groundAt(point.x,point.z),point.z);
   for(const b of sim.colliders){
     if(b.kind==='village-stair')insert(b.x,b.h,b.z);
     if(b.kind==='village-floor'){
