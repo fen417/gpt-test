@@ -74,8 +74,30 @@ test('the explosion camera starts two seconds before detonation and preserves ch
   assert.equal(c.cutscene?.id,'midpoint');assert(!c.flags.depotDestroyed);assert(c.fuel.every(f=>!f.destroyed));
   tick(s,2.3);assert(c.flags.depotDestroyed);assert(c.fuel.every(f=>f.destroyed));assert(c.trucks.every(t=>t.destroyed));assert.equal(c.checkpoint,2);
 });
-test('all 68 synthesized voice clips are Opus, assigned to character profiles and under budget',async()=>{
-  assert.equal(manifest.clips.length,68);assert.equal(Object.keys(manifest.profiles).length,8);let bytes=0;
-  for(const clip of manifest.clips){const line=locale.lines[clip.id],data=await readFile(new URL('../public/campaign/m01/'+line.audio,import.meta.url));assert.equal(data.toString('ascii',0,4),'OggS');assert(data.includes(Buffer.from('OpusHead')));assert(clip.seconds>0);assert(line.duration>=clip.seconds);bytes+=data.length;}
-  assert(bytes<=mission.audioBudgets.voice);assert.equal(bytes,manifest.totalBytes);
+test('every mission 1 line has an Opus recording, a voice profile and enough playback time',async()=>{
+  assert.deepEqual(manifest.clips.map(clip=>clip.id).sort(),Object.keys(locale.lines).sort());
+  const profiles=Object.values(manifest.profiles);
+  assert.equal(profiles.length,8);
+  assert.equal(new Set(profiles.map(profile=>profile.voiceId)).size,profiles.length);
+  let bytes=0;
+  for(const clip of manifest.clips){
+    const line=locale.lines[clip.id],data=await readFile(new URL('../public/campaign/m01/'+line.audio,import.meta.url));
+    assert.equal(clip.speaker,line.speaker);
+    assert.ok(manifest.profiles[line.speaker]?.voiceId);
+    assert.equal(data.toString('ascii',0,4),'OggS');
+    assert.ok(data.includes(Buffer.from('OpusHead')));
+    assert.ok(clip.seconds>0&&line.duration>=clip.seconds);
+    assert.equal(clip.bytes,data.length);
+    bytes+=data.length;
+  }
+  assert.ok(bytes<=mission.audioBudgets.voice);
+  assert.equal(bytes,manifest.totalBytes);
+  for(const scene of Object.values(mission.cutscenes)){
+    let end=0;
+    for(const [at,id] of scene.lines){
+      assert.ok(at>=end,id);
+      end=at+locale.lines[id].duration;
+    }
+    assert.ok(scene.duration>=end);
+  }
 });
