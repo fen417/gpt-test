@@ -10,6 +10,21 @@ let minEnemy=Infinity,maxshots=0,shots=0,ricochets=0,aliveEnd=0;
 const cannonShots=[],blastPositions=[],destroyed=[];
 
 const logs=[];
+function diagnose(v){
+  const xx=v.x-Math.sin(v.yaw)*.6,zz=v.z-Math.cos(v.yaw)*.6;
+  const all=sim.vehicles;
+  const withOthers=sim.vehicleCollides(v,xx,zz,v.yaw);
+  sim.vehicles=[v];
+  const withoutOthers=sim.vehicleCollides(v,xx,zz,v.yaw);
+  sim.vehicles=all;
+  const rise=sim.groundAt(v.x-Math.sin(v.yaw)*2,v.z-Math.cos(v.yaw)*2)-sim.groundAt(v.x,v.z);
+  const person=sim.players.get(v.seats[0]);
+  return {id:v.id,x:Math.round(v.x),z:Math.round(v.z),
+    wp:v.m02Waypoint,forward:person?.input?.forward,
+    speed:Number(v.speed.toFixed(2)),yaw:Number(v.yaw.toFixed(2)),
+    nextCollision:withOthers,staticCollision:withoutOthers,
+    rise:Number(rise.toFixed(2))};
+}
 for(let n=0;n<seconds*60;n++){
   sim.setInput('local',{yaw:sim.vehicles.find(v=>v.id==='sokol-7')?.aimYaw??0});
   sim.step(dt);
@@ -36,6 +51,12 @@ for(let n=0;n<seconds*60;n++){
       positions:current.slice(0,5).map(v=>[v.id,Math.round(v.x),Math.round(v.z),
         Number(v.speed.toFixed(2)),Number(v.yaw.toFixed(2)),v.m02Waypoint,
         Number(sim.map.terrain.heightAt(v.x,v.z).toFixed(1))])});
+    if([120,240,360].includes((n+1)/60)){
+      logs.at(-1).diagnostic={
+        friendly:sim.vehicles.filter(v=>v.team===0&&v.hp>0).slice(0,4).map(diagnose),
+        enemy:sim.vehicles.filter(v=>v.team===1&&v.hp>0).slice(0,4).map(diagnose),
+      };
+    }
     if(sim.campaign.failed||sim.campaign.complete)break;
   }
 }
