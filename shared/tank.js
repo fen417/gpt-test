@@ -32,22 +32,48 @@ export function advanceTankSystems(sim,v,gunner,dt){
   v.aimYaw=angle(v.aimYaw+clamp(angle(v.wantedYaw,v.aimYaw),-.9*dt,.9*dt),0);v.aimPitch+=clamp(v.wantedPitch-v.aimPitch,-.6*dt,.6*dt);
   const requested=gunner?.input.weaponSlot===2?1:gunner?.input.weaponSlot===1?0:v.weapon;
   if(requested!==v.weapon&&sim.time>=v.weaponReadyAt){v.weapon=requested;v.weaponReadyAt=sim.time+.35;}
-  if(Math.abs(v.speed)<1&&sim.map.spawns.some((p,team)=>team===v.team&&Math.hypot(v.x-p.x,v.z-p.z)<35)&&sim.time>=(v.nextShellSupply??0)){v.cannonAmmo=Math.min(24,v.cannonAmmo+1);v.nextShellSupply=sim.time+5;}
+  if(v.controlScheme!=='wot'&&Math.abs(v.speed)<1&&sim.map.spawns.some((p,team)=>team===v.team&&Math.hypot(v.x-p.x,v.z-p.z)<35)&&sim.time>=(v.nextShellSupply??0)){
+    v.cannonAmmo=Math.min(24,v.cannonAmmo+1);v.nextShellSupply=sim.time+5;
+  }
 }
 export function fireTank(sim,p,v,dt){
-  if(!p.input.fire||sim.time<v.weaponReadyAt)return;
-  if(v.weapon===1){if(v.overheated||v.gunCooldown>0)return;v.gunCooldown=Math.max(-dt,v.gunCooldown)+TANK_MG.interval;v.heat=Math.min(1,v.heat+TANK_MG.heatPerShot);v.overheated=v.heat>=1;v.gunSeq++;
-    const random=shotRandom(p.id,v.gunSeq,'tank-mg'),a=random()*Math.PI*2,r=Math.sqrt(random())*TANK_MG.spread;
-    sim.launchBullet(p,TANK_MG,tankMuzzle(v),v.aimYaw+Math.cos(a)*r,v.aimPitch+Math.sin(a)*r,v);return;}
-  if(v.cannonAmmo<=0||sim.time<v.cannonReadyAt)return;
-  v.cannonAmmo--;v.cannonSeq++;v.cannonReadyAt=sim.time+TANK_CANNON.reload;
-  const origin=tankMuzzle(v),speed=TANK_CANNON.speed,c=Math.cos(v.aimPitch),id='shell-'+v.id+'-'+v.cannonSeq;
-  const shell={id,kind:1,ownerId:p.id,vehicleId:v.id,team:p.team,...origin,vx:-Math.sin(v.aimYaw)*c*speed,vy:Math.sin(v.aimPitch)*speed,vz:-Math.cos(v.aimYaw)*c*speed,life:6};
+  if(!p.input.fire||sim.time<(v.weaponReadyAt??0))return;
+  const campaign=v.controlScheme==='wot'&&v.campaignWeapons;
+  if(v.weapon===1){
+    if(v.overheated||v.gunCooldown>0)return;
+    const gun=campaign?{...TANK_MG,...campaign.mg,projectileSpeed:20000}:TANK_MG;
+    v.gunCooldown=Math.max(-dt,v.gunCooldown)+gun.interval;
+    v.heat=Math.min(1,v.heat+TANK_MG.heatPerShot);v.overheated=v.heat>=1;v.gunSeq++;
+    const random=shotRandom(p.id,v.gunSeq,'tank-mg'),a=random()*Math.PI*2,r=Math.sqrt(random())*gun.spread;
+    sim.launchBullet(p,gun,tankMuzzle(v),v.aimYaw+Math.cos(a)*r,v.aimPitch+Math.sin(a)*r,v);
+    return;
+  }
+  const kind=campaign&&v.m02Shell==='he'?'he':'ap';
+  const spec=campaign?campaign[kind]:TANK_CANNON;
+  const ammo=campaign?v.shellAmmo[kind]:v.cannonAmmo;
+  if(ammo<=0||sim.time<(v.cannonReadyAt??0))return;
+  if(campaign){
+    v.shellAmmo[kind]--;v.cannonAmmo=v.shellAmmo[kind];
+  }else v.cannonAmmo--;
+  v.cannonSeq++;v.cannonReadyAt=sim.time+(spec.reload??TANK_CANNON.reload);
+  const origin=tankMuzzle(v),speed=spec.speed??TANK_CANNON.speed,c=Math.cos(v.aimPitch),id='shell-'+v.id+'-'+v.cannonSeq;
+  const shell={id,kind:1,ownerId:p.id,vehicleId:v.id,team:p.team,...origin,
+    vx:-Math.sin(v.aimYaw)*c*speed,vy:Math.sin(v.aimPitch)*speed,vz:-Math.cos(v.aimYaw)*c*speed,
+    life:campaign?5:6,
+    ...(campaign?{campaignShell:kind,campaignShellProfile:{damage:spec.damage,
+      blastRadius:spec.blastRadius??(kind==='he'?5:1.5)}}:{})};
   const seat={x:v.x,y:(v.y??0)+gunHeight,z:v.z};
   if(!sim.lineClear(seat,origin)){
-    const length=Math.hypot(origin.x-seat.x,origin.y-seat.y,origin.z-seat.z),dir={x:(origin.x-seat.x)/length,y:(origin.y-seat.y)/length,z:(origin.z-seat.z)/length};
-    let hit=sim.map.terrain?.raycast(seat,dir,length)??length;for(const box of sim.rayBoxes(seat,dir,length))hit=Math.min(hit,rayCollider(seat,dir,box,length));hit=Math.max(0,Math.min(length,hit)-.08);
-    shell.x=seat.x+dir.x*hit;shell.y=seat.y+dir.y*hit;shell.z=seat.z+dir.z*hit;shell.life=.001;shell.vx=shell.vy=shell.vz=0;
+    const length=Math.hypot(origin.x-seat.x,origin.y-seat.y,origin.z-seat.z),
+      dir={x:(origin.x-seat.x)/length,y:(origin.y-seat.y)/length,z:(origin.z-seat.z)/length};
+    let hit=sim.map.terrain?.raycast(seat,dir,length)??length;
+    for(const box of sim.rayBoxes(seat,dir,length))
+      hit=Math.min(hit,rayCollider(seat,dir,box,length));
+    hit=Math.max(0,Math.min(length,hit)-.08);
+    shell.x=seat.x+dir.x*hit;shell.y=seat.y+dir.y*hit;shell.z=seat.z+dir.z*hit;
+    shell.life=.001;shell.vx=shell.vy=shell.vz=0;
   }
-  sim.rockets.push(shell);sim.event('cannonShot',{playerId:p.id,vehicleId:v.id,weaponId:'tank-cannon',shotSeq:v.cannonSeq,...origin});
+  sim.rockets.push(shell);
+  sim.event('cannonShot',{playerId:p.id,vehicleId:v.id,weaponId:'tank-cannon',
+    shotSeq:v.cannonSeq,shellType:campaign?kind:undefined,...origin});
 }
