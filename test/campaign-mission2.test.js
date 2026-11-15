@@ -51,6 +51,8 @@ test('commander can select AP, HE and MG without modifying multiplayer tank phys
   c.command({type:'skip'});
   c.command({type:'weapon',mode:'he'});
   assert.equal(v.m02Shell,'he');assert.equal(v.weapon,0);
+  // Weapon swap has a short 0.22s safety lock before the first shot.
+  step(sim,15);
   sim.setInput('local',{yaw:v.yaw,pitch:0,fire:true});
   step(sim,1);
   assert.equal(v.shellAmmo.he,29);assert.equal(v.shellAmmo.ap,50);
