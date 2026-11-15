@@ -430,9 +430,13 @@ export function createWeaponRig(owner = {}) {
         .003,anodized,{x:side*.054,bevel:.002});
       for(let i=0;i<6;i++)rounded(g,side*.058,-.014,-.17+i*.036,.003,.009,.022,barrelFinish);
     }
-    curve(g,[[0,.079,-.22],[0,.139,-.245],[0,.16,-.32],[0,.16,-.37],[0,.09,-.39]],
-      .006,metal,18,10);
-    rounded(g,0,.158,-.342,.038,.022,.090,serrated);
+    // The old central carry-handle arch crossed the line of sight. A lower
+    // bridge with two side supports keeps the MG silhouette without obscuring
+    // the front sight at y=.164 in ADS.
+    for(const side of [-1,1])
+      curve(g,[[side*.055,.079,-.22],[side*.055,.109,-.245],[side*.055,.120,-.32],[side*.055,.119,-.37],[side*.055,.087,-.39]],
+        .0036,metal,12,8);
+    rounded(g,0,.121,-.342,.093,.010,.077,serrated);
     for(const z of [-.44,-.49,-.54])ring(g,0,.015,z,.023,.018,.01,barrelFinish,'z',16);
   }
   // PKP: stronger steel handguard/cooling jacket, large top cover hinge.
@@ -474,19 +478,29 @@ export function createWeaponRig(owner = {}) {
     for(const z of [-.62,-.69,-.75])ring(g,0,.015,z,.020,.016,.008,barrelFinish,'z',16);
   }
 
-  // Aperture sights have actual holes and never cover the aiming centre.
-  const ironSights=new THREE.Group();weapon.add(ironSights);
-  rounded(ironSights,0,.095,.043,.058,.034,.032,dark);
-  profile(ironSights,[[.029,.092],[.032,.152],[.054,.152],[.057,.092]],.026,metal,{bevel:.0015});
+  // MG-36 / PKP open sight. Keep the sight line at y=.164 but move the rear
+  // aperture forward, thin its rim and lower the side guards. Previously the
+  // large close-up ring and two prongs filled the entire ADS sight picture.
+  const ironSights=new THREE.Group();ironSights.name='support-iron-sights';weapon.add(ironSights);
+  const rearSight=new THREE.Group();rearSight.name='support-rear-sight';
+  rearSight.position.z=-.105;ironSights.add(rearSight);
+  rounded(rearSight,0,.097,0,.047,.018,.027,dark);
   for(const side of [-1,1]){
-    screw(ironSights,side*.031,.095,.043,.0045);
-    curve(ironSights,[[side*.022,.118,.043],[side*.024,.155,.043],[side*.016,.176,.043]],.004,dark,8,8);
+    screw(rearSight,side*.023,.097,0,.0036);
+    curve(rearSight,[[side*.035,.107,0],[side*.034,.134,0],[side*.028,.145,0]],
+      .0025,dark,8,6);
   }
-  ring(ironSights,0,.164,.043,.020,.011,.014,dark,'z',24);
-  const frontSight=new THREE.Group();ironSights.add(frontSight);frontSight.position.set(0,0,-.525);
-  rounded(frontSight,0,.078,.002,.054,.024,.032,dark);
-  profile(frontSight,[[-.01,.062],[-.01,.139],[.005,.162],[.01,.062]],.012,dark,{bevel:.001});
-  for(const side of [-1,1])curve(frontSight,[[side*.028,.082,.002],[side*.026,.15,.002],[side*.018,.174,.002]],.0045,dark,8,10);
+  // Outer radius .025, clear bore .0205: a thin aperture with 64% more
+  // viewing area than the old radius-.011 opening, at the correct aim height.
+  ring(rearSight,0,.164,0,.025,.0205,.008,dark,'z',24);
+  const frontSight=new THREE.Group();frontSight.name='support-front-sight';
+  ironSights.add(frontSight);frontSight.position.set(0,0,-.525);
+  rounded(frontSight,0,.081,0,.034,.018,.025,dark);
+  detail(frontSight,0,.123,0,.004,.074,.007,dark);
+  detail(frontSight,0,.161,0,.003,.005,.006,edge);
+  for(const side of [-1,1])
+    curve(frontSight,[[side*.022,.087,0],[side*.022,.133,0],[side*.019,.148,0]],
+      .0024,dark,8,6);
 
   const scope=new THREE.Group();weapon.add(scope);scope.visible=false;
   rounded(scope,0,.092,-.135,.058,.026,.195,metal);
