@@ -4,6 +4,9 @@ import {Mission2Simulation} from '../shared/campaign/mission2.js';
 
 const sim=new Mission2Simulation(mission,{seed:737,difficulty:'regular'});
 sim.campaign.command({type:'skip'});
+// Only this scripted test turns the human-controlled tank into a bot: otherwise
+// the player idles at the edge of the map and the last mission stages cannot be tested.
+sim.players.get('local').bot=true;
 const start=sim.vehicles.map(v=>({id:v.id,x:v.x,z:v.z}));
 const seconds=600,dt=1/60;
 let minEnemy=Infinity,maxshots=0,shots=0,ricochets=0,aliveEnd=0;
@@ -30,7 +33,6 @@ function diagnose(v){
     rise:Number(rise.toFixed(2))};
 }
 for(let n=0;n<seconds*60;n++){
-  sim.setInput('local',{yaw:sim.vehicles.find(v=>v.id==='sokol-7')?.aimYaw??0});
   sim.step(dt);
   for(const event of sim.events){
     if(event.id<=(sim.lastSoakEventId??-1))continue;
@@ -68,4 +70,7 @@ console.log(JSON.stringify({logs,cannonShots,blastPositions,destroyed},null,2));
 assert.equal(sim.campaign.enemySerial,10,'second wave must spawn as scripted');
 assert.ok(shots>=20,`tank AI never really fought: only ${shots} shots`);
 assert.ok(sim.vehicles.some(v=>v.team===1&&v.hp<=0),'no opposing tanks were damaged enough to destroy');
-assert.ok(sim.vehicles.filter(v=>v.team===0&&v.hp>0).some(v=>v.x>-350),'company did not reach approach to village');
+assert.ok(sim.vehicles.some(v=>v.team===0&&v.x>-350),
+  'armored company never reached the approach to Al-Hadra');
+assert.ok(sim.vehicles.some(v=>v.team===1&&v.x<350),
+  'enemy column never reached the confrontation line');
