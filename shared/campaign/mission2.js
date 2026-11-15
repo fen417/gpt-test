@@ -2,6 +2,7 @@ import {Simulation,sanitizeInput} from '../simulation.js';
 import {DIFFICULTIES} from '../world.js';
 import {VEHICLE_TYPES} from '../vehicles.js';
 import {fireTank} from '../tank.js';
+import {zeroedBulletPitch} from '../ballistics.js';
 import {ALHADRA_DESERT} from './alhadra-desert.js';
 
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
@@ -76,13 +77,19 @@ export class Mission2Simulation extends Simulation{
     let point=route[Math.min(wp,route.length-1)];
     // A tank defending a zone should maintain a safe interval from its
     // neighbours, while moving toward the next authored waypoint.
-    let goal={x:point[0],z:point[1]};
-    if(v.team===0&&v.m02Index>0){
-      const offset=(v.m02Index%3-1)*10;
-      goal={x:goal.x+offset,z:goal.z+Math.floor(v.m02Index/3)*-7};
-    }
-    if(distance(v,goal)<18&&wp<route.length-1){
-      wp++;v.m02Waypoint=wp;point=route[wp];goal={x:point[0],z:point[1]};
+    // Fixed independent lanes throughout the march: older code aimed every
+    // tank at the same waypoint and the entire company jammed on one ridge.
+    const lane=v.m02Index%3-1,row=Math.floor(v.m02Index/3);
+    const pathA=route[Math.max(0,wp-1)],pathB=route[Math.min(wp+1,route.length-1)];
+    const tx=pathB[0]-pathA[0],tz=pathB[1]-pathA[1];
+    const len=Math.max(1,Math.hypot(tx,tz)),ux=tx/len,uz=tz/len;
+    const offsetGoal=point=>v.team===0?{
+      x:point[0]-uz*15*lane-ux*row*12,
+      z:point[1]+ux*15*lane-uz*row*12,
+    }:{x:point[0]-uz*15*lane,z:point[1]+ux*15*lane};
+    let goal=offsetGoal(point);
+    if(distance(v,goal)<28&&wp<route.length-1){
+      wp++;v.m02Waypoint=wp;point=route[wp];goal=offsetGoal(point);
     }
     if(c.order==='hold'&&v.team===0)goal={x:v.x,z:v.z};
     if(c.order==='help'&&v.team===0&&v.id!=='sokol-7'){
@@ -91,18 +98,38 @@ export class Mission2Simulation extends Simulation{
     }
     const combatAllowed=c.started&&c.elapsed>=72;
     const inRange=target&&nearest<(v.team===1?660:715);
-    const attack=Boolean(inRange&&combatAllowed);
-    if(attack&&nearest<340)goal={x:v.x,z:v.z};
+    const from={x:v.x,y:(v.y??0)+2.4,z:v.z};
+    const to=target?{x:target.x,y:(target.y??0)+1.5,z:target.z}:null;
+    const sight=Boolean(target&&this.lineClear(from,to));
+    const attack=Boolean(inRange&&combatAllowed&&sight);
+    if(attack&&nearest<300)goal={x:v.x,z:v.z};
     const desired=bearing(v,goal),delta=angle(desired-v.yaw);
     const drive=distance(v,goal)>10?clamp(Math.abs(delta)>1.15?.45:1,0,1):0;
     // Reverse direction is disallowed for march formation to avoid
     // AI ping-pong around route corners.
-    const turn=clamp(-delta*1.8,-1,1);
+    let turn=clamp(-delta*1.8,-1,1);
+    if(Math.abs(v.speed)<.2&&distance(v,goal)>24){
+      v.m02Stopped=(v.m02Stopped??0)+.10;
+      if(v.m02Stopped>2.5){
+        // Attempt a brief reversing turn if blocked by a tank or roadside
+        // geometry. Each vehicle alternates direction for stability.
+        const turnSide=v.m02Index%2===0?1:-1;
+        turn=turnSide*.83;
+      }
+    }else v.m02Stopped=0;
     const yaw=target?bearing(v,target):v.yaw;
-    const pitch=target?clamp(Math.atan2((target.y??0)-(v.y??0),Math.max(1,nearest)),-.15,.35):0;
-    const aimAligned=target&&Math.abs(angle(yaw-v.aimYaw))<.13;
+    const flatDistance=Math.max(1,nearest);
+    // The AP shells follow real ballistic arcs (20 m/s²). At 600m, raw
+    // line-of-sight pitch lands ~20m short; zero the gun to the vehicle roof.
+    const directPitch=target?Math.atan2((target.y??0)+1.5-(v.y??0)-2.4,flatDistance):0;
+    const pitch=target?clamp(zeroedBulletPitch(directPitch,flatDistance,
+      v.campaignWeapons?.ap?.speed??420),-.15,.35):0;
+    const aimAligned=target&&Math.abs(angle(yaw-v.aimYaw))<.11&&
+      Math.abs(pitch-v.aimPitch)<.055;
     const fire=Boolean(attack&&aimAligned&&nearest<650);
-    p.input=sanitizeInput({forward:drive,strafe:turn,yaw,pitch,fire,weaponSlot:0});
+    const reverse=v.m02Stopped>2.5&&v.m02Stopped<4.5;
+    if(v.m02Stopped>5.5)v.m02Stopped=0;
+    p.input=sanitizeInput({forward:reverse?-.6:drive,strafe:turn,yaw,pitch,fire,weaponSlot:0});
     if(v.team===0&&c.order==='fire')p.input.fire=Boolean(inRange&&aimAligned);
   }
   // Campaign vehicles use the regular collision/suspension/track physics.
@@ -158,9 +185,12 @@ export class Mission2Director{
     const c=this.definition,team=c.friendlyCompany,base=team.start;
     const forward=bearing({x:base[0],z:base[1]},{x:0,z:0});
     const names=team.members;
+    const heading=team.route[1],dx=heading[0]-base[0],dz=heading[1]-base[1];
+    const norm=Math.max(1,Math.hypot(dx,dz)),ux=dx/norm,uz=dz/norm;
     for(let i=0;i<names.length;i++){
-      const meta=names[i],x=base[0]+(i%3-1)*11+(i===0?0:24),
-        z=base[1]-Math.floor(i/3)*12+(i===0?18:0);
+      const meta=names[i],lane=i%3-1,row=Math.floor(i/3);
+      const x=base[0]+ux*(35-row*17)-uz*lane*15;
+      const z=base[1]+uz*(35-row*17)+ux*lane*15;
       const v=this.sim.createMapVehicle({id:meta.id,type:'tank',team:0,x,z,yaw:forward});
       Object.assign(v,{controlScheme:'wot',m02Index:i,m02Waypoint:0,
         shellAmmo:{ap:c.weapons.ap.ammo,he:c.weapons.he.ammo},
