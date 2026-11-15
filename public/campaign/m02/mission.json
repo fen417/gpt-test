@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "id": "m02",
+  "title": "Рассвет над Аль-Хадрой",
+  "map": "alhadra-desert",
+  "genre": "tank",
+  "controlScheme": "wot",
+  "difficulty": {
+    "recruit": {
+      "enemyAccuracy": 0.65
+    },
+    "regular": {
+      "enemyAccuracy": 1
+    },
+    "veteran": {
+      "enemyAccuracy": 1.28
+    }
+  },
+  "timing": {
+    "briefingSeconds": 52,
+    "musicSeconds": 188,
+    "minCompletionSeconds": 720,
+    "expectedDurationSeconds": 840,
+    "maxDurationSeconds": 960
+  },
+  "mapCoordinates": {
+    "size": [
+      2000,
+      1200
+    ],
+    "village": [
+      0,
+      0
+    ],
+    "embeddedVillageOffset": [
+      150,
+      105
+    ],
+    "friendlyStart": [
+      -950,
+      -560
+    ],
+    "enemyStart": [
+      950,
+      120
+    ]
+  },
+  "player": {
+    "name": "Ирвин Вос",
+    "vehicleId": "sokol-7",
+    "start": [
+      -914,
+      -541
+    ],
+    "team": 0
+  },
+  "friendlyCompany": {
+    "name": "Сокол",
+    "count": 10,
+    "start": [
+      -950,
+      -560
+    ],
+    "speed": 7,
+    "formation": "3x3+lead",
+    "commander": "sokol-1",
+    "escort": "sokol-7",
+    "wingman": "sokol-8",
+    "members": [
+      {
+        "id": "sokol-1",
+        "name": "Капитан Холт",
+        "role": "commander"
+      },
+      {
+        "id": "sokol-2",
+        "name": "Сокол-2"
+      },
+      {
+        "id": "sokol-3",
+        "name": "Сокол-3"
+      },
+      {
+        "id": "sokol-4",
+        "name": "«Старик» Грей"
+      },
+      {
+        "id": "sokol-5",
+        "name": "Сокол-5"
+      },
+      {
+        "id": "sokol-6",
+        "name": "Сокол-6"
+      },
+      {
+        "id": "sokol-7",
+        "name": "Ирвин Вос",
+        "role": "player"
+      },
+      {
+        "id": "sokol-8",
+        "name": "Ник Бэйл",
+        "role": "wingman"
+      },
+      {
+        "id": "sokol-9",
+        "name": "Сокол-9"
+      },
+      {
+        "id": "sokol-10",
+        "name": "Сокол-10"
+      }
+    ],
+    "route": [
+      [
+        -930,
+        -540
+      ],
+      [
+        -740,
+        -439
+      ],
+      [
+        -570,
+        -343
+      ],
+      [
+        -420,
+        -227
+      ],
+      [
+        -220,
+        -130
+      ],
+      [
+        -65,
+        -52
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  "enemyCompany": {
+    "name": "Восточный корпус",
+    "firstWave": 6,
+    "total": 10,
+    "start": [
+      950,
+      120
+    ],
+    "speed": 6.5,
+    "route": [
+      [
+        920,
+        115
+      ],
+      [
+        745,
+        97
+      ],
+      [
+        572,
+        70
+      ],
+      [
+        395,
+        43
+      ],
+      [
+        220,
+        28
+      ],
+      [
+        46,
+        10
+      ]
+    ]
+  },
+  "briefing": {
+    "duration": 52,
+    "caption": "АЛЬ-ХАДРА, 05:12",
+    "camera": [
+      [
+        -450,
+        26,
+        -470
+      ],
+      [
+        -650,
+        20,
+        -480
+      ],
+      [
+        -830,
+        25,
+        -530
+      ]
+    ],
+    "lines": [
+      {
+        "at": 0,
+        "duration": 6,
+        "key": "holt.brief01"
+      },
+      {
+        "at": 16,
+        "duration": 7,
+        "key": "holt.brief02"
+      },
+      {
+        "at": 36,
+        "duration": 7,
+        "key": "holt.brief03"
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "id": "start",
+      "at": 0,
+      "type": "objective",
+      "key": "intercept"
+    },
+    {
+      "id": "holtHold",
+      "at": 5,
+      "type": "radio",
+      "key": "holt.hold"
+    },
+    {
+      "id": "enemyVanguard",
+      "at": 13,
+      "type": "spawn",
+      "count": 6,
+      "requiredExact": true
+    },
+    {
+      "id": "dust",
+      "at": 22,
+      "type": "radio",
+      "key": "grey.dust"
+    },
+    {
+      "id": "line",
+      "at": 35,
+      "type": "formation",
+      "name": "line"
+    },
+    {
+      "id": "baleDown",
+      "at": 146,
+      "type": "wingmanLoss",
+      "idOfTank": "sokol-8"
+    },
+    {
+      "id": "enemyRear",
+      "at": 160,
+      "type": "spawn",
+      "count": 4
+    },
+    {
+      "id": "battleLoop",
+      "at": 188,
+      "type": "musicLoop"
+    }
+  ],
+  "phases": [
+    {
+      "id": "march",
+      "title": "Держать строй",
+      "from": 0
+    },
+    {
+      "id": "intercept",
+      "title": "Разбей колонну до подхода к деревне",
+      "from": 13
+    },
+    {
+      "id": "battle",
+      "title": "Уничтожить бронетехнику противника",
+      "from": 110
+    },
+    {
+      "id": "village",
+      "title": "Прикрыть взвод Дюрана у Аль-Хадры",
+      "from": 188
+    },
+    {
+      "id": "debrief",
+      "title": "Осмотреть штабной танк",
+      "afterEnemyDefeat": true
+    }
+  ],
+  "outcome": {
+    "quarryIntel": true,
+    "saveSurvivingTanks": true
+  },
+  "weapons": {
+    "ap": {
+      "ammo": 50,
+      "damage": 900,
+      "speed": 420,
+      "reload": 4
+    },
+    "he": {
+      "ammo": 30,
+      "damage": 450,
+      "blastRadius": 5,
+      "speed": 300,
+      "reload": 4
+    },
+    "mg": {
+      "interval": 0.09,
+      "damage": 26,
+      "range": 400
+    }
+  },
+  "music": {
+    "intro": "music/m02-dawn.ogg",
+    "introSeconds": 188,
+    "loopStart": 148,
+    "loopEnd": 188
+  }
+}
