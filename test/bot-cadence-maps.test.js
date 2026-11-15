@@ -11,7 +11,11 @@ for(const mapId of Object.keys(MAPS)){
     const bots=[...sim.players.values()].filter(p=>p.bot);
     let calls=0;
     const original=sim.thinkBot.bind(sim);
-    sim.thinkBot=(p,dt)=>{calls++;original(p,dt);};
+    sim.thinkBot=(p,dt)=>{
+      const last=p.botThinkLastAt;
+      original(p,dt);
+      if(p.botThinkLastAt!==last)calls++;
+    };
     const dt=1/45,ticks=90;
     for(let tick=0;tick<ticks;tick++)sim.step(dt);
     assert.ok(Math.abs(sim.time-ticks*dt)<1e-6,'physics time advances for every tick');
