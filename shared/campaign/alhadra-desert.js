@@ -60,7 +60,10 @@ const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 const innerHalfX=240,innerHalfZ=180;
 const heightAt=(x,z)=>{
   const oldX=x+ALHADRA_OFFSET.x,oldZ=z+ALHADRA_OFFSET.z;
-  const spreadX=innerHalfX-Math.abs(oldX),spreadZ=innerHalfZ-Math.abs(oldZ);
+  // Bound the preserved village around its NEW local origin (0,0), not
+  // the old Al-Hadra world origin. Comparing against oldX/oldZ accidentally
+  // preserved rough village cliffs over the southern tank road instead.
+  const spreadX=innerHalfX-Math.abs(x),spreadZ=innerHalfZ-Math.abs(z);
   const edge=Math.min(spreadX,spreadZ);
   const outer=flattenTankCorridors(x,z,outerTerrain.heightAt(x,z));
   if(edge<0)return outer;
