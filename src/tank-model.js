@@ -88,7 +88,8 @@ function buildLevel(level,material){
     });const geometry=template.geometry,count=level?10:12;wheels=new THREE.InstancedMesh(geometry,material,count);const color=new THREE.Color(0xffffff);
     for(let i=0;i<count;i++){matrix.makeTranslation(i<count/2?-1.72:1.72,.42,-2.65+i%(count/2)*5.3/(count/2-1));wheels.setMatrixAt(i,matrix);wheels.setColorAt(i,color);}body.add(wheels);}
   if(level===1){const geometry=mergeGeometries([hull.geometry,hatch.geometry],false);hull.geometry.dispose();hatch.geometry.dispose();hull.geometry=geometry;hatch.removeFromParent();}
-  if(level===2){group.updateMatrixWorld(true);const parts=[];group.traverse(o=>{if(o.isMesh)parts.push(o.geometry.clone().applyMatrix4(o.matrixWorld));});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});body.clear();const mesh=new THREE.Mesh(geometry,material);body.add(mesh);}
+  // Keep hull, tracks, turret and barrel as articulated islands at every LOD.
+  // Merging the entire far model baked the turret permanently into the hull.
   return {group,body,turret,gun,hull,turretMesh,barrel,hatch,tracks,wheels};
 }
 export function createTankRig(){

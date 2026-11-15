@@ -5,7 +5,7 @@ export const SAVE_KEY='sector09-campaign-m01-v1';
 const saveKey=id=>id==='m02'?'sector09-campaign-m02-v1':SAVE_KEY;
 export function readCampaignSave(missionId='m01'){
   try{const save=JSON.parse(localStorage.getItem(saveKey(missionId))??'null');
-    return save?.version===1&&save.missionId===missionId?save:null;
+    return save?.version===(missionId==='m02'?2:1)&&save.missionId===missionId?save:null;
   }catch{return null;}
 }
 
@@ -51,6 +51,7 @@ export class CampaignSession {
   setPaused(value){if(value===this.paused)return;this.paused=value;this.worker.postMessage({type:'paused',value});}
   advance(input){this.worker.postMessage({type:'input',input});}
   command(command){this.worker.postMessage({type:'command',command});}
+  musicClock(seconds){this.worker.postMessage({type:'musicClock',seconds});}
   snapshot(){return this.state;}
   sample(now){
     if(!this.previous||this.state.campaign.cutscene||this.paused)return this.state;

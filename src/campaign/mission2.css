@@ -68,6 +68,15 @@
   /* Use existing centre reticle for zoom; our company markers stay at edges. */
   opacity:.9}
 .campaign-m02-active #crosshair{opacity:0}
+.campaign-m02-active .tank-condition{display:none}
+.m02-feedback{position:absolute;left:50%;top:58%;transform:translateX(-50%);color:#ffe0a0;font:700 13px monospace}
+.m02-interact{position:absolute;left:50%;bottom:128px;transform:translateX(-50%);text-align:center;max-width:75vw;color:#f5daa1;font:12px/1.5 monospace}
+.m02-world-target{position:absolute;top:0;left:0;padding:5px 7px;background:#101c16cf;color:#ffe19b;font:700 11px monospace;white-space:nowrap}
+.m02-lead{position:absolute;top:0;left:0;color:#d8f0b8;font:700 18px monospace}
+.campaign-cinematic .campaign-m02 :is(.m02-objective,.m02-company,.m02-controls,.m02-weapon-panel,.m02-radio,.m02-minimap){visibility:hidden}
+.m02-minimap{position:absolute;right:22px;bottom:30px;width:180px;height:180px;border-radius:50%;border:1px solid #d6bd7c66}
+.m02-sniper-mode .m02-dispersion{border-style:solid}
+@media(max-width:700px){.m02-minimap{width:115px;height:115px;right:8px;bottom:10px}.m02-interact{bottom:145px;font-size:10px}.m02-weapon-panel{max-width:65vw}.m02-hp{font-size:9px}}
 @media(max-width:1000px){
   .m02-company{right:10px;top:18px;min-width:150px;padding:10px}
   .m02-tank-status{grid-template-columns:54px 45px 48px;gap:5px;font-size:9px}

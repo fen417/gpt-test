@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {tankDropAngle,TANK_CANNON,tankMuzzle} from '../shared/tank.js';
 import {getAssetColliders,rayCollider} from '../shared/asset-colliders.js';
+import {campaignTankSight} from '../shared/campaign/tank-controls.js';
 import './tank-hud.css';
 export class TankHud{
   constructor(root){
@@ -25,12 +26,16 @@ export class TankHud{
     }
     if(now<(this.next??0))return;this.next=now+100;
     renderer.camera.getWorldPosition(this.origin);renderer.camera.getWorldDirection(this.direction);
-    let range=renderer.map.terrain?.raycast(this.origin,this.direction,800)??800;for(const box of getAssetColliders(renderer.map))range=Math.min(range,rayCollider(this.origin,this.direction,box,range));this.range=Number.isFinite(range)?range:800;
+    let range=renderer.map.terrain?.raycast(this.origin,this.direction,800)??800;for(const box of getAssetColliders(renderer.map))range=Math.min(range,rayCollider(this.origin,this.direction,box,range));
+    if(v.controlScheme==='wot')range=campaignTankSight(renderer.map,state.vehicles,this.origin,renderer.camera.rotation.y,renderer.camera.rotation.x,v.id).range;
+    this.range=Number.isFinite(range)?range:800;
     this.text('range',this.range>=800?'ДАЛЕЕ 800 М':`${Math.round(this.range)} М`);
     const focal=renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
-    for(const [i,node] of [...this.element.querySelector('.tank-range-marks').children].entries())node.setAttribute('transform',`translate(0 ${200+Math.tan(tankDropAngle((i+1)*100,v.weapon))*focal})`);
+    const shellSpeed=v.controlScheme==='wot'?(v.weapon===1?20000:v.campaignWeapons?.[v.m02Shell]?.speed):undefined;
+    for(const [i,node] of [...this.element.querySelector('.tank-range-marks').children].entries())node.setAttribute('transform',`translate(0 ${200+Math.tan(tankDropAngle((i+1)*100,v.weapon,shellSpeed))*focal})`);
     this.text('hp',`${Math.ceil(v.hp/v.maxHp*100)}%`);
     const wot=v.controlScheme==='wot',shellLabel=wot&&v.m02Shell==='ap'?'ББ': 'ОФ';
+    this.element.querySelector('.tank-weapon footer').textContent=wot?'ББ / ОФ / ПУЛЕМЁТ · КЛАВИШИ В НАСТРОЙКАХ':'1 ОРУДИЕ · 2 ПУЛЕМЁТ';
     this.text('weapon-name',v.weapon===1?'СПАРЕННЫЙ ПУЛЕМЁТ':`125 ММ · ${shellLabel}`);
     this.text('optic-label',v.weapon===1?'ПУЛЕМЁТНЫЙ КАНАЛ':`ОПТИЧЕСКИЙ КАНАЛ · ${shellLabel}`);this.text('ammo',v.weapon===1?'∞':String(v.cannonAmmo));
     const remaining=Math.max(0,v.cannonReadyAt-state.time),ready=state.time>=v.weaponReadyAt&&(v.weapon===1?!v.overheated:remaining===0&&v.cannonAmmo>0);

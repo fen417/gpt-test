@@ -1,0 +1,240 @@
+{
+  "engine": "Offline Windows System.Speech",
+  "baseVoice": "Microsoft Pavel",
+  "note": "Eight processed character timbres from one installed Russian male voice; synthetic, not actors or cloned people.",
+  "profiles": {
+    "orlov": {
+      "pitch": 0.8,
+      "tempo": 0.94,
+      "description": "Низкий, размеренный, по радио"
+    },
+    "duran": {
+      "pitch": 0.88,
+      "tempo": 1,
+      "description": "Низкий, собранный командир"
+    },
+    "lasko": {
+      "pitch": 1.18,
+      "tempo": 1.01,
+      "description": "Повышенный, немного торопливый"
+    },
+    "bruno": {
+      "pitch": 1.08,
+      "tempo": 1.04,
+      "description": "Светлый, подвижный"
+    },
+    "kane": {
+      "pitch": 0.95,
+      "tempo": 0.97,
+      "description": "Грубоватый, медленный"
+    },
+    "courier": {
+      "pitch": 1.12,
+      "tempo": 0.92,
+      "description": "Более высокий, усталый"
+    },
+    "officer": {
+      "pitch": 0.84,
+      "tempo": 1.08,
+      "description": "Резкий, низкий"
+    },
+    "sentry": {
+      "pitch": 1.02,
+      "tempo": 0.96,
+      "description": "Средний, настороженный"
+    },
+    "holt": {
+      "pitch": 0.86,
+      "tempo": 1,
+      "description": "Низкий командный голос"
+    },
+    "grey": {
+      "pitch": 0.82,
+      "tempo": 0.95,
+      "description": "Пожилой, неторопливый"
+    },
+    "bale": {
+      "pitch": 1.16,
+      "tempo": 1.07,
+      "description": "Молодой, оживлённый"
+    },
+    "dargo": {
+      "pitch": 0.77,
+      "tempo": 0.92,
+      "description": "Холодный, низкий голос"
+    },
+    "crew": {
+      "pitch": 1.04,
+      "tempo": 1.03,
+      "description": "Экипаж"
+    },
+    "ray": {
+      "pitch": 0.93,
+      "tempo": 1.03,
+      "description": "Механик-водитель"
+    },
+    "kim": {
+      "pitch": 1.1,
+      "tempo": 1.08,
+      "description": "Заряжающий"
+    },
+    "vos": {
+      "pitch": 0.9,
+      "tempo": 0.99,
+      "description": "Короткие команды"
+    }
+  },
+  "totalBytes": 241795,
+  "clips": [
+    {
+      "id": "holt.brief01",
+      "speaker": "holt",
+      "seconds": 5.8,
+      "bytes": 13601
+    },
+    {
+      "id": "holt.brief02",
+      "speaker": "holt",
+      "seconds": 5.1,
+      "bytes": 12569
+    },
+    {
+      "id": "holt.brief03",
+      "speaker": "holt",
+      "seconds": 5.400041666666667,
+      "bytes": 12819
+    },
+    {
+      "id": "holt.hold",
+      "speaker": "holt",
+      "seconds": 1.6709166666666666,
+      "bytes": 4275
+    },
+    {
+      "id": "grey.dust",
+      "speaker": "grey",
+      "seconds": 1.0165,
+      "bytes": 2855
+    },
+    {
+      "id": "bale.loss",
+      "speaker": "holt",
+      "seconds": 3.9000416666666666,
+      "bytes": 9030
+    },
+    {
+      "id": "duran.support",
+      "speaker": "duran",
+      "seconds": 3.100041666666667,
+      "bytes": 8239
+    },
+    {
+      "id": "bruno.signal",
+      "speaker": "bruno",
+      "seconds": 2.653,
+      "bytes": 6690
+    },
+    {
+      "id": "dargo.final",
+      "speaker": "dargo",
+      "seconds": 7,
+      "bytes": 16353
+    },
+    {
+      "id": "crew.loaded",
+      "speaker": "kim",
+      "seconds": 0.7445833333333334,
+      "bytes": 1980
+    },
+    {
+      "id": "duran.signal",
+      "speaker": "duran",
+      "seconds": 6.1,
+      "bytes": 13878
+    },
+    {
+      "id": "kane.support",
+      "speaker": "kane",
+      "seconds": 4.9,
+      "bytes": 10654
+    },
+    {
+      "id": "duran.underFire",
+      "speaker": "duran",
+      "seconds": 4.900041666666667,
+      "bytes": 11798
+    },
+    {
+      "id": "bale.ready",
+      "speaker": "bale",
+      "seconds": 3.4000416666666666,
+      "bytes": 7670
+    },
+    {
+      "id": "grey.tactics",
+      "speaker": "grey",
+      "seconds": 5.4,
+      "bytes": 12883
+    },
+    {
+      "id": "grey.repair",
+      "speaker": "grey",
+      "seconds": 6.400041666666667,
+      "bytes": 15767
+    },
+    {
+      "id": "grey.cover",
+      "speaker": "grey",
+      "seconds": 4.400041666666667,
+      "bytes": 10377
+    },
+    {
+      "id": "crew.repair",
+      "speaker": "ray",
+      "seconds": 4.000041666666666,
+      "bytes": 9513
+    },
+    {
+      "id": "duran.targets",
+      "speaker": "duran",
+      "seconds": 6.300041666666667,
+      "bytes": 14690
+    },
+    {
+      "id": "holt.lastWave",
+      "speaker": "holt",
+      "seconds": 5.2000416666666665,
+      "bytes": 12757
+    },
+    {
+      "id": "duran.saved",
+      "speaker": "duran",
+      "seconds": 8.300041666666667,
+      "bytes": 19366
+    },
+    {
+      "id": "vos.forward",
+      "speaker": "vos",
+      "seconds": 1.283625,
+      "bytes": 3201
+    },
+    {
+      "id": "vos.fire",
+      "speaker": "vos",
+      "seconds": 1.5879166666666666,
+      "bytes": 4304
+    },
+    {
+      "id": "vos.hold",
+      "speaker": "vos",
+      "seconds": 1.2382916666666666,
+      "bytes": 3334
+    },
+    {
+      "id": "vos.help",
+      "speaker": "vos",
+      "seconds": 1.1832083333333334,
+      "bytes": 3192
+    }
+  ]
+}

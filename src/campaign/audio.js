@@ -71,6 +71,17 @@ export class CampaignAudio {
   update(state,locale,paused){
     this.ensureGraph();if(!this.bus)return;
     const c=this.combat.ctx,mission=state.campaign;
+    if(mission.missionId==='m02'){
+      this.paused=paused;this.bus.gain.setTargetAtTime(!paused&&this.combat.enabled?this.combat.volume*.9:0,c.currentTime,.04);
+      this.voiceBus.gain.setTargetAtTime(this.combat.effectsVolume,c.currentTime,.05);
+      this.musicBus.gain.setTargetAtTime(this.combat.musicVolume*.15,c.currentTime,.2);
+      if(!this.prefetched){this.prefetched=true;for(const line of Object.values(locale.lines))if(line.audio)this.buffer(line.audio);}
+      if(this.epoch!==mission.epoch){this.epoch=mission.epoch;this.stopVoice();this.key=null;}
+      if(paused){if(this.sources.length)this.stopVoice();this.key=null;return;}
+      const key=mission.radio?.serial??null;
+      if(key!==this.key){this.key=key;const line=locale.lines[mission.radio?.key];if(line?.audio)this.voice(line,mission.radioRemaining??line.duration);else this.stopVoice();}
+      return;
+    }
     this.paused=paused;this.bus.gain.setTargetAtTime(!paused&&this.combat.enabled?this.combat.volume*.82:0,c.currentTime,.04);
     this.voiceBus.gain.setTargetAtTime(this.combat.effectsVolume,c.currentTime,.05);
     const defence=mission.stage===6&&!mission.cutscene&&!mission.complete&&!mission.failed;

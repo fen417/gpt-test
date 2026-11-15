@@ -789,7 +789,7 @@ export class GameRenderer {
       let rig = this.vehicleRigs.get(vehicle.id);
       const local = player?.vehicleId === vehicle.id && player.alive !== false;
       const distance = player ? Math.hypot(vehicle.x - player.x, vehicle.z - player.z) : 0;
-      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > (vehicle.type==='tank'?(this.lowQuality?320:600):190))) {
+      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > (vehicle.type==='tank'?(state.campaign?.missionId==='m02'?1000:this.lowQuality?320:600):190))) {
         if (rig) {
           rig.group.visible = false;
           rig.initialized = false;

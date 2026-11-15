@@ -115,11 +115,11 @@ export async function openCampaignMenu(onStart){
     dialog.querySelector('.campaign-mission-duration').textContent=mission.duration;
     dialog.querySelector('.campaign-mission-result').textContent=progress.best[id]
       ?`ЛУЧШЕЕ ВРЕМЯ: ${minutes(progress.best[id].elapsedSeconds)} · ПОТЕРИ: ${progress.best[id].losses??'—'}`
-      :progress.checkpoints[id]?`Сохранено: КП ${progress.checkpoints[id].number??0}`:'';
+      :progress.checkpoints[id]&&readCampaignSave(id)?`Сохранено: КП ${progress.checkpoints[id].number??0} · ${new Date(progress.checkpoints[id].when).toLocaleString('ru-RU')}`:'';
     dialog.querySelector('.campaign-storage-warning').textContent=campaignStorageWarning()
       ?'⚠ Хранилище браузера недоступно: прогресс сохранится только до перезагрузки.':'';
     dialog.querySelector('.campaign-menu-error').textContent='';
-    dialog.querySelector('.campaign-continue').hidden=!progress.checkpoints[id];
+    dialog.querySelector('.campaign-continue').hidden=!progress.checkpoints[id]||!readCampaignSave(id);
     dialog.querySelector('.campaign-continue').disabled=!mission.implemented||!canStartCampaignMission(id,progress,debugUnlock());
     const play=dialog.querySelector('.campaign-play');
     play.disabled=!canStartCampaignMission(id,progress,debugUnlock());
@@ -156,7 +156,7 @@ export async function openCampaignMenu(onStart){
     }else if(event.key==='Enter'&&(
       event.target?.closest?.('.campaign-map-mission')||event.target===dialog
     )){
-      event.preventDefault();launch(Boolean(progress.checkpoints[selected]));
+      event.preventDefault();launch(Boolean(progress.checkpoints[selected]&&readCampaignSave(selected)));
     }
   };
   choose(selected);

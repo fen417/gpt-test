@@ -59,6 +59,9 @@ test('skipping briefing never shifts the exact 13-second first-enemy trigger',()
   assert.equal(sim.vehicles.filter(v=>v.team===1).length,6);
   assert.ok(Math.abs(sim.campaign.elapsed-13)<.0001);
   assert.equal(sim.campaign.enemySerial,6);
+  step(sim,6);
+  const first=sim.events.find(e=>e.type==='cannonShot');
+  assert.ok(first&&Math.abs(first.time-sim.campaign.combatStartedAt-13)<=.1,'contact must include actual gunfire');
 });
 test('commander can select AP, HE and MG without modifying multiplayer tank physics',()=>{
   const sim=create(),c=sim.campaign,v=sim.vehicles.find(v=>v.id==='sokol-7');
@@ -84,7 +87,10 @@ test('mission 2 checkpoint can restore enemy tanks and timing',()=>{
   const save=sim.campaign.serialize();
   assert.equal(validMission2Save(save,mission),true);
   const restored=create();
+  restored.rockets.push({id:'old-shot'});
   assert.equal(restored.campaign.restore(save),true);
+  assert.deepEqual(restored.rockets,save.rockets);
+  assert.equal(restored.rngState,save.rngState);
   assert.equal(restored.campaign.enemySerial,6);
   assert.equal(restored.vehicles.filter(v=>v.team===1).length,6);
   assert.ok(Math.abs(restored.campaign.elapsed-13)<.0001);
@@ -106,20 +112,19 @@ test('all ten crew members are alive and tanks leave their starting formation',(
   assert.ok(positions.filter(p=>p.travel>45).length>=6,
     `friendly tank column failed to drive: ${JSON.stringify(positions)}`);
 });
-test('enemy tanks spawn inside the battlefield and stay as wrecks when destroyed',()=>{
-  const sim=create();sim.campaign.command({type:'skip'});step(sim,160*60);
+test('healthy enemy tanks survive a hit and stay as wrecks after repeated hits',()=>{
+  const sim=create();sim.campaign.command({type:'skip'});step(sim,13*60);sim.campaign.spawnEnemy(4);
   const enemies=sim.vehicles.filter(v=>v.team===1);
   assert.equal(enemies.length,10);
   for(const tank of enemies){
     assert.ok(tank.home.x<996&&tank.home.x>-996,`enemy tank started beyond map at ${tank.home.x}`);
   }
-  const target=enemies.find(v=>v.hp>0),attacker=sim.players.get('local');
-  if(target){
-    sim.damageVehicle(target,100000,attacker,'blast',{x:target.x,y:target.y+.6,z:target.z});
-    assert.equal(target.hp,0);
-    assert.ok(target.respawnIn>10000);
-    assert.ok(target.wreckTime>10000);
-  }
+  const target=enemies[0],attacker=sim.players.get('local');
+  const hit=()=>sim.damageVehicle(target,900,attacker,'blast',{x:target.x+1,y:target.y+.6,z:target.z});
+  hit();hit();assert.ok(target.hp>0&&target.hp<target.maxHp);
+  for(let i=0;i<10&&target.hp>0;i++)hit();
+  assert.equal(target.hp,0);
+  assert.ok(target.respawnIn>10000&&target.wreckTime>10000);
 });
 test('campaign AP shells ricochet beyond 72 degrees but hit head-on',()=>{
   const tank={type:'tank',x:0,y:0,z:0,yaw:0};
@@ -128,22 +133,33 @@ test('campaign AP shells ricochet beyond 72 degrees but hit head-on',()=>{
   assert.equal(tankShellRicochets(tank,{x:1.8,y:1,z:0},{x:-1,y:0,z:0}),false);
   assert.equal(tankShellRicochets(tank,{x:1.8,y:1,z:0},{x:-.1,y:0,z:1}),true);
 });
-test('mission 2 completes with survivors, recorded intel and a final checkpoint',()=>{
+test('mission 2 requires a surviving platoon and explicit recovery of the order',()=>{
   const sim=create(),c=sim.campaign;
   c.command({type:'skip'});
-  step(sim,188*60);
+  step(sim,85*60);
   assert.equal(c.enemySerial,10);
   for(const tank of sim.vehicles.filter(v=>v.team===1&&v.hp>0)){
-    sim.damageVehicle(tank,99999,sim.players.get('local'),'blast',
+    for(let i=0;i<4;i++)sim.damageVehicle(tank,99999,sim.players.get('local'),'blast',
       {x:tank.x,y:tank.y+1,z:tank.z});
   }
   const v=sim.vehicles.find(v=>v.id==='sokol-7');
-  v.x=-75;v.z=-85;v.y=sim.groundAt(v.x,v.z);
-  step(sim,2);
-  assert.equal(c.complete,true,'surviving player should be able to end the mission at village');
+  v.x=17;v.z=-45;v.y=sim.groundAt(v.x,v.z);
+  step(sim,1);assert.equal(c.phase,'village');assert.equal(c.complete,false);
+  for(let i=0;i<4;i++){
+    sim.time=c.villageStartedAt+i*30;
+    c.update(0);
+    for(const p of sim.players.values())if(p.team===1&&!p.vehicleId)p.alive=false;
+  }
+  assert.equal(c.phase,'debrief');assert.equal(c.flags.enemyOrder,undefined);
+  c.command({type:'interact'});assert.equal(c.flags.enemyOrder,undefined);
+  const wreck=sim.vehicles.find(v=>v.id==='east-tank-10');
+  v.x=wreck.x;v.z=wreck.z+10;v.y=sim.groundAt(v.x,v.z);v.speed=0;
+  c.command({type:'interact'});
+  sim.time+=Math.max(6,locale.lines['dargo.final'].duration)+.1;c.update(0);
+  assert.equal(c.complete,true);
   assert.equal(c.flags.enemyOrder,true);
-  assert.equal(c.checkpoint,3);
-  assert.equal(c.latestSave?.mission.checkpoint,3);
+  assert.equal(c.checkpoint,5);
+  assert.equal(c.latestSave?.mission.checkpoint,5);
   assert.equal(sim.snapshot().campaign.complete,true);
 });
 test('the timeline and dialogue are editable external resources',()=>{

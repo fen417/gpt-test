@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "id": "m02",
   "title": "Рассвет над Аль-Хадрой",
   "map": "alhadra-desert",
@@ -19,9 +19,7 @@
   "timing": {
     "briefingSeconds": 52,
     "musicSeconds": 188,
-    "minCompletionSeconds": 720,
-    "expectedDurationSeconds": 840,
-    "maxDurationSeconds": 960
+    "expectedDurationSeconds": 720
   },
   "mapCoordinates": {
     "size": [
@@ -41,8 +39,8 @@
       -560
     ],
     "enemyStart": [
-      950,
-      120
+      -570,
+      -450
     ]
   },
   "player": {
@@ -52,11 +50,13 @@
       -914,
       -541
     ],
-    "team": 0
+    "team": 0,
+    "maxHp": 4800
   },
   "friendlyCompany": {
     "name": "Сокол",
     "count": 10,
+    "maxHp": 3200,
     "start": [
       -950,
       -560
@@ -135,6 +135,18 @@
       [
         -115,
         -230
+      ],
+      [
+        -90,
+        -110
+      ],
+      [
+        17,
+        -70
+      ],
+      [
+        17,
+        0
       ]
     ]
   },
@@ -143,34 +155,65 @@
     "firstWave": 6,
     "total": 10,
     "start": [
-      950,
-      120
+      320,
+      -210
     ],
     "speed": 6.5,
     "route": [
       [
-        910,
-        105
+        -540,
+        -430
       ],
       [
-        730,
-        -25
+        -420,
+        -360
       ],
       [
-        550,
-        -145
+        -270,
+        -270
       ],
       [
-        365,
-        -210
+        -115,
+        -230
+      ],
+      [
+        -90,
+        -110
+      ],
+      [
+        17,
+        -70
+      ],
+      [
+        17,
+        0
+      ]
+    ],
+    "maxHp": 3200,
+    "contactStart": [
+      -570,
+      -450
+    ],
+    "rearRoute": [
+      [
+        290,
+        -216
       ],
       [
         175,
-        -235
+        -225
       ],
       [
-        -5,
-        -235
+        20,
+        -220
+      ],
+      [
+        17,
+        -95
+      ],
+      [
+        17,
+        0
       ]
     ]
   },
@@ -197,17 +240,17 @@
     "lines": [
       {
         "at": 0,
-        "duration": 6,
+        "duration": 6.1,
         "key": "holt.brief01"
       },
       {
         "at": 16,
-        "duration": 7,
+        "duration": 5.4,
         "key": "holt.brief02"
       },
       {
         "at": 36,
-        "duration": 7,
+        "duration": 5.71,
         "key": "holt.brief03"
       }
     ]
@@ -226,6 +269,24 @@
       "key": "holt.hold"
     },
     {
+      "id": "baleChatter",
+      "at": 7,
+      "type": "radio",
+      "key": "bale.ready"
+    },
+    {
+      "id": "dust",
+      "at": 9,
+      "type": "radio",
+      "key": "grey.dust"
+    },
+    {
+      "id": "line",
+      "at": 10,
+      "type": "formation",
+      "name": "line"
+    },
+    {
       "id": "enemyVanguard",
       "at": 13,
       "type": "spawn",
@@ -233,26 +294,20 @@
       "requiredExact": true
     },
     {
-      "id": "dust",
-      "at": 22,
+      "id": "greyTactics",
+      "at": 26,
       "type": "radio",
-      "key": "grey.dust"
-    },
-    {
-      "id": "line",
-      "at": 35,
-      "type": "formation",
-      "name": "line"
+      "key": "grey.tactics"
     },
     {
       "id": "baleDown",
-      "at": 146,
+      "at": 46,
       "type": "wingmanLoss",
       "idOfTank": "sokol-8"
     },
     {
       "id": "enemyRear",
-      "at": 160,
+      "at": 85,
       "type": "spawn",
       "count": 4
     },
@@ -276,7 +331,7 @@
     {
       "id": "battle",
       "title": "Уничтожить бронетехнику противника",
-      "from": 110
+      "from": 13
     },
     {
       "id": "village",
@@ -318,5 +373,8 @@
     "introSeconds": 187.5735,
     "loopStart": 100.193,
     "loopEnd": 179.643
+  },
+  "audioBudgets": {
+    "voice": 1000000
   }
 }

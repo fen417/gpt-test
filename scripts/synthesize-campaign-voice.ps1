@@ -1,10 +1,10 @@
-param([string]$OutputDirectory)
+param([string]$OutputDirectory,[ValidateSet('m01','m02')][string]$Mission='m01')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Speech
 $campaignRoot = Split-Path -Parent $PSScriptRoot
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $campaignRoot '.perf-local/campaign-voice/raw' }
 [void][System.IO.Directory]::CreateDirectory($OutputDirectory)
-$campaignLocale = Get-Content -LiteralPath (Join-Path $campaignRoot 'public/campaign/m01/ru.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$campaignLocale = Get-Content -LiteralPath (Join-Path $campaignRoot "public/campaign/$Mission/ru.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $campaignSpeech = New-Object System.Speech.Synthesis.SpeechSynthesizer
 try {
   $campaignSpeech.SelectVoice('Microsoft Pavel')

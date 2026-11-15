@@ -386,7 +386,7 @@ export class CombatAudio {
     }
     if(this._nextMusic<now-.3)this._nextMusic=now+.08;let scheduled=0;
     while(this._nextMusic<now+.32&&scheduled++<8){
-      if(this._mode==='battle'&&this._enabled&&this._musicVolume>0)this._musicTick(this._musicStep,this._nextMusic);
+      if(this._mode==='battle'&&!this.campaignMusicOverride&&this._enabled&&this._musicVolume>0)this._musicTick(this._musicStep,this._nextMusic);
       this._musicStep=(this._musicStep+1)%256;this._nextMusic+=BEAT/2;
     }
   }

@@ -3,7 +3,7 @@ import { VEHICLE_TYPES, vehicleShape } from './vehicles.js';
 import { boxBounds, rayAffineBox, uprightBox } from './geometry.js';
 import { rayCollider } from './asset-colliders.js';
 import { moveBot,findCover } from './bot-navigation.js';
-import {TANK_CANNON,tankShellRicochets} from './tank.js';
+import {TANK_CANNON,tankShellIncidence,tankShellRicochets} from './tank.js';
 
 export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 'repair', recon: 'beacon' };
 export const GADGET_NAMES = { ammo: 'ЯЩИК ПАТРОНОВ', defibrillator: 'ДЕФИБРИЛЛЯТОР', repair: 'РЕМОНТНАЯ ГОРЕЛКА',
@@ -195,9 +195,11 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     if(vehicle===directVehicle){
       if(shellProfile?.kind==='ap'&&tankShellRicochets(vehicle,origin,shellProfile.direction)){
         sim.event('ricochet',{playerId:owner?.id,vehicleId:vehicle.id,x:origin.x,y:origin.y,z:origin.z});
+        if(owner?.id==='local'&&sim.campaign?.definition.id==='m02')sim.campaign.feedback={text:'РИКОШЕТ',until:sim.time+1.8};
       }else{
         const before=vehicle.hp;
-        sim.damageVehicle(vehicle,shellProfile?.damage??(cannon&&vehicle.type==='tank'?900:760),owner,'blast',origin,sourceVehicleId);
+        const angleFactor=shellProfile?.kind==='ap'?.6+.4*tankShellIncidence(vehicle,origin,shellProfile.direction):1;
+        sim.damageVehicle(vehicle,(shellProfile?.damage??(cannon&&vehicle.type==='tank'?900:760))*angleFactor,owner,'blast',origin,sourceVehicleId);
         confirmed||=vehicle.hp<before;
       }
     }
@@ -238,10 +240,10 @@ function updateRockets(sim,dt) {
       // marching formation. Without this, the front line absorbs every AP
       // round fired by tanks directly behind it, despite friendly fire being
       // disabled by the blast handler.
-      if(vehicle.hp<=0||vehicle.id===rocket.vehicleId||
-        (rocket.campaignShell&&vehicle.team===rocket.team))continue;
+      const wreck=rocket.campaignShell&&vehicle.hp<=0&&vehicle.wreckTime>0;
+      if(vehicle.id===rocket.vehicleId||!wreck&&(vehicle.hp<=0||rocket.campaignShell&&vehicle.team===rocket.team))continue;
       const d=rayAffineBox(rocket,direction,vehicleShape(vehicle),nearest);
-      if(d<nearest){nearest=d;direct=vehicle;hit=true;}
+      if(d<nearest){nearest=d;direct=wreck?null:vehicle;hit=true;}
     }
     for(const player of sim.players.values()){
       if(!player.alive||player.id===rocket.ownerId||player.team===rocket.team)continue;

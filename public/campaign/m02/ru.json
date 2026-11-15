@@ -7,89 +7,278 @@
     "bruno": "Бруно Валь",
     "dargo": "Майор Дарго",
     "crew": "Экипаж Сокол-7",
-    "kane": "Рядовой Кейн"
+    "kane": "Рядовой Кейн",
+    "ray": "Тимо Рэй · механик-водитель",
+    "kim": "Рафа Ким · заряжающий",
+    "vos": "Ирвин Вос · Сокол-7"
   },
   "objectives": {
     "march": "Держать строй",
     "intercept": "Разбей колонну до подхода к деревне",
     "battle": "Уничтожить бронетехнику противника",
-    "village": "Прикрыть взвод Дюрана у Аль-Хадры",
-    "debrief": "Осмотреть штабной танк"
+    "village": "Войдите в деревню, прикройте взвод и уничтожьте ПТ-орудия",
+    "debrief": "Заберите приказ у штабного танка",
+    "finale": "Приказ получен · перехват вражеского эфира"
   },
   "lines": {
     "holt.brief01": {
       "speaker": "holt",
       "text": "Рота «Сокол», выходим на сигнал «Маяк». Аль-Хадра ждёт помощи.",
-      "duration": 6,
-      "provisional": true
+      "duration": 6.1,
+      "provisional": true,
+      "audio": "voice/holt.brief01.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "holt"
+      }
     },
     "holt.brief02": {
       "speaker": "holt",
       "text": "Восточный корпус идёт к деревне. Мы перехватим колонну на подходе.",
-      "duration": 7,
-      "provisional": true
+      "duration": 5.4,
+      "provisional": true,
+      "audio": "voice/holt.brief02.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "holt"
+      }
     },
     "holt.brief03": {
       "speaker": "holt",
       "text": "Вос, держись рядом с ротой. По моей команде — удар с фланга.",
-      "duration": 7,
-      "provisional": true
+      "duration": 5.71,
+      "provisional": true,
+      "audio": "voice/holt.brief03.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "holt"
+      }
     },
     "holt.hold": {
       "speaker": "holt",
       "text": "«Сокол», держать строй!",
-      "duration": 3
+      "duration": 2,
+      "audio": "voice/holt.hold.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "holt"
+      }
     },
     "grey.dust": {
       "speaker": "grey",
       "text": "Пыль на востоке!",
-      "duration": 3
+      "duration": 2,
+      "audio": "voice/grey.dust.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "grey"
+      }
     },
     "bale.loss": {
       "speaker": "holt",
       "text": "«Сокол-8» потерян. Продолжаем атаку.",
-      "duration": 4,
-      "provisional": true
+      "duration": 4.21,
+      "provisional": true,
+      "audio": "voice/bale.loss.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "holt"
+      }
     },
     "duran.support": {
       "speaker": "duran",
       "text": "Нам нужна поддержка бронетехники на площади!",
-      "duration": 4,
-      "provisional": true
+      "duration": 3.41,
+      "provisional": true,
+      "audio": "voice/duran.support.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "duran"
+      }
     },
     "bruno.signal": {
       "speaker": "bruno",
       "text": "«Сокол», примите сигнал — выдвигаемся.",
-      "duration": 4
+      "duration": 2.96,
+      "audio": "voice/bruno.signal.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "bruno"
+      }
     },
     "dargo.final": {
       "speaker": "dargo",
-      "text": "Сигнал «Маяк» слышен. Путь к карьеру вам открыт.",
-      "duration": 5,
-      "provisional": true
+      "text": "Вы удержали Аль-Хадру. Но у карьера вас уже ждут. Маяк не останется вашим.",
+      "duration": 7.3,
+      "provisional": true,
+      "audio": "voice/dargo.final.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "dargo"
+      }
     },
     "crew.loaded": {
-      "speaker": "crew",
+      "speaker": "kim",
       "text": "Заряжено!",
-      "duration": 1.5
+      "duration": 2,
+      "audio": "voice/crew.loaded.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "kim"
+      }
     },
     "duran.signal": {
       "speaker": "duran",
       "text": "«Сокол», Аль-Хадра на связи. Ждём вас. Бруно больше не отвечает.",
-      "duration": 4,
-      "provisional": true
+      "duration": 6.4,
+      "provisional": true,
+      "audio": "voice/duran.signal.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "duran"
+      }
     },
     "kane.support": {
       "speaker": "kane",
       "text": "Здесь Кейн. Держу площадь. Работайте по броне!",
-      "duration": 4,
-      "provisional": true
+      "duration": 5.2,
+      "provisional": true,
+      "audio": "voice/kane.support.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "kane"
+      }
     },
     "duran.underFire": {
       "speaker": "duran",
       "text": "Танки противника прорываются! Без поддержки нам не удержаться.",
-      "duration": 4,
-      "provisional": true
+      "duration": 5.21,
+      "provisional": true,
+      "audio": "voice/duran.underFire.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "duran"
+      }
+    },
+    "bale.ready": {
+      "speaker": "bale",
+      "text": "Седьмой, я справа от тебя. Не отстану!",
+      "duration": 3.71,
+      "audio": "voice/bale.ready.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "bale"
+      }
+    },
+    "grey.tactics": {
+      "speaker": "grey",
+      "text": "Не стойте бортом! Огонь с остановки, затем меняйте позицию.",
+      "duration": 5.7,
+      "audio": "voice/grey.tactics.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "grey"
+      }
+    },
+    "grey.repair": {
+      "speaker": "grey",
+      "text": "Вос, броня ещё держит. Остановись и прикажи экипажу ремонтировать машину.",
+      "duration": 6.71,
+      "audio": "voice/grey.repair.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "grey"
+      }
+    },
+    "grey.cover": {
+      "speaker": "grey",
+      "text": "Вторая группа справа от площади! Прикрою вас.",
+      "duration": 4.71,
+      "audio": "voice/grey.cover.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "grey"
+      }
+    },
+    "crew.repair": {
+      "speaker": "ray",
+      "text": "Заделываем повреждения. Машина ещё повоюет.",
+      "duration": 4.31,
+      "audio": "voice/crew.repair.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "ray"
+      }
+    },
+    "duran.targets": {
+      "speaker": "duran",
+      "text": "Пехота у восточных домов! И противотанковые орудия на гряде. Уберите их!",
+      "duration": 6.61,
+      "audio": "voice/duran.targets.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "duran"
+      }
+    },
+    "holt.lastWave": {
+      "speaker": "holt",
+      "text": "Последняя группа противника! Не подпускайте их к нашим пехотинцам.",
+      "duration": 5.51,
+      "audio": "voice/holt.lastWave.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "holt"
+      }
+    },
+    "duran.saved": {
+      "speaker": "duran",
+      "text": "Площадь наша. Спасибо, Сокол. Осмотрите подбитую штабную машину: там вражеские приказы.",
+      "duration": 8.61,
+      "audio": "voice/duran.saved.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "duran"
+      }
+    },
+    "vos.forward": {
+      "speaker": "vos",
+      "text": "Рота, вперёд!",
+      "duration": 2,
+      "audio": "voice/vos.forward.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "vos"
+      }
+    },
+    "vos.fire": {
+      "speaker": "vos",
+      "text": "Огонь по отмеченной цели!",
+      "duration": 2,
+      "audio": "voice/vos.fire.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "vos"
+      }
+    },
+    "vos.hold": {
+      "speaker": "vos",
+      "text": "Держать позицию!",
+      "duration": 2,
+      "audio": "voice/vos.hold.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "vos"
+      }
+    },
+    "vos.help": {
+      "speaker": "vos",
+      "text": "Прикрыть Сокол семь!",
+      "duration": 2,
+      "audio": "voice/vos.help.ogg",
+      "synthesis": {
+        "engine": "Windows System.Speech / Microsoft Pavel",
+        "profile": "vos"
+      }
     }
   }
 }
