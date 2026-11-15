@@ -2,14 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {createWeaponRig} from '../src/weapons.js';
+import {loadFPSHands} from '../src/fps-hands.js';
+import {readFile} from 'node:fs/promises';
 import {GAME_VERSION,PATCH_NOTES} from '../shared/releases.js';
 
-test('MG-36 and PKP retain a wide, unobstructed rear sight aperture in ADS',()=>{
+test('MG-36 and PKP retain a wide, unobstructed rear sight aperture in ADS',async()=>{
   // No browser DOM in Node: provide texture placeholders for model geometry.
-  const originalLoad=THREE.TextureLoader.prototype.load;
+  const originalLoad=THREE.TextureLoader.prototype.load,originalFetch=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(await readFile(new URL('../src/assets/fps-hands.bin.gz',import.meta.url)));
   THREE.TextureLoader.prototype.load=()=>new THREE.Texture();
   let rig;
   try{
+    await loadFPSHands();
     rig=createWeaponRig({lowQuality:true});
     for(const weaponId of ['mg36','pkp']){
       rig.update({classId:'support',weaponId,aim:1,team:0,reloadPhase:1});
@@ -38,6 +42,7 @@ test('MG-36 and PKP retain a wide, unobstructed rear sight aperture in ADS',()=>
   }finally{
     rig?.dispose();
     THREE.TextureLoader.prototype.load=originalLoad;
+    globalThis.fetch=originalFetch;
   }
 });
 
