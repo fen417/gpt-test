@@ -43,7 +43,7 @@ test('scripted enemy Humvee actually drives in from the road',()=>{
   assert.ok(sim.players.get('car-driver')?.vehicleId===v.id,'visible driver in the approaching Humvee');
   assert.ok(v.campaignRoute,'Humvee has an arrival route');
   tick(sim,3);
-  assert.ok(Math.hypot(v.x-x,v.z-z)>7,'enemy car must travel on real physics instead of teleporting');
+  assert.ok(Math.hypot(v.x-x,v.z-z)>7,`enemy car must travel on real physics: at ${v.x.toFixed(1)},${v.z.toFixed(1)}, speed ${v.speed?.toFixed(2)}, route ${JSON.stringify(v.campaignRoute)}, blocked ${sim.vehicleCollides(v,v.x-1,v.z,.7)}`);
   assert.ok([v.x,v.y,v.z,v.yaw].every(Number.isFinite));
 });
 test('wounded courier boards parked extraction transport and starts driving away',()=>{
@@ -53,7 +53,7 @@ test('wounded courier boards parked extraction transport and starts driving away
   const vehicle=sim.vehicles.find(v=>v.id==='campaign-evac-car');
   assert.ok(vehicle,'extraction transport exists from the beginning');
   c.place(courier,vehicle.x+2,vehicle.z);
-  c.thinkBot(courier,1/60);
+  sim.thinkBot(courier,1/60);
   assert.equal(courier.vehicleId,vehicle.id);
   assert.ok(vehicle.campaignRoute,'the courier immediately departs after boarding');
   const x=vehicle.x,z=vehicle.z;
