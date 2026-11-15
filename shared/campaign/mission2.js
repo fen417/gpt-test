@@ -27,11 +27,26 @@ export class Mission2Simulation extends Simulation{
       if(v?.controlScheme==='wot'){
         // The one human controls hull and turret. No multiplayer tank seat
         // or control semantics are changed.
+        const c=this.campaign;
         p.input.weaponSlot=0;
         p.input.yaw=Number.isFinite(input.yaw)?input.yaw:p.yaw;
         p.input.pitch=Number.isFinite(input.pitch)?input.pitch:0;
+        p.input.turretHold=Boolean(input.turretHold);
+        if(c.lockedTargetId&&!p.input.turretHold){
+          const target=this.vehicles.find(other=>other.id===c.lockedTargetId&&other.hp>0);
+          const origin={x:v.x,y:v.y+2.2,z:v.z},destination=target&&
+            {x:target.x,y:target.y+1.5,z:target.z};
+          if(!target||distance(v,target)>850||!this.lineClear(origin,destination))c.lockedTargetId=null;
+          else{
+            p.input.yaw=bearing(v,target);
+            p.input.pitch=clamp(Math.atan2(destination.y-origin.y,distance(v,target)),-.15,.35);
+          }
+        }
         if(input.brake)p.input.forward=0;
-        this.campaign.braking=Boolean(input.brake);
+        else if(c.cruise&&Math.abs(p.input.forward)<.01)
+          p.input.forward=clamp((c.definition.friendlyCompany.speed-v.speed)*.3,0,1);
+        else if(Math.abs(p.input.forward)>.01)c.cruise=false;
+        c.braking=Boolean(input.brake);
       }
     }
   }
@@ -76,7 +91,7 @@ export class Mission2Simulation extends Simulation{
     const yaw=target?bearing(v,target):v.yaw;
     const pitch=target?clamp(Math.atan2((target.y??0)-(v.y??0),Math.max(1,nearest)),-.15,.35):0;
     const aimAligned=target&&Math.abs(angle(yaw-v.aimYaw))<.13;
-    const fire=Boolean(attack&&aimAligned&&(c.order!=='hold'||v.team===1)&&nearest<650);
+    const fire=Boolean(attack&&aimAligned&&nearest<650);
     p.input=sanitizeInput({forward:drive,strafe:turn,yaw,pitch,fire,weaponSlot:0});
     if(v.team===0&&c.order==='fire')p.input.fire=Boolean(inRange&&aimAligned);
   }
@@ -127,6 +142,7 @@ export class Mission2Director{
     this.flags={};this.order='forward';this.radio=null;this.radioEnd=0;this.radioSerial=0;
     this.fired=new Set();this.checkpoint=0;this.latestSave=null;this.saveRevision=0;
     this.combatStartedAt=null;this.elapsed=0;this.enemySerial=0;this.braking=false;
+    this.cruise=false;this.lockedTargetId=null;
   }
   initialize(){
     const c=this.definition,team=c.friendlyCompany,base=team.start;
@@ -194,12 +210,27 @@ export class Mission2Director{
         this.sim.event('campaignRepair',{vehicleId:v.id,amount:300});return;
       }
     }
+    if(command?.type==='targetLock'){
+      if(this.lockedTargetId){this.lockedTargetId=null;return;}
+      const v=this.sim.vehicles.find(x=>x.id==='sokol-7'),driver=this.player;
+      if(!v||!driver)return;
+      let nearest=null,best=.135;
+      for(const target of this.sim.vehicles){
+        if(target.hp<=0||target.team===v.team||distance(v,target)>850)continue;
+        const deviation=Math.abs(angle(bearing(v,target)-driver.input.yaw));
+        const origin={x:v.x,y:v.y+2.2,z:v.z},point={x:target.x,y:target.y+1.5,z:target.z};
+        if(deviation<best&&this.sim.lineClear(origin,point)){best=deviation;nearest=target;}
+      }
+      this.lockedTargetId=nearest?.id??null;
+      return;
+    }
+    if(command?.type==='cruise'){this.cruise=!this.cruise;return;}
     if(command?.type==='retry'&&this.latestSave){this.restore(this.latestSave);}
   }
   spawnEnemy(count){
     const c=this.definition.enemyCompany,base=c.start;
     for(let i=0;i<count;i++){
-      const n=this.enemySerial++,x=base[0]+Math.floor(n/3)*17,
+      const n=this.enemySerial++,x=base[0]-Math.floor(n/3)*13,
         z=base[1]+(n%3-1)*14;
       const yaw=bearing({x,z},{x:0,z:0});
       const v=this.sim.createMapVehicle({id:`east-tank-${n+1}`,type:'tank',team:1,x,z,yaw});
@@ -261,7 +292,8 @@ export class Mission2Director{
       players:[...this.sim.players.values()].map(p=>({...p,damagers:undefined,ai:undefined})),
       mission:{stage:this.stage,started:this.started,combatStartedAt:this.combatStartedAt,
         elapsed:this.elapsed,checkpoint:this.checkpoint,order:this.order,
-        flags:this.flags,fired:[...this.fired],enemySerial:this.enemySerial},
+        flags:this.flags,fired:[...this.fired],enemySerial:this.enemySerial,
+        cruise:this.cruise,lockedTargetId:this.lockedTargetId},
     });
   }
   restore(save){
@@ -291,6 +323,7 @@ export class Mission2Director{
       target:{x:0,z:0},tanksAlive:this.tanksAlive,enemyTanksAlive:this.enemiesAlive,
       enemyTanksSpawned:this.enemySerial,alliedLosses:fallen,
       shell:v?.m02Shell??'ap',weaponMode:v?.weapon===1?'mg':v?.m02Shell??'ap',
+      cruise:this.cruise,lockedTargetId:this.lockedTargetId,
       stats:{elapsedSeconds:Math.floor(this.elapsed),losses:fallen,kills:this.player?.kills??0},
       // Progress bridge from mission 1, preserved for contextual dialogue.
       carry:{...(this.options.campaignProgress?.carry??{})}};
