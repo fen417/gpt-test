@@ -44,8 +44,10 @@ const SHOT_SAMPLES = {
   ],
   'smg-suppressed': [recording(new URL('./assets/audio/gunshots/smg-suppressed-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/smg-suppressed-1.m4a',import.meta.url))],
   'lmg': [
-    recording(new URL('./assets/audio/gunshots/lmg-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/lmg-1.m4a',import.meta.url)),
-    recording(new URL('./assets/audio/gunshots/lmg-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/lmg-2.m4a',import.meta.url)),
+    // Short single-round cuts from the user-supplied machinegun.ogg.
+    // This one shared profile covers MG-36, PKP and mounted machine guns.
+    recording(new URL('./assets/audio/gunshots/machinegun-shot-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/machinegun-shot-1.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/machinegun-shot-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/machinegun-shot-2.m4a',import.meta.url)),
   ],
   'marksman': [
     recording(new URL('./assets/audio/gunshots/marksman-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/marksman-1.m4a',import.meta.url)),
