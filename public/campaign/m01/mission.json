@@ -924,7 +924,8 @@
       "music/strings.ogg",
       "music/theme.ogg"
     ],
-    "loopSeconds": 90
+    "loopSeconds": 90,
+    "radioDefence": "music/radio-defence.ogg"
   },
   "audioBudgets": {
     "music": 3000000,
