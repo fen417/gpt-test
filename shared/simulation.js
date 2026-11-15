@@ -517,7 +517,10 @@ export class Simulation {
         const passenger=this.players.get(id);
         if(passenger)this.syncVehicleSeat(passenger,vehicle);
       }
-      const gunner=spec.seats[1].role==='gunner'?this.players.get(vehicle.seats[1]):null;
+      // Only local campaign tanks can combine steering and gunnery in one seat.
+      // Multiplayer still requires a dedicated gunner.
+      const gunner=vehicle.controlScheme==='wot'
+        ?driver:spec.seats[1].role==='gunner'?this.players.get(vehicle.seats[1]):null;
       vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown-dt);
       vehicle.heat=Math.max(0,vehicle.heat-dt*(vehicle.overheated?.28:.26));
       if(vehicle.overheated&&vehicle.heat<=.3)vehicle.overheated=false;
@@ -688,7 +691,8 @@ export class Simulation {
   launchBullet(p,weapon,origin,yaw,pitch,firingVehicle=null,trace=false){
     const speed=weapon.projectileSpeed, horizontal=speed*Math.cos(pitch);
     const velocity={vx:-Math.sin(yaw)*horizontal,vy:Math.sin(pitch)*speed,vz:-Math.cos(yaw)*horizontal};
-    const life=weapon.range/speed, mounted=Boolean(firingVehicle&&p.vehicleSeat===1);
+    const life=weapon.range/speed,mounted=Boolean(firingVehicle&&
+      (p.vehicleSeat===1||firingVehicle.controlScheme==='wot'&&p.vehicleSeat===0));
     const shotSeq=mounted?firingVehicle.gunSeq:p.shotSeq;
     this.event('shot',{playerId:p.id,classId:p.classId,weaponId:mounted&&firingVehicle.type==='tank'?'tank-mg':p.weaponId,team:p.team,shotSeq,...origin,
       ...(trace||shotSeq%3===0?{...velocity,life}:{}),...(firingVehicle?{vehicleId:firingVehicle.id,mounted}:{})});
