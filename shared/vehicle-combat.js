@@ -1,5 +1,5 @@
 import { affineBox, inverseMatrix, multiplyMatrix, rayAffineBox, rotationMatrix, transformVector } from './geometry.js';
-import { VEHICLE_TYPES, vehicleAimDirection,TANK_TURRET_BASE_Y } from './vehicles.js';
+import { VEHICLE_TYPES, vehicleAimDirection,TANK_TURRET_BASE_Y, isEnclosedTankCrew } from './vehicles.js';
 
 // Local-space armour follows the visible hull, leaving real window apertures.
 // The movement footprint remains solid; only projectile/visibility rays use it.
@@ -67,7 +67,7 @@ export function rayVehicleGlass(origin,direction,v,maximum){
   return hits;
 }
 export function rayVehicleCrew(origin,direction,v,index,maximum){
-  if(v.type==='tank'&&index<=1)return {distance:Infinity,headshot:false};
+  if(isEnclosedTankCrew(v,index))return {distance:Infinity,headshot:false};
   const shapes=crew[v.type][index],ray=vehicleRay(v,origin,direction);
   if(v.type==='tank'&&index===1){const yaw=(v.aimYaw??v.yaw)-v.yaw,c=Math.cos(yaw),s=Math.sin(yaw),x=ray.origin.x,z=ray.origin.z+.4,dx=ray.direction.x,dz=ray.direction.z;ray.origin.x=x*c-z*s;ray.origin.z=x*s+z*c-.4;ray.direction.x=dx*c-dz*s;ray.direction.z=dx*s+dz*c;}
   const head=rayAffineBox(ray.origin,ray.direction,shapes[0],maximum);
