@@ -73,14 +73,9 @@ for(const side of [-1,1]){
   village('village-wood',137+side*1.65,103,.18,.18,3.2,'#75583d');
 }
 village('village-wood',137,103,3.8,.22,.22,'#75583d',{baseY:3.15,overhead:true});
-// The old short perimeter walls were placed directly across both the 78/130
-// east-west roads and the 120/167 north-south roads. They trapped scripted
-// Humvees even when their intended road waypoints were perfectly aligned.
-// Keep the roads clear; the surrounding homes and barricades remain cover.
-for(const z of [79,131])for(const x of [118,164,194]){
-  if(Math.abs(z-78)<3||Math.abs(z-130)<3)continue;
-  add('wall',x,z,10,.45,1.4);
-}
+// Leave the 78/130 east-west and 120/167 north-south road crossings clear.
+// Six old decorative wall segments previously blocked both the enemy and
+// courier Humvees; nearby homes, rock cover and barricades remain unchanged.
 for(let i=0;i<16;i++)add('village-palm',69+i%4*8,54+Math.floor(i/4)*10,.65,.65,6.5,'#8d805a',{assetMapId:'village'});
 // Ridge trench and two MG positions; sides leave an unblocked rear approach.
 for(const x of [-88,-75])cover('sandbags',x,-38,5.8,.85,1.15,-.15);
