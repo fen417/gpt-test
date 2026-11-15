@@ -126,10 +126,7 @@ function* pathJob(sim,start,goal){
       for(const ally of squad)if(ally!==start&&ally.alive&&ally.ai?.goal&&distance(next,ally.ai.goal)<1.6)risk+=1.5;
       const cost=work.g[node.id]+distance(node,next)+Math.abs(next.y-node.y)*2+risk*(context?.caution??1);
       if(cost>=(work.seen[next.id]===generation?work.g[next.id]:Infinity))continue;
-      // A* priority must use the successor's distance to the target, not the
-      // parent's. The old priority expanded irrelevant nodes on every map.
-      const estimate=distance(next,target)+Math.abs(next.y-target.y)*3;
-      work.seen[next.id]=generation;work.g[next.id]=cost;work.previous[next.id]=node.id;open.push(next.id,cost+estimate);
+      work.seen[next.id]=generation;work.g[next.id]=cost;work.previous[next.id]=node.id;open.push(next.id,cost+range);
     }
   }
   const path=[];let current=best;
