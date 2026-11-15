@@ -315,8 +315,8 @@
   },
   "music": {
     "intro": "music/m02-dawn.ogg",
-    "introSeconds": 188,
-    "loopStart": 148,
-    "loopEnd": 188
+    "introSeconds": 187.5735,
+    "loopStart": 100.193,
+    "loopEnd": 179.643
   }
 }
