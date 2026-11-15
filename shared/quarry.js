@@ -42,7 +42,7 @@ export function pillbox(x,z,yaw,id){
   part(-2.7,0,.6,5,2.8);
   for(const s of [-1,1])part(s*1.825,2.2,2.35,.6,2.8);
   part(0,2.2,1.3,.6,.7,2.1);part(0,0,6,5,.5,2.3);
-  add(x,z,4.8,3.8,.10,'bunker-concrete','#464c45',{editorParent:parent,baseY:-.10});
+  add(x,z,4.8,3.8,.10,'bunker-concrete','#464c45',{editorParent:parent,baseY:-.06});
   for(const [px,pz] of [[0,4.5],[0,3],[0,1.3],[0,0],[0,-1.3],[1.8,0]])navigationNodes.push({x:x+px*sign,z:z+pz*sign});
 }
 // Retain the industrial identity: matching open warehouses and crusher yards.

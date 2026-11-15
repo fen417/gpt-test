@@ -427,11 +427,12 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
     pitch += Math.atan2(front - rear, longitudinal * 2);
     roll += Math.atan2(right - left, lateral * 2);
   }
-  body.rotation.x=THREE.MathUtils.lerp(body.rotation.x,pitch,t);
-  body.rotation.z=THREE.MathUtils.lerp(body.rotation.z,roll+steer*vehicle.speed*.0018,t);
-  controls.rotation.z=THREE.MathUtils.lerp(controls.rotation.z,steer*(vehicle.type==='atv'?-.16:-.9),t);
+  const tilt=reset?1:1-Math.exp(-dt*14);
+  body.rotation.x=THREE.MathUtils.lerp(body.rotation.x,pitch,tilt);
+  body.rotation.z=THREE.MathUtils.lerp(body.rotation.z,roll+steer*vehicle.speed*.0018,tilt);
+  controls.rotation.z=THREE.MathUtils.lerp(controls.rotation.z,steer*(vehicle.type==='atv'?-.16:-.9),tilt);
   for(const wheel of wheels){
-    if(wheel.front)wheel.carrier.rotation.y=THREE.MathUtils.lerp(wheel.carrier.rotation.y,-steer*.41,t);
+    if(wheel.front)wheel.carrier.rotation.y=THREE.MathUtils.lerp(wheel.carrier.rotation.y,-steer*.41,tilt);
     wheel.tire.rotation.x-=vehicle.speed*dt/(wheel.radius*(vehicle.modelScale?.y??1));
   }
   for(let index=0;index<riders.length;index++){

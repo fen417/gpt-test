@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
-import {vehicleAimDirection} from '../shared/vehicles.js';
+import {vehicleAimDirection,TANK_TURRET_BASE_Y} from '../shared/vehicles.js';
 import {TANK_MUZZLE_DISTANCE} from '../shared/tank.js';
 export {placeTankDriverCamera} from './tank-camera.js';
 
@@ -35,14 +35,14 @@ function slopedHull(){
   const indexed=new THREE.BufferGeometry();indexed.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));indexed.setIndex(indices);const geometry=indexed.toNonIndexed();indexed.dispose();geometry.computeVertexNormals();return geometry;
 }
 function buildLevel(level,material){
-  const group=new THREE.Group(),body=new THREE.Group(),turret=new THREE.Group(),gun=new THREE.Group();group.add(body);body.add(turret);turret.position.set(0,1.72,-.4);turret.add(gun);gun.position.set(0,.34,-.9);
+  const group=new THREE.Group(),body=new THREE.Group(),turret=new THREE.Group(),gun=new THREE.Group();group.add(body);body.add(turret);turret.position.set(0,TANK_TURRET_BASE_Y,-.4);turret.add(gun);gun.position.set(0,.34,-.9);
   const hull=island(body,material,({box,cylinder,piece})=>{
     piece(slopedHull(),0,0,0,1,1,1);
     if(level<2){
       box(0,1.48,1.9,2.48,.05,1.45,0x343b32);for(let i=0;i<(level?5:10);i++)box(0,1.52,1.25+i*(level?.31:.155),2.12,.04,.055,0x202820);
       for(const side of [-1,1]){
         box(side*1.48,1.42,.05,.62,.1,6.7,0x7d826c);
-        for(let i=0;i<(level?3:6);i++)box(side*1.74,1.09,-2.64+i*(level?2.12:1.06),.11,.6,level?2.06:1.0,i%2?0x747965:0x838673);
+        for(let i=0;i<(level?3:6);i++)box(side*1.75,1.09,-2.64+i*(level?2.12:1.06),.10,.6,level?2.06:1.0,i%2?0x747965:0x838673);
         box(side*1.10,1.66,2.3,.055,.055,1.6,0x424a3e);for(const z of [1.55,3.05])box(side*1.10,1.56,z,.055,.22,.055,0x424a3e);
         cylinder(side*.87,.98,3.1,.28,.74,0x737b66,level?8:12,0,Math.PI/2);
         box(side*1.28,1.1,-3.22,.24,.18,.18,0x323b32);cylinder(side*1.28,1.12,-3.32,.073,.04,0xd0cbb0,8,Math.PI/2);
@@ -69,12 +69,12 @@ function buildLevel(level,material){
   });
   const hatch=island(body,material,({box,cylinder})=>{cylinder(-.62,1.50,-1.9,.33,.10,0x505e49,level===2?6:12);if(level<2)box(-.62,1.65,-1.88,.52,.20,.07,0x4e5c47,-.65);});
   const tracks=island(body,material,({box,piece})=>{for(const side of [-1,1]){
-    if(level===2)box(side*1.5,.44,.05,.59,.88,6.8,0x242c28);
+    if(level===2)box(side*1.5,.44,.05,.56,.88,6.8,0x242c28);
     else{
       // A continuous open belt exposes the road wheels; its lower run rests on the ground.
       const outline=new THREE.Shape();outline.moveTo(-3.4,.23);for(const [z,y]of[[-3.15,0],[3.15,0],[3.4,.23],[3.4,.65],[3.15,.88],[-3.15,.88],[-3.4,.65]])outline.lineTo(z,y);outline.closePath();
       const opening=new THREE.Path();opening.moveTo(-3.03,.18);for(const [z,y]of[[3.03,.18],[3.2,.29],[3.2,.59],[3.03,.7],[-3.03,.7],[-3.2,.59],[-3.2,.29]])opening.lineTo(z,y);opening.closePath();outline.holes.push(opening);
-      const belt=new THREE.ExtrudeGeometry(outline,{depth:.59,bevelEnabled:false,steps:1,curveSegments:1});belt.translate(0,0,-.295);belt.rotateY(Math.PI/2);piece(belt,side*1.5,0,.05,1,1,1,0x313a32);
+      const belt=new THREE.ExtrudeGeometry(outline,{depth:.56,bevelEnabled:false,steps:1,curveSegments:1});belt.translate(0,0,-.28);belt.rotateY(Math.PI/2);piece(belt,side*1.5,0,.05,1,1,1,0x313a32);
     }
     if(!level)for(let i=0;i<22;i++)for(const y of [.03,.88])box(side*1.5,y,-2.9+i*.28,.58,.04,.13,0x50564a);
   }});
@@ -109,16 +109,17 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   if(rig.level===0&&distance>near*1.06)rig.level=1;else if(rig.level===1&&distance<near*.94)rig.level=0;
   if(rig.level===1&&distance>far*1.06)rig.level=2;else if(rig.level===2&&distance<far*.94)rig.level=1;
   if(p?.vehicleId===v.id)rig.level=0;
-  rig.body.rotation.set(v.bodyPitch??0,0,v.bodyRoll??0);
+  const tilt=reset?1:1-Math.exp(-dt*14);rig.body.rotation.x+=((v.bodyPitch??0)-rig.body.rotation.x)*tilt;rig.body.rotation.z+=((v.bodyRoll??0)-rig.body.rotation.z)*tilt;
   rig.shadow.visible=rig.level===0&&distance<48;
-  rig.travel.value.x+=((v.leftTrack??0)>=80?0:v.speed+(v.steer??0)*1.8)*dt*.35;rig.travel.value.y+=((v.rightTrack??0)>=80?0:v.speed-(v.steer??0)*1.8)*dt*.35;
-  const direction=vehicleAimDirection(v,v.aimYaw??v.yaw,v.aimPitch??0,modelDirection),delta=Math.atan2(-direction.x,-direction.z),pitch=Math.atan2(direction.y,Math.hypot(direction.x,direction.z));
+  rig.travel.value.x+=(v.speed+(v.steer??0)*1.8)*dt*.35;rig.travel.value.y+=(v.speed-(v.steer??0)*1.8)*dt*.35;
+  const pose=rig.aimPose??={};pose.yaw=group.rotation.y;pose.modelScale=v.modelScale;pose.bodyPitch=rig.body.rotation.x;pose.bodyRoll=rig.body.rotation.z;
+  const direction=vehicleAimDirection(pose,v.aimYaw??v.yaw,v.aimPitch??0,modelDirection),delta=Math.atan2(-direction.x,-direction.z),pitch=Math.atan2(direction.y,Math.hypot(direction.x,direction.z));
   if(reset){rig.cannonSeq=v.cannonSeq;rig.recoil=0;}
   rig.wreckAge=v.hp<=0?(rig.wreckAge??0)+dt:0;
   for(const [index,l] of rig.levels.entries()){
     l.group.visible=index===rig.level;l.body.rotation.copy(rig.body.rotation);
     l.turret.rotation.y=delta;l.gun.rotation.x=pitch;
-    l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,1.72+rig.wreckAge*8-rig.wreckAge**2*10):1.72,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
+    l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,TANK_TURRET_BASE_Y+rig.wreckAge*8-rig.wreckAge**2*10):TANK_TURRET_BASE_Y,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
     if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;
     l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleId===v.id&&p.vehicleSeat===0&&!view.vehicleThirdPerson);
     l.hull.castShadow=l.turretMesh.castShadow=index===1&&distance<48;

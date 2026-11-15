@@ -86,7 +86,7 @@ export class BulletMarks {
         this.raycaster.far = .5;
       } else {
         this.raycaster.set(point.clone().addScaledVector(direction, -.15), direction);
-        this.raycaster.far = 2.5;
+        this.raycaster.far = .5;
       }
       // Decals attach to mesh faces, never to camera-facing labels or effects.
       // Sprite.raycast requires a camera even if its hit would be discarded.
@@ -102,8 +102,8 @@ export class BulletMarks {
           transform.multiply(instance);
         }
         normal.copy(hit.face.normal).applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(transform));
-      } else if (vehicleRig) {
-        // A vehicle collider can enclose open space around the actual body.
+      } else {
+        // An obsolete collider or culled mesh is not a surface for a floating decal.
         return;
       }
     }

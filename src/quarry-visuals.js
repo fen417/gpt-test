@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clonePairedMaterial, makeSign, pairMaterials } from './visuals.js';
+import {quarryRockSurface} from '../shared/quarry-rock.js';
 
 function shapeQuarrySurface(geometry, map, lift = 0, tint = false) {
   const positions = geometry.attributes.position;
@@ -63,16 +64,8 @@ function gravelRoads(owner, map) {
 
 function quarryCliffs(owner, map, backdrop = true) {
   const positions = [], colors = [], uvs = [];
-  const outline = [[-.5, -.41], [-.41, -.5], [.41, -.5], [.5, -.41], [.5, .41], [.41, .5], [-.41, .5], [-.5, .41]];
-  function rock(x, z, w, d, h, color, baseY = 0) {
+  function rock(x, z, w, d, h, color, baseY = 0,id) {
     const [r, g, bColor] = new THREE.Color(color).toArray();
-    const profile = [[-.07, 1, .73], [.13, .993, .88], [.43, .98, 1.06], [.55, .98, .84], [.83, .96, .96], [.97, .86, 1.10]];
-    const slant = outline.map(() => (owner.random() - .5) * .065);
-    const rings = profile.map(([height, scale], level) => outline.map(([vx, vz], i) => {
-      const px = x + vx * w * scale, pz = z + vz * d * scale;
-      const py = baseY + h * (height + slant[i]);
-      return [px, level === 0 ? Math.min(py, map.terrain.heightAt(px, pz) - .12) : py, pz];
-    }));
     function triangle(a, b, c, intensity, uAxis, vAxis) {
       positions.push(...a, ...b, ...c);
       for (const vertex of [a, b, c]) {
@@ -80,22 +73,10 @@ function quarryCliffs(owner, map, backdrop = true) {
         uvs.push(vertex[uAxis] / 7, vertex[vAxis] / 4);
       }
     }
-    for (let level = 0; level < rings.length - 1; level++) {
-      const lower = rings[level], upper = rings[level + 1];
-      const tone = (profile[level][2] + profile[level + 1][2]) / 2;
-      for (let i = 0; i < lower.length; i++) {
-        const j = (i + 1) % lower.length;
-        const tint = tone * (.94 + owner.random() * .12);
-        const axis = Math.abs(lower[i][0] - lower[j][0]) > Math.abs(lower[i][2] - lower[j][2]) ? 0 : 2;
-        triangle(lower[i], upper[i], upper[j], tint, axis, 1);
-        triangle(lower[i], upper[j], lower[j], tint, axis, 1);
-      }
-    }
-    const cap = rings.at(-1);
-    for (let i = 1; i < cap.length - 1; i++) triangle(cap[0], cap[i + 1], cap[i], 1.15, 0, 2);
+    for(const face of quarryRockSurface({id,x,z,w,d,h,baseY},map.terrain).faces)triangle(...face.vertices,face.tone,face.axis,face.top?2:1);
   }
   for (const box of map.boxes) {
-    if (box.kind === 'rock') rock(box.x, box.z, box.w, box.d, box.h, box.color, box.baseY);
+    if (box.kind === 'rock') rock(box.x, box.z, box.w, box.d, box.h, box.color, box.baseY,box.id);
   }
   const limit = map.size / 2;
   const tones = [0x7e7460, 0x948574, 0x8a7963];

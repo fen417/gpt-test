@@ -33,13 +33,19 @@ export class Prediction{
     this.world.event=(type,payload)=>{const event={...payload,type,time:this.time,playerId:this.player.id,id:-this.time*100000,weaponId:type==='cannonShot'?'tank-cannon':'tank-mg',predicted:true};if(this.emitTank&&!this.hasPlayed(event)){this.played.add(event.weaponId+'/'+event.shotSeq);while(this.played.size>512)this.played.delete(this.played.values().next().value);this.onShot(event);}};
     this.world.launchBullet=(p,w,origin,yaw,pitch,v)=>this.world.event('shot',{...origin,playerId:p.id,shotSeq:v.gunSeq,vehicleId:v.id,mounted:true,team:p.team});
   }
-  reset(){this.player=null;this.pending=[];this.offset={x:0,y:0,z:0};}
+  reset(){this.player=null;this.pending=[];this.offset={x:0,y:0,z:0};this.vehicleOffset={id:null,x:0,y:0,z:0,yaw:0};}
   reconcile(authority,ack,vehicles,time=0){
+    const prior=this.player?.vehicleSeat===0?this.world.vehicles.find(v=>v.id===this.player.vehicleId):null;
+    const priorPose=prior?{id:prior.id,x:prior.x+this.vehicleOffset.x,y:(prior.y??0)+this.vehicleOffset.y,z:prior.z+this.vehicleOffset.z,yaw:prior.yaw+this.vehicleOffset.yaw}:null;
     this.world.vehicles=vehicles.map(v=>({...v,gunCooldown:Math.max(0,(v.gunReadyAt??0)-time)}));
     const old=this.player,visual=old?{x:old.x+this.offset.x,y:old.y+this.offset.y,z:old.z+this.offset.z}:null;
     const discontinuity=!old||old.alive!==authority.alive||old.vehicleId!==authority.vehicleId||Math.hypot(old.x-authority.x,old.z-authority.z)>4;
     this.pending=this.pending.filter(f=>f.sequence>ack);this.player={...authority,input:{},reloadTime:Math.max(0,(authority.reloadAt??0)-time),gadgetActionUntil:authority.actionAt??0};this.time=time;
     for(const frame of this.pending)this.step(frame);
+    const driven=this.player.vehicleSeat===0?this.world.vehicles.find(v=>v.id===this.player.vehicleId):null;
+    if(priorPose&&driven&&priorPose.id===driven.id&&!discontinuity&&Math.hypot(priorPose.x-driven.x,priorPose.z-driven.z)<2.5&&Math.abs(difference(priorPose.yaw,driven.yaw))<.6){
+      Object.assign(this.vehicleOffset,{id:driven.id,x:priorPose.x-driven.x,y:priorPose.y-driven.y,z:priorPose.z-driven.z,yaw:difference(priorPose.yaw,driven.yaw)});
+    }else Object.assign(this.vehicleOffset,{id:driven?.id??null,x:0,y:0,z:0,yaw:0});
     if(visual&&!discontinuity&&!authority.vehicleId){this.offset.x=visual.x-this.player.x;this.offset.y=visual.y-this.player.y;this.offset.z=visual.z-this.player.z;}
     else this.offset.x=this.offset.y=this.offset.z=0;
   }
@@ -62,6 +68,18 @@ export class Prediction{
   hasPlayed(event){return this.played.has(event.weaponId+'/'+event.shotSeq);}
   add(frame){this.pending.push(frame);this.step(frame,true);}
   sample(dt){if(!this.player)return null;const decay=Math.exp(-dt*18);this.offset.x*=decay;this.offset.y*=decay;this.offset.z*=decay;return {...this.player,x:this.player.x+this.offset.x,y:this.player.y+this.offset.y,z:this.player.z+this.offset.z};}
+  sampleVehicle(remainder,input,dt){
+    if(this.player?.vehicleSeat!==0)return null;
+    const index=this.world.vehicles.findIndex(v=>v.id===this.player.vehicleId),source=this.world.vehicles[index];if(!source)return null;
+    const out={...source},fraction=clamp(remainder??0,0,INPUT_STEP);
+    // Render between fixed input ticks using the same movement/collision code.
+    // Replace the entry temporarily so the view copy does not collide with itself.
+    this.world.vehicles[index]=out;
+    try{if(fraction>0)this.world.moveVehicle(out,input,fraction);}finally{this.world.vehicles[index]=source;}
+    const decay=Math.exp(-dt*18),offset=this.vehicleOffset;
+    if(offset.id===out.id){for(const key of ['x','y','z','yaw']){offset[key]*=decay;out[key]+=offset[key];}}
+    return out;
+  }
 }
 
 // The room creator uses exactly the same connection and prediction as every guest.
@@ -192,7 +210,7 @@ export class Multiplayer{
   reconcileLatest(){
     const pending=this.pendingAuthority;if(!pending)return;this.pendingAuthority=null;
     const begin=performance.now();this.replayedInputs=this.prediction.pending.filter(f=>f.sequence>pending.inputAck).length;this.prediction.reconcile(pending.own,pending.inputAck,pending.vehicles,pending.time);
-    this.correctionMs=performance.now()-begin;this.correctionDistance=Math.hypot(this.prediction.offset.x,this.prediction.offset.y,this.prediction.offset.z);
+    this.correctionMs=performance.now()-begin;const offset=this.prediction.player?.vehicleSeat===0?this.prediction.vehicleOffset:this.prediction.offset;this.correctionDistance=Math.hypot(offset.x,offset.y,offset.z);
   }
   advance(input,dt){
     this.reconcileLatest();
@@ -277,7 +295,7 @@ export class Multiplayer{
     for(const kind of ['players','vehicles'])render[kind]=this.state[kind].map(p=>this.sampleMotion(kind,p,target,dt));
     const predicted=this.prediction.sample(dt);
     if(predicted?.alive&&(!predicted.vehicleId||predicted.vehicleSeat===0)){const index=render.players.findIndex(p=>p.id===this.id);if(index>=0)render.players[index]={...this.state.players.find(p=>p.id===this.id),...predicted,yaw:this.input.yaw??predicted.yaw,pitch:this.input.pitch??predicted.pitch};}
-    if(predicted?.vehicleId&&predicted.vehicleSeat===0){const vehicle=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId),index=render.vehicles.findIndex(v=>v.id===predicted.vehicleId);if(vehicle&&index>=0)render.vehicles[index]={...vehicle};}
+    if(predicted?.vehicleId&&predicted.vehicleSeat===0){const vehicle=this.prediction.sampleVehicle(this.accumulator,this.input,dt),index=render.vehicles.findIndex(v=>v.id===predicted.vehicleId);if(vehicle&&index>=0)render.vehicles[index]=vehicle;}
     if(predicted?.vehicleId&&predicted.vehicleSeat===1){const v=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId),out=render.vehicles.find(v=>v.id===predicted.vehicleId);if(v?.type==='tank'&&out)for(const key of ['aimYaw','aimPitch','wantedYaw','wantedPitch','weapon','weaponReadyAt','cannonAmmo','cannonReadyAt','cannonSeq','gunSeq','heat','overheated'])out[key]=v[key];}
     // Derive every seated body from the very same interpolated/predicted vehicle.
     for(const p of render.players)if(p.vehicleId){const vehicle=render.vehicles.find(v=>v.id===p.vehicleId);if(vehicle){const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);p.x=pose.x;p.y=pose.y-EYE_HEIGHT;p.z=pose.z;}}
@@ -290,12 +308,15 @@ export class Multiplayer{
     const samples=track.samples,last=samples.at(-1);
     const target=renderTime;
     let a=samples[0],b=last;for(let i=1;i<samples.length;i++){if(samples[i].time>=target){a=samples[i-1];b=samples[i];break;}a=samples[i];}
-    const out={...current},span=b.time-a.time;
-    if(a.pose.alive!==b.pose.alive||a.pose.vehicleId!==b.pose.vehicleId||Math.hypot(a.pose.x-b.pose.x,a.pose.z-b.pose.z)>8)return out;
+    const discrete=target>=b.time?b.pose:a.pose,out={...current},span=b.time-a.time;
+    for(const key of kind==='players'?['alive','vehicleId','vehicleSeat','reviveSeq','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','team']:['seats','hp','wreckTime'])if(key in discrete)out[key]=discrete[key];
+    if(a.pose.alive!==b.pose.alive||a.pose.vehicleId!==b.pose.vehicleId||a.pose.reviveSeq!==b.pose.reviveSeq||Math.hypot(a.pose.x-b.pose.x,a.pose.z-b.pose.z)>8){for(const key of ['x','y','z','yaw','pitch','bodyPitch','bodyRoll'])if(Number.isFinite(discrete[key]))out[key]=discrete[key];return out;}
     const alpha=span>0?clamp((target-a.time)/span,0,1):1;
     for(const key of ['x','y','z'])out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;
     for(const key of ['yaw','pitch','bodyPitch','bodyRoll','aimYaw','aimPitch'])if(Number.isFinite(current[key]))out[key]=a.pose[key]+difference(b.pose[key],a.pose[key])*alpha;
+    if(kind==='vehicles')for(const key of ['speed','steer'])if(Number.isFinite(a.pose[key])&&Number.isFinite(b.pose[key]))out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;
     if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;if(kind==='players'&&!out.grounded)out.y+=(last.pose.y-previous.pose.y)/interval*extra;}}
+    if(kind==='vehicles'&&target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0)for(const key of ['yaw','aimYaw'])if(Number.isFinite(last.pose[key])&&Number.isFinite(previous.pose[key]))out[key]+=clamp(difference(last.pose[key],previous.pose[key])/interval,-2.5,2.5)*extra;}
     return out;
   }
   diagnostics(){return {playbackRecoveries:this.playbackRecoveries??0,decodeMs:this.decodeMs??0,replayedInputs:this.replayedInputs??0,correctionMs:this.correctionMs??0,correctionDistance:this.correctionDistance??0,bufferUnderruns:this.bufferUnderruns??0,renderAgeMs:this.state&&this.renderTime!=null?Math.round((this.state.time-this.renderTime)*1000):null,rttMs:this.rtt?Math.round(this.rtt):null,jitterMs:Math.round((this.jitter??0)*100)/100,interpolationMs:Math.round(this.interpolationMs),pendingInputs:this.prediction?.pending.length??0,snapshotAgeMs:this.lastArrival?Math.round(performance.now()-this.lastArrival):null,bufferedBytes:this.ws?.bufferedAmount??0,recoveries:this.recoveries,lastRecovery:this.lastRecovery,receivedBytes:this.receivedBytes,server:this.serverStats};}

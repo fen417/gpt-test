@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {ConvexGeometry} from 'three/addons/geometries/ConvexGeometry.js';
+import {quarryRockSurface} from './quarry-rock.js';
 import { buildPortProp, buildPortCrane } from './port-props.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from './prop-models.js';
 import { buildVillageProp, VILLAGE_PROP_KINDS } from './village-props.js';
@@ -95,11 +97,15 @@ function primitiveCollider(mesh, box) {
   };
   const result = boxBounds(part);
   if (mesh.geometry !== unitGeometry.box) result.convex = convexGeometry(mesh);
+  if(mesh.userData.projectileTriangles){
+    const values=[],point=new THREE.Vector3();for(const triangle of mesh.userData.projectileTriangles)for(const vertex of triangle){point.fromArray(vertex).applyMatrix4(mesh.matrixWorld);values.push(point.x,point.y,point.z);}
+    result.triangles=new Float64Array(values);
+  }
   return result;
 }
 
 function assetCollider(box, map, crane) {
-  if (!crane && !portKinds.has(box.kind) && !SPECIAL_PROP_KINDS.has(box.kind) && !VILLAGE_PROP_KINDS.has(box.kind)) return boxBounds(box);
+  if (!crane && box.kind!=='rock' && !portKinds.has(box.kind) && !SPECIAL_PROP_KINDS.has(box.kind) && !VILLAGE_PROP_KINDS.has(box.kind)) return boxBounds(box);
   const value = crane ?? box, scale = value.modelScale ?? UNIT_SCALE;
   const anchor = { x: value.x, z: value.z, baseY: value.baseY ?? map.terrain?.heightAt(value.x, value.z) ?? 0 };
   const root = new THREE.Group();
@@ -111,7 +117,12 @@ function assetCollider(box, map, crane) {
     cylinder: (parent, x, y, z, radius, height, material, segments = 10) =>
       primitive(parent, cylinderGeometry(segments), x, y, z, radius, height, radius),
   };
-  if (crane) buildPortCrane(owner, palette, local);
+  if(box.kind==='rock'){
+    const terrain={heightAt:(x,z)=>((map.terrain?.heightAt(x*scale.x+anchor.x,z*scale.z+anchor.z)??0)-anchor.baseY)/scale.y};
+    const surface=quarryRockSurface(local,terrain),mesh=new THREE.Mesh(new ConvexGeometry(surface.rings.flat().map(v=>new THREE.Vector3(...v))),meshMaterial);
+    mesh.userData.projectileTriangles=surface.faces.map(face=>face.vertices);root.add(mesh);
+  }
+  else if (crane) buildPortCrane(owner, palette, local);
   else if (!buildPortProp(owner, palette, local) && !buildVillageProp(owner, palette, local)) buildSpecialProp.call(owner, root, local, meshMaterial);
   const pose = value.editorPose ?? { x: value.x, y: anchor.baseY, z: value.z };
   root.position.set(pose.x, pose.y, pose.z);
@@ -123,6 +134,7 @@ function assetCollider(box, map, crane) {
   root.updateMatrixWorld(true);
   const parts = [];
   root.traverse(mesh => { if (mesh.isMesh) parts.push(primitiveCollider(mesh, box)); });
+  if(box.kind==='rock')root.traverse(mesh=>mesh.geometry?.dispose());
   const minX = Math.min(...parts.map(part => part.minX)), maxX = Math.max(...parts.map(part => part.maxX));
   const minZ = Math.min(...parts.map(part => part.minZ)), maxZ = Math.max(...parts.map(part => part.maxZ));
   const minY = Math.min(...parts.map(part => part.minY)), top = Math.max(...parts.map(part => part.h));
@@ -183,6 +195,17 @@ export function rayCollider(origin, direction, box, maximum) {
     }
     return found ? closest : Infinity;
   }
+  if(box.triangles&&!box.padding){
+    let closest=maximum,found=false;const t=box.triangles;
+    for(let i=0;i<t.length;i+=9){
+      const ax=t[i],ay=t[i+1],az=t[i+2],ex=t[i+3]-ax,ey=t[i+4]-ay,ez=t[i+5]-az,fx=t[i+6]-ax,fy=t[i+7]-ay,fz=t[i+8]-az;
+      const px=direction.y*fz-direction.z*fy,py=direction.z*fx-direction.x*fz,pz=direction.x*fy-direction.y*fx,det=ex*px+ey*py+ez*pz;if(Math.abs(det)<1e-10)continue;
+      const sx=origin.x-ax,sy=origin.y-ay,sz=origin.z-az,u=(sx*px+sy*py+sz*pz)/det;if(u<-.000001||u>1.000001)continue;
+      const qx=sy*ez-sz*ey,qy=sz*ex-sx*ez,qz=sx*ey-sy*ex,v=(direction.x*qx+direction.y*qy+direction.z*qz)/det;if(v<-.000001||u+v>1.000001)continue;
+      const hit=(fx*qx+fy*qy+fz*qz)/det;if(hit>=0&&hit<=closest){closest=hit;found=true;}
+    }
+    return found?closest:Infinity;
+  }
   if (box.convex) {
     let near = 0, far = maximum;
     for (const { normal, distance } of box.convex.planes) {
@@ -233,6 +256,7 @@ export function overlapsCollider(shape, box, bounds = boxBounds({ obb: shape }))
 }
 
 export function colliderNormal(box, point) {
+  if(box.parts?.length===1)return colliderNormal(box.parts[0],point);
   if (!box.convex) return affineNormal(boundedShape(box), point);
   let closest = Infinity, result;
   for (const { normal, distance } of box.convex.planes) {

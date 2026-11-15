@@ -1516,7 +1516,7 @@ export class GameRenderer {
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
     const humvee = vehicle.type === 'humvee';
     const index=VEHICLE_TYPES[vehicle.type].seats.indexOf(seat);
-    const eye=getVehicleSeatPose({ ...vehicle,x:rig.group.position.x,y:rig.group.position.y,z:rig.group.position.z,yaw:rig.group.rotation.y },index);
+    const eye=getVehicleSeatPose({ ...vehicle,x:rig.group.position.x,y:rig.group.position.y,z:rig.group.position.z,yaw:rig.group.rotation.y,bodyPitch:rig.body.rotation.x,bodyRoll:rig.body.rotation.z },index);
     this.camera.position.set(eye.x,eye.y,eye.z);
     if (shake && seat.role==='driver') this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012, Math.abs(vehicle.speed) * .001) * (humvee ? .65 : 1);
     const gunner = seat.role === 'gunner';

@@ -7,7 +7,7 @@ import portEdits from './maps/port.json' with { type: 'json' };
 import quarryEdits from './maps/quarry.json' with { type: 'json' };
 import villageEdits from './maps/village.json' with { type: 'json' };
 
-export const PROTOCOL_VERSION=27;
+export const PROTOCOL_VERSION=28;
 export const WEAPON_SWITCH_TIME = .38;
 export const WEAPON_SWAP_PHASE = .42;
 export function weaponSwitchPose(remaining=0){
@@ -66,9 +66,9 @@ export const MAP_EDITS = { port: portEdits, quarry: quarryEdits, village: villag
 function mapLayoutRevision() {
   const hasChanges = Object.values(MAP_EDITS).some(({ moves, added, removed }) =>
     Object.keys(moves).length || Object.keys(added).length || removed.length);
-  if (!hasChanges) return 'quarry-tank-016a';
+  if (!hasChanges) return 'quarry-tank-017a';
   let hash = 2166136261;
-  const layout = 'quarry-tank-016a/'+JSON.stringify(MAP_EDITS);
+  const layout = 'quarry-tank-017a/'+JSON.stringify(MAP_EDITS);
   for (let i = 0; i < layout.length; i++) hash = Math.imul(hash ^ layout.charCodeAt(i), 16777619);
   return (hash >>> 0).toString(16);
 }

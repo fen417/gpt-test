@@ -33,6 +33,7 @@ const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),re
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let squadUI,weaponPreview,lobbyWeaponPreview;
 let tankHud,tankHudLoading,vehicleThirdPerson=true;
+const vehicleLook={id:null,yaw:0,pitch:-.12};
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let lobbyTeamRequest=null,lobbyTeamMessage='';
@@ -698,6 +699,12 @@ document.addEventListener('pointerlockerror',()=>{if(active){if(reviveAwaitingCo
 document.addEventListener('mousemove',event=>{
   if(!locked&&!(unlocked&&!unlockedPaused&&active&&aim))return;
   const player=local();
+  const drivingVehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
+  if(vehicleThirdPerson&&player?.vehicleSeat===0&&drivingVehicle?.type==='tank'){
+    if(!aim)return;
+    vehicleLook.yaw-=event.movementX*.0022*sensitivity;
+    vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
+  }
   const aimScale = aim ? (!player?.heldGadget&&player?.classId === 'recon' && player.weaponSlot!==2 ? (player.weaponId==='sv98' ? .35*4/scopeZoom : .35) : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
@@ -1419,6 +1426,12 @@ function frame(now){
   const renderBegin=performance.now();
   const renderState=active?(simulation?simulation.sample(now):multiplayer.sample(now)):null;
   const renderPlayer=renderState?.players.find(p=>p.id===localId);
+  const driven=renderPlayer?.vehicleSeat===0?renderState?.vehicles.find(v=>v.id===renderPlayer.vehicleId):null;
+  if(vehicleThirdPerson&&driven?.type==='tank'){
+    if(vehicleLook.id!==driven.id){vehicleLook.id=driven.id;vehicleLook.yaw=0;vehicleLook.pitch=-.12;}
+    if(!aim){const follow=1-Math.exp(-dt*9);vehicleLook.yaw*=1-follow;vehicleLook.pitch+=(-.12-vehicleLook.pitch)*follow;}
+    yaw=driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
+  }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
   if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),vehicleThirdPerson,vehicleCameraYaw:yaw,networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
   if(renderer.map?.id==='quarry'&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));

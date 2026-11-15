@@ -2,12 +2,14 @@ import { affineBox, multiplyMatrix, rotationMatrix, transformVector } from './ge
 
 const driver = { name: 'Водитель', role: 'driver' };
 const passenger = { name: 'Пассажир', role: 'passenger' };
+// Deck is 1.45 m high; the bottom of the turret ring must overlap it slightly.
+export const TANK_TURRET_BASE_Y=1.53;
 
 export const VEHICLE_TYPES = {
   tank:{name:'Танк Т-72 «Рубеж»',width:3.6,length:7,height:2.8,maxHp:2400,bulletImmune:true,bulletArmor:0,blastArmor:1,respawn:120,
     maxSpeed:13,reverseSpeed:4.5,acceleration:4.5,brake:9,turnRate:1,maxSlope:32*Math.PI/180,boardRange:5,
-    armorZones:{front:.55,side:1,rear:1.6,top:1.6,track:1},
-    seats:[{...driver,x:-.62,z:-1.9,height:2.0},{name:'Стрелок',role:'gunner',x:.45,z:-.4,height:2.9},
+    armorZones:{front:.55,side:1,rear:1.6,top:1.6},
+    seats:[{...driver,x:-.62,z:-1.9,height:2.0},{name:'Стрелок',role:'gunner',x:.45,z:-.4,height:TANK_TURRET_BASE_Y+1.18},
       {...passenger,x:-1.45,z:1.6,height:2.31},{...passenger,x:1.45,z:1.6,height:2.31},{...passenger,x:0,z:3.22,height:2.12}]},
   atv: {
     name: 'Квадроцикл', width: 1.38, length: 2.34, height: 1.17,
@@ -146,6 +148,6 @@ export function createVehicle(spawn) {
     ...spawn, home: spawn, hp: spec.maxHp, maxHp: spec.maxHp,
     speed: 0, steer: 0, seats: spec.seats.map(() => null), respawnIn: 0, wreckTime: 0,
     aimYaw: spawn.yaw, aimPitch: 0, heat: 0, overheated: false, gunCooldown: 0, gunSeq: 0, glassBroken:0,
-    ...(spawn.type==='tank'?{wantedYaw:spawn.yaw,wantedPitch:0,weapon:0,weaponReadyAt:0,cannonAmmo:24,cannonReadyAt:0,cannonSeq:0,leftTrack:0,rightTrack:0,burning:false}:{}),
+    ...(spawn.type==='tank'?{wantedYaw:spawn.yaw,wantedPitch:0,weapon:0,weaponReadyAt:0,cannonAmmo:24,cannonReadyAt:0,cannonSeq:0,burning:false}:{}),
   };
 }

@@ -6,6 +6,8 @@ import { getWeapon, EYE_HEIGHT } from './world.js';
 
 const routeGraphs = new WeakMap();
 const BASE_RANGE = 55;
+export const BOT_VEHICLE_GRACE_SECONDS=10;
+const BOT_DRIVER_WAIT_SECONDS=12;
 const vehiclePreferences = ['specialist', 'driver', 'crew', null, null, null];
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const yawToward = (a, b) => Math.atan2(a.x - b.x, a.z - b.z);
@@ -313,6 +315,9 @@ function approachVehicle(sim, p, dt) {
     return false;
   }
   const approach=distance(p,vehicle),progress=p.boardProgress;
+  if(sim.time<BOT_VEHICLE_GRACE_SECONDS&&approach<=vehicleBoardingRange(vehicle)){
+    resetControls(p);p.boardProgress=null;return true;
+  }
   if(!progress||progress.id!==vehicle.id||approach<progress.distance-.5)p.boardProgress={id:vehicle.id,distance:approach,at:sim.time};
   else if(sim.time-progress.at>4){p.botBoarding=null;p.boardProgress=null;p.botVehicleRetryAt=sim.time+8;p.botPath=[];return false;}
   if (approach <= vehicleBoardingRange(vehicle) && sim.mountVehicle(p, vehicle, boarding.seat)) {
@@ -382,7 +387,8 @@ function drive(sim, p, vehicle, dt) {
     if(sim.time>(vehicle.supportRetryAt??0)){vehicle.supportUntil=sim.time+3;vehicle.supportRetryAt=sim.time+10;}
     if(vehicle.supportUntil>sim.time)return;
   }
-  if (!p.ai?.squad?.order&&atBase(sim, vehicle) && !vehicle.pickupPlayerId && vehicle.seats.filter(Boolean).length < departureCrew(vehicle)) {
+  const humanPassenger=vehicle.seats.some(id=>{const ally=sim.players.get(id);return ally&&!ally.bot;});
+  if (!p.ai?.squad?.order&&atBase(sim, vehicle) && !vehicle.pickupPlayerId && !humanPassenger&&vehicle.seats.filter(Boolean).length < departureCrew(vehicle)) {
     // Let an understaffed crew fall back to infantry rather than depart shorthanded.
     if ((sim.time - p.botVehicleSince > 15 || vehicle.hp < vehicle.maxHp * .22)
       && Math.abs(vehicle.speed) < 1.3) stopRiding(sim, p);
@@ -564,13 +570,16 @@ export function thinkVehicleBot(sim, p, dt) {
     resetControls(p);
     const order=p.ai?.squad?.order;
     const orderedPoint=order?.pointId?sim.points.find(point=>point.id===order.pointId):null;
-    if(order&&((p.vehicleSeat===0&&order.kind==='follow')||(orderedPoint&&distance(vehicle,orderedPoint)<22)||
+    const invited=p.botRideOrder?.vehicleId===vehicle.id&&vehicle.seats[0]===p.botRideOrder.driverId;
+    if(order&&!invited&&((p.vehicleSeat===0&&order.kind==='follow')||(orderedPoint&&distance(vehicle,orderedPoint)<22)||
       (p.vehicleSeat!==0&&vehicle.seats[0]!==order.playerId))){
       if(Math.abs(vehicle.speed)<1.3){stopRiding(sim,p,order.pointId);return true;}
       if(p.vehicleSeat===0&&order.kind==='follow')return true;
     }
     p.botVehicleSince ??= sim.time;
     if (p.vehicleSeat === 0){
+      if(p.botDriverVehicleId!==vehicle.id){p.botDriverVehicleId=vehicle.id;p.botDriverWaitUntil=sim.time+BOT_DRIVER_WAIT_SECONDS;}
+      if(sim.time<p.botDriverWaitUntil)return true;
       if(sim.map.vehicleRoutes)drive(sim, p, vehicle, dt);
       else if(sim.time>=(vehicle.pickupUntil??0)){
         const goal=orderedPoint??[...sim.points].sort((a,b)=>distance(vehicle,a)+(a.owner===p.team?100:0)-distance(vehicle,b)-(b.owner===p.team?100:0))[0];
@@ -581,11 +590,12 @@ export function thinkVehicleBot(sim, p, dt) {
         }
       }
     }
-    else ride(sim, p, vehicle, dt);
+    else {p.botDriverVehicleId=null;ride(sim, p, vehicle, dt);}
     return true;
   }
 
   if (p.botVehicleSince != null) {
+    p.botDriverVehicleId=null;p.botDriverWaitUntil=0;
     p.botVehicleSince = null;
     p.botDriverSeenAt = null;
     p.botStopSince = null;

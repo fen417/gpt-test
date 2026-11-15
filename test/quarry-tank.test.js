@@ -23,7 +23,7 @@ test('rendered bunker walls match the firing openings and do not add decorative 
     const sign=b.facing===Math.PI?-1:1,y=sim.groundAt(b.x,b.z);
     ray.set(new THREE.Vector3(b.x,y+1.435,b.z),new THREE.Vector3(0,0,-sign));ray.far=4;assert.equal(ray.intersectObject(owner.scene,true).length,0,b.id+' muzzle clearance');
     ray.ray.origin.y=y+1;assert.ok(ray.intersectObject(owner.scene,true).length,b.id+' concrete blocks shots');
-    ray.set(new THREE.Vector3(b.x,y+2,b.z),new THREE.Vector3(0,-1,0));ray.far=3;assert.ok(Math.abs(ray.intersectObject(owner.scene,true)[0].point.y-y)<1e-6,b.id+' exact floor height');
+    ray.set(new THREE.Vector3(b.x,y+2,b.z),new THREE.Vector3(0,-1,0));ray.far=3;assert.ok(Math.abs(ray.intersectObject(owner.scene,true)[0].point.y-y-.04)<1e-6,b.id+' raised floor height');
     owner.scene.traverse(o=>o.geometry?.dispose());
   }
 });

@@ -72,7 +72,7 @@ export function reviveTarget(sim,p) {
 export function repairTarget(sim,p,maxDistance=5,aimed=false) {
   let found=null,best=maxDistance;
   for(const vehicle of sim.vehicles){
-    if(vehicle.hp<=0||vehicle.team!==p.team||vehicle.hp>=VEHICLE_TYPES[vehicle.type].maxHp&&!(vehicle.leftTrack>0||vehicle.rightTrack>0))continue;
+    if(vehicle.hp<=0||vehicle.team!==p.team||vehicle.hp>=VEHICLE_TYPES[vehicle.type].maxHp)continue;
     const d=distance(p,vehicle);
     if(d<best&&(!aimed||aimedAt(p,center(vehicle,.9)))&&sim.lineClear(eye(p),center(vehicle,.9))){found=vehicle;best=d;}
   }
@@ -202,7 +202,7 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     const d=Math.hypot(distance(origin,player),origin.y-player.y-.8);
     const vehicle=sim.vehicles.find(v=>v.id===player.vehicleId);
     const enclosed=vehicle?.type==='humvee'&&player.vehicleSeat!==1;
-    if(d<radius&&sim.lineClear(origin,center(player,.8))){const before=player.hp;sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА'});confirmed||=player.hp<before;}
+    if(d<radius&&sim.lineClear(origin,center(player,.8))){const before=player.hp;sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА',explosive:true});confirmed||=player.hp<before;}
   }
   for(const item of sim.deployables){
     const d=Math.hypot(distance(origin,item),origin.y-item.y-.3);
@@ -242,7 +242,7 @@ function updateRockets(sim,dt) {
     rocket.z+=direction.z*Math.max(0,nearest-(hit?.08:0));rocket.vy-=gravity*dt;rocket.life-=dt;
     if(hit||rocket.life<=0){
       const owner=sim.players.get(rocket.ownerId);
-      let directConfirmed=false;if(rocket.kind===1&&playerHit){const before=playerHit.hp;sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ'});directConfirmed=playerHit.hp<before;}
+      let directConfirmed=false;if(rocket.kind===1&&playerHit){const before=playerHit.hp;sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ',explosive:true});directConfirmed=playerHit.hp<before;}
       blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,rocket.kind===1?'cannon':'rocket',direct,rocket.team,rocket.id,directConfirmed);
       rocket.life=0;
     }
@@ -271,7 +271,7 @@ export function updateEquipment(sim,dt) {
       if(vehicle){
         const amount=Math.min(65*dt,VEHICLE_TYPES[vehicle.type].maxHp-vehicle.hp);
         vehicle.hp+=amount;p.gadgetActionUntil=sim.time+.25;
-        if(vehicle.type==='tank'){vehicle.leftTrack=Math.max(0,vehicle.leftTrack-65*dt/6);vehicle.rightTrack=Math.max(0,vehicle.rightTrack-65*dt/6);vehicle.burning=false;vehicle.extinguishedUntil=sim.time+2;}
+        if(vehicle.type==='tank'){vehicle.burning=false;vehicle.extinguishedUntil=sim.time+2;}
         if(sim.time>=(p.nextRepairScore??0)){sim.awardScore(p,15,'РЕМОНТ ТЕХНИКИ',{kind:'repair'});p.nextRepairScore=sim.time+1.5;}
       }
     }

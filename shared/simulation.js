@@ -1,7 +1,7 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
 import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
-import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle } from './vehicle-ai.js';
+import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
 import { thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
@@ -377,6 +377,7 @@ export class Simulation {
     Object.assign(p,{x:pose.x,z:pose.z,y:pose.y-EYE_HEIGHT,vy:0,grounded:true,moveSpeed:Math.abs(vehicle.speed)});
   }
   mountVehicle(p,vehicle,seat){
+    if(p.bot&&this.time<BOT_VEHICLE_GRACE_SECONDS)return false;
     if(!p.alive||p.vehicleId||vehicle.hp<=0||vehicle.seats[seat]!==null||
       Math.abs(vehicle.speed)>3||Math.abs(p.y-this.groundAt(p.x,p.z))>.8||dist(p,vehicle)>vehicleBoardingRange(vehicle)||
       (vehicle.team!==p.team&&vehicle.seats.some(Boolean)))return false;
@@ -545,8 +546,7 @@ export class Simulation {
     }
     let zoneMultiplier=1;
     if(vehicle.type==='tank'&&kind==='blast'){
-      const zone=tankArmorZone(vehicle,origin);zoneMultiplier=spec.armorZones[zone.includes('Track')?'track':zone];
-      if(zone.includes('Track'))vehicle[zone]=Math.min(100,vehicle[zone]+amount/600*100);
+      zoneMultiplier=spec.armorZones[tankArmorZone(vehicle,origin)];
     }
     const previousHp=vehicle.hp;
     vehicle.lastHurt=this.time;
@@ -564,12 +564,13 @@ export class Simulation {
     this.event('explosion',{x:vehicle.x,y:vehicle.y+.65,z:vehicle.z,vehicleId:vehicle.id});
     if(vehicle.type==='tank')for(const p of this.players.values()){
       const d=Math.hypot(p.x-vehicle.x,p.z-vehicle.z,p.y-vehicle.y);
-      if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:'ВЗРЫВ ТАНКА'});
+      if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:'ВЗРЫВ ТАНКА',explosive:true});
     }
     if(attacker)this.awardScore(attacker,100,'УНИЧТОЖЕНИЕ ТЕХНИКИ',{kind:'vehicle'});
   }
   damage(victim,amount,attacker,meta={}){
     if(!victim.alive||this.winner!==null||this.time<victim.invulnerableUntil)return;
+    if(meta.explosive&&victim.vehicleId&&victim.vehicleSeat<=1){const v=this.vehicles.find(v=>v.id===victim.vehicleId);if(v?.type==='tank'&&v.hp>0)return;}
     const prevHp=victim.hp;
     victim.hp=Math.max(0,victim.hp-amount);
     const dealt=prevHp-victim.hp;

@@ -1,5 +1,5 @@
 import { affineBox, inverseMatrix, multiplyMatrix, rayAffineBox, rotationMatrix, transformVector } from './geometry.js';
-import { VEHICLE_TYPES, vehicleAimDirection } from './vehicles.js';
+import { VEHICLE_TYPES, vehicleAimDirection,TANK_TURRET_BASE_Y } from './vehicles.js';
 
 // Local-space armour follows the visible hull, leaving real window apertures.
 // The movement footprint remains solid; only projectile/visibility rays use it.
@@ -44,7 +44,7 @@ export function rayVehicleArmor(origin,direction,v,maximum){
   for(const shape of v.type==='tank'?tank:v.type==='humvee'?humvee:atv)hit=Math.min(hit,rayAffineBox(ray.origin,ray.direction,shape,Math.min(hit,maximum)));
   if(v.type==='tank'){
     const yaw=(v.aimYaw??v.yaw)-v.yaw,c=Math.cos(yaw),s=Math.sin(yaw),x=ray.origin.x,z=ray.origin.z+.4;
-    const local={x:x*c-z*s,y:ray.origin.y-1.72,z:x*s+z*c},dir={x:ray.direction.x*c-ray.direction.z*s,y:ray.direction.y,z:ray.direction.x*s+ray.direction.z*c};
+    const local={x:x*c-z*s,y:ray.origin.y-TANK_TURRET_BASE_Y,z:x*s+z*c},dir={x:ray.direction.x*c-ray.direction.z*s,y:ray.direction.y,z:ray.direction.x*s+ray.direction.z*c};
     for(const shape of tankTurret)hit=Math.min(hit,rayAffineBox(local,dir,shape,Math.min(hit,maximum)));
   }
   if(v.type==='humvee'){

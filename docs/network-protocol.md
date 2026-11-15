@@ -1,12 +1,14 @@
-# Binary protocol 27
+# Binary protocol 28
 
 Quarry tank extension: vehicles carry wantedYaw/wantedPitch (actual barrel
 angles remain aimYaw/aimPitch), weapon, weaponReadyAt, cannonAmmo,
-cannonReadyAt, cannonSeq, leftTrack/rightTrack (0-100), burning and gunReadyAt.
+cannonReadyAt, cannonSeq, burning and gunReadyAt. Version 28 removes the
+independent track-damage fields: the tank has one health pool.
 Rockets carry kind (0 PT90, 1 tank shell) and firing vehicleId. Added events:
 cannonShot and ricochet. All use the existing dictionary, masks and ACK delta
 rules. Absolute weapon deadlines use the snapshot clock. The procedural map
-revision base is quarry-tank-016a; client and server must be updated together.
+revision base is quarry-tank-017a (shared beveled rock surfaces and raised bunker
+floors); client and server must be updated together.
 
 All integers use little-endian byte order. Dynamic packets are `Uint8Array`/`ArrayBuffer`, encoded with bounds-checked `DataView`. WebSocket compression is disabled. Maximum client payload: 8192 bytes. JSON is reserved for control messages; each client control carries protocol + map layout revision.
 
