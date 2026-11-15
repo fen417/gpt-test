@@ -23,6 +23,10 @@ function diagnose(v){
     wp:v.m02Waypoint,forward:person?.input?.forward,
     speed:Number(v.speed.toFixed(2)),yaw:Number(v.yaw.toFixed(2)),
     nextCollision:withOthers,staticCollision:withoutOthers,
+    nearby:withoutOthers?sim.floorBoxes(xx,zz,13)
+      .filter(box=>Math.hypot((box.x??0)-v.x,(box.z??0)-v.z)<16)
+      .map(box=>({id:box.id,kind:box.kind,x:Math.round(box.x??0),
+        z:Math.round(box.z??0),w:Math.round(box.w??0),d:Math.round(box.d??0)})).slice(0,12):[],
     rise:Number(rise.toFixed(2))};
 }
 for(let n=0;n<seconds*60;n++){
