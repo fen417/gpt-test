@@ -490,8 +490,8 @@ export function createWeaponRig(owner = {}) {
     curve(rearSight,[[side*.035,.107,0],[side*.034,.134,0],[side*.028,.145,0]],
       .0025,dark,8,6);
   }
-  // Outer radius .025, clear bore .0205: a thin aperture with 64% more
-  // viewing area than the old radius-.011 opening, at the correct aim height.
+  // Outer radius .025 and clear bore .0205 keep the aperture wide
+  // without changing its centre height or the bullet's point of impact.
   ring(rearSight,0,.164,0,.025,.0205,.008,dark,'z',24);
   const frontSight=new THREE.Group();frontSight.name='support-front-sight';
   ironSights.add(frontSight);frontSight.position.set(0,0,-.525);
