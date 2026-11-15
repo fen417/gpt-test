@@ -1,5 +1,5 @@
 import '../../shared/campaign/alhadra.js';
-import {recordCampaignCheckpoint,markCampaignComplete,readCampaignProgress} from './progress.js';
+import {recordCampaignCheckpoint,markCampaignComplete} from './progress.js';
 
 export const SAVE_KEY='sector09-campaign-m01-v1';
 const saveKey=id=>id==='m02'?'sector09-campaign-m02-v1':SAVE_KEY;
@@ -24,7 +24,7 @@ export class CampaignSession {
       if(m.type==='save'){
         try{
           localStorage.setItem(saveKey(this.missionId),JSON.stringify(m.save));
-          recordCampaignCheckpoint(this.missionId,m.save);
+          if(!m.complete)recordCampaignCheckpoint(this.missionId,m.save);
         }catch{
           onSaveError('Не удалось сохранить кампанию: хранилище браузера недоступно. Контрольная точка останется до выхода из миссии.');
         }
