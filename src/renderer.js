@@ -1748,9 +1748,12 @@ export class GameRenderer {
         if (this.lastShot !== -1) this.kick = 1;
         this.lastShot = player.shotSeq;
       }
+      // Large iron-sighted machine guns need more visible surroundings than
+      // rifles with close optics; don't narrow their ADS FOV as aggressively.
+      const supportIron=!pistol&&!gadgetKind&&player.classId==='support';
       const aimFov = scopedWeapon
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / (player.weaponId === 'sv98' ? clamp(Number(view.scopeZoom) || 8, 6, 12) : 4)))
-        : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:23);
+        : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
       const fov = lerp(baseFov + this.sprintBlend * 6 + this.slideBlend*3, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
@@ -1780,7 +1783,9 @@ export class GameRenderer {
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetKind?0:gadgetPhase) * Math.PI);
       const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(this.weaponRig.sightType);
-      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:-.27;
+      // A little extra eye relief makes the MG/PKP aperture less dominant
+      // without moving the centred sight line or changing bullet trajectories.
+      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:supportIron?-.30:-.27;
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(
