@@ -1,0 +1,99 @@
+/* Sand and Steel campaign map is CSS/SVG only; no WebGL render loop. */
+dialog.campaign-map-screen{
+  box-sizing:border-box;width:min(1440px,calc(100vw - 30px));max-width:none;
+  height:min(910px,calc(100dvh - 24px));max-height:none;margin:auto;padding:0;
+  border:1px solid #b39a6b;overflow:hidden;background:#c4b28d;color:#302d28;
+  box-shadow:0 18px 90px #000b;letter-spacing:.025em
+}
+.campaign-map-screen::backdrop{background:#050c13e8;backdrop-filter:blur(6px)}
+.campaign-map-paper{height:100%;display:flex;flex-direction:column;position:relative;
+  background:linear-gradient(115deg,#a48e6c26,transparent 38%,#d7c29965),
+  repeating-linear-gradient(4deg,#3f312807 0 1px,transparent 1px 9px),#ccb993}
+.campaign-map-paper::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.45;
+  background:radial-gradient(ellipse,#0000 35%,#3d2d2280);mix-blend-mode:multiply}
+.campaign-map-screen button{font:inherit;cursor:pointer}
+.campaign-map-screen button:focus-visible,.campaign-map-screen select:focus-visible{outline:3px solid #8e4435;outline-offset:3px}
+.campaign-map-head{display:flex;align-items:center;justify-content:space-between;
+  padding:18px 28px;gap:24px;border-bottom:2px solid #6556418c;z-index:1}
+.campaign-map-head small{font-size:10px;font-weight:800;letter-spacing:.21em;color:#755c3f}
+.campaign-map-head h2{font-family:Impact,"Arial Narrow",sans-serif;font-size:clamp(24px,3vw,43px);
+  line-height:1;margin:3px 0 0;letter-spacing:.1em;color:#342f28}
+.campaign-map-head label{display:flex;gap:10px;align-items:center;font:800 11px monospace}
+.campaign-map-head select{background:#e1cda4;color:#3d2e24;border:1px solid #66513b;padding:9px}
+.campaign-back{background:none;border:0;border-bottom:1px solid #493c30;padding:8px 0;
+  color:#493c30;font:800 12px monospace!important;white-space:nowrap}
+.campaign-map-layout{display:grid;grid-template-columns:minmax(245px,33%) minmax(0,1fr);
+  min-height:0;flex:1;z-index:1}
+.campaign-mission-list{padding:17px 15px 20px 24px;overflow:auto;border-right:2px dashed #7763468a;scrollbar-color:#765840 #e6d2ad}
+.campaign-act-label{font:800 11px monospace;letter-spacing:.18em;color:#705435;
+  border-bottom:1px solid #695c4599;margin:12px 8px 10px;padding-bottom:7px}
+.campaign-act-label:not(:first-child){margin-top:21px}
+.campaign-map-mission{display:flex;align-items:center;gap:10px;text-align:left;
+  width:100%;padding:12px 12px;margin:5px 0;border:1px solid transparent;
+  color:#372c24;background:#efe0c31f;min-height:64px}
+.campaign-map-mission:hover,.campaign-map-mission[aria-pressed=true]{
+  background:#f0e3c58c;border-color:#985944;box-shadow:3px 3px 0 #65503921}
+.campaign-map-mission[data-status=locked]{opacity:.64}
+.campaign-map-mission[data-status=complete] .campaign-mission-index{color:#3e603b}
+.campaign-map-mission[data-status=available] .campaign-mission-index,
+.campaign-map-mission[data-status=progress] .campaign-mission-index{color:#924735}
+.campaign-map-mission i{margin-left:auto;font-size:19px;font-style:normal}
+.campaign-mission-index{font:800 21px/1 monospace;color:#7c6152}
+.campaign-mission-summary{display:grid;gap:5px;min-width:0}
+.campaign-mission-summary strong{font:700 14px Arial,sans-serif}
+.campaign-mission-summary small{font:700 9px monospace;letter-spacing:.08em}
+.campaign-map-detail{display:flex;flex-direction:column;min-width:0;overflow:auto}
+.campaign-preview-art{position:relative;aspect-ratio:16/9;flex-shrink:0;
+  overflow:hidden;background:#b2a17b;border-bottom:3px solid #574d3d}
+.campaign-preview-art svg{display:block;width:100%;height:100%}
+.campaign-map-stamp{position:absolute;bottom:18px;left:24px;transform:rotate(-6deg);
+  border:3px double #914637aa;padding:5px 12px;color:#914637aa;
+  font:900 clamp(12px,1.6vw,19px) monospace;letter-spacing:.12em}
+.campaign-mission-detail{padding:24px 35px 30px;display:flex;flex-direction:column;gap:9px}
+.campaign-mission-meta{display:flex;justify-content:space-between;font:800 10px monospace;letter-spacing:.14em}
+.campaign-mission-state{color:#854632}
+.campaign-mission-title{font:700 clamp(22px,2.5vw,38px)/1.1 Impact,"Arial Narrow",sans-serif;
+  letter-spacing:.055em;margin:1px 0}
+.campaign-mission-kind{font:700 12px monospace;color:#845c43;margin:0}
+.campaign-mission-description{font:15px/1.6 Arial,sans-serif;margin:4px 0 12px;max-width:65ch}
+.campaign-mission-brief{display:grid;grid-template-columns:1fr auto;gap:26px;
+  border-top:1px solid #705a41;border-bottom:1px solid #705a41;padding:14px 0;margin-top:1px}
+.campaign-mission-brief>div{display:grid;gap:5px}
+.campaign-mission-brief small{font:800 9px monospace;letter-spacing:.16em;color:#8b604a}
+.campaign-mission-brief strong{font:700 13px Arial,sans-serif}
+.campaign-mission-result,.campaign-storage-warning,.campaign-menu-error{
+  margin:6px 0 0;font:12px/1.6 monospace}
+.campaign-storage-warning,.campaign-menu-error{color:#923a31}
+.campaign-mission-buttons{display:flex;gap:12px;margin-top:15px;flex-wrap:wrap}
+.campaign-mission-buttons button{border:1px solid #695039;padding:13px 18px;
+  background:#413a2e;color:#f4e7c9;font:800 12px monospace;letter-spacing:.07em}
+.campaign-mission-buttons button.panel-secondary{background:transparent;color:#48392d}
+.campaign-mission-buttons button:disabled{opacity:.46;cursor:not-allowed}
+.campaign-mission-buttons button[hidden]{display:none}
+.campaign-map-foot{display:flex;justify-content:space-between;gap:15px;z-index:1;
+  padding:12px 29px;border-top:1px solid #68533b;color:#66513a;font:700 10px monospace}
+@media(max-width:800px){
+  dialog.campaign-map-screen{width:calc(100vw - 10px);height:calc(100dvh - 12px)}
+  .campaign-map-head{padding:13px 16px;gap:12px;flex-wrap:wrap}
+  .campaign-map-head h2{font-size:26px}
+  .campaign-map-layout{grid-template-columns:minmax(170px,38%) minmax(0,1fr)}
+  .campaign-mission-list{padding:10px}
+  .campaign-map-mission{padding:10px 6px;gap:6px}
+  .campaign-mission-summary strong{font-size:12px}
+  .campaign-mission-index{font-size:17px}
+  .campaign-mission-detail{padding:18px}
+}
+@media(max-width:580px){
+  .campaign-map-head{gap:8px}
+  .campaign-map-head label{font-size:10px}
+  .campaign-map-layout{display:flex;flex-direction:column;overflow:auto}
+  .campaign-mission-list{overflow:visible;max-height:38vh;border-right:0;border-bottom:2px dashed #7763468a}
+  .campaign-map-detail{overflow:visible}
+  .campaign-preview-art{height:auto}
+  .campaign-map-foot{font-size:9px;padding:9px 14px}
+  .campaign-mission-brief{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:no-preference){
+  .campaign-map-mission[aria-pressed=true]{animation:campaign-paper-active .32s ease-out}
+  @keyframes campaign-paper-active{from{transform:translateY(3px);opacity:.6}to{transform:translateY(0);opacity:1}}
+}

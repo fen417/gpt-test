@@ -1,0 +1,37 @@
+name: Preview Sand and Steel map screen
+on:
+  push:
+    branches:
+      - feat/campaign-sand-steel-mission2
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save playwright@1.58.2
+      - run: npx playwright install --with-deps chromium
+      - name: Start local Vite build
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/campaign-vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5173/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/campaign-vite.log
+          exit 1
+      - name: Inspect campaign map at desktop, full-HD and mobile widths
+        run: node scripts/verify-campaign-map.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sand-steel-campaign-map-screenshots
+          path: artifacts/campaign-map/
+          if-no-files-found: ignore

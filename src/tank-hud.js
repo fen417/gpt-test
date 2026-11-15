@@ -13,10 +13,12 @@ export class TankHud{
   }
   text(name,value){if(this.last.get(name)!==value){this.refs[name].textContent=value;this.last.set(name,value);}}
   update(state,player,renderer,now,{zoom=false}={}){
-    const v=player?.alive&&state?.vehicles.find(v=>v.id===player.vehicleId),active=v?.type==='tank';this.element.hidden=!active;this.root.classList.toggle('tank-active',active);this.root.classList.toggle('tank-gunner',active&&player.vehicleSeat===1);if(!active)return;
-    const gunner=player.vehicleSeat===1;this.element.classList.toggle('is-gunner',gunner);this.element.classList.toggle('is-zoom',gunner&&zoom);this.element.classList.toggle('is-mg',v.weapon===1);
+    const v=player?.alive&&state?.vehicles.find(v=>v.id===player.vehicleId),active=v?.type==='tank';this.element.hidden=!active;this.root.classList.toggle('tank-active',active);this.root.classList.toggle('tank-gunner',active&&(player.vehicleSeat===1||v?.controlScheme==='wot'));if(!active)return;
+    const gunner=player.vehicleSeat===1||v.controlScheme==='wot';
+    this.element.classList.toggle('is-gunner',gunner);this.element.classList.toggle('is-zoom',gunner&&zoom);this.element.classList.toggle('is-mg',v.weapon===1);
 
-    this.refs['driving-hint'].hidden=player.vehicleSeat!==0;this.text('driving-hint','W/S ХОД · A/D ПОВОРОТ · ПКМ ОБЗОР');
+    this.refs['driving-hint'].hidden=player.vehicleSeat!==0||v.controlScheme==='wot';
+    this.text('driving-hint','W/S ХОД · A/D ПОВОРОТ · ПКМ ОБЗОР');
     if(gunner){
       const muzzle=tankMuzzle(v,this.muzzle),distance=this.range??200;this.point.set(muzzle.x-Math.sin(v.aimYaw)*Math.cos(v.aimPitch)*distance,muzzle.y+Math.sin(v.aimPitch)*distance,muzzle.z-Math.cos(v.aimYaw)*Math.cos(v.aimPitch)*distance).project(renderer.camera);
       this.refs.bore.style.transform=`translate(${this.point.x*renderer.viewportWidth/2}px,${-this.point.y*renderer.viewportHeight/2}px)`;
@@ -27,14 +29,17 @@ export class TankHud{
     this.text('range',this.range>=800?'ДАЛЕЕ 800 М':`${Math.round(this.range)} М`);
     const focal=renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
     for(const [i,node] of [...this.element.querySelector('.tank-range-marks').children].entries())node.setAttribute('transform',`translate(0 ${200+Math.tan(tankDropAngle((i+1)*100,v.weapon))*focal})`);
-    this.text('hp',`${Math.ceil(v.hp/v.maxHp*100)}%`);this.text('weapon-name',v.weapon===1?'СПАРЕННЫЙ ПУЛЕМЁТ':'125 ММ · ОФ');
-    this.text('optic-label',v.weapon===1?'ПУЛЕМЁТНЫЙ КАНАЛ':'ОПТИЧЕСКИЙ КАНАЛ · ОФ');this.text('ammo',v.weapon===1?'∞':String(v.cannonAmmo));
+    this.text('hp',`${Math.ceil(v.hp/v.maxHp*100)}%`);
+    const wot=v.controlScheme==='wot',shellLabel=wot&&v.m02Shell==='ap'?'ББ': 'ОФ';
+    this.text('weapon-name',v.weapon===1?'СПАРЕННЫЙ ПУЛЕМЁТ':`125 ММ · ${shellLabel}`);
+    this.text('optic-label',v.weapon===1?'ПУЛЕМЁТНЫЙ КАНАЛ':`ОПТИЧЕСКИЙ КАНАЛ · ${shellLabel}`);this.text('ammo',v.weapon===1?'∞':String(v.cannonAmmo));
     const remaining=Math.max(0,v.cannonReadyAt-state.time),ready=state.time>=v.weaponReadyAt&&(v.weapon===1?!v.overheated:remaining===0&&v.cannonAmmo>0);
     this.text('ready',ready?'ГОТОВ':state.time<v.weaponReadyAt?'СМЕНА':v.weapon===1?'ОХЛАЖДЕНИЕ':v.cannonAmmo?remaining.toFixed(1)+' С':'НЕТ СНАРЯДОВ');
-    this.refs.reload.style.strokeDashoffset=String(101*Math.min(1,remaining/TANK_CANNON.reload));this.element.querySelector('.tank-heat i').style.transform=`scaleX(${v.heat})`;
+    this.refs.reload.style.strokeDashoffset=String(101*Math.min(1,
+      remaining/(v.controlScheme==='wot'?v.campaignWeapons?.ap.reload??4:TANK_CANNON.reload)));this.element.querySelector('.tank-heat i').style.transform=`scaleX(${v.heat})`;
     this.text('alert',state.players.some(p=>p.gadgetAction==='repair'&&p.gadgetTargetId===v.id)?'ИНЖЕНЕР · ИДЁТ РЕМОНТ':v.burning?'ПОЖАР · НУЖЕН РЕМОНТ':'');
     const damage=100-v.hp/v.maxHp*100;for(const key of ['track-left','track-right','hull'])this.refs[key].style.fill=damage>=80?'#e07456':damage>=40?'#d4b06a':'#b7cf99';
     this.refs.turret.setAttribute('transform',`rotate(${-(v.aimYaw-v.yaw)*180/Math.PI} 65 68)`);
-    const crew=v.seats.map((id,i)=>`${i+1} · ${id?state.players.find(p=>p.id===id)?.name??'Боец':'Свободно'}`).join('\n');this.text('crew',crew);
+    const crew=v.seats.map((id,i)=>`${i+1} · ${id?state.players.find(p=>p.id===id)?.name??'Боец':'Свободно'}`).join('\n');this.text('crew',v.controlScheme==='wot'?`КОМАНДИР: ${state.players.find(p=>p.id===v.seats[0])?.name??'Сокол'} · ЭКИПАЖ ВНУТРИ`:crew);
   }
 }

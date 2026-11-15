@@ -258,7 +258,8 @@ export function createVillageModelBuilder(owner) {
 
 export function addVillageGround(owner, map, assets = true) {
   const m = palette(owner), span = map.size + 220;
-  const geometry = new THREE.PlaneGeometry(span, span, span / map.terrain.cell, span / map.terrain.cell);
+  const segments=Math.ceil(span/map.terrain.cell);
+  const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
   const vertices = geometry.attributes.position;
   for (let i = 0; i < vertices.count; i++) vertices.setZ(i, map.terrain.heightAt(vertices.getX(i), -vertices.getY(i)));
   geometry.computeVertexNormals();

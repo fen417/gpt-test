@@ -496,7 +496,7 @@ export class GameRenderer {
   }
 
   setMap(mapId) {
-    if(mapId==='quarry'&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
+    if((mapId==='quarry'||mapId==='alhadra-desert')&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
     let world = this.worlds.get(map.id);
@@ -1812,7 +1812,7 @@ export class GameRenderer {
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
       this.weaponRig.anchorPistolArm(pistolSprint);
     }
-    view.campaignRender?.(this,state,dt);
+    view.campaignRender?.(this,state,dt,view);
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.viewFrustum.setFromProjectionMatrix(this.viewProjection);

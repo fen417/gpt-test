@@ -1,0 +1,84 @@
+/* Mission 2 HUD shares the existing tank model/reticle and adds a
+   lightweight company/radio layer. No persistent UI animation loops. */
+.campaign-m02{position:fixed;inset:0;z-index:24;pointer-events:none;
+  color:#efe3c3;text-shadow:0 2px 5px #050a0a;font-family:Arial,sans-serif}
+.campaign-m02 .m02-objective{position:absolute;top:26px;left:26px;
+  padding:14px 20px;background:linear-gradient(90deg,#10171ce5,#10171c18);
+  border-left:3px solid #d6ad70;max-width:390px;display:grid;gap:7px}
+.m02-objective small{font:700 9px monospace;letter-spacing:.14em;color:#c7b188}
+.m02-objective strong{font:600 19px/1.24 Arial,sans-serif}
+.m02-mission-status{font:11px monospace;color:#c3b69a}
+.m02-company{position:absolute;right:22px;top:25px;padding:14px 16px;
+  background:#101b18bb;border-top:2px solid #9f9666;min-width:192px}
+.m02-company>small{font:700 10px monospace;letter-spacing:.12em;color:#d9c39c;display:block;margin-bottom:8px}
+.m02-tank-status{display:grid;grid-template-columns:64px 70px 58px;align-items:center;
+  gap:7px;font:700 10px/1.7 monospace}
+.m02-tank-status i{display:block;height:4px;background:#39433a}
+.m02-tank-status i em{display:block;height:100%;background:#91bf91}
+.m02-tank-status b{font-weight:500;text-align:right}
+.m02-tank-status.destroyed{color:#ac716b;opacity:.65}
+.m02-tank-status.destroyed i em{background:#a05c57}
+.m02-tank-status.player{color:#f4d693}
+.m02-reticle{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.m02-aimdot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  color:#edf1d2;font:19px monospace;opacity:.83}
+.m02-bore-dot{position:absolute;top:0;left:0;font:24px monospace;color:#f6bd7a;filter:drop-shadow(0 1px 3px #000)}
+.m02-dispersion{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  box-sizing:border-box;border:1px dashed #e7d6aa9c;border-radius:50%;
+  width:30px;height:30px}
+.m02-weapon-panel{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);
+  padding:10px 18px;text-align:center;display:grid;gap:3px;min-width:260px;
+  border:1px solid #baa77a6c;background:#0d1818ba}
+.m02-weapon-panel strong{font:800 11px monospace;color:#edce94}
+.m02-weapon-panel span{font:10px monospace}
+.m02-radio{position:absolute;left:50%;bottom:155px;transform:translateX(-50%);
+  background:#0b151aaf;min-width:280px;max-width:min(640px,65vw);
+  padding:10px 19px;border-bottom:2px solid #c9b07d;text-align:center;
+  display:none;gap:5px}
+.m02-radio.active{display:grid}
+.m02-radio small{font:800 9px monospace;letter-spacing:.13em;color:#c6af80}
+.m02-radio b{font:700 12px monospace}
+.m02-radio span{font:15px/1.4 Arial,sans-serif}
+.m02-controls{position:absolute;left:50%;transform:translateX(-50%);bottom:22px;
+  margin:0;padding:6px 12px;background:#0b1519ad;white-space:nowrap;
+  font:10px monospace;letter-spacing:.015em;opacity:.8}
+.m02-briefing{position:absolute;inset:0;display:grid;place-items:center;
+  border-top:8vh solid #0a0e15;border-bottom:9vh solid #0a0e15}
+.m02-briefing[hidden]{display:none}
+.m02-briefing-caption{position:absolute;top:11vh;left:9vw;
+  font:800 clamp(18px,3vw,38px) Impact,"Arial Narrow",sans-serif;letter-spacing:.16em}
+.m02-briefing-subtitle{position:absolute;bottom:8vh;left:50%;transform:translateX(-50%);
+  max-width:780px;text-align:center;font:18px/1.5 Arial,sans-serif}
+.m02-skip{position:absolute;bottom:-7vh;right:3vw;pointer-events:auto;
+  background:none;border:none;color:#e8d9b4;font:700 12px monospace;cursor:pointer}
+.m02-finale{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  pointer-events:auto;min-width:min(650px,90vw);max-width:90vw;
+  padding:30px 35px;border:1px solid #b5a073;background:#111b1df2}
+.m02-finale[hidden]{display:none}
+.m02-finale-kicker{font:800 11px monospace;letter-spacing:.18em;color:#cbae7d}
+.m02-finale-title{font:500 31px Impact,"Arial Narrow",sans-serif;letter-spacing:.05em}
+.m02-finale-text{font:15px/1.5 Arial,sans-serif}
+.m02-finale-stats{border-top:1px solid #d8bd853d;padding:15px 0;margin:16px 0;
+  font:12px monospace}
+.m02-finale button{padding:13px 18px;margin:0 12px 8px 0;color:#f4e6c4;
+  background:#2d3d38;border:1px solid #b6a77f;cursor:pointer}
+.campaign-m02-active .tank-driving-hint{display:none}
+.campaign-m02-active .tank-condition{left:22px;bottom:205px}
+.campaign-m02-active .tank-hud.is-gunner .tank-optic{
+  /* Use existing centre reticle for zoom; our company markers stay at edges. */
+  opacity:.9}
+.campaign-m02-active #crosshair{opacity:0}
+@media(max-width:1000px){
+  .m02-company{right:10px;top:18px;min-width:150px;padding:10px}
+  .m02-tank-status{grid-template-columns:54px 45px 48px;gap:5px;font-size:9px}
+  .campaign-m02 .m02-objective{left:12px;top:14px;max-width:46vw;padding:10px}
+  .m02-objective strong{font-size:16px}
+  .m02-controls{font-size:9px;white-space:normal;text-align:center;width:70vw}
+  .m02-weapon-panel{bottom:73px;min-width:170px}
+}
+@media(max-width:600px){
+  .m02-company{top:75px;right:8px;min-width:125px}
+  .m02-tank-status{grid-template-columns:48px 35px 38px}
+  .m02-radio{bottom:180px;width:72vw;min-width:0}
+  .m02-weapon-panel{bottom:88px}
+}

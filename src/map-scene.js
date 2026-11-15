@@ -43,7 +43,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
     }
     else if (map.theme === 'desert-village') roadSurface = addVillageGround(owner, map, false);
     else {
-      const span = map.size + 256, segments = span / map.terrain.cell;
+      const span = map.size + 256, segments = Math.ceil(span / map.terrain.cell);
       const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
       const uv = geometry.attributes.uv;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * span / 9, uv.getY(i) * span / 9);

@@ -33,7 +33,7 @@ const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),re
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let campaignPresentation=null;
 let squadUI,weaponPreview,lobbyWeaponPreview;
-let tankHud,tankHudLoading,vehicleThirdPerson=true;
+let tankHud,tankHudLoading,vehicleThirdPerson=true,campaignTankZoom=2.5;
 const vehicleLook={id:null,yaw:0,pitch:-.12};
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
@@ -430,7 +430,7 @@ function receive(next){
     const role=VEHICLE_TYPES[vehicle.type]?.seats[player.vehicleSeat]?.role;
     if(previousVehicle?.id!==vehicle.id){
       yaw=vehicle.yaw;pitch=0;recoilPitch=0;recoilYaw=0;
-    }else if(role!=='gunner'){
+    }else if(role!=='gunner'&&next.campaign?.missionId!=='m02'){
       const turn=vehicle.yaw-previousVehicle.yaw;
       yaw+=Math.atan2(Math.sin(turn),Math.cos(turn));
     }
@@ -557,11 +557,17 @@ async function requestControl(allowPendingSpawn=false){
   }
 }
 function leave(resetStatus=true){
+  const completedCampaign=mode==='campaign'&&Boolean(state?.campaign?.complete);
   campaignPresentation?.dispose();campaignPresentation=null;
+  if(mode==='campaign')vehicleThirdPerson=read('vehicle-camera','third')!=='first';
   reviveAwaitingControl=false;show('revive-control-hint',false);
   active=false;inLobby=false;clearControls();simulation?.close();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
   document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов к высадке.');
+  if(completedCampaign)queueMicrotask(async()=>{
+    try{const {openCampaignMenu}=await import('./campaign/menu.js');await openCampaignMenu(startCampaign);}
+    catch(error){status(error.message,true);}
+  });
 }
 async function solo(){
   if(busy)return;multiplayer.close();const opts=prepare('solo');localId='local';setBusy(true);status('Подготовка операции…');
@@ -571,20 +577,36 @@ async function solo(){
 }
 $('solo').addEventListener('click',solo);
 async function startCampaign(options){
-  if(busy)return;multiplayer.close();prepare('campaign');localId='local';setBusy(true);status('Подготовка кампании…');
+  if(busy)return;
+  multiplayer.close();prepare('campaign');localId='local';setBusy(true);
+  const second=options.missionId==='m02';
+  status(second?'Подготовка танковой операции…':'Подготовка кампании…');
   let session;
   try{
     const {CampaignSession,CampaignPresentation}=await import('./campaign/menu.js');
-    session=new CampaignSession(options,{onState:receive,onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});simulation=session;
+    // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
+    if(second)await import('../shared/campaign/alhadra-desert.js');
+    session=new CampaignSession(options,{onState:receive,
+      onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});
+    simulation=session;
     await session.ready;if(simulation!==session)return;
     state=session.snapshot();setBattleMap(state.mapId);renderer.setMap(state.mapId);
-    campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,resume:()=>requestControl(true)});
-    enter();text('room-badge','КАМПАНИЯ · ВЫСАДКА У ВАДИ');
-  }catch(error){console.error('Campaign:',error);if(!session||simulation===session){session?.close();simulation=null;campaignPresentation?.dispose();campaignPresentation=null;setBusy(false);throw error;}}
+    if(second){
+      const {Mission2Presentation}=await import('./campaign/mission2-presentation.js');
+      campaignPresentation=new Mission2Presentation(session,{renderer,audio,leave,clearControls,
+        resume:()=>requestControl(true)});
+      vehicleThirdPerson=true;campaignTankZoom=2.5;vehicleLook.id=null;
+    }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,
+      resume:()=>requestControl(true)});
+    enter();text('room-badge',second?'КАМПАНИЯ · РАССВЕТ НАД АЛЬ-ХАДРОЙ':'КАМПАНИЯ · ВЫСАДКА У ВАДИ');
+  }catch(error){console.error('Campaign:',error);if(!session||simulation===session){
+    session?.close();simulation=null;campaignPresentation?.dispose();campaignPresentation=null;
+    setBusy(false);throw error;
+  }}
 }
 // The hidden entry listens only on the home screen, outside text fields/dialogs.
-const campaignButton=document.createElement('button');campaignButton.id='open-campaign';campaignButton.type='button';campaignButton.className='home-play hidden';campaignButton.setAttribute('aria-haspopup','dialog');
-campaignButton.innerHTML='<span class="nav-index">04</span><span><b>Кампания</b><small>Высадка у вади · Глава I</small></span><span class="nav-arrow">↗</span>';
+const campaignButton=document.createElement('button');campaignButton.id='open-campaign';campaignButton.type='button';campaignButton.className='home-play';campaignButton.setAttribute('aria-haspopup','dialog');
+campaignButton.innerHTML='<span class="nav-index">04</span><span><b>Кампания</b><small>Песок и сталь · 8 миссий</small></span><span class="nav-arrow">↗</span>';
 document.querySelector('.home-nav').append(campaignButton);
 campaignButton.onclick=async()=>{if(busy)return;try{const {openCampaignMenu}=await import('./campaign/menu.js');await openCampaignMenu(startCampaign);}catch(error){status(error.message,true);}};
 let debugWord='',debugAt=0;
@@ -686,6 +708,12 @@ $('camera-shake').checked=read('camera-shake','true')!=='false';cameraShake=$('c
 $('camera-shake').addEventListener('change',event=>{cameraShake=event.target.checked;save('camera-shake',cameraShake);});
 $('vehicle-third-person').checked=vehicleThirdPerson;
 $('vehicle-third-person').addEventListener('change',event=>{vehicleThirdPerson=event.target.checked;save('vehicle-camera',vehicleThirdPerson?'third':'first');});
+$('campaign-reset-progress')?.addEventListener('click',async()=>{
+  if(!window.confirm('Сбросить всю кампанию «Песок и сталь»?\nПрогресс миссий и контрольные точки будут удалены.'))return;
+  const {resetCampaignProgress}=await import('./campaign/progress.js');
+  resetCampaignProgress();
+  toast('Прогресс кампании сброшен.');
+});
 $('reset-binds')?.addEventListener('click',()=>{
   keybinds={...DEFAULT_BINDS};
   listeningAction=null;
@@ -733,7 +761,7 @@ document.addEventListener('mousemove',event=>{
   const player=local();
   const drivingVehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
   if(vehicleThirdPerson&&player?.vehicleSeat===0&&drivingVehicle?.type==='tank'){
-    if(!aim)return;
+    if(!aim&&state?.campaign?.missionId!=='m02')return;
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
@@ -744,6 +772,10 @@ document.addEventListener('mousemove',event=>{
 let lastFireClick=0;
 document.addEventListener('wheel',event=>{
   const player=local(),vehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
+  if(active&&state?.campaign?.missionId==='m02'&&vehicle?.id==='sokol-7'&&
+     (keys.has('ShiftLeft')||keys.has('ShiftRight'))&&event.deltaY){
+    event.preventDefault();campaignTankZoom=campaignTankZoom===2.5?5:2.5;return;
+  }
   if(active&&player?.alive&&vehicle?.type==='tank'&&player.vehicleSeat===1&&event.deltaY){event.preventDefault();weaponSlot=weaponSlot===1?2:1;toolSlot=0;return;}
   if(!active||!aim||!local()?.alive||local()?.heldGadget||local()?.weaponId!=='sv98'||
     (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
@@ -836,7 +868,7 @@ function input(){
   return {
     forward:enabled?Number(isActionHeld('forward'))-Number(isActionHeld('back')):0,
     strafe:enabled?Number(isActionHeld('right'))-Number(isActionHeld('left')):0,
-    ...angles,yaw:vehicle?.type==='tank'&&player.vehicleSeat===0?vehicle.yaw:angles.yaw,
+    ...angles,yaw:vehicle?.type==='tank'&&player.vehicleSeat===0&&state?.campaign?.missionId!=='m02'?vehicle.yaw:angles.yaw,
     sprint:enabled&&isActionHeld('sprint')&&!aim&&!firing,
     crouch:enabled&&isActionHeld('crouch'),
     jump:enabled&&isActionHeld('jump'),
@@ -852,7 +884,11 @@ function input(){
     switchSeat:enabled&&pulses.has(keybinds.switchSeat),
     horn:enabled&&pulses.has(keybinds.horn),
     order:enabled&&pulses.has(keybinds.order),
-    ...(mode==='campaign'?{use:enabled&&isActionHeld('interact'),selfRevive:enabled&&keys.has('KeyX'),heal:enabled&&keys.has('KeyH'),knife:enabled&&keys.has('KeyV'),prone:enabled&&keys.has('KeyZ')}:{}),
+    ...(mode==='campaign'?{use:enabled&&isActionHeld('interact'),selfRevive:enabled&&keys.has('KeyX'),
+      heal:enabled&&keys.has('KeyH'),knife:enabled&&keys.has('KeyV'),prone:enabled&&keys.has('KeyZ'),
+      brake:enabled&&state?.campaign?.missionId==='m02'&&keys.has('Space'),
+      turretHold:enabled&&state?.campaign?.missionId==='m02'&&
+        (keys.has('ControlLeft')||keys.has('ControlRight'))}:{}),
   };
 }
 
@@ -1468,15 +1504,22 @@ function frame(now){
   const renderPlayer=renderState?.players.find(p=>p.id===localId);
   const driven=renderPlayer?.vehicleSeat===0?renderState?.vehicles.find(v=>v.id===renderPlayer.vehicleId):null;
   if(vehicleThirdPerson&&driven?.type==='tank'){
-    if(vehicleLook.id!==driven.id){vehicleLook.id=driven.id;vehicleLook.yaw=0;vehicleLook.pitch=-.12;}
-    if(!aim){const follow=1-Math.exp(-dt*9);vehicleLook.yaw*=1-follow;vehicleLook.pitch+=(-.12-vehicleLook.pitch)*follow;}
-    yaw=driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
+    const freeCampaignTank=state?.campaign?.missionId==='m02';
+    if(vehicleLook.id!==driven.id){
+      vehicleLook.id=driven.id;vehicleLook.yaw=freeCampaignTank?driven.yaw:0;vehicleLook.pitch=-.12;
+    }
+    if(!aim&&!freeCampaignTank){
+      const follow=1-Math.exp(-dt*9);vehicleLook.yaw*=1-follow;vehicleLook.pitch+=(-.12-vehicleLook.pitch)*follow;
+    }
+    yaw=freeCampaignTank?vehicleLook.yaw:driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
-  if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
+  if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,
+    networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
   if(active&&campaignPresentation)campaignPresentation.update(renderState??state,paused,yaw);
-  if(renderer.map?.id==='quarry'&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
-  tankHud?.update(active?renderState:null,renderPlayer,renderer,now,{zoom:aim});
+  if(['quarry','alhadra-desert'].includes(renderer.map?.id)&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
+  tankHud?.update(active?renderState:null,renderPlayer,renderer,now,
+    {zoom:aim||state?.campaign?.missionId==='m02'&&(keys.has('ShiftLeft')||keys.has('ShiftRight'))});
   renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);

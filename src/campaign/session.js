@@ -1,11 +1,18 @@
 import '../../shared/campaign/alhadra.js';
+import {recordCampaignCheckpoint,markCampaignComplete} from './progress.js';
 
 export const SAVE_KEY='sector09-campaign-m01-v1';
-export function readCampaignSave(){try{const save=JSON.parse(localStorage.getItem(SAVE_KEY)??'null');return save?.version===1&&save.missionId==='m01'?save:null;}catch{return null;}}
+const saveKey=id=>id==='m02'?'sector09-campaign-m02-v1':SAVE_KEY;
+export function readCampaignSave(missionId='m01'){
+  try{const save=JSON.parse(localStorage.getItem(saveKey(missionId))??'null');
+    return save?.version===1&&save.missionId===missionId?save:null;
+  }catch{return null;}
+}
 
 export class CampaignSession {
   constructor({definition,locale,save,...options},{onState=()=>{},onError=()=>{},onSaveError=()=>{}}={}){
-    this.definition=definition;this.locale=locale;this.paused=true;this.closed=false;
+    this.definition=definition;this.locale=locale;this.missionId=definition.id??'m01';
+    this.completionNoted=false;this.paused=true;this.closed=false;
     this.ready=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});
     this.timer=setTimeout(()=>this.reject(Error('Кампания не ответила при загрузке.')),20000);
     this.worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
@@ -15,12 +22,26 @@ export class CampaignSession {
       if(this.closed)return;const m=event.data;
       if(m.type==='error'){this.reject(Error(m.message));if(this.started)onError(m.message);return;}
       if(m.type==='save'){
-        try{localStorage.setItem(SAVE_KEY,JSON.stringify(m.save));if(m.complete)localStorage.setItem('sector09-campaign-progress-v1',JSON.stringify({m01:true,documents:m.flags.documents??false,courier:m.flags.courierSaved??false,kane:m.flags.kaneSaved??false}));}catch{onSaveError('Не удалось сохранить кампанию: хранилище браузера недоступно. Контрольная точка останется до выхода из миссии.');}
+        try{
+          localStorage.setItem(saveKey(this.missionId),JSON.stringify(m.save));
+          if(!m.complete)recordCampaignCheckpoint(this.missionId,m.save);
+        }catch{
+          onSaveError('Не удалось сохранить кампанию: хранилище браузера недоступно. Контрольная точка останется до выхода из миссии.');
+        }
       }
       if(m.type==='state'){
         const epoch=m.state.campaign.epoch;
         this.previous=this.state?.campaign.epoch===epoch&&m.state.time>=this.state.time?this.state:null;
         this.state=m.state;this.receivedAt=performance.now();
+        if(m.state.campaign?.complete&&!this.completionNoted){
+          this.completionNoted=true;
+          const stats=m.state.campaign.stats??{};
+          const flags=this.missionId==='m01'?
+            Object.fromEntries(['kane','lasko','bruno','duran'].map(id=>[`${id}_alive`,Boolean(m.state.players.find(p=>p.id===id)?.alive)])):
+            {tanks_alive:m.state.campaign.tanksAlive??0,enemy_order:Boolean(m.state.campaign.flags?.enemyOrder)};
+          markCampaignComplete(this.missionId,{elapsedSeconds:stats.elapsedSeconds??m.state.time,
+            losses:stats.losses??m.state.campaign.alliedLosses??0,stealth:stats.stealth??null},flags);
+        }
         if(!this.started){this.started=true;clearTimeout(this.timer);this.resolve(this.state);}else onState(this.state);
       }
     };
@@ -33,8 +54,25 @@ export class CampaignSession {
   snapshot(){return this.state;}
   sample(now){
     if(!this.previous||this.state.campaign.cutscene||this.paused)return this.state;
-    const t=Math.max(0,Math.min(1,(now-this.receivedAt)/33.333)),old=new Map(this.previous.players.map(p=>[p.id,p]));
-    return {...this.state,players:this.state.players.map(p=>{const a=old.get(p.id);if(!a||a.alive!==p.alive||Math.hypot(a.x-p.x,a.z-p.z)>8)return p;return {...p,x:a.x+(p.x-a.x)*t,y:a.y+(p.y-a.y)*t,z:a.z+(p.z-a.z)*t};})};
+    const t=Math.max(0,Math.min(1,(now-this.receivedAt)/33.333));
+    const old=new Map(this.previous.players.map(p=>[p.id,p]));
+    const lerp=(a,b)=>a+(b-a)*t;
+    const angle=(a,b)=>a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*t;
+    const previousVehicles=new Map(this.previous.vehicles.map(v=>[v.id,v]));
+    return {...this.state,
+      players:this.state.players.map(p=>{
+        const a=old.get(p.id);
+        if(!a||a.alive!==p.alive||Math.hypot(a.x-p.x,a.z-p.z)>8)return p;
+        return {...p,x:lerp(a.x,p.x),y:lerp(a.y,p.y),z:lerp(a.z,p.z)};
+      }),
+      vehicles:this.state.vehicles.map(v=>{
+        const a=previousVehicles.get(v.id);
+        if(!a||a.hp<=0||v.hp<=0||Math.hypot(a.x-v.x,a.z-v.z)>25)return v;
+        return {...v,x:lerp(a.x,v.x),y:lerp(a.y,v.y),z:lerp(a.z,v.z),
+          yaw:angle(a.yaw,v.yaw),aimYaw:angle(a.aimYaw,v.aimYaw),
+          aimPitch:lerp(a.aimPitch??0,v.aimPitch??0)};
+      })
+    };
   }
   close(){if(this.closed)return;this.closed=true;clearTimeout(this.timer);this.reject(Error('Операция отменена.'));this.worker.terminate();}
 }
