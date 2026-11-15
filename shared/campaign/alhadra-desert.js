@@ -24,6 +24,33 @@ const outerLandforms=[
   {x:738,z:-230,rx:182,rz:80,height:6.1,angle:.35,flat:.1},
 ];
 const outerTerrain=makeTerrain(2000,outerLandforms,8);
+// Separate the tank approach from the steep dunes and the buildings in the
+// centre of the original village. The roads are authored in mission data,
+// but terrain is available before mission JSON loads in the renderer.
+const militaryCorridors=[
+  [[-910,-535],[-750,-455],[-565,-373],[-400,-300],[-235,-248],[-115,-230]],
+  [[910,105],[730,-25],[550,-145],[365,-210],[175,-235],[-5,-235]],
+];
+const corridorHeights=militaryCorridors.map(points=>points.map(([x,z])=>outerTerrain.heightAt(x,z)));
+const flattenTankCorridors=(x,z,ground)=>{
+  let closest=Infinity,height=ground;
+  for(const [j,points] of militaryCorridors.entries()){
+    for(let i=0;i<points.length-1;i++){
+      const [ax,az]=points[i],[bx,bz]=points[i+1];
+      const dx=bx-ax,dz=bz-az,lengthSq=dx*dx+dz*dz;
+      const t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/lengthSq));
+      const px=ax+dx*t,pz=az+dz*t;
+      const dist=Math.hypot(x-px,z-pz);
+      if(dist<closest){closest=dist;
+        height=corridorHeights[j][i]+
+          (corridorHeights[j][i+1]-corridorHeights[j][i])*t;
+      }
+    }
+  }
+  const weight=closest<=30?1:closest>=54?0:
+    (1-((closest-30)/24)**2*(3-2*(closest-30)/24));
+  return ground+(height-ground)*weight;
+};
 // At the edge of the original map, softly fade terrain back to the new
 // desert. The entire old village rectangle is sampled from the original
 // terrain; playable geometry and footing there remain unchanged.
@@ -33,7 +60,7 @@ const heightAt=(x,z)=>{
   const oldX=x+ALHADRA_OFFSET.x,oldZ=z+ALHADRA_OFFSET.z;
   const spreadX=innerHalfX-Math.abs(oldX),spreadZ=innerHalfZ-Math.abs(oldZ);
   const edge=Math.min(spreadX,spreadZ);
-  if(edge<0)return outerTerrain.heightAt(x,z);
+  if(edge<0)return flattenTankCorridors(x,z,outerTerrain.heightAt(x,z));
   const preserved=ALHADRA.terrain.heightAt(oldX,oldZ);
   if(edge>24)return preserved;
   const weight=smooth(edge/24);
