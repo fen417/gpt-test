@@ -25,6 +25,9 @@ for(let n=0;n<seconds*60;n++){
       alliedNearVillage:current.filter(v=>Math.hypot(v.x,v.z)<165).length,
       shots,ricochets,
       avgAlliedProgress:current.length?Math.round(current.reduce((sum,v)=>sum+(v.x+v.z)/2,0)/current.length):0,
+      enemyHp:opponent.map(v=>Math.round(v.hp)).slice(0,10),
+      enemyPos:opponent.slice(0,3).map(v=>[v.id,Math.round(v.x),Math.round(v.z)]),
+      tankAmmo:current.slice(0,3).map(v=>[v.id,v.shellAmmo.ap,Math.round(v.aimYaw*100)/100]),
       positions:current.slice(0,3).map(v=>[v.id,Math.round(v.x),Math.round(v.z)])});
     if(sim.campaign.failed||sim.campaign.complete)break;
   }
