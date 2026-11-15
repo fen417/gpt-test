@@ -10,7 +10,9 @@ try{
   await mkdir('artifacts/campaign-map',{recursive:true});
   for(const [width,height] of [[1280,720],[1920,1080],[360,780]]){
     const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
-    const errors=[];page.on('pageerror',error=>errors.push(error.message));
+    const errors=[],consoleErrors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    page.on('console',message=>{if(message.type()==='error')consoleErrors.push(message.text());});
     await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
     await page.locator('#open-campaign').waitFor({timeout:60000});
     await page.locator('#open-campaign').click();
@@ -34,7 +36,21 @@ try{
     if(width===1280){
       await dialog.locator('.campaign-play').click();
       const mission=page.locator('.campaign-m02');
-      await mission.waitFor({state:'visible',timeout:60000});
+      try{await mission.waitFor({state:'visible',timeout:33000});}
+      catch(error){
+        await page.screenshot({path:'artifacts/campaign-map/m02-start-failure.png',fullPage:true});
+        const diagnostics=await page.evaluate(()=>({
+          status:document.getElementById('status')?.textContent,
+          campaignError:document.querySelector('.campaign-menu-error')?.textContent,
+          selected:document.querySelector('.campaign-mission-title')?.textContent,
+          mainMenu:document.getElementById('menu')?.className,
+          bodyText:document.body.innerText.slice(-2200),
+          dialogOpen:document.querySelector('.campaign-map-screen')?.open,
+          loading:document.querySelector('#busy')?.textContent
+        }));
+        console.log('MISSION 2 START FAILURE',JSON.stringify({diagnostics,errors,consoleErrors}));
+        throw error;
+      }
       await mission.locator('.m02-briefing').waitFor({state:'visible',timeout:20000});
       await page.screenshot({path:'artifacts/campaign-map/m02-briefing.png'});
       await mission.locator('.m02-skip').click();
