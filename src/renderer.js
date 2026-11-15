@@ -847,9 +847,12 @@ export class GameRenderer {
     for (const player of state.players) {
       if (player.id === localId&&!(this.tankThirdPerson&&player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank')) continue;
       active.add(player.id);
-      if(player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank'){
+      // Only the tank's enclosed driver and gunner are hidden under its armour.
+      // Exposed tank riders and all light-vehicle crew must still be rendered.
+      const seatedVehicle=player.vehicleId?state.vehicles.find(v=>v.id===player.vehicleId):null;
+      if(seatedVehicle?.type==='tank'&&player.vehicleSeat<=1){
         const hidden=this.soldiers.get(player.id);
-        if(hidden){hidden.group.removeFromParent();hidden.initialized=false;}
+        if(hidden){hidden.group.removeFromParent();hidden.initialized=false;hidden.seated=false;}
         continue;
       }
       const activeWeaponId = player.weaponId || defaultWeaponId(player.classId);
@@ -889,13 +892,19 @@ export class GameRenderer {
         const relativeYaw=index===1?(rig.tank?vehicle.aimYaw-vehicle.yaw:rig.turretYaw??0):rig.tank&&index>1?(index===2?Math.PI/2:index===3?-Math.PI/2:Math.PI):0;
         group.position.set(rig.tank&&index===1?seat.x*Math.cos(relativeYaw):seat.x,seat.height-1.65,rig.tank&&index===1?-.4-seat.x*Math.sin(relativeYaw):seat.z);
         group.rotation.set(0,relativeYaw,0);group.visible=true;
+        // Distant infantry may have switched off their detailed body before
+        // entering. Restore it when seated so the whole crew cannot disappear.
+        soldier.body.visible=true;
         const position=getVehicleSeatPose(vehicle,index),distSq=this.camera.position.distanceToSquared(this.scratchPosition.set(position.x,position.y,position.z))*viewScale**2;
         soldier.body.geometry=distSq>(this.lowQuality?55:95)**2?soldier.distantGeometry:distSq>28**2?soldier.mediumGeometry:soldier.detailGeometry;
         soldier.body.castShadow=!this.lowQuality&&distSq<48**2;
         this.soldierBounds.center.set(position.x,position.y-.4,position.z);
         group.visible=this.viewFrustum.intersectsSphere(this.soldierBounds)||Boolean(shadowFrustum?.intersectsSphere(this.soldierBounds)&&distSq<48**2);
         poseSeatedSoldier(soldier,{vehicle,seat,index,relativeYaw:Math.atan2(Math.sin(player.yaw-vehicle.yaw-relativeYaw),Math.cos(player.yaw-vehicle.yaw-relativeYaw)),pitch:player.pitch,shotSeq:player.shotSeq,dt});
-        if(rig.riders[index])rig.riders[index].visible=false;soldier.seated=true;
+        // Keep the light-vehicle placeholder visible until the full soldier
+        // rig is actually drawn; don't blank the seat if assets are still loading.
+        if(rig.riders[index])rig.riders[index].visible=!(group.parent===rig.body&&group.visible&&soldier.body.visible);
+        soldier.seated=true;
         continue;
       }
       if(soldier.seated){
