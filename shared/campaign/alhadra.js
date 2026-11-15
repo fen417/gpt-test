@@ -128,7 +128,8 @@ for(const [x,z] of [[-187,-131],[-163,-112],[-135,-85],[-108,-62],[-51,-46],[-31
     add('rock',x+dx,z+dz,w,d,h,'#aa977d',{assetMapId:'quarry',baseY:terrain.heightAt(x+dx,z+dz)-.15});
   village('village-rubble',x-1,z+7,2.8,1.5,.7);village('village-wood',x+2,z+8,4,.5,.5,'#736149',{modelRotation:{y:.45}});
 }
-for(const [i,[x,z]] of [[91,58],[129,84],[168,84],[191,155],[117,152],[142,123]].entries()){
+// Keep the market awning beside the paved road, not across the car's path.
+for(const [i,[x,z]] of [[91,58],[129,84],[154,84],[191,155],[117,152],[142,123]].entries()){
   village('village-awning',x,z,4.5,3.2,.12,'#a88a5e',{baseY:2.5,overhead:true});
   for(const dx of [-2,2])village('village-wood',x+dx,z,.12,.12,2.5,'#796347');
   village('village-produce-crates',x,z+.7,2.1,1.1,.85);village('village-pottery',x+2.9,z,1.7,1.2,.9);
