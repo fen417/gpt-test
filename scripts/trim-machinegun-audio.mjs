@@ -81,10 +81,11 @@ for(const [index,c] of chosen.entries()){
     'afade=t=out:st=0.095:d=0.065',
     'alimiter=limit=0.85',
   ].join(',');
-  const common=['-hide_banner','-nostdin','-loglevel','error','-y','-ss',String(start),'-i',source,'-t','0.16','-af',filter,'-ar','44100','-ac','1'];
+  const common=['-hide_banner','-nostdin','-loglevel','error','-y','-ss',String(start),'-i',source,'-t','0.16','-af',filter,'-ac','1'];
   const variant=index+1;
-  run('ffmpeg',[...common,'-c:a','libopus','-b:a','88k',output(variant,'ogg')]);
-  run('ffmpeg',[...common,'-c:a','aac','-b:a','112k',output(variant,'m4a')]);
+  // Opus only accepts 8/12/16/24/48 kHz, unlike AAC.
+  run('ffmpeg',[...common,'-ar','48000','-c:a','libopus','-b:a','88k',output(variant,'ogg')]);
+  run('ffmpeg',[...common,'-ar','44100','-c:a','aac','-b:a','112k',output(variant,'m4a')]);
   for(const ext of ['ogg','m4a']){
     const file=output(variant,ext);
     const format=JSON.parse(run('ffprobe',['-v','error','-show_entries','format=duration','-of','json',file]));
