@@ -708,6 +708,12 @@ $('camera-shake').checked=read('camera-shake','true')!=='false';cameraShake=$('c
 $('camera-shake').addEventListener('change',event=>{cameraShake=event.target.checked;save('camera-shake',cameraShake);});
 $('vehicle-third-person').checked=vehicleThirdPerson;
 $('vehicle-third-person').addEventListener('change',event=>{vehicleThirdPerson=event.target.checked;save('vehicle-camera',vehicleThirdPerson?'third':'first');});
+$('campaign-reset-progress')?.addEventListener('click',async()=>{
+  if(!window.confirm('Сбросить всю кампанию «Песок и сталь»?\nПрогресс миссий и контрольные точки будут удалены.'))return;
+  const {resetCampaignProgress}=await import('./campaign/progress.js');
+  resetCampaignProgress();
+  toast('Прогресс кампании сброшен.');
+});
 $('reset-binds')?.addEventListener('click',()=>{
   keybinds={...DEFAULT_BINDS};
   listeningAction=null;
