@@ -26,7 +26,7 @@ import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
-import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera } from './vehicles.js';
+import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
   createSoldierRig, cloneSoldierRig, animateSoldier,
@@ -903,7 +903,7 @@ export class GameRenderer {
         poseSeatedSoldier(soldier,{vehicle,seat,index,relativeYaw:Math.atan2(Math.sin(player.yaw-vehicle.yaw-relativeYaw),Math.cos(player.yaw-vehicle.yaw-relativeYaw)),pitch:player.pitch,shotSeq:player.shotSeq,dt});
         // Keep the light-vehicle placeholder visible until the full soldier
         // rig is actually drawn; don't blank the seat if assets are still loading.
-        if(rig.riders[index])rig.riders[index].visible=!(group.parent===rig.body&&group.visible&&soldier.body.visible);
+        if(rig.riders[index])rig.riders[index].visible=fallbackRiderVisible(vehicle,index,localId,group.parent===rig.body&&group.visible&&soldier.body.visible);
         soldier.seated=true;
         continue;
       }
