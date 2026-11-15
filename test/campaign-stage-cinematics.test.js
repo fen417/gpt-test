@@ -48,6 +48,8 @@ test('scripted enemy Humvee actually drives in from the road',()=>{
 });
 test('wounded courier boards parked extraction transport and starts driving away',()=>{
   const {sim,c}=create();
+  // Story rescue occurs after the opening vehicle grace period has ended.
+  sim.time=15;
   const courier=sim.players.get('courier');
   c.revive(courier);c.flags.courierSaved=true;
   const vehicle=sim.vehicles.find(v=>v.id==='campaign-evac-car');
