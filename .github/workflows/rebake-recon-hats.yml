@@ -1,0 +1,36 @@
+name: Regenerate recon hat models
+on:
+  push:
+    branches:
+      - fix/recon-hat-assets-and-503-retries
+    paths:
+      - .github/workflows/rebake-recon-hats.yml
+permissions:
+  contents: write
+jobs:
+  rebake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Regenerate recon LOD binary assets
+        run: node scripts/bake-soldiers.mjs --class=recon
+      - name: Verify regenerated models
+        run: npm test
+      - name: Commit new recon models to the patch branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- 'src/assets/soldiers/*-recon-*.bin.gz'
+          if git diff --cached --quiet; then
+            echo "No regenerated model changes"
+          else
+            git commit -m "Rebake reduced recon boonie for both teams and all loadouts"
+            git push origin HEAD:fix/recon-hat-assets-and-503-retries
+          fi
