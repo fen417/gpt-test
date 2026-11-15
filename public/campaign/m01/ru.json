@@ -835,6 +835,14 @@
         "engine": "Windows System.Speech / Microsoft Pavel",
         "profile": "lasko"
       }
+    },
+    "m01.bruno.sokol": {
+      "speaker": "bruno",
+      "text": "«Сокол», примите сигнал — выдвигаемся.",
+      "duration": 3.1,
+      "priority": 3,
+      "direction": "Сигнал вызова танковой роты «Сокол»; временно без озвучки",
+      "provisional": true
     }
   }
 }
