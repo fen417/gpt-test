@@ -6,3 +6,8 @@
 .campaign-active .squad-hud{display:block;left:32px;bottom:140px;width:220px}.campaign-active .squad-member.wounded{color:#e6ab94;border-left-color:#e6ab94}.campaign-active .squad-member.wounded .squad-member-health i{background:#e6ab94}.campaign-active .campaign-subtitle{width:min(850px,calc(100vw - 560px))}
 @media(max-width:900px){.campaign-active .squad-hud{left:16px;width:185px}.campaign-active .campaign-subtitle{width:calc(100vw - 440px)}}
 @media(max-width:700px){.campaign-active .squad-hud{left:12px;width:175px}.campaign-active .campaign-subtitle{width:calc(100vw - 215px);left:auto;right:12px;transform:none;padding:10px 8px}}
+
+/* Mission debrief remains readable on narrow screens and separates the
+   gameplay statistics from the closing narration. */
+.campaign-final-stats{display:flex;flex-wrap:wrap;gap:12px 22px;margin:18px 0 24px;padding:14px 16px;border-top:1px solid #baa16c44;border-bottom:1px solid #baa16c44;background:#1d2428a8;color:#e5d1a9;font:600 14px/1.7 monospace;white-space:pre-wrap}
+@media(max-width:700px){.campaign-final-stats{font-size:12px;gap:8px}}
