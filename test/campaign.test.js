@@ -59,17 +59,12 @@ test('enemy spawn queue honors the combat cap and does not mark pending units de
 for(const loadout of ['silent','loud'])test(`${loadout}: all six stages, four checkpoints, final vehicle and retry`,()=>{
   const sim=create(loadout),c=sim.campaign;tick(sim);assert.equal(c.stage,1);
   reach(sim,-119,-63);assert.equal(c.stage,2);eliminate(sim,'ridgeGuards');tick(sim);assert.equal(c.stage,3);assert.equal(c.checkpoint,1);
-  // Exercise both depot solutions: planted charges versus explosive barrel chain.
+  // Both loadouts must plant demolition charges. Ordinary grenades and
+  // barrel explosions no longer bypass this objective.
   eliminate(sim);
-  if(loadout==='silent'){
-    for(const site of c.chargeSites){reach(sim,site.x,site.z);tick(sim,3.1,{use:true});}
-    assert(c.fuseUntil>sim.time);reach(sim,-15,-3);tick(sim,25.1);
-  }else{
-    c.raise('depot',3,c.player);
-    for(const f of [...c.fuel])if(!f.destroyed)c.depotExplosion(f);
-    for(const truck of c.trucks)if(!truck.destroyed)c.depotExplosion(truck);
-    tick(sim);
-  }
+  if(loadout==='loud')c.raise('depot',3,c.player);
+  for(const site of c.chargeSites){reach(sim,site.x,site.z);tick(sim,3.1,{use:true});}
+  assert(c.fuseUntil>sim.time);reach(sim,-15,-3);tick(sim,25.1);
   assert.equal(c.stage,4);assert.equal(c.checkpoint,2);assert.equal(c.cutscene.id,'midpoint');c.command({type:'skip'});
   reach(sim,131,104);assert.equal(c.stage,5);assert.equal(c.checkpoint,3);
   eliminate(sim);reach(sim,150,104);assert.equal(c.stage,6);
