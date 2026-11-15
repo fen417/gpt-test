@@ -16,6 +16,10 @@ const pads=[
   {x:-215,z:-151,w:13,d:15,height:0,blend:9},
   {x:200,z:147,w:9,d:12,height:0,blend:5},
   {x:-81,z:-30,w:26,d:24,height:12,blend:9},
+  // The isolated ridge shelter sits just north of the main plateau. Its
+  // footprint used to bridge a ~0.7 m slope and appear to float on one side.
+  // Include a cell-margin around the walls for the actual terrain triangles.
+  {x:-78,z:-15,w:16,d:14,height:12,blend:7,protectedW:16,protectedD:14},
 ];
 const terrain=makeTerrain(size,landforms,4,pads);
 function add(kind,x,z,w,d,h,color='#bba17c',extra={}){
