@@ -79,7 +79,7 @@ export class CampaignSimulation extends Simulation {
   }
   snapshot(){
     const state=super.snapshot(),c=this.campaign;
-    for(const p of state.players){const source=this.players.get(p.id);Object.assign(p,{downed:Boolean(source.downed),downedTimer:source.downedTimer??0,reviver:source.reviver??null,prone:Boolean(source.prone),suppressed:Boolean(source.suppressed),role:source.campaignRole,syringes:source.syringes??0,medkits:source.medkits??0});}
+    for(const p of state.players){const source=this.players.get(p.id);Object.assign(p,{downed:Boolean(source.downed),downedTimer:source.downedTimer??0,reviver:source.reviver??null,prone:Boolean(source.prone),suppressed:Boolean(source.suppressed),withdrawn:Boolean(source.withdrawn),role:source.campaignRole,syringes:source.syringes??0,medkits:source.medkits??0});}
     if(c.cutscene?.id==='briefing')for(const actor of c.definition.cutscenes.briefing.actors??[]){
       const p=state.players.find(p=>p.id===actor.id);if(!p)continue;
       Object.assign(p,{x:actor.x,z:actor.z,y:this.groundAt(actor.x,actor.z),yaw:Math.atan2(actor.x+80,actor.z+30),pitch:-.55,crouch:false,prone:false,downed:false,aim:false,moveSpeed:0,velocityX:0,velocityZ:0});
@@ -558,7 +558,7 @@ export class CampaignDirector {
     const positions={follow:{x:-119,z:-63},ridge:{x:-80,z:-30},depot:{x:20,z:30},village:{x:150,z:105},station:{x:150,z:105},defend:{x:151,z:108}};
     const down=[...this.sim.players.values()].filter(a=>a.team===0&&a.downed&&a.alive&&a.id!=='local'&&(a.id!=='courier'||this.stage>=4&&distance(a,p)<35)).map(a=>({id:a.id,name:a.name,x:a.x,y:a.y,z:a.z,timer:a.downedTimer}));
     return {missionId:'m01',title:this.definition.title,stage:s.stage,objective:objective?.text??null,objectives:s.objectives,flags:{...this.flags},target:positions[s.activeObjective]??null,alert:this.alertLevel,alerts:this.alerts,detection:this.detection??0,detectingEnemy:this.detectingEnemy,order:this.order,route:this.route,light:this.light,downed:down,
-      prompt:this.prompt,progress:this.progress,interaction:this.interaction,subtitle:this.dialogue.active,subtitleRemaining:this.dialogue.remaining,cutscene:this.cutscene,awaitingLoadout:this.awaitingLoadout,failed:this.failed,complete:this.complete,checkpoint:this.checkpoint,saveRevision:this.saveRevision,epoch:this.epoch,
+      squadIds:['local',...this.definition.allies],prompt:this.prompt,progress:this.progress,interaction:this.interaction,subtitle:this.dialogue.active,subtitleRemaining:this.dialogue.remaining,cutscene:this.cutscene,awaitingLoadout:this.awaitingLoadout,failed:this.failed,complete:this.complete,checkpoint:this.checkpoint,saveRevision:this.saveRevision,epoch:this.epoch,
       chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,fuze:Math.max(0,(this.fuseUntil??0)-this.time),radioRemaining:s.stage>=6?Math.max(0,90-(this.time-(s.timers.defence??this.time))):90,reviveProgress:p?.reviveProgress??0};
   }
 }

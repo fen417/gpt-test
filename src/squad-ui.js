@@ -4,33 +4,46 @@ const icons={assault:'⌖',medic:'✚',support:'⚒',recon:'◎'};
 const el=(tag,cls,value)=>{const node=document.createElement(tag);node.className=cls;if(value!==undefined)node.textContent=value;return node;};
 const get=id=>document.getElementById(id);
 
+export function getSquadHud(state,localId){
+  const local=state?.players.find(p=>p.id===localId);if(!local)return null;
+  const team=state.players.filter(p=>p.team===local.team),campaign=Boolean(state.campaign);
+  const members=campaign?(state.campaign.squadIds??[]).map(id=>team.find(p=>p.id===id)).filter(Boolean).map(p=>({...p,squadLeader:p.id==='duran'})):
+    team.filter(p=>sameSquad(local,p)).sort((a,b)=>Number(b.squadLeader)-Number(a.squadLeader));
+  const order=campaign?({follow:'СЛЕДОВАТЬ ЗА ТОБОЙ',hold:'УДЕРЖИВАТЬ ПОЗИЦИЮ',radio:'ПРИКРЫТЬ РАДИСТА'}[state.campaign.order]??''):
+    local.orderKind==='follow'?'ЗА ЛИДЕРОМ':local.orderPointId?`${local.orderKind==='defend'?'ОБОРОНА':'ЗАХВАТ'} · ${local.orderPointId}`:'';
+  const title=campaign?`ОТРЯД ДЮРАНА · ${members.filter(p=>p.alive).length}/${members.length}`:`${SQUAD_NAMES[local.squadId-1]??'ОТРЯД'} · ${members.length}/${SQUAD_SIZE}`;
+  return {local,team,members,title,order,campaign};
+}
+
+const memberStatus=p=>!p.alive?'МЁРТВ':p.downed?(p.reviver?'ПОМОЩЬ':`РАНЕН · ${Math.max(0,Math.ceil(p.downedTimer??0))} С`):p.withdrawn?'НА ЗАДАНИИ':'ЖИВ';
+
 export function mountSquadUI({getState,getLocalId,getKey,getOrderKeys,onOpen,onChange}){
   let hudSignature='',panelSignature='',pending=false;
   const beaconMarkers=new Map();
   function memberRow(p,ownId){
-    const row=el('div',`squad-member${p.alive?'':' dead'}${p.id===ownId?' self':''}`);
+    const row=el('div',`squad-member${p.alive?'':' dead'}${p.downed?' wounded':''}${p.id===ownId?' self':''}`);
     const icon=el('span','squad-class',icons[p.classId]??'·');icon.title=CLASSES[p.classId]?.name??p.classId;icon.setAttribute('aria-label',icon.title);
     const detail=el('div','squad-member-detail'),name=el('span','squad-member-name',`${p.squadLeader?'★ ':''}${p.name}${p.id===ownId?' · ТЫ':''}`);
     const health=el('span','squad-member-health'),fill=el('i','');fill.style.width=(p.alive?Math.max(0,Math.min(100,p.hp)):0)+'%';health.append(fill);
     name.title=p.name;
     const meta=el('span','squad-member-meta');meta.append(el('small','squad-member-classname',icon.title),health);
-    detail.append(name,meta);row.append(icon,detail,el('small','squad-member-status',p.alive?'ЖИВ':'МЁРТВ'));
+    detail.append(name,meta);row.append(icon,detail,el('small','squad-member-status',memberStatus(p)));
     return row;
   }
   function update(state=getState(),localId=getLocalId()){
-    const local=state?.players.find(p=>p.id===localId);if(!local)return;
-    const team=state.players.filter(p=>p.team===local.team),own=team.filter(p=>sameSquad(local,p)).sort((a,b)=>Number(b.squadLeader)-Number(a.squadLeader));
-    const sig=JSON.stringify(own.map(p=>[p.id,p.name,p.classId,p.hp,p.alive,p.squadLeader]))+local.squadId+getKey()+local.orderKind+local.orderPointId;
+    const view=getSquadHud(state,localId);if(!view)return;
+    const {local,team,members:own,campaign}=view,keys=getOrderKeys();
+    const key=campaign?`${keys.order} · ПРИКАЗ`:`${getKey()} · ОТРЯДЫ`;
+    const sig=JSON.stringify(own.map(p=>[p.id,p.name,p.classId,p.hp,p.alive,p.squadLeader,memberStatus(p)]))+view.title+key+view.order;
     if(sig!==hudSignature){
-      hudSignature=sig;get('squad-hud-name').textContent=`${SQUAD_NAMES[local.squadId-1]??'ОТРЯД'} · ${own.length}/${SQUAD_SIZE}`;
-      get('squad-hud-key').textContent=`${getKey()} · ОТРЯДЫ`;
+      hudSignature=sig;get('squad-hud-name').textContent=view.title;
+      get('squad-hud-key').textContent=key;
       get('squad-hud-members').replaceChildren(...own.map(p=>memberRow(p,localId)));
-      get('squad-order-text').textContent=local.orderKind==='follow'?'ЗА ЛИДЕРОМ':local.orderPointId?`${local.orderKind==='defend'?'ОБОРОНА':'ЗАХВАТ'} · ${local.orderPointId}`:'';
+      get('squad-order-text').textContent=view.order;
     }
-    if(!get('squad-panel').open)return;
+    if(campaign||!get('squad-panel').open)return;
     const panelSig=JSON.stringify(team.map(p=>[p.id,p.name,p.classId,p.hp,p.alive,p.squadId,p.squadLeader]))+pending+JSON.stringify(getOrderKeys());
     if(panelSignature===panelSig)return;panelSignature=panelSig;
-    const keys=getOrderKeys();
     get('squad-current').textContent=local.squadLeader?`${keys.order}: на свою точку — оборона, на вражескую — захват, вне точек — за мной.`:'Команды ботам отдаёт лидер отряда.';
     const cards=SQUAD_NAMES.map((name,index)=>{
       const id=index+1,members=team.filter(p=>p.squadId===id).sort((a,b)=>Number(b.squadLeader)-Number(a.squadLeader)),current=local.squadId===id;
@@ -51,7 +64,7 @@ export function mountSquadUI({getState,getLocalId,getKey,getOrderKeys,onOpen,onC
     get('squad-list').replaceChildren(...cards);
     if(focused)get('squad-list').querySelector(`[data-squad-id="${focused}"]`)?.focus();
   }
-  function open(){if(!getState()||!getLocalId())return;onOpen();panelSignature='';get('squad-status').textContent='';get('squad-panel').showModal();update();}
+  function open(){if(!getState()||getState().campaign||!getLocalId())return;onOpen();panelSignature='';get('squad-status').textContent='';get('squad-panel').showModal();update();}
   for(const button of document.querySelectorAll('[data-open-squads]'))button.addEventListener('click',open);
   function markers(renderer,state,localId){
     const local=state?.players.find(p=>p.id===localId);if(!local)return;

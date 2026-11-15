@@ -135,8 +135,9 @@ function marketGoods(owner, m, box) {
 }
 
 function shutters(owner, m, structure) {
-  const { x, z, w, d, h, baseY = 0 } = structure;
+  const { x, z, w, d, h, baseY = 0, doorWidth = 5.6, doorHeight = 2.65 } = structure;
   const ruined = structure.kind === 'village-ruin';
+  const doorCenter=structure.doorHeight===undefined?1.32:doorHeight/2;
   for (let level = 0; level < (structure.floors ?? 1); level++) for (const side of ruined ? [-1] : [-1, 1]) for (const end of [-1, 1]) {
     const px = x + side * (w / 2 + .32), pz = z + end * d * .24;
     for (const edge of [-1, 1]) {
@@ -152,13 +153,13 @@ function shutters(owner, m, structure) {
   // Timber ends, door surrounds and a weathered plinth keep facades readable up close.
   for (const side of [-1, 1]) {
     if (ruined) continue;
-    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * 2.9, baseY + 1.32, z + side * (d / 2 + .31),
-      .18, 2.65, .22, m.wood);
-    owner.box(owner.scene, x, baseY + 2.72, z + side * (d / 2 + .31), 6.1, .22, .18, m.wood);
+    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * (doorWidth/2+.1), baseY + doorCenter, z + side * (d / 2 + .31),
+      .18, doorHeight, .22, m.wood);
+    owner.box(owner.scene, x, baseY + doorHeight+.07, z + side * (d / 2 + .31), doorWidth+.5, .22, .18, m.wood);
     for (let dx = -w / 2 + 1; dx < w / 2; dx += 2.6) owner.box(owner.scene, x + dx, baseY + h - .15,
       z + side * (d / 2 + .14), .16, .17, .6, m.wood, false);
-    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * (w + 5.6) / 4, baseY + .16, z + side * (d / 2 + .31),
-      (w - 5.6) / 2 - .1, .3, .06, m.roof, false);
+    for (const edge of [-1, 1]) owner.box(owner.scene, x + edge * (w + doorWidth) / 4, baseY + .16, z + side * (d / 2 + .31),
+      (w - doorWidth) / 2 - .1, .3, .06, m.roof, false);
   }
   const floor = owner.box(owner.scene, x, baseY + .015, z, w - .6, .025, d - .6, m.roof, false);
   floor.receiveShadow = true;

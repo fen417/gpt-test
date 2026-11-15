@@ -800,7 +800,7 @@ document.addEventListener('keydown',event=>{
   }
   if(event.code==='Escape'&&unlocked){unlockedPaused=!unlockedPaused;show('pause',unlockedPaused);clearControls();return;}
   if(event.code==='Escape'&&reviveAwaitingControl){reviveAwaitingControl=false;show('revive-control-hint',false);show('pause');return;}
-  if(isBound('score',event.code)){event.preventDefault();show('scoreboard');return;}
+  if(isBound('score',event.code)){event.preventDefault();show('scoreboard',mode!=='campaign');return;}
   if(!locked&&!(unlocked&&!unlockedPaused))return;
   if(local()?.alive&&!event.repeat&&(event.code==='Digit1'||event.code==='Digit2')){
     event.preventDefault();
@@ -1272,6 +1272,7 @@ function updateVehicleHud(player){
   return seat;
 }
 function hud(now){
+  if(state?.campaign)show('scoreboard',false);
   squadUI?.update(state,localId);
   drawBotDebug(state);
   const player=local();if(!player)return;

@@ -29,21 +29,28 @@ function cover(kind,x,z,length,depth,height,yaw=0){
 }
 function house(id,x,z,w=12,d=10,h=4.1){
   // Both north and south entrances have 2.6 m clearance, shared collision/visuals.
-  const part={assetMapId:'village'};
-  add('village-wall',x-w/2,z,.42,d,h,'#c9b28b',part);
-  add('village-wall',x+w/2,z,.42,d,h,'#c9b28b',part);
+  const baseY=terrain.heightAt(x,z),part={assetMapId:'village',baseY};
+  // Match the two shutter pairs on each side with real window openings.
+  const opening=2.6,windowCenter=d*.24,sideDepth=d-.42,endLength=sideDepth/2-windowCenter-opening/2;
+  for(const side of [-1,1]){
+    const wallX=x+side*w/2;
+    add('village-wall',wallX,z,.42,sideDepth,1.15,'#c9b28b',part);
+    add('village-wall',wallX,z,.42,sideDepth,h-2.25,'#c9b28b',{...part,baseY:baseY+2.25,overhead:true});
+    add('village-wall',wallX,z,.42,windowCenter*2-opening,1.1,'#c9b28b',{...part,baseY:baseY+1.15,overhead:true});
+    for(const end of [-1,1])add('village-wall',wallX,z+end*(sideDepth/2-endLength/2),.42,endLength,1.1,'#c9b28b',{...part,baseY:baseY+1.15,overhead:true});
+  }
   for(const side of [-1,1]){
     const gap=2.6,segment=(w-gap)/2;
     for(const dir of [-1,1])add('village-wall',x+dir*(gap/2+segment/2),z+side*d/2,segment,.42,h,'#d4bf98',part);
-    add('village-wall',x,z+side*d/2,gap,.42,h-2.5,'#c6ad86',{...part,baseY:2.5});
+    add('village-lintel',x,z+side*d/2,gap,.42,h-2.5,'#c6ad86',{...part,baseY:baseY+2.5,overhead:true});
   }
-  add('village-floor',x,z,w+.5,d+.5,.22,'#bba684',{...part,baseY:h,overhead:true});
-  structures.push({id,kind:'village-house',x,z,w,d,h,baseY:terrain.heightAt(x,z),assetMapId:'village',floors:1});
+  add('village-floor',x,z,w+.5,d+.5,.22,'#bba684',{...part,baseY:baseY+h,overhead:true});
+  structures.push({id,kind:'village-house',x,z,w,d,h,baseY,assetMapId:'village',floors:1,doorWidth:2.6,doorHeight:2.5});
   // Furniture sits against the side walls; the two central doorways stay open.
   village('village-table',x-w/2+2.1,z+d/2-2.1,1.6,1.1,.8);
   village('village-chair',x-w/2+3.5,z+d/2-2.1,.55,.55,.9);
   village('village-cabinet',x+w/2-.65,z+d/2-2.2,.9,.55,1.8);
-  village('village-rug',x,z,3.4,2.4,.06,'#876449');
+  village('village-rug',x,z,3.4,2.4,.06,'#876449',{noCollision:true});
   village('village-pottery',x+w/2+1.1,z-d/2+1.3,1.5,1.2,.95);
   village('village-woven-baskets',x-w/2-1.1,z+d/2-1.4,1.2,1.1,.8);
   return {id,x,z,w,d,h};
@@ -55,7 +62,13 @@ add('generator',151,108,1.5,.7,1.1,'#5a685c');
 add('pillar',159,110,.18,.18,12,'#6c756d');
 // Well, fences, palms, a perimeter with broad gates.
 cover('sandbags',139,119,4,.85,1.15,0);
-structures.push({id:'well',kind:'village-well',x:137,z:103,w:3,d:3,h:2,baseY:0,assetMapId:'village'});
+structures.push({id:'well',kind:'village-well',x:137,z:103,w:3.8,d:3.8,h:3.5,baseY:0,assetMapId:'village'});
+for(const side of [-1,1]){
+  village('village-stone',137+side*1.25,103,.5,3,.9,'#aa9574');
+  village('village-stone',137,103+side*1.25,2,.5,.9,'#aa9574');
+  village('village-wood',137+side*1.65,103,.18,.18,3.2,'#75583d');
+}
+village('village-wood',137,103,3.8,.22,.22,'#75583d',{baseY:3.15,overhead:true});
 for(const z of [79,131])for(const x of [118,164,194])add('wall',x,z,10,.45,1.4);
 for(let i=0;i<16;i++)add('village-palm',69+i%4*8,54+Math.floor(i/4)*10,.65,.65,6.5,'#8d805a',{assetMapId:'village'});
 // Ridge trench and two MG positions; sides leave an unblocked rear approach.

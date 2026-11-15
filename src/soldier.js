@@ -818,13 +818,13 @@ function solveLimb(upperJoint, lowerJoint, goal, upperLength, lowerLength, bendX
 }
 
 // Aim both elbows toward the weapon grips while keeping upper and lower arm lengths fixed.
-export function updateSoldierArms(rig, supportTarget = null) {
+export function updateSoldierArms(rig, supportTarget = null, prone = false) {
   rig.rifle.updateMatrix();
   for (let i = 0; i < 2; i++) {
     const arm = rig.arms[i], elbow = rig.elbows[i];
     if (i === 0 && supportTarget) target.copy(supportTarget);
     else target.copy((rig.pistol ? pistolGrips : grips)[i]).applyMatrix4(rig.rifle.matrix);
-    solveLimb(arm, elbow, target, UPPER_ARM, FOREARM, i === 0 ? -.38 : .48, -.8, .32);
+    solveLimb(arm, elbow, target, UPPER_ARM, FOREARM, i === 0 ? -.38 : .48, prone ? -.15 : -.8, prone ? -.4 : .32);
     const wrist = rig.wrists?.[i];
     if (!wrist) continue;
     wrist.quaternion.copy(arm.quaternion).multiply(elbow.quaternion).invert().multiply(rig.rifle.quaternion);
@@ -982,8 +982,19 @@ export function animateSoldier(rig, { dt, player, reset = false, terrain = null,
     const crawl=player.downed?0:Math.sin((player.x+player.z)*2)*Math.min(1,player.moveSpeed??0);
     rig.pose.position.set(0,.28,.7);rig.pose.rotation.set(-Math.PI/2,0,0);
     rig.spine.rotation.set(.12,0,crawl*.025);rig.head.rotation.set(1.2,0,0);
-    for(let i=0;i<2;i++){rig.legs[i].rotation.set(crawl*(i?-.12:.12),0,i?-.07:.07);rig.knees[i].rotation.set(.14+Math.abs(crawl)*.1,0,0);rig.ankles[i].rotation.set(-.3,0,0);rig.arms[i].rotation.set(-1.1,0,i?-.25:.25);rig.elbows[i].rotation.set(-.9,0,0);}
-    rig.rifle.position.set(.1,.35,-.3);rig.rifle.rotation.set(1.45,0,0);rig.flash.visible=false;rig.marker.position.y=.8;return;
+    for(let i=0;i<2;i++){
+      rig.legs[i].rotation.set(crawl*(i?-.12:.12),0,i?-.07:.07);rig.knees[i].rotation.set(.14+Math.abs(crawl)*.1,0,0);rig.ankles[i].rotation.set(-.3,0,0);
+      if(player.downed){
+        // Goals are in chest space: hands rest beside the head, elbows toward
+        // the ground. Standing arm angles point upward after the body rolls.
+        const side=i===0?-1:1;target.set(side*.28,.65,-.16);
+        solveLimb(rig.arms[i],rig.elbows[i],target,UPPER_ARM,FOREARM,side*.8,-.15,-.4);
+        rig.wrists[i].rotation.set(0,0,0);
+      }
+    }
+    rig.rifle.position.set(player.downed?.36:.1,player.downed?.34:.5,player.downed?-.2:-.17);rig.rifle.rotation.set(1.45,0,0);
+    if(!player.downed)updateSoldierArms(rig,null,true);
+    rig.magazine.visible=true;rig.flash.visible=false;rig.marker.position.y=.8;return;
   }
   if(rig.campaignProne){reset=true;rig.campaignProne=false;}
   const { position } = rig.group, yaw = rig.group.rotation.y;
