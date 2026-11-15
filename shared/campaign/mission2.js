@@ -83,10 +83,10 @@ export class Mission2Simulation extends Simulation{
     const pathA=route[Math.max(0,wp-1)],pathB=route[Math.min(wp+1,route.length-1)];
     const tx=pathB[0]-pathA[0],tz=pathB[1]-pathA[1];
     const len=Math.max(1,Math.hypot(tx,tz)),ux=tx/len,uz=tz/len;
-    const offsetGoal=point=>v.team===0?{
-      x:point[0]-uz*15*lane-ux*row*12,
-      z:point[1]+ux*15*lane-uz*row*12,
-    }:{x:point[0]-uz*15*lane,z:point[1]+ux*15*lane};
+    const offsetGoal=point=>({
+      x:point[0]-uz*20*lane-ux*row*22,
+      z:point[1]+ux*20*lane-uz*row*22,
+    });
     let goal=offsetGoal(point);
     if(distance(v,goal)<28&&wp<route.length-1){
       wp++;v.m02Waypoint=wp;point=route[wp];goal=offsetGoal(point);
@@ -278,9 +278,14 @@ export class Mission2Director{
   }
   spawnEnemy(count){
     const c=this.definition.enemyCompany,base=c.start;
+    const route=c.route,dirX=route[1][0]-base[0],dirZ=route[1][1]-base[1],
+      norm=Math.max(1,Math.hypot(dirX,dirZ)),ux=dirX/norm,uz=dirZ/norm;
     for(let i=0;i<count;i++){
-      const n=this.enemySerial++,x=base[0]-Math.floor(n/3)*13,
-        z=base[1]+(n%3-1)*14;
+      const n=this.enemySerial++,lane=n%3-1,row=Math.floor(n/3);
+      // Spawn the second wave in road lanes too, rather than on top of the
+      // six tanks already moving toward the village.
+      const x=base[0]+ux*(14+row*24)-uz*lane*20,
+        z=base[1]+uz*(14+row*24)+ux*lane*20;
       const yaw=bearing({x,z},{x:0,z:0});
       const v=this.sim.createMapVehicle({id:`east-tank-${n+1}`,type:'tank',team:1,x,z,yaw});
       Object.assign(v,{controlScheme:'wot',m02Waypoint:0,m02Index:n,
