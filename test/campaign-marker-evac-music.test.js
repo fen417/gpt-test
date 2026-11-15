@@ -78,6 +78,10 @@ test('rescued courier travels down the road rather than stopping against cliffs'
   // remain stuck at a wall or at the map boundary.
   assert.ok(!after||Math.hypot(after.x-start.x,after.z-start.z)>93,
     `courier still stuck after 44 s: ${after?.x},${after?.z}, yaw ${after?.yaw}, speed ${after?.speed}, waypoint ${after?.campaignRoute?.index}, nearby ${JSON.stringify(sim.map.boxes.filter(box=>Math.hypot(box.x-(after?.x??0),box.z-(after?.z??0))<15).map(box=>({kind:box.kind,x:box.x,z:box.z,w:box.w,d:box.d})).slice(0,25))}`);
+  tick(sim,50);
+  const escaped=sim.vehicles.find(vehicle=>vehicle.id==='campaign-evac-car');
+  assert.equal(escaped,undefined,
+    `rescued courier must leave the scene, not remain parked at ${escaped?.x},${escaped?.z}, waypoint ${escaped?.campaignRoute?.index}`);
 });
 
 test('old checkpoint evacuation car is relocated from rocky route to safe road',()=>{
