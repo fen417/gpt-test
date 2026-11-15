@@ -496,7 +496,7 @@ export class GameRenderer {
   }
 
   setMap(mapId) {
-    if(mapId==='quarry'&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
+    if((mapId==='quarry'||mapId==='alhadra-desert')&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
     let world = this.worlds.get(map.id);
