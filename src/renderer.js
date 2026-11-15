@@ -1785,7 +1785,7 @@ export class GameRenderer {
       const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(this.weaponRig.sightType);
       // A little extra eye relief makes the MG/PKP aperture less dominant
       // without moving the centred sight line or changing bullet trajectories.
-      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:supportIron?-.30:-.27;
+      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:supportIron?-.288:-.27;
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(

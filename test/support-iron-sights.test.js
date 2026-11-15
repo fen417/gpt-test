@@ -22,7 +22,7 @@ test('MG-36 and PKP retain a wide, unobstructed rear sight aperture in ADS',asyn
       const front=rig.weapon.getObjectByName('support-front-sight');
       assert.ok(rear&&front,`${weaponId}: both iron sights exist`);
       assert.ok(rear.visible&&front.visible,`${weaponId}: iron sights visible`);
-      assert.equal(rear.position.z,-.105,'rear aperture is no longer close against the camera');
+      assert.equal(rear.position.z,-.118,'rear sight is mounted forward on the receiver');
       // Source geometries are merged into material batches at rig creation,
       // so validate the actual rendered meshes and the free optical corridor.
       assert.ok(rear.children.some(child=>child.isMesh),`${weaponId}: rear sight geometry is present`);
@@ -37,6 +37,12 @@ test('MG-36 and PKP retain a wide, unobstructed rear sight aperture in ADS',asyn
       assert.equal(hits.length,0,`${weaponId}: rear guard must not block the crosshair`);
       const bounds=new THREE.Box3().setFromObject(rear);
       assert.ok(bounds.max.x-bounds.min.x<.09,`${weaponId}: sight guards must stay narrow`);
+      const mountBottom=bounds.min.y-rig.weapon.position.y;
+      assert.ok(mountBottom>=.070&&mountBottom<.09,
+        `${weaponId}: rear sight shoe must physically rest on receiver, got ${mountBottom}`);
+      const mountTop=bounds.max.y-rig.weapon.position.y;
+      assert.ok(mountTop>.18,
+        `${weaponId}: upright mounts must reach the sight aperture`);
       assert.ok(front.position.z<-.5,`${weaponId}: front bead stays forward of rear aperture`);
     }
   }finally{

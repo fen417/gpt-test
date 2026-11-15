@@ -434,9 +434,9 @@ export function createWeaponRig(owner = {}) {
     // bridge with two side supports keeps the MG silhouette without obscuring
     // the front sight at y=.164 in ADS.
     for(const side of [-1,1])
-      curve(g,[[side*.055,.079,-.22],[side*.055,.109,-.245],[side*.055,.120,-.32],[side*.055,.119,-.37],[side*.055,.087,-.39]],
-        .0036,metal,12,8);
-    rounded(g,0,.121,-.342,.093,.010,.077,serrated);
+      curve(g,[[side*.050,.079,-.22],[side*.050,.105,-.245],[side*.050,.114,-.32],[side*.050,.113,-.37],[side*.050,.087,-.39]],
+        .0048,metal,12,8);
+    rounded(g,0,.118,-.342,.086,.012,.074,serrated);
     for(const z of [-.44,-.49,-.54])ring(g,0,.015,z,.023,.018,.01,barrelFinish,'z',16);
   }
   // PKP: stronger steel handguard/cooling jacket, large top cover hinge.
@@ -478,29 +478,33 @@ export function createWeaponRig(owner = {}) {
     for(const z of [-.62,-.69,-.75])ring(g,0,.015,z,.020,.016,.008,barrelFinish,'z',16);
   }
 
-  // MG-36 / PKP open sight. Keep the sight line at y=.164 but move the rear
-  // aperture forward, thin its rim and lower the side guards. Previously the
-  // large close-up ring and two prongs filled the entire ADS sight picture.
+  // Iron sights for MG-36 / PKP. Both bases are physically seated on the
+  // receiver/handguard; thick low braces connect to the circular aperture.
+  // Preserve the accurate ADS sight line at y=.164 and a generous sight bore.
   const ironSights=new THREE.Group();ironSights.name='support-iron-sights';weapon.add(ironSights);
   const rearSight=new THREE.Group();rearSight.name='support-rear-sight';
-  rearSight.position.z=-.105;ironSights.add(rearSight);
-  rounded(rearSight,0,.097,0,.047,.018,.027,dark);
+  rearSight.position.z=-.118;ironSights.add(rearSight);
+  // Rail shoe and raised saddle, not a freestanding hoop.
+  rounded(rearSight,0,.091,0,.060,.025,.042,dark);
+  rounded(rearSight,0,.107,0,.040,.010,.033,metal);
   for(const side of [-1,1]){
-    screw(rearSight,side*.023,.097,0,.0036);
-    curve(rearSight,[[side*.035,.107,0],[side*.034,.134,0],[side*.028,.145,0]],
-      .0025,dark,8,6);
+    rounded(rearSight,side*.022,.129,0,.010,.045,.014,dark);
+    screw(rearSight,side*.025,.101,.013,.003);
+    curve(rearSight,[[side*.022,.144,0],[side*.021,.151,0],[side*.019,.157,0]],
+      .0032,dark,8,6);
   }
-  // Outer radius .025 and clear bore .0205 keep the aperture wide
-  // without changing its centre height or the bullet's point of impact.
-  ring(rearSight,0,.164,0,.025,.0205,.008,dark,'z',24);
+  ring(rearSight,0,.164,0,.0235,.0195,.0075,dark,'z',24);
   const frontSight=new THREE.Group();frontSight.name='support-front-sight';
-  ironSights.add(frontSight);frontSight.position.set(0,0,-.525);
-  rounded(frontSight,0,.081,0,.034,.018,.025,dark);
-  detail(frontSight,0,.123,0,.004,.074,.007,dark);
-  detail(frontSight,0,.161,0,.003,.005,.006,edge);
-  for(const side of [-1,1])
-    curve(frontSight,[[side*.022,.087,0],[side*.022,.133,0],[side*.019,.148,0]],
-      .0024,dark,8,6);
+  frontSight.position.set(0,0,-.525);ironSights.add(frontSight);
+  rounded(frontSight,0,.080,0,.042,.018,.027,dark);
+  rounded(frontSight,0,.091,0,.031,.007,.020,metal);
+  detail(frontSight,0,.126,0,.0038,.068,.0065,dark);
+  detail(frontSight,0,.161,0,.0028,.005,.0055,edge);
+  for(const side of [-1,1]){
+    rounded(frontSight,side*.018,.122,0,.006,.062,.009,dark);
+    curve(frontSight,[[side*.018,.142,0],[side*.017,.150,0],[side*.016,.153,0]],
+      .0028,dark,8,6);
+  }
 
   const scope=new THREE.Group();weapon.add(scope);scope.visible=false;
   rounded(scope,0,.092,-.135,.058,.026,.195,metal);

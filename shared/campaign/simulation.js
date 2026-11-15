@@ -57,7 +57,7 @@ export class CampaignSimulation extends Simulation {
     const armor=victim.vehicleId&&this.vehicles.find(v=>v.id===victim.vehicleId);
     if(armor?.campaignArmor&&armor.hp>0&&!meta.explosive)return;
     if(victim.downed){
-      if(this.time-victim.downedAt<6||victim.id==='duran')return;
+      if(this.time-victim.downedAt<6||victim.id==='duran'||c.reviveInProgress(victim))return;
       victim.downedTimer-=Math.max(0,amount)*.12;return;
     }
     if(victim.team===0)amount*=c.tuning.damage;
@@ -352,7 +352,13 @@ export class CampaignDirector {
       this.idle(p);
       if(enemyClose){p.input.crouch=true;this.cancelReviveBy(p.id);return true;}
       if(distance(p,casualty)>2.4||!this.sim.lineClear(eye(p),{x:casualty.x,y:casualty.y+.35,z:casualty.z})){this.cancelReviveBy(p.id);moveBot(this.sim,p,casualty,dt,{sprint:true});}
-      else{if(isMedic&&casualty.id==='local'&&casualty.reviver!==p.id)this.say('m01.lasko.reviving',true);casualty.reviver=p.id;casualty.reviveProgress=(casualty.reviveProgress??0)+dt/(isMedic?6:10);if(casualty.reviveProgress>=1)this.revive(casualty);}
+      else{
+        if(isMedic&&casualty.id==='local'&&casualty.reviver!==p.id)this.say('m01.lasko.reviving',true);
+        casualty.reviver=p.id;
+        casualty.reviveAt=this.time;
+        casualty.reviveProgress=(casualty.reviveProgress??0)+dt/(isMedic?6:10);
+        if(casualty.reviveProgress>=1)this.revive(casualty);
+      }
       return true;
     }
     this.cancelReviveBy(p.id);
@@ -385,16 +391,30 @@ export class CampaignDirector {
       if(!p.campaignGroup?.startsWith('wave')&&distance(p,p.home)>leash){p.ai.cover=null;p.ai.goal={...p.home};moveBot(this.sim,p,p.home,dt,{sprint:false,look:!p.ai.contact});}
     }
   }
-  cancelReviveBy(id){for(const a of this.sim.players.values())if(a.reviver===id){a.reviver=null;a.reviveProgress=0;}}
+  cancelReviveBy(id){
+    for(const a of this.sim.players.values())if(a.reviver===id){
+      a.reviver=null;a.reviveAt=null;a.reviveProgress=0;
+    }
+  }
+  reviveInProgress(casualty){
+    if(!casualty.alive||!casualty.downed)return false;
+    // Self-revive uses a syringe rather than an external reviver.
+    if(casualty.id==='local'&&this.interaction==='self'&&this.rawInput.selfRevive
+      &&casualty.syringes>0&&this.progress>0)return true;
+    if(!casualty.reviver||!Number.isFinite(casualty.reviveAt)
+      ||this.time-casualty.reviveAt>.12||casualty.reviveProgress<=0)return false;
+    const helper=this.sim.players.get(casualty.reviver);
+    return !!(helper?.alive&&!helper.downed&&distance(helper,casualty)<=2.5);
+  }
   down(p,scripted=false){
-    p.downed=true;p.downedAt=this.time;p.downedTimer=this.tuning.bleed;p.hp=1;p.reviveProgress=0;p.reviver=null;p.prone=true;p.scriptedWound=scripted;p.slideTime=0;p.reloading=false;p.heldGadget=null;
+    p.downed=true;p.downedAt=this.time;p.downedTimer=this.tuning.bleed;p.hp=1;p.reviveProgress=0;p.reviver=null;p.reviveAt=null;p.prone=true;p.scriptedWound=scripted;p.slideTime=0;p.reloading=false;p.heldGadget=null;
     this.sim.equipWeapon(p,2);p.equipTime=0;
     if(p.id==='kane'&&this.stage===3&&!this.flags.kaneWounded){this.flags.kaneWounded=true;this.say('m01.kane.wounded');this.say('m01.lasko.kaneDown');}
     if(!scripted)this.say(p.id==='local'?'m01.lasko.playerDown':'m01.bruno.allyDown',true);
   }
   revive(p){
     if(p.id!=='local'&&p.reviver==='local')this.revives++;
-    p.downed=false;p.downedTimer=0;p.hp=40;p.prone=false;p.reviveProgress=0;p.reviver=null;p.invulnerableUntil=this.time+2;p.reviveSeq=(p.reviveSeq??0)+1;p.lastHurt=this.time;
+    p.downed=false;p.downedTimer=0;p.hp=40;p.prone=false;p.reviveProgress=0;p.reviver=null;p.reviveAt=null;p.invulnerableUntil=this.time+2;p.reviveSeq=(p.reviveSeq??0)+1;p.lastHurt=this.time;
     if(p.id==='kane'){this.flags.kaneSaved=true;this.say('m01.kane.revived');}
     if(p.id==='courier'){this.flags.courierRevived=true;p.invulnerableUntil=0;this.say('m01.courier.saved');}
     if(p.id==='local')this.say('m01.lasko.playerUp',true);
@@ -461,7 +481,9 @@ export class CampaignDirector {
       if(this.interaction!==target.id){this.interaction=target.id;this.progress=0;}
       if(i.use){
         p.input.fire=false;this.progress+=dt/duration;
-        if(wounded&&target.kind==='revive'){wounded.reviver=p.id;wounded.reviveProgress=this.progress;}
+        if(wounded&&target.kind==='revive'){
+          wounded.reviver=p.id;wounded.reviveAt=this.time;wounded.reviveProgress=this.progress;
+        }
         if(this.progress>=1){
           if(target.kind==='revive')this.revive(wounded);
           if(target.kind==='charge'){this.chargeSites.find(s=>s.id===target.id).planted=true;this.say(this.chargeSites.every(s=>s.planted)?'m01.duran.chargeTwo':'m01.duran.chargeOne');if(this.chargeSites.every(s=>s.planted))this.fuseUntil=this.time+25;}
@@ -502,7 +524,9 @@ export class CampaignDirector {
       }
       if(a.team!==0||!a.alive)continue;
       if(a.downed){
-        if(a.id!=='duran'&&a.id!=='courier')a.downedTimer-=dt;
+        // Never let a teammate die while a living rescuer is actively
+        // applying first aid. Resume the countdown immediately on interruption.
+        if(a.id!=='duran'&&a.id!=='courier'&&!this.reviveInProgress(a))a.downedTimer-=dt;
         if(a.downedTimer<=0){a.alive=false;a.downed=false;a.respawnIn=1e8;
           if(a.id==='local')this.fail('Мартен погиб.');
           else if(a.id==='bruno')this.fail('Радист потерян. Сигнал не передан.');
