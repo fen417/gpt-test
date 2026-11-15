@@ -27,7 +27,14 @@ self.onmessage=event=>{
     if(!sim)return;
     if(m.type==='paused'){paused=Boolean(m.value);last=performance.now();accumulator=0;if(paused){input={};sim.setInput('local',{});}return;}
     if(m.type==='input'){input=m.input;return;}
-    if(m.type==='command'){input={};sim.setInput('local',{});sim.campaign.command(m.command);send();}
+    if(m.type==='command'){
+      // Weapon/order/camera commands must not wipe the current 60Hz driving
+      // or aiming controls. In particular, target lock needs the last yaw.
+      const liveCommand=sim.campaign?.definition?.id==='m02'&&
+        ['weapon','order','repair','targetLock','cruise'].includes(m.command?.type);
+      if(!liveCommand){input={};sim.setInput('local',{});}
+      sim.campaign.command(m.command);send();
+    }
   }catch(error){self.postMessage({type:'error',message:error.message});}
 };
 setInterval(()=>{
