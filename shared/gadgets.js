@@ -234,7 +234,12 @@ function updateRockets(sim,dt) {
       if(d<nearest){nearest=d;hit=true;direct=null;}
     }
     for(const vehicle of sim.vehicles){
-      if(vehicle.hp<=0||vehicle.id===rocket.vehicleId)continue;
+      // Mission 2 tank shells do not detonate on other allied hulls in the
+      // marching formation. Without this, the front line absorbs every AP
+      // round fired by tanks directly behind it, despite friendly fire being
+      // disabled by the blast handler.
+      if(vehicle.hp<=0||vehicle.id===rocket.vehicleId||
+        (rocket.campaignShell&&vehicle.team===rocket.team))continue;
       const d=rayAffineBox(rocket,direction,vehicleShape(vehicle),nearest);
       if(d<nearest){nearest=d;direct=vehicle;hit=true;}
     }
