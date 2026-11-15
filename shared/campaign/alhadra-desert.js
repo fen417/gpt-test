@@ -8,8 +8,12 @@ import {ALHADRA} from './alhadra.js';
 export const ALHADRA_OFFSET=Object.freeze({x:150,z:105});
 export const M02_BOUNDS=Object.freeze({minX:-1000,maxX:1000,minZ:-600,maxZ:600});
 const shift=object=>({...object,x:object.x-ALHADRA_OFFSET.x,z:object.z-ALHADRA_OFFSET.z});
-const shiftedBoxes=ALHADRA.boxes.map(shift);
-const shiftedStructures=(ALHADRA.structures??[]).map(shift);
+// Reuse the village itself, not the old mission's outer ridge and boundary
+// cliffs. Those colliders sit across the new tank highway around (-400,-315).
+// The original village/mission-1 map remains untouched.
+const inVillage=obj=>Math.abs(obj.x)<255&&Math.abs(obj.z)<185;
+const shiftedBoxes=ALHADRA.boxes.map(shift).filter(inVillage);
+const shiftedStructures=(ALHADRA.structures??[]).map(shift).filter(inVillage);
 const shiftedLandforms=(ALHADRA.landforms??[]).map(shift);
 const shiftedPads=(ALHADRA.terrainPads??[]).map(shift);
 const outerLandforms=[
