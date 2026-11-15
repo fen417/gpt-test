@@ -184,16 +184,22 @@ export function damageDeployable(sim,item,amount,attacker) {
   }
 }
 
-export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null,directConfirmed=false,sourceVehicleId=null) {
-  const rocket=kind==='rocket',cannon=kind==='cannon',radius=cannon?TANK_CANNON.radius:rocket?9:10;
+export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null,directConfirmed=false,sourceVehicleId=null,shellProfile=null) {
+  const rocket=kind==='rocket',cannon=kind==='cannon'||kind==='cannon-ap'||kind==='cannon-he',
+    radius=shellProfile?.blastRadius??(cannon?TANK_CANNON.radius:rocket?9:10);
   let confirmed=directConfirmed;
   sim.event('explosion',{...origin,kind,playerId:owner?.id,...(rocketId?{rocketId}:{})});
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team===team)continue;
     const d=Math.hypot(distance(origin,vehicle),origin.y-vehicle.y-.8);
-    if(vehicle===directVehicle){const before=vehicle.hp;sim.damageVehicle(vehicle,cannon&&vehicle.type==='tank'?900:760,owner,'blast',origin,sourceVehicleId);confirmed||=vehicle.hp<before;}
+    if(vehicle===directVehicle){
+      const before=vehicle.hp;
+      sim.damageVehicle(vehicle,shellProfile?.damage??(cannon&&vehicle.type==='tank'?900:760),owner,'blast',origin,sourceVehicleId);
+      confirmed||=vehicle.hp<before;
+    }
     else if(d<radius&&sim.lineClear(origin,center(vehicle,.8))){
-      const distance=vehicle.type==='tank'?Math.max(0,d-1.8):d,damage=rocket||cannon?480:vehicle.type==='tank'?300:240;
+      const distance=vehicle.type==='tank'?Math.max(0,d-1.8):d,
+        damage=shellProfile?.damage!==undefined?shellProfile.damage*.45:rocket||cannon?480:vehicle.type==='tank'?300:240;
       const before=vehicle.hp;sim.damageVehicle(vehicle,damage*(1-distance/radius),owner,'blast',origin,sourceVehicleId);confirmed||=vehicle.hp<before;
     }
   }
@@ -243,7 +249,9 @@ function updateRockets(sim,dt) {
     if(hit||rocket.life<=0){
       const owner=sim.players.get(rocket.ownerId);
       let directConfirmed=false;if(rocket.kind===1&&playerHit){const before=playerHit.hp;sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ',explosive:true,vehicleId:rocket.vehicleId});directConfirmed=playerHit.hp<before;}
-      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,rocket.kind===1?'cannon':'rocket',direct,rocket.team,rocket.id,directConfirmed,rocket.vehicleId);
+      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,
+        rocket.kind===1?(rocket.campaignShell?'cannon-'+rocket.campaignShell:'cannon'):'rocket',
+        direct,rocket.team,rocket.id,directConfirmed,rocket.vehicleId,rocket.campaignShellProfile??null);
       rocket.life=0;
     }
   }
