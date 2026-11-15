@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import {CampaignAudio} from './audio.js';
 import {prepareViewModel} from '../viewmodel.js';
+import {cinematicCameraPose} from './camera.js';
+import {createCampaignTruck,groundCampaignTruck,burnCampaignTruck} from './props.js';
+import {CampaignFire} from './fire.js';
 
 const presets={night:{fog:'#101b30',sun:'#a8c9ef',hemi:'#a2b9d7',ground:'#45434a',sunPower:.8,hemiPower:.52,ambient:.16,environment:.09},alarm:{fog:'#202538',sun:'#a4bfdf',hemi:'#b0bed5',ground:'#67564a',sunPower:1,hemiPower:.72,ambient:.22,environment:.12},dawn:{fog:'#a58e7c',sun:'#ffd19d',hemi:'#b8c5dd',ground:'#8e7560',sunPower:2,hemiPower:1.3,ambient:.3,environment:.45}};
 export class CampaignPresentation {
@@ -10,6 +13,7 @@ export class CampaignPresentation {
     this.root=document.createElement('section');this.root.className='campaign-ui';this.root.setAttribute('aria-label','Сюжетная миссия');
     this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-detection"><span></span><meter min="0" max="1" value="0"></meter><b>▲</b></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>До рассвета — одна ночь.</h2><p>Выберите набор. Оба маршрута позволяют выполнить задачу.</p><div><button data-loadout="silent"><b>Тихий</b><span>AR-416 с ПБС · нож · 2 гранаты</span></button><button data-loadout="loud"><b>Штурмовой</b><span>АК-12М · нож · 5 гранат</span></button></div><p>В обоих наборах: пистолет, ПТ-90, аптечки и шприцы.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
     document.body.append(this.root);this.$=selector=>this.root.querySelector(selector);
+    this.fade=document.createElement('div');this.fade.className='campaign-camera-fade';this.root.append(this.fade);
     this.$('.campaign-cutscene button').onclick=()=>this.session.command({type:'skip'});
     for(const b of this.root.querySelectorAll('[data-loadout]'))b.onclick=()=>{this.clearControls();this.session.command({type:'loadout',loadout:b.dataset.loadout});resume();};
     this.$('.campaign-retry').onclick=()=>{this.clearControls();this.session.command({type:'retry'});};
@@ -28,16 +32,11 @@ export class CampaignPresentation {
     this.mesh(new THREE.CylinderGeometry(.035,.035,2.3,6),dark,-82,ground(-80,-30)+1.15,-31.5);
     this.mesh(new THREE.ConeGeometry(.24,.14,8),dark,-82,ground(-80,-30)+2.53,-31.5);
     for(const [x,z,y] of [[150,96.72,2.4],[146,96.72,2.4],[154,113.28,2.4]])this.mesh(new THREE.PlaneGeometry(1.1,.9),warm,x,y,z).rotation.y=z>105?Math.PI:0;
-    for(const fuel of this.session.state.campaign.fuel){const flame=this.mesh(new THREE.ConeGeometry(.5,1.7,5),red,fuel.x,fuel.y+.8,fuel.z);this.fuelMeshes.set(fuel.id,flame);const barrel=this.mesh(new THREE.CylinderGeometry(.55,.55,1.35,8),this.material('#806247'),fuel.x,ground(fuel.x,fuel.z)+.675,fuel.z);this.barrelMeshes.set(fuel.id,barrel);}
-    const truck=(x,z)=>{
-      const group=new THREE.Group();this.props.add(group);group.position.set(x,ground(x,z),z);
-      const bodyMat=this.material('#536454'),wheelMat=this.material('#24282a');
-      for(const [w,h,d,dx,y,dz,mat] of [[2.7,.6,6,0,1,0,bodyMat],[2.7,1.5,2,0,1.9,-2.2,bodyMat],[2.7,1.5,3.6,0,1.8,.8,bodyMat],[2.3,.7,.025,0,2.1,-3.22,this.material('#27384c')]]){const m=this.mesh(new THREE.BoxGeometry(w,h,d),mat,x+dx,group.position.y+y,z+dz);group.attach(m);}
-      for(const dx of [-1.45,1.45])for(const dz of [-2,1.9]){const m=this.mesh(new THREE.CylinderGeometry(.6,.6,.28,8),wheelMat,x+dx,group.position.y+.65,z+dz);m.rotation.z=Math.PI/2;group.attach(m);}
-      group.traverse(o=>{if(o.isMesh)o.material.userData.original=o.material.color.getHex();});return group;
-    };
+    for(const fuel of this.session.state.campaign.fuel){const barrel=this.mesh(new THREE.CylinderGeometry(.55,.55,1.35,12),r.surfaces.metal.clone(),fuel.x,ground(fuel.x,fuel.z)+.675,fuel.z);barrel.material.color.set('#806247');this.materials.push(barrel.material);this.barrelMeshes.set(fuel.id,barrel);}
+    const truck=(x,z)=>createCampaignTruck(r,this.props,x,z,this.materials);
     for(const t of this.session.state.campaign.trucks)this.truckMeshes.set(t.id,truck(t.x,t.z));
     this.convoy=[truck(-217,-157),truck(-225,-166)];
+    this.fire=new CampaignFire(r,this.props);
     this.knife=new THREE.Group();r.camera.add(this.knife);
     for(const [w,h,d,y,z,color] of [[.05,.035,.16,-.2,-.42,'#413c33'],[.035,.018,.27,-.2,-.63,'#bbc2bd'],[.13,.025,.03,-.2,-.51,'#6c756c']]){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),this.material(color));this.geometries.push(m.geometry);m.position.set(.15,y,z);this.knife.add(m);}
     prepareViewModel(this.knife);this.knife.visible=false;
@@ -77,7 +76,7 @@ export class CampaignPresentation {
   }
   update(state,paused,yaw){
     if(!state?.campaign)return;
-    const m=state.campaign,p=state.players.find(p=>p.id==='local');if(!p)return;
+    const m=state.campaign,p=state.players.find(p=>p.id==='local');if(!p)return;this.paused=paused;
     this.root.classList.toggle('campaign-ui-paused',paused);document.body.classList.add('campaign-active');
     this.root.classList.toggle('campaign-cinematic',Boolean(m.cutscene));document.body.classList.toggle('campaign-cinematic',Boolean(m.cutscene));
     document.body.classList.toggle('campaign-downed',p.downed);
@@ -113,18 +112,23 @@ export class CampaignPresentation {
     const briefing=m.cutscene?.id==='briefing';this.table.visible=this.mapSheet.visible=this.mapRoute.visible=briefing;for(const leg of this.tableLegs)leg.visible=briefing;
     this.horizon.visible=m.cutscene?.id==='finale';
     for(const site of m.chargeSites)this.charges.get(site.id).visible=site.planted;
-    for(const fuel of m.fuel){const f=this.fuelMeshes.get(fuel.id);f.visible=fuel.destroyed||m.stage===3;f.scale.y=fuel.destroyed?1.7+Math.sin(state.time*7+fuel.x)*.35:.16;const barrel=this.barrelMeshes.get(fuel.id);barrel.material.color.set(fuel.destroyed?'#302b27':'#806247');barrel.rotation.z=fuel.destroyed?1.3:0;}
-    for(const t of m.trucks){const truck=this.truckMeshes.get(t.id);truck.rotation.z=t.destroyed?.09:0;truck.traverse(o=>{if(o.isMesh)o.material.color.set(t.destroyed?'#342e29':o.material.userData.original??=o.material.color.getHex());});}
-    this.convoy.forEach((v,i)=>{v.visible=m.cutscene?.id==='landing';if(v.visible)v.position.x=-217-i*8-(m.cutscene.elapsed??0)*2.6;});
+    for(const fuel of m.fuel){const barrel=this.barrelMeshes.get(fuel.id);barrel.material.color.set(fuel.destroyed?'#302b27':'#806247');barrel.rotation.z=fuel.destroyed?1.3:0;}
+    for(const t of m.trucks)burnCampaignTruck(this.truckMeshes.get(t.id),t.destroyed);
+    this.convoy.forEach((v,i)=>{v.visible=m.cutscene?.id==='landing';if(v.visible)groundCampaignTruck(v,r.map.terrain,-217-i*8-(m.cutscene.elapsed??0)*2.6,-157-i*9,Math.PI/2);});
     const p=state.players.find(p=>p.id==='local');
     if(p?.suppressed&&p.weaponSlot===1&&!p.heldGadget&&r.weaponRig.suppressor){r.weaponRig.suppressor.visible=true;r.weaponRig.suppressor.position.z=r.weaponRig.muzzle.position.z-.1;r.weaponRig.muzzle.visible=false;r.weaponRig.muzzleFlash.visible=false;r.weaponRig.flashLight.intensity=0;}
     const knifeEvent=state.events.filter(e=>e.type==='campaignKnife').at(-1);if(knifeEvent&&knifeEvent.id>this.lastKnife){this.lastKnife=knifeEvent.id;this.knifeUntil=knifeEvent.time+.35;}
     const knifePhase=Math.max(0,((this.knifeUntil??0)-state.time)/.35);this.knife.visible=knifePhase>0&&!m.cutscene;this.knife.rotation.x=-Math.sin(knifePhase*Math.PI)*.75;this.knife.position.z=-Math.sin(knifePhase*Math.PI)*.15;
     if(this.knife.visible){r.weapon.scale.setScalar(.001);}else r.weapon.scale.setScalar(1);
     if(m.cutscene){
-      const def=this.definition.cutscenes[m.cutscene.id],points=def.camera.map(p=>new THREE.Vector3(...p)),curve=new THREE.CatmullRomCurve3(points),t=Math.min(1,m.cutscene.elapsed/def.duration);
-      const pos=curve.getPoint(t);r.camera.position.copy(pos);r.camera.lookAt(...def.lookAt);r.camera.fov=briefing?48:62;r.camera.updateProjectionMatrix();r.weapon.visible=false;r.scoped=false;
-    }
+      const def=this.definition.cutscenes[m.cutscene.id];
+      if(this.cameraScene!==m.cutscene.id){this.cameraScene=m.cutscene.id;this.cameraPosition=null;}
+      const pose=cinematicCameraPose(r.map,def,m.cutscene.elapsed,this.cameraPosition);
+      this.cameraPosition=pose.position.clone();r.camera.position.copy(pose.position);r.camera.lookAt(pose.lookAt);r.camera.fov=briefing?48:62;r.camera.near=.1;r.camera.updateProjectionMatrix();r.updateSunShadow(pose.position.x,pose.position.z);r.weapon.visible=false;r.scoped=false;
+      const fadeIn=1-THREE.MathUtils.smoothstep(m.cutscene.elapsed,0,.7),fadeOut=THREE.MathUtils.smoothstep(m.cutscene.elapsed,def.duration-.7,def.duration);
+      this.fade.style.opacity=String(Math.max(fadeIn,fadeOut));this.exitFade=.45;
+    }else{this.cameraScene=null;this.cameraPosition=null;this.exitFade=Math.max(0,(this.exitFade??0)-dt);this.fade.style.opacity=String(this.exitFade/.45);}
+    this.effectTime=(this.effectTime??0)+(this.paused?0:dt);this.fire.update(m,this.effectTime,r.camera);
     const world=this.$('.campaign-world-markers');world.replaceChildren();
     if(m.cutscene||m.complete||m.failed)return;
     const add=(point,label,cls='')=>{const screen=r.project(point.x,(point.y??r.map.terrain.heightAt(point.x,point.z))+2,point.z);if(!screen.visible)return;const node=document.createElement('div');node.className='campaign-marker '+cls;node.style.transform=`translate(${screen.x}px,${screen.y}px)`;node.textContent=label;world.append(node);};
@@ -134,7 +138,7 @@ export class CampaignPresentation {
     if(m.flags.courierRevived&&!m.flags.courierSaved)add({x:200,z:140},'◇ ЭВАКУАЦИЯ');
   }
   dispose(){
-    this.audio.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);for(const g of this.geometries)g.dispose();for(const m of this.materials)m.dispose();for(const t of this.textures)t.dispose();
+    this.audio.dispose();this.fire.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);for(const g of this.geometries)g.dispose();for(const m of this.materials)m.dispose();for(const t of this.textures)t.dispose();
     const r=this.renderer,o=this.original;r.scene.environment=o.environment;r.scene.environmentIntensity=o.environmentIntensity;r.sun.intensity=o.sun;r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.sun.color.copy(o.sunColor);r.hemiLight.color.copy(o.hemiColor);r.hemiLight.groundColor.copy(o.groundColor);r.sunOffset.copy(o.sunOffset);r.atmosphere.sky.visible=o.skyVisible;
     document.body.classList.remove('campaign-active','campaign-downed','campaign-cinematic');
   }

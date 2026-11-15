@@ -24,10 +24,11 @@ export class CampaignAudio {
   async voice(line,remaining){
     this.stopVoice();const generation=this.generation;
     const buffer=await this.buffer(line.audio);if(!buffer||generation!==this.generation||this.closed||this.paused)return;
+    const offset=Math.max(0,(line.duration??4)-remaining);if(offset>=buffer.duration)return;
     const c=this.combat.ctx,source=c.createBufferSource(),filter=c.createBiquadFilter();source.buffer=buffer;
     filter.type=['orlov','officer'].includes(line.speaker)?'bandpass':'lowpass';filter.frequency.value=filter.type==='bandpass'?1700:15000;filter.Q.value=.55;
     source.connect(filter);filter.connect(this.voiceBus);this.sources.push(source);
-    const offset=Math.max(0,(line.duration??4)-remaining);if(offset<buffer.duration)source.start(0,offset);
+    source.start(0,offset);
     source.onended=()=>{source.disconnect();filter.disconnect();this.sources=this.sources.filter(s=>s!==source);};
   }
   async music(){

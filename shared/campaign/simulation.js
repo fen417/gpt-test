@@ -80,6 +80,10 @@ export class CampaignSimulation extends Simulation {
   snapshot(){
     const state=super.snapshot(),c=this.campaign;
     for(const p of state.players){const source=this.players.get(p.id);Object.assign(p,{downed:Boolean(source.downed),downedTimer:source.downedTimer??0,reviver:source.reviver??null,prone:Boolean(source.prone),suppressed:Boolean(source.suppressed),role:source.campaignRole,syringes:source.syringes??0,medkits:source.medkits??0});}
+    if(c.cutscene?.id==='briefing')for(const actor of c.definition.cutscenes.briefing.actors??[]){
+      const p=state.players.find(p=>p.id===actor.id);if(!p)continue;
+      Object.assign(p,{x:actor.x,z:actor.z,y:this.groundAt(actor.x,actor.z),yaw:Math.atan2(actor.x+80,actor.z+30),pitch:-.55,crouch:false,prone:false,downed:false,aim:false,moveSpeed:0,velocityX:0,velocityZ:0});
+    }
     state.campaign=c.presentation();return state;
   }
 }
@@ -245,8 +249,9 @@ export class CampaignDirector {
     }
     if(p.campaignRole==='mg'||p.campaignRole==='sniper')return p.home;
     if(p.campaignGroup?.startsWith('wave'))return {x:150,z:105};
-    const zone=this.alerts[p.campaignZone];if(zone?.level>0&&zone.source)return zone.source;
+    if(p.investigation&&this.time<p.investigation.until)return p.investigation;
     if(p.campaignRole==='patrol'){
+      if(this.time<(p.patrolWaitUntil??0))return {x:p.x,z:p.z};
       const a=(p.patrolIndex??0)%4*Math.PI/2,goal={x:p.home.x+Math.cos(a)*8,z:p.home.z+Math.sin(a)*6};if(distance(p,goal)<2)p.patrolIndex=(p.patrolIndex??0)+1;return goal;
     }
     return p.home;
@@ -257,12 +262,25 @@ export class CampaignDirector {
     if(p.campaignRole==='vehicle'&&p.vehicleId){const v=this.sim.vehicles.find(v=>v.id===p.vehicleId);this.idle(p);if(v?.hp>0)aimCrew(this.sim,p,v,dt);return true;}
     if(p.team===1){
       if(!this.activeEnemy(p)||p.sleeping){this.idle(p);return true;}
-      if(this.alerts[p.campaignZone].level<3){this.idle(p);const goal=this.botGoal(p);if(goal&&distance(p,goal)>1.5)moveBot(this.sim,p,goal,dt,{sprint:false});return true;}
+      const alert=this.alerts[p.campaignZone];
+      if(alert.level<3){
+        this.idle(p);p.ai.cover=null;p.ai.goal=null;
+        if(alert.level>0&&alert.source&&alert.last>(p.investigatedAt??-1)&&this.time>=(p.investigateAgainAt??0)&&!['mg','sniper','officer'].includes(p.campaignRole)){
+          const max=p.campaignRole==='patrol'?12:5,dx=alert.source.x-p.home.x,dz=alert.source.z-p.home.z,length=Math.max(1,Math.hypot(dx,dz)),scale=Math.min(1,max/length);
+          p.investigation={x:p.home.x+dx*scale,z:p.home.z+dz*scale,until:this.time+9};p.investigatedAt=alert.last;p.investigateAgainAt=this.time+22;
+        }
+        const previous=p.patrolIndex,goal=this.botGoal(p);
+        if(p.patrolIndex!==previous){p.patrolWaitUntil=this.time+3+(p.botSlot%3);return true;}
+        if(goal&&distance(p,goal)>1.5&&!['mg','sniper','officer'].includes(p.campaignRole)){
+          moveBot(this.sim,p,goal,dt,{sprint:false});p.input.forward*=.5;p.input.strafe*=.5;
+        }else if(p.investigation){p.input.yaw=p.homeYaw+Math.sin(this.time*.7)*.35;}
+        return true;
+      }
       return false;
     }
     if(p.id==='courier'&&!this.flags.courierRevived){this.idle(p);return true;}
     if(p.id==='bruno'&&this.stage>=6){this.idle(p);p.input.crouch=true;return true;}
-    const casualty=[...this.sim.players.values()].filter(a=>a.team===0&&a.alive&&a.downed&&a.id!=='courier'&&!a.scriptedWound&&a!==p&&(!a.reviver||a.reviver===p.id)).sort((a,b)=>distance(p,a)-distance(p,b))[0];
+    const casualty=[...this.sim.players.values()].filter(a=>a.team===0&&a.alive&&a.downed&&a.id!=='courier'&&(!a.scriptedWound||this.time-a.downedAt>8)&&a!==p&&(!a.reviver||a.reviver===p.id)).sort((a,b)=>distance(p,a)-distance(p,b))[0];
     const medic=this.sim.players.get('lasko'),isMedic=p.id==='lasko';
     const canHelp=isMedic||(!medic?.alive||medic.downed||distance(medic,casualty??p)>25);
     if(casualty&&canHelp){
@@ -279,7 +297,7 @@ export class CampaignDirector {
     }
     return false;
   }
-  afterThink(p){
+  afterThink(p,dt=1/60){
     p.input.gadget=false;p.input.secondaryGadget=false;p.input.toolSlot=0;p.input.order=false;p.input.horn=false;
     if(p.team===0){
       p.input.grenade=false;
@@ -287,19 +305,27 @@ export class CampaignDirector {
       if(p.id==='lasko'&&![...this.sim.players.values()].some(e=>this.activeEnemy(e)&&distance(e,p)<10))p.input.fire=false;
       // The player must finish the encounter; allies suppress and assist.
       const target=this.sim.players.get(p.ai?.contact?.id);if(target?.hp<=30)p.input.fire=false;
-      if(distance(p,this.player)>12){const goal=this.botGoal(p);moveBot(this.sim,p,goal,1/60,{sprint:true});}
+      if(!this.player.downed&&this.order!=='hold'&&distance(p,this.player)>14){const goal=this.botGoal(p);moveBot(this.sim,p,goal,dt,{sprint:true});}
     }else{
       if(p.campaignRole==='mg'||p.campaignRole==='sniper')p.input.forward=p.input.strafe=0;
       if(p.campaignRole==='mg')p.input.crouch=true;
       if(p.campaignRole!=='grenadier')p.input.grenade=false;
       else if(this.time-(this.player.lastMovedAt??0)<6)p.input.grenade=false;
       if(p.campaignRole==='officer'&&!p.called&&p.officerCallAt>this.time)p.input.fire=false;
+      if(!p.campaignGroup?.startsWith('wave'))p.input.sprint=false;
+      if(!p.ai.contact&&(!p.ai.memory||this.time-p.ai.memory.at>6)&&!p.campaignGroup?.startsWith('wave')){
+        this.idle(p);const goal=this.botGoal(p);if(goal&&distance(p,goal)>2){moveBot(this.sim,p,goal,dt,{sprint:false});p.input.forward*=.5;p.input.strafe*=.5;}
+      }
+      // Defenders keep a post/cover instead of chasing contacts across the map.
+      const leash=p.campaignRole==='assault'||p.campaignRole==='grenadier'?27:14;
+      if(!p.campaignGroup?.startsWith('wave')&&distance(p,p.home)>leash){p.ai.cover=null;p.ai.goal={...p.home};moveBot(this.sim,p,p.home,dt,{sprint:false,look:!p.ai.contact});}
     }
   }
   cancelReviveBy(id){for(const a of this.sim.players.values())if(a.reviver===id){a.reviver=null;a.reviveProgress=0;}}
   down(p,scripted=false){
     p.downed=true;p.downedAt=this.time;p.downedTimer=this.tuning.bleed;p.hp=1;p.reviveProgress=0;p.reviver=null;p.prone=true;p.scriptedWound=scripted;p.slideTime=0;p.reloading=false;p.heldGadget=null;
     this.sim.equipWeapon(p,2);p.equipTime=0;
+    if(p.id==='kane'&&this.stage===3&&!this.flags.kaneWounded){this.flags.kaneWounded=true;this.say('m01.kane.wounded');this.say('m01.lasko.kaneDown');}
     if(!scripted)this.say(p.id==='local'?'m01.lasko.playerDown':'m01.bruno.allyDown',true);
   }
   revive(p){
@@ -310,14 +336,19 @@ export class CampaignDirector {
     p.scriptedWound=false;
     this.sim.event('revive',{playerId:p.id,x:p.x,z:p.z});
   }
-  startCutscene(id){this.cutscene={id,elapsed:0,line:0};this.dialogue={queue:[],active:null,remaining:0};}
+  startCutscene(id){if(this.cutscene?.id===id)return;this.cutscene={id,elapsed:0,line:0};this.dialogue={queue:[],active:null,remaining:0};}
   advanceCutscene(dt){
     const c=this.cutscene,def=this.definition.cutscenes[c.id];c.elapsed+=dt;
+    if(c.id==='midpoint'&&this.flags.depotCinematicArmed&&!this.flags.depotDestroyed&&c.elapsed>=(def.detonateAt??2.2)){
+      this.detonateDepot();this.runtime.tick();
+      if(this.pendingCheckpoint){const n=this.pendingCheckpoint;this.pendingCheckpoint=null;this.save(n);}
+    }
     while(c.line<def.lines.length&&c.elapsed>=def.lines[c.line][0]){this.say(def.lines[c.line++][1],true);}
     this.updateDialogue(dt);if(c.elapsed>=def.duration)this.finishCutscene();
   }
   finishCutscene(){
     const id=this.cutscene?.id;if(!id)return;
+    if(id==='midpoint'&&this.flags.depotCinematicArmed&&!this.flags.depotDestroyed){this.detonateDepot();this.runtime.tick();if(this.pendingCheckpoint){const n=this.pendingCheckpoint;this.pendingCheckpoint=null;this.save(n);}}
     this.cutscene=null;this.dialogue={queue:[],active:null,remaining:0};
     if(id==='briefing'){this.awaitingLoadout=true;return;}
     if(id==='landing'){this.flags.landed=true;this.runtime.tick();this.initialSave=this.serialize();}
@@ -391,7 +422,8 @@ export class CampaignDirector {
     if(i.prone&&!this.lastInput.prone&&!p.downed)p.prone=!p.prone;
     if(p.prone||p.downed){p.input.crouch=true;p.input.sprint=false;p.input.jump=false;p.slideTime=0;}
     if(p.downed){this.sim.equipWeapon(p,2);p.input.weaponSlot=2;p.input.toolSlot=0;p.input.grenade=false;}
-    if(distance(p,{x:p.lastMoveX??p.x,z:p.lastMoveZ??p.z})>1){p.lastMovedAt=this.time;p.lastMoveX=p.x;p.lastMoveZ=p.z;}
+    if(p.lastMoveX===undefined){p.lastMoveX=p.x;p.lastMoveZ=p.z;}
+    if(distance(p,{x:p.lastMoveX,z:p.lastMoveZ})>.3){p.lastMovedAt=this.time;p.lastMoveX=p.x;p.lastMoveZ=p.z;}
     this.interactions(dt);
     this.flushSpawns();
   }
@@ -412,7 +444,7 @@ export class CampaignDirector {
           else if(a.id==='kane')this.say('m01.lasko.kaneLost');
         }
       }else if(this.time-a.lastHurt>5&&a.hp<60)a.hp=Math.min(60,a.hp+4*dt);
-      if(a.id!=='local'&&a.id!=='courier'&&!a.downed&&!(a.id==='bruno'&&this.stage>=6))this.recoverAlly(a);
+      if(a.id!=='local'&&a.id!=='courier'&&!a.downed&&!(a.id==='bruno'&&this.stage>=6))this.recoverAlly(a,dt);
     }
     this.consumeEvents();this.senses(dt);this.scriptedEvents();this.runtime.tick();
     this.lastInput={...this.rawInput};
@@ -423,13 +455,9 @@ export class CampaignDirector {
     if(this.stage===1&&distance(p,{x:-180,z:-107})<50){this.say('m01.duran.crouch');this.say('m01.bruno.patrol');}
     if(this.stage===1&&this.time>25)this.say('m01.duran.prone');
     if(this.stage===2&&this.options.loadout==='loud')this.say('m01.kane.grenade');
-    if(this.stage===3&&!this.flags.kaneWounded&&distance(p,{x:20,z:30})<70){
-      const k=this.sim.players.get('kane');this.flags.kaneWounded=true;
-      if(k?.alive&&!k.downed){this.place(k,p.x+3,p.z-2);this.down(k,true);k.downedTimer=25;this.say('m01.kane.wounded');this.say('m01.lasko.kaneDown');}
-    }
     if(this.stage===3&&!this.route){this.route=p.z>0?'dunes':'road';if(this.route==='road')this.say('m01.bruno.road');}
     if(this.fuseUntil&&this.time>=this.fuseUntil-5)this.say('m01.bruno.fuse');
-    if(this.fuseUntil&&this.time>=this.fuseUntil){this.fuseUntil=null;this.flags.quietDepot=!this.flags.earlyAlarm;this.flags.depotBlastStarted=true;for(const site of this.chargeSites)this.depotExplosion(site);for(const fuel of this.fuel)fuel.destroyed=true;for(const t of this.trucks)t.destroyed=true;}
+    if(this.fuseUntil&&this.time>=this.fuseUntil-2.2&&!this.flags.depotCinematicArmed){this.flags.depotCinematicArmed=true;this.startCutscene('midpoint');}
     if(!this.flags.depotDestroyed&&this.fuel.every(b=>b.destroyed)&&this.trucks.every(t=>t.destroyed)){
       this.flags.depotDestroyed=true;this.flags.quietDepot??=!this.flags.earlyAlarm;
       if(this.flags.quietDepot)this.say('m01.duran.quiet');
@@ -442,15 +470,30 @@ export class CampaignDirector {
     if(this.stage>=6&&this.sim.vehicles.some(v=>v.campaignArmor&&v.hp<=0)&&!this.flags.vehicleDestroyed){this.flags.vehicleDestroyed=true;this.say('m01.bruno.vehicleDown');}
     if(p.downed)this.say('m01.duran.syringe');
   }
-  recoverAlly(a){
-    if(this.order==='hold')return;
-    const goal=this.botGoal(a),far=distance(a,this.player)>25;
-    a.stuckTime=distance(a,{x:a.tickX,z:a.tickZ})<.01&&distance(a,goal)>4?(a.stuckTime??0)+1/60:0;
-    if(!far&&a.stuckTime<5)return;
+  detonateDepot(){
+    this.fuseUntil=null;this.flags.quietDepot=!this.flags.earlyAlarm;this.flags.depotBlastStarted=true;
+    for(const site of this.chargeSites)this.depotExplosion(site);
+    for(const fuel of this.fuel)fuel.destroyed=true;for(const t of this.trucks)t.destroyed=true;
+    this.flags.depotDestroyed=true;this.light='alarm';
+    if(this.flags.quietDepot)this.say('m01.duran.quiet');
+    for(const z of Object.values(this.alerts)){z.level=1;z.last=this.time;}
+  }
+  recoverAlly(a,dt=1/60){
+    const helping=[...this.sim.players.values()].some(p=>p.reviver===a.id);
+    if(this.order==='hold'||this.player.downed||helping||this.time<(a.recoverAfter??0)){a.stuckTime=0;a.recoveryProbe=null;return;}
+    const goal=this.botGoal(a),attempting=Math.hypot(a.input.forward,a.input.strafe)>.15||a.ai?.mode==='blocked';
+    if(!attempting||distance(a,goal)<4){a.stuckTime=0;a.recoveryProbe=null;return;}
+    a.recoveryProbe??={x:a.x,z:a.z};
+    if(distance(a,a.recoveryProbe)>.45){a.stuckTime=0;a.recoveryProbe={x:a.x,z:a.z};return;}
+    a.stuckTime=(a.stuckTime??0)+dt;
+    const blocked=a.ai?.mode==='blocked'||a.ai?.blockedSpot?.until>this.time;
+    if(a.stuckTime<8||!blocked)return;
+    const visible=Math.abs(angle(bearing(this.player,a)-this.player.yaw))<1.5&&this.sim.lineClear(eye(this.player),eye(a));
+    if(visible)return;
     // Only recover behind the player's current view, never through a visible pop.
     for(let n=0;n<12;n++){
       const x=this.player.x+Math.sin(this.player.yaw)*(5+n*.3)+Math.cos(this.player.yaw)*(n%2?3:-3),z=this.player.z+Math.cos(this.player.yaw)*(5+n*.3)-Math.sin(this.player.yaw)*(n%2?3:-3),y=this.sim.groundAt(x,z);
-      if(!this.sim.collides(x,z,y)&&![...this.sim.players.values()].some(p=>p!==a&&p.alive&&Math.hypot(p.x-x,p.z-z)<1.2)){this.place(a,x,z);a.ai=null;a.botPath=[];a.stuckTime=0;break;}
+      if(!this.sim.collides(x,z,y)&&![...this.sim.players.values()].some(p=>p!==a&&p.alive&&Math.hypot(p.x-x,p.z-z)<1.2)){this.place(a,x,z);a.ai=null;a.botPath=[];a.stuckTime=0;a.recoveryProbe=null;a.recoverAfter=this.time+30;break;}
     }
   }
   consumeEvents(){
