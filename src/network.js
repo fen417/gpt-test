@@ -4,7 +4,7 @@ import {advanceTankSystems,fireTank} from '../shared/tank.js';
 import {BULLET_GRAVITY} from '../shared/ballistics.js';
 import { EquipmentPresentation } from './equipment-presentation.js';
 import { sanitizeInput, createPredictionWorld } from '../shared/simulation.js';
-import { EYE_HEIGHT } from '../shared/world.js';
+import { EYE_HEIGHT, getWeapon } from '../shared/world.js';
 import { getVehicleSeatPose } from '../shared/vehicles.js';
 import { PROTOCOL_VERSION, MAP_LAYOUT_REVISION } from '../shared/world.js';
 import { MESSAGE, INPUT_STEP, SnapshotDecoder, decodeEvents, encodeInput, quantizedInput, encodeAck, encodeControl, decodeControl } from '../shared/snapshot-codec.js';
@@ -67,7 +67,18 @@ export class Prediction{
   }
   hasPlayed(event){return this.played.has(event.weaponId+'/'+event.shotSeq);}
   add(frame){this.pending.push(frame);this.step(frame,true);}
-  sample(dt){if(!this.player)return null;const decay=Math.exp(-dt*18);this.offset.x*=decay;this.offset.y*=decay;this.offset.z*=decay;return {...this.player,x:this.player.x+this.offset.x,y:this.player.y+this.offset.y,z:this.player.z+this.offset.z};}
+  sample(dt){
+    if(!this.player)return null;
+    const decay=Math.exp(-dt*18);this.offset.x*=decay;this.offset.y*=decay;this.offset.z*=decay;
+    const out={...this.player,x:this.player.x+this.offset.x,y:this.player.y+this.offset.y,z:this.player.z+this.offset.z};
+    // The snapshot's reloadProgress belongs to the acknowledged state.
+    // Recompute it from replayed local reloadTime to avoid stale frame jumps.
+    if(out.reloading&&!out.vehicleId){
+      const duration=getWeapon(out.classId,out.weaponId).reload;
+      out.reloadProgress=clamp(1-(out.reloadTime??duration)/duration,0,1);
+    }else out.reloadProgress=0;
+    return out;
+  }
   sampleVehicle(remainder,input,dt){
     if(this.player?.vehicleSeat!==0)return null;
     const index=this.world.vehicles.findIndex(v=>v.id===this.player.vehicleId),source=this.world.vehicles[index];if(!source)return null;
@@ -234,6 +245,9 @@ export class Multiplayer{
       const command=quantizedInput(++this.sequence,merged);
       this.prediction.add(command);this.accumulator-=INPUT_STEP;this.pendingPulses={};this.pendingFire=false;
     }
+    // Transmit newly predicted commands on the render frame that created them.
+    // The 60 Hz timer remains a fallback and never resends sent sequences.
+    if(count>0)this.flush();
   }
   flush(){
     if(this.ws?.readyState!==WebSocket.OPEN||!this.decoder)return;

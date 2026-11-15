@@ -9,6 +9,7 @@ import {PostPass} from './post-pass.js';
 import {FarSoldiers} from './far-soldiers.js';
 import {AdaptiveResolution} from './adaptive-resolution.js';
 import { GpuTimer } from './gpu-timer.js';
+import { ReloadTimeline } from './reload-timeline.js';
 import { InteriorVisibility } from './interior-visibility.js';
 import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
@@ -1688,13 +1689,16 @@ export class GameRenderer {
       this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       const weapon = getWeapon(player.classId, player.weaponId);
-      const observedReload = Number.isFinite(player.reloadProgress) ? player.reloadProgress : null;
-      if (player.reloading && (!this.wasReloading || this.lastReloadProgress !== observedReload)) {
-        if (!this.wasReloading || observedReload !== null) this.reloadStarted = this.clock - (observedReload ?? 0) * weapon.reload;
-        this.lastReloadProgress = observedReload;
-      }
-      this.wasReloading = !!player.reloading;
-      const reloadPhase = player.reloading ? clamp((this.clock - (this.reloadStarted ?? this.clock)) / weapon.reload, 0, 1) : 1;
+      // Local visual time must not be restarted by every authoritative snapshot.
+      // Correct small clock differences gradually, never jumping hands backward.
+      this.reloadTimeline??=new ReloadTimeline();
+      const reloadPhase=this.reloadTimeline.update({
+        reloading:player.reloading,
+        progress:player.reloadProgress,
+        duration:weapon.reload,
+        weaponKey:player.id+'/'+player.weaponId,
+        dt,
+      });
       const reloadMotion = Math.sin(reloadPhase * Math.PI) * this.reloadAmount;
       const moving = passenger ? 0 : clamp(Number(view.move) || 0, 0, 1);
       const grounded = player.grounded !== false;
