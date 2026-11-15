@@ -9,6 +9,24 @@ export const TANK_MUZZLE_DISTANCE=4.15;
 export const TANK_CANNON={speed:190,reload:3.2,ammo:24,gravity:BULLET_GRAVITY,radius:7,damage:150,vehicleDamage:900};
 export const TANK_MG={weapon:'СПАРЕННЫЙ ПУЛЕМЁТ',range:280,damage:26,interval:.09,spread:.014,projectileSpeed:410,heatPerShot:.045,minPitch:-.15,maxPitch:.35};
 export function tankDropAngle(distance,weapon=0){const speed=weapon===1?TANK_MG.projectileSpeed:TANK_CANNON.speed;return .5*Math.asin(clamp(TANK_CANNON.gravity*distance/(speed**2),-1,1));}
+// Campaign-only AP shells: calculate deterministic grazing-angle ricochets
+// against the struck hull face. Normal multiplayer cannon rules are unchanged.
+export function tankShellRicochets(vehicle,impact,direction){
+  if(vehicle?.type!=='tank'||!impact||!direction)return false;
+  const c=Math.cos(vehicle.yaw),s=Math.sin(vehicle.yaw);
+  const dx=impact.x-vehicle.x,dz=impact.z-vehicle.z;
+  const side=Math.abs(dx*c-dz*s)/(VEHICLE_TYPES.tank.width*.5);
+  const end=Math.abs(dx*s+dz*c)/(VEHICLE_TYPES.tank.length*.5);
+  const top=(impact.y-(vehicle.y??0))/VEHICLE_TYPES.tank.height;
+  let normal={x:s,y:0,z:c};
+  if(top>.85&&top>=Math.max(side,end)*.85)normal={x:0,y:1,z:0};
+  else if(side>end)normal={x:c,y:0,z:-s};
+  const length=Math.hypot(direction.x,direction.y,direction.z);
+  if(length<1e-6)return false;
+  const incidence=Math.abs((normal.x*direction.x+normal.y*direction.y+
+    normal.z*direction.z)/length);
+  return incidence<Math.cos(72*Math.PI/180);
+}
 export function tankArmorZone(v,origin){
   if(!origin)return'side';const dx=origin.x-v.x,dz=origin.z-v.z,c=Math.cos(v.yaw),s=Math.sin(v.yaw),x=dx*c-dz*s,z=dx*s+dz*c,y=origin.y-(v.y??0);
   if(y>2.25)return'top';
