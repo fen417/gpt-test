@@ -49,11 +49,9 @@ const SHOT_SAMPLES = {
   ],
   'marksman': [
     recording(new URL('./assets/audio/gunshots/marksman-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/marksman-1.m4a',import.meta.url)),
-    recording(new URL('./assets/audio/gunshots/marksman-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/marksman-2.m4a',import.meta.url)),
   ],
   'sniper': [
-    recording(new URL('./assets/audio/gunshots/sniper-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/sniper-1.m4a',import.meta.url)),
-    recording(new URL('./assets/audio/gunshots/sniper-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/sniper-2.m4a',import.meta.url)),
+    recording(new URL('./assets/audio/gunshots/marksman-2.ogg',import.meta.url),new URL('./assets/audio/gunshots/marksman-2.m4a',import.meta.url)),
   ],
   'pistol': [
     recording(new URL('./assets/audio/gunshots/pistol-1.ogg',import.meta.url),new URL('./assets/audio/gunshots/pistol-1.m4a',import.meta.url)),
@@ -882,6 +880,10 @@ export class CombatAudio {
         source.connect(filter).connect(gain);if(pan)gain.connect(pan).connect(this._effects);else gain.connect(this._effects);
         source.start(0,(now*.83)%buffer.duration);
         channel={source,filter,gain,pan,speed:0,gear:1};this._engineChannels.set(vehicle.id,channel);
+        if(vehicle.type==='tank'){
+          const trackSource=c.createBufferSource(),trackFilter=c.createBiquadFilter(),trackGain=c.createGain();trackSource.buffer=this._noiseBuffer('pink');trackSource.loop=true;trackFilter.type='bandpass';trackFilter.frequency.value=1350;trackFilter.Q.value=.65;trackGain.gain.value=0;
+          trackSource.connect(trackFilter).connect(trackGain);if(pan)trackGain.connect(pan);else trackGain.connect(this._effects);trackSource.start();Object.assign(channel,{trackSource,trackFilter,trackGain});
+        }
       }
       channel.stopAt=null;
       const own=vehicle.id===local.vehicleId,spatial=this._position(vehicle,local),speed=Math.abs(vehicle.speed);
@@ -892,12 +894,14 @@ export class CombatAudio {
       this._target(channel.filter.frequency,(own?9500:6500)/(1+spatial.distance*.022),.1);
       this._target(channel.gain.gain,(own?.30:.18)/(1+spatial.distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
       if(channel.pan)this._target(channel.pan.pan,own?0:spatial.pan,.1);
+      if(channel.trackGain){this._target(channel.trackGain.gain,Math.min(1,(speed+Math.abs(vehicle.steer??0)*2)/8)*(own?.045:.025)*spatial.gain,.08);this._target(channel.trackSource.playbackRate,.7+Math.min(1.5,speed/9),.1);}
       if(own&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
       channel.speed=speed;channel.gear=gear;
     }
     for(const [id,channel] of this._engineChannels)if(!active.has(id)){
       this._target(channel.gain.gain,0,.1);channel.stopAt??=now+.5;
-      if(now>=channel.stopAt){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();this._engineChannels.delete(id);}
+      if(channel.trackGain)this._target(channel.trackGain.gain,0,.08);
+      if(now>=channel.stopAt){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();channel.trackSource?.stop();channel.trackSource?.disconnect();channel.trackFilter?.disconnect();channel.trackGain?.disconnect();this._engineChannels.delete(id);}
     }
   }
   click(){if(!this.ctx||!this._enabled)return;this._tone(860,.035,.065,{end:610});this._noise(.018,.028,{filter:'highpass',cutoff:3800});}
@@ -920,7 +924,7 @@ export class CombatAudio {
     for(const voice of [...this._voices,...this._fadingVoices])this._releaseVoice(voice,true);
     this._stopRocketAudio();
     this._shotBuffers.clear();this._foley.clear();
-    for(const channel of this._engineChannels.values()){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();}
+    for(const channel of this._engineChannels.values()){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();channel.trackSource?.stop();channel.trackSource?.disconnect();channel.trackFilter?.disconnect();channel.trackGain?.disconnect();}
     this._engineChannels.clear();this._remoteSteps.clear();this._stepCounts.clear();
     for(const {source,nodes}of this._ambientSources){try{source.stop();source.disconnect();}catch{}for(const node of nodes){try{node.disconnect();}catch{}}}
     this._ambientSources=[];for(const node of this._nodes){try{node.disconnect();}catch{}}this._nodes=[];this._buffers.clear();

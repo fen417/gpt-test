@@ -22,8 +22,8 @@ const shield=[box(0,-.063,-.29,.81,.24,.069,-.09),...[-1,1].flatMap(s=>[
   box(s*.277,.069,-.29,.26,.23,.075,-.09),box(s*.39,-.03,-.14,.073,.36,.39)])];
 const atv=[box(0,.58,.02,.64,.50,1.48),box(0,.82,-.65,.83,.29,.85,.13),box(0,.73,.55,.64,.22,.99),
   ...[-1,1].flatMap(side=>[-1,1].map(end=>box(side*.54,.31,end*.73,.28,.60,.60)))];
-const tank=[box(0,1,.1,3.12,1.15,6.8),box(-1.5,.6,.05,.6,.82,6.7),box(1.5,.6,.05,.6,.82,6.7)];
-const tankTurret=[box(0,.3,.12,2.4,.76,2.9),box(0,.35,-1.9,.22,.22,3.3)];
+const tank=[box(0,.95,.45,3,1,5),box(0,1.1,-2.65,2.94,.43,1.7,-.33),box(0,.91,3.12,2.85,.63,.5,.45),box(-1.5,.44,.05,.6,.88,6.8),box(1.5,.44,.05,.6,.88,6.8)];
+const tankTurret=[box(0,.29,.04,2.5,.55,1.5),box(0,.26,-.95,2,.43,.8),box(0,.28,1.01,1.9,.4,.7),box(0,.34,-2.95,.22,.22,4.2)];
 const crew=Object.fromEntries(Object.entries(VEHICLE_TYPES).map(([type,spec])=>[type,spec.seats.map(seat=>[
   box(seat.x,seat.height-.005,seat.z-.028,.26,.28,.25),box(seat.x,seat.height-.32,seat.z+.02,.43,.49,.31),
   box(seat.x,seat.height-.67,seat.z-.12,.45,.27,.44)])]));
@@ -68,6 +68,7 @@ export function rayVehicleGlass(origin,direction,v,maximum){
 }
 export function rayVehicleCrew(origin,direction,v,index,maximum){
   const shapes=crew[v.type][index],ray=vehicleRay(v,origin,direction);
+  if(v.type==='tank'&&index===1){const yaw=(v.aimYaw??v.yaw)-v.yaw,c=Math.cos(yaw),s=Math.sin(yaw),x=ray.origin.x,z=ray.origin.z+.4,dx=ray.direction.x,dz=ray.direction.z;ray.origin.x=x*c-z*s;ray.origin.z=x*s+z*c-.4;ray.direction.x=dx*c-dz*s;ray.direction.z=dx*s+dz*c;}
   const head=rayAffineBox(ray.origin,ray.direction,shapes[0],maximum);
   const torso=rayAffineBox(ray.origin,ray.direction,shapes[1],maximum);
   const legs=rayAffineBox(ray.origin,ray.direction,shapes[2],maximum);

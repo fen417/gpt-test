@@ -178,6 +178,20 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={})
   while(p.botPath.length&&distance(p,p.botPath[0])<.65&&Math.abs(p.y-p.botPath[0].y)<.65)p.botPath.shift();
   let next=p.botPath[0];
   if(!next&&distance(p,goal)<8&&walkableSegment(sim,p,goal))next=goal;
+  if(!next){
+    ai.blockedSince??=sim.time;
+    if(ai.escapeGoal&&sim.time<ai.escapeGoal.until&&distance(p,ai.escapeGoal)>.4)next=ai.escapeGoal;
+    else if(sim.time-ai.blockedSince>1.5){
+      let escape=null,score=Infinity;
+      for(let i=0;i<8;i++){
+        const angle=i*Math.PI/4,candidate={x:p.x+Math.cos(angle)*2.5,z:p.z+Math.sin(angle)*2.5};candidate.y=sim.groundAt(candidate.x,candidate.z);
+        if(!walkableSegment(sim,p,candidate))continue;
+        const value=distance(candidate,goal)+(ai.lastEscape&&distance(candidate,ai.lastEscape)<1?8:0);
+        if(value<score){score=value;escape=candidate;}
+      }
+      if(escape){ai.lastEscape=ai.escapeGoal;ai.escapeGoal={...escape,until:sim.time+2};next=ai.escapeGoal;ai.pathUntil=0;ai.repathAt=0;ai.blockedSince=sim.time;}
+    }
+  }else{ai.blockedSince=null;ai.escapeGoal=null;}
   if(!next){p.input.forward=p.input.strafe=0;ai.mode='blocked';return false;}
   let dx=next.x-p.x,dz=next.z-p.z;
   for(const ally of sim.players.values()){

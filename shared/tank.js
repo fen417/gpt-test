@@ -1,16 +1,19 @@
-import {VEHICLE_TYPES} from './vehicles.js';
+import {VEHICLE_TYPES,vehicleAimDirection,vehiclePartPose} from './vehicles.js';
 import {BULLET_GRAVITY} from './ballistics.js';
 import {shotRandom} from './fire-control.js';
+import {rayCollider} from './asset-colliders.js';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),angle=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+const muzzleDirection={x:0,y:0,z:0};
+export const TANK_MUZZLE_DISTANCE=4.15;
 export const TANK_CANNON={speed:190,reload:3.2,ammo:24,gravity:BULLET_GRAVITY,radius:7,damage:150,vehicleDamage:900};
 export const TANK_MG={weapon:'СПАРЕННЫЙ ПУЛЕМЁТ',range:280,damage:26,interval:.09,spread:.014,projectileSpeed:410,heatPerShot:.045,minPitch:-.15,maxPitch:.35};
-export function tankDropAngle(distance){return .5*Math.asin(clamp(TANK_CANNON.gravity*distance/(TANK_CANNON.speed**2),-1,1));}
+export function tankDropAngle(distance,weapon=0){const speed=weapon===1?TANK_MG.projectileSpeed:TANK_CANNON.speed;return .5*Math.asin(clamp(TANK_CANNON.gravity*distance/(speed**2),-1,1));}
 export function tankArmorZone(v,origin){
   if(!origin)return'side';const dx=origin.x-v.x,dz=origin.z-v.z,c=Math.cos(v.yaw),s=Math.sin(v.yaw),x=dx*c-dz*s,z=dx*s+dz*c,y=origin.y-(v.y??0);
   if(y>2.25)return'top';if(Math.abs(x)>1.2&&y<1.15)return x<0?'leftTrack':'rightTrack';
   return Math.abs(z)/3.5>Math.abs(x)/1.8?(z<0?'front':'rear'):'side';
 }
-export function tankMuzzle(v){const pitch=v.aimPitch??0,c=Math.cos(pitch),range=4.27;return{x:v.x-Math.sin(v.aimYaw)*c*range,y:(v.y??0)+2.06+Math.sin(pitch)*range,z:v.z-Math.cos(v.aimYaw)*c*range};}
+export function tankMuzzle(v,out={}){const d=vehicleAimDirection(v,v.aimYaw,v.aimPitch??0,muzzleDirection),length=Math.hypot(d.x,d.y,d.z),yaw=Math.atan2(-d.x,-d.z);return vehiclePartPose(v,-Math.sin(yaw)*.9+d.x/length*TANK_MUZZLE_DISTANCE,2.06+d.y/length*TANK_MUZZLE_DISTANCE,-.4-Math.cos(yaw)*.9+d.z/length*TANK_MUZZLE_DISTANCE,out);}
 export function moveTank(sim,v,input,dt){
   const spec=VEHICLE_TYPES.tank,throttle=clamp(input?.forward??0,-1,1);let steer=clamp(input?.strafe??0,-1,1);
   const left=v.leftTrack??0,right=v.rightTrack??0,broken=Math.max(left,right)>=80;
@@ -42,6 +45,10 @@ export function fireTank(sim,p,v,dt){
   const origin=tankMuzzle(v),speed=TANK_CANNON.speed,c=Math.cos(v.aimPitch),id='shell-'+v.id+'-'+v.cannonSeq;
   const shell={id,kind:1,ownerId:p.id,vehicleId:v.id,team:p.team,...origin,vx:-Math.sin(v.aimYaw)*c*speed,vy:Math.sin(v.aimPitch)*speed,vz:-Math.cos(v.aimYaw)*c*speed,life:6};
   const seat={x:v.x,y:(v.y??0)+2.06,z:v.z};
-  if(!sim.lineClear(seat,origin)){shell.x=v.x;shell.y=seat.y;shell.z=v.z;shell.life=.001;shell.vx=shell.vy=shell.vz=0;}
+  if(!sim.lineClear(seat,origin)){
+    const length=Math.hypot(origin.x-seat.x,origin.y-seat.y,origin.z-seat.z),dir={x:(origin.x-seat.x)/length,y:(origin.y-seat.y)/length,z:(origin.z-seat.z)/length};
+    let hit=sim.map.terrain?.raycast(seat,dir,length)??length;for(const box of sim.rayBoxes(seat,dir,length))hit=Math.min(hit,rayCollider(seat,dir,box,length));hit=Math.max(0,Math.min(length,hit)-.08);
+    shell.x=seat.x+dir.x*hit;shell.y=seat.y+dir.y*hit;shell.z=seat.z+dir.z*hit;shell.life=.001;shell.vx=shell.vy=shell.vz=0;
+  }
   sim.rockets.push(shell);sim.event('cannonShot',{playerId:p.id,vehicleId:v.id,weaponId:'tank-cannon',shotSeq:v.cannonSeq,...origin});
 }

@@ -121,6 +121,7 @@ try{
   }
 }catch{}
 vehicleThirdPerson=read('vehicle-camera','third')!=='first';
+for(const action of ['switchSeat','vehicleCamera'])if(Object.keys(keybinds).some(key=>key!==action&&keybinds[key]===keybinds[action]))keybinds[action]=['KeyF','KeyV','KeyJ','KeyB','KeyN'].find(code=>!Object.values(keybinds).includes(code))??keybinds[action];
 function formatKeyCode(code){
   if(!code)return '—';
   if(code.startsWith('Key'))return code.slice(3).toUpperCase();
@@ -474,6 +475,7 @@ function receive(next){
       }
     }
     if(event.type==='rocketLaunch'&&event.playerId===localId){recoilPitch=Math.min(.12,recoilPitch+.065);}
+    if(event.type==='cannonShot'&&event.playerId===localId&&!event.confirmedCosmetic)recoilPitch=Math.min(.12,recoilPitch+.055);
     if(event.type==='ricochet'&&event.playerId===localId){hitUntil=nowPerf+100;$('hitmarker').classList.add('ricochet');}
     if(event.type==='bulletImpact'&&event.playerId===localId&&(event.hit||event.vehicleHit||event.equipmentHit)){
       hitUntil=nowPerf+(event.headshot?190:130);
@@ -649,6 +651,8 @@ for(const [id,fallback,min,max,assign] of [['fov',85,70,100,value=>fov=value],['
 }
 $('camera-shake').checked=read('camera-shake','true')!=='false';cameraShake=$('camera-shake').checked;
 $('camera-shake').addEventListener('change',event=>{cameraShake=event.target.checked;save('camera-shake',cameraShake);});
+$('vehicle-third-person').checked=vehicleThirdPerson;
+$('vehicle-third-person').addEventListener('change',event=>{vehicleThirdPerson=event.target.checked;save('vehicle-camera',vehicleThirdPerson?'third':'first');});
 $('reset-binds')?.addEventListener('click',()=>{
   keybinds={...DEFAULT_BINDS};
   listeningAction=null;
@@ -1207,7 +1211,7 @@ function updateVehicleHud(player){
   if(nearby)text('vehicle-prompt',key+' · СЕСТЬ В ТЕХНИКУ — '+VEHICLE_TYPES[nearby.vehicle.type].name.toUpperCase());
   if(!seat)return null;
   const canExit=Math.abs(vehicle.speed)<=4.5;
-  const swap=canExit&&vehicle.seats.includes(null);
+  const swap=canExit&&vehicle.seats.includes(null)&&(vehicle.type!=='tank'||Math.abs(vehicle.speed)<3);
   const look=aimAngles();
   const canFire=canFirePassengerWeapon(vehicle,player.vehicleSeat,look.yaw,look.pitch);
   const controls=canExit?key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':''):'СБАВЬТЕ СКОРОСТЬ ДЛЯ ВЫХОДА';

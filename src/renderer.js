@@ -495,7 +495,7 @@ export class GameRenderer {
   }
 
   setMap(mapId) {
-    if(mapId==='quarry'&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer)).catch(error=>console.error('Tank assets:',error));
+    if(mapId==='quarry'&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
     let world = this.worlds.get(map.id);
@@ -615,6 +615,8 @@ export class GameRenderer {
       const mat = b.kind === 'pillar' ? this.materials.steel : this.surfaceCache.get(cacheKey);
       if (buildSpecialProp.call(this, parent, b, mat)) continue;
       this.box(parent, b.x, h / 2, b.z, w, h, d, mat);
+      // Structural bunker pieces already define the exact shooting openings and floor.
+      if(b.kind==='bunker-concrete')continue;
       if (b.kind === 'wall') {
         this.box(parent, b.x, h + 0.05, b.z, w + .08, .16, d + .08, this.materials.edge);
       } else if (b.kind === 'pillar') {
@@ -786,7 +788,7 @@ export class GameRenderer {
       let rig = this.vehicleRigs.get(vehicle.id);
       const local = player?.vehicleId === vehicle.id && player.alive !== false;
       const distance = player ? Math.hypot(vehicle.x - player.x, vehicle.z - player.z) : 0;
-      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > 190)) {
+      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > (vehicle.type==='tank'?(this.lowQuality?320:600):190))) {
         if (rig) {
           rig.group.visible = false;
           rig.initialized = false;
@@ -842,7 +844,7 @@ export class GameRenderer {
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
     for (const player of state.players) {
-      if (player.id === localId) continue;
+      if (player.id === localId&&!(this.tankThirdPerson&&player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank')) continue;
       active.add(player.id);
       const activeWeaponId = player.weaponId || defaultWeaponId(player.classId);
       let soldier = this.soldiers.get(player.id);
@@ -878,8 +880,8 @@ export class GameRenderer {
         const index=player.vehicleSeat,seat=VEHICLE_TYPES[vehicle.type].seats[index];
         if(group.parent!==rig.body)rig.body.add(group);
         group.userData.seatedActor=true;
-        group.position.set(seat.x,seat.height-1.65,seat.z);
-        const relativeYaw=index===1?(rig.tank?vehicle.aimYaw-vehicle.yaw:rig.turretYaw??0):0;
+        const relativeYaw=index===1?(rig.tank?vehicle.aimYaw-vehicle.yaw:rig.turretYaw??0):rig.tank&&index>1?(index===2?Math.PI/2:index===3?-Math.PI/2:Math.PI):0;
+        group.position.set(rig.tank&&index===1?seat.x*Math.cos(relativeYaw):seat.x,seat.height-1.65,rig.tank&&index===1?-.4-seat.x*Math.sin(relativeYaw):seat.z);
         group.rotation.set(0,relativeYaw,0);group.visible=true;
         const position=getVehicleSeatPose(vehicle,index),distSq=this.camera.position.distanceToSquared(this.scratchPosition.set(position.x,position.y,position.z))*viewScale**2;
         soldier.body.geometry=distSq>(this.lowQuality?55:95)**2?soldier.distantGeometry:distSq>28**2?soldier.mediumGeometry:soldier.detailGeometry;
@@ -1006,6 +1008,7 @@ export class GameRenderer {
         for(let i=0;i<3;i++)this.smoke(x,event.y-.1,z,.2+i*.06,.35,0xb1ab9c);
         continue;
       }
+      if(event.type==='cannonShot'&&!event.confirmedCosmetic){this.smoke(event.x,event.y,event.z,.6,.4,0xc1bba5);for(let i=0;i<4;i++)this.spark(event.x,event.y,event.z,3);}
       if (event.type === 'shot') {
         const player = state.players.find(p => p.id === event.playerId);
         const own = event.playerId === localId;
@@ -1525,6 +1528,7 @@ export class GameRenderer {
   }
 
   render(state, localId, dt, view = {}) {
+    this.tankThirdPerson=view.vehicleThirdPerson!==false;
     this.templatesBuiltFrame=0;
     this.setMap(state?.mapId ?? view.mapId);
     const rawDt = dt || 0.016;

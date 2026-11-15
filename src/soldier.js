@@ -1092,7 +1092,7 @@ export function soldierThrow(rig) {
 // Foot locking is suspended while seated; no walking phase follows wheel speed.
 export function poseSeatedSoldier(rig,{vehicle,seat,index,relativeYaw,pitch,shotSeq,dt}){
   rig.pose.position.set(0,0,0);rig.pose.rotation.set(0,0,0);
-  const controls=seat.role==='driver'||seat.role==='gunner',atv=vehicle.type==='atv';
+  const controls=seat.role==='driver'||seat.role==='gunner',atv=vehicle.type==='atv',tankPassenger=vehicle.type==='tank'&&!controls;
   rig.spine.rotation.set(atv&&controls?-.12:0,controls?0:clamp(relativeYaw,-.8,.8)*.3,0);
   rig.head.rotation.set(clamp(pitch*.65,-.5,.5),clamp(relativeYaw,-1,1)*.7,0);
   rig.rifle.scale.setScalar(controls?.001:1);
@@ -1103,8 +1103,11 @@ export function poseSeatedSoldier(rig,{vehicle,seat,index,relativeYaw,pitch,shot
   rig.pose.updateMatrixWorld(true);
   for(let i=0;i<2;i++){
     const side=i===0?-1:1;
-    nominal.set(side*(atv?.33:.14),1.65-seat.height+(atv?.66:.65),atv?.24:-.31);
-    solveLimb(rig.legs[i],rig.knees[i],nominal,THIGH,SHIN,side*.4,.1,-1);
+    // Tank riders sit with horizontal thighs and bent knees. The old world-height
+    // foot target was outside leg reach, forcing both knees into a straight hanging pose.
+    if(tankPassenger)nominal.set(side*.14,.54,-.43);
+    else nominal.set(side*(atv?.33:.14),1.65-seat.height+(atv?.66:.65),atv?.24:-.31);
+    solveLimb(rig.legs[i],rig.knees[i],nominal,THIGH,SHIN,side*(tankPassenger?.12:.4),tankPassenger?.4:.1,-1);
     rig.ankles[i].quaternion.copy(rig.legs[i].quaternion).multiply(rig.knees[i].quaternion).invert();
     if(controls){
       const gunner=seat.role==='gunner';

@@ -20,7 +20,7 @@ export const SCHEMAS={
   vehicles:specs(`type:r team:u8 x:x y:y z:z yaw:a motionAt:f32 bodyPitch:a bodyRoll:a scaleX:scale scaleY:scale scaleZ:scale
     rotationX:a rotationZ:a hp:u16 maxHp:u16 speed:v steer:signed heat:s overheated:u8 aimYaw:a aimPitch:a
     gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32 wantedYaw:a wantedPitch:a weapon:u8 weaponReadyAt:f32 cannonAmmo:u8 cannonReadyAt:f32 cannonSeq:u16 leftTrack:u8 rightTrack:u8 burning:u8 gunReadyAt:f32`),
-  deployables:specs('kind:r ownerId:r team:u8 squadId:u8 x:x y:y z:z yaw:a hp:u8 expires:f32'),
+  deployables:specs('kind:r ownerId:r team:i8 squadId:u8 x:x y:y z:z yaw:a hp:u8 expires:f32'),
   grenades:specs('team:u8 ownerId:r x:f32 y:f32 z:f32 fuseAt:f32 yaw:a'),
   rockets:specs('ownerId:r team:u8 kind:u8 vehicleId:r x:f32 y:f32 z:f32 vx:v vy:v vz:v lifeAt:f32'),
   points:specs('name:r x:x z:z owner:i8 progress:signed contested:u8 spawnBlocked:u8'),
@@ -119,7 +119,7 @@ export class SnapshotEncoder{
       for(const [id,original] of current.rows[kind]){let row=original,old=prior.get(id);
         if((kind==='grenades'||kind==='rockets')&&own){
           const indices=INDEX[kind],dx=dequant(schema[indices.x].type,original[indices.x],this.size)-own.x,dz=dequant(schema[indices.z].type,original[indices.z],this.size)-own.z;
-          const range=focus.aim&&focus.classId==='recon'?320:kind==='grenades'?65:200;
+          const range=kind==='rockets'&&original[indices.kind]===1?650:focus.aim&&focus.classId==='recon'?320:kind==='grenades'?65:200;
           if(dx*dx+dz*dz>range*range&&original[indices.ownerId]!==localId)continue;
         }
         // The server already schedules snapshots. A second floating-point

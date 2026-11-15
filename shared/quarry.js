@@ -34,7 +34,7 @@ function pair(x,z,w,d,h,kind,color,options={}){add(x,z,w,d,h,kind,color,options)
 export function pillbox(x,z,yaw,id){
   const parent='structure:'+id,sign=yaw===Math.PI?-1:1;
   structures.push({id,x,z,w:6,d:5,h:2.8,kind:'pillbox',facing:yaw,color:'#77796f'});pads.push({x,z,w:8,d:7,blend:3});
-  const part=(px,pz,w,d,h,y=0)=>add(x+px*sign,z+pz*sign,w,d,h,'wall','#77796f',{editorParent:parent,baseY:y,...(y>0?{overhead:true}:{})});
+  const part=(px,pz,w,d,h,y=0)=>add(x+px*sign,z+pz*sign,w,d,h,'bunker-concrete','#77796f',{editorParent:parent,baseY:y,...(y>0?{overhead:true}:{})});
   part(0,-2.2,4.8,.6,1.3);part(0,-2.2,4.8,.6,.98,1.82);
   for(const s of [-1,1])part(s*1.9,-2.2,1,.6,.52,1.3);
   part(2.7,0,.6,3.8,1.3);part(2.7,0,.6,3.8,.98,1.82);
@@ -42,8 +42,17 @@ export function pillbox(x,z,yaw,id){
   part(-2.7,0,.6,5,2.8);
   for(const s of [-1,1])part(s*1.825,2.2,2.35,.6,2.8);
   part(0,2.2,1.3,.6,.7,2.1);part(0,0,6,5,.5,2.3);
-  add(x,z,4.8,3.8,.10,'wall','#464c45',{editorParent:parent,baseY:-.10});
+  add(x,z,4.8,3.8,.10,'bunker-concrete','#464c45',{editorParent:parent,baseY:-.10});
   for(const [px,pz] of [[0,4.5],[0,3],[0,1.3],[0,0],[0,-1.3],[1.8,0]])navigationNodes.push({x:x+px*sign,z:z+pz*sign});
+}
+// Retain the industrial identity: matching open warehouses and crusher yards.
+for(const sign of [-1,1]){
+  const x=-155*sign,z=-150*sign,id='quarry-open-warehouse-'+sign,parent='structure:'+id;
+  structures.push({id,x,z,w:22,d:16,h:7,kind:'open-warehouse',color:'#817a69',roof:true});pads.push({x,z,w:24,d:18,blend:4});
+  for(const side of [-1,1]){add(x+side*11,z,1,16,7,'wall','#817a69',{editorParent:parent});for(const end of [-1,1])add(x+side*8,z+end*8,6,1,7,'wall','#817a69',{editorParent:parent});}
+  add(x,z,22,16,.4,'roof','#626c60',{editorParent:parent,baseY:7,overhead:true});
+  add(146*sign,-106*sign,24,15,11,'factory','#8b8270');add(115*sign,-130*sign,5,4,3,'generator','#8d8c6a');
+  add(38*sign,0,8,3,1.3,'pump-manifold','#8a7a60');
 }
 for(const p of points){
   for(const side of [-1,1])pillbox(p.x+side*24,p.z+side*24,side<0?0:Math.PI,'quarry-dot-'+p.id+'-'+side);
@@ -79,4 +88,4 @@ for(const n of navigationNodes)n.y=terrain.heightAt(n.x,n.z);
 const vehicleSpawns=[];
 for(const team of [0,1]){const n=nodes.find(n=>n.id===(team?'north':'south')+'-tank');vehicleSpawns.push({id:n.id,type:'tank',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
 for(const team of [0,1])for(const type of ['atv','atv-2','humvee','humvee-2']){const end=team?'north':'south',n=nodes.find(n=>n.id===end+'-'+type);vehicleSpawns.push({id:n.id,type:type.startsWith('atv')?'atv':'humvee',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
-export const QUARRY_MAP={id:'quarry',name:'Карьер «Перевал»',size,fogDensity:.00195,terrain,landforms,boxes,structures,roads,points,navigationNodes,supplySpawns:points.map(p=>({id:'map-ammo-'+p.id,x:p.x,z:p.z+((p.z>0?1:-1)*14)})),spawns:[{x:0,z:358},{x:0,z:-358}],vehicleSpawns,vehicleRoutes:{nodes,edges,objectives,stops:{}},landmarks:[],districts:points,signs:[{x:0,z:-380,name:'ПЕРЕВАЛ',note:'СЕВЕРНЫЙ ПАРК',baseSign:true,yaw:0},{x:0,z:380,name:'ПЕРЕВАЛ',note:'ЮЖНЫЙ ПАРК',baseSign:true,yaw:Math.PI}]};
+export const QUARRY_MAP={id:'quarry',name:'Карьер «Перевал»',size,fogDensity:.00195,terrain,landforms,boxes,structures,roads,points,navigationNodes,supplySpawns:points.flatMap(p=>p.id==='C'?[-1,1].map(s=>({id:'map-ammo-C-'+s,x:0,z:s*14})):[{id:'map-ammo-'+p.id,x:p.x,z:p.z+(p.z>0?14:-14)}]),spawns:[{x:0,z:358},{x:0,z:-358}],vehicleSpawns,vehicleRoutes:{nodes,edges,objectives,stops:{}},landmarks:[],districts:points,signs:[{x:0,z:-380,name:'ПЕРЕВАЛ',note:'СЕВЕРНЫЙ ПАРК',baseSign:true,yaw:0},{x:0,z:380,name:'ПЕРЕВАЛ',note:'ЮЖНЫЙ ПАРК',baseSign:true,yaw:Math.PI}]};

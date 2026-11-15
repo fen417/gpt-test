@@ -28,7 +28,11 @@ export async function configuredServerUrl(){
 }
 
 export class Prediction{
-  constructor(mapId,onShot=noop,{predictShots=true}={}){this.predictShots=predictShots;this.world=createPredictionWorld(mapId);this.onShot=onShot;this.played=new Set();this.reset();}
+  constructor(mapId,onShot=noop,{predictShots=true}={}){
+    this.predictShots=predictShots;this.world=createPredictionWorld(mapId);this.onShot=onShot;this.played=new Set();this.reset();this.world.rockets=[];
+    this.world.event=(type,payload)=>{const event={...payload,type,time:this.time,playerId:this.player.id,id:-this.time*100000,weaponId:type==='cannonShot'?'tank-cannon':'tank-mg',predicted:true};if(this.emitTank&&!this.hasPlayed(event)){this.played.add(event.weaponId+'/'+event.shotSeq);while(this.played.size>512)this.played.delete(this.played.values().next().value);this.onShot(event);}};
+    this.world.launchBullet=(p,w,origin,yaw,pitch,v)=>this.world.event('shot',{...origin,playerId:p.id,shotSeq:v.gunSeq,vehicleId:v.id,mounted:true,team:p.team});
+  }
   reset(){this.player=null;this.pending=[];this.offset={x:0,y:0,z:0};}
   reconcile(authority,ack,vehicles,time=0){
     this.world.vehicles=vehicles.map(v=>({...v,gunCooldown:Math.max(0,(v.gunReadyAt??0)-time)}));
@@ -46,9 +50,7 @@ export class Prediction{
     if(this.player.vehicleId){const vehicle=this.world.vehicles.find(v=>v.id===this.player.vehicleId);if(vehicle&&this.player.vehicleSeat===0){this.world.moveVehicle(vehicle,frame.input,frame.dt);this.world.syncVehicleSeat(this.player,vehicle);}
       else if(vehicle?.type==='tank'&&this.player.vehicleSeat===1){
         this.world.time=this.time;vehicle.gunCooldown=Math.max(-frame.dt,(vehicle.gunCooldown??0)-frame.dt);vehicle.heat=Math.max(0,vehicle.heat-frame.dt*.26);if(vehicle.heat<=.3)vehicle.overheated=false;
-        advanceTankSystems(this.world,vehicle,this.player,frame.dt);this.world.rockets=[];
-        this.world.event=(type,payload)=>{const event={...payload,type,time:this.time,playerId:this.player.id,id:-this.time*100000,weaponId:type==='cannonShot'?'tank-cannon':'tank-mg',predicted:true};if(emit&&!this.hasPlayed(event)){this.played.add(event.weaponId+'/'+event.shotSeq);this.onShot(event);}};
-        this.world.launchBullet=(p,w,origin,yaw,pitch,v)=>this.world.event('shot',{...origin,playerId:p.id,shotSeq:v.gunSeq,vehicleId:v.id,mounted:true,team:p.team});
+        advanceTankSystems(this.world,vehicle,this.player,frame.dt);this.world.rockets.length=0;this.emitTank=emit;
         if(this.predictShots)fireTank(this.world,this.player,vehicle,frame.dt);
       }
     }
@@ -265,7 +267,7 @@ export class Multiplayer{
     for(const id of new Set([...beforeRockets.keys(),...afterRockets.keys()])){
       const before=beforeRockets.get(id),after=afterRockets.get(id),source=before??after;
       const explosion=this.events.find(e=>e.type==='explosion'&&e.rocketId===id);
-      if(explosion&&explosion.time<=target+.001||source.lifeAt<=target||source.lifeAt-4>target+.001)continue;
+      if(explosion&&explosion.time<=target+.001||source.lifeAt<=target||source.lifeAt-(source.kind===1?6:4)>target+.001)continue;
       const out={...source};
       if(before&&after&&span>0){for(const axis of ['x','y','z'])out[axis]=before[axis]+(after[axis]-before[axis])*alpha;}
       else if(before&&explosion){const t=clamp((target-left.frame.time)/Math.max(.001,explosion.time-left.frame.time),0,1);for(const axis of ['x','y','z'])out[axis]=before[axis]+(explosion[axis]-before[axis])*t;}

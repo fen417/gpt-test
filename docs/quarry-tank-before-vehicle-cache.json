@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "version": "0.16",
+  "protocol": 27,
+  "createdAt": "2026-11-14T20:01:09.361Z",
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "win32",
+    "arch": "x64",
+    "cpu": "11th Gen Intel(R) Core(TM) i9-11900F @ 2.50GHz"
+  },
+  "scenario": {
+    "ticks": 2400,
+    "bots": 30,
+    "humans": 7,
+    "tickHz": 60,
+    "snapshotHz": 30,
+    "lagCompensation": true,
+    "seed": 417,
+    "input": "moving, aiming, shooting, reloading, respawning",
+    "ack": "immediate simulated reliable ACK",
+    "tankCrew": true
+  },
+  "maps": [
+    {
+      "mapId": "quarry",
+      "constructionMs": 381.445,
+      "stepMs": {
+        "avg": 3.397,
+        "p95": 4.939,
+        "p99": 6.28,
+        "max": 24.372
+      },
+      "encodeMs": {
+        "avg": 0.125,
+        "p95": 0.29,
+        "p99": 0.654,
+        "max": 10.909
+      },
+      "snapshotBytes": {
+        "avg": 974.136,
+        "p95": 1049,
+        "p99": 1091,
+        "max": 7738
+      },
+      "wallMs": 9902.536,
+      "cpuMsPerSimSecond": 357.025,
+      "events": 1647
+    }
+  ],
+  "warnings": [
+    "quarry: target exceeded (p99 <= 6 ms, max <= 10 ms)"
+  ]
+}

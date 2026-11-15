@@ -2,7 +2,7 @@ import { getWeapon, getPrimaryWeapon, getSidearm, EYE_HEIGHT } from './world.js'
 import { VEHICLE_TYPES, vehicleShape } from './vehicles.js';
 import { boxBounds, rayAffineBox, uprightBox } from './geometry.js';
 import { rayCollider } from './asset-colliders.js';
-import { moveBot } from './bot-navigation.js';
+import { moveBot,findCover } from './bot-navigation.js';
 import {TANK_CANNON} from './tank.js';
 
 export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 'repair', recon: 'beacon' };
@@ -184,16 +184,17 @@ export function damageDeployable(sim,item,amount,attacker) {
   }
 }
 
-export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null) {
+export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null,directConfirmed=false) {
   const rocket=kind==='rocket',cannon=kind==='cannon',radius=cannon?TANK_CANNON.radius:rocket?9:10;
+  let confirmed=directConfirmed;
   sim.event('explosion',{...origin,kind,playerId:owner?.id,...(rocketId?{rocketId}:{})});
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team===team)continue;
     const d=Math.hypot(distance(origin,vehicle),origin.y-vehicle.y-.8);
-    if(vehicle===directVehicle)sim.damageVehicle(vehicle,cannon&&vehicle.type==='tank'?900:760,owner,'blast',origin);
+    if(vehicle===directVehicle){const before=vehicle.hp;sim.damageVehicle(vehicle,cannon&&vehicle.type==='tank'?900:760,owner,'blast',origin);confirmed||=vehicle.hp<before;}
     else if(d<radius&&sim.lineClear(origin,center(vehicle,.8))){
       const distance=vehicle.type==='tank'?Math.max(0,d-1.8):d,damage=rocket||cannon?480:vehicle.type==='tank'?300:240;
-      sim.damageVehicle(vehicle,damage*(1-distance/radius),owner,'blast',origin);
+      const before=vehicle.hp;sim.damageVehicle(vehicle,damage*(1-distance/radius),owner,'blast',origin);confirmed||=vehicle.hp<before;
     }
   }
   for(const player of sim.players.values()){
@@ -201,12 +202,13 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     const d=Math.hypot(distance(origin,player),origin.y-player.y-.8);
     const vehicle=sim.vehicles.find(v=>v.id===player.vehicleId);
     const enclosed=vehicle?.type==='humvee'&&player.vehicleSeat!==1;
-    if(d<radius&&sim.lineClear(origin,center(player,.8)))sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА'});
+    if(d<radius&&sim.lineClear(origin,center(player,.8))){const before=player.hp;sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА'});confirmed||=player.hp<before;}
   }
   for(const item of sim.deployables){
     const d=Math.hypot(distance(origin,item),origin.y-item.y-.3);
     if(item.hp>0&&item.team!==team&&d<radius&&sim.lineClear(origin,center(item)))damageDeployable(sim,item,180*(1-d/radius),owner);
   }
+  if(cannon&&confirmed&&owner)sim.event('bulletImpact',{playerId:owner.id,weaponId:'tank-cannon',x:origin.x,y:origin.y,z:origin.z,tx:origin.x,ty:origin.y,tz:origin.z,hit:true,flight:0});
 }
 
 function updateRockets(sim,dt) {
@@ -240,8 +242,8 @@ function updateRockets(sim,dt) {
     rocket.z+=direction.z*Math.max(0,nearest-(hit?.08:0));rocket.vy-=gravity*dt;rocket.life-=dt;
     if(hit||rocket.life<=0){
       const owner=sim.players.get(rocket.ownerId);
-      if(rocket.kind===1&&playerHit)sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ'});
-      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,rocket.kind===1?'cannon':'rocket',direct,rocket.team,rocket.id);
+      let directConfirmed=false;if(rocket.kind===1&&playerHit){const before=playerHit.hp;sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ'});directConfirmed=playerHit.hp<before;}
+      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,rocket.kind===1?'cannon':'rocket',direct,rocket.team,rocket.id,directConfirmed);
       rocket.life=0;
     }
   }
@@ -338,6 +340,8 @@ export function thinkEquipment(sim,p,dt) {
   if(!p.botUtilityThinkAt||sim.time>=p.botUtilityThinkAt){
     p.botUtilityThinkAt=sim.time+.2;
     p.botJob=null;
+    p.botTankThreat=null;
+    if(p.classId!=='assault')for(const v of sim.vehicles)if(v.type==='tank'&&v.hp>0&&v.team!==p.team&&v.seats.some(Boolean)&&distance(p,v)<50&&sim.lineClear(eye(p),center(v,1.6))){p.botTankThreat=v;break;}
     if(p.classId==='medic'){
       let best=14;
       for(const ally of sim.players.values()){
@@ -356,12 +360,28 @@ export function thinkEquipment(sim,p,dt) {
       for(const vehicle of sim.vehicles){
         const d=distance(p,vehicle);
         const visible=Math.abs(Math.atan2(Math.sin(Math.atan2(-(vehicle.x-p.x),-(vehicle.z-p.z))-p.yaw),Math.cos(Math.atan2(-(vehicle.x-p.x),-(vehicle.z-p.z))-p.yaw)))<1.4;
-        if(visible&&vehicle.hp>0&&vehicle.team!==p.team&&vehicle.team>=0&&d>10&&d<best&&sim.lineClear(eye(p),center(vehicle,.9))){best=d;p.botJob={kind:'launcher',id:vehicle.id};}
+        const score=d*(vehicle.type==='tank'?.5:1);
+        if(visible&&vehicle.hp>0&&vehicle.team!==p.team&&vehicle.team>=0&&d>10&&d<130&&score<best&&sim.lineClear(eye(p),center(vehicle,.9))){best=score;p.botJob={kind:'launcher',id:vehicle.id};}
       }
     }
   }
   const job=p.botJob;
-  if(!job)return false;
+  if(!job){
+    const threat=p.botTankThreat;
+    if(threat?.hp>0){
+      const d=distance(p,threat);
+      if(d<18&&d>5&&p.grenades>0&&sim.time>=(p.nextTankGrenade??0)&&![...sim.players.values()].some(a=>a.alive&&a.team===p.team&&a!==p&&distance(a,threat)<6)){
+        const wanted=Math.atan2(-(threat.x-p.x),-(threat.z-p.z)),delta=Math.atan2(Math.sin(wanted-p.yaw),Math.cos(wanted-p.yaw));
+        input.yaw=p.yaw+Math.max(-dt*2.5,Math.min(dt*2.5,delta));input.pitch=Math.atan2(threat.y+.3-(p.y+EYE_HEIGHT),d);input.fire=false;
+        if(Math.abs(delta)<.12){input.grenade=true;p.nextTankGrenade=sim.time+7;}return true;
+      }
+      if(!p.ai?.squad?.order&&p.ai){
+        if(sim.time>=(p.tankCoverAt??0)){p.tankCover=findCover(sim,p,threat,{retreat:true});p.tankCoverAt=sim.time+1;}
+        if(p.tankCover){input.fire=false;moveBot(sim,p,p.tankCover,dt,{sprint:true});return true;}
+      }
+    }
+    return false;
+  }
   const target=job.kind==='revive'?sim.players.get(job.id):sim.vehicles.find(v=>v.id===job.id);
   if(!target||(job.kind==='revive'?target.alive||target.respawnIn<=.55:target.hp<=0)){p.botJob=null;return false;}
   input.fire=input.grenade=input.secondaryGadget=input.gadget=false;input.aim=false;input.jump=false;input.crouch=false;input.sprint=false;

@@ -1,0 +1,15 @@
+{
+  "method": "Identical 5s/30Hz state trace, 30 bots and 7 players; counterfactual removes tank extension fields only, retains entities, no AOI. Measures schema cost, not old-server gameplay.",
+  "before": {
+    "firstFullBytes": 7472,
+    "bytes": 97295,
+    "averageBytes": 648.6333333333333
+  },
+  "current": {
+    "firstFullBytes": 7712,
+    "bytes": 98459,
+    "averageBytes": 656.3933333333333
+  },
+  "growthPercent": 1.196361580759553,
+  "fullGrowthPercent": 3.2119914346895095
+}

@@ -13,7 +13,11 @@ const sphereGeometry = new THREE.SphereGeometry(1, 12, 8);
 const ringGeometry = new THREE.TorusGeometry(1, .10, 8, 24);
 const H = Math.PI / 2;
 let tankLibrary,tankLoading;const tankPool=[];
-export function warmTankAssets(renderer){return tankLoading??=import('./tank-model.js').then(async library=>{await library.loadTankAtlas(renderer);tankLibrary=library;for(let i=0;i<2;i++)tankPool.push(library.createTankRig());}).catch(error=>{tankLoading=null;throw error;});}
+export function warmTankAssets(renderer,scene,camera,prepare){return tankLoading??=import('./tank-model.js').then(async library=>{
+  await library.loadTankAtlas(renderer);for(let i=0;i<2;i++)tankPool.push(library.createTankRig());
+  if(scene&&camera&&renderer.compileAsync){const warm=new THREE.Scene();for(const child of scene.children)if(child.isLight)warm.add(child.clone());for(const rig of tankPool){rig.group.traverse(o=>prepare?.(o));warm.add(rig.group);}await renderer.compileAsync(warm,camera);for(const rig of tankPool)rig.group.removeFromParent();}
+  tankLibrary=library;
+}).catch(error=>{tankLoading=null;throw error;});}
 export const tankAssetsReady=()=>Boolean(tankLibrary);
 export function placeTankCamera(owner,mounted,view,dt){tankLibrary.placeTankDriverCamera(owner,mounted,view,dt);}
 
@@ -477,6 +481,7 @@ export function disposeVehicleRig(rig) {
   // Character geometry and skeletons belong to the soldier cache, not the car.
   for(const child of [...rig.body.children])if(child.userData.seatedActor)child.removeFromParent();
   rig.group.removeFromParent();
+  if(rig.tank&&tankPool.length<2){rig.initialized=false;tankPool.push(rig);return;}
   rig.group.traverse(node=>{if(node.geometry&&node.geometry!==sphereGeometry)node.geometry.dispose();});
   for(const material of rig.materialsToDispose)material.dispose();
 }

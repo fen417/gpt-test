@@ -1,17 +1,24 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
+import {vehicleAimDirection} from '../shared/vehicles.js';
+import {TANK_MUZZLE_DISTANCE} from '../shared/tank.js';
 export {placeTankDriverCamera} from './tank-camera.js';
 
 // Original procedural armour. Rigid details are merged per articulated island.
 const wheelAxis=new THREE.Vector3(1,0,0),position=new THREE.Vector3(),scale=new THREE.Vector3(),quaternion=new THREE.Quaternion(),matrix=new THREE.Matrix4();
+const modelDirection={x:0,y:0,z:0};
 let atlas,atlasPromise;
 export function loadTankAtlas(renderer){if(atlasPromise)return atlasPromise;const loader=new KTX2Loader().setWorkerLimit(1).setTranscoderPath(import.meta.env.BASE_URL+'basis/').detectSupport(renderer);return atlasPromise=loader.loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href).then(texture=>{atlas=texture;texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy());}).catch(error=>{atlasPromise=null;throw error;}).finally(()=>loader.dispose());}
 function island(parent,material,draw){
   const parts=[];
-  const piece=(geometry,x,y,z,sx,sy,sz,color=0x788368,rx=0,ry=0,rz=0)=>{
+  const piece=(geometry,x,y,z,sx,sy,sz,color=0x858776,rx=0,ry=0,rz=0)=>{
     const source=geometry;geometry=geometry.index?geometry.toNonIndexed():geometry;if(source!==geometry)source.dispose();
     quaternion.setFromEuler(new THREE.Euler(rx,ry,rz));matrix.compose(position.set(x,y,z),quaternion,scale.set(sx,sy,sz));geometry.applyMatrix4(matrix);
+    // The camouflage has a common scale in metres instead of stretching a whole tile over every bolt.
+    const p=geometry.attributes.position,n=geometry.attributes.normal,uv=new Float32Array(p.count*2);
+    for(let i=0;i<p.count;i++){const top=Math.abs(n.getY(i))>.65,side=Math.abs(n.getX(i))>Math.abs(n.getZ(i));uv[i*2]=(top?p.getX(i):side?p.getZ(i):p.getX(i))*.18+.5;uv[i*2+1]=(top?p.getZ(i):p.getY(i))*.18+.5;}
+    geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));
     const tint=new THREE.Color(color),colors=new Float32Array(geometry.attributes.position.count*3);for(let i=0;i<colors.length;i+=3){colors[i]=tint.r;colors[i+1]=tint.g;colors[i+2]=tint.b;}
     geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));geometry.setAttribute('trackSide',new THREE.BufferAttribute(new Float32Array(geometry.attributes.position.count),1));parts.push(geometry);
   };
@@ -20,43 +27,66 @@ function island(parent,material,draw){
   draw({box,cylinder,piece});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());
   const mesh=new THREE.Mesh(geometry,material);parent.add(mesh);return mesh;
 }
+function slopedHull(){
+  const vertices=[],indices=[],stations=[[-3.4,.68,.94,1.43,1.11],[-1.9,.43,1.45,1.51,1.2],[2.85,.43,1.45,1.49,1.2],[3.35,.62,1.18,1.42,1.15]];
+  for(const [z,bottom,top,wide,narrow]of stations)vertices.push(-narrow,bottom,z,narrow,bottom,z,wide,top,z,-wide,top,z);
+  for(let ring=0;ring<stations.length-1;ring++)for(let edge=0;edge<4;edge++){const a=ring*4+edge,b=ring*4+(edge+1)%4,c=b+4,d=a+4;indices.push(a,b,d,b,c,d);}
+  indices.push(0,3,1,1,3,2,12,13,15,13,14,15);
+  const indexed=new THREE.BufferGeometry();indexed.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));indexed.setIndex(indices);const geometry=indexed.toNonIndexed();indexed.dispose();geometry.computeVertexNormals();return geometry;
+}
 function buildLevel(level,material){
   const group=new THREE.Group(),body=new THREE.Group(),turret=new THREE.Group(),gun=new THREE.Group();group.add(body);body.add(turret);turret.position.set(0,1.72,-.4);turret.add(gun);gun.position.set(0,.34,-.9);
-  const hull=island(body,material,({box,cylinder})=>{
-    box(0,.78,.1,2.95,.72,6.4,0x515b49);box(0,1.28,.2,3.12,.44,5.9);
-    box(0,1.18,-2.92,3.12,.46,.9,0x85916e,-.42);box(0,1.19,3.05,3,.44,.8,0x606c55,.19);
+  const hull=island(body,material,({box,cylinder,piece})=>{
+    piece(slopedHull(),0,0,0,1,1,1);
     if(level<2){
-      box(0,1.56,1.9,2.65,.13,1.6,0x424a40);for(let i=0;i<8;i++)box(0,1.64,1.3+i*.17,2.35,.045,.055,0x242c28);
-      for(const side of [-1,1]){box(side*1.66,1.19,.1,.26,.6,6.55,0x788064);
-        if(!level)for(let i=0;i<6;i++){box(side*1.735,1.25,-2.53+i*1.02,.13,.46,.9,i%2?0x5e6b52:0x889074);box(side*1.55,1.62,-2.6+i*.92,.13,.07,.16,0x343e35);}
-        box(side*1.17,1.72,2.45,.08,.08,1.7,0x444d43);for(const z of [1.65,3.2])box(side*1.17,1.6,z,.08,.3,.08,0x444d43);
-        box(side*1.35,1.48,-3.22,.32,.19,.12,0xbfc4a3);
+      box(0,1.48,1.9,2.48,.05,1.45,0x343b32);for(let i=0;i<(level?5:10);i++)box(0,1.52,1.25+i*(level?.31:.155),2.12,.04,.055,0x202820);
+      for(const side of [-1,1]){
+        box(side*1.48,1.42,.05,.62,.1,6.7,0x7d826c);
+        for(let i=0;i<(level?3:6);i++)box(side*1.74,1.09,-2.64+i*(level?2.12:1.06),.11,.6,level?2.06:1.0,i%2?0x747965:0x838673);
+        box(side*1.10,1.66,2.3,.055,.055,1.6,0x424a3e);for(const z of [1.55,3.05])box(side*1.10,1.56,z,.055,.22,.055,0x424a3e);
+        cylinder(side*.87,.98,3.1,.28,.74,0x737b66,level?8:12,0,Math.PI/2);
+        box(side*1.28,1.1,-3.22,.24,.18,.18,0x323b32);cylinder(side*1.28,1.12,-3.32,.073,.04,0xd0cbb0,8,Math.PI/2);
+        if(!level){for(let i=0;i<4;i++)box(side*.54,1.3+i*.041,-2.95+i*.27,.94,.13,.22,0x8b9078,-.27);box(side*1.30,1.57,2.3,.15,.08,.43,0x353e32);}
       }
     }
   });
   const turretMesh=island(turret,material,({box,cylinder,piece})=>{
-    cylinder(0,-.03,0,1.16,.16,0x303b30,level===2?8:12);
-    piece(new THREE.CylinderGeometry(.92,1.25,.62,8),0,.27,.1,1,1,1.16,0x707d60,0,Math.PI/8);
-    for(const side of [-1,1])box(side*.99,.29,-.77,.65,.57,1.27,0x879471,-.12,side*.23);
-    box(0,.36,1.3,2.4,.59,.62,0x616e56);cylinder(0,.6,.27,.98,.13,0x889276,8);
-    if(!level){for(const side of [-1,1])for(let i=0;i<4;i++)box(side*1.26,.34,-.57+i*.48,.18,.39,.4,i%2?0x4a5745:0x7a8866,0,side*.15);
-      box(.73,.81,-.27,.26,.26,.4,0x2a3830);box(.73,.84,-.49,.22,.11,.04,0x8cb0a5);
-      box(-.85,.98,1.07,.035,.72,.035,0x2c332e);}
+    cylinder(0,-.03,0,1.13,.13,0x343d31,level===2?8:12);
+    const profile=[[0,0],[1.11,0],[1.31,.12],[1.25,.32],[1.03,.53],[.64,.63],[0,.63]].map(([r,y])=>new THREE.Vector2(r,y));
+    piece(new THREE.LatheGeometry(profile,level===2?10:level?16:24),0,0,.04,1,1,1.08,0x7d826c);
+    if(level<2){
+      for(const side of [-1,1]){box(side*.60,.32,1.13,.94,.3,.43,0x66705a);cylinder(side*.47,.66,.30,.30,.10,0x535f4e,12);}
+      for(let i=-3;i<=3;i++){const a=i*.25;box(Math.sin(a)*1.24,.27,-Math.cos(a)*1.27,.34,.32,.18,i%2?0x959982:0x777f69,-.2,-a);}
+    }
+    if(!level){
+      for(const side of [-1,1]){box(side*.88,.54,-.12,.14,.16,.28,0x303b31);box(side*.88,.56,-.27,.11,.07,.025,0x88a59b);}
+      box(-.82,.93,.84,.028,.88,.028,0x30382d);box(.38,.74,.37,.38,.07,.39,0x626e58,.35);
+    }
   });
   const barrel=island(gun,material,({box,cylinder})=>{
-    box(0,0,.04,.69,.49,.65,0x58674e);cylinder(0,0,-1.65,.104,3.35,0x7c886a,level===2?6:10,Math.PI/2);
-    if(level<2){cylinder(0,0,-.63,.15,.55,0x46553e,10,Math.PI/2);cylinder(0,0,-2.98,.14,.24,0x4e5c45,10,Math.PI/2);box(0,0,-3.37,.18,.18,.04,0x101714);cylinder(.41,-.04,-.52,.037,.92,0x242c28,8,Math.PI/2);}
+    box(0,0,.04,.53,.38,.56,0x68745e);cylinder(0,0,-TANK_MUZZLE_DISTANCE/2,.085,TANK_MUZZLE_DISTANCE,0x7b836f,level===2?6:12,Math.PI/2);
+    if(level<2){cylinder(0,0,-.70,.14,.68,0x55624e,12,Math.PI/2);cylinder(0,0,-2.25,.13,.32,0x68735e,12,Math.PI/2);cylinder(0,0,-3.83,.105,.18,0x4b5747,12,Math.PI/2);box(0,0,-TANK_MUZZLE_DISTANCE,.13,.13,.025,0x131c17);cylinder(.29,-.02,-.48,.029,.82,0x30392e,8,Math.PI/2);}
   });
-  const hatch=island(body,material,({box,cylinder})=>{cylinder(-.62,1.63,-1.9,.36,.12,0x3f4c3b,level===2?6:12);if(level<2)box(-.62,1.81,-1.88,.62,.27,.08,0x4b5944,-.65);});
-  const tracks=island(body,material,({box})=>{for(const side of [-1,1]){
-    box(side*1.5,.6,.05,.59,.82,6.4,0x242c28);box(side*1.5,.64,-3.08,.59,.60,.65,0x313a32,-.45);box(side*1.5,.64,3.18,.59,.60,.65,0x313a32,.45);
-    if(!level)for(let i=0;i<22;i++)box(side*1.5,1.025,-2.9+i*.28,.62,.04,.13,0x50564a);
+  const hatch=island(body,material,({box,cylinder})=>{cylinder(-.62,1.50,-1.9,.33,.10,0x505e49,level===2?6:12);if(level<2)box(-.62,1.65,-1.88,.52,.20,.07,0x4e5c47,-.65);});
+  const tracks=island(body,material,({box,piece})=>{for(const side of [-1,1]){
+    if(level===2)box(side*1.5,.44,.05,.59,.88,6.8,0x242c28);
+    else{
+      // A continuous open belt exposes the road wheels; its lower run rests on the ground.
+      const outline=new THREE.Shape();outline.moveTo(-3.4,.23);for(const [z,y]of[[-3.15,0],[3.15,0],[3.4,.23],[3.4,.65],[3.15,.88],[-3.15,.88],[-3.4,.65]])outline.lineTo(z,y);outline.closePath();
+      const opening=new THREE.Path();opening.moveTo(-3.03,.18);for(const [z,y]of[[3.03,.18],[3.2,.29],[3.2,.59],[3.03,.7],[-3.03,.7],[-3.2,.59],[-3.2,.29]])opening.lineTo(z,y);opening.closePath();outline.holes.push(opening);
+      const belt=new THREE.ExtrudeGeometry(outline,{depth:.59,bevelEnabled:false,steps:1,curveSegments:1});belt.translate(0,0,-.295);belt.rotateY(Math.PI/2);piece(belt,side*1.5,0,.05,1,1,1,0x313a32);
+    }
+    if(!level)for(let i=0;i<22;i++)for(const y of [.03,.88])box(side*1.5,y,-2.9+i*.28,.58,.04,.13,0x50564a);
   }});
   const trackPositions=tracks.geometry.attributes.position,trackSide=tracks.geometry.attributes.trackSide;
   for(let i=0;i<trackSide.count;i++)trackSide.setX(i,Math.sign(trackPositions.getX(i)));
   let wheels=null;
-  if(level<2){const geometry=new THREE.CylinderGeometry(.35,.35,.15,level?8:12);geometry.rotateZ(Math.PI/2);const count=level?10:14;wheels=new THREE.InstancedMesh(geometry,material,count);const color=new THREE.Color(0x7b8167);
-    for(let i=0;i<count;i++){matrix.makeTranslation(i<count/2?-1.81:1.81,.58,-2.65+i%(count/2)*5.3/(count/2-1));wheels.setMatrixAt(i,matrix);wheels.setColorAt(i,color);}body.add(wheels);}
+  if(level<2){const template=island(new THREE.Group(),material,({cylinder})=>{
+      cylinder(0,0,0,.35,.14,0x30372e,level?8:12,0,Math.PI/2);
+      if(!level)cylinder(0,0,0,.27,.17,0x7e846d,12,0,Math.PI/2);
+      cylinder(0,0,0,.105,.22,0x505d46,8,0,Math.PI/2);
+    });const geometry=template.geometry,count=level?10:12;wheels=new THREE.InstancedMesh(geometry,material,count);const color=new THREE.Color(0xffffff);
+    for(let i=0;i<count;i++){matrix.makeTranslation(i<count/2?-1.72:1.72,.42,-2.65+i%(count/2)*5.3/(count/2-1));wheels.setMatrixAt(i,matrix);wheels.setColorAt(i,color);}body.add(wheels);}
   if(level===1){const geometry=mergeGeometries([hull.geometry,hatch.geometry],false);hull.geometry.dispose();hatch.geometry.dispose();hull.geometry=geometry;hatch.removeFromParent();}
   if(level===2){group.updateMatrixWorld(true);const parts=[];group.traverse(o=>{if(o.isMesh)parts.push(o.geometry.clone().applyMatrix4(o.matrixWorld));});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});body.clear();const mesh=new THREE.Mesh(geometry,material);body.add(mesh);}
   return {group,body,turret,gun,hull,turretMesh,barrel,hatch,tracks,wheels};
@@ -64,29 +94,35 @@ function buildLevel(level,material){
 export function createTankRig(){
   const travel={value:new THREE.Vector2()},material=new THREE.MeshLambertMaterial({vertexColors:true,map:atlas??null}),group=new THREE.Group();
   material.onBeforeCompile=shader=>{shader.uniforms.tankTravel=travel;shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute float trackSide;uniform vec2 tankTravel;').replace('#include <uv_vertex>','#include <uv_vertex>\n#ifdef USE_MAP\nif(abs(trackSide)>.5)vMapUv.y+=trackSide<0.?tankTravel.x:tankTravel.y;\n#endif');};
+  material.customProgramCacheKey=()=> 's09-tank-tracks-v1';
   const levels=[0,1,2].map(level=>buildLevel(level,material));for(const l of levels)group.add(l.group);
   const body=new THREE.Group();group.add(body); // Shared seated-actor parent, independent of LOD swaps.
-  return {tank:true,group,body,levels,level:0,material,travel,materialsToDispose:new Set([material]),riders:[],initialized:false};
+  const shadowMaterial=new THREE.MeshLambertMaterial({colorWrite:false,depthWrite:false}),shadow=new THREE.Mesh(mergeGeometries([levels[1].hull.geometry,levels[1].tracks.geometry],false),shadowMaterial);shadow.castShadow=true;shadow.visible=false;body.add(shadow);
+  return {tank:true,group,body,shadow,levels,level:0,material,travel,materialsToDispose:new Set([material,shadowMaterial]),riders:[],initialized:false};
 }
 export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
-  const group=rig.group,reset=!rig.initialized||group.position.distanceToSquared(position.set(v.x,v.y??0,v.z))>64,t=reset?1:blend;
+  position.set(v.x,v.y??0,v.z);
+  const group=rig.group,reset=!rig.initialized||group.position.distanceToSquared(position)>64,t=reset?1:blend;
+  group.scale.set(v.modelScale?.x??1,v.modelScale?.y??1,v.modelScale?.z??1);
   group.position.lerp(position,t);group.rotation.y+=Math.atan2(Math.sin(v.yaw-group.rotation.y),Math.cos(v.yaw-group.rotation.y))*t;rig.initialized=true;
   const distance=p?Math.hypot(v.x-p.x,v.z-p.z):0,near=low?32:40,far=low?85:100;
   if(rig.level===0&&distance>near*1.06)rig.level=1;else if(rig.level===1&&distance<near*.94)rig.level=0;
   if(rig.level===1&&distance>far*1.06)rig.level=2;else if(rig.level===2&&distance<far*.94)rig.level=1;
   if(p?.vehicleId===v.id)rig.level=0;
   rig.body.rotation.set(v.bodyPitch??0,0,v.bodyRoll??0);
-  rig.travel.value.x+=(v.speed-(v.steer??0)*1.8)*dt*.35;rig.travel.value.y+=(v.speed+(v.steer??0)*1.8)*dt*.35;
-  const delta=(v.aimYaw??v.yaw)-group.rotation.y;
+  rig.shadow.visible=rig.level===0&&distance<48;
+  rig.travel.value.x+=((v.leftTrack??0)>=80?0:v.speed+(v.steer??0)*1.8)*dt*.35;rig.travel.value.y+=((v.rightTrack??0)>=80?0:v.speed-(v.steer??0)*1.8)*dt*.35;
+  const direction=vehicleAimDirection(v,v.aimYaw??v.yaw,v.aimPitch??0,modelDirection),delta=Math.atan2(-direction.x,-direction.z),pitch=Math.atan2(direction.y,Math.hypot(direction.x,direction.z));
+  if(reset){rig.cannonSeq=v.cannonSeq;rig.recoil=0;}
   rig.wreckAge=v.hp<=0?(rig.wreckAge??0)+dt:0;
   for(const [index,l] of rig.levels.entries()){
     l.group.visible=index===rig.level;l.body.rotation.copy(rig.body.rotation);
-    l.turret.rotation.y=Math.atan2(Math.sin(delta),Math.cos(delta));l.gun.rotation.x=v.aimPitch??0;
-    l.turret.position.y=1.72+(v.hp<=0?Math.max(0,Math.min(3,rig.wreckAge*8)-Math.max(0,rig.wreckAge-.35)*5):0);l.turret.rotation.z=v.hp<=0?Math.min(.55,rig.wreckAge):0;
+    l.turret.rotation.y=delta;l.gun.rotation.x=pitch;
+    l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,1.72+rig.wreckAge*8-rig.wreckAge**2*10):1.72,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
     if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;
     l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleId===v.id&&p.vehicleSeat===0&&!view.vehicleThirdPerson);
     l.hull.castShadow=l.turretMesh.castShadow=index===1&&distance<48;
-    if(l.wheels){const half=l.wheels.count/2;for(let i=0;i<l.wheels.count;i++){quaternion.setFromAxisAngle(wheelAxis,(i<half?rig.travel.value.x:rig.travel.value.y)*5);matrix.compose(position.set(i<half?-1.81:1.81,.58,-2.65+i%half*5.3/(half-1)),quaternion,scale.set(1,1,1));l.wheels.setMatrixAt(i,matrix);}l.wheels.instanceMatrix.needsUpdate=true;}
+    if(l.wheels){const half=l.wheels.count/2;for(let i=0;i<l.wheels.count;i++){quaternion.setFromAxisAngle(wheelAxis,(i<half?rig.travel.value.x:rig.travel.value.y)*5);matrix.compose(position.set(i<half?-1.72:1.72,.42,-2.65+i%half*5.3/(half-1)),quaternion,scale.set(1,1,1));l.wheels.setMatrixAt(i,matrix);}l.wheels.instanceMatrix.needsUpdate=true;}
   }
   rig.recoil=Math.max(0,(rig.recoil??0)-dt*.8);rig.cannonSeq=v.cannonSeq;
   rig.material.color.setHex(v.hp<=0?0x383c38:0xffffff);

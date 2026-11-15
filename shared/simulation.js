@@ -103,9 +103,13 @@ function impactMaterial(kind) {
   return 'concrete';
 }
 
+const footprints=new WeakMap();
 function footprint(vehicle, x=vehicle.x, z=vehicle.z, yaw=vehicle.yaw) {
-  const { width, length, height } = getVehicleDimensions(vehicle);
-  return { x, z, w:width/2, d:length/2, h:height, cos:Math.cos(yaw), sin:Math.sin(yaw) };
+  const live=x===vehicle.x&&z===vehicle.z&&yaw===vehicle.yaw,sx=vehicle.modelScale?.x??1,sy=vehicle.modelScale?.y??1,sz=vehicle.modelScale?.z??1;
+  const cached=live?footprints.get(vehicle):null;
+  if(cached&&cached.x===x&&cached.z===z&&cached.yaw===yaw&&cached.type===vehicle.type&&cached.sx===sx&&cached.sy===sy&&cached.sz===sz)return cached;
+  const spec=VEHICLE_TYPES[vehicle.type],value={x,z,yaw,type:vehicle.type,sx,sy,sz,w:spec.width*sx/2,d:spec.length*sz/2,h:spec.height*sy,cos:Math.cos(yaw),sin:Math.sin(yaw)};
+  if(live)footprints.set(vehicle,value);return value;
 }
 
 function overlaps(a,b) {
@@ -345,7 +349,8 @@ export class Simulation {
     const shape=pose?vehicleShape({...pose,...vehicleBodyTilt(pose,this.map.terrain)}):null;
     const bounds=shape?boxBounds({obb:shape}):null;
     if(tilted&&(bounds.minX<-limit||bounds.maxX>limit||bounds.minZ<-limit||bounds.maxZ>limit))return true;
-    for(const box of this.colliders){
+    const radius=bounds?Math.max(Math.abs(bounds.minX-x),Math.abs(bounds.maxX-x),Math.abs(bounds.minZ-z),Math.abs(bounds.maxZ-z)):Math.max(dx,dz);
+    for(const box of this.floorBoxes(x,z,radius)){
       if(box.obb||box.parts||tilted){
         if(bounds.minX>=box.maxX||bounds.maxX<=box.minX||bounds.minZ>=box.maxZ||bounds.maxZ<=box.minZ)continue;
         if(overlapsCollider(shape,box))return true;

@@ -12,9 +12,9 @@
     },
     {
       "mapId": "quarry",
-      "meshes": 291,
-      "materialDraws": 291,
-      "triangles": 378712,
+      "meshes": 345,
+      "materialDraws": 345,
+      "triangles": 381920,
       "terrainTriangles": 0,
       "maxTerrainReportedError": 0
     },

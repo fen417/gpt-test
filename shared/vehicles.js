@@ -8,7 +8,7 @@ export const VEHICLE_TYPES = {
     maxSpeed:13,reverseSpeed:4.5,acceleration:4.5,brake:9,turnRate:1,maxSlope:32*Math.PI/180,boardRange:5,
     armorZones:{front:.55,side:1,rear:1.6,top:1.6,track:1},
     seats:[{...driver,x:-.62,z:-1.9,height:2.0},{name:'Стрелок',role:'gunner',x:.45,z:-.4,height:2.9},
-      {...passenger,x:-1.13,z:1.6,height:2.3},{...passenger,x:1.13,z:1.6,height:2.3},{...passenger,x:0,z:2.75,height:2.3}]},
+      {...passenger,x:-1.45,z:1.6,height:2.31},{...passenger,x:1.45,z:1.6,height:2.31},{...passenger,x:0,z:3.22,height:2.12}]},
   atv: {
     name: 'Квадроцикл', width: 1.38, length: 2.34, height: 1.17,
     maxHp: 425, bulletArmor: .48, blastArmor: 1, respawn: 32,
@@ -67,7 +67,7 @@ export function vehicleShape(vehicle){
     [spec.width/2,spec.height/2,spec.length/2],matrix);
 }
 
-export function vehicleAimDirection(vehicle, yaw, pitch) {
+export function vehicleAimDirection(vehicle, yaw, pitch, out={}) {
   const scale = vehicle.modelScale ?? { x: 1, y: 1, z: 1 };
   const dx = -Math.sin(yaw) * Math.cos(pitch), dy = Math.sin(pitch), dz = -Math.cos(yaw) * Math.cos(pitch);
   const s = Math.sin(vehicle.yaw), c = Math.cos(vehicle.yaw);
@@ -75,7 +75,7 @@ export function vehicleAimDirection(vehicle, yaw, pitch) {
   const cp = Math.cos(vehicle.bodyPitch ?? 0), sp = Math.sin(vehicle.bodyPitch ?? 0);
   const cr = Math.cos(vehicle.bodyRoll ?? 0), sr = Math.sin(vehicle.bodyRoll ?? 0);
   const py = y * cp + z * sp, pz = -y * sp + z * cp;
-  return { x: x * cr + py * sr, y: -x * sr + py * cr, z: pz };
+  out.x=x*cr+py*sr;out.y=-x*sr+py*cr;out.z=pz;return out;
 }
 export const TURRET_MIN_PITCH = -.25;
 export const TURRET_MAX_PITCH = .85;
@@ -91,13 +91,17 @@ export function vehicleLocalPoint(vehicle, x, z) {
 }
 
 export function getVehicleSeatPose(vehicle, index) {
-  const seat = VEHICLE_TYPES[vehicle.type]?.seats[index];
+  let seat = VEHICLE_TYPES[vehicle.type]?.seats[index];
   if (!seat) return null;
+  if(vehicle.type==='tank'&&index===1){const yaw=(vehicle.aimYaw??vehicle.yaw)-vehicle.yaw;seat={...seat,x:seat.x*Math.cos(yaw),z:-.4-seat.x*Math.sin(yaw)};}
+  return vehiclePartPose(vehicle,seat.x,seat.height,seat.z);
+}
+export function vehiclePartPose(vehicle,px,height,pz,out={}){
   const cp = Math.cos(vehicle.bodyPitch ?? 0), sp = Math.sin(vehicle.bodyPitch ?? 0);
   const cr = Math.cos(vehicle.bodyRoll ?? 0), sr = Math.sin(vehicle.bodyRoll ?? 0);
-  const x = seat.x * cr - seat.height * sr, y = seat.x * sr + seat.height * cr;
-  return { ...vehicleLocalPoint(vehicle, x * (vehicle.modelScale?.x ?? 1), (y * sp + seat.z * cp) * (vehicle.modelScale?.z ?? 1)),
-    y: (vehicle.y ?? 0) + (y * cp - seat.z * sp) * (vehicle.modelScale?.y ?? 1) };
+  const x = px * cr - height * sr, y = px * sr + height * cr;
+  const localX=x*(vehicle.modelScale?.x??1),localZ=(y*sp+pz*cp)*(vehicle.modelScale?.z??1),s=Math.sin(vehicle.yaw),c=Math.cos(vehicle.yaw);
+  out.x=vehicle.x+localX*c+localZ*s;out.z=vehicle.z-localX*s+localZ*c;out.y=(vehicle.y??0)+(y*cp-pz*sp)*(vehicle.modelScale?.y??1);return out;
 }
 
 export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {

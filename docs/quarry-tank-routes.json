@@ -1,0 +1,7 @@
+{
+  "method": "3.6x7m oriented tank footprint at <=0.75m spacing, static map collision and terrain grade; parked vehicles excluded",
+  "edges": 38,
+  "samples": 4958,
+  "maxGradeDegrees": 14.309534099705674,
+  "failures": []
+}

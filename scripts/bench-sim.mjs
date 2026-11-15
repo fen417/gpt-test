@@ -9,14 +9,20 @@ import { PROTOCOL_VERSION } from '../shared/world.js';
 
 const args=process.argv.slice(2),option=(name,fallback)=>{const i=args.indexOf(name);return i<0?fallback:args[i+1];};
 const ticks=Number(option('--ticks',2400)),bots=30,humans=7,dt=1/60;
+const snapshotHz=Number(option('--snapshot-hz',20)),maps=option('--map','port,quarry,village').split(',');
+if(![20,30].includes(snapshotHz))throw Error('--snapshot-hz must be 20 or 30');
 if(!Number.isInteger(ticks)||ticks<60)throw Error('--ticks must be an integer >= 60');
 const summary=values=>{const sorted=[...values].sort((a,b)=>a-b),round=n=>Number(n.toFixed(3));return {avg:round(values.reduce((a,b)=>a+b,0)/values.length),p95:round(sorted[Math.ceil(sorted.length*.95)-1]),p99:round(sorted[Math.ceil(sorted.length*.99)-1]),max:round(sorted.at(-1))};};
 const report={schema:1,version:GAME_VERSION,protocol:PROTOCOL_VERSION,createdAt:new Date().toISOString(),environment:{node:process.version,platform:platform(),arch:arch(),cpu:cpus()[0]?.model},scenario:{ticks,bots,humans,tickHz:60,snapshotHz:20,lagCompensation:true,seed:417,input:'moving, aiming, shooting, reloading, respawning',ack:'immediate simulated reliable ACK'},maps:[],warnings:[]};
-for(const mapId of ['port','quarry','village']){
+report.scenario.snapshotHz=snapshotHz;report.scenario.tankCrew=args.includes('--tank-crew');
+for(const mapId of maps){
   let seed=417;const random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
   const constructAt=performance.now(),sim=new Simulation({bots,mapId,random,lagCompensation:true});
   const constructionMs=performance.now()-constructAt;
   const players=Array.from({length:humans},(_,i)=>sim.addPlayer('bench-'+i,'Benchmark '+i,i%2));
+  if(args.includes('--tank-crew'))for(let i=0;i<4;i++){
+    const p=players[i],v=sim.vehicles.find(v=>v.type==='tank'&&v.team===p.team);if(!v)continue;p.x=v.x+2.6;p.z=v.z;p.y=sim.groundAt(p.x,p.z);if(!sim.mountVehicle(p,v,i<2?0:1))throw Error('Benchmark tank crew could not board '+v.id);
+  }
   const encoders=players.map(()=>new SnapshotEncoder(sim.map.size));
   const steps=[],encodes=[],sizes=[];let previous;
   const cpuAt=process.cpuUsage(),start=performance.now();
@@ -28,7 +34,7 @@ for(const mapId of ['port','quarry','village']){
       sim.setInput(p.id,{forward:Math.sin(tick/180+i)>.2?1:.4,strafe:Math.sin(tick/90+i)*.6,yaw,aim:true,fire:tick%90<65,reload:p.ammo===0});
     }
     const stepAt=performance.now();sim.step(dt);steps.push(performance.now()-stepAt);
-    if(tick%3===2){
+    if(tick%Math.round(60/snapshotHz)===Math.round(60/snapshotHz)-1){
       previous=prepareSnapshot(sim.snapshot(),sim.map.size,previous);
       for(const [i,encoder] of encoders.entries()){
         const encodeAt=performance.now(),packet=encoder.encode(previous,{localId:players[i].id,tick});

@@ -1,8 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {Simulation} from '../shared/simulation.js';import {createVehicle} from '../shared/vehicles.js';import {blast,updateEquipment} from '../shared/gadgets.js';
+import {getWeapon} from '../shared/world.js';
 function setup(){const sim=new Simulation({bots:0,mapId:'quarry'}),v=sim.vehicles.find(v=>v.type==='tank'&&v.team===0),enemy=sim.addPlayer('enemy','Enemy',1);sim.vehicles=[v];return{sim,v,enemy};}
 test('only tank rejects rifle bullets; light vehicles retain existing bullet armour',()=>{
-  const {sim,v,enemy}=setup();for(let i=0;i<1000;i++)assert.equal(sim.damageVehicle(v,92,enemy,'bullet').ricochet,true);assert.equal(v.hp,2400);
+  const {sim,v,enemy}=setup(),weapon=getWeapon('recon','sv98');Object.assign(enemy,{classId:'recon',weaponId:'sv98'});
+  for(let i=0;i<1000;i++){
+    sim.launchBullet(enemy,weapon,{x:v.x+4,y:v.y+1.1,z:v.z},Math.PI/2,0);const shot=sim.eventId;sim.time+=.02;sim.updateBullets();
+    const impact=sim.events.find(e=>e.type==='bulletImpact'&&e.shotId===shot);assert.equal(impact?.impactVehicleId,v.id,'actual projectile strikes the tank');assert.equal(impact.vehicleHit,false);assert.equal(v.hp,2400);
+  }
   for(const type of ['atv','humvee']){const car=createVehicle({id:type,type,team:0,x:50,y:0,z:50,yaw:0});const before=car.hp;sim.damageVehicle(car,92,enemy,'bullet');assert.ok(car.hp<before);}
 });
 test('PT90 needs four side hits or two rear hits; frontal armour remains stronger',()=>{

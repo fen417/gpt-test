@@ -23,8 +23,10 @@ test('tank pivots at rest, turret slews and shell cooldown is authoritative',()=
 test('tank state and shell type survive full snapshots and cannon events',()=>{
   const {sim,v}=setup();Object.assign(v,{cannonSeq:17,cannonAmmo:9,weapon:1,weaponReadyAt:2.4,cannonReadyAt:5.2,leftTrack:45,rightTrack:83,burning:true,wantedYaw:.5,wantedPitch:.2});
   sim.rockets.push({id:'shell',kind:1,vehicleId:v.id,ownerId:'p',team:0,x:0,y:2,z:0,vx:0,vy:0,vz:-190,life:4});
+  sim.deployables.push({id:'neutral-ammo',kind:'ammo',team:-1,x:0,y:0,z:0,hp:255,expires:1e9});
   const encoder=new SnapshotEncoder(sim.map.size),decoder=new SnapshotDecoder({size:sim.map.size,mapId:'quarry'}),packet=encoder.encode(prepareSnapshot(sim.snapshot(),sim.map.size)),out=decoder.decode(packet.bytes).state;
   assert.equal(out.vehicles[0].cannonAmmo,9);assert.equal(out.vehicles[0].rightTrack,83);assert.equal(out.rockets[0].kind,1);assert.equal(out.vehicles[0].burning,1);
+  assert.equal(out.deployables[0].team,-1);
   const bytes=encodeEvents([{id:1,time:0,type:'cannonShot',playerId:'p',vehicleId:v.id,weaponId:'tank-cannon',shotSeq:2,x:0,y:2,z:0}],1,encoder.dict);
   assert.equal(decodeEvents(bytes,decoder.dict).events[0].type,'cannonShot');
 });

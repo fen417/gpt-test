@@ -228,7 +228,7 @@ function decide(sim,p){
   }
   if(p.hp<65||p.reserve<getWeapon(p.classId,p.weaponId).reserve*.2){
     const kind=p.hp<65?'medkit':'ammo';
-    const supply=sim.deployables.filter(item=>item.kind===kind&&item.team===p.team&&item.hp>0&&item.expires>sim.time&&distance(p,item)<35)
+    const supply=sim.deployables.filter(item=>item.kind===kind&&(item.team===p.team||item.team<0)&&item.hp>0&&item.expires>sim.time&&distance(p,item)<35)
       .sort((a,b)=>distance(p,a)-distance(p,b))[0];
     if(supply&&(!target||distance(p,target)>18)&&ai.pressure<.65){ai.mode='recover';ai.goal={x:supply.x+1.6,y:supply.y,z:supply.z};return;}
   }
