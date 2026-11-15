@@ -527,7 +527,10 @@ export class Simulation {
       if(vehicle.type==='tank'){
         vehicle.burning=vehicle.hp<vehicle.maxHp*.25&&this.time>=(vehicle.extinguishedUntil??0);
         if(vehicle.burning)this.damageVehicle(vehicle,12*dt,null,'fire');
-        advanceTankSystems(this,vehicle,gunner?.alive?gunner:null,dt);continue;
+        const sightHold=vehicle.controlScheme==='wot'&&gunner?.input?.turretHold;
+        const aimingGunner=sightHold?{...gunner,input:{...gunner.input,
+          yaw:vehicle.wantedYaw??vehicle.aimYaw,pitch:vehicle.wantedPitch??vehicle.aimPitch}}:gunner;
+        advanceTankSystems(this,vehicle,aimingGunner?.alive?aimingGunner:null,dt);continue;
       }
       if(gunner?.alive){
         vehicle.aimYaw=gunner.input.yaw;
