@@ -109,12 +109,16 @@ function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
   let parking = nodes.get(objectives[destination.id]);
   const threat=p.ai?.memory??vehicle.seats.map(id=>sim.players.get(id)?.botCrewTarget).find(Boolean);
   if(threat){
-    const alternatives=[...nodes.values()].filter(node=>costs.has(node)&&distance(node,destination)<38&&distance(node,vehicle)>12);
-    alternatives.sort((a,b)=>{
-      const score=node=>costs.get(node)+distance(node,destination)*2+(sim.lineClear({x:threat.x,y:threat.y+1.2,z:threat.z},{x:node.x,y:sim.groundAt(node.x,node.z)+1,z:node.z})?65:0);
-      return score(a)-score(b);
-    });
-    if(alternatives.length)parking=alternatives[0];
+    // Avoid repeated terrain and collider raycasts in an Array.sort comparator.
+    const eye={x:threat.x,y:threat.y+1.2,z:threat.z};
+    let bestParking=null,bestParkingScore=Infinity;
+    for(const node of nodes.values()){
+      if(!costs.has(node)||distance(node,destination)>=38||distance(node,vehicle)<=12)continue;
+      const score=costs.get(node)+distance(node,destination)*2+
+        (sim.lineClear(eye,{x:node.x,y:sim.groundAt(node.x,node.z)+1,z:node.z})?65:0);
+      if(score<bestParkingScore){bestParkingScore=score;bestParking=node;}
+    }
+    if(bestParking)parking=bestParking;
   }
   // A nearby landmark can serve as covered access to the same combat objective.
   if (!threat&&!destination.contested && sim.random() < .32) {
@@ -133,6 +137,17 @@ function planJourney(sim, p, vehicle, avoidNodeId, avoidDestinationId) {
   path.reverse();
   return { destination: destination.id, path, startedAt: sim.time, avoidDestinationId,
     timeLimit: Math.max(48, costs.get(parking) / 9 + 20), blockedAt: null, reversingUntil: 0 };
+}
+
+// Prebuild immutable road graphs before the match's first live simulation tick.
+export function prepareVehicleRoutes(sim){
+  if(!sim.map.vehicleRoutes)return;
+  const warmed=new Set();
+  for(const vehicle of sim.vehicles){
+    const key=[vehicle.type,vehicle.modelScale?.x??1,vehicle.modelScale?.z??1].join('/');
+    if(warmed.has(key))continue;
+    warmed.add(key);roadGraph(sim,vehicle);
+  }
 }
 
 function vehiclePreference(p) {

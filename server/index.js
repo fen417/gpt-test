@@ -106,7 +106,7 @@ export function createGameServer(options={}){
   }
   function startMatch(){
     stopLoop();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId,lagCompensation:env.LAG_COMPENSATION!=='0'});
-    sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.5;
+    sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.0;
     room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;
     for(const s of sessions.values())sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
     for(const s of connected())initialize(s);roomsChanged();startLoop();
