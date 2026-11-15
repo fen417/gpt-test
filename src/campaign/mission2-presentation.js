@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {campaignMusicWindow} from './music-loop.js';
 import {tankMuzzle} from '../../shared/tank.js';
 import './mission2.css';
 
@@ -68,12 +69,10 @@ export class Mission2Presentation {
   playMusicAt(seconds){
     const ctx=this.combat.ctx,buffer=this.musicBuffer;
     if(this.closed||this.music||!ctx||ctx.state!=='running'||!buffer)return;
-    const loopStart=Math.max(0,Number(this.definition.music.loopStart??148));
-    const loopEnd=Math.min(buffer.duration,Number(this.definition.music.loopEnd??188));
-    const loop=loopEnd>loopStart+.5&&buffer.duration>=loopEnd;
-    // Start at current combat time, even after a long pause or delayed decode.
-    const offset=loop&&seconds>=loopEnd?loopStart+(seconds-loopEnd)%(loopEnd-loopStart):
-      Math.min(Math.max(0,seconds),Math.max(0,buffer.duration-.02));
+    // Intro plays once; after the configured endpoint the chosen combat
+    // section loops without ever reaching the track's fading outro.
+    const {loop,loopStart,loopEnd,offset}=campaignMusicWindow(
+      this.definition.music,buffer.duration,seconds);
     const source=ctx.createBufferSource(),gain=ctx.createGain();
     source.buffer=buffer;source.loop=loop;
     if(loop){source.loopStart=loopStart;source.loopEnd=loopEnd;}
