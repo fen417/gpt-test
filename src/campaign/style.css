@@ -11,3 +11,14 @@
    gameplay statistics from the closing narration. */
 .campaign-final-stats{display:flex;flex-wrap:wrap;gap:12px 22px;margin:18px 0 24px;padding:14px 16px;border-top:1px solid #baa16c44;border-bottom:1px solid #baa16c44;background:#1d2428a8;color:#e5d1a9;font:600 14px/1.7 monospace;white-space:pre-wrap}
 @media(max-width:700px){.campaign-final-stats{font-size:12px;gap:8px}}
+
+/* Small, low-contrast mission indicators live outside the aiming zone. */
+.campaign-marker{margin-left:0;padding:3px 6px;font:600 10px/1.15 monospace;
+  border:1px solid #d1b77840;border-radius:3px;
+  background:#10141c80;color:#ddc48d;opacity:.79;
+  box-shadow:0 1px 5px #0004;pointer-events:none;max-width:125px;text-align:center}
+.campaign-marker.wounded{color:#ffc4a9;border-color:#ffb3926b;background:#25151b99;opacity:.94}
+.campaign-objective{max-width:min(370px,60vw);padding:10px 14px;background:linear-gradient(90deg,#10171ec9,#10171e32)}
+.campaign-objective strong{font-size:18px;margin:5px 0}
+.campaign-objective .campaign-optional{font-size:11px}
+@media(max-width:700px){.campaign-marker{font-size:9px;padding:2px 4px}.campaign-objective{max-width:70vw}}
