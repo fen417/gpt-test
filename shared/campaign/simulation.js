@@ -612,10 +612,16 @@ export class CampaignDirector {
   spawnVehicle(){
     if(this.sim.vehicles.some(v=>v.id==='campaign-mg-car'))return;
     // Approach from the far east road instead of appearing near the radio.
-    const v=this.sim.createMapVehicle({id:'campaign-mg-car',type:'humvee',team:1,x:230,z:133,yaw:1.5});
+    // Enter from the north on the existing village road, not from the
+    // impassable rocks along the east map boundary.
+    const v=this.sim.createMapVehicle({id:'campaign-mg-car',type:'humvee',team:1,x:167,z:171,yaw:0});
+    for(const z of [171,168,164,161,158]){
+      if(!this.sim.vehicleCollides(v,167,z,0)&&!this.sim.vehicleCollides(v,167,z-3,0)){
+        v.z=z;v.y=this.sim.groundAt(167,z);break;
+      }
+    }
     v.campaignArmor=true;v.hp=560;v.respawnIn=1e8;
-    // Southern road stays clear of the parked friendly evacuation car.
-    v.campaignRoute={points:[{x:219,z:134},{x:208,z:136}],index:0,speed:.85};
+    v.campaignRoute={points:[{x:167,z:154},{x:167,z:139}],index:0,speed:.82};
     this.sim.vehicles.push(v);
     const driver=this.sim.addPlayer('car-driver','Водитель противника',1,'assault','ak12','p19',true);
     Object.assign(driver,{campaignRole:'vehicleDriver',campaignGroup:'wave3',campaignZone:'village',vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0});
