@@ -3,6 +3,8 @@ import {CampaignAudio} from './audio.js';
 import {prepareViewModel} from '../viewmodel.js';
 import {cinematicCameraPose} from './camera.js';
 import {createCampaignTruck,groundCampaignTruck,burnCampaignTruck} from './props.js';
+import {createVehicleRig,updateVehicleRig,disposeVehicleRig} from '../vehicles.js';
+import {VEHICLE_TYPES} from '../../shared/vehicles.js';
 import {CampaignFire} from './fire.js';
 
 const presets={night:{fog:'#101b30',sun:'#a8c9ef',hemi:'#a2b9d7',ground:'#45434a',sunPower:.8,hemiPower:.52,ambient:.16,environment:.09},alarm:{fog:'#202538',sun:'#a4bfdf',hemi:'#b0bed5',ground:'#67564a',sunPower:1,hemiPower:.72,ambient:.22,environment:.12},dawn:{fog:'#a58e7c',sun:'#ffd19d',hemi:'#b8c5dd',ground:'#8e7560',sunPower:2,hemiPower:1.3,ambient:.3,environment:.45}};
@@ -11,14 +13,16 @@ export class CampaignPresentation {
     this.session=session;this.renderer=renderer;this.leave=leave;this.clearControls=clearControls;this.locale=session.locale;this.definition=session.definition;
     this.audio=new CampaignAudio(audio,new URL(`${import.meta.env.BASE_URL}campaign/m01/`,location.href),this.definition);
     this.root=document.createElement('section');this.root.className='campaign-ui';this.root.setAttribute('aria-label','Сюжетная миссия');
-    this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-detection"><span></span><meter min="0" max="1" value="0"></meter><b>▲</b></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>До рассвета — одна ночь.</h2><p>Выберите набор. Оба маршрута позволяют выполнить задачу.</p><div><button data-loadout="silent"><b>Тихий</b><span>AR-416 с ПБС · нож · 2 гранаты</span></button><button data-loadout="loud"><b>Штурмовой</b><span>АК-12М · нож · 5 гранат</span></button></div><p>В обоих наборах: пистолет, ПТ-90, аптечки и шприцы.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
+    this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-detection"><span></span><meter min="0" max="1" value="0"></meter><b>▲</b></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>До рассвета — одна ночь.</h2><p>Выберите набор. Оба маршрута позволяют выполнить задачу.</p><div><button data-loadout="silent"><b>Тихий</b><span>AR-416 с ПБС · нож · 2 гранаты</span></button><button data-loadout="loud"><b>Штурмовой</b><span>АК-12М · нож · 5 гранат</span></button></div><p>В обоих наборах: пистолет, ПТ-90, аптечки и шприцы.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
     document.body.append(this.root);this.$=selector=>this.root.querySelector(selector);
     this.fade=document.createElement('div');this.fade.className='campaign-camera-fade';this.root.append(this.fade);
     this.$('.campaign-cutscene button').onclick=()=>this.session.command({type:'skip'});
     for(const b of this.root.querySelectorAll('[data-loadout]'))b.onclick=()=>{this.clearControls();this.session.command({type:'loadout',loadout:b.dataset.loadout});resume();};
     this.$('.campaign-retry').onclick=()=>{this.clearControls();this.session.command({type:'retry'});};
     this.$('.campaign-exit').onclick=leave;
-    this.original={environment:renderer.scene.environment,environmentIntensity:renderer.scene.environmentIntensity,sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,sunColor:renderer.sun.color.clone(),hemiColor:renderer.hemiLight.color.clone(),groundColor:renderer.hemiLight.groundColor.clone(),sunOffset:renderer.sunOffset.clone(),skyVisible:renderer.atmosphere.sky.visible};
+    this.original={environment:renderer.scene.environment,environmentIntensity:renderer.scene.environmentIntensity,sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,sunColor:renderer.sun.color.clone(),hemiColor:renderer.hemiLight.color.clone(),groundColor:renderer.hemiLight.groundColor.clone(),sunOffset:renderer.sunOffset.clone(),skyVisible:renderer.atmosphere.sky.visible,
+      background:renderer.scene.background?.clone(),fog:renderer.scene.fog?.color.clone(),fogDensity:renderer.scene.fog?.density};
+    this.dawnColors=Object.fromEntries(Object.entries(presets).map(([key,values])=>[key,Object.fromEntries(['fog','sun','hemi','ground'].map(name=>[name,new THREE.Color(values[name])]))]));
     this.props=new THREE.Group();this.props.name='campaign-only-props';renderer.scene.add(this.props);
     this.materials=[];this.geometries=[];this.textures=[];this.fuelMeshes=new Map();this.barrelMeshes=new Map();this.truckMeshes=new Map();this.charges=new Map();this.buildProps();
     this.renderHook=(r,state,dt)=>this.render(r,state,dt);
@@ -61,11 +65,51 @@ export class CampaignPresentation {
       if(i){const [ax,az]=points[i-1],line=new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(x-ax,z-az),.015,.025),red);this.geometries.push(line.geometry);line.position.set(-80+(ax+x)/2,ground(-80,-30)+1.22,-30+(az+z)/2);line.rotation.y=-Math.atan2(z-az,x-ax);this.mapRoute.add(line);}
     }
     this.mapRoute.rotation.y=Math.PI;this.mapRoute.position.set(-160,0,-60);
-    // Dust and distant silhouettes for the final reveal; no combat vehicles.
+    // The finale uses actual recognisable Humvees and ATVs, created only
+    // when needed rather than loading more vehicle meshes during the mission.
     this.horizon=new THREE.Group();this.props.add(this.horizon);
-    for(let i=0;i<5;i++){
-      const m=this.mesh(new THREE.BoxGeometry(3,1.6,6),dark,225-i*5,2,153+i*2);this.horizon.attach(m);
-      const turret=this.mesh(new THREE.BoxGeometry(1.7,.8,2.1),dark,225-i*5,3,153+i*2);this.horizon.attach(turret);
+    this.horizon.visible=false;this.finalConvoy=null;
+  }
+  ensureFinalConvoy(){
+    if(this.finalConvoy)return;
+    this.finalConvoy=[];
+    const makeMaterial=(color,roughness=.85,metalness=0,extra={})=>new THREE.MeshStandardMaterial({color,roughness,metalness,...extra});
+    const dust=document.createElement('canvas');dust.width=dust.height=64;
+    const ctx=dust.getContext('2d'),radial=ctx.createRadialGradient(32,32,2,32,32,31);
+    radial.addColorStop(0,'rgba(170,147,115,0.50)');
+    radial.addColorStop(.5,'rgba(156,133,104,0.24)');
+    radial.addColorStop(1,'rgba(145,125,100,0)');
+    ctx.fillStyle=radial;ctx.fillRect(0,0,64,64);
+    this.convoyDustTexture=new THREE.CanvasTexture(dust);this.textures.push(this.convoyDustTexture);
+    for(const [index,type] of ['humvee','atv','humvee','atv','humvee'].entries()){
+      const rig=createVehicleRig(type,makeMaterial,[0x71846b,0x84705a]);
+      this.horizon.add(rig.group);
+      const clouds=[];
+      for(let i=0;i<3;i++){
+        const material=new THREE.SpriteMaterial({map:this.convoyDustTexture,color:0xc3a47e,transparent:true,depthWrite:false,opacity:.25});
+        this.materials.push(material);
+        const sprite=new THREE.Sprite(material);this.horizon.add(sprite);clouds.push(sprite);
+      }
+      this.finalConvoy.push({rig,type,index,clouds});
+    }
+  }
+  drawFinalConvoy(elapsed,dt,terrain){
+    this.ensureFinalConvoy();
+    const progress=THREE.MathUtils.smoothstep(elapsed,3,29);
+    for(const {rig,type,index,clouds} of this.finalConvoy){
+      const x=257+index*8-progress*33;
+      const z=155+(index%3-1)*5+progress*5+index*.85;
+      const y=terrain?.heightAt(x,z)??0;
+      const spec=VEHICLE_TYPES[type],seats=spec.seats.map((_,seat)=>seat<2?'enemy-'+index+'-'+seat:null);
+      updateVehicleRig(rig,{id:'final-'+index,type,team:1,x,y,z,yaw:1.95,speed:5,steer:0,
+        hp:100,maxHp:100,seats,modelScale:{x:.91,y:.91,z:.91},
+        aimYaw:1.95,aimPitch:0,gunSeq:0},null,dt,1,{},false,terrain);
+      clouds.forEach((sprite,i)=>{
+        const phase=(elapsed*.17+index*.21+i/3)%1;
+        sprite.position.set(x+Math.sin(1.95)*((i+1)*3+phase*4),y+.9+phase*2.3,z+Math.cos(1.95)*((i+1)*3+phase*4));
+        sprite.scale.set(5+phase*11,2.5+phase*7,1);
+        sprite.material.opacity=Math.sin(phase*Math.PI)*.27;
+      });
     }
   }
   key(event){
@@ -96,21 +140,39 @@ export class CampaignPresentation {
     this.$('.campaign-cutscene').classList.toggle('hidden',!m.cutscene);this.$('.campaign-cutscene > span').textContent=m.cutscene?.id==='briefing'?'02:00 / БРИФИНГ':m.cutscene?.id==='finale'?'05:40 / РАССВЕТ':'АЛЬ-ХАДРА / ЭКСПЕДИЦИОННАЯ БРИГАДА';
     this.$('.campaign-choice').classList.toggle('hidden',!m.awaitingLoadout);
     const ending=this.$('.campaign-ending');ending.classList.toggle('hidden',!m.failed&&!m.complete);
-    if(m.failed||m.complete){ending.querySelector('small').textContent=m.failed?'ПОПЫТКА НЕ ЗАВЕРШЕНА':'МИССИЯ 1 ЗАВЕРШЕНА';ending.querySelector('h2').textContent=m.failed?'Возвращаемся к контрольной точке.':'Радиостанция наша.';ending.querySelector('p').textContent=m.failed??`Колонна снабжения в пути. ${m.flags.documents?'Документы сохранены для следующей миссии. ':''}${m.flags.courierSaved?'Связной эвакуирован. ':''}Продолжение следует.`;this.$('.campaign-retry').classList.toggle('hidden',!m.failed);}
+    if(m.failed||m.complete){ending.querySelector('small').textContent=m.failed?'ПОПЫТКА НЕ ЗАВЕРШЕНА':'МИССИЯ 1 ЗАВЕРШЕНА';ending.querySelector('h2').textContent=m.failed?'Возвращаемся к контрольной точке.':'Радиостанция наша.';ending.querySelector('p').textContent=m.failed??`Колонна снабжения в пути. ${m.flags.documents?'Документы сохранены для следующей миссии. ':''}${m.flags.courierSaved?'Связной эвакуирован. ':''}Продолжение следует.`;this.$('.campaign-retry').classList.toggle('hidden',!m.failed);
+      const stats=m.stats??{},seconds=Math.max(0,Math.floor(stats.elapsedSeconds??0));
+      this.$('.campaign-final-stats').textContent=`Убийств: ${stats.kills??0}   ·   Время: ${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}   ·   Реанимаций союзников: ${stats.revives??0}`;
+    }
     const blocking=Boolean(m.awaitingLoadout||m.failed||m.complete);
     if(blocking&&!this.blocking){this.clearControls();document.exitPointerLock?.();}this.blocking=blocking;
     this.audio.update(state,this.locale,paused||m.awaitingLoadout||m.complete);
   }
   render(r,state,dt){
     const m=state.campaign;if(!m)return;
-    if(this.renderEpoch!==m.epoch){this.renderEpoch=m.epoch;this.lastKnife=-1;this.knifeUntil=0;}
-    const preset=presets[m.light]??presets.night;
-    r.atmosphere.sky.visible=false;r.scene.background.set(preset.fog);r.scene.fog.color.set(preset.fog);r.scene.fog.density=m.light==='dawn'?.006:.009;
-    r.sun.intensity=preset.sunPower;r.sun.color.set(preset.sun);r.hemiLight.intensity=preset.hemiPower;r.hemiLight.color.set(preset.hemi);r.hemiLight.groundColor.set(preset.ground);r.ambientLight.intensity=preset.ambient;r.scene.environmentIntensity=preset.environment;
-    if(!this.lightApplied||this.lightApplied!==m.light){r.sunOffset.set(-90,75,65);r.sun.shadow.needsUpdate=true;this.lightApplied=m.light;}
+    if(this.renderEpoch!==m.epoch){this.renderEpoch=m.epoch;this.lastKnife=-1;this.knifeUntil=0;this.dawnBlend=m.sunriseTarget??0;}
+    // A gradual sunrise follows each mission stage, instead of switching the
+    // whole world from blue night to bright dawn in the third defence wave.
+    const goal=THREE.MathUtils.clamp(m.sunriseTarget??0,0,1);
+    this.dawnBlend=THREE.MathUtils.damp(this.dawnBlend??goal,goal,.12,Math.min(.12,dt));
+    const dawn=this.dawnBlend,first=THREE.MathUtils.smoothstep(dawn,0,.68),second=THREE.MathUtils.smoothstep(dawn,.53,1);
+    const night=this.dawnColors.night,alarm=this.dawnColors.alarm,morning=this.dawnColors.dawn;
+    const lerp=(name)=>THREE.MathUtils.lerp(THREE.MathUtils.lerp(presets.night[name],presets.alarm[name],first),presets.dawn[name],second);
+    const blend=(name,target)=>target.copy(night[name]).lerp(alarm[name],first).lerp(morning[name],second);
+    r.atmosphere.sky.visible=false;
+    blend('fog',r.scene.background);r.scene.fog.color.copy(r.scene.background);
+    // Warm airborne dust gently shortens the sightline without hiding nearby
+    // enemies. Avoid the abrupt clear-air switch at sunrise.
+    r.scene.fog.density=THREE.MathUtils.lerp(.0096,.0116,dawn);
+    r.sun.intensity=lerp('sunPower');blend('sun',r.sun.color);
+    r.hemiLight.intensity=lerp('hemiPower');blend('hemi',r.hemiLight.color);blend('ground',r.hemiLight.groundColor);
+    r.ambientLight.intensity=lerp('ambient');r.scene.environmentIntensity=lerp('environment');
+    r.sunOffset.set(-90+19*dawn,48+12*dawn,65+14*dawn);
+    if(this.lightApplied===undefined||Math.abs(this.lightApplied-dawn)>.015){r.sun.shadow.needsUpdate=true;this.lightApplied=dawn;}
     this.beacon.visible=Math.sin(state.time*5.1)+Math.sin(state.time*11.9)>-.2;
     const briefing=m.cutscene?.id==='briefing';this.table.visible=this.mapSheet.visible=this.mapRoute.visible=briefing;for(const leg of this.tableLegs)leg.visible=briefing;
     this.horizon.visible=m.cutscene?.id==='finale';
+    if(this.horizon.visible)this.drawFinalConvoy(m.cutscene.elapsed??0,dt,r.map.terrain);
     for(const site of m.chargeSites)this.charges.get(site.id).visible=site.planted;
     for(const fuel of m.fuel){const barrel=this.barrelMeshes.get(fuel.id);barrel.material.color.set(fuel.destroyed?'#302b27':'#806247');barrel.rotation.z=fuel.destroyed?1.3:0;}
     for(const t of m.trucks)burnCampaignTruck(this.truckMeshes.get(t.id),t.destroyed);
@@ -138,8 +200,12 @@ export class CampaignPresentation {
     if(m.flags.courierRevived&&!m.flags.courierSaved)add({x:200,z:140},'◇ ЭВАКУАЦИЯ');
   }
   dispose(){
-    this.audio.dispose();this.fire.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);for(const g of this.geometries)g.dispose();for(const m of this.materials)m.dispose();for(const t of this.textures)t.dispose();
+    this.audio.dispose();this.fire.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);
+    for(const {rig} of this.finalConvoy??[])disposeVehicleRig(rig);
+    for(const g of this.geometries)g.dispose();for(const m of this.materials)m.dispose();for(const t of this.textures)t.dispose();
     const r=this.renderer,o=this.original;r.scene.environment=o.environment;r.scene.environmentIntensity=o.environmentIntensity;r.sun.intensity=o.sun;r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.sun.color.copy(o.sunColor);r.hemiLight.color.copy(o.hemiColor);r.hemiLight.groundColor.copy(o.groundColor);r.sunOffset.copy(o.sunOffset);r.atmosphere.sky.visible=o.skyVisible;
+    if(o.background)r.scene.background.copy(o.background);
+    if(o.fog&&r.scene.fog){r.scene.fog.color.copy(o.fog);r.scene.fog.density=o.fogDensity;}
     document.body.classList.remove('campaign-active','campaign-downed','campaign-cinematic');
   }
 }

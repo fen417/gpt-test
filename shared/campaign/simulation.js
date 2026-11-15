@@ -3,6 +3,7 @@ import {thinkInfantryBot,ensureBotState} from '../bot-ai.js';
 import {moveBot,prepareNavigation} from '../bot-navigation.js';
 import {getWeapon,DIFFICULTIES} from '../world.js';
 import {aimCrew} from '../vehicle-ai.js';
+import {vehicleBoardingRange} from '../vehicles.js';
 import {ALHADRA,ROUTES} from './alhadra.js';
 import {MissionRuntime} from './mission-runtime.js';
 
@@ -35,6 +36,14 @@ export class CampaignSimulation extends Simulation {
     this.campaign.rawInput={...sanitizeInput(input),use:input.use===true,selfRevive:input.selfRevive===true,heal:input.heal===true,knife:input.knife===true,prone:input.prone===true};
     p.input.order=false;p.input.interact=false;p.input.horn=false;p.input.switchSeat=false;
   }
+  moveVehicle(vehicle,input,dt){
+    // Mission arrivals use the same collision-aware vehicle physics as combat.
+    // The scripted route only supplies driver controls, never teleports the car.
+    if(vehicle.campaignRoute&&this.campaign){
+      input=this.campaign.routeControls(vehicle)??input;
+    }
+    super.moveVehicle(vehicle,input,dt);
+  }
   thinkBot(p,dt){
     ensureBotState(this,p);
     if(this.campaign.thinkBot(p,dt))return;
@@ -63,6 +72,8 @@ export class CampaignSimulation extends Simulation {
     }
   }
   damageVehicle(vehicle,amount,attacker,kind,origin){
+    // Extraction remains reliable even if the enemy fires across the road.
+    if(vehicle.campaignEvacuation)return {ricochet:true,amount:0};
     if(vehicle.campaignArmor&&kind==='bullet')return {ricochet:true,amount:0};
     return super.damageVehicle(vehicle,amount,attacker,kind,origin);
   }
@@ -99,6 +110,7 @@ export class CampaignDirector {
     this.trucks=[{id:'truck-0',x:0,z:24,destroyed:false},{id:'truck-1',x:21,z:24,destroyed:false},{id:'truck-2',x:42,z:24,destroyed:false}];
     this.processedEvent=0;this.interaction=null;this.progress=0;this.checkpoint=0;this.saveRevision=0;this.epoch=0;
     this.lastInput={};this.cutscene=null;this.failed=null;this.complete=false;this.pickups={};this.unitSerial=0;
+    this.revives=0;
   }
   get time(){return this.sim.time;}
   get player(){return this.sim.players.get('local');}
@@ -112,6 +124,10 @@ export class CampaignDirector {
     this.place(p,-200,-140);p.yaw=-2.35;p.input.yaw=p.yaw;
     for(const [i,id] of this.definition.allies.entries()){const a=this.addAlly(id,-203-i%2*2,-144-Math.floor(i/2)*2);a.yaw=p.yaw;}
     const courier=this.addAlly('courier',107,66);this.down(courier,true);courier.downedTimer=1e6;courier.invulnerableUntil=1e8;
+    // A waiting extraction car is present from mission start, not created in
+    // front of the player when the wounded courier reaches the east road.
+    const evac=this.sim.createMapVehicle({id:'campaign-evac-car',type:'humvee',team:0,x:215,z:156,yaw:-2.3});
+    evac.campaignEvacuation=true;evac.respawnIn=1e8;this.sim.vehicles.push(evac);
     this.dialogue={queue:[],active:null,remaining:0};
     this.startCutscene('briefing');
     this.initialSave=null;
@@ -150,6 +166,35 @@ export class CampaignDirector {
     units.forEach((u,i)=>this.pending.push({...u,id:`${group}-${i}`,group,zone:this.definition.groups[group].zone}));
   }
   activeEnemy(p){return p.alive&&p.team===1&&!p.withdrawn&&distance(p,this.player)<105;}
+  // Spawns must never pop into the player's view, including reinforcements
+  // triggered while the camera points at the alarm source.
+  spawnVisible(pos){
+    const p=this.player,d=distance(pos,p);
+    if(d<24)return true;
+    return d<105&&Math.abs(angle(bearing(p,pos)-p.yaw))<1.22&&
+      this.sim.lineClear(eye(p),{x:pos.x,y:this.sim.groundAt(pos.x,pos.z)+1,z:pos.z});
+  }
+  safeEnemySpawn(unit){
+    const original={x:unit.x,z:unit.z};
+    const available=pos=>{
+      const y=this.sim.groundAt(pos.x,pos.z);
+      return !this.spawnVisible(pos)&&!this.sim.collides(pos.x,pos.z,y+.03)&&
+        !this.sim.vehicles.some(v=>v.hp>0&&distance(v,pos)<4)&&
+        ![...this.sim.players.values()].some(p=>p.alive&&distance(p,pos)<2);
+    };
+    if(available(original))return original;
+    // Prefer a covered/off-screen approach close to the authored position,
+    // not an arbitrary teleport to the player's back.
+    for(const radius of [14,24,34,46]){
+      for(let n=0;n<16;n++){
+        const theta=(n/16)*Math.PI*2+((unit.id?.length??0)*.31);
+        const pos={x:unit.x+Math.cos(theta)*radius,z:unit.z+Math.sin(theta)*radius};
+        if(distance(pos,this.player)<27||Math.abs(pos.x)>228||Math.abs(pos.z)>168)continue;
+        if(available(pos))return pos;
+      }
+    }
+    return null;
+  }
   flushSpawns(){
     let count=[...this.sim.players.values()].filter(p=>p.alive&&p.team===1).length;
     this.pending.sort((a,b)=>Number(b.group==='stationGuards')-Number(a.group==='stationGuards'));
@@ -157,10 +202,17 @@ export class CampaignDirector {
       const u=this.pending[i];
       // Nearby/relevant groups get slots first. Garrisons stay deterministic.
       if(this.stage>=4&&u.zone==='depot'){this.pending.splice(i,1);continue;}
+      if(this.time<(u.spawnRetryAt??0)){i++;continue;}
+      const spawn=this.safeEnemySpawn(u);
+      if(!spawn){u.spawnRetryAt=this.time+.5;i++;continue;}
       this.pending.splice(i,1);const [cls,weapon]=roles[u.role]??roles.sentry;
       const p=this.sim.addPlayer(u.id,'Восточный корпус',1,cls,weapon,'p19',true);
-      Object.assign(p,{campaignRole:u.role,campaignGroup:u.group,campaignZone:u.zone,home:{x:u.x,z:u.z},sleeping:Boolean(u.sleeping),detection:0,patrolIndex:0,grenades:u.role==='grenadier'?3:0,invulnerableUntil:0,spawnedAt:this.time});
-      this.place(p,u.x,u.z,u.y);p.yaw=u.yaw??Math.PI*1.25;p.homeYaw=p.yaw;p.botSlot=++this.unitSerial||1;
+      Object.assign(p,{campaignRole:u.role,campaignGroup:u.group,campaignZone:u.zone,
+        // A sentry must defend where it actually materializes; it should not
+        // leave cover to walk back to its original visible spawn point.
+        home:{x:spawn.x,z:spawn.z},sleeping:Boolean(u.sleeping),detection:0,patrolIndex:0,
+        grenades:u.role==='grenadier'?3:0,invulnerableUntil:0,spawnedAt:this.time});
+      this.place(p,spawn.x,spawn.z,(spawn.x===u.x&&spawn.z===u.z)?u.y:undefined);p.yaw=u.yaw??Math.PI*1.25;p.homeYaw=p.yaw;p.botSlot=++this.unitSerial||1;
       if(u.role==='officer'){this.sim.equipWeapon(p,2);p.equipTime=0;}
       if(u.role==='vehicle'){
         const v=this.sim.vehicles.find(v=>v.id==='campaign-mg-car');
@@ -259,6 +311,18 @@ export class CampaignDirector {
   idle(p){p.input=sanitizeInput({yaw:p.yaw,pitch:p.pitch,crouch:p.team===0&&this.player.input.crouch});}
   thinkBot(p,dt){
     if(p.downed||p.withdrawn){this.idle(p);return true;}
+    if(p.campaignRole==='vehicleDriver'&&p.vehicleId){this.idle(p);return true;}
+    if(p.id==='courier'&&this.flags.courierSaved){
+      this.idle(p);
+      const evac=this.sim.vehicles.find(v=>v.id==='campaign-evac-car');
+      if(p.vehicleId)return true;
+      if(evac?.hp>0){
+        if(distance(p,evac)<vehicleBoardingRange(evac)&&this.sim.mountVehicle(p,evac,0)){
+          evac.campaignRoute={points:[{x:226,z:166},{x:234,z:173}],index:0,speed:.66};
+        }else moveBot(this.sim,p,evac,dt,{sprint:false});
+      }
+      return true;
+    }
     if(p.campaignRole==='vehicle'&&p.vehicleId){const v=this.sim.vehicles.find(v=>v.id===p.vehicleId);this.idle(p);if(v?.hp>0)aimCrew(this.sim,p,v,dt);return true;}
     if(p.team===1){
       if(!this.activeEnemy(p)||p.sleeping){this.idle(p);return true;}
@@ -329,6 +393,7 @@ export class CampaignDirector {
     if(!scripted)this.say(p.id==='local'?'m01.lasko.playerDown':'m01.bruno.allyDown',true);
   }
   revive(p){
+    if(p.id!=='local'&&p.reviver==='local')this.revives++;
     p.downed=false;p.downedTimer=0;p.hp=40;p.prone=false;p.reviveProgress=0;p.reviver=null;p.invulnerableUntil=this.time+2;p.reviveSeq=(p.reviveSeq??0)+1;p.lastHurt=this.time;
     if(p.id==='kane'){this.flags.kaneSaved=true;this.say('m01.kane.revived');}
     if(p.id==='courier'){this.flags.courierRevived=true;p.invulnerableUntil=0;this.say('m01.courier.saved');}
@@ -465,7 +530,12 @@ export class CampaignDirector {
     }
     const courier=this.sim.players.get('courier');
     if(this.stage>=4&&distance(p,courier)<25){this.say('m01.lasko.courier');this.say('m01.courier.help');}
-    if(this.flags.courierRevived&&courier.alive&&this.inZone('exit',courier)&&!this.flags.courierSaved){this.flags.courierSaved=true;p.medkitCapacity=5;p.medkits=Math.min(5,p.medkits+1);courier.withdrawn=true;this.say('m01.courier.evacuated');}
+    if(this.flags.courierRevived&&courier?.alive&&this.inZone('exit',courier)&&!this.flags.courierSaved){
+      this.flags.courierSaved=true;p.medkitCapacity=5;p.medkits=Math.min(5,p.medkits+1);courier.invulnerableUntil=1e8;
+      // He walks to the waiting extraction car and drives toward the far road.
+      this.say('m01.courier.evacuated');
+    }
+    this.finishExtraction();
     if(this.stage===6&&this.time-this.runtime.state.timers.defence>=45)this.say('m01.bruno.radioHalf');
     if(this.stage>=6&&this.sim.vehicles.some(v=>v.campaignArmor&&v.hp<=0)&&!this.flags.vehicleDestroyed){this.flags.vehicleDestroyed=true;this.say('m01.bruno.vehicleDown');}
     if(p.downed)this.say('m01.duran.syringe');
@@ -503,10 +573,10 @@ export class CampaignDirector {
         const shooter=this.sim.players.get(e.playerId);if(shooter?.team===0){if(!e.suppressed)this.flags.playerOpenedFire=true;const radius=e.suppressed?25:120;this.noise(e,radius,e.suppressed?1:2);}
       }
       if(e.type==='explosion'){
-        if(this.stage===3&&!this.flags.depotBlastStarted&&distance(e,{x:20,z:30})<45){this.flags.quietDepot=!this.flags.earlyAlarm;this.flags.depotBlastStarted=true;}
+        // Ordinary grenades/rockets can alert the garrison but cannot
+        // detonate the mission's reinforced fuel drums or military trucks.
+        // Only the planted demolition charges trigger the depot chain.
         this.noise(e,150,3);
-        for(const f of this.fuel)if(!f.destroyed&&distance(e,f)<8){f.destroyed=true;this.depotExplosion(f);}
-        for(const t of this.trucks)if(!t.destroyed&&distance(e,t)<10)t.destroyed=true;
       }
     }
   }
@@ -519,10 +589,46 @@ export class CampaignDirector {
     for(const f of this.fuel)if(!f.destroyed&&distance(f,site)<8){f.destroyed=true;this.depotExplosion(f);}
     for(const t of this.trucks)if(distance(t,site)<11)t.destroyed=true;
   }
+  routeControls(vehicle){
+    const route=vehicle.campaignRoute;if(!route)return null;
+    const target=route.points[route.index];
+    if(!target){vehicle.campaignRoute=null;return {forward:0,strafe:0};}
+    if(distance(vehicle,target)<3.8){
+      route.index++;
+      return route.index>=route.points.length?{forward:0,strafe:0}:this.routeControls(vehicle);
+    }
+    const desired=bearing(vehicle,target),error=angle(desired-vehicle.yaw);
+    return {forward:Math.abs(error)>1?0.3:route.speed??.7,strafe:clamp(-error*2,-1,1)};
+  }
+  finishExtraction(){
+    const evac=this.sim.vehicles.find(v=>v.id==='campaign-evac-car');
+    if(!evac||!this.flags.courierSaved)return;
+    if(evac.campaignRoute||!evac.seats[0])return;
+    // The road ends at the playable boundary: withdraw beyond the visible
+    // mission without letting a drivable car cross the world collision fence.
+    if(evac.x>227&&distance(evac,this.player)>34){
+      const courier=this.sim.players.get('courier');if(courier){courier.withdrawn=true;courier.alive=false;courier.respawnIn=1e8;}
+      this.sim.vehicles=this.sim.vehicles.filter(v=>v!==evac);
+    }
+  }
   spawnVehicle(){
-    const v=this.sim.createMapVehicle({id:'campaign-mg-car',type:'humvee',team:1,x:204,z:138,yaw:-2.2});
-    v.campaignArmor=true;v.hp=560;v.respawnIn=1e8;this.sim.vehicles.push(v);
-    this.pending.unshift({id:'car-gunner',role:'vehicle',x:204,z:138,group:'wave3',zone:'village'});
+    if(this.sim.vehicles.some(v=>v.id==='campaign-mg-car'))return;
+    // Approach from the far east road instead of appearing near the radio.
+    // Enter from the north on the existing village road, not from the
+    // impassable rocks along the east map boundary.
+    const v=this.sim.createMapVehicle({id:'campaign-mg-car',type:'humvee',team:1,x:167,z:171,yaw:0});
+    for(const z of [171,168,164,161,158]){
+      if(!this.sim.vehicleCollides(v,167,z,0)&&!this.sim.vehicleCollides(v,167,z-3,0)){
+        v.z=z;v.y=this.sim.groundAt(167,z);break;
+      }
+    }
+    v.campaignArmor=true;v.hp=560;v.respawnIn=1e8;
+    v.campaignRoute={points:[{x:167,z:154},{x:167,z:139}],index:0,speed:.82};
+    this.sim.vehicles.push(v);
+    const driver=this.sim.addPlayer('car-driver','Водитель противника',1,'assault','ak12','p19',true);
+    Object.assign(driver,{campaignRole:'vehicleDriver',campaignGroup:'wave3',campaignZone:'village',vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0});
+    v.seats[0]=driver.id;this.sim.syncVehicleSeat(driver,v);
+    this.pending.unshift({id:'car-gunner',role:'vehicle',x:v.x,z:v.z,group:'wave3',zone:'village'});
   }
   fail(reason){if(this.failed)return;this.failed=reason;this.progress=0;this.interaction=null;this.player.reviveProgress=0;if(reason.includes('Радист')){this.dialogue={queue:[],active:null,remaining:0};this.say('m01.bruno.failure',true);this.updateDialogue(0);}}
   save(number){
@@ -533,7 +639,7 @@ export class CampaignDirector {
   }
   serialize(){
     const players=[...this.sim.players.values()].map(p=>Object.fromEntries(persistentPlayerKeys.filter(k=>p[k]!==undefined).map(k=>[k,structuredClone(p[k])])));
-    const mission={runtime:this.runtime.state,pending:this.pending,spawned:this.spawned,alerts:this.alerts,spoken:[...this.spoken],light:this.light,order:this.order,route:this.route,chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,fuseUntil:this.fuseUntil??null,checkpoint:this.checkpoint,pickups:this.pickups,cutscene:this.cutscene,unitSerial:this.unitSerial??0};
+    const mission={runtime:this.runtime.state,pending:this.pending,spawned:this.spawned,alerts:this.alerts,spoken:[...this.spoken],light:this.light,order:this.order,route:this.route,chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,revives:this.revives,fuseUntil:this.fuseUntil??null,checkpoint:this.checkpoint,pickups:this.pickups,cutscene:this.cutscene,unitSerial:this.unitSerial??0};
     return structuredClone({version:CAMPAIGN_SAVE_VERSION,missionId:'m01',definitionVersion:this.definition.version,difficulty:this.sim.difficulty,loadout:this.options.loadout??'silent',time:this.time,rngState:this.sim.rngState,players,mission,vehicles:this.sim.vehicles.map(v=>({...v,runOverHits:undefined})),grenades:this.sim.grenades,rockets:this.sim.rockets,deployables:this.sim.deployables});
   }
   restore(save){
@@ -545,19 +651,29 @@ export class CampaignDirector {
     }
     const m=structuredClone(save.mission);this.runtime.restore(m.runtime);delete m.runtime;this.spoken=new Set(m.spoken);delete m.spoken;Object.assign(this,m);
     this.options.loadout=save.loadout;this.sim.difficulty=save.difficulty;this.tuning=settings[save.difficulty];this.sim.botSettings={...DIFFICULTIES[save.difficulty],aimError:DIFFICULTIES[save.difficulty].aimError/this.tuning.accuracy};
-    this.sim.vehicles=structuredClone(save.vehicles??[]);this.sim.grenades=structuredClone(save.grenades??[]);this.sim.rockets=structuredClone(save.rockets??[]);this.sim.deployables=structuredClone(save.deployables??[]);this.sim.bullets=[];
+    this.sim.vehicles=structuredClone(save.vehicles??[]);
+    // Checkpoints from older mission builds did not contain the waiting
+    // extraction car. Keep those saved games compatible.
+    if(!this.sim.vehicles.some(v=>v.id==='campaign-evac-car')&&!this.flags.courierSaved){
+      const evac=this.sim.createMapVehicle({id:'campaign-evac-car',type:'humvee',team:0,x:215,z:156,yaw:-2.3});
+      evac.campaignEvacuation=true;evac.respawnIn=1e8;this.sim.vehicles.push(evac);
+    }
+    this.sim.grenades=structuredClone(save.grenades??[]);this.sim.rockets=structuredClone(save.rockets??[]);this.sim.deployables=structuredClone(save.deployables??[]);this.sim.bullets=[];
     this.sim.events=[];this.sim.eventId=0;this.processedEvent=0;this.sim.botTeams=null;this.sim.botTeamAt=0;
     // Reconstructing players invokes ordinary spawn sampling. Resume the saved
     // random stream only after reconstruction has finished.
     this.sim.rngState=save.rngState;
-    this.dialogue={queue:[],active:null,remaining:0};this.failed=null;this.complete=false;this.awaitingLoadout=false;this.rawInput={};this.lastInput={};this.interaction=null;this.progress=0;this.senseAt=0;this.lastSenseAt=this.time;this.pendingCheckpoint=null;
+    this.dialogue={queue:[],active:null,remaining:0};this.failed=null;this.complete=false;this.awaitingLoadout=false;this.rawInput={};this.lastInput={};this.interaction=null;this.progress=0;this.senseAt=0;this.lastSenseAt=this.time;this.pendingCheckpoint=null;this.revives??=0;
     this.latestSave=structuredClone(save);this.epoch++;return true;
   }
   presentation(){
     const s=this.runtime.state,objective=this.definition.objectives.find(o=>o.id===s.activeObjective),p=this.player;
     const positions={follow:{x:-119,z:-63},ridge:{x:-80,z:-30},depot:{x:20,z:30},village:{x:150,z:105},station:{x:150,z:105},defend:{x:151,z:108}};
     const down=[...this.sim.players.values()].filter(a=>a.team===0&&a.downed&&a.alive&&a.id!=='local'&&(a.id!=='courier'||this.stage>=4&&distance(a,p)<35)).map(a=>({id:a.id,name:a.name,x:a.x,y:a.y,z:a.z,timer:a.downedTimer}));
-    return {missionId:'m01',title:this.definition.title,stage:s.stage,objective:objective?.text??null,objectives:s.objectives,flags:{...this.flags},target:positions[s.activeObjective]??null,alert:this.alertLevel,alerts:this.alerts,detection:this.detection??0,detectingEnemy:this.detectingEnemy,order:this.order,route:this.route,light:this.light,downed:down,
+    const levels=[0,.035,.14,.29,.46,.62,.79,1];
+    const stage=Math.min(7,Math.max(0,s.stage));
+    const sunriseTarget=clamp(levels[stage]+Math.min(.075,Math.max(0,this.time-s.stageAt)/120*.075),0,1);
+    return {missionId:'m01',title:this.definition.title,stage:s.stage,sunriseTarget,stats:{kills:p?.kills??0,elapsedSeconds:Math.max(0,Math.floor(this.time)),revives:this.revives},objective:objective?.text??null,objectives:s.objectives,flags:{...this.flags},target:positions[s.activeObjective]??null,alert:this.alertLevel,alerts:this.alerts,detection:this.detection??0,detectingEnemy:this.detectingEnemy,order:this.order,route:this.route,light:this.light,downed:down,
       squadIds:['local',...this.definition.allies],prompt:this.prompt,progress:this.progress,interaction:this.interaction,subtitle:this.dialogue.active,subtitleRemaining:this.dialogue.remaining,cutscene:this.cutscene,awaitingLoadout:this.awaitingLoadout,failed:this.failed,complete:this.complete,checkpoint:this.checkpoint,saveRevision:this.saveRevision,epoch:this.epoch,
       chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,fuze:Math.max(0,(this.fuseUntil??0)-this.time),radioRemaining:s.stage>=6?Math.max(0,90-(this.time-(s.timers.defence??this.time))):90,reviveProgress:p?.reviveProgress??0};
   }
