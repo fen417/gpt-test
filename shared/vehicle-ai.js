@@ -1,5 +1,5 @@
 import { rayVehicleArmor } from './vehicle-combat.js';
-import { TURRET_WEAPON, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange } from './vehicles.js';
+import { TURRET_WEAPON, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, preferredVehicleSeat } from './vehicles.js';
 import { aimBullet } from './ballistics.js';
 import {TANK_CANNON,TANK_MG} from './tank.js';
 import { getWeapon, EYE_HEIGHT } from './world.js';
@@ -309,8 +309,7 @@ function findFieldBoardingTarget(sim, p) {
     if (length > (preference === 'specialist' ? 48 : 36)) continue;
     const reserved = reservationsFor(sim, vehicle, p);
     const free = index => vehicle.seats[index] === null && !reserved.has(index);
-    const seat = free(0) ? 0
-      : vehicle.seats.findIndex((rider, index) => index > 0 && free(index));
+    const seat = preferredVehicleSeat(vehicle,reserved);
     if (seat < 0) continue;
     const score = length + (preference === 'crew' && seat > 0 ? -12 : seat > 0 ? 9 : 0);
     if (score < bestScore) {

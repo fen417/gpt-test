@@ -127,13 +127,27 @@ export function canFirePassengerWeapon(vehicle, seatIndex, yaw, pitch) {
   return Math.abs(z - window.z) <= window.width / 2 && Math.abs(y - windows.y) <= windows.height / 2;
 }
 
+// The tank has two enclosed crew stations; troop seats and light vehicles do not.
+export function isEnclosedTankCrew(vehicle,index){
+  return vehicle?.type==='tank'&&(index===0||index===1);
+}
+
+// When a tank already has a driver, the gunner seat is always boarded first.
+export function preferredVehicleSeat(vehicle,reserved=new Set(),allowDriver=true){
+  const free=i=>vehicle.seats[i]===null&&!reserved.has(i);
+  if(allowDriver&&free(0))return 0;
+  if(vehicle.type==='tank'&&free(1))return 1;
+  for(let i=1;i<vehicle.seats.length;i++)if(free(i))return i;
+  return -1;
+}
+
 export function getVehicleBoardingSeat(player, vehicles) {
   let nearest = Infinity;
   let result = null;
   for (const vehicle of vehicles) {
     if (vehicle.hp <= 0 || (vehicle.team !== player.team && vehicle.seats.some(Boolean))) continue;
     const distance = Math.hypot(player.x - vehicle.x, player.z - vehicle.z);
-    const seat = vehicle.seats.indexOf(null);
+    const seat = preferredVehicleSeat(vehicle);
     if (seat >= 0 && distance <= vehicleBoardingRange(vehicle) && distance < nearest && Math.abs(vehicle.speed) <= 3) {
       nearest = distance;
       result = { vehicle, seat };
