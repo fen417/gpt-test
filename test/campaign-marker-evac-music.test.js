@@ -71,6 +71,13 @@ test('rescued courier travels down the road rather than stopping against cliffs'
     `evac car stuck after 11 s: moved ${travelled.toFixed(2)}m, at ${v.x.toFixed(2)},${v.z.toFixed(2)}, speed ${v.speed}, route ${JSON.stringify(v.campaignRoute)}`);
   assert.ok(v.x<184||v.z<107,'the car must be westbound or southbound along the road');
   assert.ok(Math.abs(v.y-sim.groundAt(v.x,v.z))<1.5,'car must stay on the terrain');
+  tick(sim,33);
+  const after=sim.vehicles.find(vehicle=>vehicle.id==='campaign-evac-car');
+  // By the time the courier has followed the south/west road out of the
+  // village, the car should have disappeared behind the town. It must not
+  // remain stuck at a wall or at the map boundary.
+  assert.ok(!after||Math.hypot(after.x-start.x,after.z-start.z)>93,
+    `courier still stuck after 44 s: ${after?.x},${after?.z}, speed ${after?.speed}, waypoint ${after?.campaignRoute?.index}`);
 });
 
 test('old checkpoint evacuation car is relocated from rocky route to safe road',()=>{
