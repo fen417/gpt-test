@@ -597,7 +597,9 @@ export class Simulation {
     if(!victim.alive||this.winner!==null||this.time<victim.invulnerableUntil)return;
     if(victim.vehicleId&&victim.vehicleSeat<=1){
       const v=this.vehicles.find(v=>v.id===victim.vehicleId);
-      if(v?.type==='tank'&&v.hp>0&&(victim.vehicleSeat===0||meta.explosive))return;
+      // Driver and gunner remain inside the armoured hull while the tank lives.
+      // Troops on its exterior, and all light-vehicle crew, are still vulnerable.
+      if(v?.type==='tank'&&v.hp>0)return;
     }
     const prevHp=victim.hp;
     victim.hp=Math.max(0,victim.hp-amount);
