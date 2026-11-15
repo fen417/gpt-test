@@ -155,8 +155,15 @@ export function createGameServer(options={}){
   function simulationTick(dt){
     const begin=performance.now(),sim=room.sim,now=Date.now();
     for(const s of sessions.values()){
-      const p=sim.players.get(s.id);if(!p)continue;s.credit=Math.min(.1,(s.credit??0)+dt);const frames=[];let controls=null;
-      const maximumFrames=Math.ceil(dt*60)+(s.inputQueue.length>4?1:0);
+      const p=sim.players.get(s.id);if(!p)continue;s.credit=Math.min(.3,(s.credit??0)+dt);const frames=[];let controls=null;
+      // A network stall delivers a burst of frames at once. With a 1-frame-per-tick drain the burst
+      // would stay in the queue forever (arrival rate == consumption rate) and add permanent input
+      // latency. Cap the backlog at ~200 ms (keeping one-shot actions) and drain the rest faster.
+      if(s.inputQueue.length>12){
+        const dropped=s.inputQueue.splice(0,s.inputQueue.length-12),next=s.inputQueue[0];
+        for(const f of dropped){for(const action of pulses)if(f.input[action])next.input[action]=true;s.inputAck=f.sequence;}
+      }
+      const backlog=s.inputQueue.length,maximumFrames=Math.ceil(dt*60)+(backlog>3?Math.min(5,backlog-3):0);
       while(frames.length<maximumFrames&&s.inputQueue.length&&s.inputQueue[0].dt<=s.credit+1e-6){
         const f=s.inputQueue.shift();s.credit-=f.dt;frames.push(f);
         if(!controls)controls={...f.input};else{const prior=controls;controls={...f.input};for(const action of pulses)if(prior[action])controls[action]=true;}
