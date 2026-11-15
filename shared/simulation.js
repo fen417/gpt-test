@@ -1,7 +1,7 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
 import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
-import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
+import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, prepareVehicleRoutes, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
 import { thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
@@ -172,8 +172,9 @@ export class Simulation {
       const cls=classKeys[Math.floor(n/2)%4];
       const wep=CLASS_WEAPONS[cls]?.[Math.floor(n/8)%2]??defaultWeaponId(cls);
       const p=this.addPlayer(`bot-${n}`,names[n%names.length],n%2,cls,wep,undefined,true);p.bot=true;p.botSlot=n;p.nextThink=0;p.botPath=[];
+      p.botThinkAt=this.time+(n%5)*.01;p.botThinkLastAt=this.time;
     }
-    if(bots>0)prepareNavigation(this);
+    if(bots>0){prepareNavigation(this);prepareVehicleRoutes(this);}
     this.ready=true;
   }
   // Keep both teams within one player of each other by moving bots across the sides.
@@ -245,6 +246,7 @@ export class Simulation {
     Object.assign(p,{rockets:p.classId==='assault'?2:0,secondaryCooldown:0,gadgetTime:0,gadgetAction:null,gadgetActionUntil:0,
       pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null,heldGadget:null});
     p.ai=null;p.botRideOrder=null;p.hornHeld=false;p.botCrewTarget=null;p.botCrewSenseAt=0;this.botTeamAt=0;
+    if(p.bot){p.botThinkAt=this.time+((p.botSlot??0)%5)*.01;p.botThinkLastAt=this.time;}
     p.velocityX=0;p.velocityZ=0;p.tickX=x;p.tickZ=z;
     p.botTransit = null;
     p.botLastHouse = null;
@@ -924,7 +926,15 @@ export class Simulation {
     }
     return out;
   }
-  thinkBot(p,dt){thinkInfantryBot(this,p,dt);}
+  thinkBot(p,dt){
+    // Run expensive bot decisions/probes less often than authoritative physics.
+    // The last controls still move each bot on every tick (all maps, 45/60 Hz).
+    const interval=(p.ai?.contact||p.vehicleId)?1/30:1/20;
+    if(this.time+1e-8<(p.botThinkAt??0))return;
+    const elapsed=Math.max(dt,Math.min(.12,this.time-(p.botThinkLastAt??this.time-dt)));
+    p.botThinkAt=this.time+interval;p.botThinkLastAt=this.time;
+    thinkInfantryBot(this,p,elapsed);
+  }
   step(rawDt){
     const dt=clamp(finite(rawDt),0,.1);if(!dt)return;this.time+=dt;
     while(this.events.length&&this.time-this.events[0].time>=1.2)this.events.shift();
