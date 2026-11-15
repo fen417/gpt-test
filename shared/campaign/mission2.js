@@ -19,6 +19,16 @@ export class Mission2Simulation extends Simulation{
     this.campaign.initialize();
   }
   balanceTeams(){}
+  damageVehicle(vehicle,amount,attacker,kind,origin,sourceVehicleId){
+    const wasAlive=vehicle.hp>0;
+    const hit=super.damageVehicle(vehicle,amount,attacker,kind,origin,sourceVehicleId);
+    if(wasAlive&&vehicle.type==='tank'&&vehicle.hp<=0){
+      // Campaign wrecks stay as cover and do not respawn like multiplayer vehicles.
+      vehicle.respawnIn=1e8;vehicle.wreckTime=1e8;
+      this.campaign?.onTankDestroyed(vehicle,attacker);
+    }
+    return hit;
+  }
   setInput(id,input={}){
     super.setInput(id,input);
     const p=this.players.get(id);
@@ -162,10 +172,16 @@ export class Mission2Director{
       const playerId=i===6?'local':`tank-crew-${i+1}`;
       const driver=this.sim.addPlayer(playerId,meta.name,0,'assault','ar416','p19',i!==6);
       v.seats[0]=driver.id;
-      Object.assign(driver,{vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0,campaignRole:'tank-driver'});
+      Object.assign(driver,{alive:true,hp:100,respawnIn:0,
+        vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0,campaignRole:'tank-driver'});
       this.sim.syncVehicleSeat(driver,v);
     }
     this.say('holt.brief01',6);
+  }
+  onTankDestroyed(vehicle,attacker){
+    if(vehicle.id==='sokol-8'&&!this.flags.baleLost){
+      this.flags.baleLost=true;this.say('bale.loss',4);
+    }
   }
   say(key,duration=4){
     this.radio={key,serial:++this.radioSerial};this.radioEnd=this.sim.time+duration;
@@ -240,7 +256,8 @@ export class Mission2Director{
       this.sim.vehicles.push(v);
       const driver=this.sim.addPlayer(`east-crew-${n+1}`,`Восточный корпус ${n+1}`,1,'assault','ak12','p19',true);
       v.seats[0]=driver.id;
-      Object.assign(driver,{vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0,campaignRole:'tank-driver'});
+      Object.assign(driver,{alive:true,hp:100,respawnIn:0,
+        vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0,campaignRole:'tank-driver'});
       this.sim.syncVehicleSeat(driver,v);
     }
   }
@@ -252,7 +269,6 @@ export class Mission2Director{
       if(v?.hp>0){
         const attacker=this.sim.players.get('east-crew-1');
         this.sim.damageVehicle(v,100000,attacker,'blast',{x:v.x+1,y:v.y+.9,z:v.z});
-        this.say('bale.loss',4);
       }
     }else if(event.type==='musicLoop')this.flags.musicLoop=true;
     else if(event.type==='formation')this.flags.formation=event.name;
