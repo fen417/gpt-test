@@ -27,3 +27,16 @@ The source archive and unused recordings are not shipped with the game.
 The 0.15 M2010 replacements are reproduced with scripts/prepare-combat-audio.mjs. DMR reports have a shorter, higher-pitched tail; SV-98 retains the longer field reflection. Offline loudness mastering retains true-peak headroom. The older prepare-gunshot-assets script reproduces the pre-0.15 sniper assets.
 
 Runtime WAV masters were moved to `art-source/audio/` and encoded as Opus with AAC fallback by `scripts/prepare-runtime-audio.mjs`. Source attribution and licensing above apply to these derived files. Existing Ogg foley sources are retained.
+
+## Новые звуки пулемётов
+
+`machinegun.ogg` — **исходная запись, добавленная пользователем**. Из неё автоматически вырезаются два отдельных коротких выстрела (по ~0,16 с), которые используются при каждом выстреле пулемёта:
+
+- `machinegun-shot-1.ogg` / `machinegun-shot-1.m4a`
+- `machinegun-shot-2.ogg` / `machinegun-shot-2.m4a`
+
+Новый набор `lmg` общий для **MG-36**, **ПКП «Печенег»** и **установленных на технике пулемётов**. Скорость, высота звучания и громкость слегка различаются в зависимости от оружия. Остальные виды стрелкового оружия не затронуты. Исходный длинный файл в игровую сборку не включается.
+
+Перегенерация на компьютере с FFmpeg: `node scripts/trim-machinegun-audio.mjs`.
+
+Сведения о лицензии для пользовательской записи не проверялись; лицензия CC0, указанная выше, относится только к оригинальному набору старых звуков.
