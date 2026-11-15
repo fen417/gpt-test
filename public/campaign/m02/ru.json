@@ -212,8 +212,8 @@
     },
     "duran.targets": {
       "speaker": "duran",
-      "text": "Пехота у восточных домов! И противотанковые орудия на гряде. Уберите их!",
-      "duration": 6.61,
+      "text": "Пехота у восточных домов! Два противотанковых орудия у дороги. Уберите их!",
+      "duration": 6.91,
       "audio": "voice/duran.targets.ogg",
       "synthesis": {
         "engine": "Windows System.Speech / Microsoft Pavel",

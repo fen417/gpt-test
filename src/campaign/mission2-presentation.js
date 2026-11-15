@@ -14,7 +14,7 @@ export class Mission2Presentation {
     this.renderer=renderer;this.combat=audio;this.leave=leave;this.resume=resume;
     this.clearControls=clearControls;this.isZoom=false;this.closed=false;
     this.audioMissing=false;this.audioLoading=false;this.music=null;
-    this.lastDriftWarning=0;this.lastClockSent=0;
+    this.lastDriftWarning=0;
     this.getBindings=getBindings;this.keyLabel=keyLabel;
     this.voiceAudio=new CampaignAudio(audio,new URL(`${import.meta.env.BASE_URL}campaign/m02/`,location.href),this.definition);
     this.oldMusicOverride=audio.campaignMusicOverride;audio.campaignMusicOverride=true;
@@ -27,7 +27,7 @@ export class Mission2Presentation {
       <span class="m02-mission-status"></span>
     </header>
     <aside class="m02-company"><small>РОТА «СОКОЛ» · ТАНКИ В СТРОЮ</small><div class="m02-tanks"></div></aside>
-    <div class="m02-reticle"><span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span><i class="m02-dispersion"></i><span class="m02-lead" hidden>⊕</span></div>
+    <div class="m02-reticle"><span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span><i class="m02-dispersion"></i><span class="m02-lead" hidden>⊕</span><span class="m02-range" hidden></span></div>
     <aside class="m02-weapon-panel"><strong class="m02-weapon"></strong><span class="m02-ammo"></span><span class="m02-hp"></span></aside>
     <aside class="m02-radio"><small>ЧАСТОТА «МАЯК»</small><b class="m02-radio-speaker"></b><span class="m02-radio-text"></span></aside>
     <p class="m02-controls"></p><p class="m02-feedback"></p><p class="m02-interact"></p><span class="m02-world-target" hidden></span>
@@ -164,13 +164,12 @@ export class Mission2Presentation {
       this.music.gain.gain.setTargetAtTime(!paused&&!end&&this.combat.enabled
         ?this.combat.volume*setting*musicDuringRadio:0,this.music.ctx.currentTime,.2);
       const played=this.music.ctx.currentTime-this.music.originTime;
-      if(performance.now()-this.lastClockSent>80){this.lastClockSent=performance.now();this.session.musicClock(played);}
       if(!paused&&!end&&Math.abs(played-m.time)>.1
         &&performance.now()-this.lastDriftWarning>10000){
         this.lastDriftWarning=performance.now();
         console.warn('Campaign M02 music/simulation clock drift',Math.round((played-m.time)*1000)+'ms');
       }
-      if(Math.abs(played-m.time)>1){this.stopMusic();this.playMusicAt(m.time);}
+      if(Math.abs(played-m.time)>.25){this.stopMusic();this.playMusicAt(m.time);}
     }
     if(performance.now()>=(this.nextMapAt??0)){this.nextMapAt=performance.now()+100;this.drawMap(state);}
   }
@@ -231,6 +230,9 @@ export class Mission2Presentation {
       }
     }
     this.root.classList.toggle('m02-sniper-mode',Boolean(v&&!m.cutscene&&this.isZoom));
+    const rangeLabel=this.$('.m02-range');
+    rangeLabel.hidden=!v||!this.isZoom||Boolean(m.cutscene)||!m.sight;
+    if(!rangeLabel.hidden)rangeLabel.textContent=`${Math.round(m.sight.range)} М`;
     const bore=this.$('.m02-bore-dot'),aimdot=this.$('.m02-aimdot'),dispersion=this.$('.m02-dispersion');
     if(v&&!m.cutscene){
       const mouth=tankMuzzle(v),d=300,point=r.project(mouth.x-Math.sin(v.aimYaw)*d,

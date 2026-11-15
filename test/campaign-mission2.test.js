@@ -6,7 +6,8 @@ import locale from '../public/campaign/m02/ru.json' with {type:'json'};
 import {ALHADRA} from '../shared/campaign/alhadra.js';
 import {ALHADRA_DESERT,ALHADRA_OFFSET} from '../shared/campaign/alhadra-desert.js';
 import {Mission2Simulation,validMission2Save} from '../shared/campaign/mission2.js';
-import {TANK_CANNON,tankShellRicochets} from '../shared/tank.js';
+import {TANK_CANNON,moveTank,tankShellRicochets} from '../shared/tank.js';
+import {getAssetColliders,rayCollider} from '../shared/asset-colliders.js';
 
 function create(){return new Mission2Simulation(mission,{difficulty:'regular',seed:113,lines:locale.lines});}
 function step(sim,n){for(let i=0;i<n;i++)sim.step(1/60);}
@@ -24,11 +25,54 @@ test('extended Al-Hadra tank map preserves old village terrain and geometry',()=
     const carried=ALHADRA_DESERT.terrain.heightAt(x-ALHADRA_OFFSET.x,z-ALHADRA_OFFSET.z);
     assert.ok(Math.abs(carried-preserved)<.025,`terrain changed at (${x},${z}): ${carried} vs ${preserved}`);
   }
-  const oldVillage=ALHADRA.boxes
-    .filter(b=>Math.abs(b.x-ALHADRA_OFFSET.x)<255&&Math.abs(b.z-ALHADRA_OFFSET.z)<185);
-  assert.equal(ALHADRA_DESERT.boxes.length,oldVillage.length+25,
-    'retain village buildings without importing mission-1 outer cliff colliders');
+  const oldVillage=new Map(ALHADRA.boxes.map(box=>[box.id,box]));
+  for(const box of ALHADRA_DESERT.boxes){
+    const original=oldVillage.get(box.id);
+    if(!original)continue;
+    assert.equal(box.x,original.x-ALHADRA_OFFSET.x);
+    assert.equal(box.z,original.z-ALHADRA_OFFSET.z);
+    if(original.editorPose){
+      assert.equal(box.editorPose.x,original.editorPose.x-ALHADRA_OFFSET.x);
+      assert.equal(box.editorPose.z,original.editorPose.z-ALHADRA_OFFSET.z);
+    }
+  }
   assert.ok(ALHADRA_DESERT.terrain.heightAt(-450,-200)>0);
+});
+test('mountain foothills follow the visible surface and the whole tank road is clear',()=>{
+  const sim=create(),map=sim.map,v=sim.vehicles.find(v=>v.id==='sokol-7');
+  sim.vehicles=[v];
+  const cliffs=map.boxes.filter(b=>b.kind==='village-rock');
+  assert.ok(cliffs.length>0);
+  assert.ok(getAssetColliders(map).every(b=>b.kind!=='village-rock'));
+  assert.ok(cliffs.some(b=>sim.groundAt(b.x,b.z)>map.terrain.baseSurface.heightAt(b.x,b.z)+6));
+  const [x,z]=[135,-163];
+  assert.ok(cliffs.some(b=>Math.abs(x-b.x)<b.w/2&&Math.abs(z-b.z)<b.d/2));
+  assert.equal(map.terrain.heightAt(x,z),map.terrain.baseSurface.heightAt(x,z));
+  assert.equal(sim.vehicleCollides(v,x,z,0),false);
+  const route=mission.friendlyCompany.route;
+  for(let i=1;i<route.length;i++){
+    const [ax,az]=route[i-1],[bx,bz]=route[i],dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz);
+    const yaw=Math.atan2(-dx,-dz);
+    for(let d=0;d<=len;d+=1){
+      const x=ax+dx*d/len,z=az+dz*d/len,y=sim.groundAt(x,z);
+      assert.equal(sim.vehicleCollides(v,x,z,yaw),false,`blocked tank road at ${x},${z}`);
+      const rise=sim.groundAt(x+dx*2/len,z+dz*2/len)-y;
+      assert.ok(Math.atan2(rise,2)<25*Math.PI/180,`steep tank road at ${x},${z}`);
+    }
+  }
+});
+test('relocated props keep their collision geometry on the visible map',()=>{
+  const sim=create(),boxes=getAssetColliders(sim.map),byId=new Map(sim.map.boxes.map(b=>[b.id,b]));
+  for (const box of boxes){
+    const authored=byId.get(box.id),pose=authored.editorPose??authored;
+    assert.ok(Math.hypot(box.x-pose.x,box.z-pose.z)<Math.hypot(authored.w,authored.d),box.id);
+    assert.ok(Number.isFinite(box.h)&&box.h>box.minY,box.id);
+  }
+  for(const kind of ['village-wall','village-palm','crate','rock','sandbags','car','truck','tent']){
+    const b=boxes.find(b=>b.kind===kind);
+    const a={x:b.x,y:b.h+2,z:b.z};
+    assert.ok(rayCollider(a,{x:0,y:-1,z:0},b,b.h-b.minY+3)<Infinity,kind);
+  }
 });
 test('the tank road does not form a cliff at the reused village edge',()=>{
   for(const x of [-290,-285,-280,-275]){
@@ -49,19 +93,57 @@ test('ten allied tanks and player commander share one seat and controls',()=>{
   assert.equal(sim.map.id,'alhadra-desert');
   assert.equal(sim.campaign.cutscene.id,'briefing');
 });
-test('skipping briefing never shifts the exact 13-second first-enemy trigger',()=>{
+test('the moving vanguard crests the ridge and fires at 13 seconds',()=>{
   const sim=create();step(sim,120);assert.equal(sim.vehicles.filter(v=>v.team===1).length,0);
   sim.campaign.command({type:'skip'});
   assert.equal(sim.campaign.elapsed,0);
-  step(sim,12*60);
-  assert.equal(sim.vehicles.filter(v=>v.team===1).length,0);
-  step(sim,60);
-  assert.equal(sim.vehicles.filter(v=>v.team===1).length,6);
+  const enemies=sim.vehicles.filter(v=>v.team===1);
+  const player=sim.vehicles.find(v=>v.id==='sokol-7');
+  const seen=()=>enemies.some(v=>sim.campaign.visible({
+    x:player.x+Math.sin(player.yaw)*9,y:player.y+3.27,z:player.z+Math.cos(player.yaw)*9,
+  },{x:v.x,y:v.y+2.4,z:v.z}));
+  assert.equal(enemies.length,6);
+  assert.equal(seen(),false);
+  const initialX=enemies[0].x;
+  sim.setInput('local',{forward:1,yaw:player.yaw});
+  for(let i=0;i<765;i++){
+    step(sim,1);
+    assert.ok(player.speed>0,'player lane must stay clear while holding forward');
+  }
+  assert.ok(initialX-enemies[0].x>50);
+  assert.equal(seen(),false);
+  assert.equal(sim.snapshot().campaign.enemyTanksAlive,0);
+  step(sim,15);
+  assert.equal(seen(),true);
   assert.ok(Math.abs(sim.campaign.elapsed-13)<.0001);
   assert.equal(sim.campaign.enemySerial,6);
   step(sim,6);
   const first=sim.events.find(e=>e.type==='cannonShot');
   assert.ok(first&&Math.abs(first.time-sim.campaign.combatStartedAt-13)<=.1,'contact must include actual gunfire');
+});
+test('both tank control schemes invert steering only while backing up',()=>{
+  const sim={groundAt:()=>0,vehicleCollides:()=>false};
+  for(const controlScheme of [undefined,'wot']){
+    for(const strafe of [-1,1]){
+      for(const forward of [-1,0,1]){
+        const v={x:0,y:0,z:0,yaw:0,speed:0,controlScheme};
+        moveTank(sim,v,{forward,strafe},1/60);
+        assert.equal(Math.sign(v.yaw),forward<0?strafe:-strafe);
+      }
+    }
+  }
+});
+test('both AT crews occupy road shoulders in sight of the tank approach',()=>{
+  const sim=create(),c=sim.campaign;
+  c.spawnVillageAttack();
+  for(const [i,[x,z]] of mission.villageApproachGuns.entries()){
+    const gun=sim.players.get('m02-atgun-'+i);
+    assert.ok(gun?.alive);
+    assert.equal(gun.x,x);assert.equal(gun.z,z);
+    assert.equal(sim.collides(x,z),false);
+    const from=i===0?{x:-107,z:-188}:{x:-30,z:-87};
+    assert.ok(c.visible({...from,y:sim.groundAt(from.x,from.z)+2},{x,y:gun.y+1,z}));
+  }
 });
 test('commander can select AP, HE and MG without modifying multiplayer tank physics',()=>{
   const sim=create(),c=sim.campaign,v=sim.vehicles.find(v=>v.id==='sokol-7');

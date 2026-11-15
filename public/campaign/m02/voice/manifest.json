@@ -84,7 +84,7 @@
       "description": "Короткие команды"
     }
   },
-  "totalBytes": 241795,
+  "totalBytes": 242625,
   "clips": [
     {
       "id": "holt.brief01",
@@ -197,8 +197,8 @@
     {
       "id": "duran.targets",
       "speaker": "duran",
-      "seconds": 6.300041666666667,
-      "bytes": 14690
+      "seconds": 6.600041666666667,
+      "bytes": 15520
     },
     {
       "id": "holt.lastWave",

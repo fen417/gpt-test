@@ -59,7 +59,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
     const villageModels = createVillageModelBuilder(owner);
     for (const item of items) {
       const { key, kind, value } = item, geometryValue=item.geometryValue??value;
-       if(!editable&&map.missionId!=='m02'&&map.campaign&&value.campaignDestructible)continue;
+      if(!editable&&map.missionId!=='m02'&&map.campaign&&value.campaignDestructible)continue;
       const assetMapId = value.assetMapId ?? map.id;
       if (['landform', 'landmark', 'spawn', 'route'].includes(kind) || (kind === 'vehicle' && !editable)) continue;
       const group = new THREE.Group();
@@ -97,8 +97,9 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
           const field = fields[kind];
           portModels(field ? { boxes: parts, [field]: [local] } : { boxes: parts });
         } else if (assetMapId === 'village') {
+          const surface = map.terrain?.baseSurface ?? map.terrain;
           const terrain = { heightAt: (x, z) =>
-            ((map.terrain?.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) ?? 0) - anchor.baseY) / scale.y };
+            ((surface?.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) ?? 0) - anchor.baseY) / scale.y };
           // Structure children keep their own authored rotation (ruin fragments
           // and furniture). The parent group's rotation is applied only once.
           const rotatedParts=kind==='structure'?parts.filter(p=>hasRotation(p.modelRotation)):[];

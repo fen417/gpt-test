@@ -1,6 +1,10 @@
 import '../../shared/campaign/alhadra.js';
 import {recordCampaignCheckpoint,markCampaignComplete} from './progress.js';
 
+const SNAPSHOT_DELAY=.067;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerpAngle=(a,b,t)=>a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*t;
+
 export const SAVE_KEY='sector09-campaign-m01-v1';
 const saveKey=id=>id==='m02'?'sector09-campaign-m02-v1':SAVE_KEY;
 export function readCampaignSave(missionId='m01'){
@@ -13,6 +17,7 @@ export class CampaignSession {
   constructor({definition,locale,save,...options},{onState=()=>{},onError=()=>{},onSaveError=()=>{}}={}){
     this.definition=definition;this.locale=locale;this.missionId=definition.id??'m01';
     this.completionNoted=false;this.paused=true;this.closed=false;
+    this.frames=[];
     this.ready=new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});
     this.timer=setTimeout(()=>this.reject(Error('Кампания не ответила при загрузке.')),20000);
     this.worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
@@ -30,9 +35,15 @@ export class CampaignSession {
         }
       }
       if(m.type==='state'){
-        const epoch=m.state.campaign.epoch;
-        this.previous=this.state?.campaign.epoch===epoch&&m.state.time>=this.state.time?this.state:null;
-        this.state=m.state;this.receivedAt=performance.now();
+        const next=m.state,previous=this.state;
+        if(!previous||next.campaign.epoch!==previous.campaign.epoch||next.time<previous.time||
+          Boolean(next.campaign.cutscene)!==Boolean(previous.campaign.cutscene))this.resetPlayback();
+        this.state=next;
+        if(this.frames.at(-1)?.time!==next.time){
+          this.frames.push(next);
+          if(this.frames.length>8)this.frames.shift();
+          this.receivedAt=performance.now();
+        }else this.frames[this.frames.length-1]=next;
         if(m.state.campaign?.complete&&!this.completionNoted){
           this.completionNoted=true;
           const stats=m.state.campaign.stats??{};
@@ -48,30 +59,40 @@ export class CampaignSession {
     this.worker.onerror=event=>{this.reject(Error(event.message||'Ошибка Worker кампании.'));if(this.started)onError(event.message);};
     this.worker.postMessage({type:'create',definition,lines:locale.lines,options,save});
   }
-  setPaused(value){if(value===this.paused)return;this.paused=value;this.worker.postMessage({type:'paused',value});}
+  resetPlayback(){this.frames.length=0;this.renderTime=null;this.lastSampleAt=null;}
+  setPaused(value){if(value===this.paused)return;this.paused=value;this.resetPlayback();this.worker.postMessage({type:'paused',value});}
   advance(input){this.worker.postMessage({type:'input',input});}
   command(command){this.worker.postMessage({type:'command',command});}
-  musicClock(seconds){this.worker.postMessage({type:'musicClock',seconds});}
   snapshot(){return this.state;}
   sample(now){
-    if(!this.previous||this.state.campaign.cutscene||this.paused)return this.state;
-    const t=Math.max(0,Math.min(1,(now-this.receivedAt)/33.333));
-    const old=new Map(this.previous.players.map(p=>[p.id,p]));
-    const lerp=(a,b)=>a+(b-a)*t;
-    const angle=(a,b)=>a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*t;
-    const previousVehicles=new Map(this.previous.vehicles.map(v=>[v.id,v]));
+    if(this.frames.length<2||this.state.campaign.cutscene||this.paused)return this.state;
+    const oldest=this.frames[0].time,latest=this.frames.at(-1).time;
+    const desired=Math.min(latest,latest+(now-this.receivedAt)/1000-SNAPSHOT_DELAY);
+    const dt=Math.max(0,Math.min(.1,(now-(this.lastSampleAt??now))/1000));
+    this.lastSampleAt=now;
+    if(this.renderTime===null)this.renderTime=Math.max(oldest,desired);
+    // Use elapsed display time, nudging towards the buffer target without
+    // resetting the interpolation whenever a state message arrives.
+    const correction=Math.max(-.12,Math.min(.12,(desired-this.renderTime-dt)*4));
+    this.renderTime=Math.max(oldest,Math.min(latest,this.renderTime+dt*(1+correction)));
+    const upper=this.frames.findIndex((frame,i)=>i>0&&frame.time>=this.renderTime);
+    const a=this.frames[upper-1],b=this.frames[upper];
+    const t=(this.renderTime-a.time)/(b.time-a.time);
+    const oldPlayers=new Map(a.players.map(p=>[p.id,p])),newPlayers=new Map(b.players.map(p=>[p.id,p]));
+    const oldVehicles=new Map(a.vehicles.map(v=>[v.id,v])),newVehicles=new Map(b.vehicles.map(v=>[v.id,v]));
     return {...this.state,
       players:this.state.players.map(p=>{
-        const a=old.get(p.id);
-        if(!a||a.alive!==p.alive||Math.hypot(a.x-p.x,a.z-p.z)>8)return p;
-        return {...p,x:lerp(a.x,p.x),y:lerp(a.y,p.y),z:lerp(a.z,p.z)};
+        const a=oldPlayers.get(p.id),b=newPlayers.get(p.id);
+        if(!a||!b||a.alive!==p.alive||b.alive!==p.alive||Math.hypot(a.x-b.x,a.z-b.z)>8)return p;
+        return {...p,x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),z:lerp(a.z,b.z,t)};
       }),
       vehicles:this.state.vehicles.map(v=>{
-        const a=previousVehicles.get(v.id);
-        if(!a||a.hp<=0||v.hp<=0||Math.hypot(a.x-v.x,a.z-v.z)>25)return v;
-        return {...v,x:lerp(a.x,v.x),y:lerp(a.y,v.y),z:lerp(a.z,v.z),
-          yaw:angle(a.yaw,v.yaw),aimYaw:angle(a.aimYaw,v.aimYaw),
-          aimPitch:lerp(a.aimPitch??0,v.aimPitch??0)};
+        const a=oldVehicles.get(v.id),b=newVehicles.get(v.id);
+        if(!a||!b||a.hp<=0||b.hp<=0||v.hp<=0||Math.hypot(a.x-b.x,a.z-b.z)>25)return v;
+        return {...v,x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),z:lerp(a.z,b.z,t),
+          yaw:lerpAngle(a.yaw,b.yaw,t),aimYaw:lerpAngle(a.aimYaw,b.aimYaw,t),aimPitch:lerp(a.aimPitch??0,b.aimPitch??0,t),
+          speed:lerp(a.speed,b.speed,t),steer:lerp(a.steer??0,b.steer??0,t),
+          bodyPitch:lerp(a.bodyPitch??0,b.bodyPitch??0,t),bodyRoll:lerp(a.bodyRoll??0,b.bodyRoll??0,t)};
       })
     };
   }

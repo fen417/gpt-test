@@ -1530,8 +1530,7 @@ function frame(now){
     networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
   if(active&&campaignPresentation)campaignPresentation.update(renderState??state,paused,yaw);
   if(['quarry','alhadra-desert'].includes(renderer.map?.id)&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
-  tankHud?.update(active?renderState:null,renderPlayer,renderer,now,
-    {zoom:aim||state?.campaign?.missionId==='m02'&&isActionHeld('tankZoom')});
+  tankHud?.update(active&&state?.campaign?.missionId!=='m02'?renderState:null,renderPlayer,renderer,now,{zoom:aim});
   renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);

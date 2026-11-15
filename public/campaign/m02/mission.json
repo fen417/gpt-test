@@ -39,16 +39,20 @@
       -560
     ],
     "enemyStart": [
-      -570,
-      -450
+      -594,
+      -454
     ]
   },
+  "villageApproachGuns": [
+    [-103, -133],
+    [24, -67]
+  ],
   "player": {
     "name": "Ирвин Вос",
     "vehicleId": "sokol-7",
     "start": [
-      -914,
-      -541
+      -938,
+      -581
     ],
     "team": 0,
     "maxHp": 4800
@@ -189,10 +193,10 @@
         0
       ]
     ],
-    "maxHp": 3200,
+    "maxHp": 3500,
     "contactStart": [
-      -570,
-      -450
+      -594,
+      -454
     ],
     "rearRoute": [
       [
@@ -215,6 +219,10 @@
         17,
         0
       ]
+    ],
+    "contactApproach": [
+      -740,
+      -504
     ]
   },
   "briefing": {
@@ -289,8 +297,7 @@
     {
       "id": "enemyVanguard",
       "at": 13,
-      "type": "spawn",
-      "count": 6,
+      "type": "contact",
       "requiredExact": true
     },
     {

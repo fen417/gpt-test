@@ -21,6 +21,28 @@ export async function campaignData(missionId='m01'){
 const minutes=seconds=>seconds>0?`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(Math.floor(seconds%60)).padStart(2,'0')}`:'—';
 const debugUnlock=()=>import.meta.env.DEV===true&&new URLSearchParams(location.search).has('unlockAll');
 const statusLabels={locked:'ЗАКРЫТО',planned:'В РАЗРАБОТКЕ',available:'ДОСТУПНА',progress:'КОНТРОЛЬНАЯ ТОЧКА',complete:'ВЫПОЛНЕНО'};
+
+function showMissionPreview(mission,status){
+  const frame=dialog.querySelector('.campaign-preview-art');
+  if(frame.dataset.previewMission===mission.id&&frame.dataset.status===status&&frame.querySelector('img'))return;
+
+  frame.dataset.previewMission=mission.id;
+  frame.dataset.status=status;
+  frame.querySelector('img')?.remove();
+  if(status==='locked'||!mission.previewImage)return;
+
+  const image=document.createElement('img');
+  image.alt=mission.previewAlt;
+  image.width=960;
+  image.height=540;
+  image.loading='lazy';
+  image.decoding='async';
+  image.addEventListener('load',()=>image.classList.add('is-loaded'),{once:true});
+  image.addEventListener('error',()=>image.remove(),{once:true});
+  image.src=new URL(`${import.meta.env.BASE_URL}campaign/${mission.previewImage}`,location.href).href;
+  frame.append(image);
+}
+
 function buildScreen(){
   dialog=document.createElement('dialog');
   dialog.className='menu-dialog campaign-menu campaign-map-screen';
@@ -34,8 +56,8 @@ function buildScreen(){
     <div class="campaign-map-layout">
       <nav class="campaign-mission-list" aria-label="Миссии кампании"></nav>
       <section class="campaign-map-detail" aria-live="polite">
-        <div class="campaign-preview-art" role="img" aria-label="Военная карта и схема операции">
-          <svg viewBox="0 0 900 506" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <div class="campaign-preview-art">
+          <svg class="campaign-preview-fallback" viewBox="0 0 900 506" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
             <defs><pattern id="campaign-contours" width="85" height="65" patternUnits="userSpaceOnUse"><path d="M-40 65Q20-15 95 34T195 65" fill="none" stroke="#6a5a40" stroke-width="1.4" opacity=".25"/></pattern></defs>
             <rect width="900" height="506" fill="#b0a17b"/><rect width="900" height="506" fill="url(#campaign-contours)"/>
             <path d="M10 470C160 390 202 268 350 296S615 152 888 42" fill="none" stroke="#4b4333" stroke-width="14" opacity=".24" stroke-dasharray="2 12"/>
@@ -44,10 +66,11 @@ function buildScreen(){
               <circle cx="95" cy="435" r="9"/><circle cx="337" cy="296" r="9"/><circle cx="591" cy="190" r="9"/>
               <circle cx="800" cy="96" r="9"/></g>
             <path d="M520 356l52-17 20 34-42 20zM658 311l35-13 14 30-43 12z" fill="#665f4e" opacity=".45"/>
-            <g font-family="monospace" fill="#55442f" font-size="22" font-weight="bold"><text x="30" y="68">ПУСТЫНЯ / СЕКТОР 09</text><text x="760" y="460">05:12</text></g>
             <g stroke="#55442f" fill="none" stroke-width="3"><path d="M807 76h50m-25-25v50"/><circle cx="832" cy="76" r="31"/></g>
           </svg>
-          <div class="campaign-map-stamp">СЕКТОР 09 · ДЕЛО / 01</div>
+          <div class="campaign-preview-locked" aria-hidden="true">
+            <svg viewBox="0 0 64 64" fill="none"><path d="M22 28v-8a10 10 0 0 1 20 0v8" stroke="currentColor" stroke-width="5"/><rect x="13" y="27" width="38" height="28" rx="3" fill="currentColor"/><path d="M32 37v8" stroke="#b5a480" stroke-width="4" stroke-linecap="round"/></svg>
+          </div>
         </div>
         <div class="campaign-mission-detail">
           <div class="campaign-mission-meta"><span class="campaign-mission-number"></span><span class="campaign-mission-state"></span></div>
@@ -107,6 +130,7 @@ export async function openCampaignMenu(onStart){
     const mission=campaignCatalog.missions.find(m=>m.id===id);
     const status=campaignMissionStatus(id,progress,debugUnlock());
     dialog.querySelector('.campaign-mission-number').textContent=`МИССИЯ ${String(mission.number).padStart(2,'0')} / 08`;
+    showMissionPreview(mission,status);
     dialog.querySelector('.campaign-mission-state').textContent=statusLabels[status];
     dialog.querySelector('.campaign-mission-title').textContent=status==='locked'?`Миссия ${mission.number}`:mission.title;
     dialog.querySelector('.campaign-mission-kind').textContent=status==='locked'?'Сведения засекречены':`${mission.kind} · ${mission.character}`;

@@ -34,13 +34,17 @@ export function tankArmorZone(v,origin){
 export function tankMuzzle(v,out={}){const d=vehicleAimDirection(v,v.aimYaw,v.aimPitch??0,muzzleDirection),length=Math.hypot(d.x,d.y,d.z),yaw=Math.atan2(-d.x,-d.z);return vehiclePartPose(v,-Math.sin(yaw)*.9+d.x/length*TANK_MUZZLE_DISTANCE,gunHeight+d.y/length*TANK_MUZZLE_DISTANCE,-.4-Math.cos(yaw)*.9+d.z/length*TANK_MUZZLE_DISTANCE,out);}
 export function moveTank(sim,v,input,dt){
   const spec=VEHICLE_TYPES.tank,throttle=clamp(input?.forward??0,-1,1);let steer=clamp(input?.strafe??0,-1,1);
-  v.steer=steer;
   const target=throttle*(throttle>=0?spec.maxSpeed:spec.reverseSpeed);
   const brake=Math.abs(target)<Math.abs(v.speed)||Math.sign(target)!==Math.sign(v.speed),acceleration=brake?spec.brake:spec.acceleration;
   v.speed+=clamp(target-v.speed,-acceleration*dt,acceleration*dt);
+  // Steering follows the direction of travel. A stopped tank still pivots normally.
+  if(v.speed<0)steer=-steer;
+  v.steer=steer;
   const turn=steer*(Math.abs(v.speed)<1?1.3:1-Math.min(.6,Math.abs(v.speed)/22));
   const yaw=angle(v.yaw-turn*dt,0),mid=v.yaw-turn*dt*.5,x=v.x-Math.sin(mid)*v.speed*dt,z=v.z-Math.cos(mid)*v.speed*dt;
-  const ground=sim.groundAt(x,z),ahead=sim.groundAt(x-Math.sin(yaw)*2,z-Math.cos(yaw)*2),grade=Math.atan2((ahead-ground)*Math.sign(v.speed||1),2);
+  const travelSign=Math.sign(v.speed),ground=sim.groundAt(x,z);
+  const ahead=sim.groundAt(x-Math.sin(yaw)*2*travelSign,z-Math.cos(yaw)*2*travelSign);
+  const grade=Math.atan2(ahead-ground,2);
   if(grade>(v.controlScheme==='wot'?25*Math.PI/180:spec.maxSlope)||sim.vehicleCollides(v,x,z,yaw)){v.speed=0;return;}
   if(grade>0)v.speed*=Math.max(.96,1-grade*dt);Object.assign(v,{x,y:ground,z,yaw});
 }

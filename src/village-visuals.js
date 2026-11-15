@@ -257,11 +257,11 @@ export function createVillageModelBuilder(owner) {
 }
 
 export function addVillageGround(owner, map, assets = true) {
-  const m = palette(owner), span = map.size + 220;
+  const m = palette(owner), span = map.size + 220, terrain = map.terrain.baseSurface ?? map.terrain;
   const segments=Math.ceil(span/map.terrain.cell);
   const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
   const vertices = geometry.attributes.position;
-  for (let i = 0; i < vertices.count; i++) vertices.setZ(i, map.terrain.heightAt(vertices.getX(i), -vertices.getY(i)));
+  for (let i = 0; i < vertices.count; i++) vertices.setZ(i, terrain.heightAt(vertices.getX(i), -vertices.getY(i)));
   geometry.computeVertexNormals();
   const uv = geometry.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * span / 7, uv.getY(i) * span / 7);
@@ -272,7 +272,7 @@ export function addVillageGround(owner, map, assets = true) {
   const roads = terrainRoads(owner, ground, span, map.roads, m.sand, '#bda17a');
   partitionTerrain(owner.scene, geometry);
   if (assets) {
-    createVillageModelBuilder(owner)(map.boxes, map.structures, [], map.terrain);
+    createVillageModelBuilder(owner)(map.boxes, map.structures, [], terrain);
     if (map.ship) createPortModelBuilder(owner)({ ship: map.ship });
   }
   return roads;

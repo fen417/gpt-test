@@ -470,7 +470,7 @@ function drive(sim, p, vehicle, dt) {
   }
   if (!reverse && vehicle.speed > 1.2) journey.blockedAt = null;
   p.input.forward = speed > wantedSpeed ? 0 : reverse ? -.53 : Math.abs(error) > .65 ? .55 : 1;
-  p.input.strafe = steer;
+  p.input.strafe = reverse && vehicle.type === 'tank' ? -steer : steer;
 }
 
 function crewSight(sim,origin,to){
