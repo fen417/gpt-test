@@ -25,7 +25,7 @@ import { createWeaponRig } from './weapons.js';
 import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
-import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
@@ -850,7 +850,7 @@ export class GameRenderer {
       // Only the tank's enclosed driver and gunner are hidden under its armour.
       // Exposed tank riders and all light-vehicle crew must still be rendered.
       const seatedVehicle=player.vehicleId?state.vehicles.find(v=>v.id===player.vehicleId):null;
-      if(seatedVehicle?.type==='tank'&&player.vehicleSeat<=1){
+      if(isEnclosedTankCrew(seatedVehicle,player.vehicleSeat)){
         const hidden=this.soldiers.get(player.id);
         if(hidden){hidden.group.removeFromParent();hidden.initialized=false;hidden.seated=false;}
         continue;
