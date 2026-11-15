@@ -398,7 +398,6 @@ export class Simulation {
     if(!p.vehicleId)return false;
     const vehicle=this.vehicles.find(v=>v.id===p.vehicleId),seat=p.vehicleSeat;
     if(vehicle){
-      if(!force&&Math.abs(vehicle.speed)>4.5)return false;
       const spec=VEHICLE_TYPES[vehicle.type],position=spec.seats[seat];
       const dimensions=getVehicleDimensions(vehicle);
       const side=position.x<=0?-1:1, width=dimensions.width/2+.68, length=dimensions.length/2+.72;
@@ -534,10 +533,10 @@ export class Simulation {
       const body=uprightBox(victim.x,victim.y,victim.z,PLAYER_RADIUS,victim.crouching?1.05:EYE_HEIGHT);
       if(!shapes.some(shape=>overlapsAffine(body,shape)))continue;
       vehicle.runOverHits.set(victim.id,this.time+.65);
-      this.damage(victim,Math.min(180,(speed-2)*12*(vehicle.type==='humvee'?1.15:1)),driver,{weapon:'НАЕЗД'});
+      this.damage(victim,Math.min(180,(speed-2)*12*(vehicle.type==='humvee'?1.15:1)),driver,{weapon:'НАЕЗД',vehicleId:vehicle.id});
     }
   }
-  damageVehicle(vehicle,amount,attacker,kind,origin=null){
+  damageVehicle(vehicle,amount,attacker,kind,origin=null,sourceVehicleId=null){
     if(vehicle.hp<=0||this.winner!==null||attacker?.team===vehicle.team)return;
     const spec=VEHICLE_TYPES[vehicle.type];
     if(kind==='bullet'&&spec.bulletImmune){
@@ -558,19 +557,22 @@ export class Simulation {
       const passenger=this.players.get(id);
       if(!passenger)continue;
       this.dismountVehicle(passenger,true);
-      this.damage(passenger,200,attacker,{weapon:'ВЗРЫВ ТЕХНИКИ'});
+      this.damage(passenger,200,attacker,{weapon:'ВЗРЫВ ТЕХНИКИ',vehicleId:sourceVehicleId});
     }
     this.event('vehicleDestroyed',{vehicleId:vehicle.id,vehicleType:vehicle.type,attackerId:attacker?.id,x:vehicle.x,y:vehicle.y+.65,z:vehicle.z});
     this.event('explosion',{x:vehicle.x,y:vehicle.y+.65,z:vehicle.z,vehicleId:vehicle.id});
     if(vehicle.type==='tank')for(const p of this.players.values()){
       const d=Math.hypot(p.x-vehicle.x,p.z-vehicle.z,p.y-vehicle.y);
-      if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:'ВЗРЫВ ТАНКА',explosive:true});
+      if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:'ВЗРЫВ ТАНКА',explosive:true,vehicleId:sourceVehicleId});
     }
     if(attacker)this.awardScore(attacker,100,'УНИЧТОЖЕНИЕ ТЕХНИКИ',{kind:'vehicle'});
   }
   damage(victim,amount,attacker,meta={}){
     if(!victim.alive||this.winner!==null||this.time<victim.invulnerableUntil)return;
-    if(meta.explosive&&victim.vehicleId&&victim.vehicleSeat<=1){const v=this.vehicles.find(v=>v.id===victim.vehicleId);if(v?.type==='tank'&&v.hp>0)return;}
+    if(victim.vehicleId&&victim.vehicleSeat<=1){
+      const v=this.vehicles.find(v=>v.id===victim.vehicleId);
+      if(v?.type==='tank'&&v.hp>0&&(victim.vehicleSeat===0||meta.explosive))return;
+    }
     const prevHp=victim.hp;
     victim.hp=Math.max(0,victim.hp-amount);
     const dealt=prevHp-victim.hp;
@@ -591,6 +593,12 @@ export class Simulation {
       if(attacker&&attacker.team!==victim.team){
         attacker.kills++;
         this.awardScore(attacker,100,'УСТРАНЕНИЕ ПРОТИВНИКА',{kind:'kill',victim:victim.name});
+        const tank=this.vehicles.find(v=>v.id===meta.vehicleId&&v.type==='tank'&&v.team===attacker.team&&v.hp>0);
+        if(tank)for(const id of tank.seats){
+          const member=this.players.get(id);
+          if(member?.alive&&member!==attacker&&member.team===attacker.team&&member.vehicleId===tank.id)
+            this.awardScore(member,25,'БОЕВАЯ РАБОТА ЭКИПАЖА',{kind:'crew_kill',victim:victim.name});
+        }
         if(meta.headshot)this.awardScore(attacker,25,'ВЫСТРЕЛ В ГОЛОВУ',{kind:'headshot'});
         const nearPoint=this.points.find(pt=>dist(victim,pt)<=CAPTURE_RADIUS+6||dist(attacker,pt)<=CAPTURE_RADIUS+6);
         if(nearPoint){
@@ -739,8 +747,8 @@ export class Simulation {
       hit,headshot:hit&&headshot,impact,vehicleHit,equipmentHit:Boolean(equipment)});
     const shooter=this.players.get(playerId),attacker=shooter?.team===team?shooter:null;
     const falloff=clamp(1-Math.max(0,flight*weapon.projectileSpeed-35)/300,.65,1);
-    if(hit)this.damage(target,weapon.damage*falloff*(headshot?2:1),attacker,{headshot,weapon:weapon.weapon});
-    if(struckVehicle)this.damageVehicle(vehicle,weapon.damage*falloff,attacker,'bullet',{x:origin.x+direction.x*closest,y:origin.y+direction.y*closest,z:origin.z+direction.z*closest});
+    if(hit)this.damage(target,weapon.damage*falloff*(headshot?2:1),attacker,{headshot,weapon:weapon.weapon,vehicleId:bullet.vehicleId});
+    if(struckVehicle)this.damageVehicle(vehicle,weapon.damage*falloff,attacker,'bullet',{x:origin.x+direction.x*closest,y:origin.y+direction.y*closest,z:origin.z+direction.z*closest},bullet.vehicleId);
     if(equipment)damageDeployable(this,equipment,weapon.damage*falloff,attacker);
     return false;
   }
@@ -798,7 +806,7 @@ export class Simulation {
     let vx=(x-origin.x)/flight,vz=(z-origin.z)/flight,vy=(targetY-origin.y+7*flight*flight)/flight;
     const speed=Math.hypot(vx,vy,vz),limit=Math.min(1,26/Math.max(.001,speed));
     vx*=limit;vy*=limit;vz*=limit;
-    this.grenades.push({id:`grenade-${++this.eventId}`,owner:p.id,team:p.team,...origin,vx,vz,vy,fuse:1.8,yaw:p.yaw||0});
+    this.grenades.push({id:`grenade-${++this.eventId}`,owner:p.id,team:p.team,vehicleId:p.vehicleId,...origin,vx,vz,vy,fuse:1.8,yaw:p.yaw||0});
     this.event('grenade',{playerId:p.id,x:p.x,y:p.y||0,z:p.z,yaw:p.yaw||0});
   }
   gridIndex(x,z){return clamp(Math.floor((z-this.gridOrigin)/this.gridCell),0,this.gridSize-1)*this.gridSize+clamp(Math.floor((x-this.gridOrigin)/this.gridCell),0,this.gridSize-1);}
@@ -1006,7 +1014,7 @@ export class Simulation {
       else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
       const ground=this.groundAt(grenade.x,grenade.z)+.15;
       if(grenade.y<ground){grenade.y=ground;grenade.vy=Math.abs(grenade.vy)*.3;grenade.vx*=.92;grenade.vz*=.92;}
-      if(grenade.fuse<=0)blast(this,{x:grenade.x,y:grenade.y,z:grenade.z},this.players.get(grenade.owner),'grenade',null,grenade.team);
+      if(grenade.fuse<=0)blast(this,{x:grenade.x,y:grenade.y,z:grenade.z},this.players.get(grenade.owner),'grenade',null,grenade.team,null,false,grenade.vehicleId);
     }
     this.grenades=this.grenades.filter(g=>g.fuse>0);
     if(this.campaign)return; // Mission objectives own victory and time in local campaign.

@@ -5,9 +5,10 @@ import {createVehicle,VEHICLE_TYPES} from '../shared/vehicles.js';
 import {advanceTankSystems,fireTank,tankDropAngle} from '../shared/tank.js';
 import {SnapshotEncoder,SnapshotDecoder,prepareSnapshot,encodeEvents,decodeEvents} from '../shared/snapshot-codec.js';
 function setup(){const sim=new Simulation({bots:0,mapId:'quarry'}),v=sim.vehicles.find(v=>v.type==='tank'&&v.team===0);sim.vehicles=[v];return{sim,v};}
-test('tank seats five and driver loss leaves a usable free seat',()=>{
+test('tank seats five and protected driver can exit to leave a usable free seat',()=>{
   const {sim,v}=setup(),crew=[];for(let i=0;i<5;i++){const p=sim.addPlayer('crew'+i,'Crew',0);Object.assign(p,{x:v.x+2.6,z:v.z,y:sim.groundAt(v.x+2.6,v.z),invulnerableUntil:0});assert.ok(sim.mountVehicle(p,v,i));crew.push(p);}
-  const enemy=sim.addPlayer('enemy','Enemy',1);sim.damage(crew[0],200,enemy);assert.equal(v.seats[0],null);
+  const enemy=sim.addPlayer('enemy','Enemy',1);sim.damage(crew[0],200,enemy);assert.equal(crew[0].hp,100);assert.equal(v.seats[0],crew[0].id);
+  assert.equal(sim.dismountVehicle(crew[0]),true);assert.equal(v.seats[0],null);
   crew[4].input.switchSeat=true;sim.updateVehicleActions(crew[4]);assert.equal(crew[4].vehicleSeat,0);
   assert.equal(sim.dismountVehicle(crew[4]),true);
 });

@@ -1257,11 +1257,10 @@ function updateVehicleHud(player){
   show('vehicle-prompt',!!(nearby||seat));
   if(nearby)text('vehicle-prompt',key+' · СЕСТЬ В ТЕХНИКУ — '+VEHICLE_TYPES[nearby.vehicle.type].name.toUpperCase());
   if(!seat)return null;
-  const canExit=Math.abs(vehicle.speed)<=4.5;
-  const swap=canExit&&vehicle.seats.includes(null)&&(vehicle.type!=='tank'||Math.abs(vehicle.speed)<3);
+  const swap=vehicle.seats.includes(null)&&Math.abs(vehicle.speed)<(vehicle.type==='tank'?3:4.5);
   const look=aimAngles();
   const canFire=canFirePassengerWeapon(vehicle,player.vehicleSeat,look.yaw,look.pitch);
-  const controls=canExit?key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':''):'СБАВЬТЕ СКОРОСТЬ ДЛЯ ВЫХОДА';
+  const controls=key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':'');
   const windowHint=seat.role==='passenger'&&!canFire?(vehicle.type==='tank'?'\nСТРЕЛЯЙТЕ НАРУЖУ СО СВОЕГО БОРТА':'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО'):'';
   text('vehicle-prompt',controls+(seat.role==='driver'?'     '+formatKeyCode(keybinds.horn)+' · СИГНАЛ / ПОЗВАТЬ БОТОВ':'')+(seat.role==='driver'&&vehicle.type==='tank'?'     '+formatKeyCode(keybinds.vehicleCamera)+' · КАМЕРА':'')+windowHint);
   if(seat.role==='passenger')return {role:seat.role,canFire};
@@ -1476,7 +1475,7 @@ function frame(now){
   if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
   if(active&&campaignPresentation)campaignPresentation.update(renderState??state,paused,yaw);
   if(renderer.map?.id==='quarry'&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
-  tankHud?.update(active?renderState:null,renderPlayer,renderer,now,{zoom:aim,thirdPerson:vehicleThirdPerson,cameraKey:formatKeyCode(keybinds.vehicleCamera),seatKey:formatKeyCode(keybinds.switchSeat)});
+  tankHud?.update(active?renderState:null,renderPlayer,renderer,now,{zoom:aim});
   renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);

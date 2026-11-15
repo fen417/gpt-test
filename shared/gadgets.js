@@ -167,11 +167,11 @@ function launchRocket(sim,p) {
   }
   const origin={x:start.x+sweep.x*Math.max(0,clearance-.025),y:start.y+sweep.y*Math.max(0,clearance-.025),z:start.z+sweep.z*Math.max(0,clearance-.025)};
   const id='rocket:'+ ++sim.eventId;
-  const rocket={id,ownerId:p.id,team:p.team,...origin,vx:direction.x*85,vy:direction.y*85,vz:direction.z*85,life:4};
+  const rocket={id,ownerId:p.id,team:p.team,vehicleId:p.vehicleId,...origin,vx:direction.x*85,vy:direction.y*85,vz:direction.z*85,life:4};
   p.invulnerableUntil=0;
   sim.event('rocketLaunch',{playerId:p.id,team:p.team,rocketId:id,...origin,vx:rocket.vx,vy:rocket.vy,vz:rocket.vz,yaw:p.yaw,pitch:p.pitch});
   // Sweep eye-to-muzzle first, so extending the barrel never shoots through cover.
-  if(clearance<length)blast(sim,origin,p,'rocket',blockedVehicle,p.team,id);
+  if(clearance<length)blast(sim,origin,p,'rocket',blockedVehicle,p.team,id,false,p.vehicleId);
   else sim.rockets.push(rocket);
 }
 
@@ -184,17 +184,17 @@ export function damageDeployable(sim,item,amount,attacker) {
   }
 }
 
-export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null,directConfirmed=false) {
+export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=owner?.team,rocketId=null,directConfirmed=false,sourceVehicleId=null) {
   const rocket=kind==='rocket',cannon=kind==='cannon',radius=cannon?TANK_CANNON.radius:rocket?9:10;
   let confirmed=directConfirmed;
   sim.event('explosion',{...origin,kind,playerId:owner?.id,...(rocketId?{rocketId}:{})});
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team===team)continue;
     const d=Math.hypot(distance(origin,vehicle),origin.y-vehicle.y-.8);
-    if(vehicle===directVehicle){const before=vehicle.hp;sim.damageVehicle(vehicle,cannon&&vehicle.type==='tank'?900:760,owner,'blast',origin);confirmed||=vehicle.hp<before;}
+    if(vehicle===directVehicle){const before=vehicle.hp;sim.damageVehicle(vehicle,cannon&&vehicle.type==='tank'?900:760,owner,'blast',origin,sourceVehicleId);confirmed||=vehicle.hp<before;}
     else if(d<radius&&sim.lineClear(origin,center(vehicle,.8))){
       const distance=vehicle.type==='tank'?Math.max(0,d-1.8):d,damage=rocket||cannon?480:vehicle.type==='tank'?300:240;
-      const before=vehicle.hp;sim.damageVehicle(vehicle,damage*(1-distance/radius),owner,'blast',origin);confirmed||=vehicle.hp<before;
+      const before=vehicle.hp;sim.damageVehicle(vehicle,damage*(1-distance/radius),owner,'blast',origin,sourceVehicleId);confirmed||=vehicle.hp<before;
     }
   }
   for(const player of sim.players.values()){
@@ -202,7 +202,7 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     const d=Math.hypot(distance(origin,player),origin.y-player.y-.8);
     const vehicle=sim.vehicles.find(v=>v.id===player.vehicleId);
     const enclosed=vehicle?.type==='humvee'&&player.vehicleSeat!==1;
-    if(d<radius&&sim.lineClear(origin,center(player,.8))){const before=player.hp;sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА',explosive:true});confirmed||=player.hp<before;}
+    if(d<radius&&sim.lineClear(origin,center(player,.8))){const before=player.hp;sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА',explosive:true,vehicleId:sourceVehicleId});confirmed||=player.hp<before;}
   }
   for(const item of sim.deployables){
     const d=Math.hypot(distance(origin,item),origin.y-item.y-.3);
@@ -242,8 +242,8 @@ function updateRockets(sim,dt) {
     rocket.z+=direction.z*Math.max(0,nearest-(hit?.08:0));rocket.vy-=gravity*dt;rocket.life-=dt;
     if(hit||rocket.life<=0){
       const owner=sim.players.get(rocket.ownerId);
-      let directConfirmed=false;if(rocket.kind===1&&playerHit){const before=playerHit.hp;sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ',explosive:true});directConfirmed=playerHit.hp<before;}
-      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,rocket.kind===1?'cannon':'rocket',direct,rocket.team,rocket.id,directConfirmed);
+      let directConfirmed=false;if(rocket.kind===1&&playerHit){const before=playerHit.hp;sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ',explosive:true,vehicleId:rocket.vehicleId});directConfirmed=playerHit.hp<before;}
+      blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,rocket.kind===1?'cannon':'rocket',direct,rocket.team,rocket.id,directConfirmed,rocket.vehicleId);
       rocket.life=0;
     }
   }

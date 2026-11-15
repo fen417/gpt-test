@@ -846,6 +846,11 @@ export class GameRenderer {
     for (const player of state.players) {
       if (player.id === localId&&!(this.tankThirdPerson&&player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank')) continue;
       active.add(player.id);
+      if(player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank'){
+        const hidden=this.soldiers.get(player.id);
+        if(hidden){hidden.group.removeFromParent();hidden.initialized=false;}
+        continue;
+      }
       const activeWeaponId = player.weaponId || defaultWeaponId(player.classId);
       let soldier = this.soldiers.get(player.id);
       const stowing = soldier && soldier.classId === player.classId && soldier.team === player.team &&

@@ -1,7 +1,39 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {Simulation} from '../shared/simulation.js';import {createVehicle} from '../shared/vehicles.js';import {blast,updateEquipment} from '../shared/gadgets.js';
+import {Simulation} from '../shared/simulation.js';import {createVehicle,VEHICLE_TYPES} from '../shared/vehicles.js';import {blast,updateEquipment} from '../shared/gadgets.js';
+import {rayVehicleCrew} from '../shared/vehicle-combat.js';
 import {getWeapon} from '../shared/world.js';
 function setup(){const sim=new Simulation({bots:0,mapId:'quarry'}),v=sim.vehicles.find(v=>v.type==='tank'&&v.team===0),enemy=sim.addPlayer('enemy','Enemy',1);sim.vehicles=[v];return{sim,v,enemy};}
+
+test('tank driver ignores direct damage until the tank is destroyed',()=>{
+  const {sim,v,enemy}=setup(),driver=sim.addPlayer('driver','Driver',0);
+  Object.assign(driver,{vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0});v.seats[0]=driver.id;sim.syncVehicleSeat(driver,v);
+  sim.damage(driver,300,enemy,{weapon:'RIFLE',headshot:true});sim.damage(driver,300,enemy,{explosive:true});
+  assert.equal(driver.hp,100);assert.equal(driver.alive,true);
+  assert.equal(rayVehicleCrew({x:driver.x+5,y:driver.y+1,z:driver.z},{x:-1,y:0,z:0},v,0,10).distance,Infinity);
+  sim.damageVehicle(v,10000,enemy,'blast');assert.equal(v.hp,0);assert.equal(driver.alive,false);assert.equal(driver.vehicleId,null);
+});
+
+test('tank shell kills award 25 points to each other living crew member only',()=>{
+  const {sim,v,enemy}=setup(),crew=[];
+  for(let i=0;i<5;i++){const p=sim.addPlayer('crew'+i,'Crew',0);Object.assign(p,{vehicleId:v.id,vehicleSeat:i,invulnerableUntil:0});v.seats[i]=p.id;sim.syncVehicleSeat(p,v);crew.push(p);}
+  const outsider=sim.addPlayer('outsider','Outsider',0),gunner=crew[1];
+  Object.assign(enemy,{x:60,y:50,z:60,invulnerableUntil:0});
+  sim.rockets.push({id:'crew-shell',kind:1,ownerId:gunner.id,vehicleId:v.id,team:0,x:57,y:50.8,z:60,vx:190,vy:0,vz:0,life:6});
+  updateEquipment(sim,.02);assert.equal(enemy.alive,false);assert.equal(gunner.kills,1);assert(gunner.score>=200);
+  for(const p of crew.filter(p=>p!==gunner)){assert.equal(p.score,25);assert.equal(p.kills,0);}
+  assert.equal(outsider.score,0);
+  const other=sim.addPlayer('other','Other',1);other.invulnerableUntil=0;sim.damage(other,200,gunner);
+  assert.equal(crew[0].score,25,'boarding a tank must not share kills from a shot fired outside it');
+});
+
+test('all vehicles permit exits at full forward and reverse speed',()=>{
+  const {sim}=setup();
+  for(const type of ['tank','humvee','atv'])for(const speed of [VEHICLE_TYPES[type].maxSpeed,-VEHICLE_TYPES[type].reverseSpeed]){
+    const v=createVehicle({id:type,type,team:0,x:-180,z:-150,y:sim.groundAt(-180,-150),yaw:0}),p=sim.addPlayer(type+speed,'Driver',0);
+    sim.vehicles=[v];Object.assign(p,{vehicleId:v.id,vehicleSeat:0});v.seats[0]=p.id;sim.syncVehicleSeat(p,v);v.speed=speed;
+    assert.equal(sim.dismountVehicle(p),true,`${type} at ${speed}`);assert.equal(p.vehicleId,null);assert.equal(v.seats[0],null);assert.equal(sim.collides(p.x,p.z,p.y),false);
+  }
+});
 test('only tank rejects rifle bullets; light vehicles retain existing bullet armour',()=>{
   const {sim,v,enemy}=setup(),weapon=getWeapon('recon','sv98');Object.assign(enemy,{classId:'recon',weaponId:'sv98'});
   for(let i=0;i<1000;i++){

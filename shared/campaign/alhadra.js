@@ -24,7 +24,7 @@ function add(kind,x,z,w,d,h,color='#bba17c',extra={}){
 const village=(kind,x,z,w,d,h,color,extra={})=>add(kind,x,z,w,d,h,color,{assetMapId:'village',...extra});
 function cover(kind,x,z,length,depth,height,yaw=0){
   const b=(kind.startsWith('village-')?village:add)(kind,x,z,length,depth,height,kind==='crate'?'#89704b':'#a88f6d',{modelRotation:{x:0,y:yaw,z:0},campaignCover:true});
-  if(kind==='village-rock')b.baseY-=.25;
+  if(kind==='rock')b.baseY-=.25;
   return b;
 }
 function house(id,x,z,w=12,d=10,h=4.1){
@@ -95,7 +95,7 @@ for(const [name,path] of Object.entries(ROUTES))for(let i=1;i<path.length;i++){
     const x=a[0]+(b[0]-a[0])*f-dz*side*4.5,z=a[1]+(b[1]-a[1])*f+dx*side*4.5;
     if(routeCover.some(p=>Math.hypot(p.x-x,p.z-z)<8)||homes.some(h=>Math.abs(h.x-x)<h.w/2+2&&Math.abs(h.z-z)<h.d/2+2))continue;
     routeCover.push({x,z});const yaw=-Math.atan2(dz,dx)+Math.PI/2,index=routeCover.length;
-    if(x<-45||name==='channel')cover('village-rock',x,z,3.4+index%3,2.2+index%2,1.2+index%3*.25,yaw);
+    if(x<-45||name==='channel')cover('rock',x,z,3.4+index%3,2.2+index%2,1.2+index%3*.25,yaw);
     else if(x<55&&index%2)cover('crate',x,z,2.7,1.4,1.1,yaw);
     else cover(index%2?'village-barricade':'village-rubble',x,z,3.8,.85,1.25,yaw);
   }
@@ -103,7 +103,10 @@ for(const [name,path] of Object.entries(ROUTES))for(let i=1;i<path.length;i++){
 // Authored scenery clusters give each approach a silhouette without filling
 // the traversable corridors or placing props at random points on a slope.
 for(const [x,z] of [[-187,-131],[-163,-112],[-135,-85],[-108,-62],[-51,-46],[-31,5],[60,23],[83,29]]){
-  village('village-rock',x-5,z+5,7,5,3.2,'#aa977d',{baseY:terrain.heightAt(x-5,z+5)-.6});
+  // Separate boulders leave the gaps in a rock pile traversable, using the
+  // existing mesh and its matching bevelled collision for each stone.
+  for(const [dx,dz,w,d,h] of [[-5,5,2.8,2.2,1.5],[-7.4,5.7,1.8,2.1,1],[-2.9,6.2,1.5,1.5,.85]])
+    add('rock',x+dx,z+dz,w,d,h,'#aa977d',{assetMapId:'quarry',baseY:terrain.heightAt(x+dx,z+dz)-.15});
   village('village-rubble',x-1,z+7,2.8,1.5,.7);village('village-wood',x+2,z+8,4,.5,.5,'#736149',{modelRotation:{y:.45}});
 }
 for(const [i,[x,z]] of [[91,58],[129,84],[168,84],[191,155],[117,152],[142,123]].entries()){

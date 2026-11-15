@@ -7,9 +7,21 @@ import manifest from '../public/campaign/m01/voice/manifest.json' with {type:'js
 import {ALHADRA} from '../shared/campaign/alhadra.js';
 import {CampaignSimulation} from '../shared/campaign/simulation.js';
 import {cinematicCameraPose,cameraHasClearance,cameraSegmentClear} from '../src/campaign/camera.js';
+import {getAssetColliders,overlapsCollider,rayCollider} from '../shared/asset-colliders.js';
+import {uprightBox} from '../shared/geometry.js';
 
 function create(){const s=new CampaignSimulation(mission,{lines:locale.lines,seed:14});s.campaign.command({type:'skip'});s.campaign.command({type:'loadout'});s.campaign.command({type:'skip'});return s;}
 function tick(s,seconds){for(let i=0;i<Math.ceil(seconds*60);i++){s.setInput('local',{});s.step(1/60);}}
+
+test('wadi rock cover has bevelled collision instead of a solid mountain rectangle',()=>{
+  const colliders=getAssetColliders(ALHADRA),rock=ALHADRA.boxes.find(b=>b.kind==='rock'&&b.x===-192&&b.z===-126);
+  assert(rock);const collider=colliders.find(b=>b.id===rock.id);assert(collider.parts?.[0].convex);assert(collider.parts[0].triangles);
+  const corner={x:rock.x+rock.w*.48,y:rock.baseY+rock.h*.65,z:rock.z+rock.d*.48};
+  assert.equal(overlapsCollider(uprightBox(corner.x,corner.y,corner.z,.02,.1),collider),false);
+  const x=rock.x+2.6,z=rock.z,walker=uprightBox(x,ALHADRA.terrain.heightAt(x,z),z,.32,1.65);
+  assert(!colliders.some(b=>overlapsCollider(walker,b)),'the old 7 by 5 metre rectangle no longer blocks the wadi beside the stones');
+  assert(Number.isFinite(rayCollider({x:rock.x,y:rock.baseY+rock.h+2,z:rock.z},{x:0,y:-1,z:0},collider,10)),'visible rock still blocks shots through its centre');
+});
 test('all cinematic splines keep the camera and every swept segment clear of world geometry',()=>{
   for(const [id,scene] of Object.entries(mission.cutscenes)){
     let previous=null;
