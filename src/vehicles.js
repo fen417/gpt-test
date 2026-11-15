@@ -401,6 +401,14 @@ export function createVehicleRig(type, material, teamColors) {
   return {group,body,wheels,controls,turret,riders,paintMeshes,driverGloves,gunnerGloves,materials,materialsToDispose,teamColors};
 }
 
+// The simplified rider remains visible until the full soldier model is
+// actually drawn. Keep the local first-person occupant hidden from their own
+// camera, but never hide an unrendered remote driver or passenger.
+export function fallbackRiderVisible(vehicle,index,localId,fullModelVisible=false){
+  return vehicle.type!=='tank'&&vehicle.hp>0&&Boolean(vehicle.seats[index])&&
+    vehicle.seats[index]!==localId&&!fullModelVisible;
+}
+
 export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality, terrain) {
   if(rig.tank){tankLibrary.updateTankRig(rig,vehicle,player,dt,blend,view,quality,terrain);return;}
   const {group,body,controls,wheels,turret,riders,paintMeshes,materials,teamColors}=rig;
@@ -436,7 +444,7 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
     wheel.tire.rotation.x-=vehicle.speed*dt/(wheel.radius*(vehicle.modelScale?.y??1));
   }
   for(let index=0;index<riders.length;index++){
-    riders[index].visible=!wrecked&&Boolean(vehicle.seats[index])&&vehicle.seats[index]!==player?.id;
+    riders[index].visible=fallbackRiderVisible(vehicle,index,player?.id);
   }
   for(const mesh of body.children)if(/^glass\d$/.test(mesh.name))mesh.visible=!((vehicle.glassBroken??0)&(1<<Number(mesh.name.slice(5))));
   const localSeat=player?.vehicleId===vehicle.id?player.vehicleSeat:null;
