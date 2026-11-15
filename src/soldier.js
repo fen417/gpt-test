@@ -317,9 +317,11 @@ function makeHead(head, c, classId, team) {
   round(head, c.rubber, 0, .031, -.110, .024, .012, .016);
   if (classId === 'recon') {
     // Boonie hat in the team camouflage.
-    volume(head, c.uniform, [[.03,.106,.105,.004],[.075,.109,.106,.006],[.125,.098,.094,.008],[.155,.062,.061,.008],[.164,.007,.007,.008]], 14);
-    shape(head, geometry().fine, c.uniform, 0, .04, .004, .151, .009, .149);
-    tube(head, c.web, 0, .065, .005, .117, .022);
+    // Keep the boonie brim just outside the anatomical skull instead of
+    // swallowing the ears and face, particularly in seated camera close-ups.
+    volume(head, c.uniform, [[.03,.095,.094,.004],[.075,.099,.097,.006],[.125,.090,.086,.008],[.155,.056,.055,.008],[.164,.007,.007,.008]], 14);
+    shape(head, geometry().fine, c.uniform, 0, .04, .004, .134, .009, .132);
+    tube(head, c.web, 0, .065, .005, .105, .020);
     return;
   }
   volume(head, c.shell, [[.031,.104,.113,.008],[.070,.112,.130,.007],[.118,.106,.120,.008],
@@ -670,9 +672,9 @@ function makeDistantGeometry(rig, c) {
   block(spine, c.armor, 0, .36, .213, .26, classId === 'support' ? .38 : .32, classId === 'support' ? .19 : .13);
   block(spine, c.web, 0, .29, -.21, .29, .135, .073);
   shape(head,soldierHeadGeometry(true),c.skin,0,0,0,1,1,1);
-  shape(head, low, classId === 'recon' ? c.uniform : c.shell, 0, .074, 0, .109, .1, .107);
+  shape(head, low, classId === 'recon' ? c.uniform : c.shell, 0, .074, 0, classId==='recon'?.101:.109, classId==='recon'?.095:.1, classId==='recon'?.100:.107);
   block(head,c.rubber,0,.030,-.094,.143,.031,.022);
-  if (classId === 'recon') shape(head, geometry().cyl, c.uniform, 0, .044, 0, .151, .01, .149);
+  if (classId === 'recon') shape(head, geometry().cyl, c.uniform, 0, .044, 0, .134, .01, .132);
   for (let i = 0; i < 2; i++) {
     bodyEnvelope(legs[i],c.uniform,'thigh',true);
     bodyEnvelope(knees[i],c.uniform,'calf',true);
