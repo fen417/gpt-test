@@ -62,11 +62,15 @@ const heightAt=(x,z)=>{
   const oldX=x+ALHADRA_OFFSET.x,oldZ=z+ALHADRA_OFFSET.z;
   const spreadX=innerHalfX-Math.abs(oldX),spreadZ=innerHalfZ-Math.abs(oldZ);
   const edge=Math.min(spreadX,spreadZ);
-  if(edge<0)return flattenTankCorridors(x,z,outerTerrain.heightAt(x,z));
+  const outer=flattenTankCorridors(x,z,outerTerrain.heightAt(x,z));
+  if(edge<0)return outer;
   const preserved=ALHADRA.terrain.heightAt(oldX,oldZ);
   if(edge>24)return preserved;
   const weight=smooth(edge/24);
-  return preserved*weight+outerTerrain.heightAt(x,z)*(1-weight);
+  // Blend against the SAME cleared tank approach. Using the raw dune height
+  // here created a 1.5m step across the former village-map boundary and
+  // immobilised the entire tank column at z=-285.
+  return preserved*weight+outer*(1-weight);
 };
 function raycast(origin,dir,length){
   const step=4;
