@@ -14,8 +14,17 @@ try{
     page.on('pageerror',error=>errors.push(error.message));
     page.on('console',message=>{if(message.type()==='error')consoleErrors.push(message.text());});
     await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
-    await page.locator('#open-campaign').waitFor({timeout:60000});
-    await page.locator('#open-campaign').click();
+    const campaignEntry=page.locator('#open-campaign');
+    await campaignEntry.waitFor({state:'attached',timeout:60000});
+    assert.equal(await campaignEntry.isVisible(),false,
+      'campaign must be hidden in the main menu before entering the debug sequence');
+    await page.keyboard.type('debu');
+    assert.equal(await campaignEntry.isVisible(),false,
+      'campaign must not unlock on an incomplete debug sequence');
+    await page.keyboard.type('g');
+    assert.equal(await campaignEntry.isVisible(),true,
+      'typing debug on the main menu must reveal campaign');
+    await campaignEntry.click();
     const dialog=page.locator('.campaign-map-screen');
     await dialog.waitFor({state:'visible',timeout:25000});
     assert.equal(await dialog.locator('.campaign-map-mission').count(),8,'all eight missions must have cards');
