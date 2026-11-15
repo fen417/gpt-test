@@ -4,7 +4,12 @@ export function applyTextureFiltering(roots,materials,quality,maxAnisotropy){
   function apply(material){
     if(!material||visited.has(material))return;visited.add(material);
     for(const value of Object.values(material))if(value?.isTexture&&!textures.has(value)){
-      textures.add(value);if(value.anisotropy!==limit){value.anisotropy=limit;value.needsUpdate=true;}
+      textures.add(value);if(value.anisotropy!==limit){
+        value.anisotropy=limit;
+        // Async KTX2, image and shadow textures can still be empty on the
+        // first frame. Their loaders flag upload after the image is ready.
+        if(value.image||value.mipmaps?.length)value.needsUpdate=true;
+      }
     }
     apply(material._highMaterial);apply(material._lowMaterial);
   }
