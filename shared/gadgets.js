@@ -3,7 +3,7 @@ import { VEHICLE_TYPES, vehicleShape } from './vehicles.js';
 import { boxBounds, rayAffineBox, uprightBox } from './geometry.js';
 import { rayCollider } from './asset-colliders.js';
 import { moveBot,findCover } from './bot-navigation.js';
-import {TANK_CANNON} from './tank.js';
+import {TANK_CANNON,tankShellRicochets} from './tank.js';
 
 export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 'repair', recon: 'beacon' };
 export const GADGET_NAMES = { ammo: 'ЯЩИК ПАТРОНОВ', defibrillator: 'ДЕФИБРИЛЛЯТОР', repair: 'РЕМОНТНАЯ ГОРЕЛКА',
@@ -193,9 +193,13 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     if(vehicle.hp<=0||vehicle.team===team)continue;
     const d=Math.hypot(distance(origin,vehicle),origin.y-vehicle.y-.8);
     if(vehicle===directVehicle){
-      const before=vehicle.hp;
-      sim.damageVehicle(vehicle,shellProfile?.damage??(cannon&&vehicle.type==='tank'?900:760),owner,'blast',origin,sourceVehicleId);
-      confirmed||=vehicle.hp<before;
+      if(shellProfile?.kind==='ap'&&tankShellRicochets(vehicle,origin,shellProfile.direction)){
+        sim.event('ricochet',{playerId:owner?.id,vehicleId:vehicle.id,x:origin.x,y:origin.y,z:origin.z});
+      }else{
+        const before=vehicle.hp;
+        sim.damageVehicle(vehicle,shellProfile?.damage??(cannon&&vehicle.type==='tank'?900:760),owner,'blast',origin,sourceVehicleId);
+        confirmed||=vehicle.hp<before;
+      }
     }
     else if(d<radius&&sim.lineClear(origin,center(vehicle,.8))){
       const distance=vehicle.type==='tank'?Math.max(0,d-1.8):d,
@@ -251,7 +255,9 @@ function updateRockets(sim,dt) {
       let directConfirmed=false;if(rocket.kind===1&&playerHit){const before=playerHit.hp;sim.damage(playerHit,200,owner,{weapon:'ТАНКОВОЕ ОРУДИЕ',explosive:true,vehicleId:rocket.vehicleId});directConfirmed=playerHit.hp<before;}
       blast(sim,{x:rocket.x,y:rocket.y,z:rocket.z},owner?.team===rocket.team?owner:null,
         rocket.kind===1?(rocket.campaignShell?'cannon-'+rocket.campaignShell:'cannon'):'rocket',
-        direct,rocket.team,rocket.id,directConfirmed,rocket.vehicleId,rocket.campaignShellProfile??null);
+        direct,rocket.team,rocket.id,directConfirmed,rocket.vehicleId,
+        rocket.campaignShellProfile?{...rocket.campaignShellProfile,kind:rocket.campaignShell,
+          direction:{...direction}}:null);
       rocket.life=0;
     }
   }
