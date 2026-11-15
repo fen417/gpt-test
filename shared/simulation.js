@@ -484,9 +484,20 @@ export class Simulation {
         continue;
       }
       const spec=VEHICLE_TYPES[vehicle.type];
-      const before={x:vehicle.x,y:vehicle.y??0,z:vehicle.z,yaw:vehicle.yaw,speed:vehicle.speed};
-      this.moveVehicle(vehicle,this.players.get(vehicle.seats[0])?.input,dt);
-      this.runOverPlayers(vehicle,before,dt);
+      const driver=this.players.get(vehicle.seats[0]);
+      // Client prediction advances each 60 Hz input frame. Replaying only the
+      // latest input once per server tick (e.g. at 45 Hz) causes the vehicle's
+      // authoritative path to drift and its visual pose to be corrected repeatedly.
+      // Unlike AI/unoccupied vehicles, network-driven vehicles must advance
+      // precisely once for every input frame accepted by the server.
+      const frames=driver?.networkControlled&&!driver.networkIdle?(driver.networkFrames??[]):null;
+      const count=frames?frames.length:1;
+      for(let n=0;n<count;n++){
+        const frame=frames?.[n],stepDt=frame?.dt??dt;
+        const before={x:vehicle.x,y:vehicle.y??0,z:vehicle.z,yaw:vehicle.yaw,speed:vehicle.speed};
+        this.moveVehicle(vehicle,frame?.input??driver?.input,stepDt);
+        this.runOverPlayers(vehicle,before,stepDt);
+      }
       for(const id of vehicle.seats){
         const passenger=this.players.get(id);
         if(passenger)this.syncVehicleSeat(passenger,vehicle);

@@ -76,7 +76,9 @@ export class Prediction{
     // Replace the entry temporarily so the view copy does not collide with itself.
     this.world.vehicles[index]=out;
     try{if(fraction>0)this.world.moveVehicle(out,input,fraction);}finally{this.world.vehicles[index]=source;}
-    const decay=Math.exp(-dt*18),offset=this.vehicleOffset;
+    // Small authoritative corrections should fade over multiple render frames,
+    // not snap away between 20 Hz snapshots. Only the visual pose is adjusted.
+    const decay=Math.exp(-dt*10),offset=this.vehicleOffset;
     if(offset.id===out.id){for(const key of ['x','y','z','yaw']){offset[key]*=decay;out[key]+=offset[key];}}
     return out;
   }
