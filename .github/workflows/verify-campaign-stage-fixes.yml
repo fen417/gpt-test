@@ -3,8 +3,6 @@ on:
   push:
     branches:
       - fix/campaign-m01-stage-cinematics
-    paths:
-      - .github/workflows/verify-campaign-stage-fixes.yml
 permissions:
   contents: read
 jobs:
