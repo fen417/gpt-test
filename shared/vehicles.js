@@ -146,6 +146,8 @@ export function getVehicleBoardingSeat(player, vehicles) {
   let result = null;
   for (const vehicle of vehicles) {
     if (vehicle.hp <= 0 || (vehicle.team !== player.team && vehicle.seats.some(Boolean))) continue;
+    // The campaign extraction transport is reserved for the wounded courier.
+    if(vehicle.campaignEvacuation&&player.id!=='courier')continue;
     const distance = Math.hypot(player.x - vehicle.x, player.z - vehicle.z);
     const seat = preferredVehicleSeat(vehicle);
     if (seat >= 0 && distance <= vehicleBoardingRange(vehicle) && distance < nearest && Math.abs(vehicle.speed) <= 3) {
