@@ -65,29 +65,44 @@ export class Mission2Presentation {
     if(event.code==='ShiftLeft'||event.code==='ShiftRight'){this.isZoom=true;return false;}
     return false;
   }
+  playMusicAt(seconds){
+    const ctx=this.combat.ctx,buffer=this.musicBuffer;
+    if(this.closed||this.music||!ctx||ctx.state!=='running'||!buffer)return;
+    const loopStart=Math.max(0,Number(this.definition.music.loopStart??148));
+    const loopEnd=Math.min(buffer.duration,Number(this.definition.music.loopEnd??188));
+    const loop=loopEnd>loopStart+.5&&buffer.duration>=loopEnd;
+    // Start at current combat time, even after a long pause or delayed decode.
+    const offset=loop&&seconds>=loopEnd?loopStart+(seconds-loopEnd)%(loopEnd-loopStart):
+      Math.min(Math.max(0,seconds),Math.max(0,buffer.duration-.02));
+    const source=ctx.createBufferSource(),gain=ctx.createGain();
+    source.buffer=buffer;source.loop=loop;
+    if(loop){source.loopStart=loopStart;source.loopEnd=loopEnd;}
+    gain.gain.value=0;source.connect(gain);gain.connect(ctx.destination);
+    source.start(0,offset);
+    this.music={source,gain,ctx,originTime:ctx.currentTime-seconds};
+  }
+  stopMusic(){
+    if(!this.music)return;
+    try{this.music.source.stop();}catch{}
+    this.music.source.disconnect();this.music.gain.disconnect();
+    this.music=null;
+  }
   async loadMusic(m){
-    if(this.audioLoading||this.music||this.audioMissing)return;
+    if(this.closed||this.audioMissing||this.audioLoading||this.music)return;
     const ctx=this.combat.ctx;if(!ctx)return;
+    if(this.musicBuffer){this.playMusicAt(m.time);return;}
     this.audioLoading=true;
     try{
       const sourceUrl=new URL(`${import.meta.env.BASE_URL}campaign/m02/${this.definition.music.intro}`,location.href);
       const response=await fetch(sourceUrl);
-      if(!response.ok)throw Error('Музыкальный файл ещё не добавлен');
-      const buffer=await ctx.decodeAudioData(await response.arrayBuffer());
-      if(this.closed)return;
-      const source=ctx.createBufferSource(),gain=ctx.createGain();
-      source.buffer=buffer;
-      const loopStart=Number(this.definition.music.loopStart),loopEnd=Number(this.definition.music.loopEnd);
-      source.loop=buffer.duration>=loopEnd&&loopStart>=0&&loopEnd>loopStart;
-      source.loopStart=loopStart;source.loopEnd=loopEnd;
-      gain.gain.value=0;source.connect(gain);gain.connect(ctx.destination);
-      const offset=clamp(m.time,0,Math.max(0,buffer.duration-.02));
-      source.start(0,offset);
-      this.music={source,gain,ctx,originTime:ctx.currentTime-offset,buffer};
+      if(!response.ok)throw Error('Музыкальный файл миссии 2 пока не добавлен');
+      this.musicBuffer=await ctx.decodeAudioData(await response.arrayBuffer());
+      if(!this.closed&&!this.paused&&this.session.state?.campaign?.missionId==='m02')
+        this.playMusicAt(this.session.state.campaign.time);
     }catch(error){
+      // Missing optional track is not a mission error. Use existing
+      // background music and keep clock triggers on deterministic sim time.
       this.audioMissing=true;
-      // No bundled/licensed music was provided yet; gameplay continues
-      // with the existing procedural battle soundtrack.
     }finally{this.audioLoading=false;}
   }
   update(state,paused){
@@ -135,7 +150,8 @@ export class Mission2Presentation {
       this.$('.m02-finale-stats').textContent=`ВРЕМЯ ${clock(m.stats.elapsedSeconds)} · ТАНКОВ В СТРОЮ ${m.tanksAlive}/10 · ПОТЕРИ ${m.alliedLosses}`;
       this.$('.m02-restart').hidden=m.complete;
     }
-    if(!m.cutscene&&!end&&!paused)this.loadMusic(m);
+    if(paused||end||m.cutscene)this.stopMusic();
+    else this.loadMusic(m);
     if(this.music){
       const slider=document.getElementById('music-volume');
       const setting=clamp(Number(slider?.value??this.combat.musicVolume),0,1);
@@ -191,8 +207,7 @@ export class Mission2Presentation {
   }
   dispose(){
     this.closed=true;document.removeEventListener('keyup',this.onKeyUp);
-    try{this.music?.source.stop();}catch{}
-    this.music?.source.disconnect();this.music?.gain.disconnect();
+    this.stopMusic();
     this.root.remove();document.body.classList.remove('campaign-active','campaign-m02-active','campaign-cinematic');
     const r=this.renderer,o=this.original;
     if(o.background)r.scene.background.copy(o.background);
