@@ -59,6 +59,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
     const villageModels = createVillageModelBuilder(owner);
     for (const item of items) {
       const { key, kind, value } = item, geometryValue=item.geometryValue??value;
+      if(!editable&&map.campaign&&value.campaignDestructible)continue;
       const assetMapId = value.assetMapId ?? map.id;
       if (['landform', 'landmark', 'spawn', 'route'].includes(kind) || (kind === 'vehicle' && !editable)) continue;
       const group = new THREE.Group();

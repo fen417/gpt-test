@@ -1,0 +1,34 @@
+import {CampaignSimulation,validCampaignSave} from '../../shared/campaign/simulation.js';
+
+let sim,paused=true,last=0,accumulator=0,tick=0,input={},lastSaveRevision=-1;
+function send(){
+  if(!sim)return;
+  const state=sim.snapshot();self.postMessage({type:'state',state});
+  if(sim.campaign.saveRevision!==lastSaveRevision){
+    lastSaveRevision=sim.campaign.saveRevision;
+    if(sim.campaign.latestSave)self.postMessage({type:'save',save:sim.campaign.latestSave,complete:sim.campaign.complete,flags:state.campaign.flags});
+  }
+}
+self.onmessage=event=>{
+  try{
+    const m=event.data;
+    if(m.type==='create'){
+      sim=new CampaignSimulation(m.definition,{...m.options,lines:m.lines});
+      if(m.save){if(!validCampaignSave(m.save,m.definition)||!sim.campaign.restore(m.save))throw Error('Сохранение кампании повреждено или устарело. Начните миссию заново.');}
+      last=performance.now();send();return;
+    }
+    if(!sim)return;
+    if(m.type==='paused'){paused=Boolean(m.value);last=performance.now();accumulator=0;if(paused){input={};sim.setInput('local',{});}return;}
+    if(m.type==='input'){input=m.input;return;}
+    if(m.type==='command'){input={};sim.setInput('local',{});sim.campaign.command(m.command);send();}
+  }catch(error){self.postMessage({type:'error',message:error.message});}
+};
+setInterval(()=>{
+  const now=performance.now(),elapsed=Math.max(0,(now-last)/1000);last=now;
+  if(!sim||paused||sim.campaign.awaitingLoadout)return;
+  accumulator=Math.min(.1,accumulator+elapsed);let steps=0;
+  try{
+    while(accumulator>=1/60&&steps++<3){sim.setInput('local',input);sim.step(1/60);accumulator-=1/60;tick++;if(tick%2===0||sim.campaign.awaitingLoadout)send();if(sim.campaign.awaitingLoadout)break;}
+    if(accumulator>=1/60)accumulator%=1/60;
+  }catch(error){paused=true;self.postMessage({type:'error',message:error.message});}
+},1000/60);

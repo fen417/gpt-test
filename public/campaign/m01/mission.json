@@ -1,0 +1,902 @@
+{
+  "version": 1,
+  "id": "m01",
+  "title": "Высадка у вади",
+  "map": "alhadra",
+  "player": {
+    "spawn": [
+      -200,
+      -140
+    ],
+    "class": "assault"
+  },
+  "allies": [
+    "duran",
+    "lasko",
+    "bruno",
+    "kane"
+  ],
+  "zones": {
+    "wadi": {
+      "c": [
+        -200,
+        -140
+      ],
+      "r": 50
+    },
+    "ridgeApproach": {
+      "c": [
+        -119,
+        -63
+      ],
+      "r": 36
+    },
+    "ridge": {
+      "c": [
+        -80,
+        -30
+      ],
+      "r": 48
+    },
+    "depot": {
+      "c": [
+        20,
+        30
+      ],
+      "r": 55
+    },
+    "village": {
+      "c": [
+        150,
+        105
+      ],
+      "r": 68
+    },
+    "stationApproach": {
+      "c": [
+        150,
+        105
+      ],
+      "r": 52
+    },
+    "station": {
+      "c": [
+        150,
+        105
+      ],
+      "r": 8
+    },
+    "exit": {
+      "c": [
+        200,
+        140
+      ],
+      "r": 12
+    }
+  },
+  "groups": {
+    "wadiPatrol": {
+      "zone": "wadi",
+      "units": [
+        {
+          "role": "patrol",
+          "x": -180,
+          "z": -107
+        },
+        {
+          "role": "patrol",
+          "x": -173,
+          "z": -103
+        }
+      ]
+    },
+    "ridgeGuards": {
+      "zone": "ridge",
+      "units": [
+        {
+          "role": "mg",
+          "x": -88,
+          "z": -34,
+          "yaw": 3.8
+        },
+        {
+          "role": "mg",
+          "x": -75,
+          "z": -34,
+          "yaw": 3.8
+        },
+        {
+          "role": "patrol",
+          "x": -102,
+          "z": -23
+        },
+        {
+          "role": "sentry",
+          "x": -82,
+          "z": -18,
+          "sleeping": true
+        },
+        {
+          "role": "sentry",
+          "x": -74,
+          "z": -18,
+          "sleeping": true
+        }
+      ]
+    },
+    "depotGuards": {
+      "zone": "depot",
+      "units": [
+        {
+          "role": "patrol",
+          "x": -9,
+          "z": 8
+        },
+        {
+          "role": "patrol",
+          "x": 7,
+          "z": 8
+        },
+        {
+          "role": "patrol",
+          "x": 23,
+          "z": 8
+        },
+        {
+          "role": "patrol",
+          "x": 39,
+          "z": 8
+        },
+        {
+          "role": "sentry",
+          "x": -9,
+          "z": 27
+        },
+        {
+          "role": "sentry",
+          "x": 7,
+          "z": 27
+        },
+        {
+          "role": "sentry",
+          "x": 23,
+          "z": 27
+        },
+        {
+          "role": "sentry",
+          "x": 39,
+          "z": 27
+        },
+        {
+          "role": "sentry",
+          "x": -9,
+          "z": 46
+        },
+        {
+          "role": "sentry",
+          "x": 7,
+          "z": 46
+        },
+        {
+          "role": "sentry",
+          "x": 23,
+          "z": 46
+        },
+        {
+          "role": "sentry",
+          "x": 39,
+          "z": 46
+        }
+      ]
+    },
+    "villageGuards": {
+      "zone": "village",
+      "units": [
+        {
+          "role": "sentry",
+          "x": 96,
+          "z": 61
+        },
+        {
+          "role": "patrol",
+          "x": 125,
+          "z": 61
+        },
+        {
+          "role": "sentry",
+          "x": 154,
+          "z": 61
+        },
+        {
+          "role": "patrol",
+          "x": 183,
+          "z": 61
+        },
+        {
+          "role": "sentry",
+          "x": 96,
+          "z": 90
+        },
+        {
+          "role": "patrol",
+          "x": 125,
+          "z": 90
+        },
+        {
+          "role": "sentry",
+          "x": 154,
+          "z": 90
+        },
+        {
+          "role": "patrol",
+          "x": 183,
+          "z": 90
+        },
+        {
+          "role": "sentry",
+          "x": 96,
+          "z": 119
+        },
+        {
+          "role": "patrol",
+          "x": 125,
+          "z": 119
+        },
+        {
+          "role": "sentry",
+          "x": 154,
+          "z": 119
+        }
+      ]
+    },
+    "stationGuards": {
+      "zone": "village",
+      "units": [
+        {
+          "role": "officer",
+          "x": 154,
+          "z": 109
+        },
+        {
+          "role": "sentry",
+          "x": 145,
+          "z": 100
+        },
+        {
+          "role": "sentry",
+          "x": 155,
+          "z": 101
+        },
+        {
+          "role": "sentry",
+          "x": 145,
+          "z": 109
+        }
+      ]
+    },
+    "wave1": {
+      "zone": "village",
+      "units": [
+        {
+          "role": "assault",
+          "x": 207,
+          "z": 102
+        },
+        {
+          "role": "assault",
+          "x": 210,
+          "z": 110
+        },
+        {
+          "role": "assault",
+          "x": 213,
+          "z": 102
+        },
+        {
+          "role": "assault",
+          "x": 216,
+          "z": 110
+        },
+        {
+          "role": "assault",
+          "x": 219,
+          "z": 102
+        }
+      ]
+    },
+    "wave2": {
+      "zone": "village",
+      "units": [
+        {
+          "role": "assault",
+          "x": 126,
+          "z": 160
+        },
+        {
+          "role": "assault",
+          "x": 133,
+          "z": 160
+        },
+        {
+          "role": "assault",
+          "x": 140,
+          "z": 160
+        },
+        {
+          "role": "assault",
+          "x": 147,
+          "z": 160
+        },
+        {
+          "role": "assault",
+          "x": 154,
+          "z": 160
+        },
+        {
+          "role": "assault",
+          "x": 161,
+          "z": 160
+        },
+        {
+          "role": "sniper",
+          "x": 181,
+          "z": 117,
+          "y": 4.32
+        }
+      ]
+    },
+    "wave3": {
+      "zone": "village",
+      "units": [
+        {
+          "role": "assault",
+          "x": 207,
+          "z": 124
+        },
+        {
+          "role": "assault",
+          "x": 212,
+          "z": 124
+        },
+        {
+          "role": "assault",
+          "x": 217,
+          "z": 124
+        },
+        {
+          "role": "assault",
+          "x": 207,
+          "z": 130
+        },
+        {
+          "role": "assault",
+          "x": 212,
+          "z": 130
+        },
+        {
+          "role": "assault",
+          "x": 217,
+          "z": 130
+        },
+        {
+          "role": "assault",
+          "x": 207,
+          "z": 136
+        },
+        {
+          "role": "grenadier",
+          "x": 212,
+          "z": 136
+        },
+        {
+          "role": "grenadier",
+          "x": 217,
+          "z": 136
+        }
+      ]
+    }
+  },
+  "objectives": [
+    {
+      "id": "follow",
+      "text": "follow"
+    },
+    {
+      "id": "ridge",
+      "text": "ridge"
+    },
+    {
+      "id": "depot",
+      "text": "depot"
+    },
+    {
+      "id": "village",
+      "text": "village"
+    },
+    {
+      "id": "station",
+      "text": "station"
+    },
+    {
+      "id": "defend",
+      "text": "defend"
+    }
+  ],
+  "triggers": [
+    {
+      "id": "begin",
+      "when": {
+        "flag": "landed"
+      },
+      "do": [
+        {
+          "stage": 1
+        },
+        {
+          "objective": "follow"
+        },
+        {
+          "spawn": "wadiPatrol"
+        },
+        {
+          "spawn": "ridgeGuards"
+        },
+        {
+          "radio": "m01.duran.follow"
+        }
+      ]
+    },
+    {
+      "id": "ridge",
+      "when": {
+        "stage": 1,
+        "enterZone": "ridgeApproach"
+      },
+      "do": [
+        {
+          "complete": "follow"
+        },
+        {
+          "stage": 2
+        },
+        {
+          "objective": "ridge"
+        },
+        {
+          "radio": "m01.duran.ridge"
+        },
+        {
+          "radio": "m01.duran.knife"
+        }
+      ]
+    },
+    {
+      "id": "ridgeDone",
+      "when": {
+        "stage": 2,
+        "allDead": "ridgeGuards"
+      },
+      "do": [
+        {
+          "complete": "ridge"
+        },
+        {
+          "stage": 3
+        },
+        {
+          "objective": "depot"
+        },
+        {
+          "spawn": "depotGuards"
+        },
+        {
+          "radio": "m01.duran.ridgeClear"
+        },
+        {
+          "checkpoint": 1
+        },
+        {
+          "radio": "m01.duran.depot"
+        },
+        {
+          "radio": "m01.duran.charges"
+        }
+      ]
+    },
+    {
+      "id": "depotDone",
+      "when": {
+        "stage": 3,
+        "flag": "depotDestroyed"
+      },
+      "do": [
+        {
+          "complete": "depot"
+        },
+        {
+          "stage": 4
+        },
+        {
+          "objective": "village"
+        },
+        {
+          "radio": "m01.duran.depotBoom"
+        },
+        {
+          "light": "alarm"
+        },
+        {
+          "cutscene": "midpoint"
+        },
+        {
+          "checkpoint": 2
+        },
+        {
+          "spawn": "villageGuards"
+        }
+      ]
+    },
+    {
+      "id": "school",
+      "when": {
+        "stage": 4,
+        "enterZone": "stationApproach"
+      },
+      "do": [
+        {
+          "complete": "village"
+        },
+        {
+          "stage": 5
+        },
+        {
+          "objective": "station"
+        },
+        {
+          "spawn": "stationGuards"
+        },
+        {
+          "radio": "m01.duran.station"
+        },
+        {
+          "checkpoint": 3
+        }
+      ]
+    },
+    {
+      "id": "radio",
+      "when": {
+        "stage": 5,
+        "allDead": "stationGuards",
+        "enterZone": "station"
+      },
+      "do": [
+        {
+          "complete": "station"
+        },
+        {
+          "stage": 6
+        },
+        {
+          "objective": "defend"
+        },
+        {
+          "order": "radio"
+        },
+        {
+          "timer": "defence"
+        },
+        {
+          "spawn": "wave1"
+        },
+        {
+          "radio": "m01.bruno.radioStart"
+        },
+        {
+          "radio": "m01.duran.defend"
+        }
+      ]
+    },
+    {
+      "id": "second",
+      "when": {
+        "stage": 6,
+        "allDead": "wave1",
+        "timer": {
+          "id": "defence",
+          "seconds": 22
+        }
+      },
+      "do": [
+        {
+          "flag": "wave2"
+        },
+        {
+          "spawn": "wave2"
+        },
+        {
+          "radio": "m01.duran.waveTwo"
+        },
+        {
+          "radio": "m01.lasko.sniper"
+        }
+      ]
+    },
+    {
+      "id": "third",
+      "when": {
+        "stage": 6,
+        "flag": "wave2",
+        "allDead": "wave2",
+        "timer": {
+          "id": "defence",
+          "seconds": 50
+        }
+      },
+      "do": [
+        {
+          "flag": "wave3"
+        },
+        {
+          "checkpoint": 4
+        },
+        {
+          "spawn": "wave3"
+        },
+        {
+          "spawnVehicle": true
+        },
+        {
+          "radio": "m01.duran.waveThree"
+        },
+        {
+          "light": "dawn"
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "when": {
+        "stage": 6,
+        "flag": "wave3",
+        "allDead": "wave3",
+        "all": [
+          {
+            "flag": "vehicleDestroyed"
+          },
+          {
+            "timer": {
+              "id": "defence",
+              "seconds": 90
+            }
+          }
+        ]
+      },
+      "do": [
+        {
+          "complete": "defend"
+        },
+        {
+          "flag": "signalSent"
+        },
+        {
+          "radio": "m01.bruno.radioDone"
+        },
+        {
+          "stage": 7
+        },
+        {
+          "cutscene": "finale"
+        }
+      ]
+    }
+  ],
+  "cutscenes": {
+    "briefing": {
+      "duration": 40,
+      "lines": [
+        [
+          0,
+          "m01.orlov.brief01"
+        ],
+        [
+          7,
+          "m01.orlov.brief02"
+        ],
+        [
+          15,
+          "m01.orlov.brief03"
+        ],
+        [
+          23,
+          "m01.orlov.brief04"
+        ],
+        [
+          33,
+          "m01.orlov.brief05"
+        ]
+      ],
+      "camera": [
+        [
+          -85,
+          17,
+          -36
+        ],
+        [
+          -83,
+          16,
+          -34
+        ],
+        [
+          -80,
+          15,
+          -33
+        ],
+        [
+          -78,
+          14.8,
+          -32
+        ]
+      ],
+      "lookAt": [
+        -80,
+        13.2,
+        -30
+      ]
+    },
+    "landing": {
+      "duration": 25,
+      "lines": [
+        [
+          0,
+          "m01.duran.landing01"
+        ],
+        [
+          6,
+          "m01.bruno.landing02"
+        ],
+        [
+          11,
+          "m01.lasko.landing03"
+        ],
+        [
+          16,
+          "m01.duran.landing04"
+        ]
+      ],
+      "camera": [
+        [
+          -222,
+          9,
+          -155
+        ],
+        [
+          -211,
+          6,
+          -145
+        ],
+        [
+          -206,
+          2,
+          -139
+        ],
+        [
+          -200,
+          -2,
+          -140
+        ]
+      ],
+      "lookAt": [
+        -182,
+        0,
+        -116
+      ]
+    },
+    "midpoint": {
+      "duration": 20,
+      "lines": [
+        [
+          0,
+          "m01.officer.mid01"
+        ],
+        [
+          7,
+          "m01.bruno.mid02"
+        ],
+        [
+          13,
+          "m01.duran.mid03"
+        ]
+      ],
+      "camera": [
+        [
+          -80,
+          25,
+          -30
+        ],
+        [
+          -62,
+          22,
+          -12
+        ],
+        [
+          -40,
+          20,
+          9
+        ],
+        [
+          -20,
+          20,
+          33
+        ]
+      ],
+      "lookAt": [
+        150,
+        4,
+        105
+      ]
+    },
+    "finale": {
+      "duration": 30,
+      "lines": [
+        [
+          0,
+          "m01.orlov.final01"
+        ],
+        [
+          7,
+          "m01.lasko.final02"
+        ],
+        [
+          14,
+          "m01.bruno.final03"
+        ],
+        [
+          21,
+          "m01.duran.final04"
+        ]
+      ],
+      "camera": [
+        [
+          132,
+          4,
+          119
+        ],
+        [
+          146,
+          8,
+          133
+        ],
+        [
+          161,
+          13,
+          144
+        ],
+        [
+          178,
+          16,
+          147
+        ]
+      ],
+      "lookAt": [
+        219,
+        5,
+        155
+      ]
+    }
+  },
+  "music": {
+    "stems": [
+      "music/wind.ogg",
+      "music/duduk.ogg",
+      "music/pulse.ogg",
+      "music/strings.ogg",
+      "music/theme.ogg"
+    ],
+    "loopSeconds": 90
+  },
+  "audioBudgets": {
+    "music": 3000000,
+    "voice": 1000000
+  }
+}

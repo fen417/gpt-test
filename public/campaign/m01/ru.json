@@ -1,0 +1,568 @@
+{
+  "speakers": {
+    "orlov": "Лейтенант Орлов",
+    "duran": "Сержант Гари Дюран",
+    "lasko": "Санитар Тео Ласко",
+    "bruno": "Радист Бруно Валь",
+    "kane": "Рядовой Кейн",
+    "courier": "Раненый связной",
+    "officer": "Офицер Восточного корпуса",
+    "sentry": "Часовой Восточного корпуса"
+  },
+  "objectives": {
+    "follow": "Следуй за сержантом",
+    "ridge": "Убери дозор на гряде",
+    "depot": "Уничтожь топливо и грузовики",
+    "village": "Доберись до деревни",
+    "station": "Захвати здание радиостанции",
+    "defend": "Защити радиста",
+    "documents": "Найди документы офицера",
+    "courier": "Спаси связного и выведи к восточной дороге"
+  },
+  "lines": {
+    "m01.orlov.brief01": {
+      "speaker": "orlov",
+      "text": "В два часа ночи грузовики высадят вас у сухого русла.",
+      "duration": 6,
+      "priority": 3,
+      "direction": "Брифинг; спокойно",
+      "audio": "voice/m01.orlov.brief01.ogg"
+    },
+    "m01.orlov.brief02": {
+      "speaker": "orlov",
+      "text": "Восточный корпус держит Аль-Хадру. В бывшей школе работает их радиостанция.",
+      "duration": 7,
+      "priority": 3,
+      "direction": "Брифинг",
+      "audio": "voice/m01.orlov.brief02.ogg"
+    },
+    "m01.orlov.brief03": {
+      "speaker": "orlov",
+      "text": "Маршрут: гряда, тыловой склад, деревня. Не выходите на освещённые участки.",
+      "duration": 7,
+      "priority": 3,
+      "direction": "Брифинг",
+      "audio": "voice/m01.orlov.brief03.ogg"
+    },
+    "m01.orlov.brief04": {
+      "speaker": "orlov",
+      "text": "Уничтожьте топливо и грузовики. Затем захватите станцию и удерживайте до подхода снабжения.",
+      "duration": 8,
+      "priority": 3,
+      "direction": "Брифинг",
+      "audio": "voice/m01.orlov.brief04.ogg"
+    },
+    "m01.orlov.brief05": {
+      "speaker": "orlov",
+      "text": "Если поднимут тревогу — продолжайте. Стрелять первыми не торопитесь.",
+      "duration": 6,
+      "priority": 3,
+      "direction": "Брифинг",
+      "audio": "voice/m01.orlov.brief05.ogg"
+    },
+    "m01.duran.landing01": {
+      "speaker": "duran",
+      "text": "Мартен, за мной. Ласко — замыкающий. Валь, проверь связь.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Высадка; вполголоса",
+      "audio": "voice/m01.duran.landing01.ogg"
+    },
+    "m01.bruno.landing02": {
+      "speaker": "bruno",
+      "text": "Связь есть. Надеюсь, местные уже спят.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Высадка; сухая шутка",
+      "audio": "voice/m01.bruno.landing02.ogg"
+    },
+    "m01.lasko.landing03": {
+      "speaker": "lasko",
+      "text": "В такую темноту и собственную тень потеряешь.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Высадка; нервно",
+      "audio": "voice/m01.lasko.landing03.ogg"
+    },
+    "m01.duran.landing04": {
+      "speaker": "duran",
+      "text": "Темнота сегодня на нашей стороне. В русло, живо.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Высадка",
+      "audio": "voice/m01.duran.landing04.ogg"
+    },
+    "m01.duran.follow": {
+      "speaker": "duran",
+      "text": "Держись рядом, Мартен. До гряды идём по руслу.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Этап 1",
+      "audio": "voice/m01.duran.follow.ogg"
+    },
+    "m01.duran.crouch": {
+      "speaker": "duran",
+      "text": "Патруль на берегу. Присядь. Не показывайся на фоне неба.",
+      "duration": 4,
+      "priority": 1,
+      "direction": "Присед",
+      "audio": "voice/m01.duran.crouch.ogg"
+    },
+    "m01.duran.prone": {
+      "speaker": "duran",
+      "text": "Если укрытие низкое — ложись. Здесь спешка выдаёт нас.",
+      "duration": 4,
+      "priority": 1,
+      "direction": "Ползание",
+      "audio": "voice/m01.duran.prone.ogg"
+    },
+    "m01.bruno.patrol": {
+      "speaker": "bruno",
+      "text": "Двое наверху. Пока нас не заметили.",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Первый патруль",
+      "audio": "voice/m01.bruno.patrol.ogg"
+    },
+    "m01.duran.ridge": {
+      "speaker": "duran",
+      "text": "На гряде пулемётный пост. Уберём дозор и пойдём дальше.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Этап 2",
+      "audio": "voice/m01.duran.ridge.ogg"
+    },
+    "m01.duran.knife": {
+      "speaker": "duran",
+      "text": "Обойди со стороны траншеи. Ножом со спины — без единого звука.",
+      "duration": 5,
+      "priority": 1,
+      "direction": "Нож",
+      "audio": "voice/m01.duran.knife.ogg"
+    },
+    "m01.kane.grenade": {
+      "speaker": "kane",
+      "text": "Граната достанет их за мешками. Только предупреди нас.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Шумный подход",
+      "audio": "voice/m01.kane.grenade.ogg"
+    },
+    "m01.duran.objective": {
+      "speaker": "duran",
+      "text": "Хорошая работа. Продолжаем.",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Цель выполнена",
+      "audio": "voice/m01.duran.objective.ogg"
+    },
+    "m01.duran.ridgeClear": {
+      "speaker": "duran",
+      "text": "Гряда наша. Дальше склад. За дюнами укрытий больше.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "КП 1",
+      "audio": "voice/m01.duran.ridgeClear.ogg"
+    },
+    "m01.bruno.road": {
+      "speaker": "bruno",
+      "text": "По дороге быстрее. И смотреть на нас будут со всех сторон.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Прямой путь",
+      "audio": "voice/m01.bruno.road.ogg"
+    },
+    "m01.duran.depot": {
+      "speaker": "duran",
+      "text": "Топливо и три грузовика. Два заряда — и отходим.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Этап 3",
+      "audio": "voice/m01.duran.depot.ogg"
+    },
+    "m01.duran.charges": {
+      "speaker": "duran",
+      "text": "Держи клавишу взаимодействия у метки. Взрыв через двадцать пять секунд после второго заряда.",
+      "duration": 6,
+      "priority": 1,
+      "direction": "Заряды",
+      "audio": "voice/m01.duran.charges.ogg"
+    },
+    "m01.kane.wounded": {
+      "speaker": "kane",
+      "text": "А! Ногу зацепило! Мартен, помоги!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Скриптовое ранение",
+      "audio": "voice/m01.kane.wounded.ogg"
+    },
+    "m01.lasko.kaneDown": {
+      "speaker": "lasko",
+      "text": "Кейн ранен! Подойди, зажми взаимодействие и держи пять секунд!",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Реанимация",
+      "audio": "voice/m01.lasko.kaneDown.ogg"
+    },
+    "m01.kane.revived": {
+      "speaker": "kane",
+      "text": "Думал, так тут и останусь. Спасибо. Прикрою.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Кейн спасён",
+      "audio": "voice/m01.kane.revived.ogg"
+    },
+    "m01.lasko.kaneLost": {
+      "speaker": "lasko",
+      "text": "Он без сознания. Отмечаю место для санитаров. Нам нужно идти.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Кейн выбыл",
+      "audio": "voice/m01.lasko.kaneLost.ogg"
+    },
+    "m01.duran.chargeOne": {
+      "speaker": "duran",
+      "text": "Первый готов. Теперь второй, у другой группы грузовиков.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Первый заряд",
+      "audio": "voice/m01.duran.chargeOne.ogg"
+    },
+    "m01.duran.chargeTwo": {
+      "speaker": "duran",
+      "text": "Оба заряда стоят. Двадцать пять секунд. Всем отойти от топлива!",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Второй заряд",
+      "audio": "voice/m01.duran.chargeTwo.ogg"
+    },
+    "m01.bruno.fuse": {
+      "speaker": "bruno",
+      "text": "Сейчас рванёт. Держите головы ниже!",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Пять секунд до взрыва",
+      "audio": "voice/m01.bruno.fuse.ogg"
+    },
+    "m01.duran.depotBoom": {
+      "speaker": "duran",
+      "text": "Склад уничтожен. Проверить оружие. Идём к деревне.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Склад уничтожен",
+      "audio": "voice/m01.duran.depotBoom.ogg"
+    },
+    "m01.officer.mid01": {
+      "speaker": "officer",
+      "text": "Склад горит! Поднять гарнизон, перекрыть подходы к школе!",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Средняя катсцена; радио",
+      "audio": "voice/m01.officer.mid01.ogg"
+    },
+    "m01.bruno.mid02": {
+      "speaker": "bruno",
+      "text": "Они запрашивают подкрепление. Тихая прогулка закончилась.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Средняя катсцена",
+      "audio": "voice/m01.bruno.mid02.ogg"
+    },
+    "m01.duran.mid03": {
+      "speaker": "duran",
+      "text": "Тогда заставим их смотреть не туда. Мартен, выбирай подход.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Средняя катсцена",
+      "audio": "voice/m01.duran.mid03.ogg"
+    },
+    "m01.duran.village": {
+      "speaker": "duran",
+      "text": "К школе можно пройти через рощу или по сухому каналу справа.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Этап 4",
+      "audio": "voice/m01.duran.village.ogg"
+    },
+    "m01.lasko.courier": {
+      "speaker": "lasko",
+      "text": "В крайнем доме наш связной. Ещё дышит!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Необязательная цель",
+      "audio": "voice/m01.lasko.courier.ogg"
+    },
+    "m01.courier.help": {
+      "speaker": "courier",
+      "text": "Свои?.. Я не могу встать. Помогите добраться до дороги.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Связной обнаружен",
+      "audio": "voice/m01.courier.help.ogg"
+    },
+    "m01.courier.saved": {
+      "speaker": "courier",
+      "text": "Дойду. Только не оставляйте меня здесь.",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Связной поднят",
+      "audio": "voice/m01.courier.saved.ogg"
+    },
+    "m01.courier.evacuated": {
+      "speaker": "courier",
+      "text": "Спасибо, Мартен. В машине есть ещё аптечка. Возьми.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Связной эвакуирован",
+      "audio": "voice/m01.courier.evacuated.ogg"
+    },
+    "m01.duran.station": {
+      "speaker": "duran",
+      "text": "Радиостанция впереди. Вход с двух сторон. Проверяй углы.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Этап 5; КП 3",
+      "audio": "voice/m01.duran.station.ogg"
+    },
+    "m01.officer.call": {
+      "speaker": "officer",
+      "text": "Говорит станция Аль-Хадра. Пришлите резерв! Немедленно!",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Офицер вызывает резерв",
+      "audio": "voice/m01.officer.call.ogg"
+    },
+    "m01.bruno.officerStopped": {
+      "speaker": "bruno",
+      "text": "Офицер не успел передать вызов. Одной проблемой меньше.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Вызов прерван",
+      "audio": "voice/m01.bruno.officerStopped.ogg"
+    },
+    "m01.duran.documents": {
+      "speaker": "duran",
+      "text": "Документы офицера. Забери — в штабе разберутся.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Документы",
+      "audio": "voice/m01.duran.documents.ogg"
+    },
+    "m01.bruno.radioStart": {
+      "speaker": "bruno",
+      "text": "Станция наша. Мне нужно полторы минуты. Прикройте входы.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Этап 6",
+      "audio": "voice/m01.bruno.radioStart.ogg"
+    },
+    "m01.duran.defend": {
+      "speaker": "duran",
+      "text": "Держим школу! Валь должен закончить передачу.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Оборона",
+      "audio": "voice/m01.duran.defend.ogg"
+    },
+    "m01.kane.waveOne": {
+      "speaker": "kane",
+      "text": "На восточной дороге движение! Идут к нам!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Волна 1",
+      "audio": "voice/m01.kane.waveOne.ogg"
+    },
+    "m01.duran.waveTwo": {
+      "speaker": "duran",
+      "text": "Ещё одна группа! Не стойте у окон!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Волна 2",
+      "audio": "voice/m01.duran.waveTwo.ogg"
+    },
+    "m01.lasko.sniper": {
+      "speaker": "lasko",
+      "text": "Снайпер на крыше! Не высовывайтесь под вспышки!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Снайпер",
+      "audio": "voice/m01.lasko.sniper.ogg"
+    },
+    "m01.bruno.radioHalf": {
+      "speaker": "bruno",
+      "text": "Половина ушла. Держитесь, ещё немного!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "45 секунд передачи",
+      "audio": "voice/m01.bruno.radioHalf.ogg"
+    },
+    "m01.duran.waveThree": {
+      "speaker": "duran",
+      "text": "Машина с пулемётом! Мартен, гранаты или ПТ-90!",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Волна 3; КП 4",
+      "audio": "voice/m01.duran.waveThree.ogg"
+    },
+    "m01.bruno.vehicleDown": {
+      "speaker": "bruno",
+      "text": "Пулемёт замолчал! Отличный выстрел!",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Машина уничтожена",
+      "audio": "voice/m01.bruno.vehicleDown.ogg"
+    },
+    "m01.bruno.radioDone": {
+      "speaker": "bruno",
+      "text": "Сигнал принят! Колонна выходит к нам!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Передача завершена",
+      "audio": "voice/m01.bruno.radioDone.ogg"
+    },
+    "m01.orlov.final01": {
+      "speaker": "orlov",
+      "text": "Взвод Дюрана, задача выполнена. Снабжение уже на дороге.",
+      "duration": 6,
+      "priority": 3,
+      "direction": "Финал; радио",
+      "audio": "voice/m01.orlov.final01.ogg"
+    },
+    "m01.lasko.final02": {
+      "speaker": "lasko",
+      "text": "Рассвет... Не думал, что так обрадуюсь солнцу.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Финал; облегчение",
+      "audio": "voice/m01.lasko.final02.ogg"
+    },
+    "m01.bruno.final03": {
+      "speaker": "bruno",
+      "text": "Сержант, пыль на горизонте. Это не наша колонна.",
+      "duration": 5,
+      "priority": 3,
+      "direction": "Финал; тревожно",
+      "audio": "voice/m01.bruno.final03.ogg"
+    },
+    "m01.duran.final04": {
+      "speaker": "duran",
+      "text": "Вижу. Всем пополнить боезапас. Утро только начинается.",
+      "duration": 6,
+      "priority": 3,
+      "direction": "Финал; сдержанно",
+      "audio": "voice/m01.duran.final04.ogg"
+    },
+    "m01.duran.hold": {
+      "speaker": "duran",
+      "text": "Взвод, держать позицию.",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Приказ",
+      "audio": "voice/m01.duran.hold.ogg"
+    },
+    "m01.duran.move": {
+      "speaker": "duran",
+      "text": "Взвод, за Мартеном. Не отставать.",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Приказ",
+      "audio": "voice/m01.duran.move.ogg"
+    },
+    "m01.lasko.playerDown": {
+      "speaker": "lasko",
+      "text": "Мартен ранен! Я иду. Не поднимай голову!",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Игрок ранен",
+      "audio": "voice/m01.lasko.playerDown.ogg"
+    },
+    "m01.lasko.reviving": {
+      "speaker": "lasko",
+      "text": "Спокойно. Сейчас перевяжу. Ещё несколько секунд.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Лечение",
+      "audio": "voice/m01.lasko.reviving.ogg"
+    },
+    "m01.lasko.playerUp": {
+      "speaker": "lasko",
+      "text": "Дыши ровно. Ты снова в строю.",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Игрок поднят",
+      "audio": "voice/m01.lasko.playerUp.ogg"
+    },
+    "m01.duran.syringe": {
+      "speaker": "duran",
+      "text": "Если санитар не дойдёт — используй шприц. Держи клавишу, не отпускай.",
+      "duration": 5,
+      "priority": 1,
+      "direction": "Самореанимация",
+      "audio": "voice/m01.duran.syringe.ogg"
+    },
+    "m01.bruno.allyDown": {
+      "speaker": "bruno",
+      "text": "У нас раненый! Нужна помощь!",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Союзник ранен",
+      "audio": "voice/m01.bruno.allyDown.ogg"
+    },
+    "m01.sentry.suspicion": {
+      "speaker": "sentry",
+      "text": "Стой... Ты слышал? Проверю.",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Подозрение",
+      "audio": "voice/m01.sentry.suspicion.ogg"
+    },
+    "m01.sentry.search": {
+      "speaker": "sentry",
+      "text": "Здесь кто-то был! Осмотреть укрытия!",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Поиск",
+      "audio": "voice/m01.sentry.search.ogg"
+    },
+    "m01.officer.alarm": {
+      "speaker": "officer",
+      "text": "Противник! Тревога! К оружию!",
+      "duration": 3,
+      "priority": 3,
+      "direction": "Тревога",
+      "audio": "voice/m01.officer.alarm.ogg"
+    },
+    "m01.duran.quiet": {
+      "speaker": "duran",
+      "text": "Тихо прошли. На площади будет меньше солдат.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Тихий склад",
+      "audio": "voice/m01.duran.quiet.ogg"
+    },
+    "m01.bruno.failure": {
+      "speaker": "bruno",
+      "text": "Валь не отвечает... Мы потеряли связь.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Провал",
+      "audio": "voice/m01.bruno.failure.ogg"
+    },
+    "m01.duran.ammo": {
+      "speaker": "duran",
+      "text": "Пополни патроны у ящиков. В школе будет жарко.",
+      "duration": 4,
+      "priority": 3,
+      "direction": "Патроны",
+      "audio": "voice/m01.duran.ammo.ogg"
+    },
+    "m01.lasko.medkit": {
+      "speaker": "lasko",
+      "text": "Аптечка восстановит силы полностью. Береги шприцы для тяжёлого ранения.",
+      "duration": 5,
+      "priority": 1,
+      "direction": "Аптечка",
+      "audio": "voice/m01.lasko.medkit.ogg"
+    }
+  }
+}

@@ -1667,7 +1667,7 @@ export class GameRenderer {
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
       const sliding = !passenger && Boolean(player.sliding);
       const crouching = !passenger && Boolean(sliding || player.crouch || player.crouching || view.crouch);
-      const targetHeight = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+      const targetHeight = state.campaign&&(player.prone||player.downed)? .48:crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
       this.eyeHeight=lerp(this.eyeHeight??targetHeight,targetHeight,1-Math.exp(-dt*20));
       this.slideBlend=lerp(this.slideBlend??0,sliding?1:0,1-Math.exp(-dt*16));
       const height=this.eyeHeight;
@@ -1789,6 +1789,7 @@ export class GameRenderer {
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
       this.weaponRig.anchorPistolArm(pistolSprint);
     }
+    view.campaignRender?.(this,state,dt);
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.viewFrustum.setFromProjectionMatrix(this.viewProjection);

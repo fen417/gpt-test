@@ -16,6 +16,8 @@ function state(sim,p){
     decideAt:0,goal:null,cover:null,pressure:0,pressureAt:-100,peekSide:p.botSlot%2?1:-1,
     aggression:.65+sim.random()*.7,caution:(sim.difficulty==='veteran'?1.3:sim.difficulty==='recruit'?.7:1)*(.85+sim.random()*.3),skill:.85+sim.random()*.3,pathUntil:0} );
 }
+// Local mission patrol/follow behavior uses the same navigation and AI memory.
+export function ensureBotState(sim,p){return state(sim,p);}
 function sight(sim,from,to){
   if(!sim.lineClear(from,to))return false;
   const length=Math.hypot(to.x-from.x,to.y-from.y,to.z-from.z);if(length<.05)return true;
@@ -83,10 +85,11 @@ function sense(sim,p){
   let selected=null,best=Infinity;
   for(const other of sim.players.values()){
     if(!other.alive||other.team===p.team||other.invulnerableUntil>sim.time)continue;
+    if(sim.campaign&&!sim.campaign.canSee(p,other))continue;
     const d=distance(p,other);if(d>range)continue;
     const bearing=Math.atan2(-(other.x-p.x),-(other.z-p.z));
     if(d>6&&Math.abs(angle(bearing-p.yaw))>1.35&&other.id!==ai.contact?.id)continue;
-    const heights=other.vehicleId?[EYE_HEIGHT-.35,EYE_HEIGHT-.03]:other.input.crouch?[.7,1.05]:[1.05,1.58];let height=null;
+    const heights=other.vehicleId?[EYE_HEIGHT-.35,EYE_HEIGHT-.03]:sim.campaign&&(other.prone||other.downed)?[.35,.48]:other.input.crouch?[.7,1.05]:[1.05,1.58];let height=null;
     for(const h of heights)if(sight(sim,origin,{x:other.x,y:other.y+h,z:other.z})){height=h;break;}
     if(height===null)continue;
     const previous=ai.observations.get(other.id),elapsed=previous?sim.time-previous.at:0;
@@ -164,6 +167,7 @@ function aim(sim,p,target,dt){
 }
 
 function objectiveGoal(sim,p){
+  if(sim.campaign)return sim.campaign.botGoal(p);
   const ai=p.ai,squad=ai.squad,order=squad?.order;
   if(order?.kind==='follow'){
     const leader=sim.players.get(order.playerId);
@@ -251,6 +255,7 @@ function decide(sim,p){
 }
 
 function equipment(sim,p,dt){
+  if(sim.campaign)return false; // Mission inventory/revival is finite and scripted.
   const ai=p.ai,contact=ai.contact;
   if(p.pendingGadget)return thinkEquipment(sim,p,dt);
   if(ai.pressure>.6||sim.time-p.lastHurt<1||contact&&distance(p,contact)<20)return false;

@@ -977,6 +977,15 @@ function animateUpperBody(rig, motion, player, dt, reset, strideTwist) {
 // use that same motion, so server snapshot cadence does not reset the stride.
 export function animateSoldier(rig, { dt, player, reset = false, terrain = null, lightweight = false }) {
   dt = clamp(Number(dt) || 1 / 60, .001, .1);
+  if(player.prone||player.downed){
+    rig.campaignProne=true;rig.motion=null;
+    const crawl=player.downed?0:Math.sin((player.x+player.z)*2)*Math.min(1,player.moveSpeed??0);
+    rig.pose.position.set(0,.28,.7);rig.pose.rotation.set(-Math.PI/2,0,0);
+    rig.spine.rotation.set(.12,0,crawl*.025);rig.head.rotation.set(1.2,0,0);
+    for(let i=0;i<2;i++){rig.legs[i].rotation.set(crawl*(i?-.12:.12),0,i?-.07:.07);rig.knees[i].rotation.set(.14+Math.abs(crawl)*.1,0,0);rig.ankles[i].rotation.set(-.3,0,0);rig.arms[i].rotation.set(-1.1,0,i?-.25:.25);rig.elbows[i].rotation.set(-.9,0,0);}
+    rig.rifle.position.set(.1,.35,-.3);rig.rifle.rotation.set(1.45,0,0);rig.flash.visible=false;rig.marker.position.y=.8;return;
+  }
+  if(rig.campaignProne){reset=true;rig.campaignProne=false;}
   const { position } = rig.group, yaw = rig.group.rotation.y;
   const crouched = Boolean(player.crouch || player.crouching || player.sliding);
   const existing = rig.motion;

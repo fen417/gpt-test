@@ -75,8 +75,12 @@ function mapLayoutRevision() {
 export const MAP_LAYOUT_REVISION = mapLayoutRevision();
 export const MAPS = Object.fromEntries(Object.entries(BASE_MAPS).map(([id, map]) => [id, applyMapEdits(map, MAP_EDITS[id], BASE_MAPS)]));
 export const MAP=MAPS[DEFAULT_MAP_ID];
+// Campaign maps are registered only by the lazy local campaign entry point.
+// They are deliberately absent from MAPS, lobby options and layout negotiation.
+const localMaps=new Map();
+export function registerLocalMap(map){localMaps.set(map.id,map);return map;}
 export function getMap(mapId){
-  return Object.hasOwn(MAPS,mapId)?MAPS[mapId]:MAP;
+  return Object.hasOwn(MAPS,mapId)?MAPS[mapId]:localMaps.get(mapId)??MAP;
 }
 export const PLAYER_RADIUS=.4;
 export const EYE_HEIGHT=1.65;

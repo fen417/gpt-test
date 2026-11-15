@@ -465,7 +465,7 @@ function crewSight(sim,origin,to){
   const direction={x:(to.x-origin.x)/length,y:(to.y-origin.y)/length,z:(to.z-origin.z)/length};
   return !sim.vehicles.some(v=>(v.hp>0||v.wreckTime>0)&&rayVehicleArmor(origin,direction,v,length-.1)<length-.1);
 }
-function aimCrew(sim,p,vehicle,dt){
+export function aimCrew(sim,p,vehicle,dt){
   const seat=getVehicleSeatPose(vehicle,p.vehicleSeat),spec=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
   const gunner=spec.role==='gunner',tank=gunner&&vehicle.type==='tank',cannon=tank&&vehicle.cannonAmmo>0&&(p.botCrewTarget?.vehicleId||distance(p,p.botCrewTarget??vehicle)>65);
   const weapon=tank?(cannon?{projectileSpeed:TANK_CANNON.speed}:TANK_MG):gunner?TURRET_WEAPON:getWeapon(p.classId,p.weaponId);
@@ -475,8 +475,9 @@ function aimCrew(sim,p,vehicle,dt){
     let selected=null,best=sim.botSettings.awareness*(gunner?1.6:1);
     for(const enemy of sim.players.values()){
       if(!enemy.alive||enemy.team===p.team||enemy.invulnerableUntil>sim.time)continue;
+      if(sim.campaign&&!sim.campaign.canSee(p,enemy))continue;
       const length=distance(p,enemy);if(length>=best)continue;
-      const height=enemy.vehicleId?EYE_HEIGHT-.03:enemy.input.crouch?1.05:1.1;
+      const height=enemy.vehicleId?EYE_HEIGHT-.03:sim.campaign&&(enemy.downed||enemy.prone)? .48:enemy.input.crouch?1.05:1.1;
       const yaw=Math.atan2(-(enemy.x-seat.x),-(enemy.z-seat.z)),pitch=Math.atan2(enemy.y+height-seat.y,length);
       if(Math.abs(angleDifference(yaw,p.yaw))>1.8||!gunner&&!canFirePassengerWeapon(vehicle,p.vehicleSeat,yaw,pitch)||!crewSight(sim,seat,{x:enemy.x,y:enemy.y+height,z:enemy.z}))continue;
       const old=p.botCrewTarget,elapsed=old?.id===enemy.id?sim.time-old.at:0;

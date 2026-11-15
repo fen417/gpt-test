@@ -630,7 +630,7 @@ export class Simulation {
     const c=getWeapon(p.classId,p.weaponId),input=p.input;if(p.cooldown>0||p.reloading||p.ammo<=0)return;
     p.invulnerableUntil=0;
     p.ammo--;p.shotSeq++;p.cooldown+=c.interval;
-    const eye=crouching(p)?CROUCH_EYE_HEIGHT:EYE_HEIGHT;
+    const eye=this.campaign&&(p.prone||p.downed)? .48:crouching(p)?CROUCH_EYE_HEIGHT:EYE_HEIGHT;
     const origin=vehicle?getVehicleSeatPose(vehicle,p.vehicleSeat):{x:p.x,y:p.y+eye,z:p.z};
     const {yaw,pitch,scoped}=shotTrajectory(p);
     p.lastShotAt = this.time;
@@ -713,9 +713,10 @@ export class Simulation {
         continue;
       }
       if(pose.x<minX||pose.x>maxX||pose.z<minZ||pose.z>maxZ)continue;
-      const crouch=crouching(pose),headY=pose.y+(crouch?1.06:EYE_HEIGHT);
+      const prone=this.campaign&&(other.prone||other.downed);
+      const crouch=crouching(pose),headY=pose.y+(prone?.48:crouch?1.06:EYE_HEIGHT);
       const head=raySphere(origin,direction,{x:pose.x,y:headY,z:pose.z},.15);
-      const body=rayCapsule(origin,direction,pose.x,pose.z,pose.y+.26,pose.y+(crouch?.79:1.25),.24);
+      const body=rayCapsule(origin,direction,pose.x,pose.z,pose.y+.26,pose.y+(prone?.3:crouch?.79:1.25),.24);
       const hit=Math.min(head,body);
       if(hit<closest){closest=hit;target=other;headshot=head<body;vehicle=null;equipment=null;}
     }
@@ -841,9 +842,11 @@ export class Simulation {
     const c=getWeapon(p.classId,p.weaponId);
       const slide=slideVelocity(p,i,c,dt,(x,z)=>this.groundAt(x,z));
       p.crouching=Boolean(i.crouch||slide||(p.crouching&&this.collides(p.x,p.z,p.y)));
-      const bodyHeight=p.crouching?CROUCH_EYE_HEIGHT+.12:EYE_HEIGHT;
+      const bodyHeight=this.campaign&&(p.prone||p.downed)? .65:p.crouching?CROUCH_EYE_HEIGHT+.12:EYE_HEIGHT;
       const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.3:i.aim?.7:1);
       if(p.crouching)speed=c.speed*.5;
+      if(this.campaign&&p.downed)speed=.8;
+      else if(this.campaign&&p.prone)speed=1.15;
       speed*=1-p.jumpFatigue*.22;
       const dx=slide?slide.vx*dt:(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
       const dz=slide?slide.vz*dt:(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
@@ -922,7 +925,7 @@ export class Simulation {
       this.updateVehicles(dt);
     }
     for(const p of this.players.values()){
-      if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if(p.bot&&p.respawnIn===0)this.respawn(p.id);continue;}
+      if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if(p.bot&&p.respawnIn===0&&!this.campaign)this.respawn(p.id);continue;}
       if(p.bot&&!this.vehicles.length)this.thinkBot(p,dt);
       const i=p.input;p.yaw=i.yaw;p.pitch=i.pitch;
       p.equipTime=Math.max(0,p.equipTime-dt);
@@ -952,7 +955,7 @@ export class Simulation {
           this.updateReload(p,c,dt);
           this.firePersonalWeapon(p,c,pressed,firing&&canFirePassengerWeapon(vehicle,p.vehicleSeat,p.yaw,p.pitch),vehicle);
         }
-        if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
+        if(!this.campaign&&this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
         continue;
       }
       this.updateReload(p,c,dt);
@@ -968,7 +971,7 @@ export class Simulation {
       if(p.bot&&i.secondaryGadget&&!p.secondaryGadgetHeld)activateGadget(this,p,true);
       p.gadgetHeld=i.gadget;p.secondaryGadgetHeld=i.secondaryGadget;
       if(i.grenade&&!p.grenadeHeld&&!(p.gadgetActionUntil>this.time))this.throwGrenade(p);p.grenadeHeld=i.grenade;
-      if(this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
+      if(!this.campaign&&this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
     }
     for(const p of this.players.values()){
       p.velocityX=(p.x-p.tickX)/dt;
@@ -1006,6 +1009,7 @@ export class Simulation {
       if(grenade.fuse<=0)blast(this,{x:grenade.x,y:grenade.y,z:grenade.z},this.players.get(grenade.owner),'grenade',null,grenade.team);
     }
     this.grenades=this.grenades.filter(g=>g.fuse>0);
+    if(this.campaign)return; // Mission objectives own victory and time in local campaign.
     for(const point of this.points){
       const nearby=[0,0];for(const p of this.players.values())if(p.alive&&dist(p,point)<CAPTURE_RADIUS)nearby[p.team]++;
       point.contested=nearby[0]>0&&nearby[1]>0;

@@ -651,7 +651,7 @@ export class CombatAudio {
         if(p.distance<145){
           const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
-          const profile=e.mounted?'turret':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
+          const profile=e.mounted?'turret':state.campaign&&e.suppressed?'vk45':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
           this.shot(p.distance,profile,p.pan,Boolean(own),age,e.playerId);
         }else this._shotStats.distant++;
       }else if(e.type==='bulletImpact'){
