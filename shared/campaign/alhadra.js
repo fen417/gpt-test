@@ -112,7 +112,12 @@ for(const [name,path] of Object.entries(ROUTES))for(let i=1;i<path.length;i++){
   for(let t=8;t<length;t+=17){
     const f=t/length,dx=(b[0]-a[0])/length,dz=(b[1]-a[1])/length,side=(i+Math.floor(t/17))%2?1:-1;
     const x=a[0]+(b[0]-a[0])*f-dz*side*4.5,z=a[1]+(b[1]-a[1])*f+dx*side*4.5;
-    if(routeCover.some(p=>Math.hypot(p.x-x,p.z-z)<8)||homes.some(h=>Math.abs(h.x-x)<h.w/2+2&&Math.abs(h.z-z)<h.d/2+2))continue;
+    // Roadside rocks from the infantry cover generator must not obstruct
+    // a Humvee. An old rock at (159.5,77) blocked the evacuation turn.
+    const blocksRoad=(Math.abs(x-120)<10||Math.abs(x-167)<10)&&z>50&&z<159
+      ||(Math.abs(z-78)<8||Math.abs(z-130)<8)&&x>90&&x<206;
+    if(blocksRoad||routeCover.some(p=>Math.hypot(p.x-x,p.z-z)<8)
+      ||homes.some(h=>Math.abs(h.x-x)<h.w/2+2&&Math.abs(h.z-z)<h.d/2+2))continue;
     routeCover.push({x,z});const yaw=-Math.atan2(dz,dx)+Math.PI/2,index=routeCover.length;
     if(x<-45||name==='channel')cover('rock',x,z,3.4+index%3,2.2+index%2,1.2+index%3*.25,yaw);
     else if(x<55&&index%2)cover('crate',x,z,2.7,1.4,1.1,yaw);
