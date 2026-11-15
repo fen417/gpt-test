@@ -24,7 +24,10 @@ test('extended Al-Hadra tank map preserves old village terrain and geometry',()=
     const carried=ALHADRA_DESERT.terrain.heightAt(x-ALHADRA_OFFSET.x,z-ALHADRA_OFFSET.z);
     assert.ok(Math.abs(carried-preserved)<.025,`terrain changed at (${x},${z}): ${carried} vs ${preserved}`);
   }
-  assert.equal(ALHADRA.boxes.length+25,ALHADRA_DESERT.boxes.length);
+  const oldVillage=ALHADRA.boxes
+    .filter(b=>Math.abs(b.x-ALHADRA_OFFSET.x)<255&&Math.abs(b.z-ALHADRA_OFFSET.z)<185);
+  assert.equal(ALHADRA_DESERT.boxes.length,oldVillage.length+25,
+    'retain village buildings without importing mission-1 outer cliff colliders');
   assert.ok(ALHADRA_DESERT.terrain.heightAt(-450,-200)>0);
 });
 test('ten allied tanks and player commander share one seat and controls',()=>{
