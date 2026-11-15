@@ -5,6 +5,7 @@ on:
       - audio/machinegun-shot-trim
     paths:
       - .github/workflows/prepare-machinegun-shot.yml
+      - scripts/trim-machinegun-audio.mjs
 permissions:
   contents: write
 jobs:
