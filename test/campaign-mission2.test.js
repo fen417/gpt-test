@@ -117,6 +117,24 @@ test('campaign AP shells ricochet beyond 72 degrees but hit head-on',()=>{
   assert.equal(tankShellRicochets(tank,{x:1.8,y:1,z:0},{x:-1,y:0,z:0}),false);
   assert.equal(tankShellRicochets(tank,{x:1.8,y:1,z:0},{x:-.1,y:0,z:1}),true);
 });
+test('mission 2 completes with survivors, recorded intel and a final checkpoint',()=>{
+  const sim=create(),c=sim.campaign;
+  c.command({type:'skip'});
+  step(sim,188*60);
+  assert.equal(c.enemySerial,10);
+  for(const tank of sim.vehicles.filter(v=>v.team===1&&v.hp>0)){
+    sim.damageVehicle(tank,99999,sim.players.get('local'),'blast',
+      {x:tank.x,y:tank.y+1,z:tank.z});
+  }
+  const v=sim.vehicles.find(v=>v.id==='sokol-7');
+  v.x=-75;v.z=-85;v.y=sim.groundAt(v.x,v.z);
+  step(sim,2);
+  assert.equal(c.complete,true,'surviving player should be able to end the mission at village');
+  assert.equal(c.flags.enemyOrder,true);
+  assert.equal(c.checkpoint,3);
+  assert.equal(c.latestSave?.mission.checkpoint,3);
+  assert.equal(sim.snapshot().campaign.complete,true);
+});
 test('the timeline and dialogue are editable external resources',()=>{
   assert.equal(mission.timeline.find(e=>e.id==='enemyVanguard').at,13);
   assert.equal(mission.music.introSeconds,188);
