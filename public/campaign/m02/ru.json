@@ -1,0 +1,76 @@
+{
+  "speakers": {
+    "holt": "Капитан Холт · Сокол-1",
+    "grey": "Старик Грей · Сокол-4",
+    "bale": "Ник Бэйл · Сокол-8",
+    "duran": "Сержант Дюран",
+    "bruno": "Бруно Валь",
+    "dargo": "Майор Дарго",
+    "crew": "Экипаж Сокол-7"
+  },
+  "objectives": {
+    "march": "Держать строй",
+    "intercept": "Разбей колонну до подхода к деревне",
+    "battle": "Уничтожить бронетехнику противника",
+    "village": "Прикрыть взвод Дюрана у Аль-Хадры",
+    "debrief": "Осмотреть штабной танк"
+  },
+  "lines": {
+    "holt.brief01": {
+      "speaker": "holt",
+      "text": "Рота «Сокол», выходим на сигнал «Маяк». Аль-Хадра ждёт помощи.",
+      "duration": 6,
+      "provisional": true
+    },
+    "holt.brief02": {
+      "speaker": "holt",
+      "text": "Восточный корпус идёт к деревне. Мы перехватим колонну на подходе.",
+      "duration": 7,
+      "provisional": true
+    },
+    "holt.brief03": {
+      "speaker": "holt",
+      "text": "Вос, держись рядом с ротой. По моей команде — удар с фланга.",
+      "duration": 7,
+      "provisional": true
+    },
+    "holt.hold": {
+      "speaker": "holt",
+      "text": "«Сокол», держать строй!",
+      "duration": 3
+    },
+    "grey.dust": {
+      "speaker": "grey",
+      "text": "Пыль на востоке!",
+      "duration": 3
+    },
+    "bale.loss": {
+      "speaker": "holt",
+      "text": "«Сокол-8» потерян. Продолжаем атаку.",
+      "duration": 4,
+      "provisional": true
+    },
+    "duran.support": {
+      "speaker": "duran",
+      "text": "Нам нужна поддержка бронетехники на площади!",
+      "duration": 4,
+      "provisional": true
+    },
+    "bruno.signal": {
+      "speaker": "bruno",
+      "text": "«Сокол», примите сигнал — выдвигаемся.",
+      "duration": 4
+    },
+    "dargo.final": {
+      "speaker": "dargo",
+      "text": "Сигнал «Маяк» слышен. Путь к карьеру вам открыт.",
+      "duration": 5,
+      "provisional": true
+    },
+    "crew.loaded": {
+      "speaker": "crew",
+      "text": "Заряжено!",
+      "duration": 1.5
+    }
+  }
+}
