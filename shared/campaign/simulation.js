@@ -72,6 +72,8 @@ export class CampaignSimulation extends Simulation {
     }
   }
   damageVehicle(vehicle,amount,attacker,kind,origin){
+    // Extraction remains reliable even if the enemy fires across the road.
+    if(vehicle.campaignEvacuation)return {ricochet:true,amount:0};
     if(vehicle.campaignArmor&&kind==='bullet')return {ricochet:true,amount:0};
     return super.damageVehicle(vehicle,amount,attacker,kind,origin);
   }
@@ -210,7 +212,7 @@ export class CampaignDirector {
         // leave cover to walk back to its original visible spawn point.
         home:{x:spawn.x,z:spawn.z},sleeping:Boolean(u.sleeping),detection:0,patrolIndex:0,
         grenades:u.role==='grenadier'?3:0,invulnerableUntil:0,spawnedAt:this.time});
-      this.place(p,spawn.x,spawn.z,u.y);p.yaw=u.yaw??Math.PI*1.25;p.homeYaw=p.yaw;p.botSlot=++this.unitSerial||1;
+      this.place(p,spawn.x,spawn.z,(spawn.x===u.x&&spawn.z===u.z)?u.y:undefined);p.yaw=u.yaw??Math.PI*1.25;p.homeYaw=p.yaw;p.botSlot=++this.unitSerial||1;
       if(u.role==='officer'){this.sim.equipWeapon(p,2);p.equipTime=0;}
       if(u.role==='vehicle'){
         const v=this.sim.vehicles.find(v=>v.id==='campaign-mg-car');
@@ -529,7 +531,7 @@ export class CampaignDirector {
     const courier=this.sim.players.get('courier');
     if(this.stage>=4&&distance(p,courier)<25){this.say('m01.lasko.courier');this.say('m01.courier.help');}
     if(this.flags.courierRevived&&courier?.alive&&this.inZone('exit',courier)&&!this.flags.courierSaved){
-      this.flags.courierSaved=true;p.medkitCapacity=5;p.medkits=Math.min(5,p.medkits+1);
+      this.flags.courierSaved=true;p.medkitCapacity=5;p.medkits=Math.min(5,p.medkits+1);courier.invulnerableUntil=1e8;
       // He walks to the waiting extraction car and drives toward the far road.
       this.say('m01.courier.evacuated');
     }
@@ -649,7 +651,14 @@ export class CampaignDirector {
     }
     const m=structuredClone(save.mission);this.runtime.restore(m.runtime);delete m.runtime;this.spoken=new Set(m.spoken);delete m.spoken;Object.assign(this,m);
     this.options.loadout=save.loadout;this.sim.difficulty=save.difficulty;this.tuning=settings[save.difficulty];this.sim.botSettings={...DIFFICULTIES[save.difficulty],aimError:DIFFICULTIES[save.difficulty].aimError/this.tuning.accuracy};
-    this.sim.vehicles=structuredClone(save.vehicles??[]);this.sim.grenades=structuredClone(save.grenades??[]);this.sim.rockets=structuredClone(save.rockets??[]);this.sim.deployables=structuredClone(save.deployables??[]);this.sim.bullets=[];
+    this.sim.vehicles=structuredClone(save.vehicles??[]);
+    // Checkpoints from older mission builds did not contain the waiting
+    // extraction car. Keep those saved games compatible.
+    if(!this.sim.vehicles.some(v=>v.id==='campaign-evac-car')&&!this.flags.courierSaved){
+      const evac=this.sim.createMapVehicle({id:'campaign-evac-car',type:'humvee',team:0,x:215,z:156,yaw:-2.3});
+      evac.campaignEvacuation=true;evac.respawnIn=1e8;this.sim.vehicles.push(evac);
+    }
+    this.sim.grenades=structuredClone(save.grenades??[]);this.sim.rockets=structuredClone(save.rockets??[]);this.sim.deployables=structuredClone(save.deployables??[]);this.sim.bullets=[];
     this.sim.events=[];this.sim.eventId=0;this.processedEvent=0;this.sim.botTeams=null;this.sim.botTeamAt=0;
     // Reconstructing players invokes ordinary spawn sampling. Resume the saved
     // random stream only after reconstruction has finished.
