@@ -205,7 +205,11 @@ export class CampaignDirector {
       if(!spawn){u.spawnRetryAt=this.time+.5;i++;continue;}
       this.pending.splice(i,1);const [cls,weapon]=roles[u.role]??roles.sentry;
       const p=this.sim.addPlayer(u.id,'Восточный корпус',1,cls,weapon,'p19',true);
-      Object.assign(p,{campaignRole:u.role,campaignGroup:u.group,campaignZone:u.zone,home:{x:u.x,z:u.z},sleeping:Boolean(u.sleeping),detection:0,patrolIndex:0,grenades:u.role==='grenadier'?3:0,invulnerableUntil:0,spawnedAt:this.time});
+      Object.assign(p,{campaignRole:u.role,campaignGroup:u.group,campaignZone:u.zone,
+        // A sentry must defend where it actually materializes; it should not
+        // leave cover to walk back to its original visible spawn point.
+        home:{x:spawn.x,z:spawn.z},sleeping:Boolean(u.sleeping),detection:0,patrolIndex:0,
+        grenades:u.role==='grenadier'?3:0,invulnerableUntil:0,spawnedAt:this.time});
       this.place(p,spawn.x,spawn.z,u.y);p.yaw=u.yaw??Math.PI*1.25;p.homeYaw=p.yaw;p.botSlot=++this.unitSerial||1;
       if(u.role==='officer'){this.sim.equipWeapon(p,2);p.equipTime=0;}
       if(u.role==='vehicle'){
