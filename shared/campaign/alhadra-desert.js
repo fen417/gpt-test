@@ -35,25 +35,23 @@ const militaryCorridors=[
   [[-910,-535],[-750,-455],[-565,-373],[-400,-300],[-235,-248],[-115,-230]],
   [[910,105],[730,-25],[550,-145],[365,-210],[175,-235],[-5,-235]],
 ];
-const corridorHeights=militaryCorridors.map(points=>points.map(([x,z])=>outerTerrain.heightAt(x,z)));
+// Broad, flat approach corridors allow 10 separate tank lanes and reduce
+// steep grade spikes near dunes. Dunes remain outside the tank approach.
+// Smooth a 60-metre shoulder instead of making an abrupt rectangular cut.
 const flattenTankCorridors=(x,z,ground)=>{
-  let closest=Infinity,height=ground;
-  for(const [j,points] of militaryCorridors.entries()){
+  let closest=Infinity;
+  for(const points of militaryCorridors){
     for(let i=0;i<points.length-1;i++){
       const [ax,az]=points[i],[bx,bz]=points[i+1];
       const dx=bx-ax,dz=bz-az,lengthSq=dx*dx+dz*dz;
       const t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/lengthSq));
-      const px=ax+dx*t,pz=az+dz*t;
-      const dist=Math.hypot(x-px,z-pz);
-      if(dist<closest){closest=dist;
-        height=corridorHeights[j][i]+
-          (corridorHeights[j][i+1]-corridorHeights[j][i])*t;
-      }
+      closest=Math.min(closest,Math.hypot(x-(ax+dx*t),z-(az+dz*t)));
     }
   }
-  const weight=closest<=30?1:closest>=54?0:
-    (1-((closest-30)/24)**2*(3-2*(closest-30)/24));
-  return ground+(height-ground)*weight;
+  if(closest<=85)return 0;
+  if(closest>=145)return ground;
+  const t=(closest-85)/60,weight=1-t*t*(3-2*t);
+  return ground*(1-weight);
 };
 // At the edge of the original map, softly fade terrain back to the new
 // desert. The entire old village rectangle is sampled from the original
