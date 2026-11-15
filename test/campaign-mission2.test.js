@@ -6,7 +6,7 @@ import locale from '../public/campaign/m02/ru.json' with {type:'json'};
 import {ALHADRA} from '../shared/campaign/alhadra.js';
 import {ALHADRA_DESERT,ALHADRA_OFFSET} from '../shared/campaign/alhadra-desert.js';
 import {Mission2Simulation,validMission2Save} from '../shared/campaign/mission2.js';
-import {TANK_CANNON} from '../shared/tank.js';
+import {TANK_CANNON,tankShellRicochets} from '../shared/tank.js';
 
 function create(){return new Mission2Simulation(mission,{difficulty:'regular',seed:113,lines:locale.lines});}
 function step(sim,n){for(let i=0;i<n;i++)sim.step(1/60);}
@@ -106,6 +106,13 @@ test('enemy tanks spawn inside the battlefield and stay as wrecks when destroyed
     assert.ok(target.respawnIn>10000);
     assert.ok(target.wreckTime>10000);
   }
+});
+test('campaign AP shells ricochet beyond 72 degrees but hit head-on',()=>{
+  const tank={type:'tank',x:0,y:0,z:0,yaw:0};
+  assert.equal(tankShellRicochets(tank,{x:0,y:1,z:-3.5},{x:0,y:0,z:1}),false);
+  assert.equal(tankShellRicochets(tank,{x:0,y:1,z:-3.5},{x:1,y:0,z:.1}),true);
+  assert.equal(tankShellRicochets(tank,{x:1.8,y:1,z:0},{x:-1,y:0,z:0}),false);
+  assert.equal(tankShellRicochets(tank,{x:1.8,y:1,z:0},{x:-.1,y:0,z:1}),true);
 });
 test('the timeline and dialogue are editable external resources',()=>{
   assert.equal(mission.timeline.find(e=>e.id==='enemyVanguard').at,13);
