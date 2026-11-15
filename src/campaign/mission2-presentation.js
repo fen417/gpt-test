@@ -45,7 +45,7 @@ export class Mission2Presentation {
       sunIntensity:renderer.sun.intensity,sunOffset:renderer.sunOffset.clone(),
       hemiIntensity:renderer.hemiLight.intensity,ambientIntensity:renderer.ambientLight.intensity};
     this.direction=new THREE.Vector3();
-    this.renderHook=(r,state,dt)=>this.render(r,state,dt);
+    this.renderHook=(r,state,dt,view)=>this.render(r,state,dt,view);
     this.onKeyUp=event=>{if(event.code==='ShiftLeft'||event.code==='ShiftRight')this.isZoom=false;};
     document.addEventListener('keyup',this.onKeyUp);
   }
@@ -100,8 +100,10 @@ export class Mission2Presentation {
     this.$('.m02-mission-status').textContent=m.cutscene
       ?'АЛЬ-ХАДРА / 05:12 · БРИФИНГ'
       :`БОЙ ${clock(m.time)} · ПРОТИВНИК: ${m.enemyTanksAlive}/${m.enemyTanksSpawned} · ${m.order.toUpperCase()}`;
-    const tanks=this.$('.m02-tanks');tanks.replaceChildren();
-    for(const v of state.vehicles.filter(v=>v.type==='tank'&&v.team===0).slice(0,10)){
+    if(performance.now()>=(this.nextCompanyHudUpdate??0)){
+      this.nextCompanyHudUpdate=performance.now()+250;
+      const tanks=this.$('.m02-tanks');tanks.replaceChildren();
+      for(const v of state.vehicles.filter(v=>v.type==='tank'&&v.team===0).slice(0,10)){
       const row=document.createElement('div');row.className='m02-tank-status';
       if(v.hp<=0)row.classList.add('destroyed');
       if(v.id==='sokol-7')row.classList.add('player');
@@ -109,7 +111,8 @@ export class Mission2Presentation {
       const bar=document.createElement('i'),fill=document.createElement('em');
       fill.style.width=`${Math.round(clamp(v.hp/v.maxHp,0,1)*100)}%`;bar.append(fill);
       const hp=document.createElement('b');hp.textContent=v.hp<=0?'ПОТЕРЯН':`${Math.ceil(v.hp/v.maxHp*100)}%`;
-      row.append(name,bar,hp);tanks.append(row);
+        row.append(name,bar,hp);tanks.append(row);
+      }
     }
     const v=state.vehicles.find(v=>v.id==='sokol-7');
     this.$('.m02-weapon').textContent=m.weaponMode==='mg'?'СПАРЕННЫЙ ПУЛЕМЁТ':
@@ -146,7 +149,7 @@ export class Mission2Presentation {
       }
     }
   }
-  render(r,state,dt){
+  render(r,state,dt,view={}){
     const m=state.campaign;if(m?.missionId!=='m02')return;
     const t=clamp(m.time/this.definition.timing.expectedDurationSeconds,0,1);
     // Dawn grows from the enemy's east to a warmer morning as the mission
@@ -157,6 +160,16 @@ export class Mission2Presentation {
     r.hemiLight.intensity=1.55+.55*t;r.ambientLight.intensity=.23+.15*t;
     r.sunOffset.set(105,38+25*t,85);
     const v=state.vehicles.find(v=>v.id==='sokol-7');
+    if(v&&!m.cutscene&&this.isZoom){
+      const muzzle=tankMuzzle(v);
+      r.camera.position.set(muzzle.x,muzzle.y+.12,muzzle.z);
+      r.camera.rotation.set(v.aimPitch,v.aimYaw,0,'YXZ');
+      const zoom=view.campaignTankZoom??2.5;
+      r.camera.fov=THREE.MathUtils.radToDeg(2*Math.atan(
+        Math.tan(THREE.MathUtils.degToRad(view.fov??85)*.5)/zoom));
+      r.camera.updateProjectionMatrix();
+    }
+    this.root.classList.toggle('m02-sniper-mode',Boolean(v&&!m.cutscene&&this.isZoom));
     const bore=this.$('.m02-bore-dot'),aimdot=this.$('.m02-aimdot'),dispersion=this.$('.m02-dispersion');
     if(v&&!m.cutscene){
       const mouth=tankMuzzle(v),d=300,point=r.project(mouth.x-Math.sin(v.aimYaw)*d,
