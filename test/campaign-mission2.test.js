@@ -75,6 +75,38 @@ test('mission 2 checkpoint can restore enemy tanks and timing',()=>{
   assert.equal(restored.vehicles.filter(v=>v.team===1).length,6);
   assert.ok(Math.abs(restored.campaign.elapsed-13)<.0001);
 });
+test('all ten crew members are alive and tanks leave their starting formation',()=>{
+  const sim=create(),c=sim.campaign;
+  const initial=sim.vehicles.filter(v=>v.team===0).map(v=>({id:v.id,x:v.x,z:v.z}));
+  for(const v of sim.vehicles.filter(v=>v.team===0)){
+    const crew=sim.players.get(v.seats[0]);
+    assert.equal(crew?.alive,true,`dead or missing crew in ${v.id}`);
+    assert.equal(crew.vehicleId,v.id);
+  }
+  c.command({type:'skip'});
+  step(sim,65*60);
+  const positions=initial.map(p=>{
+    const now=sim.vehicles.find(v=>v.id===p.id);
+    return {id:p.id,travel:Math.hypot(now.x-p.x,now.z-p.z),x:now.x,z:now.z};
+  });
+  assert.ok(positions.filter(p=>p.travel>45).length>=6,
+    `friendly tank column failed to drive: ${JSON.stringify(positions)}`);
+});
+test('enemy tanks spawn inside the battlefield and stay as wrecks when destroyed',()=>{
+  const sim=create();sim.campaign.command({type:'skip'});step(sim,160*60);
+  const enemies=sim.vehicles.filter(v=>v.team===1);
+  assert.equal(enemies.length,10);
+  for(const tank of enemies){
+    assert.ok(tank.home.x<996&&tank.home.x>-996,`enemy tank started beyond map at ${tank.home.x}`);
+  }
+  const target=enemies.find(v=>v.hp>0),attacker=sim.players.get('local');
+  if(target){
+    sim.damageVehicle(target,100000,attacker,'blast',{x:target.x,y:target.y+.6,z:target.z});
+    assert.equal(target.hp,0);
+    assert.ok(target.respawnIn>10000);
+    assert.ok(target.wreckTime>10000);
+  }
+});
 test('the timeline and dialogue are editable external resources',()=>{
   assert.equal(mission.timeline.find(e=>e.id==='enemyVanguard').at,13);
   assert.equal(mission.music.introSeconds,188);
