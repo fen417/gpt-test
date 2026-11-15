@@ -605,7 +605,7 @@ async function startCampaign(options){
   }}
 }
 // The hidden entry listens only on the home screen, outside text fields/dialogs.
-const campaignButton=document.createElement('button');campaignButton.id='open-campaign';campaignButton.type='button';campaignButton.className='home-play';campaignButton.setAttribute('aria-haspopup','dialog');
+const campaignButton=document.createElement('button');campaignButton.id='open-campaign';campaignButton.type='button';campaignButton.className='home-play hidden';campaignButton.setAttribute('aria-haspopup','dialog');
 campaignButton.innerHTML='<span class="nav-index">04</span><span><b>Кампания</b><small>Песок и сталь · 8 миссий</small></span><span class="nav-arrow">↗</span>';
 document.querySelector('.home-nav').append(campaignButton);
 campaignButton.onclick=async()=>{if(busy)return;try{const {openCampaignMenu}=await import('./campaign/menu.js');await openCampaignMenu(startCampaign);}catch(error){status(error.message,true);}};
