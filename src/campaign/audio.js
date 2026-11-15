@@ -42,6 +42,16 @@ export class CampaignAudio {
       const source=c.createBufferSource(),gain=c.createGain();source.buffer=buffer;source.loop=true;source.loopEnd=Math.min(buffer.duration,this.definition.music.loopSeconds);gain.gain.value=0;source.connect(gain);gain.connect(this.musicBus);source.start(start);this.stems.push({source,gain});
     }
   }
+  async startRadioDefence(){
+    if(this.radioDefenceLoading||!this.definition.music?.radioDefence)return;
+    this.radioDefenceLoading=true;
+    const buffer=await this.buffer(this.definition.music.radioDefence);
+    if(this.closed||!buffer)return;
+    const c=this.combat.ctx,source=c.createBufferSource(),gain=c.createGain();
+    source.buffer=buffer;source.loop=true;gain.gain.value=0;
+    source.connect(gain);gain.connect(this.musicBus);source.start();
+    this.radioDefence={source,gain};
+  }
   signal(kind){
     const c=this.combat.ctx;if(!c||!this.voiceBus||this.paused)return;
     const osc=c.createOscillator(),gain=c.createGain(),now=c.currentTime;osc.type='sine';osc.frequency.setValueAtTime(kind===3?640:kind===2?440:280,now);osc.frequency.linearRampToValueAtTime(kind===3?980:340,now+.5);
@@ -64,8 +74,15 @@ export class CampaignAudio {
     }
     const key=mission.subtitle?.serial??null;
     if(key!==this.key){this.key=key;if(mission.subtitle){const line=locale.lines[mission.subtitle.key];if(line)this.voice(line,mission.subtitleRemaining??line.duration);}else this.stopVoice();}
+    const defence=mission.stage===6&&!mission.cutscene&&!mission.complete&&!mission.failed;
+    if(defence&&!this.radioDefenceLoading)this.startRadioDefence();
+    // Dedicated combat cue fades in and out without masking dialogue.
+    this.radioDefence?.gain.gain.setTargetAtTime(defence?.85:0,c.currentTime,defence?.55:1.4);
     const weights=mission.stage===6||mission.cutscene?.id==='finale'?[.65,.65,1,.9,.85]:mission.stage===5?[.4,.15,.45,.15,0]:[.5,.35,mission.alert>0?.6:0,mission.alert===3?.7:0,0];
-    this.stems.forEach((s,i)=>s?.gain.gain.setTargetAtTime(weights[i],c.currentTime,.7));
+    this.stems.forEach((s,i)=>s?.gain.gain.setTargetAtTime(weights[i]*(defence?.14:1),c.currentTime,.7));
   }
-  dispose(){this.closed=true;this.stopVoice();this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}this.bus?.disconnect();this.cache.clear();}
+  dispose(){this.closed=true;this.stopVoice();this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}
+    try{this.radioDefence?.source.stop();}catch{}
+    this.radioDefence?.source.disconnect();this.radioDefence?.gain.disconnect();
+    this.bus?.disconnect();this.cache.clear();}
 }
