@@ -1,4 +1,5 @@
 import {CampaignSimulation,validCampaignSave} from '../../shared/campaign/simulation.js';
+import {Mission2Simulation,validMission2Save} from '../../shared/campaign/mission2.js';
 
 let sim,paused=true,last=0,accumulator=0,tick=0,input={},lastSaveRevision=-1;
 function send(){
@@ -13,8 +14,14 @@ self.onmessage=event=>{
   try{
     const m=event.data;
     if(m.type==='create'){
-      sim=new CampaignSimulation(m.definition,{...m.options,lines:m.lines});
-      if(m.save){if(!validCampaignSave(m.save,m.definition)||!sim.campaign.restore(m.save))throw Error('Сохранение кампании повреждено или устарело. Начните миссию заново.');}
+      const second=m.definition.id==='m02';
+      sim=second?new Mission2Simulation(m.definition,{...m.options,lines:m.lines}):
+        new CampaignSimulation(m.definition,{...m.options,lines:m.lines});
+      if(m.save){
+        const valid=second?validMission2Save(m.save,m.definition):validCampaignSave(m.save,m.definition);
+        if(!valid||!sim.campaign.restore(m.save))
+          throw Error('Сохранение кампании повреждено или устарело. Начните миссию заново.');
+      }
       last=performance.now();send();return;
     }
     if(!sim)return;
