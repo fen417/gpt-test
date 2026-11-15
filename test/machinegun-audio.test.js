@@ -8,8 +8,8 @@ test('all infantry and mounted machine guns use the new single-shot MG sample fa
     assert.match(code,new RegExp(`\\b${weapon}:\\s*\\{\\s*sample:\\s*'lmg'`));
   for(const weapon of ['ar416','ak12','mcx9','vk45','dmr12','sv98'])
     assert.doesNotMatch(code,new RegExp(`\\b${weapon}:\\s*\\{\\s*sample:\\s*'lmg'`));
-  assert.match(code,/'lmg':\\s*\\[[\\s\\S]*?machinegun-shot-1\\.ogg/);
-  assert.match(code,/'lmg':\\s*\\[[\\s\\S]*?machinegun-shot-2\\.ogg/);
+  assert.match(code,/'lmg':\s*\[[\s\S]*?machinegun-shot-1\.ogg/);
+  assert.match(code,/'lmg':\s*\[[\s\S]*?machinegun-shot-2\.ogg/);
 });
 
 test('two trimmed MG reports are committed for both Ogg and AAC fallback',async()=>{
