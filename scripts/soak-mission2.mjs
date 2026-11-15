@@ -7,13 +7,18 @@ sim.campaign.command({type:'skip'});
 const start=sim.vehicles.map(v=>({id:v.id,x:v.x,z:v.z}));
 const seconds=600,dt=1/60;
 let minEnemy=Infinity,maxshots=0,shots=0,ricochets=0,aliveEnd=0;
+const cannonShots=[],blastPositions=[],destroyed=[];
+
 const logs=[];
 for(let n=0;n<seconds*60;n++){
   sim.setInput('local',{yaw:sim.vehicles.find(v=>v.id==='sokol-7')?.aimYaw??0});
   sim.step(dt);
   for(const event of sim.events){
     if(event.id<=(sim.lastSoakEventId??-1))continue;
-    if(event.type==='cannonShot')shots++;
+    if(event.type==='cannonShot'){shots++;if(cannonShots.length<15)cannonShots.push({time:Math.round(sim.time),by:event.playerId,x:Math.round(event.x),y:Math.round(event.y),z:Math.round(event.z)});}
+    if(event.type==='explosion'&&event.kind?.startsWith('cannon')&&blastPositions.length<15)
+      blastPositions.push({time:Math.round(sim.time),kind:event.kind,x:Math.round(event.x),y:Math.round(event.y),z:Math.round(event.z)});
+    if(event.type==='vehicleDestroyed')destroyed.push([Math.round(sim.time),event.vehicleId]);
     if(event.type==='ricochet')ricochets++;
     sim.lastSoakEventId=Math.max(sim.lastSoakEventId??-1,event.id);
   }
@@ -28,11 +33,13 @@ for(let n=0;n<seconds*60;n++){
       enemyHp:opponent.map(v=>Math.round(v.hp)).slice(0,10),
       enemyPos:opponent.slice(0,3).map(v=>[v.id,Math.round(v.x),Math.round(v.z)]),
       tankAmmo:current.slice(0,3).map(v=>[v.id,v.shellAmmo.ap,Math.round(v.aimYaw*100)/100]),
-      positions:current.slice(0,3).map(v=>[v.id,Math.round(v.x),Math.round(v.z)])});
+      positions:current.slice(0,5).map(v=>[v.id,Math.round(v.x),Math.round(v.z),
+        Number(v.speed.toFixed(2)),Number(v.yaw.toFixed(2)),v.m02Waypoint,
+        Number(sim.map.terrain.heightAt(v.x,v.z).toFixed(1))])});
     if(sim.campaign.failed||sim.campaign.complete)break;
   }
 }
-console.log(JSON.stringify(logs,null,2));
+console.log(JSON.stringify({logs,cannonShots,blastPositions,destroyed},null,2));
 assert.equal(sim.campaign.enemySerial,10,'second wave must spawn as scripted');
 assert.ok(shots>=20,`tank AI never really fought: only ${shots} shots`);
 assert.ok(sim.vehicles.some(v=>v.team===1&&v.hp<=0),'no opposing tanks were damaged enough to destroy');
