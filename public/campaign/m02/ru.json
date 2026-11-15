@@ -6,7 +6,8 @@
     "duran": "Сержант Дюран",
     "bruno": "Бруно Валь",
     "dargo": "Майор Дарго",
-    "crew": "Экипаж Сокол-7"
+    "crew": "Экипаж Сокол-7",
+    "kane": "Рядовой Кейн"
   },
   "objectives": {
     "march": "Держать строй",
@@ -71,6 +72,24 @@
       "speaker": "crew",
       "text": "Заряжено!",
       "duration": 1.5
+    },
+    "duran.signal": {
+      "speaker": "duran",
+      "text": "«Сокол», Аль-Хадра на связи. Ждём вас. Бруно больше не отвечает.",
+      "duration": 4,
+      "provisional": true
+    },
+    "kane.support": {
+      "speaker": "kane",
+      "text": "Здесь Кейн. Держу площадь. Работайте по броне!",
+      "duration": 4,
+      "provisional": true
+    },
+    "duran.underFire": {
+      "speaker": "duran",
+      "text": "Танки противника прорываются! Без поддержки нам не удержаться.",
+      "duration": 4,
+      "provisional": true
     }
   }
 }
