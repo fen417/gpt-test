@@ -205,6 +205,9 @@ export class Mission2Director{
     this.cutscene=null;this.started=true;this.stage=1;
     this.combatStartedAt=this.sim.time;this.elapsed=0;
     this.radio=null;this.save(0);
+    // Carry surviving squad members' voices forward from mission 1.
+    const carry=this.options.campaignProgress?.carry??{};
+    this.say(carry.bruno_alive?'bruno.signal':'duran.signal',4);
   }
   command(command){
     if(command?.type==='skip'&&this.cutscene){this.beginCombat();return;}
@@ -284,7 +287,14 @@ export class Mission2Director{
     if(!playerTank||playerTank.hp<=0){this.failed='Танк «Сокол-7» уничтожен.';return;}
     if(this.elapsed>=13)this.stage=2;
     if(this.elapsed>=110)this.stage=3;
-    if(this.elapsed>=188)this.stage=4;
+    if(this.elapsed>=188){
+      this.stage=4;
+      if(!this.flags.villageRadio){
+        this.flags.villageRadio=true;
+        const carry=this.options.campaignProgress?.carry??{};
+        this.say(carry.kane_alive?'kane.support':'duran.underFire',4);
+      }
+    }
     const stage4=this.elapsed>=188&&this.enemySerial===this.definition.enemyCompany.total;
     const enemyDefeated=stage4&&this.enemiesAlive===0;
     if(enemyDefeated&&!this.flags.village){
