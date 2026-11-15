@@ -14,3 +14,30 @@ test('authoritative tank muzzle matches visible barrel on tilted and scaled chas
     const actual=new THREE.Vector3(0,0,-TANK_MUZZLE_DISTANCE).applyMatrix4(rig.levels[0].gun.matrixWorld),expected=tankMuzzle(v);assert.ok(actual.distanceTo(new THREE.Vector3(expected.x,expected.y,expected.z))<1e-6);
   }
 });
+
+test('distant tank renders barrel pitch and turret yaw within two draws',()=>{
+  const rig=createTankRig();
+  const vehicle={id:'tank',type:'tank',x:200,y:3,z:0,yaw:.5,aimYaw:.5,aimPitch:0,
+    bodyPitch:.12,bodyRoll:-.08,hp:2400,speed:5,cannonSeq:0};
+  const player={x:0,z:0};
+  const step=()=>updateTankRig(rig,vehicle,player,1/60,1,{vehicleThirdPerson:true},false);
+  const point=new THREE.Vector3(),expected=new THREE.Vector3();
+  step();
+  for(const [yaw,pitch] of [[1,.2],[-.3,-.1]]){
+    vehicle.aimYaw=yaw;vehicle.aimPitch=pitch;step();rig.group.updateMatrixWorld(true);
+    assert.equal(rig.level,2);
+    const turret=rig.levels[2].turretMesh,vertices=turret.geometry.attributes.position;
+    const muzzle=tankMuzzle(vehicle);
+    expected.set(muzzle.x,muzzle.y,muzzle.z);
+    let closest=Infinity;
+    for(let i=0;i<vertices.count;i++){
+      point.fromBufferAttribute(vertices,i).applyMatrix4(turret.matrixWorld);
+      closest=Math.min(closest,point.distanceTo(expected));
+    }
+    assert.ok(closest<.09,`far barrel missed muzzle by ${closest} m`);
+  }
+  assert.equal(tankModelStats(rig)[2].draws,2);
+  assert.ok(rig.levels[2].hull.geometry.attributes.trackSide.array.some(side=>side!==0));
+  rig.group.traverse(object=>object.geometry?.dispose());
+  for(const material of rig.materialsToDispose)material.dispose();
+});

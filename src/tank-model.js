@@ -8,6 +8,7 @@ export {placeTankDriverCamera} from './tank-camera.js';
 // Original procedural armour. Rigid details are merged per articulated island.
 const wheelAxis=new THREE.Vector3(1,0,0),position=new THREE.Vector3(),scale=new THREE.Vector3(),quaternion=new THREE.Quaternion(),matrix=new THREE.Matrix4();
 const modelDirection={x:0,y:0,z:0};
+const barrelVertex=new THREE.Vector3();
 let atlas,atlasPromise;
 export function loadTankAtlas(renderer){if(atlasPromise)return atlasPromise;const loader=new KTX2Loader().setWorkerLimit(1).setTranscoderPath(import.meta.env.BASE_URL+'basis/').detectSupport(renderer);return atlasPromise=loader.loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href).then(texture=>{atlas=texture;texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy());}).catch(error=>{atlasPromise=null;throw error;}).finally(()=>loader.dispose());}
 function island(parent,material,draw){
@@ -33,6 +34,48 @@ function slopedHull(){
   for(let ring=0;ring<stations.length-1;ring++)for(let edge=0;edge<4;edge++){const a=ring*4+edge,b=ring*4+(edge+1)%4,c=b+4,d=a+4;indices.push(a,b,d,b,c,d);}
   indices.push(0,3,1,1,3,2,12,13,15,13,14,15);
   const indexed=new THREE.BufferGeometry();indexed.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));indexed.setIndex(indices);const geometry=indexed.toNonIndexed();indexed.dispose();geometry.computeVertexNormals();return geometry;
+}
+function batchDistantTank(hull,hatch,tracks,turretMesh,barrel,gun){
+  const hullParts=[hull.geometry,hatch.geometry,tracks.geometry];
+  hull.geometry=mergeGeometries(hullParts,false);
+  for(const geometry of hullParts)geometry.dispose();
+  hatch.removeFromParent();
+  tracks.removeFromParent();
+
+  // Keep two draws: hull with scrolling tracks, and the rotating turret.
+  // The barrel shares the turret mesh, with only its vertices posed on demand.
+  const turretGeometry=turretMesh.geometry,barrelGeometry=barrel.geometry;
+  const offset=turretGeometry.attributes.position.count;
+  const restPosition=barrelGeometry.attributes.position,restNormal=barrelGeometry.attributes.normal;
+  turretMesh.geometry=mergeGeometries([turretGeometry,barrelGeometry],false);
+  const {position:vertices,normal:normals}=turretMesh.geometry.attributes;
+  vertices.setUsage(THREE.DynamicDrawUsage);
+  normals.setUsage(THREE.DynamicDrawUsage);
+  turretGeometry.dispose();
+  barrelGeometry.dispose();
+  barrel.removeFromParent();
+
+  let lastPitch,lastRecoil;
+  const updateBarrel=()=>{
+    if(gun.rotation.x===lastPitch&&gun.position.z===lastRecoil)return;
+    lastPitch=gun.rotation.x;
+    lastRecoil=gun.position.z;
+    gun.updateMatrix();
+    for(let i=0;i<restPosition.count;i++){
+      barrelVertex.fromBufferAttribute(restPosition,i).applyMatrix4(gun.matrix);
+      vertices.setXYZ(offset+i,barrelVertex.x,barrelVertex.y,barrelVertex.z);
+      barrelVertex.fromBufferAttribute(restNormal,i).transformDirection(gun.matrix);
+      normals.setXYZ(offset+i,barrelVertex.x,barrelVertex.y,barrelVertex.z);
+    }
+    for(const attribute of [vertices,normals]){
+      attribute.clearUpdateRanges();
+      attribute.addUpdateRange(offset*3,restPosition.count*3);
+      attribute.needsUpdate=true;
+    }
+    turretMesh.geometry.computeBoundingSphere();
+  };
+  updateBarrel();
+  return updateBarrel;
 }
 function buildLevel(level,material){
   const group=new THREE.Group(),body=new THREE.Group(),turret=new THREE.Group(),gun=new THREE.Group();group.add(body);body.add(turret);turret.position.set(0,TANK_TURRET_BASE_Y,-.4);turret.add(gun);gun.position.set(0,.34,-.9);
@@ -88,9 +131,8 @@ function buildLevel(level,material){
     });const geometry=template.geometry,count=level?10:12;wheels=new THREE.InstancedMesh(geometry,material,count);const color=new THREE.Color(0xffffff);
     for(let i=0;i<count;i++){matrix.makeTranslation(i<count/2?-1.72:1.72,.42,-2.65+i%(count/2)*5.3/(count/2-1));wheels.setMatrixAt(i,matrix);wheels.setColorAt(i,color);}body.add(wheels);}
   if(level===1){const geometry=mergeGeometries([hull.geometry,hatch.geometry],false);hull.geometry.dispose();hatch.geometry.dispose();hull.geometry=geometry;hatch.removeFromParent();}
-  // Keep hull, tracks, turret and barrel as articulated islands at every LOD.
-  // Merging the entire far model baked the turret permanently into the hull.
-  return {group,body,turret,gun,hull,turretMesh,barrel,hatch,tracks,wheels};
+  const updateBarrel=level===2?batchDistantTank(hull,hatch,tracks,turretMesh,barrel,gun):null;
+  return {group,body,turret,gun,hull,turretMesh,hatch,tracks,wheels,updateBarrel};
 }
 export function createTankRig(){
   const travel={value:new THREE.Vector2()},material=new THREE.MeshLambertMaterial({vertexColors:true,map:atlas??null}),group=new THREE.Group();
@@ -123,6 +165,7 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
     l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,TANK_TURRET_BASE_Y+rig.wreckAge*8-rig.wreckAge**2*10):TANK_TURRET_BASE_Y,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
     if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;
     l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleId===v.id&&p.vehicleSeat===0&&!view.vehicleThirdPerson);
+    if(l.group.visible)l.updateBarrel?.();
     l.hull.castShadow=l.turretMesh.castShadow=index===1&&distance<48;
     if(l.wheels){const half=l.wheels.count/2;for(let i=0;i<l.wheels.count;i++){quaternion.setFromAxisAngle(wheelAxis,(i<half?rig.travel.value.x:rig.travel.value.y)*5);matrix.compose(position.set(i<half?-1.72:1.72,.42,-2.65+i%half*5.3/(half-1)),quaternion,scale.set(1,1,1));l.wheels.setMatrixAt(i,matrix);}l.wheels.instanceMatrix.needsUpdate=true;}
   }
