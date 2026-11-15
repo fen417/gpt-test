@@ -60,16 +60,18 @@ function navigation(sim){
 }
 
 export function walkableSegment(sim,a,b,dynamic=true){
-  const length=distance(a,b),rise=(b.y??sim.groundAt(b.x,b.z))-(a.y??sim.groundAt(a.x,a.z));
+  const startY=a.y??sim.groundAt(a.x,a.z),endY=b.y??sim.groundAt(b.x,b.z);
+  const length=distance(a,b),rise=endY-startY;
   if(rise>Math.max(.34,length*.63)||rise< -Math.max(.65,length*.8))return false;
   const steps=Math.max(1,Math.ceil(length/.45));
+  const bodyHeight=a.crouch||a.crouching||b.crouch?1.1:EYE_HEIGHT,stepHeight=sim.stepHeight??0;
   for(let i=1;i<=steps;i++){
     const t=i/steps,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;
-    const y=(a.y??sim.groundAt(a.x,a.z))+rise*t;
-    const bodyHeight=a.crouch||a.crouching||b.crouch?1.1:EYE_HEIGHT;
-    if(sim.collides(x,z,y+(sim.stepHeight??0)+.025,PLAYER_RADIUS+.035,bodyHeight-(sim.stepHeight??0))||dynamic&&sim.vehicleAt(x,z,y))return false;
-    if(sim.groundAt(x,z)>y+.36)return false;
-    if(y-sim.groundAt(x,z)>.4){
+    const y=startY+rise*t;
+    if(sim.collides(x,z,y+stepHeight+.025,PLAYER_RADIUS+.035,bodyHeight-stepHeight)||dynamic&&sim.vehicleAt(x,z,y))return false;
+    const floor=sim.groundAt(x,z);
+    if(floor>y+.36)return false;
+    if(y-floor>.4){
       const origin={x,y:y+.33,z};let support=false;
       for(const box of sim.rayBoxes(origin,down,.7))if(rayCollider(origin,down,box,.7)<.7){support=true;break;}
       if(!support)return false;

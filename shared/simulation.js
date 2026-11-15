@@ -128,7 +128,7 @@ export class Simulation {
     this.navigationHouses = this.map.theme === 'desert-village'
       ? this.map.structures.filter(structure => structure.kind.startsWith('village-house') || structure.kind === 'village-ruin')
       : [];
-    initializeCollisionWorld(this);
+    initializeCollisionWorld(this,true);
     this.random=random;this.time=0;this.players=new Map();this.maxTickets=600;this.tickets=[600,600];
     this.difficulty=typeof difficulty==='string'&&Object.hasOwn(DIFFICULTIES,difficulty)?difficulty:'regular';
     this.botSettings=DIFFICULTIES[this.difficulty];
@@ -284,8 +284,21 @@ export class Simulation {
     const origin=this.map.size/2,cell=this.collisionCell,size=this.collisionSize;
     const minX=Math.max(0,Math.floor((x-radius+origin)/cell)),maxX=Math.min(size-1,Math.floor((x+radius+origin)/cell));
     const minZ=Math.max(0,Math.floor((z-radius+origin)/cell)),maxZ=Math.min(size-1,Math.floor((z+radius+origin)/cell));
+    // Dense village buildings occupy adjacent spatial bins. Test each collider
+    // only once, reject its bounds before constructing the expensive 3D shape.
+    const seen=this.collisionQueryVisited;
+    let visit=this.collisionQueryVisit=(this.collisionQueryVisit+1)>>>0;
+    if(!visit){seen.fill(0);visit=this.collisionQueryVisit=1;}
+    let shape=null;
     for(let bz=minZ;bz<=maxZ;bz++)for(let bx=minX;bx<=maxX;bx++)for(const b of this.collisionBins[bz*size+bx]){
-      if(b.obb||b.parts){if(overlapsCollider(uprightBox(x,y,z,radius,height),b))return true;continue;}
+      if(seen[b.collisionIndex]===visit)continue;
+      seen[b.collisionIndex]=visit;
+      if(b.obb||b.parts){
+        if(x+radius<=b.minX||x-radius>=b.maxX||z+radius<=b.minZ||z-radius>=b.maxZ||y+height<=b.minY||y>=b.h)continue;
+        shape??=uprightBox(x,y,z,radius,height);
+        if(overlapsCollider(shape,b))return true;
+        continue;
+      }
       if(b.overhead&&y+height<=b.minY)continue;
       if(y<b.h&&x>b.minX-radius&&x<b.maxX+radius&&z>b.minZ-radius&&z<b.maxZ+radius)return true;
     }
@@ -912,6 +925,24 @@ export class Simulation {
       if(!wasGrounded&&p.grounded)p.jumpCooldown=.22;
     p.velocityX=(p.x-oldX)/dt;p.velocityZ=(p.z-oldZ)/dt;
   }
+  grenadeBoxes(x,z,endX,endZ){
+    // Swept horizontal bounds of the grenade, queried against the *expanded*
+    // collider bins. A grenade cannot touch a collider outside these cells.
+    const size=this.collisionSize,cell=this.collisionCell,half=this.map.size/2;
+    const loX=Math.floor((Math.min(x,endX)+half)/cell),hiX=Math.floor((Math.max(x,endX)+half)/cell);
+    const loZ=Math.floor((Math.min(z,endZ)+half)/cell),hiZ=Math.floor((Math.max(z,endZ)+half)/cell);
+    // Preserve collisions on trajectories that cross the map border.
+    if(loX<0||loZ<0||hiX>=size||hiZ>=size)return this.grenadeColliders;
+    const out=this.grenadeCandidates;out.length=0;
+    let visit=this.grenadeVisit=(this.grenadeVisit+1)>>>0;
+    if(!visit){this.grenadeVisited.fill(0);visit=this.grenadeVisit=1;}
+    for(let bz=loZ;bz<=hiZ;bz++)for(let bx=loX;bx<=hiX;bx++)
+      for(const box of this.grenadeBins[bz*size+bx]){
+        if(this.grenadeVisited[box.grenadeIndex]===visit)continue;
+        this.grenadeVisited[box.grenadeIndex]=visit;out.push(box);
+      }
+    return out;
+  }
   floorBoxes(x,z,radius){
     const half=this.map.size/2,cell=this.collisionCell,size=this.collisionSize;
     const loX=Math.floor((x-radius+half)/cell),hiX=Math.floor((x+radius+half)/cell);
@@ -1013,7 +1044,10 @@ export class Simulation {
       const delta={x:grenade.vx*dt,y:(grenade.vy+7*dt)*dt,z:grenade.vz*dt},length=Math.hypot(delta.x,delta.y,delta.z);
       const direction=length>0?{x:delta.x/length,y:delta.y/length,z:delta.z/length}:{x:0,y:0,z:0};
       let nearest=length,hit=null;
-      for(const box of this.grenadeColliders){const distance=rayBox(grenade,direction,box,length);if(distance<nearest){nearest=distance;hit=box;}}
+      for(const box of this.grenadeBoxes(grenade.x,grenade.z,grenade.x+delta.x,grenade.z+delta.z)){
+        const distance=rayBox(grenade,direction,box,length);
+        if(distance<nearest){nearest=distance;hit=box;}
+      }
       if(hit?.parts){
         const asset=hit;
         let closest=length;
@@ -1106,7 +1140,7 @@ export class Simulation {
   }
 }
 
-function initializeCollisionWorld(world){
+function initializeCollisionWorld(world,indexGrenades=false){
     world.colliders=getAssetColliders(world.map);
     world.hasRotatedGeometry=world.colliders.some(box=>box.obb||box.parts);
     world.stepHeight=world.map.stepHeight??(world.hasRotatedGeometry ? .3 : 0);
@@ -1119,10 +1153,26 @@ function initializeCollisionWorld(world){
     for(const box of world.colliders)for(let z=bin(box.minZ);z<=bin(box.maxZ);z++)
       for(let x=bin(box.minX);x<=bin(box.maxX);x++)world.collisionBins[z*world.collisionSize+x].push(box);
     world.colliders.forEach((box,index)=>{box.collisionIndex=index;});
+    world.collisionQueryVisited=new Uint32Array(world.colliders.length);
+    world.collisionQueryVisit=0;
     world.rayCandidates=[];
     world.rayVisited=new Uint32Array(world.colliders.length);
     world.rayVisit=0;
     world.grenadeColliders=world.colliders.map(box=>expandCollider(box,.12));
+    if(indexGrenades){
+      // A dense village can have thousands of solid building parts. Expanding
+      // each collider is a one-time cost, not a per-grenade/per-tick cost.
+      world.grenadeBins=Array.from({length:world.collisionSize**2},()=>[]);
+      world.grenadeCandidates=[];
+      world.grenadeVisited=new Uint32Array(world.grenadeColliders.length);
+      world.grenadeVisit=0;
+      for(const [index,box] of world.grenadeColliders.entries()){
+        box.grenadeIndex=index;
+        for(let z=bin(box.minZ);z<=bin(box.maxZ);z++)
+          for(let x=bin(box.minX);x<=bin(box.maxX);x++)
+            world.grenadeBins[z*world.collisionSize+x].push(box);
+      }
+    }
   world.floorCandidates=[];world.floorVisited=new Uint32Array(world.colliders.length);world.floorVisit=0;
 }
 // Collision-only view: no bots, pathfinding grid, combat, or match simulation on clients.

@@ -22,14 +22,14 @@ export function createGameServer(options={}){
   const config={port:bounded(env.PORT,0,65535,8080),tickHz:bounded(env.TICK_HZ,30,60,60),snapshotHz:bounded(env.SNAPSHOT_HZ,10,30,30),
     maxPlayers:Math.floor(bounded(env.MAX_PLAYERS,2,7,7)),maxBots:Math.floor(bounded(env.MAX_BOTS,0,30,30)),defaultBots:Math.floor(bounded(env.BOTS,0,30,8)),
     reconnectMs:bounded(env.RECONNECT_SECONDS,5,120,30)*1000,emptyMs:bounded(env.EMPTY_ROOM_SECONDS,10,300,60)*1000};
-  const tickSamples=new PerformanceSamples(600),loopSamples=new PerformanceSamples(600);
+  const tickSamples=new PerformanceSamples(600),loopSamples=new PerformanceSamples(600),simulationSamples=new PerformanceSamples(600);
   const origins=new Set(String(env.ALLOWED_ORIGINS??'').split(',').map(x=>x.trim()).filter(Boolean));
   const clients=new Set(),sessions=new Map();let room=null,nextPlayer=0,timer=null,maintenance=null,previous=0,accumulator=0,snapshotClock=0,tick=0,stopping=false;
   const totals={bytes:0,messages:0,snapshots:0,snapshotBytes:0,ticks:0,tickMs:0,tickMaxMs:0,skippedSnapshots:0,overruns:0,droppedSeconds:0};
   let intervalStart=performance.now(),intervalBytes=0,intervalMessages=0,intervalTicks=0,intervalTickMs=0,intervalMax=0,lastCpu=process.cpuUsage(),lastMetrics={};
   let effectiveSnapshotHz=config.snapshotHz;
   const stats=()=>({snapshotHz:effectiveSnapshotHz,uptimeSeconds:Math.round(process.uptime()),room:room?{name:room.name,phase:room.phase,players:connected().length,bots:room.bots,mapId:room.mapId}:null,
-    ...lastMetrics,tickMs:tickSamples.summary(),loopDelayMs:loopSamples.summary(),totalBytes:totals.bytes,totalMessages:totals.messages,averageSnapshotBytes:totals.snapshots?Math.round(totals.snapshotBytes/totals.snapshots):0,
+    ...lastMetrics,tickMs:tickSamples.summary(),simulationMs:simulationSamples.summary(),loopDelayMs:loopSamples.summary(),totalBytes:totals.bytes,totalMessages:totals.messages,averageSnapshotBytes:totals.snapshots?Math.round(totals.snapshotBytes/totals.snapshots):0,
     tickLifetimeAverageMs:totals.ticks?+(totals.tickMs/totals.ticks).toFixed(3):0,tickLifetimeMaximumMs:+totals.tickMaxMs.toFixed(3),simulatedTicks:totals.ticks,
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
@@ -180,7 +180,9 @@ export function createGameServer(options={}){
       else{for(const action of pulses)if(action!=='fire')p.input[action]=false;p.input.fire=s.heldInput?.fire??false;}
       if(!p.alive){p.inputAck=s.inputAck;p.networkFrames=null;}
     }
-    sim.step(dt);tick++;snapshotClock+=dt;
+    const simStarted=performance.now();
+    sim.step(dt);simulationSamples.add(performance.now()-simStarted);
+    tick++;snapshotClock+=dt;
     for(const e of sim.events)if(e.id>room.lastEvent){room.events.push(e);room.lastEvent=e.id;}
     while(room.events.length>4096||(room.events.length&&sim.time-room.events[0].time>12))room.eventFloor=room.events.shift().id;
     for(const s of connected())events(s,now);
