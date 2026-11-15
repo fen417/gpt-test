@@ -1,0 +1,40 @@
+name: Prepare custom MG shot reports
+on:
+  push:
+    branches:
+      - audio/machinegun-shot-trim
+    paths:
+      - .github/workflows/prepare-machinegun-shot.yml
+permissions:
+  contents: write
+jobs:
+  trim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Check FFmpeg
+        run: ffmpeg -hide_banner -version | head -n 1
+      - run: npm ci
+      - name: Extract and trim short machine gun reports
+        run: node scripts/trim-machinegun-audio.mjs
+      - name: Verify individual shot waveforms and variants
+        run: npm test
+      - name: Build production client
+        run: npm run build
+      - name: Commit processed sound files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/assets/audio/gunshots/machinegun-shot-*.ogg src/assets/audio/gunshots/machinegun-shot-*.m4a
+          if git diff --cached --quiet; then
+            echo "Machine gun samples are already current"
+          else
+            git commit -m "Generate short machinegun.ogg single-shot recordings for all MGs"
+            git push origin HEAD:audio/machinegun-shot-trim
+          fi
