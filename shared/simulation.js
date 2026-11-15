@@ -1,6 +1,6 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
-import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint } from './vehicles.js';
+import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint, isEnclosedTankCrew } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, prepareVehicleRoutes, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
@@ -599,7 +599,7 @@ export class Simulation {
       const v=this.vehicles.find(v=>v.id===victim.vehicleId);
       // Driver and gunner remain inside the armoured hull while the tank lives.
       // Troops on its exterior, and all light-vehicle crew, are still vulnerable.
-      if(v?.type==='tank'&&v.hp>0)return;
+      if(v?.hp>0&&isEnclosedTankCrew(v,victim.vehicleSeat))return;
     }
     const prevHp=victim.hp;
     victim.hp=Math.max(0,victim.hp-amount);
