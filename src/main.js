@@ -33,7 +33,7 @@ const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),re
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let campaignPresentation=null;
 let squadUI,weaponPreview,lobbyWeaponPreview;
-let tankHud,tankHudLoading,vehicleThirdPerson=true;
+let tankHud,tankHudLoading,vehicleThirdPerson=true,campaignTankZoom=2.5;
 const vehicleLook={id:null,yaw:0,pitch:-.12};
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
@@ -430,7 +430,7 @@ function receive(next){
     const role=VEHICLE_TYPES[vehicle.type]?.seats[player.vehicleSeat]?.role;
     if(previousVehicle?.id!==vehicle.id){
       yaw=vehicle.yaw;pitch=0;recoilPitch=0;recoilYaw=0;
-    }else if(role!=='gunner'){
+    }else if(role!=='gunner'&&next.campaign?.missionId!=='m02'){
       const turn=vehicle.yaw-previousVehicle.yaw;
       yaw+=Math.atan2(Math.sin(turn),Math.cos(turn));
     }
@@ -595,7 +595,7 @@ async function startCampaign(options){
       const {Mission2Presentation}=await import('./campaign/mission2-presentation.js');
       campaignPresentation=new Mission2Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true)});
-      vehicleThirdPerson=true;
+      vehicleThirdPerson=true;campaignTankZoom=2.5;vehicleLook.id=null;
     }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,
       resume:()=>requestControl(true)});
     enter();text('room-badge',second?'КАМПАНИЯ · РАССВЕТ НАД АЛЬ-ХАДРОЙ':'КАМПАНИЯ · ВЫСАДКА У ВАДИ');
@@ -755,7 +755,7 @@ document.addEventListener('mousemove',event=>{
   const player=local();
   const drivingVehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
   if(vehicleThirdPerson&&player?.vehicleSeat===0&&drivingVehicle?.type==='tank'){
-    if(!aim)return;
+    if(!aim&&state?.campaign?.missionId!=='m02')return;
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
@@ -766,6 +766,10 @@ document.addEventListener('mousemove',event=>{
 let lastFireClick=0;
 document.addEventListener('wheel',event=>{
   const player=local(),vehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
+  if(active&&state?.campaign?.missionId==='m02'&&vehicle?.id==='sokol-7'&&
+     (keys.has('ShiftLeft')||keys.has('ShiftRight'))&&event.deltaY){
+    event.preventDefault();campaignTankZoom=campaignTankZoom===2.5?5:2.5;return;
+  }
   if(active&&player?.alive&&vehicle?.type==='tank'&&player.vehicleSeat===1&&event.deltaY){event.preventDefault();weaponSlot=weaponSlot===1?2:1;toolSlot=0;return;}
   if(!active||!aim||!local()?.alive||local()?.heldGadget||local()?.weaponId!=='sv98'||
     (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
@@ -1494,14 +1498,18 @@ function frame(now){
   const renderPlayer=renderState?.players.find(p=>p.id===localId);
   const driven=renderPlayer?.vehicleSeat===0?renderState?.vehicles.find(v=>v.id===renderPlayer.vehicleId):null;
   if(vehicleThirdPerson&&driven?.type==='tank'){
-    if(vehicleLook.id!==driven.id){vehicleLook.id=driven.id;vehicleLook.yaw=0;vehicleLook.pitch=-.12;}
-    if(!aim&&state?.campaign?.missionId!=='m02'){
+    const freeCampaignTank=state?.campaign?.missionId==='m02';
+    if(vehicleLook.id!==driven.id){
+      vehicleLook.id=driven.id;vehicleLook.yaw=freeCampaignTank?driven.yaw:0;vehicleLook.pitch=-.12;
+    }
+    if(!aim&&!freeCampaignTank){
       const follow=1-Math.exp(-dt*9);vehicleLook.yaw*=1-follow;vehicleLook.pitch+=(-.12-vehicleLook.pitch)*follow;
     }
-    yaw=driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
+    yaw=freeCampaignTank?vehicleLook.yaw:driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
-  if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
+  if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,
+    networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
   if(active&&campaignPresentation)campaignPresentation.update(renderState??state,paused,yaw);
   if(['quarry','alhadra-desert'].includes(renderer.map?.id)&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
   tankHud?.update(active?renderState:null,renderPlayer,renderer,now,
