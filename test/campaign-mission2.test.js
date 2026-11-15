@@ -30,6 +30,17 @@ test('extended Al-Hadra tank map preserves old village terrain and geometry',()=
     'retain village buildings without importing mission-1 outer cliff colliders');
   assert.ok(ALHADRA_DESERT.terrain.heightAt(-450,-200)>0);
 });
+test('the tank road does not form a cliff at the reused village edge',()=>{
+  for(const x of [-290,-285,-280,-275]){
+    const h0=ALHADRA_DESERT.terrain.heightAt(x,-287);
+    const h1=ALHADRA_DESERT.terrain.heightAt(x,-285);
+    const h2=ALHADRA_DESERT.terrain.heightAt(x,-283);
+    assert.ok(Math.abs(h0-h1)<1,
+      `tank road jumps at outer map seam: ${x}, -287 to -285 (${h0} / ${h1})`);
+    assert.ok(Math.abs(h1-h2)<1,
+      `tank road jumps inside original village transition: ${x} (${h1} / ${h2})`);
+  }
+});
 test('ten allied tanks and player commander share one seat and controls',()=>{
   const sim=create(),v=sim.vehicles.find(v=>v.id==='sokol-7'),p=sim.players.get('local');
   assert.equal(sim.vehicles.filter(v=>v.team===0&&v.type==='tank').length,10);
