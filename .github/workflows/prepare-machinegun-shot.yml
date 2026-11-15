@@ -18,8 +18,12 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Check FFmpeg
-        run: ffmpeg -hide_banner -version | head -n 1
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version
+          ffprobe -version
       - run: npm ci
       - name: Extract and trim short machine gun reports
         run: node scripts/trim-machinegun-audio.mjs
