@@ -57,7 +57,7 @@ const flattenTankCorridors=(x,z,ground)=>{
 // desert. The entire old village rectangle is sampled from the original
 // terrain; playable geometry and footing there remain unchanged.
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
-const innerHalfX=240,innerHalfZ=180;
+const innerHalfX=270,innerHalfZ=210;
 const heightAt=(x,z)=>{
   const oldX=x+ALHADRA_OFFSET.x,oldZ=z+ALHADRA_OFFSET.z;
   // Bound the preserved village around its NEW local origin (0,0), not
