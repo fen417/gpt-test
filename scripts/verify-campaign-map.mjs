@@ -31,6 +31,19 @@ try{
       `document overflow at ${width}x${height}: ${JSON.stringify(geometry)}`);
     assert.ok(errors.length===0,`page errors at ${width}x${height}: ${errors.join(' / ')}`);
     console.log('PASS campaign screen',width,height);
+    if(width===1280){
+      await dialog.locator('.campaign-play').click();
+      const mission=page.locator('.campaign-m02');
+      await mission.waitFor({state:'visible',timeout:60000});
+      await mission.locator('.m02-briefing').waitFor({state:'visible',timeout:20000});
+      await page.screenshot({path:'artifacts/campaign-map/m02-briefing.png'});
+      await mission.locator('.m02-skip').click();
+      await page.waitForFunction(()=>document.querySelector('.campaign-m02 .m02-mission-status')?.textContent.includes('БОЙ'),
+        {timeout:30000});
+      await page.screenshot({path:'artifacts/campaign-map/m02-battle.png'});
+      assert.ok(errors.length===0,`mission 2 has page errors: ${errors.join(' / ')}`);
+      console.log('PASS mission 2 browser start and briefing skip');
+    }
     await page.close();
   }
 }finally{await browser.close();}
