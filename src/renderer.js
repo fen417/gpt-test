@@ -1812,7 +1812,7 @@ export class GameRenderer {
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
       this.weaponRig.anchorPistolArm(pistolSprint);
     }
-    view.campaignRender?.(this,state,dt);
+    view.campaignRender?.(this,state,dt,view);
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
