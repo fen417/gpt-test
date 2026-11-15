@@ -5,7 +5,15 @@ export class GroundShadows {
   constructor(){this.textures=new Map();this.uniforms={groundShadow:{value:null},groundSpan:{value:384},groundShadowStrength:{value:0}};}
   setMap(map){
     let texture=this.textures.get(map.id);
-    if(!texture){texture=urls[map.id]?new THREE.TextureLoader().load(urls[map.id].href):new THREE.DataTexture(new Uint8Array([255,255,255,255]),1,1);texture.needsUpdate=true;texture.flipY=false;texture.minFilter=THREE.LinearFilter;texture.generateMipmaps=false;this.textures.set(map.id,texture);}
+    if(!texture){
+      const imageUrl=urls[map.id]?.href;
+      texture=imageUrl?new THREE.TextureLoader().load(imageUrl):new THREE.DataTexture(new Uint8Array([255,255,255,255]),1,1);
+      // TextureLoader marks the texture ready after the image loads. Calling
+      // needsUpdate here before the image exists triggers a WebGL warning.
+      if(!imageUrl)texture.needsUpdate=true;
+      texture.flipY=false;texture.minFilter=THREE.LinearFilter;texture.generateMipmaps=false;
+      this.textures.set(map.id,texture);
+    }
     this.uniforms.groundShadow.value=texture;this.uniforms.groundSpan.value=map.size;
   }
   apply(material){

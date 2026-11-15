@@ -4,8 +4,11 @@ import { createSoldierRig } from '../src/soldier.js';
 import { CLASSES,CLASS_WEAPONS,SIDEARMS } from '../shared/world.js';
 const ctx={fillRect(){},drawImage(){},beginPath(){},closePath(){},moveTo(){},lineTo(){},fill(){},stroke(){},arc(){},save(){},restore(){},getImageData(x,y,w,h){return {data:new Uint8ClampedArray(w*h*4)};},putImageData(){}};
 globalThis.document={createElement:()=>({width:8,height:8,getContext:()=>ctx})};globalThis.Image=class{set src(v){queueMicrotask(()=>this.onload?.());}};globalThis.ImageData=class{constructor(data){this.data=data;}};
+const classFilter=process.argv.find(argument=>argument.startsWith('--class='))?.slice('--class='.length);
+if(classFilter&&!Object.hasOwn(CLASSES,classFilter))throw Error('Unknown soldier class: '+classFilter);
 await mkdir('src/assets/soldiers',{recursive:true});const owner={};
 for(const team of [0,1])for(const classId of Object.keys(CLASSES))for(const weaponId of [...CLASS_WEAPONS[classId],...SIDEARMS]){
+  if(classFilter&&classId!==classFilter)continue;
   const rig=createSoldierRig(owner,{id:'template',team,classId,weaponId,x:0,z:0,shotSeq:0}),nodes=[];rig.group.traverse(node=>nodes.push(node));
   const ids=new Map(nodes.map((node,index)=>[node,index])),geometries=[],geometryIds=new Map(),parts=[];let offset=0;
   const attribute=value=>{const descriptor={type:value.array.constructor.name,itemSize:value.itemSize,normalized:value.normalized,offset,length:value.array.length};parts.push(new Uint8Array(value.array.buffer,value.array.byteOffset,value.array.byteLength));offset+=value.array.byteLength;const padding=(4-offset%4)%4;if(padding){parts.push(new Uint8Array(padding));offset+=padding;}return descriptor;};
