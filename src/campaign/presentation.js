@@ -6,6 +6,7 @@ import {createCampaignTruck,groundCampaignTruck,burnCampaignTruck} from './props
 import {createVehicleRig,updateVehicleRig,disposeVehicleRig} from '../vehicles.js';
 import {VEHICLE_TYPES} from '../../shared/vehicles.js';
 import {CampaignFire} from './fire.js';
+import {placeCampaignMarker} from './markers.js';
 
 const presets={night:{fog:'#101b30',sun:'#a8c9ef',hemi:'#a2b9d7',ground:'#45434a',sunPower:.8,hemiPower:.52,ambient:.16,environment:.09},alarm:{fog:'#202538',sun:'#a4bfdf',hemi:'#b0bed5',ground:'#67564a',sunPower:1,hemiPower:.72,ambient:.22,environment:.12},dawn:{fog:'#a58e7c',sun:'#ffd19d',hemi:'#b8c5dd',ground:'#8e7560',sunPower:2,hemiPower:1.3,ambient:.3,environment:.45}};
 export class CampaignPresentation {
@@ -193,11 +194,25 @@ export class CampaignPresentation {
     this.effectTime=(this.effectTime??0)+(this.paused?0:dt);this.fire.update(m,this.effectTime,r.camera);
     const world=this.$('.campaign-world-markers');world.replaceChildren();
     if(m.cutscene||m.complete||m.failed)return;
-    const add=(point,label,cls='')=>{const screen=r.project(point.x,(point.y??r.map.terrain.heightAt(point.x,point.z))+2,point.z);if(!screen.visible)return;const node=document.createElement('div');node.className='campaign-marker '+cls;node.style.transform=`translate(${screen.x}px,${screen.y}px)`;node.textContent=label;world.append(node);};
-    if(m.target)add(m.target,`◇ ${Math.round(Math.hypot(m.target.x-p.x,m.target.z-p.z))} м`);
-    for(const a of m.downed)add(a,`✚ ${a.name}${a.timer<1000?' · '+Math.ceil(a.timer)+' с':''}`,'wounded');
+    const occupied=[];
+    const add=(point,label,cls='')=>{
+      const screen=r.project(point.x,(point.y??r.map.terrain.heightAt(point.x,point.z))+2,point.z);
+      const placement=placeCampaignMarker(screen,r.viewportWidth,r.viewportHeight);
+      if(!placement)return;
+      // Prioritize casualties and important objectives, without stacking
+      // identical labels when several waypoints project to the same spot.
+      if(occupied.some(other=>Math.hypot(other.x-placement.x,other.y-placement.y)<37))return;
+      occupied.push(placement);
+      const node=document.createElement('div');
+      node.className='campaign-marker '+cls;
+      node.style.transform=`translate(${placement.x}px,${placement.y}px) translate(-50%,-50%)`;
+      node.textContent=label;
+      world.append(node);
+    };
+    for(const a of m.downed)add(a,`✚ ${a.name.split(' ').at(-1)} ${a.timer<1000?Math.ceil(a.timer)+'с':''}`,'wounded');
+    if(m.target)add(m.target,`◇ ${Math.round(Math.hypot(m.target.x-p.x,m.target.z-p.z))}м`);
     if(m.stage===3)for(const site of m.chargeSites)if(!site.planted)add(site,'◇ ЗАРЯД');
-    if(m.flags.courierRevived&&!m.flags.courierSaved)add({x:200,z:140},'◇ ЭВАКУАЦИЯ');
+    if(m.flags.courierRevived&&!m.flags.courierSaved)add({x:200,z:140},'◇ ЭВАК');
   }
   dispose(){
     this.audio.dispose();this.fire.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);

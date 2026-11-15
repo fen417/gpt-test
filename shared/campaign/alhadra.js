@@ -73,7 +73,9 @@ for(const side of [-1,1]){
   village('village-wood',137+side*1.65,103,.18,.18,3.2,'#75583d');
 }
 village('village-wood',137,103,3.8,.22,.22,'#75583d',{baseY:3.15,overhead:true});
-for(const z of [79,131])for(const x of [118,164,194])add('wall',x,z,10,.45,1.4);
+// Leave the 78/130 east-west and 120/167 north-south road crossings clear.
+// Six old decorative wall segments previously blocked both the enemy and
+// courier Humvees; nearby homes, rock cover and barricades remain unchanged.
 for(let i=0;i<16;i++)add('village-palm',69+i%4*8,54+Math.floor(i/4)*10,.65,.65,6.5,'#8d805a',{assetMapId:'village'});
 // Ridge trench and two MG positions; sides leave an unblocked rear approach.
 for(const x of [-88,-75])cover('sandbags',x,-38,5.8,.85,1.15,-.15);
@@ -110,7 +112,12 @@ for(const [name,path] of Object.entries(ROUTES))for(let i=1;i<path.length;i++){
   for(let t=8;t<length;t+=17){
     const f=t/length,dx=(b[0]-a[0])/length,dz=(b[1]-a[1])/length,side=(i+Math.floor(t/17))%2?1:-1;
     const x=a[0]+(b[0]-a[0])*f-dz*side*4.5,z=a[1]+(b[1]-a[1])*f+dx*side*4.5;
-    if(routeCover.some(p=>Math.hypot(p.x-x,p.z-z)<8)||homes.some(h=>Math.abs(h.x-x)<h.w/2+2&&Math.abs(h.z-z)<h.d/2+2))continue;
+    // Roadside rocks from the infantry cover generator must not obstruct
+    // a Humvee. An old rock at (159.5,77) blocked the evacuation turn.
+    const blocksRoad=(Math.abs(x-120)<10||Math.abs(x-167)<10)&&z>50&&z<159
+      ||(Math.abs(z-78)<8||Math.abs(z-130)<8)&&x>90&&x<206;
+    if(blocksRoad||routeCover.some(p=>Math.hypot(p.x-x,p.z-z)<8)
+      ||homes.some(h=>Math.abs(h.x-x)<h.w/2+2&&Math.abs(h.z-z)<h.d/2+2))continue;
     routeCover.push({x,z});const yaw=-Math.atan2(dz,dx)+Math.PI/2,index=routeCover.length;
     if(x<-45||name==='channel')cover('rock',x,z,3.4+index%3,2.2+index%2,1.2+index%3*.25,yaw);
     else if(x<55&&index%2)cover('crate',x,z,2.7,1.4,1.1,yaw);
@@ -126,7 +133,8 @@ for(const [x,z] of [[-187,-131],[-163,-112],[-135,-85],[-108,-62],[-51,-46],[-31
     add('rock',x+dx,z+dz,w,d,h,'#aa977d',{assetMapId:'quarry',baseY:terrain.heightAt(x+dx,z+dz)-.15});
   village('village-rubble',x-1,z+7,2.8,1.5,.7);village('village-wood',x+2,z+8,4,.5,.5,'#736149',{modelRotation:{y:.45}});
 }
-for(const [i,[x,z]] of [[91,58],[129,84],[168,84],[191,155],[117,152],[142,123]].entries()){
+// Keep the market awning beside the paved road, not across the car's path.
+for(const [i,[x,z]] of [[91,58],[129,84],[154,84],[191,155],[117,152],[142,123]].entries()){
   village('village-awning',x,z,4.5,3.2,.12,'#a88a5e',{baseY:2.5,overhead:true});
   for(const dx of [-2,2])village('village-wood',x+dx,z,.12,.12,2.5,'#796347');
   village('village-produce-crates',x,z+.7,2.1,1.1,.85);village('village-pottery',x+2.9,z,1.7,1.2,.9);

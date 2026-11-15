@@ -17,6 +17,14 @@ const settings={recruit:{damage:.7,detection:1.4,bleed:35,syringes:3,medkits:4,c
 const roles={mg:['support','mg36'],sniper:['recon','dmr12'],assault:['medic','mcx9'],grenadier:['assault','ar416'],officer:['assault','ar416'],sentry:['assault','ar416'],patrol:['assault','ar416']};
 const allyInfo={duran:['Гари Дюран','assault','ar416'],lasko:['Тео Ласко','medic','mcx9'],bruno:['Бруно Валь','assault','ar416'],kane:['Рядовой Кейн','support','mg36'],courier:['Связной','assault','ar416']};
 const quietLines=new Set(['m01.bruno.patrol','m01.duran.crouch','m01.duran.prone','m01.duran.knife']);
+// Keep the transport on the paved village road. The former parking place
+// (215,156) sat at the base of the rocky hill in the evacuation screenshot.
+export const COURIER_PARK=Object.freeze({x:195,z:130,yaw:Math.PI/2});
+export const COURIER_ESCAPE_ROUTE=Object.freeze([
+  {x:168,z:130},{x:167,z:104},{x:167,z:78},{x:120,z:78},
+  {x:117,z:56},{x:81,z:58},{x:47,z:28},{x:18,z:12},
+  {x:-17,z:8},{x:-75,z:-27},{x:-143,z:-81},
+]);
 const persistentPlayerKeys=['id','name','team','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','stowedAmmo','x','y','z','yaw','pitch','hp','alive','ammo','reserve','grenades','rockets','kills','deaths','assists','score','bot','botSlot','grounded','lastHurt','lastShotAt','shotSeq','reviveSeq','downed','downedAt','downedTimer','reviver','syringes','medkits','medkitCapacity','suppressed','prone','campaignRole','campaignZone','campaignGroup','home','homeYaw','holdAt','guideIndex','sleeping','detection','patrolIndex','withdrawn','scriptedWound','officerCallAt','called','invulnerableUntil','secondaryCooldown','gadgetTime','spawnedAt','vehicleId','vehicleSeat'];
 
 // The ordinary movement, weapons, collision, projectiles and combat AI remain
@@ -126,11 +134,20 @@ export class CampaignDirector {
     const courier=this.addAlly('courier',107,66);this.down(courier,true);courier.downedTimer=1e6;courier.invulnerableUntil=1e8;
     // A waiting extraction car is present from mission start, not created in
     // front of the player when the wounded courier reaches the east road.
-    const evac=this.sim.createMapVehicle({id:'campaign-evac-car',type:'humvee',team:0,x:215,z:156,yaw:-2.3});
-    evac.campaignEvacuation=true;evac.respawnIn=1e8;this.sim.vehicles.push(evac);
+    const evac=this.createCourierEvac();
+    this.sim.vehicles.push(evac);
     this.dialogue={queue:[],active:null,remaining:0};
     this.startCutscene('briefing');
     this.initialSave=null;
+  }
+  createCourierEvac(){
+    const evac=this.sim.createMapVehicle({id:'campaign-evac-car',type:'humvee',team:0,...COURIER_PARK});
+    evac.campaignEvacuation=true;evac.respawnIn=1e8;
+    return evac;
+  }
+  startCourierEvac(evac){
+    evac.campaignRoute={points:COURIER_ESCAPE_ROUTE.map(point=>({...point})),index:0,speed:.63,kind:'courier'};
+    evac.campaignEvacuation=true;
   }
   addAlly(id,x,z){const [name,cls,weapon]=allyInfo[id];const p=this.sim.addPlayer(id,name,0,cls,weapon,'p19',true);Object.assign(p,{campaignRole:id,campaignZone:'wadi',grenades:0,invulnerableUntil:0,home:{x,z}});this.place(p,x,z);return p;}
   place(p,x,z,y){const spot=this.safeSpot(x,z,y);p.x=spot.x;p.z=spot.z;p.y=spot.y;p.tickX=p.x;p.tickZ=p.z;}
@@ -318,7 +335,7 @@ export class CampaignDirector {
       if(p.vehicleId)return true;
       if(evac?.hp>0){
         if(distance(p,evac)<vehicleBoardingRange(evac)&&this.sim.mountVehicle(p,evac,0)){
-          evac.campaignRoute={points:[{x:226,z:166},{x:234,z:173}],index:0,speed:.66};
+          this.startCourierEvac(evac);
         }else moveBot(this.sim,p,evac,dt,{sprint:false});
       }
       return true;
@@ -627,13 +644,16 @@ export class CampaignDirector {
   finishExtraction(){
     const evac=this.sim.vehicles.find(v=>v.id==='campaign-evac-car');
     if(!evac||!this.flags.courierSaved)return;
-    if(evac.campaignRoute||!evac.seats[0])return;
-    // The road ends at the playable boundary: withdraw beyond the visible
-    // mission without letting a drivable car cross the world collision fence.
-    if(evac.x>227&&distance(evac,this.player)>34){
-      const courier=this.sim.players.get('courier');if(courier){courier.withdrawn=true;courier.alive=false;courier.respawnIn=1e8;}
-      this.sim.vehicles=this.sim.vehicles.filter(v=>v!==evac);
-    }
+    if(!evac.seats[0])return;
+    const route=evac.campaignRoute;
+    // Drive along the road toward the expedition's original approach. Once
+    // the transport has passed the village and left the player's view, remove
+    // it quietly, instead of letting it collide with the edge-of-map cliffs.
+    if(route&&(route.index<4||distance(evac,this.player)<93||this.spawnVisible(evac)))return;
+    if(!route&&distance(evac,this.player)<93)return;
+    const courier=this.sim.players.get('courier');
+    if(courier){courier.withdrawn=true;courier.alive=false;courier.respawnIn=1e8;}
+    this.sim.vehicles=this.sim.vehicles.filter(v=>v!==evac);
   }
   spawnVehicle(){
     if(this.sim.vehicles.some(v=>v.id==='campaign-mg-car'))return;
@@ -678,9 +698,20 @@ export class CampaignDirector {
     this.sim.vehicles=structuredClone(save.vehicles??[]);
     // Checkpoints from older mission builds did not contain the waiting
     // extraction car. Keep those saved games compatible.
-    if(!this.sim.vehicles.some(v=>v.id==='campaign-evac-car')&&!this.flags.courierSaved){
-      const evac=this.sim.createMapVehicle({id:'campaign-evac-car',type:'humvee',team:0,x:215,z:156,yaw:-2.3});
-      evac.campaignEvacuation=true;evac.respawnIn=1e8;this.sim.vehicles.push(evac);
+    let oldEvac=this.sim.vehicles.find(v=>v.id==='campaign-evac-car');
+    if(!oldEvac&&!this.flags.courierSaved){
+      oldEvac=this.createCourierEvac();
+      this.sim.vehicles.push(oldEvac);
+    }
+    // Existing checkpoints can contain the old evacuation vehicle on the
+    // cliffside, already stuck on its obsolete eastbound route. Correct it
+    // only while loading, before gameplay resumes.
+    if(oldEvac&&Math.hypot(oldEvac.x-215,oldEvac.z-156)<33){
+      Object.assign(oldEvac,{...COURIER_PARK,y:this.sim.groundAt(COURIER_PARK.x,COURIER_PARK.z),
+        speed:0,steer:0});
+      oldEvac.home={...oldEvac.home,...COURIER_PARK,y:oldEvac.y};
+      if(oldEvac.seats[0])this.startCourierEvac(oldEvac);
+      else oldEvac.campaignRoute=null;
     }
     this.sim.grenades=structuredClone(save.grenades??[]);this.sim.rockets=structuredClone(save.rockets??[]);this.sim.deployables=structuredClone(save.deployables??[]);this.sim.bullets=[];
     this.sim.events=[];this.sim.eventId=0;this.processedEvent=0;this.sim.botTeams=null;this.sim.botTeamAt=0;
