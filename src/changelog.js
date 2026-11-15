@@ -16,10 +16,11 @@ export function mountChangelog() {
     article.append(summary);
     const content = document.createElement('div'); content.className = 'patch-content';
     for (const [key, label] of categories) {
-      if (!patch[key].length) continue;
+      const entries = patch[key];
+      if (!Array.isArray(entries) || entries.length === 0) continue;
       const section = document.createElement('section'), heading = document.createElement('h3'), changes = document.createElement('ul');
       heading.textContent = label;
-      for (const description of patch[key]) { const item = document.createElement('li'); item.textContent = description; changes.append(item); }
+      for (const description of entries) { const item = document.createElement('li'); item.textContent = description; changes.append(item); }
       section.append(heading, changes); content.append(section);
     }
     article.append(content); list.append(article);
