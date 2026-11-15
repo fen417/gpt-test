@@ -593,6 +593,9 @@
           "radio": "m01.bruno.radioStart"
         },
         {
+          "radio": "m01.bruno.sokol"
+        },
+        {
           "radio": "m01.duran.defend"
         }
       ]
