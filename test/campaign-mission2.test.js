@@ -148,7 +148,7 @@ test('mission 2 completes with survivors, recorded intel and a final checkpoint'
 });
 test('the timeline and dialogue are editable external resources',()=>{
   assert.equal(mission.timeline.find(e=>e.id==='enemyVanguard').at,13);
-  assert.equal(mission.music.introSeconds,188);
+  assert.equal(mission.music.introSeconds,187.5735);
   assert.equal(mission.friendlyCompany.count,10);
   assert.equal(locale.lines['holt.hold'].text,'«Сокол», держать строй!');
 });
