@@ -153,7 +153,9 @@ export async function openCampaignMenu(onStart){
       const next=(idx+(event.key==='ArrowDown'?1:-1)+campaignCatalog.missions.length)%campaignCatalog.missions.length;
       choose(campaignCatalog.missions[next].id);
       dialog.querySelector(`[data-mission="${selected}"]`)?.focus({preventScroll:true});
-    }else if(event.key==='Enter'&&event.target?.tagName!=='BUTTON'){
+    }else if(event.key==='Enter'&&(
+      event.target?.closest?.('.campaign-map-mission')||event.target===dialog
+    )){
       event.preventDefault();launch(Boolean(progress.checkpoints[selected]));
     }
   };
