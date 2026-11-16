@@ -230,6 +230,8 @@ test('mission 2 checkpoint can restore enemy tanks and timing',()=>{
   assert.equal(restored.rngState,save.rngState);
   assert.equal(restored.campaign.enemySerial,6);
   assert.equal(restored.vehicles.filter(v=>v.team===1).length,6);
+  assert.ok(restored.snapshot().vehicles.every(v=>v.camo===(v.team===1?'desert':undefined)),
+    'the desert paint applies only to hostile tanks, including from old saves');
   assert.ok(Math.abs(restored.campaign.elapsed-13)<.0001);
 });
 test('old tank checkpoints use the revised opening or finish deploying the second wave',()=>{

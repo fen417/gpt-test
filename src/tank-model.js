@@ -9,6 +9,7 @@ export {placeTankDriverCamera} from './tank-camera.js';
 const wheelAxis=new THREE.Vector3(1,0,0),position=new THREE.Vector3(),scale=new THREE.Vector3(),quaternion=new THREE.Quaternion(),matrix=new THREE.Matrix4();
 const modelDirection={x:0,y:0,z:0};
 const barrelVertex=new THREE.Vector3();
+const desertSand={value:new THREE.Color(0xe0c897)},desertBrown={value:new THREE.Color(0xa8875e)};
 let atlas,atlasPromise;
 export function loadTankAtlas(renderer){if(atlasPromise)return atlasPromise;const loader=new KTX2Loader().setWorkerLimit(1).setTranscoderPath(import.meta.env.BASE_URL+'basis/').detectSupport(renderer);return atlasPromise=loader.loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href).then(texture=>{atlas=texture;texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy());}).catch(error=>{atlasPromise=null;throw error;}).finally(()=>loader.dispose());}
 function island(parent,material,draw){
@@ -136,12 +137,33 @@ function buildLevel(level,material){
 }
 export function createTankRig(){
   const travel={value:new THREE.Vector2()},material=new THREE.MeshLambertMaterial({vertexColors:true,map:atlas??null}),group=new THREE.Group();
-  material.onBeforeCompile=shader=>{shader.uniforms.tankTravel=travel;shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute float trackSide;uniform vec2 tankTravel;').replace('#include <uv_vertex>','#include <uv_vertex>\n#ifdef USE_MAP\nif(abs(trackSide)>.5)vMapUv.y+=trackSide<0.?tankTravel.x:tankTravel.y;\n#endif');};
-  material.customProgramCacheKey=()=> 's09-tank-tracks-v1';
+  const desertCamo={value:false};
+  material.onBeforeCompile=shader=>{
+    Object.assign(shader.uniforms,{tankTravel:travel,desertCamo,desertSand,desertBrown});
+    shader.vertexShader=shader.vertexShader
+      .replace('#include <common>','#include <common>\nattribute float trackSide;uniform vec2 tankTravel;')
+      .replace('#include <uv_vertex>','#include <uv_vertex>\n#ifdef USE_MAP\nif(abs(trackSide)>.5)vMapUv.y+=trackSide<0.?tankTravel.x:tankTravel.y;\n#endif');
+    // Use the existing camouflage shapes and leave the dark hardware unpainted.
+    shader.fragmentShader=shader.fragmentShader
+      .replace('#include <common>',`#include <common>
+        uniform bool desertCamo;
+        uniform vec3 desertSand;
+        uniform vec3 desertBrown;`)
+      .replace('#include <map_fragment>',`#include <map_fragment>
+        #if defined(USE_MAP) && defined(USE_COLOR)
+          if(desertCamo){
+            float paint=smoothstep(.08,.17,vColor.r);
+            float shade=smoothstep(.34,.60,sampledDiffuseColor.r);
+            vec3 camo=mix(desertBrown,desertSand,shade)*clamp(vColor.r/.23,.72,1.16);
+            diffuseColor.rgb=mix(diffuseColor.rgb,diffuse*camo,paint);
+          }
+        #endif`);
+  };
+  material.customProgramCacheKey=()=> 's09-tank-tracks-camo-v1';
   const levels=[0,1,2].map(level=>buildLevel(level,material));for(const l of levels)group.add(l.group);
   const body=new THREE.Group();group.add(body); // Shared seated-actor parent, independent of LOD swaps.
   const shadowMaterial=new THREE.MeshLambertMaterial({colorWrite:false,depthWrite:false}),shadow=new THREE.Mesh(mergeGeometries([levels[1].hull.geometry,levels[1].tracks.geometry],false),shadowMaterial);shadow.castShadow=true;shadow.visible=false;body.add(shadow);
-  return {tank:true,group,body,shadow,levels,level:0,material,travel,materialsToDispose:new Set([material,shadowMaterial]),riders:[],initialized:false};
+  return {tank:true,group,body,shadow,levels,level:0,material,travel,desertCamo,materialsToDispose:new Set([material,shadowMaterial]),riders:[],initialized:false};
 }
 export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   position.set(v.x,v.y??0,v.z);
@@ -170,6 +192,7 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
     if(l.wheels){const half=l.wheels.count/2;for(let i=0;i<l.wheels.count;i++){quaternion.setFromAxisAngle(wheelAxis,(i<half?rig.travel.value.x:rig.travel.value.y)*5);matrix.compose(position.set(i<half?-1.72:1.72,.42,-2.65+i%half*5.3/(half-1)),quaternion,scale.set(1,1,1));l.wheels.setMatrixAt(i,matrix);}l.wheels.instanceMatrix.needsUpdate=true;}
   }
   rig.recoil=Math.max(0,(rig.recoil??0)-dt*.8);rig.cannonSeq=v.cannonSeq;
+  rig.desertCamo.value=v.camo==='desert';
   rig.material.color.setHex(v.hp<=0?0x383c38:0xffffff);
   if(reset)group.updateMatrixWorld(true);
 }

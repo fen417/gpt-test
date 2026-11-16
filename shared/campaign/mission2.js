@@ -252,6 +252,7 @@ export class Mission2Simulation extends Simulation{
       const live=this.vehicles.find(q=>q.id===v.id);
       if(!live)return;
       v.controlScheme=live.controlScheme;
+      if(v.type==='tank'&&v.team===1)v.camo='desert';
       v.m02Shell=live.m02Shell;
       v.shellAmmo=live.shellAmmo?{...live.shellAmmo}:undefined;
     });
