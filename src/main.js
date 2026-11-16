@@ -583,6 +583,7 @@ async function startCampaign(options){
   multiplayer.close();prepare('campaign');localId='local';setBusy(true);
   const second=options.missionId==='m02';
   const third=options.missionId==='m03';
+  const fourth=options.missionId==='m04';
   status(second?'Подготовка танковой операции…':'Подготовка кампании…');
   let session;
   try{
@@ -590,6 +591,7 @@ async function startCampaign(options){
     // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
     if(second)await import('../shared/campaign/alhadra-desert.js');
     if(third)await import('../shared/campaign/tel-mazin.js');
+    if(fourth)await import('../shared/campaign/safra.js');
     session=new CampaignSession(options,{onState:receive,
       onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});
     simulation=session;
@@ -609,6 +611,12 @@ async function startCampaign(options){
       // The menu keeps rendering its own map while mission assets load.
       renderer.setMap(state.mapId);
       campaignPresentation=new Mission3Presentation(session,{renderer,audio,leave,clearControls,
+        resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
+    }else if(fourth){
+      const [{Mission4Presentation}]=await Promise.all([import('./campaign/mission4-presentation.js'),renderer.tankWarmup]);
+      if(simulation!==session)return;
+      renderer.setMap(state.mapId);
+      campaignPresentation=new Mission4Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
     }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,
       resume:()=>requestControl(true)});
@@ -817,7 +825,8 @@ document.addEventListener('keydown',event=>{
   if(active&&$('pause').classList.contains('hidden')&&campaignPresentation?.key(event)){event.preventDefault();return;}
   if(active&&mode==='campaign'&&event.code==='Escape'&&!locked&&!unlocked){event.preventDefault();show('pause',$('pause').classList.contains('hidden'));clearControls();return;}
   if(active&&mode==='campaign'&&isBound('squad',event.code)){event.preventDefault();return;}
-  if(active&&mode==='campaign'&&['KeyZ','KeyV','KeyH','KeyX'].includes(event.code)){
+  if(active&&mode==='campaign'&&['KeyZ','KeyV','KeyH','KeyX'].includes(event.code)&&
+    !(event.code==='KeyX'&&state?.campaign?.missionId==='m04'&&!local()?.downed)){
     if(locked||unlocked&&!unlockedPaused){event.preventDefault();keys.add(event.code);}return;
   }
   if(active&&!event.repeat&&isBound('vehicleCamera',event.code)){const p=local(),v=state?.vehicles.find(v=>v.id===p?.vehicleId);if(v?.type==='tank'&&p.vehicleSeat===0){event.preventDefault();vehicleThirdPerson=!vehicleThirdPerson;save('vehicle-camera',vehicleThirdPerson?'third':'first');return;}}
@@ -1527,6 +1536,11 @@ function frame(now){
     if(state?.campaign?.missionId==='m03'&&state.campaign.ride){
       const hull=state.vehicles.find(v=>v.id==='sokol-7');
       if(hull){const relative=Math.atan2(Math.sin(yaw-hull.yaw),Math.cos(yaw-hull.yaw));yaw=hull.yaw+Math.max(-2.094,Math.min(2.094,relative));}
+    }
+    if(state?.campaign?.missionId==='m04'&&state.campaign.mounted){
+      const angle=Math.atan2(Math.sin(yaw+Math.PI/2),Math.cos(yaw+Math.PI/2));
+      yaw=-Math.PI/2+Math.max(-1.22173,Math.min(1.22173,angle));
+      pitch=Math.max(-.08727,Math.min(.5,pitch));
     }
     lastInput=input();
     const simulationBegin=performance.now();

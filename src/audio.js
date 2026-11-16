@@ -713,6 +713,12 @@ export class CombatAudio {
         this._tone(1120,.06,.06,{end:1760});this._noise(.022,.06,{filter:'highpass',cutoff:4000});
       }
       else if(e.type==='reload')this._reload(e,local,own?local:state.players?.find(player=>player.id===e.playerId));
+      else if(e.type==='safraWarning'){
+        const {distance,pan}=this._position(e,local);
+        const duration=Math.max(.2,Math.min(2,e.impactAt-state.time));
+        if(!e.vehicleId&&distance<110)this._tone(940,duration,.14/(1+distance*.025),{type:'sine',end:380,pan,attack:.12});
+        if(e.vehicleId&&distance<175)this._tone(122,.53,.085/(1+distance*.013),{type:'triangle',end:82,pan,attack:.18});
+      }
       else if(e.type==='damage'&&own){this._noise(.16,.16,{color:'pink',cutoff:1400});this._tone(76,.2,.13,{end:37});}
       else if(e.type==='kill'&&local&&e.killerId===local.id)[880,1174,1397].forEach((frequency,index)=>this._tone(frequency,.14,.055,{time:this.ctx.currentTime+index*.055,send:.12}));
       else if(e.type==='capture'&&local)(e.team===local.team?[587,740,880]:[440,370]).forEach((frequency,index)=>this._tone(frequency,.42,.09,{time:this.ctx.currentTime+index*.12,send:.3}));

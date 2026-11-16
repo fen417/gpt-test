@@ -50,7 +50,7 @@ export function markCampaignComplete(missionId,results={},flags={}){
   if(!previous||elapsed>0&&(!previous.elapsedSeconds||elapsed<previous.elapsedSeconds))
     progress.best[missionId]={elapsedSeconds:elapsed,losses:Math.max(0,Number(results.losses??0)),stealth:results.stealth??null};
   const allowed=new Set(['kane_alive','lasko_alive','bruno_alive','duran_alive','tanks_alive','enemy_order',
-    'marten_wounded','m3_done','harranti_alive','brigade_saved','m3_documents']);
+    'marten_wounded','m3_done','harranti_alive','brigade_saved','m3_documents','m4_done','m4_radio_code','m4_tanks_killed','sappers_alive']);
   for(const [key,value] of Object.entries(flags))if(allowed.has(key))progress.carry[key]=value;
   saveCampaignProgress(progress);return true;
 }

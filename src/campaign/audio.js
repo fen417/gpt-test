@@ -71,7 +71,7 @@ export class CampaignAudio {
   update(state,locale,paused){
     this.ensureGraph();if(!this.bus)return;
     const c=this.combat.ctx,mission=state.campaign;
-    if(mission.missionId==='m02'||mission.missionId==='m03'){
+    if(['m02','m03','m04'].includes(mission.missionId)){
       this.paused=paused;this.bus.gain.setTargetAtTime(!paused&&this.combat.enabled?this.combat.volume*.9:0,c.currentTime,.04);
       this.voiceBus.gain.setTargetAtTime(this.combat.effectsVolume,c.currentTime,.05);
       this.musicBus.gain.setTargetAtTime(this.combat.musicVolume*.15,c.currentTime,.2);

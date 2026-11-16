@@ -582,7 +582,7 @@ export class Simulation {
     }
     let zoneMultiplier=1;
     if(vehicle.type==='tank'&&kind==='blast'){
-      zoneMultiplier=spec.armorZones[tankArmorZone(vehicle,origin)];
+      zoneMultiplier=(vehicle.armorZones??spec.armorZones)[tankArmorZone(vehicle,origin)];
     }
     const previousHp=vehicle.hp;
     vehicle.lastHurt=this.time;
@@ -598,7 +598,7 @@ export class Simulation {
     }
     this.event('vehicleDestroyed',{vehicleId:vehicle.id,vehicleType:vehicle.type,attackerId:attacker?.id,x:vehicle.x,y:vehicle.y+.65,z:vehicle.z});
     this.event('explosion',{x:vehicle.x,y:vehicle.y+.65,z:vehicle.z,vehicleId:vehicle.id});
-    if(vehicle.type==='tank')for(const p of this.players.values()){
+    if(vehicle.type==='tank'&&!vehicle.delayedCookoff)for(const p of this.players.values()){
       const d=Math.hypot(p.x-vehicle.x,p.z-vehicle.z,p.y-vehicle.y);
       if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:'ВЗРЫВ ТАНКА',explosive:true,vehicleId:sourceVehicleId});
     }

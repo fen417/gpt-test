@@ -15,14 +15,13 @@ export function columnMusicCue(state,definition){
 }
 
 export class ColumnMusic{
-  constructor(combat,root,definition){
-    this.combat=combat;this.root=root;this.definition=definition;
+  constructor(combat,root,definition,cue=columnMusicCue){
+    this.combat=combat;this.root=root;this.definition=definition;this.cue=cue;
     this.cache=new Map();this.voices=new Map();this.abort=new AbortController();
   }
   preload(ctx){
     if(this.cache.size)return;
-    for(const name of ['convoy','ambush','combat','drums','interior','finale']){
-      const path=this.definition.music[name];
+    for(const [name,path] of Object.entries(this.definition.music).filter(([,path])=>typeof path==='string')){
       const entry={buffer:null};this.cache.set(name,entry);
       if(!path)continue;
       fetch(new URL(path,this.root),{signal:this.abort.signal})
@@ -55,8 +54,8 @@ export class ColumnMusic{
     this.epoch=m.epoch;
     if(reset)for(const [name,voice] of this.voices)this.stop(name,voice);
     if(paused||m.failed||m.complete||ctx.state!=='running')return;
-    const {tracks,offset}=columnMusicCue(state,this.definition),now=ctx.currentTime;
-    const level=this.combat.enabled&&state.time>=m.lossUntil?this.combat.volume*this.combat.musicVolume*(m.radio?.key?.length ? .4 : 1):0;
+    const {tracks,offset}=this.cue(state,this.definition),now=ctx.currentTime;
+    const level=this.combat.enabled&&state.time>=(m.lossUntil??0)?this.combat.volume*this.combat.musicVolume*(m.radio?.key?.length ? .4 : 1):0;
     this.bus.gain.setTargetAtTime(level,now,.065);
     const silent=Object.keys(tracks).length===0;
     for(const [name,voice] of this.voices)if(!Object.hasOwn(tracks,name))this.stop(name,voice,silent?.045:.35);

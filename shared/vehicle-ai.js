@@ -579,6 +579,7 @@ function ride(sim, p, vehicle, dt) {
 }
 
 export function thinkVehicleBot(sim, p, dt) {
+  if(sim.campaign?.scriptedVehicles&&!p.vehicleId)return false;
   if (!sim.vehicles?.length) return false;
   const vehicle = p.vehicleId == null ? null : sim.vehicles.find(v => v.id === p.vehicleId);
   if (vehicle) {

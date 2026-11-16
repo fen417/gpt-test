@@ -17,7 +17,7 @@ function step(sim,n){for(let i=0;i<n;i++)sim.step(1/60);}
 test('catalog defines eight sequential missions across three acts',()=>{
   assert.equal(catalog.title,'Песок и сталь');assert.equal(catalog.missions.length,8);
   assert.deepEqual(catalog.acts.map(a=>a.missionIds.length),[2,3,3]);
-  assert.deepEqual(catalog.missions.filter(m=>m.implemented).map(m=>m.id),['m01','m02','m03']);
+  assert.deepEqual(catalog.missions.filter(m=>m.implemented).map(m=>m.id),['m01','m02','m03','m04']);
 });
 test('extended Al-Hadra tank map preserves old village terrain and geometry',()=>{
   assert.equal(ALHADRA_DESERT.width,2000);assert.equal(ALHADRA_DESERT.depth,1200);

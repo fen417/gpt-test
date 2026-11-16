@@ -1,8 +1,10 @@
 import {CampaignSimulation,validCampaignSave} from '../../shared/campaign/simulation.js';
 import {Mission2Simulation,validMission2Save} from '../../shared/campaign/mission2.js';
 import {Mission3Simulation,validMission3Save} from '../../shared/campaign/mission3.js';
+import {Mission4Simulation,validMission4Save} from '../../shared/campaign/mission4.js';
 
-const missions={m01:[CampaignSimulation,validCampaignSave],m02:[Mission2Simulation,validMission2Save],m03:[Mission3Simulation,validMission3Save]};
+const missions={m01:[CampaignSimulation,validCampaignSave],m02:[Mission2Simulation,validMission2Save],
+  m03:[Mission3Simulation,validMission3Save],m04:[Mission4Simulation,validMission4Save]};
 
 let sim,paused=true,last=0,accumulator=0,tick=0,input={},lastSaveRevision=-1;
 function send(){
@@ -33,7 +35,8 @@ self.onmessage=event=>{
       // or aiming controls. In particular, target lock needs the last yaw.
       const id=sim.campaign?.definition?.id;
       const liveCommand=id==='m02'&&['weapon','order','repair','targetLock','cruise'].includes(m.command?.type)||
-        id==='m03'&&['order','smoke','talk','answer'].includes(m.command?.type);
+        id==='m03'&&['order','smoke','talk','answer'].includes(m.command?.type)||
+        id==='m04'&&['order','barrel'].includes(m.command?.type);
       if(!liveCommand){input={};sim.setInput('local',{});}
       sim.campaign.command(m.command);send();
     }

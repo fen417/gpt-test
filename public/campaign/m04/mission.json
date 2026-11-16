@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "id": "m04",
+  "title": "Мост",
+  "map": "safra",
+  "scenes": {"briefing": 70, "issue": 20, "ridge": 15, "finale": 40},
+  "difficulty": {
+    "recruit": {"aim": 1.6, "reload": 6, "defence": 360, "hunters": 120, "crates": 4},
+    "regular": {"aim": 1.2, "reload": 5, "defence": 480, "hunters": 90, "crates": 3},
+    "veteran": {"aim": 0.9, "reload": 4, "defence": 570, "hunters": 60, "crates": 2}
+  },
+  "field": {
+    "startAt": 90,
+    "flankAt": 90,
+    "tanks": [
+      {"at": [-110, 70], "yaw": 1.57},
+      {"at": [-132, -51], "yaw": 2.08},
+      {"at": [-85, 11], "yaw": 1.8, "patrol": [-60, 39]},
+      {"at": [-60, -90], "yaw": 0.95}
+    ],
+    "caches": [[-188, -9], [-147, 40], [-94, -35], [-172, 83]],
+    "entrenched": [[-177, -10], [-142, -39], [-128, 40], [-103, 61], [-119, -29], [-68, 24], [-74, -67]],
+    "hunterEntries": [[-92, 86], [-99, -77], [-42, 26]]
+  },
+  "assault": {
+    "smokeDelay": 20,
+    "positions": [[59,-6],[61,-16],[68,-4],[68,-17],[70,-9],[73,-12],[76,-17],[79,-3],[82,-11],[85,-20],[90,-6],[90,8]]
+  },
+  "defence": {
+    "prepare": 60,
+    "casualtyPenalty": 40,
+    "resupplyAt": 255,
+    "mortarInterval": 12,
+    "waves": [
+      {"at": 30, "road": 10, "north": 0, "south": 0, "tanks": 0, "technical": false},
+      {"at": 120, "road": 6, "north": 6, "south": 0, "tanks": 0, "technical": true},
+      {"at": 210, "road": 8, "north": 0, "south": 0, "tanks": 2, "technical": false},
+      {"at": 315, "road": 6, "north": 4, "south": 4, "tanks": 0, "technical": true},
+      {"at": 405, "road": 6, "north": 0, "south": 0, "tanks": 2, "technical": false}
+    ]
+  },
+  "music": {"briefing":"music/briefing.ogg","field":"music/field.ogg","defence":"music/defence.ogg"},
+  "launcher": {"speed": 160, "damage": 700, "reload": 3.5, "range": 150, "capacity": 8},
+  "machineGun": {
+    "range": 300, "damage": 28, "interval": 0.1, "projectileSpeed": 700, "capacity": 200,
+    "reload": 5, "barrelChange": 4, "barrels": 3, "heatPerSecond": 0.08, "coolPerSecond": 0.05
+  }
+}

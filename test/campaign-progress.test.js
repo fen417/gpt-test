@@ -42,6 +42,17 @@ test('mission 2 unlocks only after mission 1; future missions remain planned',()
   assert.equal(campaignMissionStatus('m03',next),'available');
   assert.equal(canStartCampaignMission('m03',next),true);
   assert.equal(next.carry.tanks_alive,7);
+  assert.equal(campaignMissionStatus('m04',next),'locked');
+  markCampaignComplete('m03',{elapsedSeconds:1800},{m3_documents:true,harranti_alive:false});
+  assert.equal(campaignMissionStatus('m04'),'available');
+  recordCampaignCheckpoint('m04',{mission:{checkpoint:4}},5678);
+  assert.equal(campaignMissionStatus('m04'),'progress');
+  markCampaignComplete('m04',{elapsedSeconds:1600},{m4_done:true,m4_radio_code:true,sappers_alive:2,m4_tanks_killed:8});
+  const bridge=readCampaignProgress();
+  assert.equal(bridge.checkpoints.m04,undefined);
+  assert.equal(bridge.carry.sappers_alive,2);
+  assert.equal(bridge.carry.m4_radio_code,true);
+  assert.equal(campaignMissionStatus('m05',bridge),'planned');
   resetCampaignProgress();
   assert.equal(campaignMissionStatus('m02'),'locked');
   assert.equal(readCampaignProgress().completed.length,0);

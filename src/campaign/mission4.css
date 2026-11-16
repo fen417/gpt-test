@@ -1,0 +1,25 @@
+.campaign-m04 [hidden]{display:none!important}
+.campaign-m04 .campaign-objective{max-width:min(390px,62vw)}
+.m04-marker{position:absolute;left:0;top:0;color:#f4d29a;font:700 12px monospace;background:#101824bb;padding:4px 8px;white-space:nowrap}
+.m04-warning{position:absolute;top:clamp(122px,23vh,172px);left:50%;transform:translateX(-50%);width:max-content;max-width:86vw;padding:8px 14px;text-align:center;font:700 12px/1.4 monospace;color:#ffe0b9;background:#5c2d1cde;border-bottom:1px solid #eaae77}
+.m04-flanks span{position:absolute;padding:6px 9px;background:#5c2d1cda;color:#ffe0b9;font:700 11px monospace}
+.m04-flanks [data-lane=north]{top:70px;left:48%}.m04-flanks [data-lane=road]{top:48%;right:8px}.m04-flanks [data-lane=south]{bottom:7px;left:48%}
+.m04-interaction{position:absolute;bottom:19vh;left:50%;transform:translateX(-50%);text-align:center;padding:7px 12px;background:#17202ad4;font:700 12px/1.4 monospace;max-width:82vw}
+.m04-interaction progress{display:block;margin:6px auto 0;width:min(220px,70vw);height:5px;accent-color:#d7b777}
+.m04-injury{position:absolute;top:32%;width:100%;text-align:center;color:#ffc0a5;display:grid;gap:6px;font:700 17px monospace}
+.m04-armour,.m04-feedback{position:absolute;left:50%;transform:translateX(-50%);background:#191e2bd1;color:#ffda9a;text-align:center;padding:4px 8px;font:700 12px monospace}
+.m04-armour{top:calc(50% + 57px)}
+.m04-feedback{left:24px;top:140px;transform:none;text-align:left;max-width:min(310px,37vw)}
+.m04-defence,.m04-weapon{position:absolute;right:24px;display:grid;gap:4px;background:#182333db;padding:9px 13px;border-left:2px solid #b69867;color:#ebd4ab;font:12px/1.45 monospace}
+.m04-defence{top:100px;min-width:141px}.m04-defence b{font-size:33px;line-height:1.05;font-variant-numeric:tabular-nums}
+.m04-weapon{bottom:58px}.m04-weapon meter{width:100%;height:6px;accent-color:#d2855c}
+.m04-map{position:absolute;bottom:44px;left:24px;width:184px;height:140px;background:#192331dc;border:1px solid #c4aa6e77}
+.campaign-m04-active .bottom-right,.campaign-m04-active .squad-hud{display:none}
+.m04-mounted #crosshair{opacity:1}
+.campaign-m04 .campaign-subtitle{bottom:25vh;pointer-events:none}
+.m04-cinematic{position:absolute;inset:0;border-block:8vh solid #101421;box-shadow:inset 0 0 0 100vmax rgb(4 7 13 / var(--end-fade,0))}
+.m04-cinematic b{position:absolute;top:-5.6vh;left:26px;font:700 12px monospace;letter-spacing:.12em}
+.m04-cinematic button{position:absolute;bottom:-5.9vh;right:26px;color:#f2dbae;background:none;border:0;pointer-events:auto;cursor:pointer}
+.campaign-m04:has(.m04-cinematic:not([hidden])) .campaign-subtitle{bottom:10.6vh;z-index:1}
+.campaign-m04 .campaign-ending{z-index:2}
+@media(max-width:680px){.m04-defence,.m04-weapon{right:9px;padding:6px;font-size:10px}.m04-map{left:9px;width:132px;height:102px}.m04-defence{min-width:92px}}

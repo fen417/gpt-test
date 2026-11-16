@@ -54,7 +54,7 @@ export class CampaignSession {
               m.state.campaign.flags;
           markCampaignComplete(this.missionId,{elapsedSeconds:stats.elapsedSeconds??m.state.time,
             losses:stats.losses??m.state.campaign.alliedLosses??0,stealth:stats.stealth??null},flags);
-          if(this.missionId==='m03')try{localStorage.removeItem(saveKey(this.missionId));}catch{}
+          if(['m03','m04'].includes(this.missionId))try{localStorage.removeItem(saveKey(this.missionId));}catch{}
         }
         if(!this.started){this.started=true;clearTimeout(this.timer);this.resolve(this.state);}else onState(this.state);
       }

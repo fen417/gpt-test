@@ -103,7 +103,7 @@ export function activateGadget(sim,p,secondary=false) {
   if(secondary){
     if(p.secondaryCooldown>0)return false;
     if(p.classId==='assault'&&p.rockets>0){
-      p.rockets--;p.secondaryCooldown=5;
+      p.rockets--;p.secondaryCooldown=sim.campaign?.launcherProfile?.(p)?.reload??5;
       beginAction(sim,p,'launcher',1.05);
       if(p.bot)p.pendingGadget={kind:'launcher',at:sim.time+.4};
       else launchRocket(sim,p);
@@ -151,6 +151,7 @@ function finishRevive(sim,p,job) {
 
 function launchRocket(sim,p) {
   const direction={x:-Math.sin(p.yaw)*Math.cos(p.pitch),y:Math.sin(p.pitch),z:-Math.cos(p.yaw)*Math.cos(p.pitch)};
+  const profile=sim.campaign?.launcherProfile?.(p),speed=profile?.speed??85;
   const start=eye(p),side=p.input.aim?0:.27,forward=p.input.aim?.83:.98,drop=p.input.aim?.12:.225;
   const offset={x:direction.x*forward+Math.cos(p.yaw)*side-Math.sin(p.yaw)*Math.sin(p.pitch)*drop,
     y:direction.y*forward-Math.cos(p.pitch)*drop,z:direction.z*forward-Math.sin(p.yaw)*side-Math.cos(p.yaw)*Math.sin(p.pitch)*drop};
@@ -167,11 +168,13 @@ function launchRocket(sim,p) {
   }
   const origin={x:start.x+sweep.x*Math.max(0,clearance-.025),y:start.y+sweep.y*Math.max(0,clearance-.025),z:start.z+sweep.z*Math.max(0,clearance-.025)};
   const id='rocket:'+ ++sim.eventId;
-  const rocket={id,ownerId:p.id,team:p.team,vehicleId:p.vehicleId,...origin,vx:direction.x*85,vy:direction.y*85,vz:direction.z*85,life:4};
+  const rocket={id,ownerId:p.id,team:p.team,vehicleId:p.vehicleId,...origin,vx:direction.x*speed,vy:direction.y*speed,vz:direction.z*speed,life:4,
+    ...(profile?{campaignShellProfile:profile}:{})};
   p.invulnerableUntil=0;
   sim.event('rocketLaunch',{playerId:p.id,team:p.team,rocketId:id,...origin,vx:rocket.vx,vy:rocket.vy,vz:rocket.vz,yaw:p.yaw,pitch:p.pitch});
+  sim.campaign?.launcherBackblast?.(p,start,direction);
   // Sweep eye-to-muzzle first, so extending the barrel never shoots through cover.
-  if(clearance<length)blast(sim,origin,p,'rocket',blockedVehicle,p.team,id,false,p.vehicleId);
+  if(clearance<length)blast(sim,origin,p,'rocket',blockedVehicle,p.team,id,false,p.vehicleId,profile);
   else sim.rockets.push(rocket);
 }
 
@@ -217,7 +220,10 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     const enclosed=vehicle?.type==='humvee'&&player.vehicleSeat!==1;
     if(d<radius&&sim.lineClear(origin,center(player,.8))){
       const before=player.hp,roomBoost=room&&sim.campaign.inside(player)===room?1.15:1;
-      sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1)*roomBoost,owner,
+      const damage=shellProfile?.infantryDamage
+        ?d<3?shellProfile.infantryDamage:Math.max(100,shellProfile.infantryDamage*(1-d/radius))
+        :(rocket||cannon?150:140)*(1-d/radius);
+      sim.damage(player,damage*(enclosed?.28:1)*roomBoost,owner,
         {weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА',explosive:true,vehicleId:sourceVehicleId});confirmed||=player.hp<before;
     }
   }
