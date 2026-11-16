@@ -1,5 +1,6 @@
 import {CampaignSession,readCampaignSave} from './session.js';
 import {CampaignPresentation} from './presentation.js';
+import {describeCampaignOutcome} from './outcome.js';
 import {campaignCatalog,readCampaignProgress,saveCampaignProgress,setCampaignDifficulty,
   campaignStorageWarning,campaignMissionStatus,canStartCampaignMission} from './progress.js';
 import './style.css';
@@ -138,9 +139,11 @@ export async function openCampaignMenu(onStart,{unlockAll=false}={}){
     dialog.querySelector('.campaign-mission-description').textContent=status==='locked'?'Пройдите предыдущую миссию, чтобы открыть это задание.':mission.preview;
     dialog.querySelector('.campaign-mission-objective').textContent=status==='locked'?'???':mission.objective;
     dialog.querySelector('.campaign-mission-duration').textContent=mission.duration;
-    dialog.querySelector('.campaign-mission-result').textContent=progress.best[id]
-      ?`ЛУЧШЕЕ ВРЕМЯ: ${minutes(progress.best[id].elapsedSeconds)} · ПОТЕРИ: ${progress.best[id].losses??'—'}`
+    const outcome=progress.outcomes?.[id],best=progress.best[id];
+    const result=best
+      ?`ЛУЧШЕЕ ВРЕМЯ: ${minutes(best.elapsedSeconds)}${outcome?'':` · ПОТЕРИ: ${best.losses??'—'}`}`
       :progress.checkpoints[id]&&readCampaignSave(id)?`Сохранено: КП ${progress.checkpoints[id].number??0} · ${new Date(progress.checkpoints[id].when).toLocaleString('ru-RU')}`:'';
+    dialog.querySelector('.campaign-mission-result').textContent=[result,describeCampaignOutcome(outcome)].filter(Boolean).join(' · ');
     dialog.querySelector('.campaign-storage-warning').textContent=campaignStorageWarning()
       ?'⚠ Хранилище браузера недоступно: прогресс сохранится только до перезагрузки.':'';
     dialog.querySelector('.campaign-menu-error').textContent='';

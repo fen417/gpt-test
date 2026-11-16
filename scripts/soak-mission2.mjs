@@ -67,7 +67,7 @@ for(let n=0;n<seconds*60;n++){
   }
 }
 console.log(JSON.stringify({logs,cannonShots,blastPositions,destroyed},null,2));
-assert.equal(sim.campaign.enemySerial,10,'second wave must spawn as scripted');
+assert.equal(sim.campaign.enemySerial,mission.enemyCompany.total,'second wave must deploy after the vanguard is defeated');
 assert.ok(shots>=20,`tank AI never really fought: only ${shots} shots`);
 assert.ok(sim.vehicles.some(v=>v.team===1&&v.hp<=0),'no opposing tanks were damaged enough to destroy');
 assert.ok(sim.vehicles.some(v=>v.team===0&&v.x>-350),

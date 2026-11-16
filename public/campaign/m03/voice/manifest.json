@@ -72,7 +72,7 @@
       "stability": 0.5
     }
   },
-  "totalBytes": 564918,
+  "totalBytes": 579702,
   "clips": [
     {
       "id": "orlov.road",
@@ -92,9 +92,9 @@
     {
       "id": "timo.road",
       "speaker": "timo",
-      "seconds": 4.495833333333334,
-      "bytes": 13887,
-      "performance": "[dryly]"
+      "seconds": 5.4,
+      "bytes": 15850,
+      "performance": "[clearly, dry humor]"
     },
     {
       "id": "duran.night",
@@ -390,6 +390,13 @@
       "seconds": 3.8533333333333335,
       "bytes": 11785,
       "performance": "[quietly, focused]"
+    },
+    {
+      "id": "vos.askHome",
+      "speaker": "vos",
+      "seconds": 4.5,
+      "bytes": 12821,
+      "performance": "[warm, curious]"
     }
   ]
 }

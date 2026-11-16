@@ -35,7 +35,9 @@ export function tankMuzzle(v,out={}){const d=vehicleAimDirection(v,v.aimYaw,v.ai
 export function moveTank(sim,v,input,dt){
   const spec=VEHICLE_TYPES.tank,throttle=clamp(input?.forward??0,-1,1);let steer=clamp(input?.strafe??0,-1,1);
   const target=throttle*(throttle>=0?spec.maxSpeed:spec.reverseSpeed);
-  const brake=Math.abs(target)<Math.abs(v.speed)||Math.sign(target)!==Math.sign(v.speed),acceleration=brake?spec.brake:spec.acceleration;
+  const campaign=v.controlScheme==='wot';
+  const brake=Math.abs(target)<Math.abs(v.speed)||((v.speed!==0||!campaign)&&Math.sign(target)!==Math.sign(v.speed));
+  const acceleration=brake?spec.brake:campaign?2.4:spec.acceleration;
   v.speed+=clamp(target-v.speed,-acceleration*dt,acceleration*dt);
   // Steering follows the direction of travel. A stopped tank still pivots normally.
   if(v.speed<0)steer=-steer;

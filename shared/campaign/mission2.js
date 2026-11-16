@@ -25,6 +25,10 @@ export class Mission2Simulation extends Simulation{
     this.campaign.initialize();
   }
   balanceTeams(){}
+  damage(player,amount,attacker,meta){
+    if(player.campaignRole==='platoon'&&attacker?.team===1&&attacker.campaignRole==='tank-driver')return;
+    return super.damage(player,amount,attacker,meta);
+  }
   updateVehicleActions(p){
     // One commander operates a sealed tank throughout this mission.
     if(p.id==='local'){p.input.interact=false;p.input.switchSeat=false;p.input.horn=false;return;}
@@ -116,8 +120,9 @@ export class Mission2Simulation extends Simulation{
     }
     if(this.time<(p.nextM02Think??0))return;
     p.nextM02Think=this.time+.09+((p.botSlot??0)%3)*.013;
-    const c=this.campaign,enemy=[...this.vehicles.filter(other=>other.hp>0&&other.team!==v.team),
-      ...[...this.players.values()].filter(other=>v.shellAmmo.he>0&&other.alive&&!other.vehicleId&&other.team!==v.team&&distance(v,other)<500)];
+    const c=this.campaign,enemy=this.vehicles.filter(other=>other.type==='tank'&&other.hp>0&&other.team!==v.team);
+    if(v.team===0&&c.phase==='village'&&v.shellAmmo.he>0)
+      for(const other of this.players.values())if(other.alive&&!other.vehicleId&&other.team===1&&distance(v,other)<500)enemy.push(other);
     let target=null,nearest=Infinity,best=Infinity;
     const from={x:v.x,y:(v.y??0)+2.4,z:v.z};
     for(const other of enemy){
@@ -164,11 +169,12 @@ export class Mission2Simulation extends Simulation{
     const inRange=target&&nearest<800;
     const attack=Boolean(inRange&&combatAllowed);
     if(c.order!=='hold'||v.team===1){
-      const remaining=c.enemySerial===c.definition.enemyCompany.total&&c.enemiesAlive<=2;
-      if(remaining&&v.team===0&&c.phase==='battle'&&!target){
+      if(c.enemiesAlive<=2&&v.team===0&&c.phase==='battle'&&!target){
         const hidden=enemy.filter(other=>other.type==='tank').sort((a,b)=>distance(v,a)-distance(v,b))[0];
         if(hidden)goal={x:hidden.x+(v.m02Index%3-1)*26,z:hidden.z-44};
       }
+      if(v.team===1&&wp===route.length-1&&target&&nearest>=180&&target.z<-95)
+        goal={x:target.x+(v.m02Index%3-1)*18,z:target.z};
       if(this.time<(v.m02DetourUntil??0))goal=v.m02Detour;
       else if(attack&&nearest<180)goal={x:v.x,z:v.z};
     }
@@ -181,7 +187,7 @@ export class Mission2Simulation extends Simulation{
       p.input=sanitizeInput({...prior,forward:-.65,strafe:-v.m02EscapeSide,fire:false});
       return;
     }
-    if(drive>0&&Math.abs(v.speed)<.2&&distance(v,goal)>24){
+    if((drive>0||Math.abs(turn)>.15)&&Math.abs(v.speed)<.2&&distance(v,goal)>24){
       v.m02Stopped=(v.m02Stopped??0)+.10;
       if(v.m02Stopped>1.8){
         v.m02EscapeSide=-(v.m02EscapeSide??(v.m02Index%2===0?1:-1));
@@ -471,10 +477,11 @@ export class Mission2Director{
     const playerTank=this.sim.vehicles.find(v=>v.id==='sokol-7');
     if(!playerTank||playerTank.hp<=0||!this.player?.alive){this.failed='Танк «Сокол-7» уничтожен.';return;}
     if(this.elapsed>=13&&this.phase==='march'){this.phase='battle';this.stage=3;}
-    const allTanksDeployed=this.enemySerial===this.definition.enemyCompany.total;
-    if(this.phase==='battle'&&this.sim.vehicles.some(v=>v.team===1&&v.hp>0&&distance(v,{x:17,z:0})<42)){
-      this.failed='Вражеский танк прорвался на площадь Аль-Хадры.';return;
+    const company=this.definition.enemyCompany;
+    if(this.phase==='battle'&&this.enemySerial===company.firstWave&&this.enemiesAlive===0){
+      this.fired.add('enemyRear');this.spawnEnemy(company.total-this.enemySerial);
     }
+    const allTanksDeployed=this.enemySerial===company.total;
     const enemyDefeated=allTanksDeployed&&this.enemiesAlive===0;
     if(enemyDefeated&&!this.flags.village){
       this.flags.village=true;this.phase='village';this.stage=4;this.completedObjectives.push('armor');

@@ -22,3 +22,4 @@
 .campaign-objective strong{font-size:18px;margin:5px 0}
 .campaign-objective .campaign-optional{font-size:11px}
 @media(max-width:700px){.campaign-marker{font-size:9px;padding:2px 4px}.campaign-objective{max-width:70vw}}
+.campaign-ally-label{position:fixed;z-index:25;transform:translate(-50%,-100%);pointer-events:none;white-space:nowrap;color:#c9edc6;font:700 13px Arial,sans-serif;text-shadow:0 1px 5px #000,0 1px 2px #000}

@@ -1,5 +1,6 @@
 import '../../shared/campaign/alhadra.js';
 import {recordCampaignCheckpoint,markCampaignComplete} from './progress.js';
+import {campaignOutcome} from './outcome.js';
 
 const SNAPSHOT_DELAY=.067;
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -50,10 +51,12 @@ export class CampaignSession {
           const flags=this.missionId==='m01'?
             {...Object.fromEntries(['kane','lasko','bruno','duran'].map(id=>[`${id}_alive`,Boolean(m.state.players.find(p=>p.id===id)?.alive)])),
               marten_wounded:Boolean(m.state.campaign.flags?.marten_wounded)}:
-            this.missionId==='m02'?{tanks_alive:m.state.campaign.tanksAlive??0,enemy_order:Boolean(m.state.campaign.flags?.enemyOrder)}:
+            this.missionId==='m02'?{...Object.fromEntries(m.state.players.filter(p=>['m02-kane','m02-lasko','m02-bruno','m02-duran'].includes(p.id))
+              .map(p=>[`${p.id.slice(4)}_alive`,p.alive])),
+              tanks_alive:m.state.campaign.tanksAlive??0,enemy_order:Boolean(m.state.campaign.flags?.enemyOrder)}:
               m.state.campaign.flags;
           markCampaignComplete(this.missionId,{elapsedSeconds:stats.elapsedSeconds??m.state.time,
-            losses:stats.losses??m.state.campaign.alliedLosses??0,stealth:stats.stealth??null},flags);
+            losses:stats.losses??m.state.campaign.alliedLosses??0,stealth:stats.stealth??null,outcome:campaignOutcome(m.state)},flags);
           if(['m03','m04'].includes(this.missionId))try{localStorage.removeItem(saveKey(this.missionId));}catch{}
         }
         if(!this.started){this.started=true;clearTimeout(this.timer);this.resolve(this.state);}else onState(this.state);

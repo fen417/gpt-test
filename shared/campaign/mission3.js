@@ -67,6 +67,9 @@ export class Mission3Simulation extends Simulation{
     super.movePlayer(p,input,dt);
   }
   thinkBot(p,dt){
+    if(p.team===1&&this.campaign.rideTime<this.campaign.definition.convoy.ambushAt){
+      p.input=sanitizeInput({yaw:p.yaw});return;
+    }
     if(this.campaign.thinkBot(p,dt))return;
     const prior=p.botThinkAt;
     super.thinkBot(p,dt);
@@ -170,6 +173,16 @@ class ColumnDirector{
   }
   updateRadio(){
     if(this.radio&&this.time<this.radioEnd)return;
+    if(this.choices&&this.rideTime<this.choiceUntil)return;
+    this.choices=null;
+    const question=this.definition.dialogueChoices.findIndex(choice=>choice.question===this.radio?.key);
+    if(this.inTransit&&this.rideTime<this.definition.convoy.villageAt&&question>=this.choiceIndex){
+      this.choices=this.definition.dialogueChoices[question].answers;
+      this.choiceIndex=question+1;
+      this.choiceUntil=this.rideTime+6;
+      this.radio=null;
+      return;
+    }
     const key=this.queue.shift();
     this.radio=key?{key,serial:++this.serial}:null;
     this.radioEnd=key?this.time+(this.options.lines?.[key]?.duration??4):0;
@@ -182,14 +195,13 @@ class ColumnDirector{
     const p=this.player,i=this.input;
     this.refreshGeometry();
     if(this.inTransit){
-      const {ambushAt,combatAt}=this.definition.convoy;
+      const {combatAt}=this.definition.convoy;
       this.skipHold=i.jump?this.skipHold+dt:0;
       const speed=this.skipHold>=1&&this.rideTime<90?10:1;
       this.rideTime=Math.min(combatAt,this.rideTime+Math.min(dt*speed,speed>1?90-this.rideTime:Infinity));
-      if(speed>1){this.radio=null;this.queue.length=0;}
+      if(speed>1){this.radio=null;this.queue.length=0;this.choices=null;}
       const hull=this.sim.vehicles.find(v=>v.id==='sokol-7'),base=hull.yaw;
       p.input=sanitizeInput({yaw:base+Math.max(-2.094,Math.min(2.094,angle((i.yaw??base)-base))),pitch:i.pitch});
-      if(this.rideTime<ambushAt)this.updateLook(dt);
     }else if(this.finale){p.input=sanitizeInput({yaw:p.yaw,pitch:p.pitch});}
     else{
       if(i.prone&&!this.previous.prone&&!p.downed)p.prone=!p.prone;
@@ -235,22 +247,14 @@ class ColumnDirector{
     }
     this.once('roofs',d.villageAt+6,()=>this.say(this.carry.kane_alive===false?'timo.roofs':'kane.roofs'));
     this.once('window',d.villageAt+12,()=>this.say('timo.window'));
+    this.once('ambush-first',d.villageAt-14,()=>this.enqueue(this.definition.stages[0].first));
     this.once('lead-hit',d.ambushAt,()=>{this.radio=null;this.queue=[];this.hitTank(this.sim.vehicles[0],{x:-116,z:-9});});
     this.once('tail-hit',d.ambushAt+.8,()=>{
       this.hitTank(this.sim.vehicles.filter(v=>v.convoyIndex!==undefined).at(-1),{x:-181,z:9});
       this.flags.tanks_alive=this.sim.vehicles.filter(v=>v.convoyIndex!==undefined&&v.hp>0).length;
     });
-    this.once('ambush-first',d.ambushAt+1.5,()=>this.enqueue(this.definition.stages[0].first));
     this.once('dismount',d.dismountAt,()=>this.dismount());
     this.once('combat',d.combatAt,()=>{this.stage=0;this.stageAt=this.time;});
-  }
-  updateLook(dt){
-    const p=this.player,yaw=p.input.yaw??p.yaw;
-    const other=[...this.sim.players.values()].find(a=>a.id!==p.id&&a.squadMember&&!a.lookLine&&a.vehicleId===p.vehicleId&&
-      Math.abs(angle(yawTo(p,a)-yaw))<.35);
-    if(this.lookId!==other?.id){this.lookId=other?.id;this.lookSeconds=0;}
-    if(other&&(this.lookSeconds+=dt)>=1.5){other.lookLine=true;this.say(other.id==='kane'?'kane.quiet':'timo.road');}
-    if(this.input.use&&!this.previous.use)this.offerDialogue();
   }
   hitTank(v,source){
     v.scriptedLoss=true;
@@ -278,18 +282,13 @@ class ColumnDirector{
       Object.assign(p,this.safeSpot({x:-184+i*1.4,z:6.8},p),{grounded:true,vy:0});
     }
   }
-  offerDialogue(){
-    if(this.choices||this.choiceIndex>=this.definition.dialogueChoices.length||this.rideTime<22||this.rideTime>=95)return;
-    if(this.choiceIndex===0&&this.carry.lasko_alive===false)this.choiceIndex++;
-    this.choices=this.definition.dialogueChoices[this.choiceIndex];
-  }
   command(command){
     if(command?.type==='retry'){this.restore(this.latestSave??this.initialSave);return;}
     if(this.failed||this.complete||this.finale)return;
     if(this.inTransit){
-      if(command?.type==='talk')this.offerDialogue();
       if(command?.type==='answer'&&this.choices&&[0,1].includes(command.index)){
-        const choice=command.index*2;this.say(this.choices[choice]);this.say(this.choices[choice+1]);this.choices=null;this.choiceIndex++;
+        const choice=command.index*2;
+        this.queue.unshift(this.choices[choice],this.choices[choice+1]);this.choices=null;
       }
       return;
     }
@@ -338,7 +337,7 @@ class ColumnDirector{
     while(capacity>0&&this.pending.length){
       const entry=this.pending.shift(),role=entry.at(-1),where=this.spawnPosition(entry),p=this.player;
       // Delay reinforcements in the aimed lane; hand-placed rooms already provide cover.
-      if(this.stage>0&&typeof entry[0]!=='string'&&!role.startsWith('truck-')&&distance(p,where)<22&&
+      if(this.stage>=0&&typeof entry[0]!=='string'&&!role.startsWith('truck-')&&distance(p,where)<22&&
         Math.abs(angle(yawTo(p,where)-p.yaw))<.8&&this.sim.lineClear(eye(p),{...where,y:(where.y??0)+1.2})){
         const fallback={...where,z:where.z+(where.z<0?-1:1)*13};
         if(this.sim.lineClear(eye(p),{...fallback,y:1.2})){held.push(entry);continue;}
@@ -709,7 +708,7 @@ class ColumnDirector{
       skipHold:this.skipHold,smokeGrenades:p.smokeGrenades??0,syringes:p.syringes,medkits:p.medkits,limp:this.limp,
       fuseRemaining:this.fuseAt!==null&&!this.flags.breached?Math.max(0,this.fuseAt-this.time):null,
       wave:this.defenceWave,waveRemaining:this.defenceAt===null?null:Math.max(0,this.definition.defenceWaveSeconds-(this.time-this.defenceAt)),
-      enemies:this.enemies.length,sniperFlash:this.enemies.some(e=>e.role==='sniper'&&e.flashUntil>this.time),
+      enemies:this.enemies.length+this.pending.length,sniperFlash:this.enemies.some(e=>e.role==='sniper'&&e.flashUntil>this.time),
       stats:{elapsedSeconds:Math.floor(this.time),kills:p.kills,brigade:this.flags.brigade_saved}};
   }
 }

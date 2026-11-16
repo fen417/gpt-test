@@ -1,8 +1,10 @@
 .m03-objective{max-width:min(520px,78vw)}
 .m03-objective strong{letter-spacing:0}
 .m03-interaction,.m03-choices{position:absolute;bottom:106px;left:50%;transform:translateX(-50%);text-align:center}
-.m03-interaction>span,.m03-choices>span{display:block;width:max-content;max-width:80vw;margin:0 auto;color:#f5dfaf;font:700 12px/1.4 monospace}
-.m03-interaction>span:not(:empty),.m03-choices>span{padding:6px 10px;background:#141a1bbc}
+.m03-interaction>span,.m03-choices button{display:block;width:max-content;max-width:80vw;margin:0 auto;color:#f5dfaf;font:700 12px/1.4 monospace}
+.m03-interaction>span:not(:empty){padding:6px 10px;background:#141a1bbc}
+.m03-choices button{border:0;background:none;padding:5px 9px;pointer-events:auto;cursor:pointer;text-shadow:0 1px 4px #000}
+.m03-choices button:is(:hover,:focus-visible){color:#fff;text-decoration:underline}
 .m03-interaction progress{display:block;margin:7px auto 0;width:150px;height:8px;accent-color:#e7bd78}
 .m03-interaction progress[hidden]{display:none}
 .m03-choices{bottom:140px}

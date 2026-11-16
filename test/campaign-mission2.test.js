@@ -289,20 +289,25 @@ test('campaign AP shells ricochet beyond 72 degrees but hit head-on',()=>{
 test('mission 2 requires a surviving platoon and explicit recovery of the order',()=>{
   const sim=create(),c=sim.campaign;
   c.command({type:'skip'});
-  step(sim,85*60);
+  step(sim,13*60);
+  sim.time=c.combatStartedAt+90;c.update(0);
+  assert.equal(c.enemySerial,mission.enemyCompany.firstWave);
+  const destroy=tank=>{
+    for(let i=0;i<4&&tank.hp>0;i++)sim.damageVehicle(tank,99999,sim.players.get('local'),'blast',
+      {x:tank.x,y:tank.y+1,z:tank.z});
+  };
+  for(const tank of sim.vehicles.filter(v=>v.team===1))destroy(tank);
+  c.update(0);
   assert.equal(c.enemySerial,14);
   const rear=sim.vehicles.filter(v=>v.m02Rear);
   assert.equal(rear.length,8);
   assert.equal(validMission2Save(c.serialize(),mission),true);
-  for(const tank of sim.vehicles.filter(v=>v.team===1&&v.hp>0)){
-    for(let i=0;i<4;i++)sim.damageVehicle(tank,99999,sim.players.get('local'),'blast',
-      {x:tank.x,y:tank.y+1,z:tank.z});
-  }
+  for(const tank of rear)destroy(tank);
   const v=sim.vehicles.find(v=>v.id==='sokol-7');
   v.x=17;v.z=-45;v.y=sim.groundAt(v.x,v.z);
   step(sim,1);assert.equal(c.phase,'village');assert.equal(c.complete,false);
   for(let i=0;i<4;i++){
-    sim.time=c.villageStartedAt+i*30;
+    sim.time=c.villageStartedAt+i*30+.001;
     c.update(0);
     for(const p of sim.players.values())if(p.team===1&&!p.vehicleId)p.alive=false;
   }
@@ -317,6 +322,20 @@ test('mission 2 requires a surviving platoon and explicit recovery of the order'
   assert.equal(c.checkpoint,5);
   assert.equal(c.latestSave?.mission.checkpoint,5);
   assert.equal(sim.snapshot().campaign.complete,true);
+});
+test('enemy armour ignores the village infantry and cannot hurt them with its weapons',()=>{
+  const sim=create(),c=sim.campaign;
+  c.command({type:'skip'});step(sim,13*60);
+  const v=sim.vehicles.find(v=>v.team===1&&v.hp>0),crew=sim.players.get(v.seats[0]);
+  const defender=sim.players.get('m02-duran');
+  Object.assign(v,{x:defender.x,z:defender.z-7,y:sim.groundAt(defender.x,defender.z-7)});
+  for(const tank of sim.vehicles)if(tank.team===0)tank.hp=0;
+  crew.nextM02Think=0;sim.thinkBot(crew,1/60);
+  assert.equal(v.m02TargetId,null);
+  assert.equal(crew.input.fire,false);
+  const health=defender.hp;
+  sim.damage(defender,200,crew,{explosive:true,vehicleId:v.id});
+  assert.equal(defender.hp,health);
 });
 test('the timeline and dialogue are editable external resources',()=>{
   assert.equal(mission.timeline.find(e=>e.id==='enemyVanguard').at,13);

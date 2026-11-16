@@ -3,15 +3,18 @@
   "id": "m03",
   "title": "Колонна",
   "map": "tel-mazin",
-  "convoy": {"speed": 6, "firstX": -810, "interval": 9, "villageAt": 100, "ambushAt": 118, "dismountAt": 120, "combatAt": 122},
+  "convoy": {"speed": 6, "firstX": -810, "interval": 15, "villageAt": 100, "ambushAt": 118, "dismountAt": 120, "combatAt": 122},
   "ride": [
     [0, "orlov.road"], [8, "vos.meet"], [13, "timo.road"],
     [17, "duran.night", "marten.night"], [26, "lasko.wound", "marten.wound"],
     [35, "rafa.armor"], [44, "vos.bale"], [55, "timo.grey"], [59, "rafa.grey"],
-    [64, "bruno.home", "marten.home"], [73, "duran.sand", "timo.sand"],
+    [64, "bruno.home", "marten.home"], [71, "vos.askHome"], [73, "duran.sand", "timo.sand"],
     [82, "kane.quiet", "vos.quiet"], [90, "vos.village"], [98, "duran.joke", "timo.joke"]
   ],
-  "dialogueChoices": [["marten.choiceFine", "lasko.choiceFine", "marten.choiceHonest", "lasko.choiceHonest"], ["marten.choiceHome", "vos.choiceHome", "marten.choiceRoad", "vos.choiceRoad"]],
+  "dialogueChoices": [
+    {"question":"lasko.wound","answers":["marten.choiceFine","lasko.choiceFine","marten.choiceHonest","lasko.choiceHonest"]},
+    {"question":"vos.askHome","answers":["marten.choiceHome","vos.choiceHome","marten.choiceRoad","vos.choiceRoad"]}
+  ],
   "stages": [
     {"id":"ambush", "target":[-159,11], "radius":7, "first":[[-190,-8,"at"],[-115,9,"at"],[-130,17,"rifle"],[-175,-18,"rifle"],[-122,3,"rifle"],[-133,-8,"assault"],[-160,17,"assault"],[-146,-6,"rpg"]], "second":[[-103,4,"rifle"],[-108,-5,"rifle"],[-119,9,"rifle"],[-183,8,"rifle"],[-197,-7,"assault"],[-203,5,"rpg"]]},
     {"id":"clear", "target":[-92,39], "radius":8, "first":[["workshop","rifle"],["workshop","assault"],["forge","rifle"],["forge","rifle"],["craft-north","rifle"],["craft-roof","assault"],["craft-south","assault"],["craft-east","rifle"],["craft-east","assault"],["craft-yard","rifle"],[-76,53,"rifle"],[-105,50,"assault"]]},

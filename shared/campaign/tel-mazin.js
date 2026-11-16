@@ -39,7 +39,7 @@ function interactive(id,type,x,z,w,d,h,baseY,color,initial){
 function house(id,x,z,plan,floors=1,w=14,d=12){
   const color=colors[structures.length%colors.length],thick=.32,door=1.5,level=3;
   const h=floors*level,kind=floors>1?'village-house-tall':'village-house';
-  const structure={id,kind,x,z,w,d,h,assetMapId:'village',baseY:0,color,floors,plan,doorWidth:door,doorHeight:2.12,enterable:true};
+  const structure={id,kind,x,z,w,d,h,assetMapId:'village',baseY:0,color,floors,plan,doorWidth:door,doorHeight:2.12,enterable:true,interactiveShutters:true};
   structures.push(structure);
   let serial=0;
   const add=(kind,x,z,w,d,h,baseY=0,tint=color,extra={})=>{

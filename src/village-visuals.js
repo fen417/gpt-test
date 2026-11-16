@@ -138,7 +138,8 @@ function shutters(owner, m, structure) {
   const { x, z, w, d, h, baseY = 0, doorWidth = 5.6, doorHeight = 2.65 } = structure;
   const ruined = structure.kind === 'village-ruin';
   const doorCenter=structure.doorHeight===undefined?1.32:doorHeight/2;
-  for (let level = 0; level < (structure.floors ?? 1); level++) for (const side of ruined ? [-1] : [-1, 1]) for (const end of [-1, 1]) {
+  const shutterLevels=structure.interactiveShutters?0:structure.floors??1;
+  for (let level = 0; level < shutterLevels; level++) for (const side of ruined ? [-1] : [-1, 1]) for (const end of [-1, 1]) {
     const px = x + side * (w / 2 + .32), pz = z + end * d * .24;
     for (const edge of [-1, 1]) {
       const hinge = new THREE.Group();
@@ -163,7 +164,7 @@ function shutters(owner, m, structure) {
   }
   const floor = owner.box(owner.scene, x, baseY + .015, z, w - .6, .025, d - .6, m.roof, false);
   floor.receiveShadow = true;
-  for (let level = 1; level < (structure.floors ?? 1); level++) for (const side of [-1, 1]) for (const end of [-1, 1]) {
+  for (let level = 1; level < shutterLevels; level++) for (const side of [-1, 1]) for (const end of [-1, 1]) {
     owner.box(owner.scene, x + side * w * .29, baseY + level * 3.1 + 1.55, z + end * (d / 2 + .34), 1.35, 1.35, .1, m.wood);
     owner.box(owner.scene, x + side * w * .29, baseY + level * 3.1 + .84, z + end * (d / 2 + .4), 1.65, .14, .25, m.roof);
   }

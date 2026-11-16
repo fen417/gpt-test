@@ -5,6 +5,7 @@ import {
   markCampaignComplete,campaignMissionStatus,canStartCampaignMission,
   campaignStorageWarning,resetCampaignProgress,recordCampaignCheckpoint
 } from '../src/campaign/progress.js';
+import {campaignOutcome,describeCampaignOutcome} from '../src/campaign/outcome.js';
 
 function withStore(){
   const values=new Map();
@@ -79,4 +80,19 @@ test('storage access denied keeps in-memory progress with a clear warning',()=>{
   assert.equal(campaignStorageWarning(),true);
   assert.equal(saveCampaignProgress({...p,completed:['m01']}),false);
   assert.equal(readCampaignProgress().completed[0],'m01');
+});
+
+test('each mission keeps its own tank count and named losses',()=>{
+  withStore();resetCampaignProgress();
+  const outcome=campaignOutcome({
+    campaign:{missionId:'m02',tanksAlive:7},
+    players:[{id:'m02-duran',team:0,alive:false},{id:'unimportant',team:0,alive:false}],
+    vehicles:[{id:'sokol-8',team:0,type:'tank',hp:0}],
+  });
+  markCampaignComplete('m02',{elapsedSeconds:430,outcome},{tanks_alive:7});
+  markCampaignComplete('m03',{elapsedSeconds:700,outcome:{tanks:5,fallen:[]}},{tanks_alive:5});
+  const progress=readCampaignProgress();
+  assert.equal(progress.outcomes.m02.tanks,7);
+  assert.equal(progress.outcomes.m03.tanks,5);
+  assert.match(describeCampaignOutcome(progress.outcomes.m02),/Дюран.*Бэйл/);
 });

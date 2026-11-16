@@ -23,6 +23,8 @@ import {sameSquad,SQUAD_COLOR} from '../shared/squads.js';
 import './squads.css';
 import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
 import {M02_BINDINGS} from '../shared/campaign/tank-controls.js';
+import {CampaignActors} from './campaign/actors.js';
+import {showCampaignOutcome} from './campaign/outcome.js';
 
 const $=id=>document.getElementById(id);
 mountChangelog();
@@ -33,6 +35,7 @@ const canvas=$('game');
 const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),reset:()=>{for(const samples of [frameTimes,cpuTimes,renderTimes,simulationTimes])samples.reset();renderer?.gpuTimer.samples.reset();}});
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let campaignPresentation=null;
+let campaignActors,columnHeading=null;
 let squadUI,weaponPreview,lobbyWeaponPreview;
 let tankHud,tankHudLoading,vehicleThirdPerson=true,campaignTankZoom=2.5;
 const vehicleLook={id:null,yaw:0,pitch:-.12};
@@ -781,7 +784,7 @@ document.addEventListener('pointerlockchange',()=>{
   }else{
     navigator.keyboard?.unlock?.();
     clearControls();
-    if(active&&local()?.alive&&!finished&&!reviveAwaitingControl&&!state?.campaign?.awaitingLoadout&&!state?.campaign?.failed&&!state?.campaign?.complete)show('pause');
+    if(active&&local()?.alive&&!finished&&!reviveAwaitingControl&&!state?.campaign?.choices&&!state?.campaign?.awaitingLoadout&&!state?.campaign?.failed&&!state?.campaign?.complete)show('pause');
   }
 });
 window.addEventListener('beforeunload',event=>{
@@ -1535,8 +1538,14 @@ function frame(now){
     }
     if(state?.campaign?.missionId==='m03'&&state.campaign.ride){
       const hull=state.vehicles.find(v=>v.id==='sokol-7');
-      if(hull){const relative=Math.atan2(Math.sin(yaw-hull.yaw),Math.cos(yaw-hull.yaw));yaw=hull.yaw+Math.max(-2.094,Math.min(2.094,relative));}
-    }
+      if(hull){
+        if(columnHeading===null){yaw=hull.yaw;pitch=0;}
+        else yaw+=Math.atan2(Math.sin(hull.yaw-columnHeading),Math.cos(hull.yaw-columnHeading));
+        columnHeading=hull.yaw;
+        const relative=Math.atan2(Math.sin(yaw-hull.yaw),Math.cos(yaw-hull.yaw));
+        yaw=hull.yaw+Math.max(-2.094,Math.min(2.094,relative));
+      }
+    }else columnHeading=null;
     if(state?.campaign?.missionId==='m04'&&state.campaign.mounted){
       const angle=Math.atan2(Math.sin(yaw+Math.PI/2),Math.cos(yaw+Math.PI/2));
       yaw=-Math.PI/2+Math.max(-1.22173,Math.min(1.22173,angle));
@@ -1566,7 +1575,15 @@ function frame(now){
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
    if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
     networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
-  if(active&&campaignPresentation)campaignPresentation.update(renderState??state,paused,yaw);
+  if(active&&campaignPresentation){
+    campaignPresentation.update(renderState??state,paused,yaw);
+    showCampaignOutcome(campaignPresentation.root,state);
+    campaignActors??=new CampaignActors();
+  }
+  if(campaignActors&&renderDue){
+    campaignActors.animate(renderer,renderState,campaignPresentation,paused);
+    campaignActors.aim(renderer,renderState,renderPlayer,paused);
+  }
   if(['quarry','alhadra-desert'].includes(renderer.map?.id)&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
   tankHud?.update(active&&state?.campaign?.missionId!=='m02'?renderState:null,renderPlayer,renderer,now,{zoom:aim});
   renderTimes.add(performance.now()-renderBegin);

@@ -23,7 +23,7 @@ export class Mission3Presentation{
     this.root.innerHTML=`<header class="campaign-objective m03-objective"><small>ТЕЛЬ-МАЗИН · КОЛОННА</small><strong></strong><span></span></header>
       <div class="campaign-subtitle hidden" role="status" aria-live="polite"><b></b><span></span></div>
       <div class="m03-interaction"><span></span><progress max="1" value="0" hidden></progress></div>
-      <div class="m03-choices" hidden><span></span><span></span></div>
+      <div class="m03-choices" hidden><button type="button"></button><button type="button"></button></div>
       <div class="campaign-injury hidden"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong></div>
       <div class="m03-status"></div><div class="m03-bindings"></div><span class="m03-marker" hidden></span>
       <canvas class="m03-map" width="168" height="168" aria-label="Карта Тель-Мазина" hidden></canvas>
@@ -32,6 +32,7 @@ export class Mission3Presentation{
         <button class="campaign-retry">С контрольной точки</button><button class="campaign-exit">К экрану кампании</button></section>`;
     document.body.append(this.root);this.$=query=>this.root.querySelector(query);
     this.$('.campaign-retry').onclick=()=>this.retry();this.$('.campaign-exit').onclick=()=>leave();
+    [...this.$('.m03-choices').children].forEach((button,index)=>button.onclick=()=>this.answer(index));
     this.marker=this.$('.m03-marker');this.mapCanvas=this.$('.m03-map');
     this.original={sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,
       sunOffset:renderer.sunOffset.clone()};
@@ -45,13 +46,18 @@ export class Mission3Presentation{
     this.renderHook=(r,state,dt,view)=>this.render(r,state,dt,view);
   }
   retry(){this.clearControls();this.session.command({type:'retry'});this.resume();}
+  answer(index){
+    if(!this.session.state?.campaign.choices||this.answerPending)return;
+    this.answerPending=true;
+    this.session.command({type:'answer',index});
+    this.resume();
+  }
   key(event){
     const m=this.session.state?.campaign;if(!m||event.repeat)return false;
     if(m.failed&&event.code==='Enter'){this.retry();return true;}
     if(m.failed||m.complete||m.cutscene)return false;
     if(m.ride){
-      if(['Tab',this.getBindings().interact??'KeyE'].includes(event.code)){this.session.command({type:'talk'});return true;}
-      if(m.choices&&['Digit1','Digit2'].includes(event.code)){this.session.command({type:'answer',index:Number(event.code.at(-1))-1});return true;}
+      if(m.choices&&/^(Digit|Numpad)[12]$/.test(event.code)){this.answer(Number(event.code.at(-1))-1);return true;}
       return false;
     }
     const order=orders[event.code];
@@ -73,7 +79,7 @@ export class Mission3Presentation{
     this.$('.m03-objective strong').textContent=this.locale.objectives[m.objective];
     const range=m.target?Math.round(Math.hypot(p.x-m.target.x,p.z-m.target.z)):null;
     this.$('.m03-objective > span').textContent=m.ride?`${clock(m.rideTime)} · «СОКОЛ-7»`:
-      `КП ${m.checkpoint}/4 · ${orderLabels[m.order]}${range===null?'':` · ${range} м`}`;
+      `КП ${m.checkpoint}/4 · ${orderLabels[m.order]} · ПРОТИВНИКОВ ${m.enemies}${range===null?'':` · ${range} м`}`;
     const line=this.locale.lines[m.radio?.key],subtitle=this.$('.campaign-subtitle');
     subtitle.classList.toggle('hidden',!line||end);
     subtitle.querySelector('b').textContent=line?this.locale.speakers[line.speaker]:'';
@@ -82,17 +88,20 @@ export class Mission3Presentation{
     interaction.querySelector('span').textContent=m.ride?(m.rideTime<90?'ПРОБЕЛ · УДЕРЖИВАТЬ ДЛЯ УСКОРЕНИЯ':''):
       (m.prompt??'').replace(/^E(?= ·)/,interact);
     const progress=interaction.querySelector('progress');progress.hidden=(m.progress??0)<=0;progress.value=m.progress??0;
-    const choices=this.$('.m03-choices');choices.hidden=!m.ride||!m.choices;
-    if(m.choices)m.choices.forEach((key,i)=>choices.children[i].textContent=`${i+1} · ${this.locale.lines[key]?.text??''}`);
+    const choices=this.$('.m03-choices'),offered=m.ride&&Boolean(m.choices);
+    if(offered&&!this.offered)document.exitPointerLock?.();
+    this.offered=offered;
+    if(!offered)this.answerPending=false;
+    choices.hidden=!offered||this.answerPending;
+    if(offered)m.choices.forEach((key,i)=>choices.children[i].textContent=`${i+1}. ${this.locale.lines[key]?.text??''}`);
     const injury=this.$('.campaign-injury');injury.classList.toggle('hidden',!p.downed||end);
     injury.querySelector('strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;
     const status=this.$('.m03-status');status.hidden=blocked||m.ride;
     const task=m.fuseRemaining!==null?` · ПОДРЫВ ${Math.ceil(m.fuseRemaining)} с`:
       m.wave?` · ВОЛНА ${m.wave}/2 · ${clock(m.waveRemaining)}`:m.objective==='breach'?` · ЗАРЯДЫ ${m.charges.filter(Boolean).length}/2`:'';
     status.textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes} · СПАСЕНО ${m.flags.brigade_saved}/8${task}`;
-    const binds=this.$('.m03-bindings');binds.hidden=blocked;
-    binds.textContent=m.ride?`${interact} / TAB · РАЗГОВОР`:
-      `F1 ИДТИ · F2 ДЕРЖАТЬ · F3 ШТУРМ · F4 ПРИКРОЙ · Q МЕДИК${m.smokeGrenades?' · T ДЫМ':''}`;
+    const binds=this.$('.m03-bindings');binds.hidden=blocked||m.ride;
+    binds.textContent=`F1 ИДТИ · F2 ДЕРЖАТЬ · F3 ШТУРМ · F4 ПРИКРОЙ · Q МЕДИК${m.smokeGrenades?' · T ДЫМ':''}`;
     this.mapCanvas.hidden=blocked||m.ride;
     if(!this.mapCanvas.hidden&&performance.now()>=(this.nextMap??0)){this.nextMap=performance.now()+150;this.drawMap(state,p);}
     this.$('.m03-cinematic').hidden=!cutscene||end;
@@ -122,6 +131,14 @@ export class Mission3Presentation{
     }
     const target=state.campaign.target;
     if(target){ctx.fillStyle='#f2cc82';ctx.beginPath();ctx.arc(x(target.x),z(target.z),4,0,Math.PI*2);ctx.fill();}
+    ctx.fillStyle='#eb835c';
+    for(const enemy of state.players){
+      if(enemy.team===p.team||!enemy.alive)continue;
+      const dx=x(enemy.x)-half,dz=z(enemy.z)-half;
+      const distance=Math.max(Math.abs(dx),Math.abs(dz));
+      const ratio=Math.min(1,(half-5)/Math.max(1,distance));
+      ctx.beginPath();ctx.arc(half+dx*ratio,half+dz*ratio,3,0,Math.PI*2);ctx.fill();
+    }
     ctx.fillStyle='#c3ecdf';ctx.beginPath();ctx.arc(half,half,3.5,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='#c3ecdf';ctx.beginPath();ctx.moveTo(half,half);ctx.lineTo(half-Math.sin(p.yaw)*12,half-Math.cos(p.yaw)*12);ctx.stroke();
   }

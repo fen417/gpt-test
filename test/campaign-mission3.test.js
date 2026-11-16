@@ -155,3 +155,30 @@ test('the score follows approach, ambush, room clearing and finale without audio
   assert.ok(cue(207,{ride:false,inside:true,alert:1}).tracks.interior>0);
   assert.deepEqual(cue(700,{ride:false,cutscene:{id:'finale',elapsed:2}}),{tracks:{finale:1},offset:2});
 });
+test('column answers appear after the spoken question and the driver introduction plays once',()=>{
+  const sim=create(),c=sim.campaign;
+  c.command({type:'talk'});c.command({type:'answer',index:0});
+  assert.equal(c.presentation().choices,null);
+  c.radio=null;c.queue=[];
+  sim.time=c.rideTime=13;c.updateRide();c.updateRide();
+  assert.deepEqual(c.queue,['timo.road']);
+  sim.time=c.rideTime=26;c.queue=[];c.updateRide();c.updateRadio();
+  assert.equal(c.radio.key,'lasko.wound');
+  assert.equal(c.presentation().choices,null);
+  sim.time=c.radioEnd;c.updateRadio();
+  assert.deepEqual(c.presentation().choices,['marten.choiceFine','marten.choiceHonest']);
+  c.command({type:'answer',index:1});
+  c.updateRadio();
+  assert.equal(c.radio.key,'marten.choiceHonest');
+});
+
+test('ambush infantry is already placed before the first convoy hit',()=>{
+  const sim=create(),c=sim.campaign;
+  c.rideTime=mission.convoy.villageAt-14;sim.time=c.rideTime;
+  c.updateRide();c.flushEnemies();
+  const ids=c.enemies.map(enemy=>enemy.id);
+  assert.equal(ids.length,mission.stages[0].first.length);
+  for(const p of c.enemies){sim.thinkBot(p,1/60);assert.equal(p.input.fire,false);}
+  c.rideTime=mission.convoy.ambushAt+1.5;sim.time=c.rideTime;c.updateRide();c.flushEnemies();
+  assert.deepEqual(c.enemies.map(enemy=>enemy.id),ids);
+});
