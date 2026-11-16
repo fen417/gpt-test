@@ -38,6 +38,10 @@ export class CampaignSimulation extends Simulation {
     prepareNavigation(this);
   }
   balanceTeams(){} // Authored expedition of five against a larger garrison.
+  mountVehicle(player,vehicle,seat){
+    if(vehicle.campaignEvacuation&&(player.id!=='courier'||seat!==0))return false;
+    return super.mountVehicle(player,vehicle,seat);
+  }
   setInput(id,input){
     super.setInput(id,input);const p=this.players.get(id);if(!p)return;
     this.campaign.rawInput={...sanitizeInput(input),use:input.use===true,selfRevive:input.selfRevive===true,heal:input.heal===true,knife:input.knife===true,prone:input.prone===true};
@@ -703,10 +707,19 @@ export class CampaignDirector {
       oldEvac=this.createCourierEvac();
       this.sim.vehicles.push(oldEvac);
     }
-    // Existing checkpoints can contain the old evacuation vehicle on the
-    // cliffside, already stuck on its obsolete eastbound route. Correct it
-    // only while loading, before gameplay resumes.
-    if(oldEvac&&Math.hypot(oldEvac.x-215,oldEvac.z-156)<33){
+    let wrongDriver=false;
+    if(oldEvac){
+      oldEvac.campaignEvacuation=true;
+      for(const [seat,id] of oldEvac.seats.entries()){
+        if(!id||seat===0&&id==='courier')continue;
+        const passenger=this.sim.players.get(id);
+        if(passenger?.vehicleId===oldEvac.id)this.sim.dismountVehicle(passenger,true);
+        oldEvac.seats[seat]=null;
+        if(seat===0)wrongDriver=true;
+      }
+    }
+    // Older saves can have the Humvee in the rocky dead end or with an infantry driver.
+    if(oldEvac&&(wrongDriver||Math.hypot(oldEvac.x-215,oldEvac.z-156)<33)){
       Object.assign(oldEvac,{...COURIER_PARK,y:this.sim.groundAt(COURIER_PARK.x,COURIER_PARK.z),
         speed:0,steer:0});
       oldEvac.home={...oldEvac.home,...COURIER_PARK,y:oldEvac.y};

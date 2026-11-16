@@ -229,7 +229,7 @@ function reservationsFor(sim, vehicle, candidate) {
 }
 
 function canBoard(p, vehicle) {
-  return vehicle.team === p.team && vehicle.hp >= vehicle.maxHp * .22 && Math.abs(vehicle.speed) <= 2.5;
+  return !vehicle.campaignEvacuation && vehicle.team === p.team && vehicle.hp >= vehicle.maxHp * .22 && Math.abs(vehicle.speed) <= 2.5;
 }
 
 function booking(sim, vehicle, seat) {
@@ -323,7 +323,7 @@ function findFieldBoardingTarget(sim, p) {
 function approachVehicle(sim, p, dt) {
   const boarding = p.botBoarding;
   const vehicle = sim.vehicles.find(v => v.id === boarding.vehicleId);
-  if (!vehicle || vehicle.hp <= 0 || vehicle.team !== p.team || vehicle.seats[boarding.seat] !== null
+  if (!vehicle || vehicle.campaignEvacuation || vehicle.hp <= 0 || vehicle.team !== p.team || vehicle.seats[boarding.seat] !== null
     || sim.time >= boarding.expires || distance(p, vehicle) > 52 || Math.abs(vehicle.speed) > 4) {
     p.botBoarding = null;p.boardProgress=null;p.botVehicleRetryAt=sim.time+8;
     return false;

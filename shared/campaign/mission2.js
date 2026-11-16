@@ -173,10 +173,13 @@ export class Mission2Simulation extends Simulation{
         const hidden=enemy.filter(other=>other.type==='tank').sort((a,b)=>distance(v,a)-distance(v,b))[0];
         if(hidden)goal={x:hidden.x+(v.m02Index%3-1)*26,z:hidden.z-44};
       }
-      if(v.team===1&&wp===route.length-1&&target&&nearest>=180&&target.z<-95)
+      const playerTank=v.m02Rear&&this.vehicles.find(t=>t.id===c.definition.player.vehicleId&&t.hp>0);
+      if(playerTank&&(wp===route.length-1||playerTank.x>v.x+40))
+        goal={x:playerTank.x+(v.m02Index%3-1)*18,z:playerTank.z};
+      else if(v.team===1&&wp===route.length-1&&target&&nearest>=180&&target.z<-95)
         goal={x:target.x+(v.m02Index%3-1)*18,z:target.z};
       if(this.time<(v.m02DetourUntil??0))goal=v.m02Detour;
-      else if(attack&&nearest<180)goal={x:v.x,z:v.z};
+      else if(attack&&nearest<(v.m02Rear&&wp<2?105:180))goal={x:v.x,z:v.z};
     }
     const desired=bearing(v,goal),delta=angle(desired-v.yaw);
     const companySpeed=v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
