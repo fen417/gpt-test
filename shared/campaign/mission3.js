@@ -2,7 +2,8 @@ import {Simulation,sanitizeInput} from '../simulation.js';
 import {ensureBotState,thinkInfantryBot} from '../bot-ai.js';
 import {moveBot,resetNavigation} from '../bot-navigation.js';
 import {blast} from '../gadgets.js';
-import {rayCollider} from '../asset-colliders.js';
+import {overlapsCollider,rayCollider} from '../asset-colliders.js';
+import {uprightBox} from '../geometry.js';
 import {vehicleBodyTilt} from '../vehicles.js';
 import {getWeapon} from '../world.js';
 import {TEL_MAZIN,m03ConvoyPose,packPanels} from './tel-mazin.js';
@@ -683,6 +684,12 @@ class ColumnDirector{
       medicTarget:null,medicProgress:0,assaultDoor:null,geometryDirty:true});
     this.latestSave=save.mission.checkpoint?structuredClone(save):null;
     this.saveRevision++;this.epoch++;this.refreshGeometry();
+    const newCover=sim.colliders.filter(box=>box.id.startsWith('street-dressing-'));
+    for(const p of sim.players.values()){
+      if(!p.alive||p.vehicleId)continue;
+      const body=uprightBox(p.x,p.y+.025,p.z,.4,p.downed||p.prone?.65:1.65);
+      if(newCover.some(box=>overlapsCollider(body,box)))Object.assign(p,this.safeSpot({x:p.x,y:p.y,z:p.z},p));
+    }
     if(this.inTransit)this.say('orlov.road');
     return true;
   }

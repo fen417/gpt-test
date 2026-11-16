@@ -4,7 +4,7 @@ import {ConvexGeometry} from 'three/addons/geometries/ConvexGeometry.js';
 import {quarryRockSurface} from './quarry-rock.js';
 import { buildPortProp, buildPortCrane } from './port-props.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from './prop-models.js';
-import { buildVillageProp, VILLAGE_PROP_KINDS } from './village-props.js';
+import { buildVillageProp, VILLAGE_PROP_KINDS, villagePalmTrunkGeometry } from './village-props.js';
 import { localAsset, UNIT_SCALE } from './asset-scale.js';
 import { affineBox, affineNormal, boxBounds, overlapsAffine, rayAffineBox, rotationMatrix } from './geometry.js';
 
@@ -105,7 +105,8 @@ function primitiveCollider(mesh, box) {
 }
 
 function assetCollider(box, map, crane) {
-  if (!crane && box.kind!=='rock' && !portKinds.has(box.kind) && !SPECIAL_PROP_KINDS.has(box.kind) && !VILLAGE_PROP_KINDS.has(box.kind)) return boxBounds(box);
+  const palm=box.kind==='village-palm'&&box.trunkCollision;
+  if (!crane && !palm && box.kind!=='rock' && !portKinds.has(box.kind) && !SPECIAL_PROP_KINDS.has(box.kind) && !VILLAGE_PROP_KINDS.has(box.kind)) return boxBounds(box);
   const value = crane ?? box, scale = value.modelScale ?? UNIT_SCALE;
   const anchor = { x: value.x, z: value.z, baseY: value.baseY ?? map.terrain?.heightAt(value.x, value.z) ?? 0 };
   const root = new THREE.Group();
@@ -122,6 +123,7 @@ function assetCollider(box, map, crane) {
     const surface=quarryRockSurface(local,terrain),mesh=new THREE.Mesh(new ConvexGeometry(surface.rings.flat().map(v=>new THREE.Vector3(...v))),meshMaterial);
     mesh.userData.projectileTriangles=surface.faces.map(face=>face.vertices);root.add(mesh);
   }
+  else if(palm)primitive(root,villagePalmTrunkGeometry,local.x,local.baseY+local.h/2,local.z,1,local.h,1);
   else if (crane) buildPortCrane(owner, palette, local);
   else if (!buildPortProp(owner, palette, local) && !buildVillageProp(owner, palette, local)) buildSpecialProp.call(owner, root, local, meshMaterial);
   const pose = value.editorPose ?? { x: value.x, y: anchor.baseY, z: value.z };

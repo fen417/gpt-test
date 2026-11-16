@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import mission from '../public/campaign/m03/mission.json' with {type:'json'};
 import locale from '../public/campaign/m03/ru.json' with {type:'json'};
 import {Mission3Simulation,validMission3Save} from '../shared/campaign/mission3.js';
-import {panelState} from '../shared/campaign/tel-mazin.js';
+import {m03ConvoyPose,panelState} from '../shared/campaign/tel-mazin.js';
 import {findBotPath} from '../shared/bot-navigation.js';
 import {columnMusicCue} from '../src/campaign/column-music.js';
 
@@ -70,6 +70,39 @@ test('all 28 interiors and their roofs are connected after opening a door',()=>{
     const roof={x:h.x,y:h.h,z:h.z};
     assert.equal(findBotPath(s,room,roof).at(-1)?.y,roof.y,h.id);
   }
+});
+
+test('street cover stops fire only at solid pieces and keeps the convoy road clear',()=>{
+  const s=create(),parts=s.map.boxes;
+  const byId=id=>parts.find(box=>box.id===`street-dressing-${id}`);
+  const clear=(x,y,z)=>s.lineClear({x,y,z:z-1.12},{x,y,z:z+1.1});
+  const counter=byId('stall-0-counter'),post=byId('stall-0-post-1');
+  assert.equal(clear(counter.x,.46,counter.z),true,'shots pass between the legs');
+  assert.equal(clear(counter.x,.88,counter.z),false,'the tabletop itself stops a shot');
+  assert.equal(clear(counter.x,1.18,counter.z),true,'decorative goods add no solid volume');
+  assert.equal(clear(counter.x,2.5,counter.z),true,'the fabric canopy is penetrable');
+  assert.equal(clear(post.x,1.38,counter.z),false,'visible wood posts have their own collider');
+  const crate=byId('crate-1');
+  assert.equal(clear(crate.x,.44,crate.z),false);
+  assert.equal(clear(crate.x,1.42,crate.z),true);
+  const palm=byId('palm-6');
+  assert.equal(clear(palm.x,1.2,palm.z),false);
+  assert.equal(clear(palm.x+.245,palm.h-.7,palm.z),true,'the collision tapers with the trunk');
+  assert.equal(clear(palm.x+.7,palm.h-.7,palm.z),true,'the crown adds no collider');
+  const convoy=s.vehicles.splice(0);
+  for(const tank of convoy)for(let t=95;t<=118;t+=.1){
+    const {x,z,yaw}=m03ConvoyPose(mission,tank.convoyIndex,t);
+    assert.equal(s.vehicleCollides(tank,x,z,yaw),false,`${tank.id} at ${t.toFixed(1)} s`);
+  }
+});
+
+test('a checkpoint from before the street update cannot leave the player inside new cover',()=>{
+  const s=create(),c=s.campaign;c.rideTime=122;s.time=122;c.updateRide();
+  const crate=s.map.boxes.find(box=>box.id==='street-dressing-crate-1');
+  put(s,[crate.x,crate.z]);
+  const saved=c.serialize();
+  assert.ok(c.restore(saved));
+  assert.ok(!s.collides(c.player.x,c.player.z,c.player.y+.025));
 });
 
 test('the full objective sequence rolls through four valid checkpoints and 66 opponents',()=>{

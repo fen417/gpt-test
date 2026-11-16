@@ -2,8 +2,9 @@ import * as THREE from 'three';
 
 export const VILLAGE_PROP_KINDS = new Set([
   'village-broken-wall', 'village-broken-roof', 'village-table', 'village-chair',
-  'village-bed', 'village-cabinet', 'village-shelf', 'village-rug', 'village-debris',
+  'village-bed', 'village-cabinet', 'village-shelf', 'village-rug', 'village-debris', 'village-street-crate',
 ]);
+export const villagePalmTrunkGeometry = new THREE.CylinderGeometry(.17,.31,1,10);
 const fragments = new Map();
 
 function fragmentGeometry(box) {
@@ -52,6 +53,15 @@ export function buildVillageProp(owner, m, box) {
     block(0, h * .38, 0, w - .2, .1, .1);
     block(-w * .23, h + .025, 0, w * .24, .05, d * .42, m.cloth);
     owner.cylinder(scene, x + w * .25, baseY + h + .11, z, .09, .22, m.clay, 10);
+  } else if (kind === 'village-street-crate') {
+    block(0,h/2,0,w,h,d,m.wall??m.wood);
+    for(const side of [-1,1]){
+      for(const rail of [-1,1]){
+        block(rail*(w/2-.105),h/2,side*(d/2+.016),.13,h,.032);
+        block(side*(w/2+.016),h/2,rail*(d/2-.105),.032,h,.13);
+      }
+      block(0,h+.022,side*(d/2-.12),w,.044,.15);
+    }
   } else if (kind === 'village-chair') {
     block(0, .44, 0, w, .1, d);
     for (const sx of [-1, 1]) for (const sz of [-1, 1])

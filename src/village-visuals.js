@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildVillageProp } from '../shared/village-props.js';
+import { buildVillageProp, villagePalmTrunkGeometry } from '../shared/village-props.js';
 import { clonePairedMaterial, pairMaterials } from './visuals.js';
 import { createPortModelBuilder } from './port-visuals.js';
 import { terrainRoads } from './terrain-roads.js';
@@ -50,9 +50,9 @@ export function villageRoadMaterial(owner) {
 
 function palm(owner, m, box) {
   const { x, z, h, baseY = 0 } = box;
-  const geometry = new THREE.CylinderGeometry(.17, .31, h, 10);
-  const trunk = new THREE.Mesh(geometry, m.wood);
+  const trunk = new THREE.Mesh(villagePalmTrunkGeometry.clone(),m.wood);
   trunk.position.set(x, baseY + h / 2, z);
+  trunk.scale.y=h;
   trunk.castShadow = true;
   owner.scene.add(trunk);
   for (let y = .6; y < h; y += .45) owner.cylinder(owner.scene, x, baseY + y, z, .235, .065, m.wood);
@@ -200,7 +200,7 @@ export function createVillageModelBuilder(owner) {
     for (const box of boxes) {
       const { kind, x, z, w, d, h, baseY = 0, color = '#c3ad89' } = box;
       if (!kind.startsWith('village-')) continue;
-      if (buildVillageProp(owner, { ...m, wall: painted(m, m.stucco, color) }, box)) continue;
+      if (buildVillageProp(owner, { ...m, wall: painted(m, kind==='village-street-crate'?m.wood:m.stucco, color) }, box)) continue;
       if (kind === 'village-palm') { palm(owner, m, box); continue; }
       if (kind === 'village-rock') { desertMountain(owner, m.rock, box, terrain); continue; }
       if (kind === 'village-pottery') { pottery(owner, m, box); continue; }

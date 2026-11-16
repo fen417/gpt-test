@@ -140,11 +140,52 @@ const high=14,tower={x:58,z:-42,y:high};
 for(const dx of [-1.8,1.8])for(const dz of [-1.8,1.8])box(`tower-leg-${dx}-${dz}`,'village-wood',tower.x+dx,tower.z+dz,.32,.32,high,'#725d49');
 box('tower-platform','village-floor',tower.x,tower.z,5,5,.25, '#8b6f52',{baseY:high-.25,overhead:true});
 box('tower-tank','village-wood',tower.x,tower.z-1.3,3.6,1.6,1.45,'#6f7369',{baseY:high,overhead:true});
-for(const [i,x,z] of [[0,36,-19],[1,50,-25],[2,40,-40],[3,63,-29],[4,34,-32],[5,70,-21]]){
-  box(`market-${i}`,'village-wood',x,z,4.4,1.4,.86,'#9b7955');
-  for(const side of [-1,1])box(`market-pole-${i}-${side}`,'village-wood',x+side*2,z,.15,.15,2.55,'#8e6e4a');
-  box(`market-canvas-${i}`,'village-awning',x,z,4.8,2.7,.12,i%2?'#a9866a':'#b89462',{baseY:2.55,overhead:true});
+const awnings=['#a56751','#c3aa71','#718674','#a88168'];
+const dressing=(id,...args)=>box(`street-dressing-${id}`,...args);
+function stall(i,x,z,w,roof){
+  const d=1.35,h=.94;
+  dressing(`stall-${i}-counter`,'village-wood',x,z,w,d,.13,'#a78960',{baseY:h-.13,overhead:true});
+  for(const side of [-1,1])for(const edge of [-1,1])
+    dressing(`stall-${i}-leg-${side}-${edge}`,'village-wood',x+side*(w/2-.13),z+edge*(d/2-.14),.14,.14,h-.13,'#7c6042');
+  if(roof){
+    for(const side of [-1,1])dressing(`stall-${i}-post-${side}`,'village-wood',x+side*(w/2-.12),z-d*.59,.13,.13,2.46,'#7c6042');
+    dressing(`stall-${i}-awning`,'village-awning',x,z,w+.32,2.64,.085,awnings[i%awnings.length],{baseY:2.46,noCollision:true});
+  }
+  const kind=i%3===0?'village-pottery':'village-produce-crates';
+  dressing(`stall-${i}-goods`,kind,x+w*.17,z,1.22,.77,i%3===0?.48:.27,'#a27b54',{baseY:h,noCollision:true});
 }
+// Keep the central lane and door approaches open. Back streets and the square
+// carry the larger clusters, with staggered paths between groups of cover.
+const stalls=[
+  [36,-19,3.4],[50,-25,3.2],[40,-40,3.4],[63,-29,3.65],[34,-32,3.25],[70,-21,3.1],
+  [-170,19,3.2],[-122,20,3.05],[-103,26,3.2],[-82,32,3],[-35,6.25,3.25],
+  [22,-13,3.05],[53,-7.35,3.3],[76,27,3.4],[140,20,3.5],[161,26,3.05],
+];
+stalls.forEach(([x,z,w],i)=>stall(i,x,z,w,i!==10&&i!==12));
+const crates=[
+  [-207,6.1],[-192,21],[-168,-5.8],[-147,19],[-124,8.4],[-106,23],[-97,25],[-82,22.8],[-65,31.5],
+  [-53,5.2],[-38,22.8],[-24,8.7],[-5,20],[17,-7.2],[23,-18.3],[43,-21.5],
+  [48,-38.8],[65,-19.0],[72,-13.8],[78,21],[90,25],[112,26],[134,9.7],[144,-12.8],[160,20],[198,10.6],
+];
+crates.forEach(([x,z],i)=>{
+  const w=1.02+(i%3)*.18,h=.62+i%3*.13;
+  dressing(`crate-${i}`,'village-street-crate',x,z,w,.93,h,'#967451',{modelRotation:{y:(i%5-2)*.14}});
+  if(i%4===0)dressing(`crate-${i}-upper`,'village-street-crate',x+.12,z+.06,.7,.64,.42,'#a08260',{baseY:h+.044,overhead:true,modelRotation:{y:(i%3-1)*.19}});
+  if(i%4===1)dressing(`basket-${i}`,'village-woven-baskets',x+.92,z+.25,1.03,.75,.53,'#b4986b',{noCollision:true});
+  if(i%4===3)dressing(`jars-${i}`,'village-pottery',x+.25,z-.9,1.55,1.22,.7,'#b17c57',{noCollision:true});
+});
+const palms=[[-211,8.35,6.9],[-169,21.9,5.9],[-124,24.9,6.5],[-101,30.9,5.85],[-57,21.8,6.7],
+  [-17,21.2,6.2],[34,-47,6.8],[72,-37,6.15],[136,14.6,7.1],[162,27,6.55]];
+palms.forEach(([x,z,h],i)=>dressing(`palm-${i}`,'village-palm',x,z,.62,.62,h,'#827044',{trunkCollision:true,modelRotation:{y:i*.82}}));
+// Open well rim, with separate masonry faces and a timber crossbar.
+const well={x:54,z:-34.5};
+for(const side of [-1,1]){
+  dressing(`well-rim-x-${side}`,'village-stone',well.x+side*1.05,well.z,.34,2.44,.85,'#b7a080');
+  dressing(`well-rim-z-${side}`,'village-stone',well.x,well.z+side*1.05,1.76,.34,.85,'#b7a080');
+  dressing(`well-post-${side}`,'village-wood',well.x+side*1.05,well.z,.14,.14,2.51,'#755d46');
+}
+dressing('well-beam','village-wood',well.x,well.z,2.39,.15,.15,'#755d46',{baseY:2.48,overhead:true});
+dressing('well-jars','village-pottery',well.x+.4,well.z+1.8,1.55,1.22,.76,'#b17c57',{noCollision:true});
 for(const [i,x,z] of [[0,-155,7],[1,-79,27],[2,20,4],[3,88,39],[4,149,6],[5,164,21],[6,194,-7]])
   box(`street-cover-${i}`,'village-wood',x,z,2.2,1.15,1.05,'#8f704d');
 for(const [i,x,z] of [[0,-232,-2.9],[1,-232,2.9],[2,-206,-4],[3,-206,4],[4,155,-9],[5,155,9]])
