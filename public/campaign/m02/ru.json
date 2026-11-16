@@ -24,43 +24,47 @@
     "holt.brief01": {
       "speaker": "holt",
       "text": "Рота «Сокол», выходим на сигнал «Маяк». Аль-Хадра ждёт помощи.",
-      "duration": 6.1,
+      "duration": 4.85,
       "provisional": true,
       "audio": "voice/holt.brief01.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "holt"
       }
     },
     "holt.brief02": {
       "speaker": "holt",
       "text": "Восточный корпус идёт к деревне. Мы перехватим колонну на подходе.",
-      "duration": 5.4,
+      "duration": 4.56,
       "provisional": true,
       "audio": "voice/holt.brief02.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "holt"
       }
     },
     "holt.brief03": {
       "speaker": "holt",
       "text": "Вос, держись рядом с ротой. По моей команде — удар с фланга.",
-      "duration": 5.71,
+      "duration": 4.79,
       "provisional": true,
       "audio": "voice/holt.brief03.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "holt"
       }
     },
     "holt.hold": {
       "speaker": "holt",
       "text": "«Сокол», держать строй!",
-      "duration": 2,
+      "duration": 2.59,
       "audio": "voice/holt.hold.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "holt"
       }
     },
@@ -70,50 +74,55 @@
       "duration": 2,
       "audio": "voice/grey.dust.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "grey"
       }
     },
     "bale.loss": {
       "speaker": "holt",
       "text": "«Сокол-8» потерян. Продолжаем атаку.",
-      "duration": 4.21,
+      "duration": 3.6,
       "provisional": true,
       "audio": "voice/bale.loss.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "holt"
       }
     },
     "duran.support": {
       "speaker": "duran",
       "text": "Нам нужна поддержка бронетехники на площади!",
-      "duration": 3.41,
+      "duration": 3.01,
       "provisional": true,
       "audio": "voice/duran.support.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "duran"
       }
     },
     "bruno.signal": {
       "speaker": "bruno",
       "text": "«Сокол», примите сигнал — выдвигаемся.",
-      "duration": 2.96,
+      "duration": 2.84,
       "audio": "voice/bruno.signal.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "bruno"
       }
     },
     "dargo.final": {
       "speaker": "dargo",
       "text": "Вы удержали Аль-Хадру. Но у карьера вас уже ждут. Маяк не останется вашим.",
-      "duration": 7.3,
+      "duration": 6.06,
       "provisional": true,
       "audio": "voice/dargo.final.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "dargo"
       }
     },
@@ -123,120 +132,132 @@
       "duration": 2,
       "audio": "voice/crew.loaded.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "kim"
       }
     },
     "duran.signal": {
       "speaker": "duran",
       "text": "«Сокол», Аль-Хадра на связи. Ждём вас. Бруно больше не отвечает.",
-      "duration": 6.4,
+      "duration": 5.09,
       "provisional": true,
       "audio": "voice/duran.signal.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "duran"
       }
     },
     "kane.support": {
       "speaker": "kane",
       "text": "Здесь Кейн. Держу площадь. Работайте по броне!",
-      "duration": 5.2,
+      "duration": 4.44,
       "provisional": true,
       "audio": "voice/kane.support.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "kane"
       }
     },
     "duran.underFire": {
       "speaker": "duran",
       "text": "Танки противника прорываются! Без поддержки нам не удержаться.",
-      "duration": 5.21,
+      "duration": 4.28,
       "provisional": true,
       "audio": "voice/duran.underFire.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "duran"
       }
     },
     "bale.ready": {
       "speaker": "bale",
       "text": "Седьмой, я справа от тебя. Не отстану!",
-      "duration": 3.71,
+      "duration": 3.58,
       "audio": "voice/bale.ready.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "bale"
       }
     },
     "grey.tactics": {
       "speaker": "grey",
       "text": "Не стойте бортом! Огонь с остановки, затем меняйте позицию.",
-      "duration": 5.7,
+      "duration": 4.82,
       "audio": "voice/grey.tactics.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "grey"
       }
     },
     "grey.repair": {
       "speaker": "grey",
       "text": "Вос, броня ещё держит. Остановись и прикажи экипажу ремонтировать машину.",
-      "duration": 6.71,
+      "duration": 5.71,
       "audio": "voice/grey.repair.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "grey"
       }
     },
     "grey.cover": {
       "speaker": "grey",
       "text": "Вторая группа справа от площади! Прикрою вас.",
-      "duration": 4.71,
+      "duration": 3.45,
       "audio": "voice/grey.cover.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "grey"
       }
     },
     "crew.repair": {
       "speaker": "ray",
       "text": "Заделываем повреждения. Машина ещё повоюет.",
-      "duration": 4.31,
+      "duration": 4.16,
       "audio": "voice/crew.repair.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "ray"
       }
     },
     "duran.targets": {
       "speaker": "duran",
       "text": "Пехота у восточных домов! Два противотанковых орудия у дороги. Уберите их!",
-      "duration": 6.91,
+      "duration": 5.24,
       "audio": "voice/duran.targets.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "duran"
       }
     },
     "holt.lastWave": {
       "speaker": "holt",
       "text": "Последняя группа противника! Не подпускайте их к нашим пехотинцам.",
-      "duration": 5.51,
+      "duration": 4.37,
       "audio": "voice/holt.lastWave.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "holt"
       }
     },
     "duran.saved": {
       "speaker": "duran",
       "text": "Площадь наша. Спасибо, Сокол. Осмотрите подбитую штабную машину: там вражеские приказы.",
-      "duration": 8.61,
+      "duration": 6.51,
       "audio": "voice/duran.saved.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "duran"
       }
     },
@@ -246,7 +267,8 @@
       "duration": 2,
       "audio": "voice/vos.forward.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "vos"
       }
     },
@@ -256,7 +278,8 @@
       "duration": 2,
       "audio": "voice/vos.fire.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "vos"
       }
     },
@@ -266,7 +289,8 @@
       "duration": 2,
       "audio": "voice/vos.hold.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "vos"
       }
     },
@@ -276,7 +300,8 @@
       "duration": 2,
       "audio": "voice/vos.help.ogg",
       "synthesis": {
-        "engine": "Windows System.Speech / Microsoft Pavel",
+        "engine": "ElevenLabs",
+        "model": "eleven_v4",
         "profile": "vos"
       }
     }

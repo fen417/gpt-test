@@ -74,14 +74,13 @@ test('the explosion camera starts two seconds before detonation and preserves ch
   assert.equal(c.cutscene?.id,'midpoint');assert(!c.flags.depotDestroyed);assert(c.fuel.every(f=>!f.destroyed));
   tick(s,2.3);assert(c.flags.depotDestroyed);assert(c.fuel.every(f=>f.destroyed));assert(c.trucks.every(t=>t.destroyed));assert.equal(c.checkpoint,2);
 });
-test('every mission 1 line has an Opus recording, a voice profile and enough playback time',async()=>{
+async function verifyVoicePack(root,locale,manifest,budget){
   assert.deepEqual(manifest.clips.map(clip=>clip.id).sort(),Object.keys(locale.lines).sort());
   const profiles=Object.values(manifest.profiles);
-  assert.equal(profiles.length,8);
   assert.equal(new Set(profiles.map(profile=>profile.voiceId)).size,profiles.length);
   let bytes=0;
   for(const clip of manifest.clips){
-    const line=locale.lines[clip.id],data=await readFile(new URL('../public/campaign/m01/'+line.audio,import.meta.url));
+    const line=locale.lines[clip.id],data=await readFile(new URL(line.audio,root));
     assert.equal(clip.speaker,line.speaker);
     assert.ok(manifest.profiles[line.speaker]?.voiceId);
     assert.equal(data.toString('ascii',0,4),'OggS');
@@ -90,8 +89,12 @@ test('every mission 1 line has an Opus recording, a voice profile and enough pla
     assert.equal(clip.bytes,data.length);
     bytes+=data.length;
   }
-  assert.ok(bytes<=mission.audioBudgets.voice);
+  assert.ok(bytes<=budget);
   assert.equal(bytes,manifest.totalBytes);
+}
+test('every mission 1 line has an Opus recording, a voice profile and enough playback time',async()=>{
+  assert.equal(Object.keys(manifest.profiles).length,8);
+  await verifyVoicePack(new URL('../public/campaign/m01/',import.meta.url),locale,manifest,mission.audioBudgets.voice);
   for(const scene of Object.values(mission.cutscenes)){
     let end=0;
     for(const [at,id] of scene.lines){
@@ -99,5 +102,21 @@ test('every mission 1 line has an Opus recording, a voice profile and enough pla
       end=at+locale.lines[id].duration;
     }
     assert.ok(scene.duration>=end);
+  }
+});
+
+test('missions 2–4 have complete voice packs and reuse the cast across missions',async()=>{
+  const established={...manifest.profiles};
+  const aliases={timo:'ray',rafa:'kim'};
+  for(const id of ['m02','m03','m04']){
+    const root=new URL(`../public/campaign/${id}/`,import.meta.url);
+    const readJson=async path=>JSON.parse(await readFile(new URL(path,root),'utf8'));
+    const [locale,voice,definition]=await Promise.all(['ru.json','voice/manifest.json','mission.json'].map(readJson));
+    await verifyVoicePack(root,locale,voice,definition.audioBudgets?.voice??1000000);
+    for(const [speaker,profile] of Object.entries(voice.profiles)){
+      const key=aliases[speaker]??speaker;
+      if(established[key])assert.equal(profile.voiceId,established[key].voiceId,`${id} ${speaker}`);
+      else established[key]=profile;
+    }
   }
 });
