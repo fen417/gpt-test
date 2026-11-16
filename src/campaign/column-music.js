@@ -1,3 +1,5 @@
+import {campaignMusicWindow} from './music-loop.js';
+
 export function columnMusicCue(state,definition){
   const m=state.campaign,config=definition.music;
   const hit=definition.convoy.ambushAt,elapsed=m.rideTime;
@@ -32,7 +34,9 @@ export class ColumnMusic{
     const ctx=this.combat.ctx,source=ctx.createBufferSource(),gain=ctx.createGain();
     const loop=name!=='ambush';
     source.buffer=buffer;source.loop=loop;gain.gain.value=loop?0:1;
-    source.connect(gain);gain.connect(this.bus);source.start(at,loop?offset%buffer.duration:0);
+    const window=(name==='combat'||name==='drums')&&campaignMusicWindow(this.definition.music.combatLoop,buffer.duration,offset);
+    if(window?.loop){source.loopStart=window.loopStart;source.loopEnd=window.loopEnd;}
+    source.connect(gain);gain.connect(this.bus);source.start(at,window?.loop?window.offset:loop?offset%buffer.duration:0);
     const voice={source,gain,zeroAt:at-offset};this.voices.set(name,voice);
     source.onended=()=>{
       if(this.voices.get(name)===voice)this.voices.delete(name);
@@ -60,7 +64,8 @@ export class ColumnMusic{
     if(paused||m.failed||m.complete||ctx.state!=='running')return;
     const {tracks:cues,offset}=this.cue(state,this.definition),now=ctx.currentTime;
     const tracks=cues.interior&&!this.cache.get('interior')?.buffer?{combat:.4}:cues;
-    const level=this.combat.enabled&&state.time>=(m.lossUntil??0)?this.combat.volume*this.combat.musicVolume*(m.radio?.key?.length ? .4 : 1):0;
+    const dialogue=m.radio?.key,dialogueMix=dialogue==='orlov.loss' ? .72 : dialogue ? .4 : 1;
+    const level=this.combat.enabled?this.combat.volume*this.combat.musicVolume*dialogueMix:0;
     this.bus.gain.setTargetAtTime(level,now,.065);
     if(!this.ambushPlayed&&m.ride){
       const hit=state.events?.find(event=>event.type==='explosion'&&event.ambushLeadHit);

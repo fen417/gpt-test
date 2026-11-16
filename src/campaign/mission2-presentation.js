@@ -4,12 +4,12 @@ import {CampaignAudio} from './audio.js';
 import {TankMusic} from './tank-music.js';
 import {M02_BINDINGS,campaignTankSight} from '../../shared/campaign/tank-controls.js';
 import {mission2BriefingCamera} from './mission2-briefing-camera.js';
+import {emitTrackDust} from './track-dust.js';
 import './mission2.css';
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const clock=value=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(Math.floor(value%60)).padStart(2,'0')}`;
 const tankCallsign=id=>id.replace('sokol-','СОКОЛ-');
-const trackDust={opacity:.24,rise:.25,wind:1.5};
 const reloadSeconds=new Intl.NumberFormat('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1});
 
 export class Mission2Presentation {
@@ -248,15 +248,7 @@ export class Mission2Presentation {
     }
     if(v&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
       this.nextTrackDustAt=r.clock+.19;
-      for(const tank of state.vehicles){
-        if(r.effects.length>=85)break;
-        if(tank.type!=='tank'||tank.hp<=0||Math.abs(tank.speed)<.8||Math.hypot(tank.x-v.x,tank.z-v.z)>170)continue;
-        const sin=Math.sin(tank.yaw),cos=Math.cos(tank.yaw),end=Math.sign(tank.speed)*3.1;
-        for(const side of [-1.4,1.4]){
-          const x=tank.x+sin*end+cos*side,z=tank.z+cos*end-sin*side;
-          r.smoke(x,r.map.terrain.heightAt(x,z)+.22,z,.68,1.15,0xcbb08d,trackDust);
-        }
-      }
+      emitTrackDust(r,state.vehicles,v);
     }
     if(v&&!view.paused&&r.clock>=(this.nextFieldSmokeAt??0)){
       this.nextFieldSmokeAt=r.clock+1.9;

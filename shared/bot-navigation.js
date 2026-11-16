@@ -168,7 +168,7 @@ export function elevatedSpots(sim,p,goal){
   return navigation(sim).nodeIndex.query(goal.x-38,goal.z-38,goal.x+38,goal.z+38).filter(n=>n.y>sim.groundAt(n.x,n.z)+1.8&&distance(n,goal)<38&&distance(n,p)<60);
 }
 
-export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={}){
+export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false,followSteps=false}={}){
   if(!goal)return false;
   const ai=p.ai;
   if(distance(p,goal)<.55&&Math.abs(p.y-(goal.y??sim.groundAt(goal.x,goal.z)))<.6)return true;
@@ -177,7 +177,8 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={})
     if(!ai.pathJob&&!ai.pathResult)sim.botPathBudget--;const result=resumeBotPath(sim,p,goal);
     if(result){p.botPath=result;ai.pathGoal={...goal};ai.pathUntil=sim.time+3;ai.repathAt=sim.time+.5;}
   }
-  while(p.botPath.length&&distance(p,p.botPath[0])<.65&&Math.abs(p.y-p.botPath[0].y)<.65)p.botPath.shift();
+  const waypointHeightTolerance=followSteps ? .18 : .65;
+  while(p.botPath.length&&distance(p,p.botPath[0])<.65&&Math.abs(p.y-p.botPath[0].y)<waypointHeightTolerance)p.botPath.shift();
   let next=p.botPath[0];
   if(!next&&distance(p,goal)<8&&walkableSegment(sim,p,goal))next=goal;
   if(!next){
@@ -207,7 +208,10 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={})
   p.input.forward=(-sin*dx-cos*dz)*scale;p.input.strafe=(cos*dx-sin*dz)*scale;
   const probeY=p.y+(next.y-p.y)*Math.min(1,.7/Math.max(.1,distance(p,next)));
   if(next.crouch)p.input.crouch=true;
-  const movingClear=walkableSegment(sim,p,{x:p.x+dx*.7,y:probeY,z:p.z+dz*.7,crouch:next.crouch});
+  const step=Math.abs(next.y-p.y);
+  // On stair waypoints, movePlayer resolves the actual step against collision geometry.
+  const movingClear=followSteps&&step>waypointHeightTolerance&&step<=(sim.stepHeight??0)+.02||
+    walkableSegment(sim,p,{x:p.x+dx*.7,y:probeY,z:p.z+dz*.7,crouch:next.crouch});
   if(!movingClear){p.input.forward=p.input.strafe=0;ai.repathAt=0;ai.pathUntil=0;}
   p.input.sprint=sprint&&movingClear&&!p.input.crouch&&distance(p,goal)>8&&Math.abs(p.input.strafe)<.35&&!p.input.aim&&Math.abs(next.y-p.y)<.3;
   ai.probe??={x:p.x,z:p.z,at:sim.time};

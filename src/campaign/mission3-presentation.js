@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {CampaignFire} from './fire.js';
+import {emitTrackDust} from './track-dust.js';
 import {placeCampaignMarker} from './markers.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {m03ConvoyPose,panelState} from '../../shared/campaign/tel-mazin.js';
@@ -24,7 +25,7 @@ export class Mission3Presentation{
       <div class="campaign-subtitle hidden" role="status" aria-live="polite"><b></b><span></span></div>
       <div class="m03-interaction"><span></span><progress max="1" value="0" hidden></progress></div>
       <div class="m03-choices" hidden><button type="button"></button><button type="button"></button></div>
-      <div class="campaign-injury hidden"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong></div>
+      <div class="campaign-injury hidden"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span><progress max="1" hidden></progress></div>
       <div class="m03-status"></div><div class="m03-bindings"></div><span class="m03-marker" hidden></span>
       <aside class="m03-squad" hidden><div class="m03-temporary"></div><div class="m03-notices" role="status"></div></aside>
       <canvas class="m03-map" width="168" height="168" aria-label="Карта Тель-Мазина" hidden></canvas>
@@ -35,6 +36,7 @@ export class Mission3Presentation{
     this.$('.campaign-retry').onclick=()=>this.retry();this.$('.campaign-exit').onclick=()=>leave();
     [...this.$('.m03-choices').children].forEach((button,index)=>button.onclick=()=>this.answer(index));
     this.marker=this.$('.m03-marker');this.mapCanvas=this.$('.m03-map');
+    document.querySelector('#hud .bottom-right')?.append(this.mapCanvas);
     this.original={sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,
       sunOffset:renderer.sunOffset.clone()};
     this.props=new THREE.Group();this.props.name='tel-mazin-dynamic';renderer.worldRoot.add(this.props);
@@ -98,6 +100,11 @@ export class Mission3Presentation{
     if(offered)m.choices.forEach((key,i)=>choices.children[i].textContent=`${i+1}. ${this.locale.lines[key]?.text??''}`);
     const injury=this.$('.campaign-injury');injury.classList.toggle('hidden',!p.downed||end);
     injury.querySelector('strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;
+    const medic=state.players.some(a=>a.team===p.team&&a.alive&&!a.downed&&a.fieldMedic);
+    const response=m.medicalResponse,treated=(response?.progress??0)>0;
+    injury.querySelector('span').textContent=response?(treated?`${response.name} поднимает вас`:
+      `${response.name} идёт к вам · ${response.distance} м`):medic?'Q · позвать медика':'Медик недоступен';
+    const treatment=injury.querySelector('progress');treatment.hidden=!treated;treatment.value=response?.progress??0;
     const status=this.$('.m03-status');status.hidden=blocked||m.ride;
     const task=m.fuseRemaining!==null?` · ПОДРЫВ ${Math.ceil(m.fuseRemaining)} с`:
       m.wave?` · ВОЛНА ${m.wave}/2${m.waveRemaining!=null?` · ПОДКРЕПЛЕНИЕ ЧЕРЕЗ ${Math.ceil(m.waveRemaining)} С`:''}`:
@@ -106,15 +113,16 @@ export class Mission3Presentation{
     const urgent=nearbyWounded.length?` · ПОМОЩЬ РАНЕНЫМ ${Math.ceil(Math.min(...nearbyWounded.map(a=>a.downedTimer)))} С`:'';
     status.textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes} · СПАСЕНО ${m.flags.brigade_saved}/8${urgent}${task}`;
     const binds=this.$('.m03-bindings');binds.hidden=blocked||m.ride;
-    const medic=state.players.some(a=>a.team===p.team&&a.alive&&!a.downed&&a.fieldMedic);
     binds.textContent=`${orderLabels[m.order]} · F1 ИДТИ · F2 ДЕРЖАТЬ · F3 ШТУРМ · F4 ПРИКРОЙ${medic?' · Q МЕДИК':''}${m.smokeGrenades?' · T ДЫМ':''}`;
     const squad=this.$('.m03-squad'),members=state.players.filter(a=>m.temporarySquadIds?.includes(a.id));
     squad.hidden=blocked||m.ride||(!members.length&&!m.notices?.length);
     const names=members.map(a=>`${a.name}${a.downed?' · ранен':''}`).join(', ');
-    this.$('.m03-temporary').textContent=members.length?`Временный отряд · ${members.length}\n${names}`:'';
+    const kills=members.reduce((n,a)=>n+a.kills,0),revives=members.reduce((n,a)=>n+a.fieldRevives,0);
+    const contribution=[kills&&`Целей снято ${kills}`,revives&&`Реанимаций ${revives}`].filter(Boolean).join(' · ');
+    this.$('.m03-temporary').textContent=members.length?`Временный отряд · ${members.length}\n${names}${contribution?'\n'+contribution:''}`:'';
     const notices=this.$('.m03-notices'),notice=(m.notices??[]).join('\n');
     if(notices.textContent!==notice)notices.textContent=notice;
-    this.mapCanvas.hidden=blocked||m.ride;
+    this.mapCanvas.hidden=blocked||m.ride||paused;
     if(!this.mapCanvas.hidden&&performance.now()>=(this.nextMap??0)){this.nextMap=performance.now()+150;this.drawMap(state,p);}
     this.$('.m03-cinematic').hidden=!cutscene||end;
     const ending=this.$('.campaign-ending');ending.classList.toggle('hidden',!end);
@@ -191,6 +199,9 @@ export class Mission3Presentation{
     r.ambientLight.intensity=THREE.MathUtils.damp(r.ambientLight.intensity,indoors?.22:.29,6,dt);
     if(m.ride){
       const transport=state.vehicles.find(v=>v.id==='sokol-7');
+      if(transport&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
+        this.nextTrackDustAt=r.clock+.19;emitTrackDust(r,state.vehicles,transport);
+      }
       if(transport&&state.players.some(p=>p.id==='local'&&p.vehicleId===transport.id)){
         const heading=transport.yaw+Math.PI;
         const delta=THREE.MathUtils.clamp(wrapped((view.yaw??heading)-heading),-2.094,2.094);
@@ -235,6 +246,6 @@ export class Mission3Presentation{
     const r=this.renderer,o=this.original;r.sun.intensity=o.sun;r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.sunOffset.copy(o.sunOffset);
     r.campaignCoverColliders=null;r.interiorVisibility.disabled=null;
     this.props.removeFromParent();for(const obj of [this.panels,this.glint]){obj.geometry.dispose();obj.material.dispose();obj.dispose?.();}
-    this.root.remove();document.body.classList.remove('campaign-active','campaign-m03-active','campaign-m03-ride','campaign-cinematic','campaign-downed');
+    this.mapCanvas.remove();this.root.remove();document.body.classList.remove('campaign-active','campaign-m03-active','campaign-m03-ride','campaign-cinematic','campaign-downed');
   }
 }

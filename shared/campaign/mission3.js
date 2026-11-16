@@ -1,6 +1,6 @@
 import {Simulation,sanitizeInput} from '../simulation.js';
 import {ensureBotState,thinkInfantryBot} from '../bot-ai.js';
-import {moveBot,resetNavigation} from '../bot-navigation.js';
+import {moveBot,resetNavigation,walkableSegment} from '../bot-navigation.js';
 import {blast} from '../gadgets.js';
 import {overlapsCollider,rayCollider} from '../asset-colliders.js';
 import {uprightBox} from '../geometry.js';
@@ -22,6 +22,8 @@ const crew={vos:'Ирвин Вос',timo:'Тимо Рэй',rafa:'Рафа Ким
 const stageRadio=['','orlov.craft','orlov.cross','orlov.market','orlov.breach','harranti.hold'];
 const brigadeSites=[[-89,37],[-72,42],[-26,34],[10,13],[23,-30],[69,13],[172,-10],[177,-14]];
 const brigadeMedics=new Set([0,4]);
+const MEDIC_TREATMENT_SECONDS=4, MEDIC_RANGE=42;
+const doorsById=new Map(TEL_MAZIN.interactives.filter(item=>item.type==='door').map(item=>[item.id,item]));
 const supplySites=[{id:'tea-kit',x:-155,z:12,kind:'aid'},{id:'cross-smoke',x:-46,z:13,kind:'smoke'},
   {id:'market-rpg',x:36,z:-24,kind:'rockets'},{id:'craft-ammo',x:-96,z:48,kind:'ammo'},
   {id:'vos-cache',x:-184,z:6,kind:'crew'}];
@@ -83,7 +85,10 @@ export class Mission3Simulation extends Simulation{
     if(p.team===0){
       if(p.storyCrew&&!p.columnCrew)return;
       amount*=this.difficulty==='recruit'?.7:this.difficulty==='veteran'?1.25:1;
-      if(p.downed){if(this.time-p.downedAt>5)p.downedTimer-=amount*.08;return;}
+      if(p.downed){
+        if(this.time-p.downedAt>5)p.downedTimer-=amount*(p.id==='local'&&c.playerMedic?.alive ? .025 : .08);
+        return;
+      }
       if(amount>=p.hp){c.down(p);this.event('damage',{playerId:p.id,attackerId:attacker?.id,amount,x:attacker?.x??p.x,z:attacker?.z??p.z});return;}
     }
     super.damage(p,amount,attacker,meta);
@@ -105,7 +110,8 @@ export class Mission3Simulation extends Simulation{
       const live=this.players.get(p.id);
       Object.assign(p,{role:live.role,downed:Boolean(live.downed),downedTimer:live.downedTimer??0,prone:Boolean(live.prone),
         reviver:live.reviver??null,syringes:live.syringes??0,medkits:live.medkits??0,interior:this.campaign.inside(live)?.id??null,
-        fieldMedic:Boolean(live.fieldMedic),rescuedBrigade:Boolean(live.rescuedBrigade),rescue:Boolean(live.rescue)});
+        fieldMedic:Boolean(live.fieldMedic),rescuedBrigade:Boolean(live.rescuedBrigade),rescue:Boolean(live.rescue),
+        fieldRevives:live.fieldRevives??0});
       if(this.campaign.finale&&['local','harranti'].includes(p.id))p.handshake=this.time-this.campaign.finale.at;
     }
     state.campaign=this.campaign.presentation();return state;
@@ -121,7 +127,7 @@ class ColumnDirector{
     this.failed=null;this.complete=false;this.finale=null;this.flags={brigade_saved:0,m3_documents:false};
     this.order='follow';this.progress=0;this.charges=[false,false];this.chargesCollected=false;this.fuseAt=null;this.defenceAt=null;this.defenceWave=0;
     this.interactives=Object.fromEntries(TEL_MAZIN.interactives.map(item=>[item.id,item.initial]));
-    this.smoke=[];this.lossUntil=0;this.notices=[];this.supplies={};this.limp=Boolean(this.carry.marten_wounded);this.geometryDirty=true;
+    this.smoke=[];this.notices=[];this.supplies={};this.limp=Boolean(this.carry.marten_wounded);this.geometryDirty=true;
   }
   get time(){return this.sim.time;}
   get player(){return this.sim.players.get('local');}
@@ -426,7 +432,8 @@ class ColumnDirector{
     }
     if(this.order==='hold')return p.holdAt??p.home;
     if(this.order==='assault'&&this.orderTarget)return this.orderTarget;
-    const angle=p.botSlot*2.399,spacing=p.rescuedBrigade||p.columnCrew?8+(p.botSlot%3)*2:5.5;
+    if(p.rescuedBrigade||p.fieldMedic){const door=this.routeDoor(p,this.player);if(door)return door;}
+    const angle=p.botSlot*2.399,spacing=p.fieldMedic?3.2+(p.botSlot%2):p.rescuedBrigade?5:p.columnCrew?8+(p.botSlot%3)*2:5.5;
     return {x:this.player.x+Math.cos(angle)*spacing,z:this.player.z+Math.sin(angle)*spacing};
   }
   thinkBot(p,dt){
@@ -457,11 +464,39 @@ class ColumnDirector{
     if(p.fieldMedic&&p.medicTarget){
       const wounded=sim.players.get(p.medicTarget);
       if(!wounded?.alive||!wounded.downed)return false;
-      ensureBotState(sim,p);p.input=sanitizeInput({yaw:p.yaw});
-      if(distance(p,wounded)>2.15)moveBot(sim,p,wounded,dt,{sprint:true});
+      ensureBotState(sim,p);p.input=sanitizeInput({yaw:yawTo(p,wounded)});
+      if(this.medicCanTreat(p,wounded))p.input.crouch=true;
+      else{
+        const approach=this.routeDoor(p,wounded)??this.treatmentSpot(p,wounded);
+        moveBot(sim,p,approach,dt,{sprint:true,followSteps:true});
+      }
       return true;
     }
     return false;
+  }
+  routeDoor(actor,target){
+    const building=p=>this.sim.navigationHouses.find(h=>Math.abs(p.x-h.x)<h.w/2-.14&&Math.abs(p.z-h.z)<h.d/2-.14&&p.y<h.h+.7);
+    const current=building(actor),destination=building(target),house=current??destination;
+    if(!house||current===destination)return null;
+    const doors=[-1,1].map(side=>doorsById.get(`${house.id}-door-${side}`)).filter(d=>d&&this.interactives[d.id]!=='locked');
+    const cost=d=>distance(actor,d.part)+distance(target,d.part)*.6+(['open','destroyed'].includes(this.interactives[d.id])?0:1.5);
+    const door=doors.sort((a,b)=>cost(a)-cost(b))[0];
+    if(!door||this.interactives[door.id]!=='closed')return null;
+    const {x,z}=door.part,side=Math.sign(z-house.z),where={x,z:z+side*(current?-2.16:2.16),y:door.part.baseY};
+    if(distance(actor,where)<.65&&Math.abs(actor.y-where.y)<.65&&this.sim.lineClear(eye(actor),eye(where,1.15)))this.setPanel(door.id,'open');
+    return where;
+  }
+  medicCanTreat(medic,patient){
+    return distance(medic,patient)<2.55&&Math.abs(medic.y-patient.y)<.8&&this.sim.lineClear(eye(medic,.95),eye(patient,.35));
+  }
+  treatmentSpot(medic,patient){
+    if(distance(medic,patient)>5||Math.abs(medic.y-patient.y)>.8)return patient;
+    for(let i=0;i<8;i++){
+      const angle=Math.atan2(medic.z-patient.z,medic.x-patient.x)+Math.ceil(i/2)*Math.PI/4*(i%2?1:-1);
+      const at={x:patient.x+1.4*Math.cos(angle),y:patient.y,z:patient.z+1.4*Math.sin(angle)};
+      if(this.medicCanTreat(at,patient)&&walkableSegment(this.sim,medic,at))return at;
+    }
+    return patient;
   }
   afterThink(p,dt){
     if(!p.ai)return;
@@ -533,7 +568,8 @@ class ColumnDirector{
       this.sim.lineClear(eye(p),eye(a,.35)));
     if(wounded){
       this.prompt=`E · удерживать: помочь · ${wounded.name}`;
-      wounded.reviver=i.use?p.id:null;
+      if(i.use)wounded.reviver=p.id;
+      else if(wounded.reviver===p.id)wounded.reviver=null;
       this.hold(wounded.id,i.use,dt,6,()=>this.revive(wounded));return;
     }
     if(this.stage===4&&!this.flags.breached&&!this.chargesCollected&&distance(p,chargeCache)<2.75){
@@ -629,21 +665,28 @@ class ColumnDirector{
     this.refreshGeometry();
   }
   down(p){
-    Object.assign(p,{downed:true,prone:true,hp:1,downedAt:this.time,downedTimer:p.rescue?1e6:25,reviver:null,
-      slideTime:0,reloading:false,heldGadget:null});
+    const patient=this.sim.players.get(p.medicTarget);
+    if(patient?.reviver===p.id)patient.reviver=null;
+    Object.assign(p,{downed:true,prone:true,hp:1,downedAt:this.time,downedTimer:p.rescue?1e6:p.id==='local'?32:25,reviver:null,
+      slideTime:0,reloading:false,heldGadget:null,medicTarget:null,medicProgress:0});
     this.sim.equipWeapon(p,2);p.equipTime=0;
     if(p.id==='local')this.say('marten.downed');
   }
-  revive(p){
+  revive(p,medic){
     const rescue=p.rescue;
     Object.assign(p,{downed:false,prone:false,rescue:false,hp:50,reviver:null,downedTimer:0,
       reviveSeq:(p.reviveSeq??0)+1,invulnerableUntil:this.time+2});
+    if(p.bot)this.sim.equipWeapon(p,1);
     if(rescue){
       this.flags.brigade_saved++;
       p.squadMember=true;p.rescuedBrigade=true;
       this.notify(`${p.name} вступил во временный отряд`);
     }
-    this.sim.event('revive',{playerId:p.id,x:p.x,y:p.y,z:p.z});
+    if(medic){
+      medic.fieldRevives=(medic.fieldRevives??0)+1;
+      if(p.id==='local')this.notify(`${medic.name} поднял Мартена`);
+    }
+    this.sim.event('revive',{playerId:p.id,medicId:medic?.id,x:p.x,y:p.y,z:p.z});
   }
   notify(text){this.notices=[...this.notices.slice(-2),{text,until:this.time+8}];}
   updateWounds(dt){
@@ -658,28 +701,51 @@ class ColumnDirector{
         Simulation.prototype.damage.call(this.sim,p,1000,null);
         if(p.id!=='local'){
           this.notify(`Погиб · ${p.name}`);
-          this.lossUntil=this.time+this.definition.music.lossSilence;this.say('orlov.loss');
+          this.say('orlov.loss');
         }
       }
     }
   }
   updateMedic(dt){
     const allies=[...this.sim.players.values()].filter(p=>p.team===0&&p.alive),assigned=new Set();
-    for(const medic of allies){
-      if(!medic.fieldMedic||medic.downed)continue;
-      const candidate=allies.filter(p=>p.downed&&!assigned.has(p.id)&&distance(p,medic)<(this.order==='revive'?30:13)&&
-        (!p.rescue||p.downedTimer<=115)&&!(p.reviver==='local'&&this.input.use))
-        .sort((a,b)=>Number(b.id==='local')-Number(a.id==='local')||distance(a,medic)-distance(b,medic))[0];
+    const medics=allies.filter(p=>p.fieldMedic&&!p.downed),player=this.player;
+    const previous=this.playerMedic;
+    let lead=null;
+    if(player.downed){
+      if(previous?.medicTarget===player.id&&this.time>=(previous.medicProbe?.at??Infinity)+4){
+        if(distance(previous,previous.medicProbe)<.55&&!this.medicCanTreat(previous,player))previous.medicBlockedUntil=this.time+5;
+        previous.medicProbe={...eye(previous,0),at:this.time};
+      }
+      const range=this.order==='revive'?60:MEDIC_RANGE;
+      const available=medics.filter(p=>distance(p,player)<range&&this.time>=(p.medicBlockedUntil??0));
+      const score=p=>distance(p,player)+Math.abs(p.y-player.y)*3-(this.medicCanTreat(p,player)?50:0)-(p===previous?7:0);
+      lead=available.sort((a,b)=>score(a)-score(b))[0]??null;
+    }
+    this.playerMedic=lead;
+    if(previous&&previous!==lead&&player.reviver===previous.id)player.reviver=null;
+    const patients=allies.filter(p=>p!==player&&p.downed&&(!p.rescue||p.downedTimer<=115)&&!(p.reviver==='local'&&this.input.use));
+    for(const medic of medics){
+      const candidate=medic===lead?player:patients.filter(p=>!assigned.has(p.id)&&distance(p,medic)<(this.order==='revive'?30:13))
+        .sort((a,b)=>distance(a,medic)-distance(b,medic))[0];
       if(candidate?.id!==medic.medicTarget){
         const previous=this.sim.players.get(medic.medicTarget);
         if(previous?.reviver===medic.id)previous.reviver=null;
         medic.medicProgress=0;medic.medicTarget=candidate?.id;
+        medic.medicProbe={...eye(medic,0),at:this.time};
+        medic.botPath=[];
+        if(medic.ai){
+          medic.ai.pathJob?.return();medic.ai.pathJob=null;medic.ai.pathResult=null;medic.ai.repathAt=0;
+          medic.ai.goal=null;medic.ai.goalUntil=0;
+        }
       }
       if(!candidate)continue;
       assigned.add(candidate.id);
-      if(distance(candidate,medic)>2.6||!this.sim.lineClear(eye(medic),eye(candidate,.35))){medic.medicProgress=0;continue;}
+      if(!this.medicCanTreat(medic,candidate)){
+        if(candidate.reviver===medic.id)candidate.reviver=null;
+        medic.medicProgress=0;continue;
+      }
       candidate.reviver=medic.id;medic.medicProgress=(medic.medicProgress??0)+dt;
-      if(medic.medicProgress+1e-7>=6){this.revive(candidate);medic.medicTarget=null;medic.medicProgress=0;}
+      if(medic.medicProgress+1e-7>=MEDIC_TREATMENT_SECONDS){this.revive(candidate,medic);medic.medicTarget=null;medic.medicProgress=0;}
     }
   }
   defend(atTarget){
@@ -733,8 +799,9 @@ class ColumnDirector{
       if(p.role==='brigade'){
         p.fieldMedic??=brigadeMedics.has(Number(p.id.split('-').at(-1))-1);
         if(!p.rescue&&p.rescuedBrigade!==false){p.rescuedBrigade=true;p.relief=false;p.squadMember=true;}
+        if(p.rescuedBrigade&&p.alive&&!p.downed&&p.weaponSlot===2&&(p.stowedAmmo.ammo||p.stowedAmmo.reserve))sim.equipWeapon(p,1);
       }
-      p.medicTarget=null;p.medicProgress=0;p.reviver=null;
+      p.medicTarget=null;p.medicProgress=0;p.medicProbe=null;p.medicBlockedUntil=0;p.reviver=null;
     }
     for(const key of ['grenades','rockets','bullets','deployables'])sim[key]=structuredClone(save[key]);
     sim.time=save.time;sim.rngState=save.rngState;sim.events=[];sim.eventId=0;sim.botTeams=null;sim.botTeamAt=0;
@@ -742,8 +809,8 @@ class ColumnDirector{
     this.chargesCollected=save.mission.chargesCollected??(this.charges.some(Boolean)||this.flags.breached===true);
     this.nextWaveAt=save.mission.nextWaveAt??null;
     Object.assign(this,{input:{},previous:{},queue:[],radio:null,radioEnd:0,skipHold:0,choices:null,
-      latestExplosion:0,failed:null,complete:false,finale:null,prompt:'',interaction:null,progress:0,lossUntil:0,
-      notices:[],assaultDoor:null,geometryDirty:true});
+      latestExplosion:0,failed:null,complete:false,finale:null,prompt:'',interaction:null,progress:0,
+      notices:[],playerMedic:null,assaultDoor:null,geometryDirty:true});
     this.latestSave=save.mission.checkpoint?structuredClone(save):null;
     this.saveRevision++;this.epoch++;this.refreshGeometry();
     const newCover=sim.colliders.filter(box=>box.id.startsWith('street-dressing-'));
@@ -764,10 +831,12 @@ class ColumnDirector{
     for(const enemy of this.sim.players.values())if(enemy.team===1&&enemy.homeId)
       roomStatus[enemy.homeId]=enemy.alive||roomStatus[enemy.homeId]==='hostile'?'hostile':'clear';
     const brigade=[...this.sim.players.values()].filter(a=>a.rescuedBrigade),losses=[...this.sim.players.values()].filter(a=>a.team===0&&!a.alive).length;
-    return {missionId:'m03',stage:this.stage,objective,...objectiveState,rideTime:this.rideTime,ride:this.inTransit,cutscene,
+    const medic=p.downed?this.playerMedic:null;
+    const medicalResponse=medic?{name:medic.name,distance:Math.round(distance(medic,p)),progress:(medic.medicProgress??0)/MEDIC_TREATMENT_SECONDS}:null;
+    return {missionId:'m03',stage:this.stage,objective,...objectiveState,rideTime:this.rideTime,ride:this.inTransit,cutscene,medicalResponse,
       alert:this.alert(),inside:Boolean(this.inside(p)),time:this.time,checkpoint:this.checkpoint,epoch:this.epoch,
       failed:this.failed,complete:this.complete,flags:{...this.flags},radio:this.radio,radioRemaining:Math.max(0,this.radioEnd-this.time),
-      doorStates:this.packedPanels,doorRevision:this.doorRevision,roomStatus,smoke:this.smoke,lossUntil:this.lossUntil,prompt:this.prompt,progress:this.progress,
+      doorStates:this.packedPanels,doorRevision:this.doorRevision,roomStatus,smoke:this.smoke,prompt:this.prompt,progress:this.progress,
       choices:this.choices?[this.choices[0],this.choices[2]]:null,order:this.order,charges:[...this.charges],
       skipHold:this.skipHold,smokeGrenades:p.smokeGrenades??0,syringes:p.syringes,medkits:p.medkits,limp:this.limp,
       fuseRemaining:this.fuseAt!==null&&!this.flags.breached?Math.max(0,this.fuseAt-this.time):null,

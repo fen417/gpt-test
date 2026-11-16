@@ -14,15 +14,15 @@
 
 Из генерации вырежи один акцент с коротким хвостом. Игра запускает файл вместе со взрывом ведущего танка, так что атака нужна с первых миллисекунд. Основная боевая тема включается через **0,4 с**.
 
-## `combat.ogg` — основной бой
+## `combat.ogg` — длинный бой в Тель-Мазине
 
-> Seamless instrumental tactical shooter combat loop, D minor, exactly 140 BPM, 4/4. Enter immediately on beat one. Dry spiccato cello ostinato, staccato violas, tense low bass and sparse muted brass calls using a descending three-note motif. Relentless, controlled urgency for street fights and room clearing. Keep the middle frequencies open for shouting and gunfire. Steady groove and harmonic tension throughout; no intro, breakdown, final cadence, tempo drift, prominent drums, vocals or sound effects. End where the first bar can repeat naturally.
+> Long instrumental tactical shooter score for a continuous urban firefight, target length 5–6 minutes. D minor, steady 140 BPM, 4/4, enter on the first downbeat. Dry spiccato cello ostinato, tight staccato violas, tense low bass, restrained field drums and sparse muted brass answering a descending three-note motif. Controlled urgency with room for squad radio and gunfire. Develop the core pattern in 16- or 32-bar blocks. Rotate between lean street combat, tighter room-clearing tension and a fuller defensive push by changing orchestration while holding tempo, key and pulse. Bring the exact opening groove and harmony back near the end. Give that return at least 16 bars of stable rhythm and a few extra bars past the last usable downbeat. No vocals, choir, radio, gunfire, risers, long breakdowns, tempo changes, final cadence or fade-out.
 
-Удобная длина — **40 тактов, 1:08.57**. Начало точно на первой доле. Стык нужно проверить повтором в редакторе.
+Если генерация закончится раньше, продолжи трек из последней устойчивой боевой секции. Сохрани исходное начало, развитие и возврат основного мотива одним файлом. После экспорта можно подобрать в записи две совпадающие первые доли и зациклить внутреннюю секцию с коротким кроссфейдом, как в М02. Вступление будет звучать один раз, дальше повторится длинный боевой блок.
 
 ## `combat-drums.ogg` — слой для открытого боя
 
-> Isolated instrumental percussion stem for the same tactical combat cue, exactly 140 BPM, 4/4, 40 bars. Same tight first downbeat and bar grid as the underlying orchestral loop. Low field drums, restrained military snare, short tom syncopation and occasional dry rim clicks. Keep a consistent pulse and leave empty space between accents. Drums only, no melody, no bass line, no sustained cymbals, no vocal chants, no effects, no fills across the loop seam.
+> Isolated instrumental percussion stem for the same tactical combat cue, exactly 140 BPM, 4/4. Same duration, first downbeat and bar grid as the underlying orchestral loop. Low field drums, restrained military snare, short tom syncopation and occasional dry rim clicks. Keep a consistent pulse and leave empty space between accents. Drums only, no melody, no bass line, no sustained cymbals, no vocal chants, no effects, no fills across the loop seam.
 
 В игре слой звучит одновременно с `combat.ogg`. Самый надёжный вариант — сделать оба файла из одной сессии и выгнать ударные отдельной дорожкой. При независимой генерации подгони в редакторе первую долю, сетку и длину до полного совпадения. Оба файла должны начинаться и заканчиваться на тех же семплах при одинаковой частоте дискретизации.
 
