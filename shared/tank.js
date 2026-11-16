@@ -40,7 +40,7 @@ export function moveTank(sim,v,input,dt){
   // Steering follows the direction of travel. A stopped tank still pivots normally.
   if(v.speed<0)steer=-steer;
   v.steer=steer;
-  const turn=steer*(Math.abs(v.speed)<1?1.3:1-Math.min(.6,Math.abs(v.speed)/22));
+  const turn=steer*(v.controlScheme==='wot'?.65:1)*(Math.abs(v.speed)<1?1.3:1-Math.min(.6,Math.abs(v.speed)/22));
   const yaw=angle(v.yaw-turn*dt,0),mid=v.yaw-turn*dt*.5,x=v.x-Math.sin(mid)*v.speed*dt,z=v.z-Math.cos(mid)*v.speed*dt;
   const travelSign=Math.sign(v.speed),ground=sim.groundAt(x,z);
   const ahead=sim.groundAt(x-Math.sin(yaw)*2*travelSign,z-Math.cos(yaw)*2*travelSign);

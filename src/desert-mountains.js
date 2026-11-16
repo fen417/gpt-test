@@ -36,7 +36,7 @@ export function desertRockMaterial() {
 
 export function desertMountain(owner, material, box, terrain) {
   const nx = MOUNTAIN_COLUMNS, nz = MOUNTAIN_ROWS, positions = [], colors = [], uvs = [], indices = [];
-  const { heights, tones } = desertMountainSurface(box, terrain);
+  const { heights, tones } = terrain?.mountainSurface ?? desertMountainSurface(box, terrain);
   const tint = new THREE.Color(box.color ?? '#bca58a');
   for (let iz = 0; iz <= nz; iz++) for (let ix = 0; ix <= nx; ix++) {
     const x = box.x - box.w / 2 + ix * box.w / nx, z = box.z - box.d / 2 + iz * box.d / nz;

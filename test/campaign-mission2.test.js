@@ -8,6 +8,7 @@ import {ALHADRA_DESERT,ALHADRA_OFFSET} from '../shared/campaign/alhadra-desert.j
 import {Mission2Simulation,validMission2Save} from '../shared/campaign/mission2.js';
 import {TANK_CANNON,moveTank,tankShellRicochets} from '../shared/tank.js';
 import {getAssetColliders,rayCollider} from '../shared/asset-colliders.js';
+import {findBotPath} from '../shared/bot-navigation.js';
 
 function create(){return new Mission2Simulation(mission,{difficulty:'regular',seed:113,lines:locale.lines});}
 function step(sim,n){for(let i=0;i<n;i++)sim.step(1/60);}
@@ -29,7 +30,8 @@ test('extended Al-Hadra tank map preserves old village terrain and geometry',()=
   for(const box of ALHADRA_DESERT.boxes){
     const original=oldVillage.get(box.id);
     if(!original)continue;
-    assert.equal(box.x,original.x-ALHADRA_OFFSET.x);
+    const eastMountain=box.kind==='village-rock'&&original.x-ALHADRA_OFFSET.x>95;
+    assert.equal(box.x,original.x-ALHADRA_OFFSET.x+(eastMountain?36:0));
     assert.equal(box.z,original.z-ALHADRA_OFFSET.z);
     if(original.editorPose){
       assert.equal(box.editorPose.x,original.editorPose.x-ALHADRA_OFFSET.x);
@@ -45,10 +47,13 @@ test('mountain foothills follow the visible surface and the whole tank road is c
   assert.ok(cliffs.length>0);
   assert.ok(getAssetColliders(map).every(b=>b.kind!=='village-rock'));
   assert.ok(cliffs.some(b=>sim.groundAt(b.x,b.z)>map.terrain.baseSurface.heightAt(b.x,b.z)+6));
-  const [x,z]=[135,-163];
+  const [x,z]=[123,-163];
   assert.ok(cliffs.some(b=>Math.abs(x-b.x)<b.w/2&&Math.abs(z-b.z)<b.d/2));
   assert.equal(map.terrain.heightAt(x,z),map.terrain.baseSurface.heightAt(x,z));
   assert.equal(sim.vehicleCollides(v,x,z,0),false);
+  const east=cliffs.find(b=>b.x>120),height=map.terrain.mountains.get(east.id).heightAt(east.x,east.z);
+  const hit=map.terrain.raycast({x:east.x,y:height+4,z:east.z},{x:0,y:-1,z:0},8);
+  assert.ok(Math.abs(hit-4)<.01,'the rock crest stops a ray at the shared mesh height');
   const route=mission.friendlyCompany.route;
   for(let i=1;i<route.length;i++){
     const [ax,az]=route[i-1],[bx,bz]=route[i],dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz);
@@ -99,27 +104,32 @@ test('the moving vanguard crests the ridge and fires at 13 seconds',()=>{
   assert.equal(sim.campaign.elapsed,0);
   const enemies=sim.vehicles.filter(v=>v.team===1);
   const player=sim.vehicles.find(v=>v.id==='sokol-7');
-  const seen=()=>enemies.some(v=>sim.campaign.visible({
+  const visibleTanks=()=>enemies.filter(v=>sim.campaign.visible({
     x:player.x+Math.sin(player.yaw)*9,y:player.y+3.27,z:player.z+Math.cos(player.yaw)*9,
-  },{x:v.x,y:v.y+2.4,z:v.z}));
+  },{x:v.x,y:v.y+2.4,z:v.z})).length;
   assert.equal(enemies.length,6);
-  assert.equal(seen(),false);
+  assert.equal(visibleTanks(),0);
   const initialX=enemies[0].x;
   sim.setInput('local',{forward:1,yaw:player.yaw});
   for(let i=0;i<765;i++){
     step(sim,1);
-    assert.ok(player.speed>0,'player lane must stay clear while holding forward');
+    assert.ok(player.speed>0&&player.speed*3.6<=25,'player lane and initial speed limit');
   }
   assert.ok(initialX-enemies[0].x>50);
-  assert.equal(seen(),false);
+  assert.ok(sim.events.every(e=>e.type!=='cannonShot'));
   assert.equal(sim.snapshot().campaign.enemyTanksAlive,0);
   step(sim,15);
-  assert.equal(seen(),true);
+  assert.equal(visibleTanks(),enemies.length);
+  assert.ok(enemies.every(t=>t.y>=sim.groundAt(t.x+8,t.z)-.5&&t.y>=sim.groundAt(t.x-8,t.z)-.5),
+    'every vanguard tank must be at the crest of its lane');
   assert.ok(Math.abs(sim.campaign.elapsed-13)<.0001);
   assert.equal(sim.campaign.enemySerial,6);
   step(sim,6);
-  const first=sim.events.find(e=>e.type==='cannonShot');
-  assert.ok(first&&Math.abs(first.time-sim.campaign.combatStartedAt-13)<=.1,'contact must include actual gunfire');
+  const openingSalvo=sim.events.filter(e=>e.type==='cannonShot'&&e.vehicleId?.startsWith('east-tank-'));
+  assert.equal(openingSalvo.length,3);
+  assert.ok(openingSalvo.every(e=>Math.abs(e.time-sim.campaign.combatStartedAt-13)<.001));
+  step(sim,150);
+  assert.ok(player.speed*3.6>25,'full throttle returns after the first 15 seconds');
 });
 test('both tank control schemes invert steering only while backing up',()=>{
   const sim={groundAt:()=>0,vehicleCollides:()=>false};
@@ -129,6 +139,11 @@ test('both tank control schemes invert steering only while backing up',()=>{
         const v={x:0,y:0,z:0,yaw:0,speed:0,controlScheme};
         moveTank(sim,v,{forward,strafe},1/60);
         assert.equal(Math.sign(v.yaw),forward<0?strafe:-strafe);
+        if(controlScheme==='wot'){
+          const multiplayer={x:0,y:0,z:0,yaw:0,speed:0};
+          moveTank(sim,multiplayer,{forward,strafe},1/60);
+          assert.ok(Math.abs(v.yaw)<Math.abs(multiplayer.yaw));
+        }
       }
     }
   }
@@ -143,6 +158,17 @@ test('both AT crews occupy road shoulders in sight of the tank approach',()=>{
     assert.equal(sim.collides(x,z),false);
     const from=i===0?{x:-107,z:-188}:{x:-30,z:-87};
     assert.ok(c.visible({...from,y:sim.groundAt(from.x,from.z)+2},{x,y:gun.y+1,z}));
+  }
+});
+test('all four infantry in the third wave spawn on the village approach with a path to the square',()=>{
+  const sim=create();
+  for(let i=0;i<3;i++)sim.campaign.spawnGroundWave();
+  const wave=[...sim.players.values()].filter(p=>p.id.startsWith('m02-assault-2-'));
+  assert.equal(wave.length,4);
+  for(const p of wave){
+    assert.equal(p.y,sim.map.terrain.baseSurface.heightAt(p.x,p.z));
+    const route=findBotPath(sim,p,{x:17,z:0});
+    assert.deepEqual([route.at(-1)?.x,route.at(-1)?.z],[17,0],p.id);
   }
 });
 test('commander can select AP, HE and MG without modifying multiplayer tank physics',()=>{
@@ -176,6 +202,20 @@ test('mission 2 checkpoint can restore enemy tanks and timing',()=>{
   assert.equal(restored.campaign.enemySerial,6);
   assert.equal(restored.vehicles.filter(v=>v.team===1).length,6);
   assert.ok(Math.abs(restored.campaign.elapsed-13)<.0001);
+});
+test('old tank checkpoints use the revised opening or finish deploying the second wave',()=>{
+  const sim=create();sim.campaign.beginCombat();
+  const opening=sim.campaign.serialize(),oldTank=opening.vehicles.find(v=>v.id==='east-tank-1');
+  oldTank.x=oldTank.home.x=-594;
+  assert.equal(sim.campaign.restore(opening),true);
+  assert.equal(sim.vehicles.find(v=>v.id===oldTank.id).x,mission.enemyCompany.contactStart[0]);
+
+  sim.campaign.spawnEnemy(4);
+  sim.campaign.phase='battle';sim.campaign.fired.add('enemyRear');
+  const oldBattle=sim.campaign.serialize();
+  assert.equal(sim.campaign.restore(oldBattle),true);
+  assert.equal(sim.campaign.enemySerial,14);
+  assert.equal(validMission2Save(sim.campaign.latestSave,mission),true);
 });
 test('all ten crew members are alive and tanks leave their starting formation',()=>{
   const sim=create(),c=sim.campaign;
@@ -219,7 +259,10 @@ test('mission 2 requires a surviving platoon and explicit recovery of the order'
   const sim=create(),c=sim.campaign;
   c.command({type:'skip'});
   step(sim,85*60);
-  assert.equal(c.enemySerial,10);
+  assert.equal(c.enemySerial,14);
+  const rear=sim.vehicles.filter(v=>v.m02Rear);
+  assert.equal(rear.length,8);
+  assert.equal(validMission2Save(c.serialize(),mission),true);
   for(const tank of sim.vehicles.filter(v=>v.team===1&&v.hp>0)){
     for(let i=0;i<4;i++)sim.damageVehicle(tank,99999,sim.players.get('local'),'blast',
       {x:tank.x,y:tank.y+1,z:tank.z});

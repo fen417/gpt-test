@@ -8,7 +8,7 @@
 .m02-objective small{font:700 9px monospace;letter-spacing:.14em;color:#c7b188}
 .m02-objective strong{font:600 19px/1.24 Arial,sans-serif}
 .m02-mission-status{font:11px monospace;color:#c3b69a}
-.m02-company{position:absolute;right:22px;top:54px;padding:14px 16px;
+.m02-company{position:absolute;left:22px;bottom:30px;padding:14px 16px;
   background:#101b18bb;border-top:2px solid #9f9666;min-width:192px}
 .m02-company>small{font:700 10px monospace;letter-spacing:.12em;color:#d9c39c;display:block;margin-bottom:8px}
 .m02-tank-status{display:grid;grid-template-columns:64px 70px 58px;align-items:center;
@@ -22,6 +22,8 @@
 .m02-reticle{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .m02-aimdot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   color:#edf1d2;font:19px monospace;opacity:.83}
+.m02-callsign{position:absolute;left:50%;top:calc(50% + 23px);transform:translateX(-50%);
+  color:#b9e6a3;text-shadow:0 1px 3px #000,0 1px 5px #000;font:700 14px Arial,sans-serif;white-space:nowrap}
 .m02-bore-dot{position:absolute;top:0;left:0;font:24px monospace;color:#f6bd7a;filter:drop-shadow(0 1px 3px #000)}
 .m02-dispersion{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   box-sizing:border-box;border:1px dashed #e7d6aa9c;border-radius:50%;
@@ -79,7 +81,7 @@
 .m02-sniper-mode .m02-reticle{box-shadow:inset 0 0 110px 32px #0008}
 @media(max-width:700px){.m02-minimap{width:115px;height:115px;right:8px;bottom:10px}.m02-interact{bottom:145px;font-size:10px}.m02-weapon-panel{max-width:65vw}.m02-hp{font-size:9px}}
 @media(max-width:1000px){
-  .m02-company{right:10px;min-width:150px;padding:10px}
+  .m02-company{left:10px;bottom:58px;min-width:150px;padding:10px}
   .m02-tank-status{grid-template-columns:54px 45px 48px;gap:5px;font-size:9px}
   .campaign-m02 .m02-objective{left:12px;max-width:46vw;padding:10px;box-sizing:border-box}
   .m02-objective strong{font-size:16px}
@@ -87,7 +89,7 @@
   .m02-weapon-panel{bottom:73px;min-width:170px}
 }
 @media(max-width:600px){
-  .m02-company{right:8px;min-width:125px}
+  .m02-company{left:8px;min-width:125px}
   .m02-tank-status{grid-template-columns:48px 35px 38px}
   .m02-radio{bottom:180px;width:72vw;min-width:0}
   .m02-weapon-panel{bottom:88px}

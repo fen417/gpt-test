@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import {tankMuzzle,tankDropAngle} from '../../shared/tank.js';
 import {CampaignAudio} from './audio.js';
 import {TankMusic} from './tank-music.js';
-import {M02_BINDINGS} from '../../shared/campaign/tank-controls.js';
+import {M02_BINDINGS,campaignTankSight} from '../../shared/campaign/tank-controls.js';
 import './mission2.css';
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const clock=value=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(Math.floor(value%60)).padStart(2,'0')}`;
+const tankCallsign=id=>id.replace('sokol-','СОКОЛ-');
+const trackDust={opacity:.24,rise:.25,wind:1.5};
 
 export class Mission2Presentation {
   constructor(session,{renderer,audio,leave,clearControls,resume,getBindings=()=>M02_BINDINGS,keyLabel=code=>code}){
@@ -27,7 +29,7 @@ export class Mission2Presentation {
       <span class="m02-mission-status"></span>
     </header>
     <aside class="m02-company"><small>РОТА «СОКОЛ» · ТАНКИ В СТРОЮ</small><div class="m02-tanks"></div></aside>
-    <div class="m02-reticle"><span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span><i class="m02-dispersion"></i><span class="m02-lead" hidden>⊕</span><span class="m02-range" hidden></span></div>
+    <div class="m02-reticle"><span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span><i class="m02-dispersion"></i><span class="m02-lead" hidden>⊕</span><span class="m02-range" hidden></span><span class="m02-callsign" hidden></span></div>
     <aside class="m02-weapon-panel"><strong class="m02-weapon"></strong><span class="m02-ammo"></span><span class="m02-hp"></span></aside>
     <aside class="m02-radio"><small>ЧАСТОТА «МАЯК»</small><b class="m02-radio-speaker"></b><span class="m02-radio-text"></span></aside>
     <p class="m02-controls"></p><p class="m02-feedback"></p><p class="m02-interact"></p><span class="m02-world-target" hidden></span>
@@ -48,8 +50,9 @@ export class Mission2Presentation {
     this.$('.m02-skip').onclick=()=>{clearControls();session.command({type:'skip'});resume();};
     this.$('.m02-restart').onclick=()=>{clearControls();session.command({type:'retry'});resume();};
     this.$('.m02-return').onclick=leave;
+    const sky=renderer.atmosphere.sky.material.uniforms;
     this.original={background:renderer.scene.background?.clone(),fogColor:renderer.scene.fog.color.clone(),
-      fogDensity:renderer.scene.fog.density,sunColor:renderer.sun.color.clone(),
+      fogDensity:renderer.scene.fog.density,hazeAmount:sky.hazeAmount.value,hazeTint:sky.hazeTint.value.clone(),sunColor:renderer.sun.color.clone(),
       sunIntensity:renderer.sun.intensity,sunOffset:renderer.sunOffset.clone(),
       hemiIntensity:renderer.hemiLight.intensity,ambientIntensity:renderer.ambientLight.intensity,cameraFar:renderer.camera.far};
     renderer.camera.far=1000;renderer.camera.updateProjectionMatrix();
@@ -104,7 +107,7 @@ export class Mission2Presentation {
   update(state,paused){
     const m=state?.campaign;if(m?.missionId!=='m02')return;
     this.paused=paused;this.root.classList.toggle('campaign-ui-paused',paused);
-    if(this.epoch!==m.epoch){this.epoch=m.epoch;this.stopMusic();}
+    if(this.epoch!==m.epoch){this.epoch=m.epoch;this.stopMusic();this.sightTargetId=null;this.nextCallsignAt=0;}
     document.body.classList.add('campaign-active','campaign-m02-active');
     document.body.classList.toggle('campaign-cinematic',Boolean(m.cutscene));
     const phase=this.locale.objectives[m.phase]??m.phase;
@@ -121,7 +124,7 @@ export class Mission2Presentation {
       const row=document.createElement('div');row.className='m02-tank-status';
       if(v.hp<=0)row.classList.add('destroyed');
       if(v.id==='sokol-7')row.classList.add('player');
-      const name=document.createElement('span');name.textContent=v.id.replace('sokol-','СОКОЛ-');
+      const name=document.createElement('span');name.textContent=tankCallsign(v.id);
       const bar=document.createElement('i'),fill=document.createElement('em');
       fill.style.width=`${Math.round(clamp(v.hp/v.maxHp,0,1)*100)}%`;bar.append(fill);
       const hp=document.createElement('b');hp.textContent=v.hp<=0?'ПОТЕРЯН':`${Math.ceil(v.hp/v.maxHp*100)}%`;
@@ -194,13 +197,29 @@ export class Mission2Presentation {
     const t=clamp(m.time/this.definition.timing.expectedDurationSeconds,0,1);
     // Dawn grows from the enemy's east to a warmer morning as the mission
     // progresses. Values remain editable in the mission's art direction.
-    r.scene.background.setRGB(.62+.15*t,.57+.18*t,.56+.14*t);
-    r.scene.fog.color.copy(r.scene.background);r.scene.fog.density=.0015-.00043*t;
+    r.scene.background.setRGB(.57+.13*t,.42+.13*t,.28+.11*t);
+    const gust=.5+.5*Math.sin((m.cutscene?.elapsed??m.time)*.71);
+    r.scene.fog.color.copy(r.scene.background);r.scene.fog.density=.0042+gust*.0004;
+    const sky=r.atmosphere.sky.material.uniforms;
+    sky.hazeAmount.value=.92+gust*.06;
+    sky.hazeTint.value.copy(r.scene.fog.color).convertLinearToSRGB();
     r.sun.color.setRGB(1,.78+.15*t,.56+.28*t);r.sun.intensity=1.6+1.2*t;
     r.hemiLight.intensity=1.55+.55*t;r.ambientLight.intensity=.23+.15*t;
     const elevation=(3+12*t)*Math.PI/180;r.sunOffset.set(130,Math.tan(elevation)*130,0);
     r.lastShadowTx=NaN;
     const v=state.vehicles.find(v=>v.id==='sokol-7');
+    if(v&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
+      this.nextTrackDustAt=r.clock+.19;
+      for(const tank of state.vehicles){
+        if(r.effects.length>=85)break;
+        if(tank.type!=='tank'||tank.hp<=0||Math.abs(tank.speed)<.8||Math.hypot(tank.x-v.x,tank.z-v.z)>170)continue;
+        const sin=Math.sin(tank.yaw),cos=Math.cos(tank.yaw),end=Math.sign(tank.speed)*3.1;
+        for(const side of [-1.4,1.4]){
+          const x=tank.x+sin*end+cos*side,z=tank.z+cos*end-sin*side;
+          r.smoke(x,r.map.terrain.heightAt(x,z)+.22,z,.68,1.15,0xcbb08d,trackDust);
+        }
+      }
+    }
     if(v&&!view.paused&&r.clock>=(this.nextFieldSmokeAt??0)){
       this.nextFieldSmokeAt=r.clock+1.9;
       const sources=[{x:-130,y:r.map.terrain.heightAt(-130,-75),z:-75},...m.smoke];
@@ -233,6 +252,16 @@ export class Mission2Presentation {
     const rangeLabel=this.$('.m02-range');
     rangeLabel.hidden=!v||!this.isZoom||Boolean(m.cutscene)||!m.sight;
     if(!rangeLabel.hidden)rangeLabel.textContent=`${Math.round(m.sight.range)} М`;
+    const callsign=this.$('.m02-callsign');
+    const canShow=Boolean(v?.hp&&!m.cutscene&&!m.failed&&!m.complete&&!view.paused);
+    if(canShow&&r.clock>=(this.nextCallsignAt??0)){
+      this.nextCallsignAt=r.clock+.05;
+      const {targetId}=campaignTankSight(r.map,state.vehicles,r.camera.position,r.camera.rotation.y,r.camera.rotation.x,v.id);
+      this.sightTargetId=targetId;
+    }
+    const ally=canShow&&state.vehicles.find(t=>t.id===this.sightTargetId&&t.type==='tank'&&t.team===v.team&&t.hp>0);
+    callsign.hidden=!ally;
+    if(ally)callsign.textContent=tankCallsign(ally.id);
     const bore=this.$('.m02-bore-dot'),aimdot=this.$('.m02-aimdot'),dispersion=this.$('.m02-dispersion');
     if(v&&!m.cutscene){
       const mouth=tankMuzzle(v),d=300,point=r.project(mouth.x-Math.sin(v.aimYaw)*d,
@@ -305,6 +334,8 @@ export class Mission2Presentation {
     const r=this.renderer,o=this.original;
     if(o.background)r.scene.background.copy(o.background);
     r.scene.fog.color.copy(o.fogColor);r.scene.fog.density=o.fogDensity;
+    const sky=r.atmosphere.sky.material.uniforms;
+    sky.hazeAmount.value=o.hazeAmount;sky.hazeTint.value.copy(o.hazeTint);
     r.sun.color.copy(o.sunColor);r.sun.intensity=o.sunIntensity;
     r.sunOffset.copy(o.sunOffset);r.hemiLight.intensity=o.hemiIntensity;
     r.ambientLight.intensity=o.ambientIntensity;

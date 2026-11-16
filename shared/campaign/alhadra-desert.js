@@ -12,18 +12,22 @@ export const M02_BOUNDS=Object.freeze({minX:-1000,maxX:1000,minZ:-600,maxZ:600})
 const shift=object=>({...object,x:object.x-ALHADRA_OFFSET.x,z:object.z-ALHADRA_OFFSET.z});
 const inVillage=obj=>Math.abs(obj.x)<255&&Math.abs(obj.z)<185;
 const shiftedBoxes=ALHADRA.boxes.map(shift).filter(box=>inVillage(box)&&box.kind!=='village-palm')
-  // The visible mountain surface supplies height and slopes in place of a solid box.
-  .map(box=>box.kind==='village-rock'?{...box,noCollision:true}:box);
+  .map(box=>{
+    if(box.kind!=='village-rock')return box;
+    // Leave the east approach between the village and the foot of the ridge.
+    if(box.x>95)Object.assign(box,{x:box.x+36,w:box.w+8,h:box.h*.86});
+    return {...box,noCollision:true};
+  });
 const shiftedStructures=(ALHADRA.structures??[]).map(shift).filter(inVillage);
 const shiftedLandforms=(ALHADRA.landforms??[]).map(shift);
 const shiftedPads=(ALHADRA.terrainPads??[]).map(shift);
 const outerLandforms=[
   // Rise between the two columns. Its long axis runs across the approach.
-  {x:-683,z:-485,rx:58,rz:149,height:12.8,angle:-.34,flat:.08},
+  {x:-681,z:-482,rx:75,rz:122,height:14,flat:.18},
   {x:-868,z:-478,rx:104,rz:66,height:7.8,angle:.43,flat:.13},
   {x:-792,z:-563,rx:115,rz:48,height:4.8,angle:.25,flat:.12},
   {x:-598,z:-524,rx:150,rz:71,height:7.5,angle:-.46,flat:.08},
-  {x:-690,z:-434,rx:240,rz:48,height:-4.4,angle:.62,flat:.20},
+  {x:-682,z:-393,rx:170,rz:32,height:-4.4,angle:.62,flat:.20},
   {x:-451,z:-193,rx:135,rz:72,height:8,angle:-.38,flat:.14},
   {x:-145,z:-328,rx:190,rz:80,height:9.5,angle:.29,flat:.12},
   {x:204,z:-253,rx:190,rz:90,height:8.5,angle:-.34,flat:.2},
@@ -55,29 +59,31 @@ const baseHeightAt=(x,z)=>{
   return preserved*weight+outer*(1-weight);
 };
 const baseSurface={heightAt:baseHeightAt};
-const mountains=shiftedBoxes.filter(box=>box.kind==='village-rock')
-  .map(box=>desertMountainSurface(box,baseSurface));
+const mountains=new Map(shiftedBoxes.filter(box=>box.kind==='village-rock')
+  .map(box=>[box.id,desertMountainSurface(box,baseSurface)]));
 function heightAt(x,z){
   let y=baseHeightAt(x,z);
-  for(const mountain of mountains)y=Math.max(y,mountain.heightAt(x,z));
+  for(const mountain of mountains.values())y=Math.max(y,mountain.heightAt(x,z));
   return y;
 }
 function raycast(origin,dir,length){
-  const step=4;
   const f=t=>origin.y+dir.y*t-heightAt(origin.x+dir.x*t,origin.z+dir.z*t);
   if(f(0)<-.001)return 0;
-  for(let t=Math.min(step,length);t>0;){
+  for(let previous=0;previous<length;){
+    const x=origin.x+dir.x*previous,z=origin.z+dir.z*previous;
+    // The mountain mesh has sub-metre triangles on its narrowest slopes.
+    const step=x>103&&x<189&&z>-194&&z<102?.5:4;
+    const t=Math.min(previous+step,length);
     if(f(t)<=0){
-      let a=Math.max(0,t-step),b=t;
+      let a=previous,b=t;
       for(let n=0;n<9;n++){const mid=(a+b)*.5;if(f(mid)<=0)b=mid;else a=mid;}
       return b;
     }
-    if(t===length)break;
-    t=Math.min(length,t+step);
+    previous=t;
   }
   return Infinity;
 }
-const terrain={cell:8,heightAt,raycast,baseSurface};
+const terrain={cell:8,heightAt,raycast,baseSurface,mountains};
 const additionalBoxes=[];
 // Keep the tank approaches clear and break up the original rows into small groves.
 const palms=[[-81,-49,6.1],[-72,-46,4.2],[-68,-39,7.0],[-79,-36,5.4],[-58,-42,5.9],

@@ -1112,7 +1112,7 @@ export class GameRenderer {
     this.effects.push(effect);
   }
 
-  smoke(x, y, z, size, life, color) {
+  smoke(x, y, z, size, life, color, {opacity=.55, rise=.8, wind=0}={}) {
     if (this.effects.length > 140) return;
     const effect = this.effectPools.smoke.pop() ?? {
       mesh: new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, transparent: true, depthWrite: false })),
@@ -1122,7 +1122,7 @@ export class GameRenderer {
     sprite.material.color.setHex(color);
     sprite.material.rotation = this.random() * Math.PI;
     sprite.position.set(x, y, z); sprite.scale.setScalar(size);
-    Object.assign(effect, { age: 0, life, size, vx: (this.random() - 0.5) * 0.6, vz: (this.random() - 0.5) * 0.6 });
+    Object.assign(effect, { age: 0, life, size, opacity, rise, vx: wind + (this.random() - 0.5) * 0.6, vz: (this.random() - 0.5) * 0.6 });
     this.effects.push(effect);
   }
 
@@ -1168,8 +1168,8 @@ export class GameRenderer {
         effect.mesh.geometry.boundingSphere.radius = Math.hypot(hx - tx, hy - ty, hz - tz) / 2 + .05;
         effect.mesh.material.opacity = alpha * .8;
       } else if (effect.type === 'smoke') {
-        effect.mesh.position.x += effect.vx * dt; effect.mesh.position.z += effect.vz * dt; effect.mesh.position.y += dt * 0.8;
-        effect.mesh.scale.setScalar(effect.size * (1 + effect.age * 1.5)); effect.mesh.material.opacity = alpha * 0.55;
+        effect.mesh.position.x += effect.vx * dt; effect.mesh.position.z += effect.vz * dt; effect.mesh.position.y += dt * effect.rise;
+        effect.mesh.scale.setScalar(effect.size * (1 + effect.age * 1.5)); effect.mesh.material.opacity = alpha * effect.opacity;
         const p = effect.mesh.position, view = this.camera.matrixWorldInverse.elements;
         effect.sortDepth = view[2]*p.x + view[6]*p.y + view[10]*p.z + view[14];
         this.smokeOrder.push(effect);

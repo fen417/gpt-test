@@ -100,6 +100,10 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
           const surface = map.terrain?.baseSurface ?? map.terrain;
           const terrain = { heightAt: (x, z) =>
             ((surface?.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) ?? 0) - anchor.baseY) / scale.y };
+          const mountain=map.terrain?.mountains?.get(value.id);
+          if(mountain&&!editable)terrain.mountainSurface={
+            heights:mountain.heights.map(y=>(y-anchor.baseY)/scale.y),tones:mountain.tones,
+          };
           // Structure children keep their own authored rotation (ruin fragments
           // and furniture). The parent group's rotation is applied only once.
           const rotatedParts=kind==='structure'?parts.filter(p=>hasRotation(p.modelRotation)):[];

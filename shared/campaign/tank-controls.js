@@ -9,9 +9,9 @@ export function campaignTankSight(map,vehicles,origin,yaw,pitch,ownId){
   let range=Math.min(1000,map.terrain?.raycast(origin,direction,1000)??1000),targetId=null;
   for(const box of getAssetColliders(map))range=Math.min(range,rayCollider(origin,direction,box,range));
   for(const v of vehicles){
-    if(v.id===ownId||v.hp<=0)continue;
+    if(v.id===ownId||v.hp<=0&&!(v.wreckTime>0))continue;
     const hit=rayVehicleArmor(origin,direction,v,range);
-    if(hit<range){range=hit;targetId=v.id;}
+    if(hit<range){range=hit;targetId=v.hp>0?v.id:null;}
   }
   return {x:origin.x+direction.x*range,y:origin.y+direction.y*range,z:origin.z+direction.z*range,range,targetId};
 }

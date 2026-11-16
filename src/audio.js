@@ -577,6 +577,20 @@ export class CombatAudio {
     if(!played)this._noise(.8,.35*p.gain,{time,color:'pink',cutoff:6500,pan:p.pan,attack:.0005,decay:.04,decayGain:.15});
     if(p.distance<24)this._noise(.32,.035*p.gain,{time:time+.1,filter:'highpass',cutoff:2600,pan:p.pan});
   }
+  _campaignCannon(event,local){
+    const {distance,pan}=this._position(event,local);
+    if(distance>680)return;
+    const gain=1/(1+distance*.014),time=this.ctx.currentTime+Math.min(.22,distance/343);
+    const played=this._sample('explosion-heavy',.67*gain,{
+      time,pan,rate:.76,cutoff:Math.max(640,7200/(1+distance*.033)),send:.18,
+    });
+    this._noise(played?.36:.75,(played?.21:.48)*gain,{
+      time,pan,color:'pink',cutoff:distance<45?1700:850,endCutoff:160,attack:.001,decay:.045,decayGain:.28,send:.21,
+    });
+    if(distance<45)this._noise(.095,.27*gain,{
+      time,pan,cutoff:3100,filter:'highpass',attack:.0005,decay:.014,decayGain:.13,
+    });
+  }
   _reload(event,local,player){
     if(!player)return;
     const own=player.id===local?.id;
@@ -683,7 +697,10 @@ export class CombatAudio {
         this._mechanic('lower',this.ctx.currentTime,.15,.13);
         this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);
       }else if(e.type==='explosion')this._explosion(e,local);
-      else if(e.type==='cannonShot'&&!e.confirmedCosmetic)this._explosion({...e,kind:'rocket'},local);
+      else if(e.type==='cannonShot'&&!e.confirmedCosmetic){
+        if(state.campaign?.missionId==='m02'&&e.shellType)this._campaignCannon(e,local);
+        else this._explosion({...e,kind:'rocket'},local);
+      }
       else if(e.type==='ricochet'){const p=this._position(e,local);if(p.distance<90)this._noise(.04,.045*p.gain,{filter:'bandpass',cutoff:3500,pan:p.pan});}
       else if(e.type==='rocketLaunch'){
         const p=this._position(e,local);
