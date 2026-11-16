@@ -15,7 +15,32 @@ if(!Number.isInteger(ticks)||ticks<60)throw Error('--ticks must be an integer >=
 const summary=values=>{const sorted=[...values].sort((a,b)=>a-b),round=n=>Number(n.toFixed(3));return {avg:round(values.reduce((a,b)=>a+b,0)/values.length),p95:round(sorted[Math.ceil(sorted.length*.95)-1]),p99:round(sorted[Math.ceil(sorted.length*.99)-1]),max:round(sorted.at(-1))};};
 const report={schema:1,version:GAME_VERSION,protocol:PROTOCOL_VERSION,createdAt:new Date().toISOString(),environment:{node:process.version,platform:platform(),arch:arch(),cpu:cpus()[0]?.model},scenario:{ticks,bots,humans,tickHz:60,snapshotHz:20,lagCompensation:true,seed:417,input:'moving, aiming, shooting, reloading, respawning',ack:'immediate simulated reliable ACK'},maps:[],warnings:[]};
 report.scenario.snapshotHz=snapshotHz;report.scenario.tankCrew=args.includes('--tank-crew');
-for(const mapId of maps){
+if(args.includes('--m03')){
+  const {Mission3Simulation}=await import('../shared/campaign/mission3.js');
+  const definition=JSON.parse(await readFile(new URL('../public/campaign/m03/mission.json',import.meta.url),'utf8'));
+  const constructAt=performance.now(),sim=new Mission3Simulation(definition,{seed:417});
+  const constructionMs=performance.now()-constructAt,c=sim.campaign;
+  c.rideTime=122;sim.time=122;for(const v of sim.vehicles)sim.moveVehicle(v,{},dt);c.updateRide();c.pending=[];
+  c.enterStage(1);const local=c.player;
+  Object.assign(local,{x:-103,y:0,z:29,dropAt:undefined,grounded:true,invulnerableUntil:0});
+  for(const id of ['brigade-1','brigade-2'])c.revive(sim.players.get(id));
+  for(const h of sim.navigationHouses)if(h.x>-125&&h.x<-58){c.setPanel(`${h.id}-door--1`,'open');c.setPanel(`${h.id}-door-1`,'open');}
+  c.refreshGeometry();c.enqueue([['forge','assault'],['craft-yard','rifle']]);c.flushEnemies();
+  if(c.enemies.length!==14)throw Error('M03 benchmark expected 14 hostiles');
+  // Keep encounter size constant while AI, movement, projectiles and damage queries run.
+  sim.damage=()=>{};
+  const steps=[],snapshots=[],start=performance.now();
+  for(let tick=0;tick<ticks+120;tick++){
+    sim.setInput('local',{yaw:-Math.PI/2+Math.sin(tick*.008)*.7,fire:tick%90<40,reload:local.ammo===0,aim:true});
+    const at=performance.now();sim.step(dt);if(tick>=120)steps.push(performance.now()-at);
+    if(tick>=120&&tick%Math.round(60/snapshotHz)===0){const at=performance.now();sim.snapshot();snapshots.push(performance.now()-at);}
+  }
+  report.scenario={mission:'m03',seed:417,ticks,tickHz:60,snapshotHz,hostiles:14,alliedBots:6,humans:1};
+  const result={mapId:sim.map.id,constructionMs:Number(constructionMs.toFixed(3)),stepMs:summary(steps),snapshotMs:summary(snapshots),wallMs:Number((performance.now()-start).toFixed(3))};
+  report.maps.push(result);
+  console.log(`${result.mapId}: step avg ${result.stepMs.avg}, p95 ${result.stepMs.p95}, p99 ${result.stepMs.p99}, max ${result.stepMs.max} ms; snapshot p99 ${result.snapshotMs.p99} ms`);
+  if(result.stepMs.p99>6)report.warnings.push(`${result.mapId}: simulation p99 exceeds 6 ms`);
+}else for(const mapId of maps){
   let seed=417;const random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
   const constructAt=performance.now(),sim=new Simulation({bots,mapId,random,lagCompensation:true});
   const constructionMs=performance.now()-constructAt;

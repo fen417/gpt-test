@@ -6,7 +6,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const lerpAngle=(a,b,t)=>a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*t;
 
 export const SAVE_KEY='sector09-campaign-m01-v1';
-const saveKey=id=>id==='m02'?'sector09-campaign-m02-v1':SAVE_KEY;
+const saveKey=id=>`sector09-campaign-${id}-v1`;
 export function readCampaignSave(missionId='m01'){
   try{const save=JSON.parse(localStorage.getItem(saveKey(missionId))??'null');
     return save?.version===(missionId==='m02'?2:1)&&save.missionId===missionId?save:null;
@@ -48,10 +48,13 @@ export class CampaignSession {
           this.completionNoted=true;
           const stats=m.state.campaign.stats??{};
           const flags=this.missionId==='m01'?
-            Object.fromEntries(['kane','lasko','bruno','duran'].map(id=>[`${id}_alive`,Boolean(m.state.players.find(p=>p.id===id)?.alive)])):
-            {tanks_alive:m.state.campaign.tanksAlive??0,enemy_order:Boolean(m.state.campaign.flags?.enemyOrder)};
+            {...Object.fromEntries(['kane','lasko','bruno','duran'].map(id=>[`${id}_alive`,Boolean(m.state.players.find(p=>p.id===id)?.alive)])),
+              marten_wounded:Boolean(m.state.campaign.flags?.marten_wounded)}:
+            this.missionId==='m02'?{tanks_alive:m.state.campaign.tanksAlive??0,enemy_order:Boolean(m.state.campaign.flags?.enemyOrder)}:
+              m.state.campaign.flags;
           markCampaignComplete(this.missionId,{elapsedSeconds:stats.elapsedSeconds??m.state.time,
             losses:stats.losses??m.state.campaign.alliedLosses??0,stealth:stats.stealth??null},flags);
+          if(this.missionId==='m03')try{localStorage.removeItem(saveKey(this.missionId));}catch{}
         }
         if(!this.started){this.started=true;clearTimeout(this.timer);this.resolve(this.state);}else onState(this.state);
       }

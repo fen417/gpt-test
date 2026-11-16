@@ -84,7 +84,9 @@ export function fireTank(sim,p,v,dt){
   if(campaign){
     v.shellAmmo[kind]--;v.cannonAmmo=v.shellAmmo[kind];
   }else v.cannonAmmo--;
-  v.cannonSeq++;v.cannonReadyAt=sim.time+(spec.reload??TANK_CANNON.reload);
+  const reload=spec.reload??TANK_CANNON.reload;
+  v.cannonSeq++;v.cannonReadyAt=sim.time+reload;
+  if(campaign)v.cannonReloadDuration=reload;
   let yaw=v.aimYaw,pitch=v.aimPitch;
   if(campaign){
     const random=shotRandom(p.id,v.cannonSeq,'tank-cannon'),azimuth=random()*Math.PI*2;

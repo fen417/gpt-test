@@ -39,8 +39,10 @@ test('resuming the mission after a pause seeks into the correct part of the same
   assert.ok(Math.abs(p.offset-expected)<1e-7);
   assert.ok(p.offset>=music.loopStart&&p.offset<music.loopEnd);
 });
-test('campaign is initially hidden and still has its existing keyboard debug unlock',async()=>{
+test('campaign is initially hidden and accepts both keyboard codes',async()=>{
   const s=await readFile(new URL('../src/main.js',import.meta.url),'utf8');
   assert.match(s,/campaignButton\.className='home-play hidden';/);
-  assert.match(s,/if\(debugWord==='debug'\)\{campaignButton\.classList\.remove\('hidden'\)/);
+  assert.match(s,/debugWord\.endsWith\('debug'\)\|\|debugWord==='unlock'/);
+  assert.match(s,/if\(debugWord==='unlock'\)unlockCampaignMissions=true/);
+  assert.match(s,/openCampaignMenu\(startCampaign,\{unlockAll:unlockCampaignMissions\}\)/);
 });

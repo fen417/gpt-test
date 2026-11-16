@@ -1,5 +1,8 @@
 import {CampaignSimulation,validCampaignSave} from '../../shared/campaign/simulation.js';
 import {Mission2Simulation,validMission2Save} from '../../shared/campaign/mission2.js';
+import {Mission3Simulation,validMission3Save} from '../../shared/campaign/mission3.js';
+
+const missions={m01:[CampaignSimulation,validCampaignSave],m02:[Mission2Simulation,validMission2Save],m03:[Mission3Simulation,validMission3Save]};
 
 let sim,paused=true,last=0,accumulator=0,tick=0,input={},lastSaveRevision=-1;
 function send(){
@@ -14,12 +17,10 @@ self.onmessage=event=>{
   try{
     const m=event.data;
     if(m.type==='create'){
-      const second=m.definition.id==='m02';
-      sim=second?new Mission2Simulation(m.definition,{...m.options,lines:m.lines}):
-        new CampaignSimulation(m.definition,{...m.options,lines:m.lines});
+      const [Sim,valid]=missions[m.definition.id];
+      sim=new Sim(m.definition,{...m.options,lines:m.lines});
       if(m.save){
-        const valid=second?validMission2Save(m.save,m.definition):validCampaignSave(m.save,m.definition);
-        if(!valid||!sim.campaign.restore(m.save))
+        if(!valid(m.save,m.definition)||!sim.campaign.restore(m.save))
           throw Error('Сохранение кампании повреждено или устарело. Начните миссию заново.');
       }
       last=performance.now();send();return;
@@ -30,8 +31,9 @@ self.onmessage=event=>{
     if(m.type==='command'){
       // Weapon/order/camera commands must not wipe the current 60Hz driving
       // or aiming controls. In particular, target lock needs the last yaw.
-      const liveCommand=sim.campaign?.definition?.id==='m02'&&
-        ['weapon','order','repair','targetLock','cruise'].includes(m.command?.type);
+      const id=sim.campaign?.definition?.id;
+      const liveCommand=id==='m02'&&['weapon','order','repair','targetLock','cruise'].includes(m.command?.type)||
+        id==='m03'&&['order','smoke','talk','answer'].includes(m.command?.type);
       if(!liveCommand){input={};sim.setInput('local',{});}
       sim.campaign.command(m.command);send();
     }

@@ -426,6 +426,7 @@ export class CampaignDirector {
   down(p,scripted=false){
     p.downed=true;p.downedAt=this.time;p.downedTimer=this.tuning.bleed;p.hp=1;p.reviveProgress=0;p.reviver=null;p.reviveAt=null;p.prone=true;p.scriptedWound=scripted;p.slideTime=0;p.reloading=false;p.heldGadget=null;
     this.sim.equipWeapon(p,2);p.equipTime=0;
+    if(p.id==='local'&&!scripted)this.flags.marten_wounded=true;
     if(p.id==='kane'&&this.stage===3&&!this.flags.kaneWounded){this.flags.kaneWounded=true;this.say('m01.kane.wounded');this.say('m01.lasko.kaneDown');}
     if(!scripted)this.say(p.id==='local'?'m01.lasko.playerDown':'m01.bruno.allyDown',true);
   }

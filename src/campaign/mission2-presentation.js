@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {tankMuzzle,tankDropAngle} from '../../shared/tank.js';
+import {TANK_CANNON,tankMuzzle,tankDropAngle} from '../../shared/tank.js';
 import {CampaignAudio} from './audio.js';
 import {TankMusic} from './tank-music.js';
 import {M02_BINDINGS,campaignTankSight} from '../../shared/campaign/tank-controls.js';
@@ -9,6 +9,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const clock=value=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(Math.floor(value%60)).padStart(2,'0')}`;
 const tankCallsign=id=>id.replace('sokol-','СОКОЛ-');
 const trackDust={opacity:.24,rise:.25,wind:1.5};
+const reloadSeconds=new Intl.NumberFormat('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1});
 
 export class Mission2Presentation {
   constructor(session,{renderer,audio,leave,clearControls,resume,getBindings=()=>M02_BINDINGS,keyLabel=code=>code}){
@@ -29,7 +30,17 @@ export class Mission2Presentation {
       <span class="m02-mission-status"></span>
     </header>
     <aside class="m02-company"><small>РОТА «СОКОЛ» · ТАНКИ В СТРОЮ</small><div class="m02-tanks"></div></aside>
-    <div class="m02-reticle"><span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span><i class="m02-dispersion"></i><span class="m02-lead" hidden>⊕</span><span class="m02-range" hidden></span><span class="m02-callsign" hidden></span></div>
+    <div class="m02-reticle">
+      <span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span><i class="m02-dispersion"></i>
+      <span class="m02-lead" hidden>⊕</span><span class="m02-range" hidden></span><span class="m02-callsign" hidden></span>
+      <div class="m02-reload" hidden>
+        <svg viewBox="0 0 66 66" aria-hidden="true">
+          <path class="m02-reload-track" d="M17 59 A30.53 30.53 0 0 1 17 7"/>
+          <path class="m02-reload-fill" d="M17 59 A30.53 30.53 0 0 1 17 7" pathLength="1"/>
+        </svg>
+        <span class="m02-reload-status"></span>
+      </div>
+    </div>
     <aside class="m02-weapon-panel"><strong class="m02-weapon"></strong><span class="m02-ammo"></span><span class="m02-hp"></span></aside>
     <aside class="m02-radio"><small>ЧАСТОТА «МАЯК»</small><b class="m02-radio-speaker"></b><span class="m02-radio-text"></span></aside>
     <p class="m02-controls"></p><p class="m02-feedback"></p><p class="m02-interact"></p><span class="m02-world-target" hidden></span>
@@ -47,6 +58,8 @@ export class Mission2Presentation {
     </div>`;
     document.body.append(this.root);
     this.$=query=>this.root.querySelector(query);
+    this.reloadIndicator=this.$('.m02-reload');
+    this.reloadStatus=this.$('.m02-reload-status');
     this.$('.m02-skip').onclick=()=>{clearControls();session.command({type:'skip'});resume();};
     this.$('.m02-restart').onclick=()=>{clearControls();session.command({type:'retry'});resume();};
     this.$('.m02-return').onclick=leave;
@@ -132,11 +145,24 @@ export class Mission2Presentation {
       }
     }
     const v=state.vehicles.find(v=>v.id==='sokol-7');
+    const cannonAmmo=v?.shellAmmo?.[m.shell]??v?.cannonAmmo??0;
     this.$('.m02-weapon').textContent=m.weaponMode==='mg'?'СПАРЕННЫЙ ПУЛЕМЁТ':
       m.shell==='he'?'ОФ · ФУГАСНЫЙ':'ББ · БРОНЕБОЙНЫЙ';
     this.$('.m02-ammo').textContent=v
       ?m.weaponMode==='mg'?'∞ · ПЕРЕГРЕВ '+Math.round(v.heat*100)+'%':
-        `${v.shellAmmo?.[m.shell]??v.cannonAmmo} СНАРЯДОВ · ПЕРЕЗАРЯДКА ${Math.max(0,v.cannonReadyAt-state.time).toFixed(1)} С`:'';
+        `${cannonAmmo} СНАРЯДОВ`:'';
+    this.reloadIndicator.hidden=!v?.hp||m.weaponMode==='mg'||Boolean(m.cutscene||m.failed||m.complete||paused);
+    if(!this.reloadIndicator.hidden){
+      const remaining=Math.max(0,v.cannonReadyAt-state.time);
+      const duration=v.cannonReloadDuration??this.definition.weapons[m.shell]?.reload??TANK_CANNON.reload;
+      const ready=cannonAmmo>0&&remaining===0&&state.time>=v.weaponReadyAt;
+      this.reloadIndicator.classList.toggle('ready',ready);
+      const progress=remaining>0?clamp(1-remaining/duration,0,1):1;
+      this.reloadIndicator.style.setProperty('--reload-progress',cannonAmmo>0?progress:0);
+      const label=ready?'ГОТОВ':cannonAmmo<=0?'НЕТ СНАРЯДОВ':remaining>0
+        ?`${reloadSeconds.format(Math.max(.1,remaining))} с`:'СМЕНА';
+      if(this.reloadStatus.textContent!==label)this.reloadStatus.textContent=label;
+    }
     this.$('.m02-hp').textContent=v?`СОКОЛ-7 · ${Math.max(0,Math.ceil(v.hp))} / ${v.maxHp} HP · ${Math.round(Math.abs(v.speed)*3.6)} КМ/Ч · КРУИЗ ${m.cruise?'ВКЛ':'ВЫКЛ'} · РЕМОНТ ${m.repairRemaining>0?Math.ceil(m.repairRemaining)+' С':Math.abs(v.speed)<1?'ГОТОВ':'ОСТАНОВИТЕСЬ'}`:'';
     this.$('.m02-feedback').textContent=m.feedback??(m.lockedTargetId?'ЦЕЛЬ ЗАХВАЧЕНА':'');
     const d=v?Math.round(Math.hypot(v.x-m.target.x,v.z-m.target.z)):0;

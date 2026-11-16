@@ -21,6 +21,9 @@ test('mission 2 unlocks only after mission 1; future missions remain planned',()
   assert.equal(campaignMissionStatus('m02',initial),'locked');
   assert.equal(canStartCampaignMission('m02',initial),false);
   assert.equal(campaignMissionStatus('m02',initial,true),'available');
+  assert.equal(canStartCampaignMission('m02',initial,true),true);
+  assert.equal(campaignMissionStatus('m08',initial,true),'planned');
+  assert.equal(canStartCampaignMission('m08',initial,true),false);
   recordCampaignCheckpoint('m01',{mission:{checkpoint:2}},1234);
   assert.equal(campaignMissionStatus('m01'),'progress');
   markCampaignComplete('m01',{elapsedSeconds:300,losses:2},{bruno_alive:true,kane_alive:false});
@@ -36,8 +39,8 @@ test('mission 2 unlocks only after mission 1; future missions remain planned',()
   assert.equal(readCampaignProgress().best.m01.elapsedSeconds,300);
   markCampaignComplete('m02',{elapsedSeconds:800,losses:3},{tanks_alive:7,enemy_order:true});
   const next=readCampaignProgress();
-  assert.equal(campaignMissionStatus('m03',next),'planned');
-  assert.equal(canStartCampaignMission('m03',next),false);
+  assert.equal(campaignMissionStatus('m03',next),'available');
+  assert.equal(canStartCampaignMission('m03',next),true);
   assert.equal(next.carry.tanks_alive,7);
   resetCampaignProgress();
   assert.equal(campaignMissionStatus('m02'),'locked');

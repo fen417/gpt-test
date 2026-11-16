@@ -1091,6 +1091,13 @@ export function animateSoldier(rig, { dt, player, reset = false, terrain = null,
     ankle.rotateX(-foot.lift * 1.8 + (foot.slope || 0) * (1 - smoothstep(foot.lift, .02, .09)));
   }
   animateUpperBody(rig, motion, player, dt, fresh, strideTwist);
+  if(Number.isFinite(player.handshake)){
+    const t=player.handshake,reach=smoothstep(t,.3,1.05)*(1-smoothstep(t,2.9,3.5));
+    rig.rifle.visible=false;
+    target.set(.14*(1-reach),.30+reach*(.14+Math.sin(t*11)*.045),-.16-reach*.38);
+    solveLimb(rig.arms[1],rig.elbows[1],target,UPPER_ARM,FOREARM,.68,-.2,-.3);
+    target.set(-.26,.29,-.08);solveLimb(rig.arms[0],rig.elbows[0],target,UPPER_ARM,FOREARM,-.7,-.2,-.3);
+  }
 }
 
 // A hit makes the chest and head snap away from the shooter.

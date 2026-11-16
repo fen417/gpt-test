@@ -443,20 +443,20 @@ export class CombatAudio {
       this._shotBuffers.set(name, buffers);
     }));
   }
-  shot(distance=0,classId='assault',pan=0,isLocal=distance<1,age=0,shooterId=classId){
+  shot(distance=0,classId='assault',pan=0,isLocal=distance<1,age=0,shooterId=classId,room=null){
     const priority=this._priority;
     this._priority=isLocal?3:distance<30?2:1;
     try{
       if(!this.ctx||!this._enabled||this.ctx.state!=='running')return;
       const id=Object.hasOwn(WEAPONS,classId)?classId:CLASS_SHOTS[classId]??'ar416',weapon=WEAPONS[id];
       const variation=weapon.rate*(.985+Math.random()*.03);
-      const gain=(isLocal?.94:.80)*weapon.gain/(1+distance*.04);
+      const gain=(isLocal?.94:.80)*weapon.gain/(1+distance*.04)*(room?.muffled?.5:1);
       // Events already follow the presentation clock. Adding travel time here
       // queues distant shots behind subsequent rounds from the same weapon.
       const time=this.ctx.currentTime+.004;
       const variants=this._shotBuffers.get(weapon.sample);
       const buffer=variants?.[Math.floor(Math.random()*variants.length)];
-      const cutoff=isLocal||distance<12?0:Math.max(1500,weapon.cutoff/(1+(distance-12)*.012));
+      const cutoff=room?.muffled?1450:isLocal||distance<12?0:Math.max(1500,weapon.cutoff/(1+(distance-12)*.012));
       if(buffer){
         // Presentation already chose the audible shot for this frame. Seeking
         // into a late report removes its attack and can leave only a quiet tail.
@@ -465,7 +465,7 @@ export class CombatAudio {
         const source=this.ctx.createBufferSource();
         source.buffer=buffer;source.playbackRate.value=variation;
         const voice=this._voice(source,duration,gain,{
-          time,pan,attack:.001,sample:true,send:0,bus:isLocal?'localWeapon':'weapons',
+          time,pan,attack:.001,sample:true,send:room?.echo?.22:0,bus:isLocal?'localWeapon':'weapons',
           cutoff,q:.707,tail:isLocal?.075:.04,
         });
         if(voice){voice.shooterId=shooterId;this._shotStats.played++;}
@@ -665,10 +665,13 @@ export class CombatAudio {
         if(Number.isFinite(e.time)&&state.time-e.time>.5){this._shotStats.stale++;continue;}
         const p=this._position(e,local);
         if(p.distance<145){
-          const classId=e.classId||state.players?.find(player=>player.id===e.playerId)?.classId;
+          const urban=state.campaign?.missionId==='m03';
+          const shooter=urban||!e.classId?state.players?.find(player=>player.id===e.playerId):null;
+          const classId=e.classId||shooter?.classId;
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
           const profile=e.mounted?'turret':state.campaign&&e.suppressed?'vk45':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
-          this.shot(p.distance,profile,p.pan,Boolean(own),age,e.playerId);
+          const room=urban?{echo:Boolean(shooter?.interior),muffled:!own&&(shooter?.interior??null)!==(local?.interior??null)}:null;
+          this.shot(p.distance,profile,p.pan,Boolean(own),age,e.playerId,room);
         }else this._shotStats.distant++;
       }else if(e.type==='bulletImpact'){
         if(state.time-e.time>.25)continue;

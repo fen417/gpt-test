@@ -135,7 +135,8 @@ export class Simulation {
     this.vehicles=(this.map.vehicleSpawns??[]).map(spawn=>this.createMapVehicle(spawn));
     this.points=this.map.points.map(p=>({...p,owner:-1,progress:0,contested:false,spawnBlocked:false}));
     this.events=[];this.eventId=0;this.winner=null;this.grenades=[];this.bullets=[];this.deployables=[];this.rockets=[];this.ticketClock=0;
-    this.gridCell=this.map.navigationCell??4;this.gridSize=Math.ceil(this.map.size/this.gridCell);this.gridOrigin=-this.map.size/2;
+    const navigationSize=this.map.navigationSize??this.map.size;
+    this.gridCell=this.map.navigationCell??4;this.gridSize=Math.ceil(navigationSize/this.gridCell);this.gridOrigin=-navigationSize/2;
     this.blocked=new Uint8Array(this.gridSize*this.gridSize);
     this.pathPrevious=new Int32Array(this.blocked.length);
     this.pathQueue=new Int32Array(this.blocked.length);
@@ -258,6 +259,10 @@ export class Simulation {
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   groundAt(x,z){return this.map.terrain?.heightAt(x,z)??0;}
+  refreshCampaignColliders(disabled){
+    const colliders=getAssetColliders(this.map).filter(box=>!disabled.has(box.id)).map(box=>({...box}));
+    initializeCollisionWorld(this,true,colliders);
+  }
   stairHeightAt(x,z,y,bodyHeight){
     const step=this.stepHeight;
     if(!step)return y;
@@ -1149,8 +1154,8 @@ export class Simulation {
   }
 }
 
-function initializeCollisionWorld(world,indexGrenades=false){
-    world.colliders=getAssetColliders(world.map);
+function initializeCollisionWorld(world,indexGrenades=false,colliders=getAssetColliders(world.map)){
+    world.colliders=colliders;
     world.hasRotatedGeometry=world.colliders.some(box=>box.obb||box.parts);
     world.stepHeight=world.map.stepHeight??(world.hasRotatedGeometry ? .3 : 0);
     // Static broad phase: movement queries touch nearby cells, not every

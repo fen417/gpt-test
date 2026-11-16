@@ -17,7 +17,7 @@ const flameFragment=`
     #include <colorspace_fragment>
   }`;
 export class CampaignFire {
-  constructor(renderer,parent){
+  constructor(renderer,parent,emitters){
     this.renderer=renderer;this.root=new THREE.Group();parent.add(this.root);this.emitters=[];
     this.plane=new THREE.PlaneGeometry(1,1);this.materials=[];this.dummy=new THREE.Object3D();
     const smokeCanvas=document.createElement('canvas');smokeCanvas.width=smokeCanvas.height=96;
@@ -41,13 +41,16 @@ export class CampaignFire {
       this.materials.push(glowMaterial);const glow=new THREE.Mesh(this.plane,glowMaterial);glow.rotation.x=-Math.PI/2;glow.position.y=.05;glow.scale.setScalar(width*4.2);group.add(glow);
       this.emitters.push({id,x,y,z,width,height,group,planes,glow});
     };
-    add('fuel-west',11,35,2.8,3.7);add('fuel-east',19,35,2.6,3.4);
-    for(const [i,x] of [0,21,42].entries())add('truck-'+i,x,24,3.5,4.7);
+    if(emitters)for(const {id,x,z,width,height} of emitters)add(id,x,z,width,height);
+    else{
+      add('fuel-west',11,35,2.8,3.7);add('fuel-east',19,35,2.6,3.4);
+      for(const [i,x] of [0,21,42].entries())add('truck-'+i,x,24,3.5,4.7);
+    }
   }
-  update(mission,time,camera){
+  update(mission,time,camera,activeIds){
     let count=0;
     for(const [index,e] of this.emitters.entries()){
-      const active=e.id.startsWith('fuel')?mission.fuel.some(f=>f.destroyed&&Math.hypot(f.x-e.x,f.z-e.z)<8):mission.trucks.some(t=>t.id===e.id&&t.destroyed);
+      const active=activeIds?activeIds.has(e.id):e.id.startsWith('fuel')?mission.fuel.some(f=>f.destroyed&&Math.hypot(f.x-e.x,f.z-e.z)<8):mission.trucks.some(t=>t.id===e.id&&t.destroyed);
       e.group.visible=active;if(!active)continue;
       e.planes.forEach((mesh,i)=>{mesh.material.uniforms.time.value=time;mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*.07);});
       e.glow.material.uniforms.strength.value=.16+Math.sin(time*5+index)*.025;

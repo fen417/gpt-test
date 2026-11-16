@@ -496,7 +496,7 @@ export class GameRenderer {
   }
 
   setMap(mapId) {
-    if((mapId==='quarry'||mapId==='alhadra-desert')&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
+    if(['quarry','alhadra-desert','tel-mazin'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
     let world = this.worlds.get(map.id);
@@ -845,7 +845,8 @@ export class GameRenderer {
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
     for (const player of state.players) {
-      if (player.id === localId&&!(this.tankThirdPerson&&player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank')) continue;
+      const cinematicPlayer=state.campaign?.missionId==='m03'&&state.campaign.cutscene?.id==='finale';
+      if (player.id === localId&&!cinematicPlayer&&!(this.tankThirdPerson&&player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank')) continue;
       active.add(player.id);
       // Only the tank's enclosed driver and gunner are hidden under its armour.
       // Exposed tank riders and all light-vehicle crew must still be rendered.
@@ -1689,7 +1690,7 @@ export class GameRenderer {
       const passengerCanFire = passenger && canFirePassengerWeapon(mounted.vehicle, player.vehicleSeat, yaw, pitch);
       const coverDistance = passenger ? 1.6 : distanceToCover(
         { x: player.x, y: (player.y || 0) + height, z: player.z },
-        { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, getAssetColliders(this.map), 1.6,
+        { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, this.campaignCoverColliders??getAssetColliders(this.map), 1.6,
       );
       const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));

@@ -8,7 +8,7 @@ import { SpatialIndex } from '../shared/spatial-index.js';
 export class InteriorVisibility {
   constructor(){this.eye=new THREE.Vector3(Infinity,0,0);this.cursor=0;this.hidden=[];}
   apply(owner){
-    const {staticRoot,map,camera,viewFrustum}=owner;if(map.id!=='village')return;
+    const {staticRoot,map,camera,viewFrustum}=owner;if(map.id!=='village'&&map.missionId!=='m03')return;
     if(this.root!==staticRoot){
       this.root=staticRoot;this.items=[];
       staticRoot.updateMatrixWorld(true);
@@ -25,8 +25,11 @@ export class InteriorVisibility {
       this.eye.set(Infinity,0,0);
     }
     const eye=camera.position;
-    if(!this.eye.equals(eye)){for(const item of this.items)item.blocked=false;this.eye.copy(eye);}
+    if(!this.eye.equals(eye)||this.previousDisabled!==this.disabled){
+      for(const item of this.items)item.blocked=false;this.eye.copy(eye);this.previousDisabled=this.disabled;
+    }
     const walls=this.walls.query(eye.x-24,eye.z-24,eye.x+24,eye.z+24)
+      .filter(box=>!this.disabled?.has(box.id))
       .sort((a,b)=>(a.x-eye.x)**2+(a.z-eye.z)**2-((b.x-eye.x)**2+(b.z-eye.z)**2)).slice(0,12);
     const deadline=performance.now()+.6;let count=0;
     while(count++<this.items.length&&performance.now()<deadline){

@@ -221,6 +221,14 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false}={})
 
 // Build immutable navigation before the match starts, never in a combat tick.
 export function prepareNavigation(sim){navigation(sim);}
+export function resetNavigation(sim){
+  for(const {job} of sim.navigationQueue??[])job.return();
+  sim.navigationQueue=[];
+  for(const p of sim.players.values())if(p.ai){
+    p.ai.pathJob=null;p.ai.pathResult=null;p.ai.pathUntil=0;p.ai.repathAt=0;p.botPath=[];
+  }
+  caches.delete(sim);
+}
 export function findBotPath(sim,start,goal){if(start.bot&&start.ai)return resumeBotPath(sim,start,goal)??start.botPath??[];const job=pathJob(sim,start,goal);let result;do{result=job.next();}while(!result.done);return result.value;}
 function resumeBotPath(sim,p,goal){
   const ai=p.ai;

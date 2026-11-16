@@ -569,10 +569,7 @@ function leave(resetStatus=true){
   active=false;inLobby=false;clearControls();simulation?.close();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
   document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов к высадке.');
-  if(completedCampaign)queueMicrotask(async()=>{
-    try{const {openCampaignMenu}=await import('./campaign/menu.js');await openCampaignMenu(startCampaign);}
-    catch(error){status(error.message,true);}
-  });
+  if(completedCampaign)queueMicrotask(showCampaignMenu);
 }
 async function solo(){
   if(busy)return;multiplayer.close();const opts=prepare('solo');localId='local';setBusy(true);status('Подготовка операции…');
@@ -585,12 +582,14 @@ async function startCampaign(options){
   if(busy)return;
   multiplayer.close();prepare('campaign');localId='local';setBusy(true);
   const second=options.missionId==='m02';
+  const third=options.missionId==='m03';
   status(second?'Подготовка танковой операции…':'Подготовка кампании…');
   let session;
   try{
     const {CampaignSession,CampaignPresentation}=await import('./campaign/menu.js');
     // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
     if(second)await import('../shared/campaign/alhadra-desert.js');
+    if(third)await import('../shared/campaign/tel-mazin.js');
     session=new CampaignSession(options,{onState:receive,
       onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});
     simulation=session;
@@ -601,9 +600,17 @@ async function startCampaign(options){
       campaignPresentation=new Mission2Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
       vehicleThirdPerson=true;campaignTankZoom=2.5;vehicleLook.id=null;
+    }else if(third){
+      await renderer.tankWarmup;
+      const {Mission3Presentation}=await import('./campaign/mission3-presentation.js');
+      if(simulation!==session)return;
+      // The menu keeps rendering its own map while mission assets load.
+      renderer.setMap(state.mapId);
+      campaignPresentation=new Mission3Presentation(session,{renderer,audio,leave,clearControls,
+        resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
     }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,
       resume:()=>requestControl(true)});
-    enter();text('room-badge',second?'КАМПАНИЯ · РАССВЕТ НАД АЛЬ-ХАДРОЙ':'КАМПАНИЯ · ВЫСАДКА У ВАДИ');
+    enter();text('room-badge',`КАМПАНИЯ · ${options.definition.title.toUpperCase()}`);
   }catch(error){console.error('Campaign:',error);if(!session||simulation===session){
     session?.close();simulation=null;campaignPresentation?.dispose();campaignPresentation=null;
     setBusy(false);throw error;
@@ -613,14 +620,25 @@ async function startCampaign(options){
 const campaignButton=document.createElement('button');campaignButton.id='open-campaign';campaignButton.type='button';campaignButton.className='home-play hidden';campaignButton.setAttribute('aria-haspopup','dialog');
 campaignButton.innerHTML='<span class="nav-index">04</span><span><b>Кампания</b><small>Песок и сталь · 8 миссий</small></span><span class="nav-arrow">↗</span>';
 document.querySelector('.home-nav').append(campaignButton);
-campaignButton.onclick=async()=>{if(busy)return;try{const {openCampaignMenu}=await import('./campaign/menu.js');await openCampaignMenu(startCampaign);}catch(error){status(error.message,true);}};
+let unlockCampaignMissions=false;
+async function showCampaignMenu(){
+  try{
+    const {openCampaignMenu}=await import('./campaign/menu.js');
+    await openCampaignMenu(startCampaign,{unlockAll:unlockCampaignMissions});
+  }catch(error){status(error.message,true);}
+}
+campaignButton.onclick=()=>{if(!busy)showCampaignMenu();};
 let debugWord='',debugAt=0;
 document.addEventListener('keydown',event=>{
   if(active||busy||$('menu').classList.contains('hidden')||event.repeat||event.ctrlKey||event.altKey||event.metaKey||document.querySelector('dialog[open]')||event.target.closest?.('input,textarea,select,[contenteditable="true"]'))return;
   const now=performance.now();if(now-debugAt>2500)debugWord='';debugAt=now;
   const letter=/^Key[A-Z]$/.test(event.code)?event.code.slice(3).toLowerCase():'';
-  debugWord=(debugWord+letter).slice(-5);
-  if(debugWord==='debug'){campaignButton.classList.remove('hidden');debugWord='';audio.click();toast('Кампания открыта.');}
+  debugWord=(debugWord+letter).slice(-6);
+  if(debugWord.endsWith('debug')||debugWord==='unlock'){
+    if(debugWord==='unlock')unlockCampaignMissions=true;
+    campaignButton.classList.remove('hidden');debugWord='';audio.click();
+    toast(unlockCampaignMissions?'Все миссии открыты.':'Кампания открыта.');
+  }
 });
 async function serverAddress(){
   const url=$('server-url').value.trim()||await configuredServerUrl();
@@ -1503,6 +1521,10 @@ function frame(now){
     if(locked||(unlocked&&!unlockedPaused)){
       yaw+=(Number(keys.has('ArrowLeft'))-Number(keys.has('ArrowRight')))*dt*1.7;
       pitch=Math.max(-1.45,Math.min(1.45,pitch+(Number(keys.has('ArrowUp'))-Number(keys.has('ArrowDown')))*dt*1.2));
+    }
+    if(state?.campaign?.missionId==='m03'&&state.campaign.ride){
+      const hull=state.vehicles.find(v=>v.id==='sokol-7');
+      if(hull){const relative=Math.atan2(Math.sin(yaw-hull.yaw),Math.cos(yaw-hull.yaw));yaw=hull.yaw+Math.max(-2.094,Math.min(2.094,relative));}
     }
     lastInput=input();
     const simulationBegin=performance.now();

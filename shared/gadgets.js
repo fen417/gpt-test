@@ -188,6 +188,7 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
   const rocket=kind==='rocket',cannon=kind==='cannon'||kind==='cannon-ap'||kind==='cannon-he',
     radius=shellProfile?.blastRadius??(cannon?TANK_CANNON.radius:rocket?9:10);
   let confirmed=directConfirmed;
+  const room=!rocket&&!cannon&&sim.campaign?.definition.id==='m03'?sim.campaign.blastRoom(origin):null;
   sim.event('explosion',{...origin,kind,playerId:owner?.id,...(rocketId?{rocketId}:{})});
   for(const vehicle of sim.vehicles){
     if(vehicle.hp<=0||vehicle.team===team)continue;
@@ -214,7 +215,11 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     const d=Math.hypot(distance(origin,player),origin.y-player.y-.8);
     const vehicle=sim.vehicles.find(v=>v.id===player.vehicleId);
     const enclosed=vehicle?.type==='humvee'&&player.vehicleSeat!==1;
-    if(d<radius&&sim.lineClear(origin,center(player,.8))){const before=player.hp;sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1),owner,{weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА',explosive:true,vehicleId:sourceVehicleId});confirmed||=player.hp<before;}
+    if(d<radius&&sim.lineClear(origin,center(player,.8))){
+      const before=player.hp,roomBoost=room&&sim.campaign.inside(player)===room?1.15:1;
+      sim.damage(player,(rocket||cannon?150:140)*(1-d/radius)*(enclosed?.28:1)*roomBoost,owner,
+        {weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА',explosive:true,vehicleId:sourceVehicleId});confirmed||=player.hp<before;
+    }
   }
   for(const item of sim.deployables){
     const d=Math.hypot(distance(origin,item),origin.y-item.y-.3);

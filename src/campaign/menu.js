@@ -8,7 +8,7 @@ import './map-screen.css';
 const cache=new Map();
 let dialog;
 export async function campaignData(missionId='m01'){
-  if(!['m01','m02'].includes(missionId))throw Error('Эта миссия ещё не готова.');
+  if(!campaignCatalog.missions.some(m=>m.id===missionId&&m.implemented))throw Error('Эта миссия ещё не готова.');
   if(cache.has(missionId))return cache.get(missionId);
   const pending=Promise.all(['mission.json','ru.json'].map(async file=>{
     const r=await fetch(new URL(`${import.meta.env.BASE_URL}campaign/${missionId}/${file}`,location.href));
@@ -91,7 +91,7 @@ function buildScreen(){
   document.body.append(dialog);
   return dialog;
 }
-function paintCards(selected,progress,selectMission){
+function paintCards(selected,progress,selectMission,unlocked){
   const list=dialog.querySelector('.campaign-mission-list');
   list.replaceChildren();
   for(const act of campaignCatalog.acts){
@@ -99,7 +99,7 @@ function paintCards(selected,progress,selectMission){
     heading.className='campaign-act-label';heading.textContent=act.title;list.append(heading);
     for(const id of act.missionIds){
       const mission=campaignCatalog.missions.find(m=>m.id===id);
-      const status=campaignMissionStatus(id,progress,debugUnlock());
+      const status=campaignMissionStatus(id,progress,unlocked);
       const btn=document.createElement('button');
       btn.type='button';btn.className='campaign-map-mission';
       btn.dataset.mission=id;btn.dataset.status=status;
@@ -115,20 +115,21 @@ function paintCards(selected,progress,selectMission){
     }
   }
 }
-export async function openCampaignMenu(onStart){
+export async function openCampaignMenu(onStart,{unlockAll=false}={}){
   buildScreenIfNeeded();
+  const unlocked=unlockAll||debugUnlock();
   let progress=readCampaignProgress();
   const selector=dialog.querySelector('#campaign-difficulty');
   selector.value=progress.difficulty??'regular';
   selector.onchange=()=>{setCampaignDifficulty(selector.value);progress=readCampaignProgress();};
   let selected=campaignCatalog.missions.find(m=>
-    canStartCampaignMission(m.id,progress,debugUnlock())&&!progress.completed.includes(m.id))?.id??'m01';
+    canStartCampaignMission(m.id,progress,unlocked)&&!progress.completed.includes(m.id))?.id??'m01';
   let launching=false;
   const choose=id=>{
     selected=id;progress=readCampaignProgress();
-    paintCards(id,progress,choose);
+    paintCards(id,progress,choose,unlocked);
     const mission=campaignCatalog.missions.find(m=>m.id===id);
-    const status=campaignMissionStatus(id,progress,debugUnlock());
+    const status=campaignMissionStatus(id,progress,unlocked);
     dialog.querySelector('.campaign-mission-number').textContent=`МИССИЯ ${String(mission.number).padStart(2,'0')} / 08`;
     showMissionPreview(mission,status);
     dialog.querySelector('.campaign-mission-state').textContent=statusLabels[status];
@@ -144,16 +145,16 @@ export async function openCampaignMenu(onStart){
       ?'⚠ Хранилище браузера недоступно: прогресс сохранится только до перезагрузки.':'';
     dialog.querySelector('.campaign-menu-error').textContent='';
     dialog.querySelector('.campaign-continue').hidden=!progress.checkpoints[id]||!readCampaignSave(id);
-    dialog.querySelector('.campaign-continue').disabled=!mission.implemented||!canStartCampaignMission(id,progress,debugUnlock());
+    dialog.querySelector('.campaign-continue').disabled=!mission.implemented||!canStartCampaignMission(id,progress,unlocked);
     const play=dialog.querySelector('.campaign-play');
-    play.disabled=!canStartCampaignMission(id,progress,debugUnlock());
+    play.disabled=!canStartCampaignMission(id,progress,unlocked);
     play.textContent=status==='planned'?'В РАЗРАБОТКЕ':status==='locked'?'ЗАКРЫТО':status==='complete'?'ПЕРЕИГРАТЬ ↗':'НАЧАТЬ МИССИЮ ↗';
     dialog.dataset.mission=id;
   };
   const launch=async resume=>{
     if(launching)return;
     const missionId=selected;
-    if(!canStartCampaignMission(missionId,progress,debugUnlock()))return;
+    if(!canStartCampaignMission(missionId,progress,unlocked))return;
     const save=resume?readCampaignSave(missionId):null;
     if(resume&&!save){dialog.querySelector('.campaign-menu-error').textContent='Контрольная точка недоступна. Начните миссию заново.';return;}
     if(!resume&&readCampaignSave(missionId)&&!window.confirm('Начать миссию сначала? Последняя контрольная точка будет перезаписана.'))return;

@@ -15,7 +15,7 @@ function step(sim,n){for(let i=0;i<n;i++)sim.step(1/60);}
 test('catalog defines eight sequential missions across three acts',()=>{
   assert.equal(catalog.title,'Песок и сталь');assert.equal(catalog.missions.length,8);
   assert.deepEqual(catalog.acts.map(a=>a.missionIds.length),[2,3,3]);
-  assert.deepEqual(catalog.missions.filter(m=>m.implemented).map(m=>m.id),['m01','m02']);
+  assert.deepEqual(catalog.missions.filter(m=>m.implemented).map(m=>m.id),['m01','m02','m03']);
 });
 test('extended Al-Hadra tank map preserves old village terrain and geometry',()=>{
   assert.equal(ALHADRA_DESERT.width,2000);assert.equal(ALHADRA_DESERT.depth,1200);
@@ -183,8 +183,12 @@ test('commander can select AP, HE and MG without modifying multiplayer tank phys
   assert.equal(v.shellAmmo.he,29);assert.equal(v.shellAmmo.ap,50);
   assert.equal(sim.rockets[0]?.campaignShell,'he');
   assert.equal(sim.rockets[0]?.campaignShellProfile?.damage,450);
+  const fired=sim.snapshot().vehicles.find(v=>v.id==='sokol-7');
+  assert.equal(fired.cannonReloadDuration,mission.weapons.he.reload);
   c.command({type:'weapon',mode:'ap'});
   assert.equal(v.cannonAmmo,50);
+  assert.equal(v.cannonReadyAt,fired.cannonReadyAt);
+  assert.equal(v.cannonReloadDuration,fired.cannonReloadDuration);
   c.command({type:'weapon',mode:'mg'});
   assert.equal(v.weapon,1);
   assert.equal(TANK_CANNON.speed,190,'multiplayer tank weapon must remain unchanged');

@@ -85,10 +85,10 @@ function sense(sim,p){
   let selected=null,best=Infinity;
   for(const other of sim.players.values()){
     if(!other.alive||other.team===p.team||other.invulnerableUntil>sim.time)continue;
-    if(sim.campaign&&!sim.campaign.canSee(p,other))continue;
     const d=distance(p,other);if(d>range)continue;
     const bearing=Math.atan2(-(other.x-p.x),-(other.z-p.z));
     if(d>6&&Math.abs(angle(bearing-p.yaw))>1.35&&other.id!==ai.contact?.id)continue;
+    if(sim.campaign&&!sim.campaign.canSee(p,other,false))continue;
     const heights=other.vehicleId?[EYE_HEIGHT-.35,EYE_HEIGHT-.03]:sim.campaign&&(other.prone||other.downed)?[.35,.48]:other.input.crouch?[.7,1.05]:[1.05,1.58];let height=null;
     for(const h of heights)if(sight(sim,origin,{x:other.x,y:other.y+h,z:other.z})){height=h;break;}
     if(height===null)continue;
