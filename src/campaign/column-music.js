@@ -6,8 +6,6 @@ export function columnMusicCue(state,definition){
     const level=1-Math.max(0,elapsed-config.approachAt)/(config.approachEnd-config.approachAt);
     return {tracks:{convoy:level*.65},offset:elapsed};
   }
-  if(elapsed<hit-config.ambushLead)return {tracks:{},offset:0};
-  if(elapsed<hit)return {tracks:{ambush:1},offset:elapsed-hit+config.ambushLead};
   if(elapsed<hit+config.ambushSilence)return {tracks:{},offset:0};
   const offset=elapsed-hit-config.ambushSilence;
   if(!m.ride&&m.inside&&m.alert<3)return {tracks:{interior:.74},offset};
@@ -33,10 +31,14 @@ export class ColumnMusic{
   start(name,buffer,at,offset){
     const ctx=this.combat.ctx,source=ctx.createBufferSource(),gain=ctx.createGain();
     const loop=name!=='ambush';
-    source.buffer=buffer;source.loop=loop;gain.gain.value=0;
+    source.buffer=buffer;source.loop=loop;gain.gain.value=loop?0:1;
     source.connect(gain);gain.connect(this.bus);source.start(at,loop?offset%buffer.duration:0);
-    source.onended=()=>{source.disconnect();gain.disconnect();};
-    const voice={source,gain,zeroAt:at-offset};this.voices.set(name,voice);return voice;
+    const voice={source,gain,zeroAt:at-offset};this.voices.set(name,voice);
+    source.onended=()=>{
+      if(this.voices.get(name)===voice)this.voices.delete(name);
+      source.disconnect();gain.disconnect();
+    };
+    return voice;
   }
   stop(name,voice,fade=0){
     this.voices.delete(name);
@@ -50,21 +52,31 @@ export class ColumnMusic{
     if(!ctx||this.abort.signal.aborted)return;
     this.preload(ctx);
     if(!this.bus){this.bus=ctx.createGain();this.bus.gain.value=0;this.bus.connect(ctx.destination);}
-    const reset=paused||m.failed||m.complete||ctx.state!=='running'||m.epoch!==this.epoch;
+    const newRun=m.epoch!==this.epoch;
+    if(newRun)this.ambushPlayed=false;
+    const reset=paused||m.failed||m.complete||ctx.state!=='running'||newRun;
     this.epoch=m.epoch;
     if(reset)for(const [name,voice] of this.voices)this.stop(name,voice);
     if(paused||m.failed||m.complete||ctx.state!=='running')return;
-    const {tracks,offset}=this.cue(state,this.definition),now=ctx.currentTime;
+    const {tracks:cues,offset}=this.cue(state,this.definition),now=ctx.currentTime;
+    const tracks=cues.interior&&!this.cache.get('interior')?.buffer?{combat:.4}:cues;
     const level=this.combat.enabled&&state.time>=(m.lossUntil??0)?this.combat.volume*this.combat.musicVolume*(m.radio?.key?.length ? .4 : 1):0;
     this.bus.gain.setTargetAtTime(level,now,.065);
+    if(!this.ambushPlayed&&m.ride){
+      const hit=state.events?.find(event=>event.type==='explosion'&&event.ambushLeadHit);
+      const stinger=this.cache.get('ambush')?.buffer;
+      if(stinger&&hit&&state.time-hit.time<.12){
+        this.ambushPlayed=true;this.start('ambush',stinger,now,0);
+      }
+    }
     const silent=Object.keys(tracks).length===0;
-    for(const [name,voice] of this.voices)if(!Object.hasOwn(tracks,name))this.stop(name,voice,silent?.045:.35);
+    for(const [name,voice] of this.voices)if(name!=='ambush'&&!Object.hasOwn(tracks,name))this.stop(name,voice,silent?.045:.35);
     for(const [name,gain] of Object.entries(tracks)){
       const buffer=this.cache.get(name)?.buffer;if(!buffer?.duration)continue;
       let voice=this.voices.get(name);
-      if(voice&&name!=='ambush'&&Math.abs(now-voice.zeroAt-offset)>.35){this.stop(name,voice,.1);voice=null;}
+      if(voice&&Math.abs(now-voice.zeroAt-offset)>.35){this.stop(name,voice,.1);voice=null;}
       if(!voice)voice=this.start(name,buffer,now,Math.max(0,offset));
-      voice.gain.gain.setTargetAtTime(gain,now,name==='ambush'?.004:.09);
+      voice.gain.gain.setTargetAtTime(gain,now,.09);
     }
   }
   dispose(){

@@ -271,6 +271,8 @@ class ColumnDirector{
     const rocketId=`m03-ambush-${v.convoyIndex}`;
     this.sim.event('rocketLaunch',{...origin,rocketId,team:1,vx:(target.x-origin.x)*4,vy:(target.y-origin.y)*4,vz:(target.z-origin.z)*4});
     this.sim.damageVehicle(v,100000,null,'blast',origin);
+    const explosion=this.sim.events.findLast(event=>event.type==='explosion'&&event.vehicleId===v.id&&event.time===this.time);
+    if(explosion)Object.assign(explosion,{kind:'rocket',ambushLeadHit:v.convoyIndex===0});
     this.sim.event('m03AmbushHit',{...target,vehicleId:v.id,rocketId,missionTime:this.rideTime});
   }
   dismount(){

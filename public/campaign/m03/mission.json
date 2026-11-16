@@ -28,6 +28,6 @@
   "music": {
     "convoy":"music/convoy.ogg", "ambush":"music/ambush-hit.ogg", "combat":"music/combat.ogg",
     "drums":"music/combat-drums.ogg", "interior":"music/interior.ogg", "finale":"music/finale.ogg",
-    "approachAt":80, "approachEnd":100, "ambushLead":0.18, "ambushSilence":0.4, "lossSilence":2
+    "approachAt":80, "approachEnd":100, "ambushSilence":0.4, "lossSilence":2
   }
 }

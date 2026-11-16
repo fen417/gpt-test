@@ -47,6 +47,8 @@ test('the convoy ambush repeats at tick 7080 with two losses and a protected dis
     assert.ok(s.vehicles.every(v=>v.hp>0));assert.equal(c.player.shotSeq,0);
     ticks(s,1);const first=s.events.find(e=>e.type==='m03AmbushHit');
     assert.ok(Math.abs(first.missionTime-118)<1e-7);
+    const explosion=s.events.find(e=>e.type==='explosion'&&e.ambushLeadHit);
+    assert.equal(explosion.time,first.time);assert.equal(explosion.kind,'rocket');
     const frozen=s.vehicles.map(v=>[v.x,v.z]);
     ticks(s,48);assert.equal(s.vehicles.filter(v=>v.hp<=0).length,2);
     assert.equal(c.flags.tanks_alive,5);
@@ -154,7 +156,7 @@ test('the score follows approach, ambush, room clearing and finale without audio
   assert.deepEqual(cue(60),{tracks:{convoy:.65},offset:60});
   assert.equal(cue(90).tracks.convoy,.325);
   assert.deepEqual(cue(100).tracks,{});
-  assert.deepEqual(cue(117.9).tracks,{ambush:1});
+  assert.deepEqual(cue(117.9).tracks,{});
   assert.deepEqual(cue(118.2).tracks,{});
   assert.ok(cue(118.5).tracks.combat>0);
   assert.ok(cue(207,{ride:false,alert:3}).tracks.drums>0);

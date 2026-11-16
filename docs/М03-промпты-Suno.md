@@ -12,7 +12,7 @@
 
 > Instrumental orchestral stinger for the instant an armored convoy is ambushed. One very short inhaling reverse swell followed by one dry, tight low-string and muted brass impact with a single low drum accent. Dark D minor color, abrupt cutoff, extremely short release. No melody after the hit, no repeating hits, no other instruments, no voices, no gunfire, no explosion, no radio sounds.
 
-Из генерации вырежи короткий подвод и один акцент. Игра начинает файл за **0,18 с** до попадания, так что пик поставь примерно на **0:00.18**. Хвост сразу после пика короткий. Сразу дальше игра делает паузу для самого взрыва.
+Из генерации вырежи один акцент с коротким хвостом. Игра запускает файл вместе со взрывом ведущего танка, так что атака нужна с первых миллисекунд. Основная боевая тема включается через **0,4 с**.
 
 ## `combat.ogg` — основной бой
 
