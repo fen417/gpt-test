@@ -165,6 +165,8 @@ box('tower-tank','village-wood',tower.x,tower.z-1.3,3.6,1.6,1.45,'#6f7369',{base
 const awnings=['#a56751','#c3aa71','#718674','#a88168'];
 const dressing=(id,...args)=>box(`street-dressing-${id}`,...args);
 const street=settlement(dressing);
+export const M03_CHARGE_CACHE={x:93,z:31};
+dressing('breach-charge-cache','village-street-crate',M03_CHARGE_CACHE.x,M03_CHARGE_CACHE.z,1.15,.75,.65,'#596853');
 // Keep the central lane and door approaches open. Back streets and the square
 // carry the larger clusters, with staggered paths between groups of cover.
 const stalls=[

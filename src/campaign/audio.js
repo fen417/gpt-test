@@ -18,21 +18,6 @@ export function usesCampaignRadio(missionId,speaker,key){
     ['marten.night','marten.choiceHome','marten.choiceRoad'].includes(key);
   return missionId==='m04'&&['vos.move','taver.work','taver.loss'].includes(key);
 }
-function radioSwitch(context,opening){
-  const length=opening?.12:.14,rate=context.sampleRate;
-  const buffer=context.createBuffer(1,Math.ceil(length*rate),rate),samples=buffer.getChannelData(0);
-  let seed=opening?24771:62141,previous=0;
-  for(let i=0;i<samples.length;i++){
-    const t=i/rate;
-    seed=(Math.imul(seed,1664525)+1013904223)>>>0;
-    const white=seed/2147483648-1,noise=white-previous*.72;previous=white;
-    const click=Math.sin(t*2*Math.PI*(opening?1550:970))*Math.exp(-t*245);
-    const squelch=Math.sin(t*2*Math.PI*(opening?1060:710))*Math.exp(-t*34);
-    const envelope=Math.min(1,(length-t)*110)*Math.exp(-t*19);
-    samples[i]=.34*click+.062*squelch+.12*noise*envelope;
-  }
-  return buffer;
-}
 export class CampaignAudio {
   constructor(combat,root,definition){
     this.combat=combat;this.root=root;this.definition=definition;this.cache=new Map();this.missing=new Set();this.sources=[];this.stems=[];this.stemLoading=false;this.generation=0;this.key=null;this.epoch=-1;
@@ -59,7 +44,7 @@ export class CampaignAudio {
     radioCompression.threshold.value=-21;radioCompression.ratio.value=4;radioCompression.knee.value=8;
     this.radioInput.connect(presence);presence.connect(clipping);clipping.connect(radioHigh);
     radioHigh.connect(radioCompression);radioCompression.connect(this.voiceBus);
-    this.radioSwitches=[radioSwitch(c,true),radioSwitch(c,false)];
+    this.radioSwitches=Promise.all(['open','close'].map(name=>this.buffer(`../../audio/radio-ptt-${name}.wav`)));
     this.musicBus=c.createGain();this.musicBus.connect(this.bus);
     // Filtered wind is intentionally quiet, with no downloaded music stand-in.
     const buffer=c.createBuffer(1,c.sampleRate*3,c.sampleRate),data=buffer.getChannelData(0);let seed=8191;
@@ -84,18 +69,19 @@ export class CampaignAudio {
   }
   async voice(line,remaining,missionId,key){
     this.finishVoice();const generation=this.generation;
-    const buffer=await this.buffer(line.audio);if(!buffer||generation!==this.generation||this.closed||this.paused)return;
+    const radio=usesCampaignRadio(missionId,line.speaker,key);
+    const [buffer,[opening,closing]]=await Promise.all([this.buffer(line.audio),radio?this.radioSwitches:[]]);
+    if(!buffer||generation!==this.generation||this.closed||this.paused)return;
     const late=(line.duration??4)-remaining;
     const offset=late>.22?late:0;
     if(offset>=buffer.duration)return;
-    const radio=usesCampaignRadio(missionId,line.speaker,key),now=Math.max(this.combat.ctx.currentTime,this.radioEnd??0);
-    const start=now+(radio&&offset===0?.095:0);
-    if(radio&&offset===0)this.playVoiceBuffer(this.radioSwitches[0],this.voiceBus,now);
+    const now=Math.max(this.combat.ctx.currentTime,this.radioEnd??0),start=now+(opening&&offset===0?opening.duration:0);
+    if(opening&&offset===0)this.playVoiceBuffer(opening,this.voiceBus,now);
     this.playVoiceBuffer(buffer,radio?this.radioInput:this.voiceBus,start,offset);
-    if(radio){
+    if(closing){
       const close=start+buffer.duration-offset;
-      this.playVoiceBuffer(this.radioSwitches[1],this.voiceBus,close);
-      this.radioEnd=close+this.radioSwitches[1].duration;
+      this.playVoiceBuffer(closing,this.voiceBus,close);
+      this.radioEnd=close+closing.duration;
     }
   }
   mouthOpening(){

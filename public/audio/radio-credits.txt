@@ -1,0 +1,9 @@
+Radio push-to-talk cues for the campaign (CC0 1.0).
+
+radio-ptt-open.wav: Button Click Walkie Talkie 10 by SFXMint.
+https://sfxmint.com/sounds/walkie-talkie-10
+
+radio-ptt-close.wav: Squawk Walkie Talkie 13 by SFXMint.
+https://sfxmint.com/sounds/walkie-talkie-13
+
+Both cues were trimmed, faded and level-matched for in-game dialogue.

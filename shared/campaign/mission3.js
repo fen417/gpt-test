@@ -6,7 +6,7 @@ import {overlapsCollider,rayCollider} from '../asset-colliders.js';
 import {uprightBox} from '../geometry.js';
 import {vehicleBodyTilt} from '../vehicles.js';
 import {getWeapon} from '../world.js';
-import {TEL_MAZIN,m03ConvoyPose,packPanels} from './tel-mazin.js';
+import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels} from './tel-mazin.js';
 
 const SAVE_VERSION=1,MAX_ENEMIES=14;
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
@@ -21,6 +21,7 @@ const allies={duran:['Гари Дюран','assault','ar416'],lasko:['Тео Л�
 const crew={vos:'Ирвин Вос',timo:'Тимо Рэй',rafa:'Рафа Ким'};
 const stageRadio=['','orlov.craft','orlov.cross','orlov.market','orlov.breach','harranti.hold'];
 const brigadeSites=[[-89,37],[-72,42],[-26,34],[10,13],[23,-30],[69,13],[172,-10],[177,-14]];
+const brigadeMedics=new Set([0,4]);
 const supplySites=[{id:'tea-kit',x:-155,z:12,kind:'aid'},{id:'cross-smoke',x:-46,z:13,kind:'smoke'},
   {id:'market-rpg',x:36,z:-24,kind:'rockets'},{id:'craft-ammo',x:-96,z:48,kind:'ammo'},
   {id:'vos-cache',x:-184,z:6,kind:'crew'}];
@@ -80,12 +81,11 @@ export class Mission3Simulation extends Simulation{
     const c=this.campaign;
     if(!p?.alive||c.inTransit||c.finale||this.time<p.invulnerableUntil||attacker?.team===p.team&&attacker!==p)return;
     if(p.team===0){
-      if(p.storyCrew||p.relief)return;
+      if(p.storyCrew&&!p.columnCrew)return;
       amount*=this.difficulty==='recruit'?.7:this.difficulty==='veteran'?1.25:1;
-      if(p.downed){if(!p.rescue&&this.time-p.downedAt>5)p.downedTimer-=amount*.08;return;}
+      if(p.downed){if(this.time-p.downedAt>5)p.downedTimer-=amount*.08;return;}
       if(amount>=p.hp){c.down(p);this.event('damage',{playerId:p.id,attackerId:attacker?.id,amount,x:attacker?.x??p.x,z:attacker?.z??p.z});return;}
     }
-    if(p.role==='sniper'&&c.carry.kane_alive===false&&!meta.explosive)return;
     super.damage(p,amount,attacker,meta);
   }
   damageVehicle(v,amount,attacker,kind,origin,sourceVehicleId){
@@ -104,7 +104,8 @@ export class Mission3Simulation extends Simulation{
     for(const p of state.players){
       const live=this.players.get(p.id);
       Object.assign(p,{role:live.role,downed:Boolean(live.downed),downedTimer:live.downedTimer??0,prone:Boolean(live.prone),
-        reviver:live.reviver??null,syringes:live.syringes??0,medkits:live.medkits??0,interior:this.campaign.inside(live)?.id??null});
+        reviver:live.reviver??null,syringes:live.syringes??0,medkits:live.medkits??0,interior:this.campaign.inside(live)?.id??null,
+        fieldMedic:Boolean(live.fieldMedic),rescuedBrigade:Boolean(live.rescuedBrigade),rescue:Boolean(live.rescue)});
       if(this.campaign.finale&&['local','harranti'].includes(p.id))p.handshake=this.time-this.campaign.finale.at;
     }
     state.campaign=this.campaign.presentation();return state;
@@ -118,9 +119,9 @@ class ColumnDirector{
     this.fired=new Set();this.choiceIndex=0;this.queue=[];this.serial=0;this.radio=null;this.radioEnd=0;
     this.checkpoint=0;this.saveRevision=0;this.epoch=0;this.pending=[];this.enemySerial=0;
     this.failed=null;this.complete=false;this.finale=null;this.flags={brigade_saved:0,m3_documents:false};
-    this.order='follow';this.progress=0;this.charges=[false,false];this.fuseAt=null;this.defenceAt=null;this.defenceWave=0;
+    this.order='follow';this.progress=0;this.charges=[false,false];this.chargesCollected=false;this.fuseAt=null;this.defenceAt=null;this.defenceWave=0;
     this.interactives=Object.fromEntries(TEL_MAZIN.interactives.map(item=>[item.id,item.initial]));
-    this.smoke=[];this.lossUntil=0;this.supplies={};this.limp=Boolean(this.carry.marten_wounded);this.geometryDirty=true;
+    this.smoke=[];this.lossUntil=0;this.notices=[];this.supplies={};this.limp=Boolean(this.carry.marten_wounded);this.geometryDirty=true;
   }
   get time(){return this.sim.time;}
   get player(){return this.sim.players.get('local');}
@@ -138,10 +139,10 @@ class ColumnDirector{
     for(const [id,data] of Object.entries(allies)){
       const available=this.carry[`${id}_alive`]!==false;
       const a=this.add(available?id:`stand-in-${id}`,available?data[0]:'Боец бригады',0,data.slice(1),p,available?id:`stand-in-${id}`);
-      a.squadMember=true;a.grenades=id==='duran'?2:0;
+      a.squadMember=true;a.fieldMedic=id==='lasko';a.grenades=id==='duran'?2:0;
     }
     for(const [id,name] of Object.entries(crew)){
-      const a=this.add(id,name,0,['assault','ar416'],p,id);a.storyCrew=true;
+      const a=this.add(id,name,0,['assault','ar416'],p,id);a.storyCrew=true;a.columnCrew=true;
     }
     const mount=(who,v,seat)=>{
       if(!who)return;
@@ -222,22 +223,28 @@ class ColumnDirector{
     }
     this.rideTime+=dt;
     this.updateWounds(dt);this.updateMedic(dt);this.processExplosions();this.flushEnemies();
+    this.notices=this.notices.filter(notice=>notice.until>this.time);
     if(!this.player.alive){this.failed='Мартен погиб. Вернитесь к контрольной точке.';return;}
-    const still=this.enemies.length+this.pending.length;
-    const safe=still===0,atTarget=distance(this.player,point(this.section.target))<this.section.radius;
+    const atTarget=!this.player.downed&&distance(this.player,point(this.section.target))<this.section.radius;
     if(this.stage===0){
-      // The relief wave and radio keep their original entry-relative times.
-      const entry=this.definition.convoy.villageAt;
-      this.once('ambush-second',entry+30,()=>this.enqueue(this.section.second));
-      this.once('vos-trapped',entry+45,()=>{this.say('vos.trapped');this.placeCrew();});
-      if(safe&&atTarget&&this.inside(this.player)?.id==='gate'&&this.fired.has('vos-trapped'))this.enterStage(1);
+      if(!this.fired.has('ambush-second')&&(this.time>=this.stageAt+8||!this.priorityThreats('at','rpg'))){
+        this.fired.add('ambush-second');this.enqueue(this.section.second);
+      }
+      if(atTarget&&this.inside(this.player)?.id==='gate'&&!this.priorityThreats('at','rpg')){
+        this.enterStage(1,1);
+      }
     }else if(this.stage<4){
-      if(safe&&atTarget)this.enterStage(this.stage+1,this.stage);
+      const priority=this.stage===1?this.enemies.some(e=>distance(e,point(this.section.target))<16):
+        this.stage===2?this.priorityThreats('mg'):this.priorityThreats('sniper');
+      if(atTarget&&!priority)this.enterStage(this.stage+1,this.stage);
     }else if(this.stage===4){
       if(this.fuseAt!==null&&this.time>=this.fuseAt&&!this.flags.breached)this.detonate();
-      if(this.flags.breached&&safe&&this.player.x>138)this.enterStage(5,4);
-    }else this.defend(safe,atTarget,dt);
+      if(this.flags.breached&&!this.player.downed&&this.player.x>138)this.enterStage(5,4);
+    }else this.defend(atTarget);
     this.smoke=this.smoke.filter(s=>s.until>this.time);this.updateRadio();
+  }
+  priorityThreats(...roles){
+    return this.enemies.some(p=>roles.includes(p.role))||this.pending.some(entry=>roles.includes(entry.at(-1)));
   }
   updateRide(){
     const d=this.definition.convoy;
@@ -256,7 +263,7 @@ class ColumnDirector{
       this.flags.tanks_alive=this.sim.vehicles.filter(v=>v.convoyIndex!==undefined&&v.hp>0).length;
     });
     this.once('dismount',d.dismountAt,()=>this.dismount());
-    this.once('combat',d.combatAt,()=>{this.stage=0;this.stageAt=this.time;});
+    this.once('combat',d.combatAt,()=>{this.stage=0;this.stageAt=this.time;this.say('vos.trapped');});
   }
   hitTank(v,source){
     v.scriptedLoss=true;
@@ -274,15 +281,10 @@ class ColumnDirector{
       const dropHeight=p.id==='local'?1.46:.95;
       Object.assign(p,spot,{y:spot.y+dropHeight,dropHeight,dropAt:this.time,dropDuration:p.id==='local'?1.5:.3+(seat%4)*.16,
         grounded:false,invulnerableUntil:this.time+3.2});
+      if(p.columnCrew){p.home=spot;p.squadMember=true;}
     }
     this.player.invulnerableUntil=this.time+3.5;
-    this.choices=null;this.placeCrew();
-  }
-  placeCrew(){
-    for(const [i,id] of Object.keys(crew).entries()){
-      const p=this.sim.players.get(id);if(!p||p.vehicleId)continue;
-      Object.assign(p,this.safeSpot({x:-184+i*1.4,z:6.8},p),{grounded:true,vy:0});
-    }
+    this.choices=null;
   }
   command(command){
     if(command?.type==='retry'){this.restore(this.latestSave??this.initialSave);return;}
@@ -312,15 +314,19 @@ class ColumnDirector{
   }
   enterStage(stage,checkpoint=0){
     this.stage=stage;this.stageAt=this.time;
+    this.queue=this.queue.filter(key=>!stageRadio.includes(key)&&key!=='vos.trapped');
+    for(const enemy of this.enemies)enemy.pursuing=true;
     if(stage<5)this.enqueue(this.section.first);
     else{
+      this.pending.length=0;
       this.setPanel('hq-gate','open');
       const p=this.add('harranti','Полковник Харранти',0,['assault','ar416'],{x:176,z:-11},'harranti');
       p.storyCrew=true;
     }
     if(stage===1)for(const [i,[x,z]] of brigadeSites.entries()){
-      const b=this.add(`brigade-${i+1}`,'Раненый боец бригады',0,['assault','ar416'],{x,z},'brigade');
-      b.rescue=true;this.down(b);
+      const medic=brigadeMedics.has(i);
+      const b=this.add(`brigade-${i+1}`,`${medic?'Санитар':'Боец'} бригады ${i+1}`,0,medic?['medic','mcx9']:['assault','ar416'],{x,z},'brigade');
+      b.fieldMedic=medic;b.rescue=true;this.down(b);
     }
     this.say(stageRadio[stage]);
     if(checkpoint)this.save(checkpoint);
@@ -334,33 +340,50 @@ class ColumnDirector{
     return {x:house.x+(inHouse?1.9:0),z:house.z+(elevated?-Math.sign(house.z)*4.6:inHouse?1.9:-2.2),y:elevated?3:0};
   }
   flushEnemies(){
+    if(this.stage>=1)for(const enemy of this.enemies){
+      if(enemy.pursuing&&distance(enemy,this.player)>80&&!this.spawnVisible(enemy))this.sim.players.delete(enemy.id);
+    }
     let capacity=MAX_ENEMIES-this.enemies.length;
     const held=[];
     while(capacity>0&&this.pending.length){
       const entry=this.pending.shift(),role=entry.at(-1),where=this.spawnPosition(entry),p=this.player;
-      // Delay reinforcements in the aimed lane; hand-placed rooms already provide cover.
-      if(this.stage>=0&&typeof entry[0]!=='string'&&!role.startsWith('truck-')&&distance(p,where)<22&&
-        Math.abs(angle(yawTo(p,where)-p.yaw))<.8&&this.sim.lineClear(eye(p),{...where,y:(where.y??0)+1.2})){
-        const fallback={...where,z:where.z+(where.z<0?-1:1)*13};
-        if(this.sim.lineClear(eye(p),{...fallback,y:1.2})){held.push(entry);continue;}
-        Object.assign(where,fallback);
-      }
+      const truck=role.startsWith('truck-'),mounted=this.sim.vehicles.find(v=>v.id==='m03-truck');
+      const lead=this.safeSpot(where),lockedPosition=typeof entry[0]==='string';
+      const alternatives=lockedPosition?[]:[-1,1].flatMap(side=>[12,20].map(offset=>({x:where.x+5,z:where.z+side*offset})));
+      const spot=truck?(mounted??this.truckApproach()):this.stage<0?lead:[lead,...alternatives.map(a=>this.safeSpot(a))].find(a=>
+        !this.spawnVisible(a)&&!this.sim.collides(a.x,a.z,a.y+.02)&&!this.sim.vehicleAt(a.x,a.z,a.y));
+      if(!spot){held.push(entry);continue;}
       capacity--;
       const id=`m03-enemy-${++this.enemySerial}`;
-      const bot=this.add(id,'Восточный корпус',1,soldierTypes[role],where,role);
+      const bot=this.add(id,'Восточный корпус',1,soldierTypes[role],spot,role);
       bot.homeId=typeof entry[0]==='string'?entry[0]:null;
-      bot.invulnerableUntil=this.time+.15;bot.rockets=role==='rpg'?2:0;
+      if(this.stage===5)bot.defenceWave=this.defenceWave;
+      bot.invulnerableUntil=this.time+.15;bot.rockets=['at','rpg'].includes(role)?2:0;
       bot.yaw=yawTo(bot,p);bot.input=sanitizeInput({yaw:bot.yaw});
       if(role==='rpg')bot.hp=45;
       if(role==='sniper')bot.nextSniper=this.time+2;
-      if(role.startsWith('truck-'))this.mountTruck(bot,role);
+      if(truck)this.mountTruck(bot,role,spot);
     }
     this.pending.push(...held);
   }
-  mountTruck(bot,role){
+  spawnVisible(spot){
+    const p=this.player,range=distance(p,spot),height=spot.y+1.15-p.y-1.55;
+    if(range<8)return true;
+    return Math.abs(angle(yawTo(p,spot)-p.yaw))<1.23&&Math.abs(angle(Math.atan2(height,range)-p.pitch))<.88&&
+      this.sim.lineClear(eye(p),eye(spot,1.15));
+  }
+  truckApproach(){
+    const sim=this.sim;
+    for(const [x,z] of [[220,0],[220,-7],[220,7],[218,-12],[218,12]]){
+      const spawn={x,y:sim.groundAt(x,z),z,yaw:Math.atan2(x-206,z)};
+      if(!this.spawnVisible(spawn)&&!sim.vehicleCollides({type:'humvee'},x,z,spawn.yaw))return spawn;
+    }
+    return null;
+  }
+  mountTruck(bot,role,spot){
     const id='m03-truck';let truck=this.sim.vehicles.find(v=>v.id===id);
     if(!truck){
-      truck=this.sim.createMapVehicle({id,type:'humvee',team:1,x:211,z:0,yaw:Math.PI/2});
+      truck=this.sim.createMapVehicle({id,type:'humvee',team:1,...spot});
       this.sim.vehicles.push(truck);
     }
     const seat=role==='truck-driver'?0:1;
@@ -382,7 +405,7 @@ class ColumnDirector{
     return threats.some(e=>e.ai?.contact?.id==='local')||this.time-this.player.lastShotAt<5?3:1;
   }
   canSee(from,to,checkWalls=true){
-    if(to.storyCrew||to.relief)return false;
+    if(to.storyCrew&&!to.columnCrew)return false;
     const a=eye(from),b=eye(to,to.downed?.43:1.2);
     for(const s of this.smoke){
       const dx=b.x-a.x,dz=b.z-a.z,u=Math.max(0,Math.min(1,((s.x-a.x)*dx+(s.z-a.z)*dz)/Math.max(.01,dx*dx+dz*dz)));
@@ -392,7 +415,7 @@ class ColumnDirector{
   }
   botGoal(p){
     if(p.team===1){
-      if(p.role==='sapper'||this.stage===5&&!p.homeId)return this.player;
+      if(p.pursuing||p.role==='sapper'||this.stage===5&&!p.homeId)return this.player;
       if(p.homeId&&this.inside(this.player)?.id===p.homeId&&p.ai?.memory){
         const h=TEL_MAZIN.houses[p.homeId];
         if(h&&p.home.y<1)return {x:h.x-h.w*.30,z:h.z+2,y:0};
@@ -401,12 +424,12 @@ class ColumnDirector{
     }
     if(this.order==='hold')return p.holdAt??p.home;
     if(this.order==='assault'&&this.orderTarget)return this.orderTarget;
-    const angle=p.botSlot*2.399;
-    return {x:this.player.x+Math.cos(angle)*5.5,z:this.player.z+Math.sin(angle)*5.5};
+    const angle=p.botSlot*2.399,spacing=p.rescuedBrigade||p.columnCrew?8+(p.botSlot%3)*2:5.5;
+    return {x:this.player.x+Math.cos(angle)*spacing,z:this.player.z+Math.sin(angle)*spacing};
   }
   thinkBot(p,dt){
     const sim=this.sim,player=this.player;
-    if(this.inTransit&&p.team===0||this.finale||p.storyCrew||p.rescue||p.relief||p.downed){
+    if(this.inTransit&&p.team===0||this.finale||p.storyCrew&&!p.columnCrew||p.rescue||p.downed){
       const talking=this.radio?.key.startsWith(`${p.id}.`),looksAtPlayer=p.squadMember&&p.vehicleId===player.vehicleId&&p.vehicleId&&talking;
       p.input=sanitizeInput({yaw:looksAtPlayer?yawTo(p,player):p.yaw,pitch:looksAtPlayer?.07:p.pitch});return true;
     }
@@ -422,13 +445,16 @@ class ColumnDirector{
     }
     if(p.role==='truck-driver'&&p.vehicleId){
       const truck=sim.vehicles.find(v=>v.id===p.vehicleId);
-      p.input=sanitizeInput({yaw:Math.PI/2,forward:truck.x>164?.5:0});return true;
+      const joinRoad=truck.x>207&&Math.abs(truck.z)>.9,yaw=joinRoad?Math.atan2(truck.x-206,truck.z):Math.PI/2;
+      const steer=Math.max(-1,Math.min(1,angle(truck.yaw-yaw)*2));
+      p.input=sanitizeInput({yaw,strafe:steer,forward:truck.x>164?.5:0});return true;
     }
     if(p.role==='truck-gunner'&&p.vehicleId){
       p.input=sanitizeInput({yaw:yawTo(p,player),pitch:Math.atan2(player.y-p.y,distance(p,player)),fire:this.canSee(p,player),aim:true});return true;
     }
-    if(p.id==='lasko'&&this.medicTarget){
-      const wounded=this.medicTarget;
+    if(p.fieldMedic&&p.medicTarget){
+      const wounded=sim.players.get(p.medicTarget);
+      if(!wounded?.alive||!wounded.downed)return false;
       ensureBotState(sim,p);p.input=sanitizeInput({yaw:p.yaw});
       if(distance(p,wounded)>2.15)moveBot(sim,p,wounded,dt,{sprint:true});
       return true;
@@ -438,7 +464,7 @@ class ColumnDirector{
   afterThink(p,dt){
     if(!p.ai)return;
     const contact=p.ai.contact,target=this.sim.players.get(contact?.id),sim=this.sim;
-    p.input.grenade=false;p.input.gadget=false;p.input.secondaryGadget=p.role==='rpg'&&target?.alive&&distance(p,target)>13&&distance(p,target)<42&&this.time>=(p.rpgAt??0);
+    p.input.grenade=false;p.input.gadget=false;p.input.secondaryGadget=['at','rpg'].includes(p.role)&&target?.alive&&distance(p,target)>13&&distance(p,target)<42&&this.time>=(p.rpgAt??0);
     if(p.input.secondaryGadget)p.rpgAt=this.time+7;
     if(p.team===0){
       if(this.order==='hold')p.input.forward=p.input.strafe=0;
@@ -508,7 +534,11 @@ class ColumnDirector{
       wounded.reviver=i.use?p.id:null;
       this.hold(wounded.id,i.use,dt,6,()=>this.revive(wounded));return;
     }
-    if(this.stage===4&&!this.flags.breached){
+    if(this.stage===4&&!this.flags.breached&&!this.chargesCollected&&distance(p,chargeCache)<2.75){
+      this.prompt='E · взять два заряда';
+      this.hold('charge-cache',i.use,dt,.55,()=>{this.chargesCollected=true;});return;
+    }
+    if(this.stage===4&&this.chargesCollected&&!this.flags.breached){
       const charge=this.definition.breach.charges.findIndex((site,index)=>!this.charges[index]&&distance(p,point(site))<2.75);
       if(charge>=0){
         this.prompt='E · удерживать: установить заряд';
@@ -608,53 +638,72 @@ class ColumnDirector{
       reviveSeq:(p.reviveSeq??0)+1,invulnerableUntil:this.time+2});
     if(rescue){
       this.flags.brigade_saved++;
-      p.squadMember=[...this.sim.players.values()].filter(a=>a.alive&&a.squadMember).length<6;
-      p.relief=!p.squadMember;
+      p.squadMember=true;p.rescuedBrigade=true;
+      this.notify(`${p.name} вступил во временный отряд`);
     }
     this.sim.event('revive',{playerId:p.id,x:p.x,y:p.y,z:p.z});
   }
+  notify(text){this.notices=[...this.notices.slice(-2),{text,until:this.time+8}];}
   updateWounds(dt){
-    for(const p of this.sim.players.values())if(p.alive&&p.downed&&!p.rescue){
+    for(const p of this.sim.players.values())if(p.alive&&p.downed){
+      if(p.rescue&&p.downedTimer>115){
+        if(distance(p,this.player)>20)continue;
+        p.downedTimer=115;
+      }
       p.downedTimer-=dt;
       if(p.downedTimer<=0){
         p.downed=false;p.prone=false;
         Simulation.prototype.damage.call(this.sim,p,1000,null);
-        if(p.id!=='local'){this.lossUntil=this.time+this.definition.music.lossSilence;this.say('orlov.loss');}
+        if(p.id!=='local'){
+          this.notify(`Погиб · ${p.name}`);
+          this.lossUntil=this.time+this.definition.music.lossSilence;this.say('orlov.loss');
+        }
       }
     }
   }
   updateMedic(dt){
-    const medic=this.sim.players.get('lasko');
-    if(!medic?.alive||medic.downed){this.medicTarget=null;return;}
-    const candidate=[...this.sim.players.values()].filter(p=>p.alive&&p.downed&&p.team===0&&p!==medic&&
-      distance(p,medic)<(this.order==='revive'?27:13)&&!(p.reviver==='local'&&this.input.use))
-      .sort((a,b)=>Number(b.id==='local')-Number(a.id==='local')||distance(a,medic)-distance(b,medic))[0];
-    if(candidate!==this.medicTarget){
-      if(this.medicTarget?.reviver==='lasko')this.medicTarget.reviver=null;
-      this.medicProgress=0;this.medicTarget=candidate;
+    const allies=[...this.sim.players.values()].filter(p=>p.team===0&&p.alive),assigned=new Set();
+    for(const medic of allies){
+      if(!medic.fieldMedic||medic.downed)continue;
+      const candidate=allies.filter(p=>p.downed&&!assigned.has(p.id)&&distance(p,medic)<(this.order==='revive'?30:13)&&
+        (!p.rescue||p.downedTimer<=115)&&!(p.reviver==='local'&&this.input.use))
+        .sort((a,b)=>Number(b.id==='local')-Number(a.id==='local')||distance(a,medic)-distance(b,medic))[0];
+      if(candidate?.id!==medic.medicTarget){
+        const previous=this.sim.players.get(medic.medicTarget);
+        if(previous?.reviver===medic.id)previous.reviver=null;
+        medic.medicProgress=0;medic.medicTarget=candidate?.id;
+      }
+      if(!candidate)continue;
+      assigned.add(candidate.id);
+      if(distance(candidate,medic)>2.6||!this.sim.lineClear(eye(medic),eye(candidate,.35))){medic.medicProgress=0;continue;}
+      candidate.reviver=medic.id;medic.medicProgress=(medic.medicProgress??0)+dt;
+      if(medic.medicProgress+1e-7>=6){this.revive(candidate);medic.medicTarget=null;medic.medicProgress=0;}
     }
-    if(!candidate||distance(candidate,medic)>2.6||!this.sim.lineClear(eye(medic),eye(candidate,.35))){this.medicProgress=0;return;}
-    candidate.reviver='lasko';this.medicProgress+=dt;
-    if(this.medicProgress+1e-7>=6){this.revive(candidate);this.medicTarget=null;this.medicProgress=0;}
   }
-  defend(safe,atTarget,dt){
+  defend(atTarget){
     if(this.defenceAt===null&&atTarget){this.defenceAt=this.time;this.defenceWave=1;this.enqueue(this.section.first);return;}
     if(this.defenceAt===null)return;
-    if(!atTarget){this.defenceAt+=dt;return;}
-    const length=this.definition.defenceWaveSeconds;
-    if(this.defenceWave===1&&this.time-this.defenceAt>=length){
-      this.defenceAt=this.time;this.defenceWave=2;this.enqueue(this.section.second);this.say('harranti.truck');return;
+    if(this.defenceThreats()){this.nextWaveAt=null;return;}
+    if(this.defenceWave===1){
+      this.nextWaveAt??=this.time+6;
+      if(this.time>=this.nextWaveAt){
+        this.defenceAt=this.time;this.defenceWave=2;this.enqueue(this.section.second);this.say('harranti.truck');
+      }
+      return;
     }
-    if(this.defenceWave!==2||!safe||this.time-this.defenceAt<length)return;
+    if(!atTarget||this.player.downed)return;
     this.finale={at:this.time};this.flags.harranti_alive=true;
     const harranti=this.sim.players.get('harranti');
     Object.assign(this.player,{x:174.1,y:0,z:-11,yaw:-Math.PI/2,prone:false,downed:false,grounded:true,vy:0});
     if(harranti)Object.assign(harranti,{x:175.23,y:0,z:-11,yaw:Math.PI/2,grounded:true,vy:0});
     for(const id of Object.keys(allies))this.flags[`${id}_alive`]=this.sim.players.get(id)?.alive===true;
-    for(const [i,id] of Object.keys(crew).entries())Object.assign(this.sim.players.get(id),this.safeSpot({x:166-i*1.6,z:-16.9}));
+    const vos=this.sim.players.get('vos');
     this.setPanel('hq-gate','open');this.queue=[];this.radio=null;
-    for(const key of ['harranti.final','vos.final','dargo.final'])this.say(key);
+    this.say('harranti.final');
+    if(vos?.alive&&!vos.downed&&['timo','rafa'].every(id=>this.sim.players.get(id)?.alive))this.say('vos.final');
+    this.say('dargo.final');
   }
+  defenceThreats(){return this.pending.length+this.enemies.filter(e=>e.defenceWave).length;}
   save(number){
     if(this.options.ironman)return;
     this.checkpoint=number;this.latestSave=this.serialize();this.saveRevision++;
@@ -666,7 +715,8 @@ class ColumnDirector{
       vehicles:sim.vehicles.map(({runOverHits,...v})=>v),grenades:sim.grenades,rockets:sim.rockets,bullets:sim.bullets,deployables:sim.deployables,
       mission:{checkpoint:this.checkpoint,stage:this.stage,stageAt:this.stageAt,rideTime:this.rideTime,rideIndex:this.rideIndex,
         enemySerial:this.enemySerial,flags:this.flags,pending:this.pending,fired:[...this.fired],order:this.order,orderAt:this.orderAt,
-        orderTarget:this.orderTarget,charges:this.charges,fuseAt:this.fuseAt,defenceAt:this.defenceAt,defenceWave:this.defenceWave,
+        orderTarget:this.orderTarget,charges:this.charges,chargesCollected:this.chargesCollected,fuseAt:this.fuseAt,
+        defenceAt:this.defenceAt,defenceWave:this.defenceWave,nextWaveAt:this.nextWaveAt,
         interactives:this.interactives,supplies:this.supplies,limp:this.limp,smoke:this.smoke,carry:this.carry,choiceIndex:this.choiceIndex}});
   }
   restore(save){
@@ -676,13 +726,22 @@ class ColumnDirector{
     for(const actor of save.players){
       const p=sim.addPlayer(actor.id,actor.name,actor.team,actor.classId,actor.primaryWeaponId,actor.sidearmId,actor.bot);
       Object.assign(p,structuredClone(actor),{ai:null,damagers:new Map(),botPath:[]});
+      if(Object.hasOwn(crew,p.id)){p.columnCrew=true;p.squadMember=!p.vehicleId;}
+      if(p.id==='lasko'||p.id==='stand-in-lasko')p.fieldMedic=true;
+      if(p.role==='brigade'){
+        p.fieldMedic??=brigadeMedics.has(Number(p.id.split('-').at(-1))-1);
+        if(!p.rescue&&p.rescuedBrigade!==false){p.rescuedBrigade=true;p.relief=false;p.squadMember=true;}
+      }
+      p.medicTarget=null;p.medicProgress=0;p.reviver=null;
     }
     for(const key of ['grenades','rockets','bullets','deployables'])sim[key]=structuredClone(save[key]);
     sim.time=save.time;sim.rngState=save.rngState;sim.events=[];sim.eventId=0;sim.botTeams=null;sim.botTeamAt=0;
     Object.assign(this,structuredClone(save.mission));this.fired=new Set(save.mission.fired);
+    this.chargesCollected=save.mission.chargesCollected??(this.charges.some(Boolean)||this.flags.breached===true);
+    this.nextWaveAt=save.mission.nextWaveAt??null;
     Object.assign(this,{input:{},previous:{},queue:[],radio:null,radioEnd:0,skipHold:0,choices:null,
       latestExplosion:0,failed:null,complete:false,finale:null,prompt:'',interaction:null,progress:0,lossUntil:0,
-      medicTarget:null,medicProgress:0,assaultDoor:null,geometryDirty:true});
+      notices:[],assaultDoor:null,geometryDirty:true});
     this.latestSave=save.mission.checkpoint?structuredClone(save):null;
     this.saveRevision++;this.epoch++;this.refreshGeometry();
     const newCover=sim.colliders.filter(box=>box.id.startsWith('street-dressing-'));
@@ -692,26 +751,50 @@ class ColumnDirector{
       if(newCover.some(box=>overlapsCollider(body,box)))Object.assign(p,this.safeSpot({x:p.x,y:p.y,z:p.z},p));
     }
     if(this.inTransit)this.say('orlov.road');
+    else if(this.stage===1||this.stage===2||this.stage===3||this.stage===4||this.stage===5)this.say(stageRadio[this.stage]);
     return true;
   }
   presentation(){
     const p=this.player,cutscene=this.finale?{id:'finale',elapsed:this.time-this.finale.at}:null;
     const objective=this.finale?'finale':this.section?.id??'ride';
-    const target=this.stage===4&&!this.charges.every(Boolean)?point(this.definition.breach.charges[this.charges[0]?1:0]):
-      this.section?point(this.section.target):null;
+    const objectiveState=this.objectiveState();
     const roomStatus={};
     for(const enemy of this.sim.players.values())if(enemy.team===1&&enemy.homeId)
       roomStatus[enemy.homeId]=enemy.alive||roomStatus[enemy.homeId]==='hostile'?'hostile':'clear';
-    return {missionId:'m03',stage:this.stage,objective,target,rideTime:this.rideTime,ride:this.inTransit,cutscene,
+    const brigade=[...this.sim.players.values()].filter(a=>a.rescuedBrigade),losses=[...this.sim.players.values()].filter(a=>a.team===0&&!a.alive).length;
+    return {missionId:'m03',stage:this.stage,objective,...objectiveState,rideTime:this.rideTime,ride:this.inTransit,cutscene,
       alert:this.alert(),inside:Boolean(this.inside(p)),time:this.time,checkpoint:this.checkpoint,epoch:this.epoch,
       failed:this.failed,complete:this.complete,flags:{...this.flags},radio:this.radio,radioRemaining:Math.max(0,this.radioEnd-this.time),
       doorStates:this.packedPanels,doorRevision:this.doorRevision,roomStatus,smoke:this.smoke,lossUntil:this.lossUntil,prompt:this.prompt,progress:this.progress,
       choices:this.choices?[this.choices[0],this.choices[2]]:null,order:this.order,charges:[...this.charges],
       skipHold:this.skipHold,smokeGrenades:p.smokeGrenades??0,syringes:p.syringes,medkits:p.medkits,limp:this.limp,
       fuseRemaining:this.fuseAt!==null&&!this.flags.breached?Math.max(0,this.fuseAt-this.time):null,
-      wave:this.defenceWave,waveRemaining:this.defenceAt===null?null:Math.max(0,this.definition.defenceWaveSeconds-(this.time-this.defenceAt)),
-      enemies:this.enemies.length+this.pending.length,sniperFlash:this.enemies.some(e=>e.role==='sniper'&&e.flashUntil>this.time),
-      stats:{elapsedSeconds:Math.floor(this.time),kills:p.kills,brigade:this.flags.brigade_saved}};
+      wave:this.defenceWave,waveRemaining:this.nextWaveAt==null?null:Math.max(0,this.nextWaveAt-this.time),
+      enemies:this.enemies.length,pendingEnemies:this.pending.length,
+      sniperFlash:this.enemies.some(e=>e.role==='sniper'&&e.flashUntil>this.time),
+      notices:this.notices.map(notice=>notice.text),temporarySquadIds:brigade.filter(a=>a.alive).map(a=>a.id),
+      squadIds:[p.id,...[...this.sim.players.values()].filter(a=>a.squadMember&&!a.rescuedBrigade).map(a=>a.id)],
+      stats:{elapsedSeconds:Math.floor(this.time),kills:p.kills,brigade:this.flags.brigade_saved,brigadeAlive:brigade.filter(a=>a.alive).length,losses}};
+  }
+  objectiveState(){
+    const section=this.section;
+    if(!section)return {target:null};
+    const focus=(target,targetLabel)=>({target,targetLabel});
+    const important=this.stage===0?['at','rpg']:this.stage===2?['mg']:this.stage===3?['sniper']:[];
+    const threat=this.enemies.filter(e=>important.includes(e.role)).sort((a,b)=>distance(a,this.player)-distance(b,this.player))[0];
+    if(threat)return focus({x:threat.x,y:threat.y,z:threat.z},{at:'ПРОТИВОТАНКОВЫЙ РАСЧЁТ',rpg:'ГРАНАТОМЁТЧИК',mg:'ПУЛЕМЁТ',sniper:'СНАЙПЕР'}[threat.role]);
+    if(this.stage===4){
+      if(!this.chargesCollected)return focus(chargeCache,'ЯЩИК С ЗАРЯДАМИ');
+      if(!this.charges.every(Boolean)){const index=this.charges[0]?1:0;return focus(point(this.definition.breach.charges[index]),`ЗАРЯД ${index+1}/2`);}
+      return this.flags.breached?focus({x:145,z:0},'ПРОЛОМ'):focus(null,'ОТОЙДИТЕ ОТ ПРОЛОМА');
+    }
+    if(this.stage===5&&this.defenceWave){
+      const remaining=this.enemies.filter(e=>e.defenceWave);
+      const attacker=remaining.find(e=>e.role==='truck-gunner'||e.role==='sapper')??remaining[0];
+      if(attacker)return focus({x:attacker.x,y:attacker.y,z:attacker.z},attacker.vehicleId?'ГРУЗОВИК':attacker.role==='sapper'?'ПОДРЫВНИК':'АТАКУЮЩИЕ');
+      if(!this.defenceThreats()&&this.defenceWave===2)return focus(point(section.target),'К ХАРРАНТИ');
+    }
+    return focus(point(section.target),['ЧАЙХАНА','МАСТЕРСКИЕ','ПЕРЕКРЁСТОК','РЫНОК','ПРОЛОМ','ДВОР ШТАБА'][this.stage]);
   }
 }
 
@@ -731,7 +814,7 @@ export function validMission3Save(save,definition){
   const m=save.mission;
   if(!record(m)||!Number.isInteger(m.stage)||m.stage< -1||m.stage>5||!Number.isInteger(m.checkpoint)||m.checkpoint<0||m.checkpoint>4||
     !Number.isFinite(m.rideTime)||m.rideTime<0||!Number.isInteger(m.enemySerial)||m.enemySerial<0||m.enemySerial>66||
-    !list(m.fired,32)||!list(m.pending,14)||!list(m.smoke,16)||!list(m.charges,2)||m.charges.length!==2||!record(m.flags)||
+    !list(m.fired,32)||!list(m.pending,66)||!list(m.smoke,16)||!list(m.charges,2)||m.charges.length!==2||!record(m.flags)||
     !record(m.carry)||!record(m.supplies)||!record(m.interactives))return false;
   if(!TEL_MAZIN.interactives.every(i=>['closed','open','locked','destroyed'].includes(m.interactives[i.id])))return false;
   for(const k of ['grenades','rockets','bullets','deployables'])if(!list(save[k],256)||!save[k].every(position))return false;

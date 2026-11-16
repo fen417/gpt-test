@@ -26,6 +26,7 @@ export class Mission3Presentation{
       <div class="m03-choices" hidden><button type="button"></button><button type="button"></button></div>
       <div class="campaign-injury hidden"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong></div>
       <div class="m03-status"></div><div class="m03-bindings"></div><span class="m03-marker" hidden></span>
+      <aside class="m03-squad" hidden><div class="m03-temporary"></div><div class="m03-notices" role="status"></div></aside>
       <canvas class="m03-map" width="168" height="168" aria-label="Карта Тель-Мазина" hidden></canvas>
       <div class="m03-cinematic" hidden></div>
       <section class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div>
@@ -78,8 +79,9 @@ export class Mission3Presentation{
     this.$('.m03-objective').hidden=blocked;
     this.$('.m03-objective strong').textContent=this.locale.objectives[m.objective];
     const range=m.target?Math.round(Math.hypot(p.x-m.target.x,p.z-m.target.z)):null;
+    const waiting=m.pendingEnemies?` · ПОДХОДЯТ ${m.pendingEnemies}`:'';
     this.$('.m03-objective > span').textContent=m.ride?`${clock(m.rideTime)} · «СОКОЛ-7»`:
-      `КП ${m.checkpoint}/4 · ${orderLabels[m.order]} · ПРОТИВНИКОВ ${m.enemies}${range===null?'':` · ${range} м`}`;
+      `КП ${m.checkpoint}/4 · В БОЮ ${m.enemies}${waiting}${m.targetLabel?` · ${m.targetLabel}`:''}${range===null?'':` · ${range} м`}`;
     const line=this.locale.lines[m.radio?.key],subtitle=this.$('.campaign-subtitle');
     subtitle.classList.toggle('hidden',!line||end);
     subtitle.querySelector('b').textContent=line?this.locale.speakers[line.speaker]:'';
@@ -98,10 +100,20 @@ export class Mission3Presentation{
     injury.querySelector('strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;
     const status=this.$('.m03-status');status.hidden=blocked||m.ride;
     const task=m.fuseRemaining!==null?` · ПОДРЫВ ${Math.ceil(m.fuseRemaining)} с`:
-      m.wave?` · ВОЛНА ${m.wave}/2 · ${clock(m.waveRemaining)}`:m.objective==='breach'?` · ЗАРЯДЫ ${m.charges.filter(Boolean).length}/2`:'';
-    status.textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes} · СПАСЕНО ${m.flags.brigade_saved}/8${task}`;
+      m.wave?` · ВОЛНА ${m.wave}/2${m.waveRemaining!=null?` · ПОДКРЕПЛЕНИЕ ЧЕРЕЗ ${Math.ceil(m.waveRemaining)} С`:''}`:
+        m.objective==='breach'?` · ЗАРЯДЫ ${m.charges.filter(Boolean).length}/2`:'';
+    const nearbyWounded=state.players.filter(a=>a.rescue&&a.alive&&a.downed&&a.downedTimer<=115);
+    const urgent=nearbyWounded.length?` · ПОМОЩЬ РАНЕНЫМ ${Math.ceil(Math.min(...nearbyWounded.map(a=>a.downedTimer)))} С`:'';
+    status.textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes} · СПАСЕНО ${m.flags.brigade_saved}/8${urgent}${task}`;
     const binds=this.$('.m03-bindings');binds.hidden=blocked||m.ride;
-    binds.textContent=`F1 ИДТИ · F2 ДЕРЖАТЬ · F3 ШТУРМ · F4 ПРИКРОЙ · Q МЕДИК${m.smokeGrenades?' · T ДЫМ':''}`;
+    const medic=state.players.some(a=>a.team===p.team&&a.alive&&!a.downed&&a.fieldMedic);
+    binds.textContent=`${orderLabels[m.order]} · F1 ИДТИ · F2 ДЕРЖАТЬ · F3 ШТУРМ · F4 ПРИКРОЙ${medic?' · Q МЕДИК':''}${m.smokeGrenades?' · T ДЫМ':''}`;
+    const squad=this.$('.m03-squad'),members=state.players.filter(a=>m.temporarySquadIds?.includes(a.id));
+    squad.hidden=blocked||m.ride||(!members.length&&!m.notices?.length);
+    const names=members.map(a=>`${a.name}${a.downed?' · ранен':''}`).join(', ');
+    this.$('.m03-temporary').textContent=members.length?`Временный отряд · ${members.length}\n${names}`:'';
+    const notices=this.$('.m03-notices'),notice=(m.notices??[]).join('\n');
+    if(notices.textContent!==notice)notices.textContent=notice;
     this.mapCanvas.hidden=blocked||m.ride;
     if(!this.mapCanvas.hidden&&performance.now()>=(this.nextMap??0)){this.nextMap=performance.now()+150;this.drawMap(state,p);}
     this.$('.m03-cinematic').hidden=!cutscene||end;
@@ -109,8 +121,11 @@ export class Mission3Presentation{
     if(end){
       ending.querySelector('small').textContent=m.failed?'МИССИЯ ПРЕРВАНА':'МИССИЯ ЗАВЕРШЕНА';
       ending.querySelector('h2').textContent=m.failed?'Колонна потеряла Мартена':'Штаб удержан';
-      ending.querySelector('p').textContent=m.failed??'Карта маршрута противника у Мартена. Следующая цель — переправа.';
-      ending.querySelector('.campaign-final-stats').textContent=`СПАСЕНО ${m.flags.brigade_saved}/8 · ВРЕМЯ ${clock(m.stats.elapsedSeconds)}`;
+      const rescued=m.flags.brigade_saved,survived=m.stats.brigadeAlive;
+      ending.querySelector('p').textContent=m.failed??(rescued===0?'Карта у Мартена. Эвакуировать раненых не удалось.':
+        survived===0?'Карта у Мартена. Никто из поднятых бойцов не дожил до конца боя.':
+        `Карта у Мартена. Бойцов бригады выжило: ${survived}. Следующая цель — переправа.`);
+      ending.querySelector('.campaign-final-stats').textContent=`РЕАНИМИРОВАНО ${rescued}/8 · В СТРОЮ ${survived??0} · ПОТЕРИ ${m.stats.losses??0} · ${clock(m.stats.elapsedSeconds)}`;
       this.$('.campaign-retry').hidden=!m.failed;
     }
     if(end&&!this.ended){this.clearControls();document.exitPointerLock?.();}this.ended=end;
@@ -131,13 +146,19 @@ export class Mission3Presentation{
     }
     const target=state.campaign.target;
     if(target){ctx.fillStyle='#f2cc82';ctx.beginPath();ctx.arc(x(target.x),z(target.z),4,0,Math.PI*2);ctx.fill();}
-    ctx.fillStyle='#eb835c';
-    for(const enemy of state.players){
-      if(enemy.team===p.team||!enemy.alive)continue;
-      const dx=x(enemy.x)-half,dz=z(enemy.z)-half;
+    for(const actor of state.players){
+      if(!actor.alive||actor.team===p.team&&!actor.rescue)continue;
+      const dx=x(actor.x)-half,dz=z(actor.z)-half;
       const distance=Math.max(Math.abs(dx),Math.abs(dz));
       const ratio=Math.min(1,(half-5)/Math.max(1,distance));
-      ctx.beginPath();ctx.arc(half+dx*ratio,half+dz*ratio,3,0,Math.PI*2);ctx.fill();
+      const px=half+dx*ratio,pz=half+dz*ratio;
+      ctx.fillStyle=actor.rescue?actor.downedTimer<=25?'#ffc295':'#9be9ca':'#eb835c';
+      if(actor.rescue){
+        ctx.fillRect(px-1,pz-4,2,8);ctx.fillRect(px-4,pz-1,8,2);
+        if(actor.fieldMedic){ctx.strokeStyle='#9be9ca';ctx.strokeRect(px-5,pz-5,10,10);}
+      }else if(actor.y-p.y>2.3){
+        ctx.beginPath();ctx.moveTo(px,pz-4);ctx.lineTo(px-3.5,pz+3);ctx.lineTo(px+3.5,pz+3);ctx.fill();
+      }else{ctx.beginPath();ctx.arc(px,pz,3,0,Math.PI*2);ctx.fill();}
     }
     ctx.fillStyle='#c3ecdf';ctx.beginPath();ctx.arc(half,half,3.5,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='#c3ecdf';ctx.beginPath();ctx.moveTo(half,half);ctx.lineTo(half-Math.sin(p.yaw)*12,half-Math.cos(p.yaw)*12);ctx.stroke();
@@ -191,10 +212,17 @@ export class Mission3Presentation{
     }
     this.fires.update({light:'dawn'},state.time,r.camera,new Set(state.vehicles.filter(v=>v.hp<=0).map(v=>v.id)));
     const objective=m.target&&!m.ride&&!m.cutscene&&!m.failed&&!m.complete?m.target:null;
-    const screen=objective?r.project(objective.x,r.map.terrain.heightAt(objective.x,objective.z)+2.9,objective.z):null;
-    const marker=placeCampaignMarker(screen,r.viewportWidth,r.viewportHeight);this.marker.hidden=!marker;
+    const screen=objective?r.project(objective.x,(objective.y??r.map.terrain.heightAt(objective.x,objective.z))+2.35,objective.z):null;
+    const p=state.players.find(p=>p.id==='local');
+    let direction='';
+    let marker=placeCampaignMarker(screen,r.viewportWidth,r.viewportHeight);
+    if(!marker&&p&&objective){
+      const offset=wrapped(Math.atan2(p.x-objective.x,p.z-objective.z)-(view.yaw??p.yaw)),left=offset>0;
+      marker={x:left?125:Math.max(125,r.viewportWidth-125),y:r.viewportHeight*.37};direction=left?'← ':'→ ';
+    }
+    this.marker.hidden=!marker;
     if(marker){this.marker.style.transform=`translate(${marker.x}px,${marker.y}px) translate(-50%,-50%)`;
-      const p=state.players.find(p=>p.id==='local');this.marker.textContent=`◇ ${Math.round(Math.hypot(p.x-objective.x,p.z-objective.z))} М`;}
+      this.marker.textContent=`${direction||'◇ '}${m.targetLabel??'ЦЕЛЬ'} · ${Math.round(Math.hypot(p.x-objective.x,p.z-objective.z))} М`;}
     if(!view.paused&&r.clock>=(this.nextSmoke??0)){
       this.nextSmoke=r.clock+.48;
       if(m.rideTime<118)for(const x of [120,194])r.smoke(x,5,x===120?22:-20,6.5,12,0x675b4d,{rise:3.2,wind:.6});

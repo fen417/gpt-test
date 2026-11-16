@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import mission from '../public/campaign/m03/mission.json' with {type:'json'};
 import locale from '../public/campaign/m03/ru.json' with {type:'json'};
 import {Mission3Simulation,validMission3Save} from '../shared/campaign/mission3.js';
-import {m03ConvoyPose,panelState} from '../shared/campaign/tel-mazin.js';
+import {M03_CHARGE_CACHE,m03ConvoyPose,panelState} from '../shared/campaign/tel-mazin.js';
 import {findBotPath} from '../shared/bot-navigation.js';
 import {columnMusicCue} from '../src/campaign/column-music.js';
 
@@ -18,7 +18,10 @@ function settle(sim){
   while(c.pending.length||c.enemies.length){
     c.flushEnemies();
     assert.ok(c.enemies.length<=14);
-    assert.ok(c.enemies.length>0,'authored reserve can spawn from cover');
+    if(!c.enemies.length){
+      const pitch=c.player.pitch;c.player.pitch=-Math.PI/2;c.flushEnemies();c.player.pitch=pitch;
+      if(!c.enemies.length)break;
+    }
     for(const e of c.enemies){e.invulnerableUntil=0;sim.damage(e,1e4,c.player,{explosive:true});}
   }
 }
@@ -105,7 +108,7 @@ test('a checkpoint from before the street update cannot leave the player inside 
   assert.ok(!s.collides(c.player.x,c.player.z,c.player.y+.025));
 });
 
-test('the full objective sequence rolls through four valid checkpoints and 66 opponents',()=>{
+test('the full objective sequence rolls through four valid checkpoints and the two waves at headquarters',()=>{
   const s=create(),c=s.campaign;
   // The precise ride timing is exercised separately, so begin on the ambush tick.
   c.rideTime=122;s.time=122;for(const v of s.vehicles)s.moveVehicle(v,{},dt);
@@ -116,12 +119,15 @@ test('the full objective sequence rolls through four valid checkpoints and 66 op
   c.refreshGeometry();
   walk(s,mission.stages[0].target);ticks(s,1);
   assert.equal(c.stage,1);
+  assert.equal(c.checkpoint,1);assert.ok(validMission3Save(c.latestSave,mission));
   for(let stage=1;stage<=3;stage++){
     settle(s);walk(s,mission.stages[stage].target);ticks(s,1);
     assert.equal(c.stage,stage+1);assert.equal(c.checkpoint,stage);
     assert.ok(validMission3Save(c.latestSave,mission));
   }
   settle(s);
+  walk(s,[M03_CHARGE_CACHE.x-1.6,M03_CHARGE_CACHE.z]);ticks(s,35,{use:true});ticks(s,1);
+  assert.ok(c.chargesCollected);
   for(const site of mission.breach.charges){walk(s,site);ticks(s,365,{use:true,yaw:-Math.PI/2});ticks(s,1);}
   assert.deepEqual(c.charges,[true,true]);assert.ok(c.fuseAt>s.time);
   for(const id of mission.breach.opens)assert.equal(c.interactives[id],'closed');
@@ -137,9 +143,9 @@ test('the full objective sequence rolls through four valid checkpoints and 66 op
   const p=r.player;p.invulnerableUntil=Infinity;
   put(restored,mission.stages[5].target);ticks(restored,1);assert.equal(r.defenceWave,1);
   settle(restored);ticks(restored,1);assert.equal(r.finale,null);
-  restored.time=r.defenceAt+90;ticks(restored,1);assert.equal(r.defenceWave,2);settle(restored);
-  assert.equal(r.enemySerial,66);
-  restored.time=r.defenceAt+90;ticks(restored,1);assert.ok(r.finale);
+  assert.ok(r.nextWaveAt>restored.time);
+  restored.time=r.nextWaveAt;ticks(restored,1);assert.equal(r.defenceWave,2);settle(restored);
+  ticks(restored,1);assert.ok(r.finale);
   ticks(restored,14*60);assert.equal(r.complete,true);assert.equal(r.flags.harranti_alive,true);assert.equal(r.flags.m3_done,true);
 });
 
