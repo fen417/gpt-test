@@ -125,6 +125,27 @@ const reserved=[
 ];
 const lotFits=(x,z,w,d)=>[...structures,...reserved].every(s=>Math.abs(x-s.x)>(w+s.w)/2+2.6||Math.abs(z-s.z)>(d+s.d)/2+2.6);
 const district=settlement(box);
+function backgroundFacade(id,x,z,w,h,side,doorX,doorW,color,seed){
+  const outside=z-side*.18,wood='#806247',lintel=2.22;
+  const wall=(part,at,span,height,baseY=0)=>district.wall(id+part,at,z,span,{height,baseY,color});
+  wall('-header',doorX,doorW,h-lintel,lintel);
+  box(id+'-door-head','village-wood',doorX,outside,doorW+.19,.115,.14,wood,{baseY:lintel,noCollision:true});
+  for(const edge of [-1,1]){
+    const jamb=doorX+edge*doorW/2,limit=x+edge*w/2,span=Math.abs(limit-jamb),center=(limit+jamb)/2;
+    box(id+'-jamb-'+edge,'village-wood',jamb+edge*.055,outside,.11,.115,lintel,wood,{noCollision:true});
+    if(span<2.15||edge===1&&seed%3===2){wall('-wing-'+edge,center,span,h);continue;}
+    const windowW=Math.min(1.25,span*.52),bottom=1.04,top=1.96;
+    district.wall(id+'-wing-'+edge,center,z,span,{gap:windowW,height:h,color});
+    wall('-below-'+edge,center,windowW,bottom);
+    wall('-above-'+edge,center,windowW,h-top,top);
+    // The panel sits inside the masonry recess and fills the original solid wall.
+    box(id+'-window-'+edge,'village-wood',center,z+side*.045,windowW,.21,top-bottom,'#725b45',{baseY:bottom,overhead:true});
+    for(const y of [bottom+.19,bottom+.63])box(id+'-window-rail-'+edge+'-'+y,'village-wood',center,z-side*.07,
+      windowW,.045,.075,'#a48764',{baseY:y,noCollision:true});
+    box(id+'-window-sill-'+edge,'village-stone',center,outside,windowW+.18,.22,.105,'#b39a75',
+      {baseY:bottom-.08,noCollision:true});
+  }
+}
 const blocks=[-198,-168,-127,-97,-58,-16,25,61,98,137,179,207];
 for(const [row,band] of [-13,14,-31,33,-52,55,-74,78,-94,100].entries()){
   for(const [column,block] of blocks.entries())for(const wing of [0,1]){
@@ -137,8 +158,9 @@ for(const [row,band] of [-13,14,-31,33,-52,55,-74,78,-94,100].entries()){
     const serial=structures.length,id=`facade-${serial}`,color=colors[seed%colors.length],h=2.85+(seed%4)*.45;
     structures.push({id,kind:'village-facade',x,z,w,d,h,baseY:0,assetMapId:'village',color});
     const face=z-side*d/2,back=z+side*d/2;
-    district.wall(id+'-front',x,face,w,{gap:seed%3===0?2.9:1.55,offset:seed%2?.7:-.7,height:h,color});
+    backgroundFacade(id+'-front',x,face,w,h,side,x+(seed%2?.7:-.7),seed%3===0?2.9:1.55,color,seed);
     district.wall(id+'-back',x,back,w,{gap:1.65,height:h,color});
+    district.wall(id+'-back-header',x,back,1.65,{height:h-2.22,baseY:2.22,color});
     for(const end of [-1,1])district.wall(id+'-side-'+end,x+end*w/2,z,d,{axis:'z',height:h,color});
     box(id+'-roof','village-floor',x,z,w+.2,d+.2,.23,'#9b876e',{baseY:h,overhead:true});
     district.wall(id+'-parapet',x,back,w,{height:.33+seed%3*.16,color,baseY:h+.23});
@@ -149,8 +171,6 @@ for(const [row,band] of [-13,14,-31,33,-52,55,-74,78,-94,100].entries()){
         reserved.push({x:annexX,z:annexZ,w:annexWidth,d:annexDepth});
       }
     }
-    district.detail(id+'-sill','village-wood',x-w*.28,face-side*.18,1.5,.18,.16,'#75674f',{baseY:.83},2);
-    if(seed%3===0)district.wear(id+'-facade',x,face-side*.18,w,{side:-side});
   }
 }
 
@@ -181,8 +201,10 @@ district.sign('workshop-sign',-92,32.83,'МАСТЕРСКИЕ',{width:3.8});
 district.sign('market-sign',31,-13.6,'РЫНОК');
 for(const dx of [-1.05,1.05])box('market-sign-post-'+dx,'village-wood',31+dx,-13.6,.13,.16,2.9,'#7a6045');
 district.sign('service-sign',174,-17.26,'ШТАБ БРИГАДЫ',{width:4.2});
-for(const h of [houses.gate,houses.workshop,houses['market-west'],houses.headquarters])
-  district.wear(h.id+'-facade',h.x,h.z-h.d/2-.16,h.w);
+district.stall('tea-front-bench',-163.6,2.9,2.8,{roof:false});
+district.stall('lane-loading-table',-150.4,-8.25,2.6,{roof:false});
+dressing('lane-loading-crate','village-street-crate',-155.95,-8.65,1.05,.85,.78,'#8c704b');
+dressing('lane-threshold-jars','village-pottery',-128.3,-6.1,1.24,1.05,.65,'#b17c57',{noCollision:true});
 district.wall('unloading-south',-158,31,22,{gap:4.8,offset:-3,height:1.3});
 district.wall('unloading-east',-146,25,12,{axis:'z',gap:3,offset:2,height:1.45});
 district.canopy('tea-unloading',-166,24.8,5.8,3.4,{color:'#b79663'});

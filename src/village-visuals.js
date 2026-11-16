@@ -138,8 +138,25 @@ function marketGoods(owner, m, box) {
 function shutters(owner, m, structure) {
   const { x, z, w, d, h, baseY = 0, doorWidth = 5.6, doorHeight = 2.65 } = structure;
   const ruined = structure.kind === 'village-ruin';
+  if(structure.interactiveShutters){
+    // These houses have their own physical apertures. Fit the trim to the .32 m walls.
+    for(const side of [-1,1]){
+      const face=z+side*(d/2+.16),windowSide=x+side*(w/2+.16);
+      for(const edge of [-1,1])owner.box(owner.scene,x+edge*(doorWidth/2+.055),baseY+doorHeight/2,face,
+        .11,doorHeight,.13,m.wood,false);
+      owner.box(owner.scene,x,baseY+doorHeight+.063,face,doorWidth+.22,.16,.14,m.wood,false);
+      for(let floor=0;floor<structure.floors;floor++){
+        owner.box(owner.scene,windowSide,baseY+floor*3+.955,z,.16,.11,2.39,m.roof,false);
+        for(const edge of [-1,1])owner.box(owner.scene,windowSide,baseY+floor*3+1.575,z+edge*1.15,
+          .085,1.16,.095,m.wood,false);
+      }
+    }
+    const floor=owner.box(owner.scene,x,baseY+.015,z,w-.6,.025,d-.6,m.roof,false);
+    floor.receiveShadow=true;
+    return;
+  }
   const doorCenter=structure.doorHeight===undefined?1.32:doorHeight/2;
-  const shutterLevels=structure.interactiveShutters?0:structure.floors??1;
+  const shutterLevels=structure.floors??1;
   for (let level = 0; level < shutterLevels; level++) for (const side of ruined ? [-1] : [-1, 1]) for (const end of [-1, 1]) {
     const px = x + side * (w / 2 + .32), pz = z + end * d * .24;
     for (const edge of [-1, 1]) {
