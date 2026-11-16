@@ -4,7 +4,7 @@ import {moveBot,prepareNavigation} from '../bot-navigation.js';
 import {getWeapon,DIFFICULTIES} from '../world.js';
 import {aimCrew} from '../vehicle-ai.js';
 import {vehicleBoardingRange} from '../vehicles.js';
-import {ALHADRA,ROUTES} from './alhadra.js';
+import {ALHADRA,COURIER_SERVICE_ROAD,ROUTES} from './alhadra.js';
 import {MissionRuntime} from './mission-runtime.js';
 
 export const CAMPAIGN_SAVE_VERSION=1;
@@ -22,8 +22,7 @@ const quietLines=new Set(['m01.bruno.patrol','m01.duran.crouch','m01.duran.prone
 export const COURIER_PARK=Object.freeze({x:195,z:130,yaw:Math.PI/2});
 export const COURIER_ESCAPE_ROUTE=Object.freeze([
   {x:168,z:130},{x:167,z:104},{x:167,z:78},{x:120,z:78},
-  {x:117,z:56},{x:81,z:58},{x:47,z:28},{x:18,z:12},
-  {x:-17,z:8},{x:-75,z:-27},{x:-143,z:-81},
+  ...COURIER_SERVICE_ROAD.map(([x,z])=>({x,z})),
 ]);
 const persistentPlayerKeys=['id','name','team','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','stowedAmmo','x','y','z','yaw','pitch','hp','alive','ammo','reserve','grenades','rockets','kills','deaths','assists','score','bot','botSlot','grounded','lastHurt','lastShotAt','shotSeq','reviveSeq','downed','downedAt','downedTimer','reviver','syringes','medkits','medkitCapacity','suppressed','prone','campaignRole','campaignZone','campaignGroup','home','homeYaw','holdAt','guideIndex','sleeping','detection','patrolIndex','withdrawn','scriptedWound','officerCallAt','called','invulnerableUntil','secondaryCooldown','gadgetTime','spawnedAt','vehicleId','vehicleSeat'];
 

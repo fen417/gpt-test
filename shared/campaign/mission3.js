@@ -200,8 +200,10 @@ class ColumnDirector{
       const speed=this.skipHold>=1&&this.rideTime<90?10:1;
       this.rideTime=Math.min(combatAt,this.rideTime+Math.min(dt*speed,speed>1?90-this.rideTime:Infinity));
       if(speed>1){this.radio=null;this.queue.length=0;this.choices=null;}
-      const hull=this.sim.vehicles.find(v=>v.id==='sokol-7'),base=hull.yaw;
-      p.input=sanitizeInput({yaw:base+Math.max(-2.094,Math.min(2.094,angle((i.yaw??base)-base))),pitch:i.pitch});
+      const hull=this.sim.vehicles.find(v=>v.id===p.vehicleId);
+      const base=hull?hull.yaw+Math.PI:p.yaw;
+      const yaw=hull?base+Math.max(-2.094,Math.min(2.094,angle((i.yaw??base)-base))):i.yaw??base;
+      p.input=sanitizeInput({yaw,pitch:i.pitch});
     }else if(this.finale){p.input=sanitizeInput({yaw:p.yaw,pitch:p.pitch});}
     else{
       if(i.prone&&!this.previous.prone&&!p.downed)p.prone=!p.prone;

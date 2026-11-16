@@ -61,7 +61,7 @@ function flushDamage(now){
   for(const [target,item] of pendingDamage)if(now>=item.until){showScore(item,now);pendingDamage.delete(target);}
 }
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
-let gfx={shadows:'auto',resolution:'auto'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
+let gfx={shadows:'auto',resolution:'auto',detail:'auto'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -732,7 +732,7 @@ $('sensitivity').addEventListener('input',event=>{sensitivity=Number(event.targe
 $('quality').value=read('quality','high');quality=$('quality').value;
 document.body.classList.toggle('low-quality',quality!=='high');
 $('quality').addEventListener('change',event=>{quality=event.target.value;document.body.classList.toggle('low-quality',quality==='low');save('quality',quality);});
-for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution']]){const el=$(id);const stored=read(id,'auto');el.value=[...el.options].some(o=>o.value===stored)?stored:'auto';gfx[key]=el.value;el.addEventListener('change',event=>{gfx[key]=event.target.value;save(id,gfx[key]);});}
+for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution'],['gfx-detail','detail']]){const el=$(id);const stored=read(id,'auto');el.value=[...el.options].some(o=>o.value===stored)?stored:'auto';gfx[key]=el.value;el.addEventListener('change',event=>{gfx[key]=event.target.value;save(id,gfx[key]);});}
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
 $('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);toast('Сглаживание применится после перезагрузки страницы.');});
 $('volume').value=read('volume','0.5');audio.volume=Number($('volume').value);
@@ -1536,14 +1536,15 @@ function frame(now){
       yaw+=(Number(keys.has('ArrowLeft'))-Number(keys.has('ArrowRight')))*dt*1.7;
       pitch=Math.max(-1.45,Math.min(1.45,pitch+(Number(keys.has('ArrowUp'))-Number(keys.has('ArrowDown')))*dt*1.2));
     }
-    if(state?.campaign?.missionId==='m03'&&state.campaign.ride){
+    if(state?.campaign?.missionId==='m03'&&state.campaign.ride&&local()?.vehicleId==='sokol-7'){
       const hull=state.vehicles.find(v=>v.id==='sokol-7');
       if(hull){
-        if(columnHeading===null){yaw=hull.yaw;pitch=0;}
-        else yaw+=Math.atan2(Math.sin(hull.yaw-columnHeading),Math.cos(hull.yaw-columnHeading));
-        columnHeading=hull.yaw;
-        const relative=Math.atan2(Math.sin(yaw-hull.yaw),Math.cos(yaw-hull.yaw));
-        yaw=hull.yaw+Math.max(-2.094,Math.min(2.094,relative));
+        const heading=hull.yaw+Math.PI;
+        if(columnHeading===null){yaw=heading;pitch=0;}
+        else yaw+=Math.atan2(Math.sin(heading-columnHeading),Math.cos(heading-columnHeading));
+        columnHeading=heading;
+        const relative=Math.atan2(Math.sin(yaw-heading),Math.cos(yaw-heading));
+        yaw=heading+Math.max(-2.094,Math.min(2.094,relative));
       }
     }else columnHeading=null;
     if(state?.campaign?.missionId==='m04'&&state.campaign.mounted){

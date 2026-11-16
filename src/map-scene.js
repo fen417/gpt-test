@@ -65,6 +65,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
       const group = new THREE.Group();
       group.userData.editorKey = key;
       group.userData.editorParent = value.editorParent;
+      if(!editable&&value.detailLevel)group.userData.detailLevel=value.detailLevel;
       groups.set(key, group);
       root.add(group);
       owner.scene = group;

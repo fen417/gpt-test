@@ -66,6 +66,19 @@ test('static colour batching preserves transformed triangles and material groups
   assert.equal(root.children.length,1);assert.deepEqual(triangles(),before);
 });
 
+test('optional detail never batches together with visible cover',()=>{
+  const root=new THREE.Group(),sameMaterial=new THREE.MeshStandardMaterial();
+  for(const detailLevel of [0,1,2]){
+    const layer=new THREE.Group();layer.userData.detailLevel=detailLevel;root.add(layer);
+    for(const x of [2,4]){
+      const mesh=new THREE.Mesh(new THREE.BoxGeometry(),sameMaterial);
+      mesh.position.set(x,1,-3);layer.add(mesh);
+    }
+  }
+  batchStaticWorld(root);
+  assert.deepEqual(root.children.filter(object=>object.isMesh).map(mesh=>mesh.userData.detailLevel??0),[0,1,2]);
+});
+
 test('terrain simplification preserves chunk boundaries, road UVs and a 5 mm bound',()=>{
   const root=new THREE.Group(),geometry=new THREE.PlaneGeometry(48,48,24,24);
   geometry.setAttribute('roadUv',geometry.attributes.uv.clone());root.add(new THREE.Mesh(geometry,new THREE.MeshLambertMaterial()));

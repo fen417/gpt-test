@@ -32,6 +32,7 @@ function palette(owner) {
     shadow: new THREE.MeshBasicMaterial({ color: '#302c26' }),
     rock: desertRockMaterial(),
     paints: new Map(),
+    signMaterials: new Map(),
   };
   palettes.set(owner, result);
   return result;
@@ -201,10 +202,41 @@ export function createVillageModelBuilder(owner) {
     for (const box of boxes) {
       const { kind, x, z, w, d, h, baseY = 0, color = '#c3ad89' } = box;
       if (!kind.startsWith('village-')) continue;
+      if (kind === 'village-lettered-sign') {
+        const key=JSON.stringify([box.text,color]);
+        let material=m.signMaterials.get(key);
+        if(!material){
+          const canvas=document.createElement('canvas');canvas.width=320;canvas.height=72;
+          const ctx=canvas.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,320,72);
+          ctx.strokeStyle='#ead8ae';ctx.lineWidth=2;ctx.strokeRect(5,5,310,62);
+          ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#f7e6bc';
+          ctx.font='bold 31px sans-serif';ctx.fillText(box.text,160,37,290);
+          const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+          material=new THREE.MeshLambertMaterial({map:texture});
+          m.signMaterials.set(key,material);
+        }
+        owner.box(owner.scene,x,baseY+h/2,z,w,h,d,m.wood,false);
+        for(const sign of [-1,1]){
+          const face=new THREE.Mesh(new THREE.PlaneGeometry(w,h),material);
+          face.geometry.userData.owned=true;face.position.set(x,baseY+h/2,z+sign*(d/2+.01));
+          if(sign<0)face.rotation.y=Math.PI;
+          owner.scene.add(face);
+        }
+        continue;
+      }
       if (buildVillageProp(owner, { ...m, wall: painted(m, kind==='village-street-crate'?m.wood:m.stucco, color) }, box)) continue;
       if (kind === 'village-palm') { palm(owner, m, box); continue; }
       if (kind === 'village-rock') { desertMountain(owner, m.rock, box, terrain); continue; }
       if (kind === 'village-pottery') { pottery(owner, m, box); continue; }
+      if (kind === 'village-scrub') {
+        for(let i=0;i<6;i++){
+          const angle=i*2.4;
+          const blade=owner.box(owner.scene,x+Math.cos(angle)*w*.19,baseY+h*.39,z+Math.sin(angle)*d*.2,
+            w*.08,h*(.65+i%3*.14),d*.08,painted(m,m.wood,color),false);
+          blade.rotation.set(Math.sin(angle)*.52,angle,Math.cos(angle)*.56);
+        }
+        continue;
+      }
       if (kind === 'village-woven-baskets' || kind === 'village-produce-crates') { marketGoods(owner, m, box); continue; }
       if (kind === 'village-barrels') {
         for (const side of [-1, 1]) {

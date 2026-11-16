@@ -514,7 +514,9 @@ export class GameRenderer {
       try {
         this.buildWorld();
         this.mergeStaticWorld(new Set());
-        world = { root, flags: this.flags, water: this.portWater };
+        const details=[];
+        root.traverse(object=>{if(object.userData.detailLevel&&(object.isMesh||object.children.length))details.push(object);});
+        world = { root, flags: this.flags, water: this.portWater, details };
       } finally {
         Object.assign(this, live);
       }
@@ -536,6 +538,7 @@ export class GameRenderer {
     this.sun.color.set(map.sunColor ?? 0xffd7a4);
     this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
     this.staticRoot = world.root;
+    this.mapDetails=world.details;this.detailLevel=undefined;
     this.groundShadows.setMap(map);
     const shadowMaterials=new Map();
     this.staticRoot.traverse(mesh=>{
@@ -1561,6 +1564,12 @@ export class GameRenderer {
       this.applyQuality(low);
     }
     const gfx = view.gfx;
+    const detail=(gfx?.detail??'auto')==='auto'?this.quality:gfx.detail;
+    const detailLevel=detail==='high'?2:detail==='medium'?1:0;
+    if(this.detailLevel!==detailLevel){
+      this.detailLevel=detailLevel;
+      for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
+    }
     if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution)) {
       this.gfx = { shadows: gfx.shadows, resolution: gfx.resolution };
       this.applyShadows();

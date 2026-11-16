@@ -42,6 +42,24 @@ test('the starting truck has terrain support at all six wheel contacts',()=>{
   const heights=[-1.38,1.38].flatMap(x=>[-2.52,-.84,2.24].map(z=>ALHADRA.terrain.heightAt(truck.x+x,truck.z+z)));
   assert(Math.max(...heights)-Math.min(...heights)<.04);assert(Math.max(...heights.map(y=>Math.abs(y-truck.baseY)))<.04);
 });
+test('the courier drives all the way out behind the depot with ordinary vehicle physics',()=>{
+  const sim=new CampaignSimulation(mission,{lines:locale.lines});
+  const evac=sim.vehicles.find(vehicle=>vehicle.id==='campaign-evac-car');
+  sim.campaign.startCourierEvac(evac);
+  const route=evac.campaignRoute;
+  for(let i=0;i<12000&&route.index<route.points.length;i++)sim.moveVehicle(evac,{},1/60);
+  assert.equal(route.index,route.points.length);
+  assert.ok(evac.x<-142);
+});
+test('the market canopy and table openings let shots reach only solid parts',()=>{
+  const sim=new CampaignSimulation(mission,{lines:locale.lines});
+  const {x,z}=ALHADRA.boxes.find(box=>box.id==='alhadra-well-stall-0-counter');
+  const across=(x,y)=>sim.lineClear({x,y,z:z-.85},{x,y,z:z+.85});
+  assert.equal(across(x,.45),true);
+  assert.equal(across(x,.89),false);
+  assert.equal(across(x-3.1/2+.13,.45),false);
+  assert.equal(sim.lineClear({x,y:2.85,z},{x,y:2.24,z}),true);
+});
 test('route cover uses several grounded asset types; sandbags belong to strongpoints',()=>{
   const cover=ALHADRA.boxes.filter(b=>b.campaignCover),kinds=new Set(cover.map(b=>b.kind));assert(kinds.size>=4);
   const sand=cover.filter(b=>b.kind==='sandbags');assert(sand.length<=12);assert(sand.every(b=>b.modelRotation));

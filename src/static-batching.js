@@ -18,7 +18,11 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
   function materialKey(material){return signature(material)+'/'+(material._lowMaterial?signature(material._lowMaterial):'');}
   root.traverse(object=>{
     if(!object.isMesh||object.isInstancedMesh||object.children.length||object.userData.noBatch)return;
-    for(let node=object;node;node=node.parent)if(excluded.has(node))return;
+    let detailLevel=0;
+    for(let node=object;node;node=node.parent){
+      if(excluded.has(node))return;
+      detailLevel=Math.max(detailLevel,node.userData.detailLevel??0);
+    }
     const array=Array.isArray(object.material),groups=array?object.geometry.groups:[{start:0,count:object.geometry.index?.count??object.geometry.attributes.position.count,materialIndex:0}];
     if(array&&groups.some(group=>object.material[group.materialIndex]?.transparent))return;
     for(const group of groups){
@@ -27,12 +31,12 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
       if(material._lowMaterial?.color&&!material.color.equals(material._lowMaterial.color))continue;
       const surface=materialKey(material),sector=mapSector(object.matrixWorld,sectorSize);
       const attributes=Object.keys(object.geometry.attributes).filter(name=>name!=='color').sort().join(',');
-      const key=`${surface}/${object.castShadow}/${object.receiveShadow}/${sector}/${attributes}`;
-      if(!batches.has(key))batches.set(key,{surface,material,parts:[]});
+      const key=`${surface}/${object.castShadow}/${object.receiveShadow}/${sector}/${attributes}/${detailLevel}`;
+      if(!batches.has(key))batches.set(key,{surface,material,parts:[],detailLevel});
       batches.get(key).parts.push({object,group});
     }
   });
-  for(const {surface,material,parts} of batches.values()){
+  for(const {surface,material,parts,detailLevel} of batches.values()){
     if(parts.length<2)continue;
     let combinedMaterial=materials.get(surface);
     if(!combinedMaterial){
@@ -55,7 +59,9 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
     const geometry=mergeGeometries(geometries,false);geometries.forEach(g=>g.dispose());
     if(!geometry)continue;
     geometry.computeBoundingSphere();geometry.userData.owned=true;
-    const first=parts[0].object,mesh=new THREE.Mesh(geometry,combinedMaterial);mesh.castShadow=first.castShadow;mesh.receiveShadow=first.receiveShadow;root.add(mesh);
+    const first=parts[0].object,mesh=new THREE.Mesh(geometry,combinedMaterial);mesh.castShadow=first.castShadow;mesh.receiveShadow=first.receiveShadow;
+    if(detailLevel)mesh.userData.detailLevel=detailLevel;
+    root.add(mesh);
     for(const {object,group} of parts){
       // An array-material mesh may have groups that were not merged. Keep only
       // those groups on the source instead of deleting a partly consumed mesh.

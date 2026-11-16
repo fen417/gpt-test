@@ -92,7 +92,7 @@ const palms=[[-81,-49,6.1],[-72,-46,4.2],[-68,-39,7.0],[-79,-36,5.4],[-58,-42,5.
   [81,5,6.3],[86,13,4.6],[74,11,7.1],[-121,-63,5.1],[-137,-58,6.0]];
 for(const [i,[x,z,h]] of palms.entries()){
   additionalBoxes.push({id:`m02-palm-${i}`,kind:'village-palm',assetMapId:'village',x,z,h,
-    w:.65,d:.65,baseY:terrain.heightAt(x,z)-.08,modelRotation:{y:i*1.47}});
+    w:.65,d:.65,baseY:terrain.heightAt(x,z)-.08,trunkCollision:true,modelRotation:{y:i*1.47}});
 }
 const stones=[
   [-821,-316],[-760,-212],[-681,66],[-569,269],[-544,-475],

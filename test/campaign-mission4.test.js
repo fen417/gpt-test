@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import mission from '../public/campaign/m04/mission.json' with {type:'json'};
 import locale from '../public/campaign/m04/ru.json' with {type:'json'};
 import {Mission4Simulation,validMission4Save} from '../shared/campaign/mission4.js';
-import {SAFRA,SAFRA_GUN,SAFRA_NEST,SAFRA_WATER} from '../shared/campaign/safra.js';
+import {SAFRA,SAFRA_GUN,SAFRA_MINES,SAFRA_NEST,SAFRA_SAPPERS,SAFRA_WATER} from '../shared/campaign/safra.js';
 import {activateGadget} from '../shared/gadgets.js';
 
 const dt=1/60;
@@ -34,6 +34,12 @@ test('Safra has a continuous one-lane crossing, real river depth and walkable bu
     'the aperture admits the entire 70-degree machine-gun sector');
   assert.ok(sim.lineClear({x:73,y:4.58,z:-10},{x:82,y:4.49,z:-10}));
   assert.equal(sim.lineClear({x:73,y:3.55,z:-10},{x:82,y:3.55,z:-10}),false);
+  for(const [x,z] of SAFRA_SAPPERS)assert.equal(sim.collides(x,z),false);
+  for(const mine of SAFRA_MINES)for(const side of [-1,1]){
+    const sign=SAFRA.boxes.find(b=>b.id===`mine-warning-${mine.id}-${side}`);
+    const x=sign.x,z=sign.z+side*8;
+    assert.ok(sim.lineClear({x,y:sim.groundAt(x,z)+1.6,z},{x,y:sign.baseY+.2,z:sign.z}));
+  }
 });
 
 test('the complete mission reaches four checkpoints, five timed waves and the carried convoy',()=>{

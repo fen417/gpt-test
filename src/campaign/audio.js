@@ -14,8 +14,24 @@ export function campaignMusicMix({volume,defence,subtitle,radioReady}){
 export function usesCampaignRadio(missionId,speaker,key){
   if(missionId==='m02')return true;
   if(['orlov','officer','dargo'].includes(speaker))return true;
-  if(missionId==='m03')return ['timo','rafa'].includes(speaker)||key==='vos.trapped';
+  if(missionId==='m03')return ['timo','rafa'].includes(speaker)||speaker==='vos'&&key!=='vos.final'||
+    ['marten.night','marten.choiceHome','marten.choiceRoad'].includes(key);
   return missionId==='m04'&&['vos.move','taver.work','taver.loss'].includes(key);
+}
+function radioSwitch(context,opening){
+  const length=opening?.12:.14,rate=context.sampleRate;
+  const buffer=context.createBuffer(1,Math.ceil(length*rate),rate),samples=buffer.getChannelData(0);
+  let seed=opening?24771:62141,previous=0;
+  for(let i=0;i<samples.length;i++){
+    const t=i/rate;
+    seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+    const white=seed/2147483648-1,noise=white-previous*.72;previous=white;
+    const click=Math.sin(t*2*Math.PI*(opening?1550:970))*Math.exp(-t*245);
+    const squelch=Math.sin(t*2*Math.PI*(opening?1060:710))*Math.exp(-t*34);
+    const envelope=Math.min(1,(length-t)*110)*Math.exp(-t*19);
+    samples[i]=.34*click+.062*squelch+.12*noise*envelope;
+  }
+  return buffer;
 }
 export class CampaignAudio {
   constructor(combat,root,definition){
@@ -33,11 +49,17 @@ export class CampaignAudio {
     this.voiceMeter=c.createAnalyser();this.voiceMeter.fftSize=256;
     this.voiceSamples=new Float32Array(this.voiceMeter.fftSize);
     this.voiceBus.connect(this.voiceMeter);this.voiceMeter.connect(this.bus);
-    this.radioInput=c.createBiquadFilter();this.radioInput.type='highpass';this.radioInput.frequency.value=360;
-    const radioHigh=c.createBiquadFilter();radioHigh.type='lowpass';radioHigh.frequency.value=3150;
+    this.radioInput=c.createBiquadFilter();this.radioInput.type='highpass';this.radioInput.frequency.value=480;
+    const radioHigh=c.createBiquadFilter();radioHigh.type='lowpass';radioHigh.frequency.value=2950;
+    const presence=c.createBiquadFilter();presence.type='peaking';presence.frequency.value=1580;presence.Q.value=1.25;presence.gain.value=6;
+    const clipping=c.createWaveShaper();
+    clipping.curve=Float32Array.from({length:513},(_,i)=>Math.tanh((i/256-1)*3.2)*.48);
+    clipping.oversample='2x';
     const radioCompression=c.createDynamicsCompressor();
-    radioCompression.threshold.value=-22;radioCompression.ratio.value=3;radioCompression.knee.value=10;
-    this.radioInput.connect(radioHigh);radioHigh.connect(radioCompression);radioCompression.connect(this.voiceBus);
+    radioCompression.threshold.value=-21;radioCompression.ratio.value=4;radioCompression.knee.value=8;
+    this.radioInput.connect(presence);presence.connect(clipping);clipping.connect(radioHigh);
+    radioHigh.connect(radioCompression);radioCompression.connect(this.voiceBus);
+    this.radioSwitches=[radioSwitch(c,true),radioSwitch(c,false)];
     this.musicBus=c.createGain();this.musicBus.connect(this.bus);
     // Filtered wind is intentionally quiet, with no downloaded music stand-in.
     const buffer=c.createBuffer(1,c.sampleRate*3,c.sampleRate),data=buffer.getChannelData(0);let seed=8191;
@@ -45,17 +67,36 @@ export class CampaignAudio {
     this.wind=c.createBufferSource();this.wind.buffer=buffer;this.wind.loop=true;
     const filter=c.createBiquadFilter();filter.type='lowpass';filter.frequency.value=700;this.wind.connect(filter);filter.connect(this.musicBus);this.wind.start();
   }
-  stopVoice(){this.generation++;for(const s of this.sources){try{s.stop();}catch{}s.disconnect();}this.sources=[];}
+  stopVoice(){
+    this.generation++;this.radioEnd=0;
+    const playing=this.sources;this.sources=[];
+    for(const s of playing){s.onended=null;try{s.stop();}catch{}s.disconnect();}
+  }
+  finishVoice(){
+    const remaining=(this.radioEnd??0)-this.combat.ctx.currentTime;
+    if(remaining>0&&remaining<=.35)this.generation++;
+    else this.stopVoice();
+  }
+  playVoiceBuffer(buffer,output,at,offset=0){
+    const source=this.combat.ctx.createBufferSource();source.buffer=buffer;
+    source.connect(output);this.sources.push(source);source.start(at,offset);
+    source.onended=()=>{source.disconnect();this.sources=this.sources.filter(s=>s!==source);};
+  }
   async voice(line,remaining,missionId,key){
-    this.stopVoice();const generation=this.generation;
+    this.finishVoice();const generation=this.generation;
     const buffer=await this.buffer(line.audio);if(!buffer||generation!==this.generation||this.closed||this.paused)return;
     const late=(line.duration??4)-remaining;
     const offset=late>.22?late:0;
     if(offset>=buffer.duration)return;
-    const source=this.combat.ctx.createBufferSource();source.buffer=buffer;
-    source.connect(usesCampaignRadio(missionId,line.speaker,key)?this.radioInput:this.voiceBus);this.sources.push(source);
-    source.start(0,offset);
-    source.onended=()=>{source.disconnect();this.sources=this.sources.filter(s=>s!==source);};
+    const radio=usesCampaignRadio(missionId,line.speaker,key),now=Math.max(this.combat.ctx.currentTime,this.radioEnd??0);
+    const start=now+(radio&&offset===0?.095:0);
+    if(radio&&offset===0)this.playVoiceBuffer(this.radioSwitches[0],this.voiceBus,now);
+    this.playVoiceBuffer(buffer,radio?this.radioInput:this.voiceBus,start,offset);
+    if(radio){
+      const close=start+buffer.duration-offset;
+      this.playVoiceBuffer(this.radioSwitches[1],this.voiceBus,close);
+      this.radioEnd=close+this.radioSwitches[1].duration;
+    }
   }
   mouthOpening(){
     if(!this.voiceMeter||!this.sources.length)return 0;
@@ -101,7 +142,7 @@ export class CampaignAudio {
       if(paused){if(this.sources.length)this.stopVoice();this.key=null;return;}
       const key=mission.radio?.serial??null;
       if(key!==this.key){this.key=key;const lineKey=mission.radio?.key,line=locale.lines[lineKey];
-        if(line?.audio)this.voice(line,mission.radioRemaining??line.duration,mission.missionId,lineKey);else this.stopVoice();}
+        if(line?.audio)this.voice(line,mission.radioRemaining??line.duration,mission.missionId,lineKey);else this.finishVoice();}
       return;
     }
     this.paused=paused;this.bus.gain.setTargetAtTime(!paused&&this.combat.enabled?this.combat.volume*.82:0,c.currentTime,.04);
@@ -120,7 +161,7 @@ export class CampaignAudio {
     }
     const key=mission.subtitle?.serial??null;
     if(key!==this.key){this.key=key;if(mission.subtitle){const line=locale.lines[mission.subtitle.key];
-      if(line)this.voice(line,mission.subtitleRemaining??line.duration,mission.missionId,mission.subtitle.key);}else this.stopVoice();}
+      if(line)this.voice(line,mission.subtitleRemaining??line.duration,mission.missionId,mission.subtitle.key);}else this.finishVoice();}
     if(defence&&!this.radioDefenceLoading)this.startRadioDefence();
     // Keep backing stems playing until the optional defence OGG has decoded;
     // failed/missing downloads no longer silence the battle music.
