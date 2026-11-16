@@ -409,7 +409,7 @@ export class CombatAudio {
     if(bar===31&&eighth===7)this._noise(.42,.055,{...o,color:'pink',filter:'bandpass',cutoff:1900,attack:.25,send:.65});
   }
   _position(event,local){
-    if(!local||event.playerId===local.id)return {distance:0,pan:0,gain:1};
+    if(!local||(event.playerId!=null&&event.playerId===local.id))return {distance:0,pan:0,gain:1};
     const dx=(event.x??local.x)-local.x,dz=(event.z??local.z)-local.z,distance=Math.hypot(dx,dz),yaw=local.yaw||0;
     return {distance,pan:clamp((dx*Math.cos(yaw)-dz*Math.sin(yaw))/Math.max(4,distance),-.95,.95),gain:1/(1+distance*.042)};
   }
@@ -729,7 +729,7 @@ export class CombatAudio {
     // be evicted and replayed on the next animation frame during a busy battle.
     while(this.seen.size>8192)this.seen.delete(this.seen.keys().next().value);
   }
-  update(dt,{state,local,moving=0,sprinting=false,crouching=false,aim=false,locked=false,inMenu=false,paused=false,quality='high'}={}){
+  update(dt,{state,local,engineListener,moving=0,sprinting=false,crouching=false,aim=false,locked=false,inMenu=false,paused=false,quality='high'}={}){
     if(this._disposed)return;this.setMode(inMenu?'menu':'battle');
     if(this.ctx){const connected=quality!=='low';if(connected!==this._reverbConnected){for(const send of Object.values(this._reverbs)){send.disconnect();if(connected)send.connect(this._convolver);}this._convolver.disconnect();if(connected)this._convolver.connect(this._reverbWet);this._reverbConnected=connected;}}
     if(paused!==this._paused){this._paused=paused;this._mix();}
@@ -753,7 +753,8 @@ export class CombatAudio {
       this._target(this._muffle.frequency,muffle,suppressed?.06:.26);
     }
     if(critical&&!paused&&now>=this._heartbeat){this._tone(59,.16,.1,{end:38});this._tone(52,.13,.065,{time:now+.19,end:34});this._heartbeat=now+.9;}
-    this._updateEngine(state,local,inMenu||paused);
+    const briefing=state?.campaign?.missionId==='m02'&&state.campaign.cutscene?.id==='briefing';
+    this._updateEngine(state,local,inMenu||paused||(briefing&&!engineListener),briefing?engineListener:null);
     this._updateRocketAudio(state,local,inMenu||paused);
     const sliding=Boolean(canMove&&local.sliding&&!local.vehicleId);
     if(sliding&&now>=(this._slideSoundAt??0)){
@@ -886,15 +887,25 @@ export class CombatAudio {
       channel.gain.gain.cancelScheduledValues(now);channel.gain.gain.setTargetAtTime(0,now,.015);channel.source.stop(now+.08);this._rocketChannels.delete(id);
     }
   }
-  _updateEngine(state,local,silent){
+  _updateEngine(state,local,silent,engineListener){
     const now=this.ctx.currentTime;
     if(now<this._engineAt&&!silent)return;
     this._engineAt=now+.05;
     const buffer=this._foley.get('engine');
-    const candidates=buffer&&local?.alive&&!silent?(state?.vehicles??[]).filter(v=>v.hp>0&&v.seats[0]&&Math.hypot(v.x-local.x,v.z-local.z)<65)
-      .sort((a,b)=>(a.id===local.vehicleId?-1:1)-(b.id===local.vehicleId?-1:1)||Math.hypot(a.x-local.x,a.z-local.z)-Math.hypot(b.x-local.x,b.z-local.z)).slice(0,3):[];
+    const listener=engineListener??local;
+    const dialogue=state?.campaign?.radioRemaining>0;
+    const mix=engineListener?(dialogue?.4:.65):1;
+    const candidates=buffer&&local?.alive&&!silent?(state?.vehicles??[])
+      .filter(vehicle=>vehicle.hp>0&&vehicle.seats[0])
+      .map(vehicle=>({
+        vehicle,
+        own:vehicle.id===listener.vehicleId,
+        distance:Math.hypot(vehicle.x-listener.x,vehicle.z-listener.z,engineListener?vehicle.y-listener.y:0),
+      }))
+      .filter(entry=>entry.distance<(engineListener?95:65))
+      .sort((a,b)=>Number(b.own)-Number(a.own)||a.distance-b.distance).slice(0,3):[];
     const active=new Set();
-    for(const vehicle of candidates){
+    for(const {vehicle,own,distance} of candidates){
       active.add(vehicle.id);let channel=this._engineChannels.get(vehicle.id);
       if(!channel){
         const c=this.ctx,source=c.createBufferSource(),filter=c.createBiquadFilter(),gain=c.createGain(),pan=c.createStereoPanner?c.createStereoPanner():null;
@@ -908,15 +919,15 @@ export class CombatAudio {
         }
       }
       channel.stopAt=null;
-      const own=vehicle.id===local.vehicleId,spatial=this._position(vehicle,local),speed=Math.abs(vehicle.speed);
+      const speed=Math.abs(vehicle.speed);
       const gear=Math.min(4,1+Math.floor(speed/4.5)),load=(speed-(gear-1)*4.5)/4.5;
       const acceleration=Math.max(0,speed-channel.speed);
       const rate=(vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);
       this._target(channel.source.playbackRate,rate,.12);
-      this._target(channel.filter.frequency,(own?9500:6500)/(1+spatial.distance*.022),.1);
-      this._target(channel.gain.gain,(own?.30:.18)/(1+spatial.distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
-      if(channel.pan)this._target(channel.pan.pan,own?0:spatial.pan,.1);
-      if(channel.trackGain){this._target(channel.trackGain.gain,Math.min(1,(speed+Math.abs(vehicle.steer??0)*2)/8)*(own?.045:.025)*spatial.gain,.08);this._target(channel.trackSource.playbackRate,.7+Math.min(1.5,speed/9),.1);}
+      this._target(channel.filter.frequency,(own?9500:6500)/(1+distance*.022),.1);
+      this._target(channel.gain.gain,(own?.30:.18)*mix/(1+distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
+      if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
+      if(channel.trackGain){this._target(channel.trackGain.gain,Math.min(1,(speed+Math.abs(vehicle.steer??0)*2)/8)*(own?.045:.025)*mix/(1+distance*.042),.08);this._target(channel.trackSource.playbackRate,.7+Math.min(1.5,speed/9),.1);}
       if(own&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
       channel.speed=speed;channel.gear=gear;
     }

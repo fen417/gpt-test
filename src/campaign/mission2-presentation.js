@@ -3,6 +3,7 @@ import {TANK_CANNON,tankMuzzle,tankDropAngle} from '../../shared/tank.js';
 import {CampaignAudio} from './audio.js';
 import {TankMusic} from './tank-music.js';
 import {M02_BINDINGS,campaignTankSight} from '../../shared/campaign/tank-controls.js';
+import {mission2BriefingCamera} from './mission2-briefing-camera.js';
 import './mission2.css';
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -234,6 +235,17 @@ export class Mission2Presentation {
     const elevation=(3+12*t)*Math.PI/180;r.sunOffset.set(130,Math.tan(elevation)*130,0);
     r.lastShadowTx=NaN;
     const v=state.vehicles.find(v=>v.id==='sokol-7');
+    this.engineListener=null;
+    if(m.cutscene?.id==='briefing'&&v){
+      const tanks=state.vehicles.filter(tank=>tank.type==='tank'&&tank.team===v.team&&tank.hp>0);
+      const {position,target}=mission2BriefingCamera(r.map.terrain,tanks,v,this.definition.briefing,m.cutscene.elapsed);
+      this.engineListener=position;
+      r.camera.position.set(position.x,position.y,position.z);
+      r.camera.lookAt(target.x,target.y,target.z);
+      r.camera.fov=60;
+      r.camera.updateProjectionMatrix();
+      r.updateSunShadow(target.x,target.z);
+    }
     if(v&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
       this.nextTrackDustAt=r.clock+.19;
       for(const tank of state.vehicles){
@@ -313,14 +325,6 @@ export class Mission2Presentation {
           target.z-Math.cos(target.yaw)*target.speed*flight);
         if(p.visible){lead.hidden=false;lead.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-50%)`;}
       }
-    }
-    if(m.cutscene){
-      const path=this.definition.briefing.camera,progress=clamp(m.cutscene.elapsed/m.cutscene.duration,0,1),
-        scaled=progress*(path.length-1),index=Math.floor(scaled),f=scaled-index;
-      const a=path[Math.min(index,path.length-1)],b=path[Math.min(index+1,path.length-1)];
-      r.camera.position.set(a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f);
-      r.camera.lookAt(-900,1,-555);
-      r.camera.updateMatrixWorld();
     }
   }
   updateGuns(renderer,guns){

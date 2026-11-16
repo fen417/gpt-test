@@ -65,6 +65,34 @@ test('master mute, score mute and effects levels adjust independent live buses',
   audio.volume=9;audio.effectsVolume=-2;assert.equal(audio.volume,1);assert.equal(audio.effectsVolume,0);
 }));
 
+test('mission two briefing engines follow the camera and soften under radio dialogue',async()=>withAudio(async audio=>{
+  await audio.unlock();
+  audio._foley.set('engine',audio.ctx.createBuffer(1,8000,8000));
+  const local={id:'local',alive:true,hp:100,vehicleId:'player-tank',x:0,y:0,z:0,yaw:0};
+  const tanks=[
+    {id:local.vehicleId,x:0,y:0,z:0},
+    {id:'lead',x:50,y:0,z:-25},
+  ].map(tank=>({...tank,type:'tank',hp:100,speed:3,seats:['driver']}));
+  const state={vehicles:tanks,campaign:{missionId:'m02',cutscene:{id:'briefing'},radioRemaining:6}};
+  const engineListener={x:40,y:15,z:-4,yaw:0};
+  audio.update(.05,{state,local});
+  assert.equal(audio._engineChannels.size,0,'waits for the first cinematic camera frame');
+  audio.ctx.advance(.1);
+  audio.update(.05,{state,local,engineListener});
+  const player=audio._engineChannels.get(local.vehicleId),lead=audio._engineChannels.get('lead');
+  const dialogueGain=lead.gain.gain.value,dialogueTrack=lead.trackGain.gain.value;
+  assert.ok(dialogueGain>player.gain.gain.value&&dialogueGain<.04);
+  assert.ok(lead.pan.pan.value>0&&player.pan.pan.value<0);
+  state.campaign.radioRemaining=0;
+  audio.ctx.advance(.2);
+  audio.update(.05,{state,local,engineListener});
+  assert.ok(lead.gain.gain.value>dialogueGain&&lead.trackGain.gain.value>dialogueTrack);
+  state.campaign.cutscene=null;
+  audio.ctx.advance(.3);
+  audio.update(.05,{state,local,engineListener});
+  assert.ok(player.gain.gain.value>=.30&&player.pan.pan.value===0,'exit restores the driver mix');
+}));
+
 test('one short reverb is disconnected on low and fallback decoding is attempted',async()=>withAudio(async audio=>{
   await audio.unlock();
   assert.equal(audio._convolver.buffer.duration,.7);

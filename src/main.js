@@ -596,7 +596,9 @@ async function startCampaign(options){
     await session.ready;if(simulation!==session)return;
     state=session.snapshot();setBattleMap(state.mapId);renderer.setMap(state.mapId);
     if(second){
-      const {Mission2Presentation}=await import('./campaign/mission2-presentation.js');
+      const [{Mission2Presentation}]=await Promise.all([import('./campaign/mission2-presentation.js'),renderer.tankWarmup]);
+      if(simulation!==session)return;
+      renderer.setMap(state.mapId);
       campaignPresentation=new Mission2Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
       vehicleThirdPerson=true;campaignTankZoom=2.5;vehicleLook.id=null;
@@ -1562,7 +1564,9 @@ function frame(now){
   text('scope-zoom',scoped&&scopedWeapon?.zeroRange?`${magnification}× · ПРИСТРЕЛКА ${scopedWeapon.zeroRange} М${zoomHint}`:'');
   document.body.classList.toggle('scoped',scoped);
   if(renderState)audio.events(renderState,renderPlayer);
-  audio.update?.(dt,{quality,state:renderState??state,local:renderPlayer??local(),moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
+  audio.update?.(dt,{quality,state:renderState??state,local:renderPlayer??local(),
+    engineListener:active?campaignPresentation?.engineListener:null,
+    moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
   if(active){renderer.lastCpuMs=performance.now()-cpuBegin;cpuTimes.add(renderer.lastCpuMs);}
 }

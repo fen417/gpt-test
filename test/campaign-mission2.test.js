@@ -9,6 +9,8 @@ import {Mission2Simulation,validMission2Save} from '../shared/campaign/mission2.
 import {TANK_CANNON,moveTank,tankShellRicochets} from '../shared/tank.js';
 import {getAssetColliders,rayCollider} from '../shared/asset-colliders.js';
 import {findBotPath} from '../shared/bot-navigation.js';
+import {PerspectiveCamera,Vector3} from 'three';
+import {mission2BriefingCamera} from '../src/campaign/mission2-briefing-camera.js';
 
 function create(){return new Mission2Simulation(mission,{difficulty:'regular',seed:113,lines:locale.lines});}
 function step(sim,n){for(let i=0;i<n;i++)sim.step(1/60);}
@@ -97,6 +99,29 @@ test('ten allied tanks and player commander share one seat and controls',()=>{
   assert.equal(v.controlScheme,'wot');assert.equal(v.shellAmmo.ap,50);assert.equal(v.shellAmmo.he,30);
   assert.equal(sim.map.id,'alhadra-desert');
   assert.equal(sim.campaign.cutscene.id,'briefing');
+});
+test('the briefing camera keeps the moving column in frame throughout the march',()=>{
+  const sim=create(),terrain=sim.map.terrain;
+  const camera=new PerspectiveCamera(60,4/3,.045,1000);
+  const playerTank=sim.vehicles.find(v=>v.id===mission.player.vehicleId);
+  const firstX=playerTank.x;
+  for(let elapsed=0;elapsed<mission.briefing.duration;elapsed++,step(sim,60)){
+    const {position,target}=mission2BriefingCamera(terrain,sim.vehicles,playerTank,mission.briefing,elapsed);
+    camera.position.set(position.x,position.y,position.z);
+    camera.lookAt(target.x,target.y,target.z);
+    camera.updateMatrixWorld();
+    const visible=tank=>{
+      const center=new Vector3(tank.x,tank.y+1.5,tank.z);
+      const direction=center.clone().sub(camera.position);
+      const distance=direction.length();
+      const hit=terrain.raycast(position,direction.normalize(),distance);
+      center.project(camera);
+      return hit>=distance&&Math.abs(center.x)<.9&&Math.abs(center.y)<.85&&Math.abs(center.z)<1;
+    };
+    assert.ok(visible(playerTank),`player tank leaves the shot at ${elapsed}s`);
+    assert.ok(sim.vehicles.filter(visible).length>=8,`column leaves the shot at ${elapsed}s`);
+  }
+  assert.ok(playerTank.x>firstX+80,'the formation advances while the camera tracks it');
 });
 test('the moving vanguard crests the ridge and fires at 13 seconds',()=>{
   const sim=create();step(sim,120);assert.equal(sim.vehicles.filter(v=>v.team===1).length,0);

@@ -233,22 +233,11 @@
   "briefing": {
     "duration": 52,
     "caption": "АЛЬ-ХАДРА, 05:12",
-    "camera": [
-      [
-        -450,
-        26,
-        -470
-      ],
-      [
-        -650,
-        20,
-        -480
-      ],
-      [
-        -830,
-        25,
-        -530
-      ]
+    "cameraOffsets": [
+      {"forward": 54, "right": 30, "height": 16},
+      {"forward": 24, "right": 45, "height": 14},
+      {"forward": -20, "right": 48, "height": 12},
+      {"forward": -48, "right": 28, "height": 13}
     ],
     "lines": [
       {
