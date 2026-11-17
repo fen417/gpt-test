@@ -10,10 +10,10 @@ const weaponNames = {
   mg36: 'm4a1', pkp: 'ak47', sv98: 'm24', dmr12: 'm24', p19: 'p226', m50: 'm1911',
 };
 const weaponFit = {
-  m4a1: { primary: [0, -.17, .215], support: [-.022, -.095, -.55], muzzle: [0, .049, -1.265], scale: .54 },
-  ak47: { primary: [0, -.073, -.122], support: [-.022, -.025, -.55], muzzle: [0, .005, -1.135], scale: .72 },
+  m4a1: { primary: [0, -.17, .215], support: [-.038, -.031, -.31], muzzle: [0, .049, -1.265], scale: .54 },
+  ak47: { primary: [0, -.073, -.122], support: [-.029, -.027, -.43], muzzle: [0, .005, -1.135], scale: .72 },
   mp5a5: { primary: [0, -.098, -.103], support: [-.041, .034, -.387], muzzle: [0, .146, -.85], scale: .70 },
-  m24: { primary: [-.005, -.08, -.07], support: [-.021, .045, -.56], muzzle: [0, .08, -1.42], scale: .68 },
+  m24: { primary: [-.005, -.08, -.07], support: [-.025, .023, -.42], muzzle: [0, .08, -1.42], scale: .68 },
   p226: { primary: [0, -.03, .237], support: [-.065, -.04, .225], muzzle: [0, .09, -.08], scale: .60, pistol: true },
   m1911: { primary: [-.011, -.03, .245], support: [-.065, -.04, .235], muzzle: [0, .09, -.08], scale: .70, pistol: true },
 };
@@ -179,11 +179,21 @@ function prepareWeapon(gltf, name) {
   model.scale.setScalar(scale);
   model.position.copy(primary).multiplyScalar(-scale);
   const magazine = model.getObjectByName('Magazine');
+  let magazineContact;
+  if (magazine) {
+    const box = new THREE.Box3().setFromObject(magazine, true);
+    if (!box.isEmpty()) {
+      magazineContact = box.getCenter(new THREE.Vector3());
+      magazineContact.x = box.min.x - .006;
+      magazineContact.y = THREE.MathUtils.lerp(box.min.y, box.max.y, .37);
+      magazine.worldToLocal(magazineContact);
+    }
+  }
   return {
     model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol),
     support: from(fit.support).sub(primary).multiplyScalar(scale),
     muzzle: from(fit.muzzle).sub(primary).multiplyScalar(scale),
-    magazineName: magazine?.name,
+    magazineName: magazine?.name, magazineContact,
   };
 }
 
