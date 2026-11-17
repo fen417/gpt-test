@@ -10,7 +10,7 @@ const weaponNames = {
   mg36: 'm4a1', pkp: 'ak47', sv98: 'm24', dmr12: 'm24', p19: 'p226', m50: 'm1911',
 };
 const weaponFit = {
-  m4a1: { primary: [0, -.17, .215], support: [-.038, -.164, -.577], muzzle: [0, .049, -1.265], scale: .54, foregrip: true },
+  m4a1: { primary: [0, -.17, .215], support: [-.047, -.125, -.541], muzzle: [0, .049, -1.265], scale: .54, foregrip: true },
   ak47: { primary: [0, -.073, -.122], support: [-.036, -.048, -.43], muzzle: [0, .005, -1.135], scale: .72 },
   mp5a5: { primary: [0, -.098, -.103], support: [-.043, -.010, -.382], muzzle: [0, .146, -.85], scale: .70 },
   m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.43], muzzle: [0, .08, -1.42], scale: .68 },

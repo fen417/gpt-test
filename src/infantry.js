@@ -101,7 +101,7 @@ function handBasis(forward, indexward, out) {
 const primaryPalm = new THREE.Vector3(.024, .013, .015), supportPalm = new THREE.Vector3();
 const rightGrip = handBasis(new THREE.Vector3(-.29, -.13, -.95), flatNormal, new THREE.Quaternion());
 const leftGrip = handBasis(new THREE.Vector3(.58, .08, -.81), new THREE.Vector3(-.81, 0, -.58), new THREE.Quaternion());
-const foregripHold = handBasis(new THREE.Vector3(.84, .27, -.46), new THREE.Vector3(0, .90, -.42), new THREE.Quaternion());
+const foregripHold = handBasis(new THREE.Vector3(.12, .25, -.96), new THREE.Vector3(0, .90, -.42), new THREE.Quaternion());
 const pistolSupport = handBasis(new THREE.Vector3(.28, .06, -.96), flatNormal, new THREE.Quaternion());
 const magazineGrip = handBasis(new THREE.Vector3(.78, -.10, -.62), flatNormal, new THREE.Quaternion());
 const supportFrame = new THREE.Quaternion();
@@ -127,6 +127,7 @@ function bindHand(bones, prefix) {
     thumb: [1, 2, 3].map(n => bones[prefix + 'HandThumb' + n]),
   };
   hand.closed = closedFingers(hand, prefix === 'Right');
+  if (prefix === 'Left') hand.wrapped = closedFingers(hand, false, true);
   return hand;
 }
 
@@ -193,19 +194,21 @@ function gripHand(rig, hand, grip, frame, side, weight) {
   hand.wrist.updateWorldMatrix(false, true);
 }
 
-function closedFingers(hand, right) {
+function closedFingers(hand, right, foregrip = false) {
   hand.wrist.getWorldQuaternion(handWorld);
   rifleWorld.copy(handWorld).multiply(hand.basis);
   fingerForward.set(0, 0, -1).applyQuaternion(rifleWorld);
   fingerAxis.set(right ? -1 : 1, 0, 0).applyQuaternion(rifleWorld);
   const result = [], original = [];
   for (const [index, chain] of hand.fingers.entries()) {
-    const curl = right ? (index === 0 ? [.15, .54, 1.08] : [.62, 1.52, 2.05]) : [.55, 1.19, 1.72];
+    const curl = right ? (index === 0 ? [.15, .54, 1.08] : [.62, 1.52, 2.05]) :
+      foregrip ? [.27, 1.36, 2.75] : [.55, 1.19, 1.72];
     for (let i = 0; i < 3; i++) {
       const bone = chain[i], next = chain[i + 1];
       if (!bone || !next) continue;
       const from = next.getWorldPosition(b).sub(bone.getWorldPosition(a));
       fingerAim.copy(fingerForward).multiplyScalar(Math.cos(curl[i])).addScaledVector(fingerAxis, Math.sin(curl[i]));
+      if (foregrip && index === 3) fingerAim.addScaledVector(palmUp.set(0, 1, 0).applyQuaternion(rifleWorld), .34);
       original.push([bone, bone.quaternion.clone()]);
       aimJoint(bone, from, fingerAim);
       result.push([bone, bone.quaternion.clone()]);
@@ -218,8 +221,8 @@ function closedFingers(hand, right) {
       if (!bone || !next) continue;
       original.push([bone, bone.quaternion.clone()]);
       const from = next.getWorldPosition(b).sub(bone.getWorldPosition(a));
-      fingerAim.copy(fingerForward).addScaledVector(palmUp, i === 0 ? .45 : .27)
-        .addScaledVector(fingerAxis, i === 0 ? .30 : .58);
+      fingerAim.copy(fingerForward).addScaledVector(palmUp, foregrip ? (i === 0 ? -.18 : -.53) : (i === 0 ? .45 : .27))
+        .addScaledVector(fingerAxis, foregrip ? (i === 0 ? .38 : .86) : (i === 0 ? .30 : .58));
       aimJoint(bone, from, fingerAim);
       result.push([bone, bone.quaternion.clone()]);
     }
@@ -229,11 +232,11 @@ function closedFingers(hand, right) {
   return result;
 }
 
-function closeFingers(rig, hand, weight) {
+function closeFingers(rig, hand, weight, wrap = 0) {
   if (weight < .01) return;
-  for (const [bone, rotation] of hand.closed) {
+  for (const [index, [bone, rotation]] of hand.closed.entries()) {
     saveRotation(rig, bone);
-    bone.quaternion.slerp(rotation, weight);
+    bone.quaternion.slerp(wrap ? q.slerpQuaternions(rotation, hand.wrapped[index][1], wrap) : rotation, weight);
   }
 }
 
@@ -524,7 +527,7 @@ function applyWeapon(rig, player, dt, reload, actionWeight, controls = false) {
     if (rig.lod < 2) {
       closeFingers(rig, rig.rightHand, 1);
       const transition = magazineWeight * (1 - magazineWeight);
-      closeFingers(rig, rig.leftHand, supportWeight * (1 - 1.5 * transition));
+      closeFingers(rig, rig.leftHand, supportWeight * (1 - 1.5 * transition), rig.foregrip ? 1 - magazineWeight : 0);
     }
   }
   rig.flash.visible = rifle.visible && rig.shotAge < .042 && rig.lod < 2;
