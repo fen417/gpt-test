@@ -1,87 +1,37 @@
 <!doctype html>
 <html lang="ru">
-  <meta charset="utf-8" /><title>Soldier 0.10 review</title
-  ><style>
-    body {
-      margin: 0;
-      background: #242b30;
-      color: #eee;
-      font: 14px system-ui;
-    }
-    nav {
-      padding: 12px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: center;
-    }
-    canvas {
-      display: block;
-    }
-    select,
-    button {
-      background: #39454b;
-      color: white;
-      padding: 7px;
-      border: 1px solid #71818a;
-    }
-    #info {
-      margin-left: auto;
-      white-space: pre;
-    }
-  </style>
-  <nav>
-    <b>Бойцы 0.10</b
-    ><select id="state">
-      <option>idle</option>
-      <option>walk</option>
-      <option>run</option>
-      <option>sprint</option>
-      <option>strafe-left</option>
-      <option>strafe-right</option>
-      <option>back</option>
-      <option>diagonal</option>
-      <option>stop</option>
-      <option>turn</option>
-      <option>reverse</option>
-      <option>crouch</option>
-      <option>jump</option>
-      <option>reload</option>
-      <option>death</option>
-      <option>rest</option></select
-    ><select id="weapon">
-      <option>ar416</option>
-      <option>mcx9</option>
-      <option>mg36</option>
-      <option>sv98</option>
-      <option>p19</option>
-      <option>m50</option></select
-    ><select id="view">
-      <option>perspective</option>
-      <option>front</option>
-      <option>back</option>
-      <option>side</option></select
-    ><select id="lod">
-      <option>0</option>
-      <option>1</option>
-      <option>2</option></select
-    ><select id="count">
-      <option>1</option>
-      <option>10</option>
-      <option>20</option>
-      <option>32</option></select
-    ><button id="uniform">Форма / экипировка</button>
-    <label
-      >Гц
-      <select id="fps">
-        <option>60</option>
-        <option>30</option>
-        <option>120</option>
-      </select></label
-    >
-    <label><input id="remote" type="checkbox" />Снимки 20 Гц</label>
-    <label><input id="diagnostics" type="checkbox" checked />Диагностика</label>
-    <span id="info"></span>
-  </nav>
-  <script type="module" src="./src/soldier-review.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SECTOR 09 · Проверка бойцов</title>
+<style>
+  body { margin: 0; background: #242c32; color: #edf2f3; font: 14px system-ui; }
+  nav { display:flex; align-items:center; flex-wrap:wrap; padding: .75rem; gap:.75rem; }
+  canvas { display:block; }
+  select { background:#38464d; color:inherit; border:1px solid #64767d; padding:.35rem; }
+  label { white-space:nowrap; }
+  #info { margin-left:auto; }
+</style>
+<nav id="toolbar">
+  <strong>SECTOR 09</strong>
+  <label>Состояние <select id="state">
+    <option>idle</option><option>walk</option><option>run</option><option>sprint</option>
+    <option>strafe-left</option><option>strafe-right</option><option>back</option><option>diagonal</option>
+    <option>crouch-idle</option><option>crouch</option><option>slide</option><option>jump</option>
+    <option>stop</option><option>turn</option><option>reverse</option><option>aim</option><option>shoot</option>
+    <option>reload</option><option>switch</option><option>throw</option><option>hit</option><option>death</option><option>seat</option>
+  </select></label>
+  <label>Оружие <select id="weapon">
+    <option>ar416</option><option>ak12</option><option>mcx9</option><option>mg36</option><option>sv98</option><option>p19</option><option>m50</option>
+  </select></label>
+  <label>Вид <select id="view"><option>perspective</option><option>front</option><option>side</option><option>back</option></select></label>
+  <label>LOD <select id="lod"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
+  <label>Бойцы <select id="count"><option>2</option><option>10</option><option>20</option><option>32</option></select></label>
+  <label>Шаг симуляции <select id="fps"><option>60</option><option>30</option><option>120</option></select> Гц</label>
+  <label>Скорость <select id="speed"><option value="0.65">0,65×</option><option value="1" selected>1×</option><option value="1.2">1,2×</option></select></label>
+  <label><input type="checkbox" id="remote"> Снимки 20 Гц</label>
+  <label><input type="checkbox" id="diagnostics" checked> Запись опорных фаз</label>
+  <label><input type="checkbox" id="pause"> Пауза</label>
+  <output id="info"></output>
+</nav>
+<script type="module" src="./src/soldier-review.js"></script>
 </html>

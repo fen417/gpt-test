@@ -3,10 +3,9 @@ import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
 import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
-import {soldierAssetKey,soldierAssetState,requestSoldierAsset} from './soldier-assets.js';
+import { InfantryAssets } from './infantry-assets.js';
 import {GroundShadows} from './ground-shadows.js';
 import {PostPass} from './post-pass.js';
-import {FarSoldiers} from './far-soldiers.js';
 import {AdaptiveResolution} from './adaptive-resolution.js';
 import { GpuTimer } from './gpu-timer.js';
 import { ReloadTimeline } from './reload-timeline.js';
@@ -29,9 +28,9 @@ import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MI
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
-  createSoldierRig, cloneSoldierRig, animateSoldier,
-  soldierHit, soldierThrow, beginDeath, animateDeath, poseSeatedSoldier,
-} from './soldier.js';
+  createInfantry, setInfantryWeapon, disposeInfantry, setInfantryLod, updateInfantry,
+  infantryHit, infantryAction, infantryDeath, infantrySeat,
+} from './infantry.js';
 
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
 const TEAM_COLORS = [0x5bd9e8, 0xf0a15d];
@@ -164,7 +163,6 @@ export class GameRenderer {
     this.adaptiveScale = 1;this.resolutionController=new AdaptiveResolution();
     this.scaleCooldown = 0;
     this.soldiers = new Map();
-    this.soldierTemplates = new Map();
     this.activeSoldiers = new Set();
     this.flags = new Map();
     this.grenadeMeshes = new Map();
@@ -214,7 +212,6 @@ export class GameRenderer {
     this.effectBounds = new THREE.Sphere(new THREE.Vector3(), 12);
     this.cachedShadows=new CachedShadows();this.interiorVisibility=new InteriorVisibility();
     this.surfaceCache = new Map();
-    this.soldierMaterials = new Map();
     this.random = seeded();
     const integratedProbe = detectIntegratedGpu();
     try {
@@ -407,8 +404,6 @@ export class GameRenderer {
     });
     for (let i = 0; i < 32; i++) this.effectPools.spark.push({ mesh: new THREE.Mesh(this.geo.sphere, this.sparkMaterial), type: 'spark' });
 
-    const sampleSoldier0 = this.soldierTemplates.get('0:assault:ar416')?.group;
-    const sampleSoldier1 = this.soldierTemplates.get('1:recon:sv98')?.group;
     const sampleGrenade = this.createGrenadeMesh();
     const sampleGadgetGroup = new THREE.Group();
     for (const m of Object.values(this.gadgetAssets)) {
@@ -419,7 +414,7 @@ export class GameRenderer {
     const sampleSmoke = this.effectPools.smoke[0]?.mesh;
     const sampleSpark = this.effectPools.spark[0]?.mesh;
     const sampleShell = this.effectPools.shell[0]?.mesh;
-    const temp = [sampleSoldier0, sampleSoldier1, sampleGrenade, sampleGadgetGroup, sampleTracer, sampleSmoke, sampleSpark, sampleShell].filter(Boolean);
+    const temp = [sampleGrenade, sampleGadgetGroup, sampleTracer, sampleSmoke, sampleSpark, sampleShell].filter(Boolean);
     for (const node of temp) this.worldRoot.add(node);
     for (const f of this.flags.values()) f.teamFlag.visible = true;
     try {
@@ -569,7 +564,6 @@ export class GameRenderer {
   }
 
   clearMapDynamics() {
-    this.farSoldiers?.clear();
     this.bulletMarks.clear();
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
@@ -753,28 +747,16 @@ export class GameRenderer {
 
   makeSoldier(player) {
     const weaponId = player.weaponId || defaultWeaponId(player.classId);
-    const key = `${player.team}:${player.classId}:${weaponId}`;
-    let template = this.soldierTemplates.get(key);
-    if (!template) {
-      const assetKey=soldierAssetKey({...player,weaponId});
-      if(soldierAssetState(assetKey)===undefined){requestSoldierAsset(assetKey);return null;}
-      if(this.templatesBuiltFrame>=1)return null;this.templatesBuiltFrame++;
-      template = createSoldierRig(this, { ...player, weaponId });
-      applyTextureFiltering([template.group],[],this.quality??'high',this.renderer.capabilities.getMaxAnisotropy());
-      if (!this.integratedGpu) template.group.traverse(optimizeLighting);
-      this.soldierTemplates.set(key, template);
-    }
-    const rig = cloneSoldierRig(template, { ...player, weaponId });
-    rig.weaponId = weaponId;
-    rig.stepIndex = this.soldiers.size;
+    this.infantry ??= new InfantryAssets(this.renderer);
+    const asset = this.infantry.get(player.team, weaponId);
+    if (!asset) return null;
+    const rig = createInfantry(asset, { ...player, weaponId });
+    if (!this.integratedGpu) rig.group.traverse(optimizeLighting);
     return rig;
   }
 
   removeSoldier(soldier) {
-    soldier.group.removeFromParent();
-    soldier.body.skeleton.dispose();
-    soldier.flash.material.dispose();
-    soldier.marker.material.dispose();
+    disposeInfantry(soldier);
   }
 
   clearVehicles() {
@@ -830,8 +812,11 @@ export class GameRenderer {
   }
 
   updateSoldiers(state, localId, dt, networkInterpolated=false) {
-    this.farSoldiers??=new FarSoldiers(this.worldRoot);this.farSoldiers.begin(this.clock);
     if(!this.surfacesReady)return;
+    if (!this.infantry) {
+      this.infantry = new InfantryAssets(this.renderer);
+      this.infantry.warm();
+    }
     const active = this.activeSoldiers;
     active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
@@ -843,7 +828,7 @@ export class GameRenderer {
       this.sun.shadow.updateMatrices(this.sun);
       shadowFrustum = this.sun.shadow.getFrustum();
     }
-    const distantLimit = this.quality==='high'?60:this.quality==='medium'?35:22;
+    const lodLimits = this.quality === 'high' ? [24, 53, 105] : this.quality === 'medium' ? [14, 32, 76] : [9, 22, 50];
     // Use projected size so magnification keeps distant targets detailed.
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
@@ -864,27 +849,18 @@ export class GameRenderer {
       const stowing = soldier && soldier.classId === player.classId && soldier.team === player.team &&
         weaponSwitchPose(player.equipTime).stowing;
       const weaponId = stowing ? soldier.weaponId : activeWeaponId;
-      let previousRig = null, previousParent = null;
-      if (soldier && (soldier.classId !== player.classId || soldier.team !== player.team || soldier.weaponId !== weaponId)) {
-        if (soldier.classId === player.classId && soldier.team === player.team && soldier.alive && player.alive !== false) {
-          previousRig = soldier;
-          previousParent = soldier.group.parent;
-        }
+      if (soldier && (soldier.classId !== player.classId || soldier.team !== player.team)) {
         this.removeSoldier(soldier);
+        this.soldiers.delete(player.id);
         soldier = null;
       }
       if (!soldier) {
-        soldier = this.makeSoldier(player);
-        if(!soldier)continue;
-        if (previousRig) {
-          soldier.group.position.copy(previousRig.group.position);
-          soldier.group.rotation.copy(previousRig.group.rotation);
-          soldier.pose.position.copy(previousRig.pose.position);
-          soldier.motion = previousRig.motion;
-          soldier.initialized = previousRig.initialized;
-          previousParent?.add(soldier.group);
-        }
+        soldier = this.makeSoldier({ ...player, weaponId });
+        if (!soldier) continue;
         this.soldiers.set(player.id, soldier);
+      } else if (soldier.weaponId !== weaponId) {
+        const asset = this.infantry.get(player.team, weaponId);
+        if (asset) setInfantryWeapon(soldier, asset.gun, weaponId);
       }
       const { group } = soldier;
       if(player.vehicleId&&player.alive!==false){
@@ -898,23 +874,20 @@ export class GameRenderer {
         group.rotation.set(0,relativeYaw,0);group.visible=true;
         // Distant infantry may have switched off their detailed body before
         // entering. Restore it when seated so the whole crew cannot disappear.
-        soldier.body.visible=true;
         const position=getVehicleSeatPose(vehicle,index),distSq=this.camera.position.distanceToSquared(this.scratchPosition.set(position.x,position.y,position.z))*viewScale**2;
-        soldier.body.geometry=distSq>(this.lowQuality?55:95)**2?soldier.distantGeometry:distSq>28**2?soldier.mediumGeometry:soldier.detailGeometry;
-        soldier.body.castShadow=!this.lowQuality&&distSq<48**2;
+        setInfantryLod(soldier, distSq > lodLimits[2] ** 2 ? 3 : distSq > lodLimits[1] ** 2 ? 2 : distSq > lodLimits[0] ** 2 ? 1 : 0, !this.lowQuality && distSq < 48 ** 2);
         this.soldierBounds.center.set(position.x,position.y-.4,position.z);
         group.visible=this.viewFrustum.intersectsSphere(this.soldierBounds)||Boolean(shadowFrustum?.intersectsSphere(this.soldierBounds)&&distSq<48**2);
-        poseSeatedSoldier(soldier,{vehicle,seat,index,relativeYaw:Math.atan2(Math.sin(player.yaw-vehicle.yaw-relativeYaw),Math.cos(player.yaw-vehicle.yaw-relativeYaw)),pitch:player.pitch,shotSeq:player.shotSeq,dt});
+        infantrySeat(soldier,{vehicle,seat,index,relativeYaw:Math.atan2(Math.sin(player.yaw-vehicle.yaw-relativeYaw),Math.cos(player.yaw-vehicle.yaw-relativeYaw)),pitch:player.pitch,shotSeq:player.shotSeq,dt});
         // Keep the light-vehicle placeholder visible until the full soldier
         // rig is actually drawn; don't blank the seat if assets are still loading.
-        if(rig.riders[index])rig.riders[index].visible=fallbackRiderVisible(vehicle,index,localId,group.parent===rig.body&&group.visible&&soldier.body.visible);
+        if(rig.riders[index])rig.riders[index].visible=fallbackRiderVisible(vehicle,index,localId,group.parent===rig.body&&group.visible);
         soldier.seated=true;
         continue;
       }
       if(soldier.seated){
         group.userData.seatedActor=false;
         group.removeFromParent();this.worldRoot.add(group);group.rotation.set(0,player.yaw,0);soldier.initialized=false;soldier.seated=false;
-        const shadow=group.getObjectByName('soldier-contact-shadow');if(shadow)shadow.visible=true;
       }
       const externalScene = Boolean(group.parent && group.parent !== this.worldRoot);
       const alive = player.alive !== false;
@@ -924,18 +897,23 @@ export class GameRenderer {
         if (!soldier.alive) {
           group.rotation.x = 0;
           group.rotation.z = 0;
-          soldier.death = null;
           soldier.deathAge = 0;
         }
         const interpolation = reset || !soldier.alive ? 1 : blend;
         group.position.lerp(target, interpolation);
-        const yawDifference = (player.yaw || 0) - group.rotation.y;
-        group.rotation.y += Math.atan2(Math.sin(yawDifference), Math.cos(yawDifference)) * interpolation;
+        const desiredYaw = player.sliding ? player.slideYaw ?? player.yaw : player.yaw;
+        const yawDifference = (desiredYaw || 0) - group.rotation.y;
+        const yawDelta = Math.atan2(Math.sin(yawDifference), Math.cos(yawDifference));
+        if (reset || !soldier.alive) group.rotation.y = player.yaw || 0;
+        else {
+          const tolerance = player.sliding ? 0 : .30;
+          const turnRate = 1 - Math.exp(-dt * 12);
+          group.rotation.y += Math.sign(yawDelta) * Math.max(0, Math.abs(yawDelta) - tolerance) * turnRate;
+        }
       } else {
         if (!soldier.initialized) group.position.copy(target);
         if (soldier.alive) {
           soldier.deathAge = 0;
-          beginDeath(soldier, target.y);
         }
         soldier.deathAge += dt;
       }
@@ -954,44 +932,30 @@ export class GameRenderer {
       }
       const returning = !group.parent;
       if (returning) this.worldRoot.add(group);
-      group.visible = true;soldier.body.visible=true;
+      group.visible = true;
+      const projectedDistanceSq = this.camera.position.distanceToSquared(this.soldierBounds.center) * viewScale ** 2;
+      let lod = soldier.lod;
+      while (lod < 3 && projectedDistanceSq > (lodLimits[lod] * 1.07) ** 2) lod++;
+      while (lod > 0 && projectedDistanceSq < (lodLimits[lod - 1] * .93) ** 2) lod--;
+      setInfantryLod(soldier, lod, lod < 2 && (this.quality === 'medium' ? distSq < 20 ** 2 : !this.lowQuality && distSq < 48 ** 2));
       if (!alive) {
-        soldier.body.geometry = soldier.detailGeometry;
-        animateDeath(soldier, { age: soldier.deathAge });
+        infantryDeath(soldier, soldier.deathAge);
         continue;
       }
-      soldier.body.visible=true;
-      const crouched = player.crouching || player.crouch;
-      const projectedDistanceSq = this.camera.position.distanceToSquared(this.soldierBounds.center) * viewScale ** 2;
-      const wasDistant = soldier.body.geometry === soldier.distantGeometry;
-      const lodThreshold = distantLimit * (wasDistant ? .94 : 1.06);
-      const distant = !externalScene && Boolean(local) && projectedDistanceSq > lodThreshold ** 2;
-      const wasMedium = soldier.body.geometry === soldier.mediumGeometry;
-      const nearLimit = (this.quality==='high'?24:this.quality==='medium'?12:8) * (wasMedium ? .94 : 1.06);
-      soldier.body.geometry = distant ? soldier.distantGeometry
-        : projectedDistanceSq > nearLimit ** 2 ? soldier.mediumGeometry : soldier.detailGeometry;
       const mustReset = reset || respawned || returning;
-      soldier.marker.material.color.setHex(sameSquad(local,player)?0x91dc78:player.team===localTeam?0x79c5d2:TEAM_COLORS[player.team]??COLORS.friendly);
-      soldier.marker.visible=player.team===localTeam;
-      soldier.marker.position.y=(crouched?1.55:1.94)+Math.sin(this.clock*2)*.025;
-      if(!externalScene&&!this.scoped&&projectedDistanceSq>(this.quality==='high'?140:this.quality==='medium'?100:80)**2){
-        animateSoldier(soldier,{dt,player,reset:mustReset,lightweight:true});soldier.animationDt=0;
-        if(this.farSoldiers.add(soldier)){soldier.body.visible=false;soldier.flash.visible=false;continue;}
-      }
-      soldier.body.castShadow = !distant && (this.quality==='medium'?distSq<20**2:!this.lowQuality&&distSq<48**2);
+      soldier.marker.material.color.setHex(sameSquad(local, player) ? 0x91dc78 :
+        player.team === localTeam ? 0x79c5d2 : TEAM_COLORS[player.team] ?? COLORS.friendly);
+      soldier.marker.visible = player.team === localTeam;
+      soldier.marker.position.y = player.downed || player.prone ? .6 :
+        (player.crouching || player.crouch ? 1.48 : 1.94) + Math.sin(this.clock * 2) * .025;
       soldier.rifle.scale.setScalar(1);
-      const animationMoving=Math.hypot(player.x-(soldier.animationX??player.x),player.z-(soldier.animationZ??player.z))>.001||player.moveSpeed>.05;
-      soldier.animationX=player.x;soldier.animationZ=player.z;
-      const reducedRate = !animationMoving&&!externalScene && !this.scoped && projectedDistanceSq > 30 ** 2;
-      const animationInterval = distant ? 1 / 20 : 1 / 30;
+      const interval = lod === 3 ? 1 / 12 : lod === 2 ? 1 / 24 : 0;
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
-      if (!reducedRate || previousRig || mustReset || soldier.animationDt >= animationInterval) {
-        animateSoldier(soldier, { dt: soldier.animationDt, player, reset: mustReset, terrain: this.map.terrain });
+      if (mustReset || externalScene || this.scoped || soldier.animationDt >= interval) {
+        updateInfantry(soldier, player, soldier.animationDt, mustReset, this.map.terrain);
         soldier.animationDt = 0;
       }
-      if (distant) soldier.flash.visible = false;
     }
-    this.farSoldiers.end();
     for (const [id, soldier] of this.soldiers) if (!active.has(id)) { this.removeSoldier(soldier); this.soldiers.delete(id); }
   }
 
@@ -1002,17 +966,17 @@ export class GameRenderer {
       this.seenEvents.add(key);
       if(event.confirmedCosmetic)continue;
       if (event.type === 'damage' && event.playerId !== localId) {
-        soldierHit(this.soldiers.get(event.playerId), event.x ?? 0, event.z ?? 0);
+        infantryHit(this.soldiers.get(event.playerId));
         continue;
       }
       if (event.type === 'grenade') {
         if (event.playerId === localId) this.throwTimer = this.throwDuration;
-        else soldierThrow(this.soldiers.get(event.playerId));
+        else infantryAction(this.soldiers.get(event.playerId));
         continue;
       }
       if (event.type === 'gadget') {
         if (event.playerId === localId) this.gadgetTimer = this.gadgetDuration;
-        else if(event.kind==='ammo'||event.kind==='medkit'||event.kind==='beacon')soldierThrow(this.soldiers.get(event.playerId));
+        else if(event.kind==='ammo'||event.kind==='medkit'||event.kind==='beacon')infantryAction(this.soldiers.get(event.playerId), 'interact');
         continue;
       }
       if(event.type==='equipmentDestroyed'){
@@ -1471,10 +1435,6 @@ export class GameRenderer {
     };
     this.scene.traverse(swap);
     for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(swap);
-    for (const template of this.soldierTemplates.values()) template.group.traverse(swap);
-    if (this.soldierAtlas) {
-      this.soldierAtlas = (low ? this.soldierAtlas._lowMaterial : this.soldierAtlas._highMaterial) || this.soldierAtlas;
-    }
     this.updatePixelRatio();
     this.resize();
   }
@@ -1548,7 +1508,6 @@ export class GameRenderer {
 
   render(state, localId, dt, view = {}) {
     this.tankThirdPerson=view.vehicleThirdPerson!==false;
-    this.templatesBuiltFrame=0;
     this.setMap(state?.mapId ?? view.mapId);
     const rawDt = dt || 0.016;
     dt = Math.min(rawDt, 0.1); this.clock += dt;
@@ -1885,6 +1844,9 @@ export class GameRenderer {
   }
 
   dispose() {
+    for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
+    this.soldiers.clear();
+    this.infantry?.dispose();
     this.cachedShadows.dispose();
     this.bulletMarks.dispose();
     this.clearVehicles();
@@ -1900,16 +1862,7 @@ export class GameRenderer {
     for(const template of gadgetTemplates(this.equipmentPalette))template.traverse(collect);
     for (const world of this.worlds.values()) if (!world.root.parent) world.root.traverse(collect);
     for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(collect);
-    for (const soldier of this.soldierTemplates.values()) {
-      soldier.group.traverse(collect);
-      geometries.add(soldier.distantGeometry);
-      geometries.add(soldier.mediumGeometry);
-    }
     for (const pool of Object.values(this.effectPools)) for (const effect of pool) collect(effect.mesh);
-    if (this.soldierAtlas) {
-      materials.add(this.soldierAtlas);
-      for (const value of Object.values(this.soldierAtlas)) if (value?.isTexture) textures.add(value);
-    }
     textures.add(this.smokeTexture);
     materials.add(this.grenadeMaterial);
     materials.add(this.reviveMaterial);

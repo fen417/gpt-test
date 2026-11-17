@@ -26,7 +26,7 @@ export class CampaignActors {
     if(!this.mouth.visible){this.mouth.removeFromParent();return;}
     const id=mission.missionId==='m02'?`m02-${speaker}`:({ray:'timo',kim:'rafa'})[speaker]??speaker;
     const rig=renderer.soldiers.get(id);
-    if(!rig?.group.parent||!rig.group.visible||
+    if(!rig?.group.parent||!rig.group.visible||rig.head.userData.faceCovered||
       rig.head.getWorldPosition(this.headPosition).distanceToSquared(renderer.camera.position)>20**2){
       this.mouth.removeFromParent();return;
     }

@@ -1,314 +1,210 @@
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import {
-  createSoldierRig,
-  cloneSoldierRig,
-  animateSoldier,
-  beginDeath,
-  animateDeath,
-} from "./soldier.js";
-const renderer = new THREE.WebGLRenderer({
-  antialias: true,
-  preserveDrawingBuffer: true,
-});
-const viewportHeight = () =>
-  Math.max(200, innerHeight - document.querySelector("nav").offsetHeight);
-renderer.setSize(innerWidth, viewportHeight());
-renderer.setPixelRatio(1);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { InfantryAssets } from './infantry-assets.js';
+import { createInfantry, disposeInfantry, infantryAction, infantryDeath, infantryHit, infantrySeat, setInfantryLod, setInfantryWeapon, updateInfantry } from './infantry.js';
+import { VEHICLE_TYPES } from '../shared/vehicles.js';
+
+const $ = id => document.getElementById(id);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.3;
+renderer.toneMappingExposure = 1.18;
 document.body.append(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#343e44");
-scene.add(new THREE.HemisphereLight(0xe3efff, 0x575044, 2));
-const light = new THREE.DirectionalLight(0xffeed9, 3);
-light.position.set(-3, 5, -4);
-scene.add(light);
-const camera = new THREE.PerspectiveCamera(
-  38,
-  innerWidth / viewportHeight(),
-  0.05,
-  300,
-);
-camera.position.set(2.5, 1.8, -3.4);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0.95, 0);
-controls.update();
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / viewportHeight();
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, viewportHeight());
+scene.background = new THREE.Color(0x343d44);
+scene.add(new THREE.HemisphereLight(0xe1edff, 0x7e6f61, 2.3));
+const sun = new THREE.DirectionalLight(0xffe9ce, 3.0);
+sun.position.set(-3, 6, -4);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xd1e4ff, 1.1);
+fill.position.set(3, 4, 2);
+scene.add(fill);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), new THREE.MeshStandardMaterial({ color: 0x3b4244 }));
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -.016;
+scene.add(floor);
+const shadowCanvas = document.createElement('canvas');
+shadowCanvas.width = shadowCanvas.height = 64;
+const shade = shadowCanvas.getContext('2d');
+const gradient = shade.createRadialGradient(32, 32, 6, 32, 32, 32);
+gradient.addColorStop(0, 'rgba(12,16,18,.55)');
+gradient.addColorStop(1, 'rgba(12,16,18,0)');
+shade.fillStyle = gradient;
+shade.fillRect(0, 0, 64, 64);
+const shadowMaterial = new THREE.MeshBasicMaterial({
+  map: new THREE.CanvasTexture(shadowCanvas), transparent: true, depthWrite: false,
 });
-scene.add(new THREE.GridHelper(100, 100, 0x839391, 0x566360));
-const owner = {},
-  rigs = [],
-  templates = new Map();
-let elapsed = 0,
-  prev = performance.now(),
-  uniform = false;
-const $ = (id) => document.getElementById(id);
-function rebuild() {
-  for (const r of rigs) {
-    scene.remove(r.group);
-    r.body.skeleton.dispose();
-    r.marker.material.dispose();
-    r.flash.material.dispose();
-    r.uniformGeometry?.dispose();
-  }
-  rigs.length = 0;
-  const count = +$("count").value,
-    weaponId = $("weapon").value,
-    classId =
-      weaponId === "sv98"
-        ? "recon"
-        : weaponId === "mg36"
-          ? "support"
-          : weaponId === "mcx9"
-            ? "medic"
-            : "assault";
-  for (let i = 0; i < count; i++) {
-    const team = count === 1 ? 0 : i % 2,
-      key = team + ":" + weaponId;
-    let template = templates.get(key);
-    if (!template) {
-      template = createSoldierRig(owner, { team, classId, weaponId });
-      templates.set(key, template);
-    }
-    const rig = cloneSoldierRig(template, { team, classId, weaponId });
-    rig.marker.visible = false;
-    rig.group.position.set(
-      ((i % 8) - (Math.min(count, 8) - 1) / 2) * 1.2,
-      0,
-      Math.floor(i / 8) * 1.5,
-    );
-    rig.base = rig.group.position.clone();
-    rig.simX = 0;
-    rig.simZ = 0;
-    rig.simYaw = 0;
-    rig.modeTime = 0;
-    rig.netX = 0;
-    rig.netZ = 0;
-    rig.netYaw = 0;
-    scene.add(rig.group);
-    rigs.push(rig);
-  }
-  setUniform();
-}
-function setUniform() {
-  for (const rig of rigs) {
-    if (uniform) {
-      const g = rig.detailGeometry.clone(),
-        idx = [],
-        uv = g.attributes.uv;
-      for (let i = 0; i < g.index.count; i += 3) {
-        const a = g.index.getX(i);
-        if (
-          g.attributes.bodySurface
-            ? g.attributes.bodySurface.getX(a) > 0
-            : uv.getX(a) < 0.4
-        )
-          idx.push(g.index.getX(i), g.index.getX(i + 1), g.index.getX(i + 2));
-      }
-      g.setIndex(idx);
-      rig.uniformGeometry = g;
-    } else {
-      rig.uniformGeometry?.dispose();
-      rig.uniformGeometry = null;
-    }
-  }
-}
-$("uniform").onclick = () => {
-  uniform = !uniform;
-  setUniform();
-};
-$("count").onchange = $("weapon").onchange = rebuild;
-$("view").onchange = () => {
-  const p = {
-    front: [0, 1, -4.2],
-    back: [0, 1, 4.2],
-    side: [4.2, 1, 0],
-    perspective: [2.5, 1.8, -3.4],
-  }[$("view").value];
-  camera.position.set(...p);
-  controls.target.set(0, 0.95, 0);
-  controls.update();
-};
-const samples = [];
-window.review = { rigs, renderer, scene, camera, samples, ready: false };
+const shadowGeometry = new THREE.PlaneGeometry(1.2, 1.28);
 
-let accumulator = 0,
-  lastMode = "",
-  focusX = 0,
-  focusZ = 0;
-const contactMaterial = new THREE.MeshBasicMaterial({ color: 0x71ff94 });
-const contactGeometry = new THREE.SphereGeometry(0.025, 8, 6);
-const contacts = [
-  new THREE.Mesh(contactGeometry, contactMaterial),
-  new THREE.Mesh(contactGeometry, contactMaterial),
-];
-for (const marker of contacts) scene.add(marker);
-function simulate(dt, mode) {
-  for (const rig of rigs) {
-    rig.modeTime += dt;
-    const t = rig.modeTime;
-    let vx = 0,
-      vz = 0,
-      yaw = 0;
-    if (mode === "walk") vz = -1.4;
-    if (mode === "run" || mode === "reload") vz = -6.3;
-    if (mode === "sprint") vz = -9.765;
-    if (mode === "crouch") vz = -2.8;
-    if (mode === "strafe-left") vx = -3.1;
-    if (mode === "strafe-right") vx = 3.1;
-    if (mode === "back") vz = 3.1;
-    if (mode === "diagonal") {
-      vx = 3.1 * Math.SQRT1_2;
-      vz = -3.1 * Math.SQRT1_2;
-    }
-    if (mode === "stop") vz = t % 6 < 3 ? -3.1 : 0;
-    if (mode === "reverse") vz = t % 6 < 3 ? -3.1 : 3.1;
-    if (mode === "turn") yaw = t % 6 < 3 ? 0 : Math.PI;
-    rig.simX += vx * dt;
-    rig.simZ += vz * dt;
-    if ($("remote").checked) {
-      if (Math.floor(t * 20) !== Math.floor((t - dt) * 20)) {
-        rig.netX = rig.simX;
-        rig.netZ = rig.simZ;
-        rig.netYaw = yaw;
-      }
-      const blend = 1 - Math.exp(-dt * 18);
-      rig.group.position.x +=
-        (rig.base.x + rig.netX - rig.group.position.x) * blend;
-      rig.group.position.z +=
-        (rig.base.z + rig.netZ - rig.group.position.z) * blend;
-      rig.group.rotation.y +=
-        Math.atan2(
-          Math.sin(rig.netYaw - rig.group.rotation.y),
-          Math.cos(rig.netYaw - rig.group.rotation.y),
-        ) * blend;
-    } else {
-      rig.group.position.set(rig.base.x + rig.simX, 0, rig.base.z + rig.simZ);
-      rig.group.rotation.y = yaw;
-    }
-    rig.group.rotation.x = 0;
-    rig.group.rotation.z = 0;
-    const player = {
-      x: rig.group.position.x,
-      z: rig.group.position.z,
-      y: 0,
-      yaw: rig.group.rotation.y,
-      pitch: 0,
-      aim: mode === "idle",
-      crouch: mode === "crouch",
-      sprint: mode === "sprint",
-      grounded: mode !== "jump",
-      reloading: mode === "reload",
-      reloadProgress: (t % 2) / 2,
-      shotSeq: 0,
-    };
-    if (mode === "jump") rig.group.position.y = Math.sin(t * 3) ** 2 * 0.7;
-    if (mode === "death") {
-      if (!rig.death) beginDeath(rig, 0);
-      animateDeath(rig, { age: t % 3 });
-    } else if (mode === "rest") {
-      rig.pose.position.set(0, 0, 0);
-      rig.pose.rotation.set(0, 0, 0);
-      rig.spine.rotation.set(0, 0, 0);
-      rig.head.rotation.set(0, 0, 0);
-      for (const b of [
-        ...rig.arms,
-        ...rig.elbows,
-        ...rig.legs,
-        ...rig.knees,
-        ...rig.ankles,
-        ...rig.wrists,
-      ])
-        b.quaternion.identity();
-    } else {
-      rig.death = null;
-      animateSoldier(rig, { dt, player });
-    }
-    rig.body.geometry =
-      rig.uniformGeometry ||
-      [rig.detailGeometry, rig.mediumGeometry, rig.distantGeometry][
-        +$("lod").value
-      ];
-  }
+scene.add(new THREE.GridHelper(400, 400, 0x586468, 0x475256));
+const camera = new THREE.PerspectiveCamera(38, 1, .035, 600);
+const controls = new OrbitControls(camera, renderer.domElement);
+const focus = new THREE.Vector3(), offset = new THREE.Vector3();
+function size() {
+  const height = Math.max(240, innerHeight - $('toolbar').offsetHeight);
+  renderer.setSize(innerWidth, height);
+  camera.aspect = innerWidth / height;
+  camera.updateProjectionMatrix();
 }
-function frame(now) {
-  const dt = Math.min(0.1, (now - prev) / 1000);
-  prev = now;
-  elapsed += dt;
-  const mode = $("state").value;
-  if (mode !== lastMode) {
-    for (const rig of rigs) {
-      rig.modeTime = 0;
-      if (
-        [mode, lastMode].some((state) => state === "death" || state === "rest")
-      )
-        rig.motion = null;
-      rig.death = null;
-    }
-    lastMode = mode;
-  }
-  const start = performance.now(),
-    step = 1 / +$("fps").value;
-  accumulator += dt;
-  while (accumulator >= step) {
-    simulate(step, mode);
-    accumulator -= step;
-  }
-  const cpu = performance.now() - start,
-    rig = rigs[0];
-  const fx = rig.group.position.x - rig.base.x,
-    fz = rig.group.position.z - rig.base.z;
-  camera.position.x += fx - focusX;
-  camera.position.z += fz - focusZ;
-  controls.target.x += fx - focusX;
-  controls.target.z += fz - focusZ;
-  focusX = fx;
-  focusZ = fz;
+function view() {
+  offset.set(...({
+    perspective: [2.45, .85, -3.7], front: [0, .23, -3.8],
+    side: [4.05, .28, 0], back: [0, .24, 3.8],
+  }[$('view').value]));
+  if (rigs.length > 2) offset.multiplyScalar(2.2);
+  camera.position.copy(focus).add(offset);
+  controls.target.copy(focus);
   controls.update();
-  for (let i = 0; i < 2; i++) {
-    const foot = rig.motion?.feet[i];
-    contacts[i].visible = $("diagnostics").checked && Boolean(foot);
-    if (foot)
-      contacts[i].position.set(
-        foot.planted.x,
-        0.035 + foot.lift,
-        foot.planted.z,
-      );
-  }
-  renderer.render(scene, camera);
-  samples.push({
-    cpu,
-    frame: performance.now() - start,
-    calls: renderer.info.render.calls,
-    triangles: renderer.info.render.triangles,
-  });
-  if (samples.length > 240) samples.shift();
-  const m = rig.motion,
-    g = m?.gait;
-  $("info").textContent =
-    $("diagnostics").checked && g
-      ? g.state +
-        " / " +
-        g.direction +
-        " · " +
-        m.speed.toFixed(2) +
-        " м/с\nшаг " +
-        g.stepLength.toFixed(2) +
-        " м · " +
-        g.frequency.toFixed(2) +
-        " шаг/с · фаза " +
-        m.phase.toFixed(2)
-      : [rig.detailGeometry, rig.mediumGeometry, rig.distantGeometry]
-          .map((g) => g.index.count / 3)
-          .join(" / ") + " tris";
-  window.review.ready = true;
-  if (!window.review.pause) requestAnimationFrame(frame);
 }
-window.review.simulate = simulate;
+addEventListener('resize', size);
+const assets = new InfantryAssets(renderer), rigs = [], samples = [];
+const review = window.review = { rigs, samples, renderer, scene, camera, ready: false, step };
+let last = performance.now(), change = 0, accumulator = 0, elapsed = 0, moving = [0, 0];
+let state = $('state').value;
+let tracking = false;
+let rebuildId = 0;
+async function rebuild() {
+  const ticket = ++rebuildId;
+  const count = Number($('count').value), weaponId = $('weapon').value;
+  review.ready = false;
+  $('info').textContent = 'Загрузка моделей…';
+  try {
+    await Promise.all([assets.load(0, weaponId), assets.load(1, weaponId), assets.load(0, 'p19')]);
+    if (ticket !== rebuildId) return;
+    for (const actor of rigs) { actor.shadow.removeFromParent(); disposeInfantry(actor); }
+    rigs.length = samples.length = 0;
+    for (let i = 0; i < count; ++i) {
+      const team = i % 2;
+      const rig = createInfantry(assets.get(team, weaponId), { id: 'review-' + i, team, classId: 'assault', weaponId });
+      rig.base = [(i % Math.min(count, 8) - (Math.min(count, 8) - 1) / 2) * 1.16, Math.floor(i / 8) * 1.45];
+      if (count === 2 && $('view').value === 'side') rig.base = [0, i === 0 ? -1 : 1];
+      rig.marker.visible = false;
+      rig.shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+      rig.shadow.rotation.x = -Math.PI / 2;
+      scene.add(rig.group, rig.shadow);
+      rigs.push(rig);
+    }
+    elapsed = change = 0;
+    moving = [0, 0];
+    focus.set(0, .9, 0);
+    view();
+    step(1 / 60);
+    review.ready = true;
+  } catch (error) {
+    $('info').textContent = error.message;
+    review.error = String(error);
+    console.error(error);
+  }
+}
+const packet = [0, 0];
+let shot = 0;
+function step(dt) {
+  const next = $('state').value;
+  if (state !== next) {
+    state = next;
+    change = elapsed;
+  }
+  const t = elapsed - change;
+  const speed = Number($('speed').value);
+  const rate = Number($('fps').value);
+  const remote = $('remote').checked;
+  const modeSpeed = {
+    walk: [0, -1.4], run: [0, -6.3], sprint: [0, -9.765],
+    'strafe-left': [-3.1, 0], 'strafe-right': [3.1, 0], back: [0, 3.1],
+    diagonal: [2.2, -2.2], crouch: [0, -2.45], slide: [0, -6 * Math.max(0, 1 - t % 3)],
+    stop: [0, t % 4 < 2 ? -3.1 : 0], reverse: [0, t % 4 < 2 ? -3.1 : 3.1], reload: [0, -2.5],
+  }[state] ?? [0, 0];
+  moving[0] += modeSpeed[0] * speed * dt;
+  moving[1] += modeSpeed[1] * speed * dt;
+  if (!remote || Math.floor(elapsed * 20) !== Math.floor((elapsed + dt) * 20)) {
+    packet[0] = moving[0];
+    packet[1] = moving[1];
+  }
+  const lod = Number($('lod').value);
+  const blend = remote ? 1 - Math.exp(-dt * 18) : 1;
+  const pitch = state === 'aim' ? Math.sin(t * 1.45) * .42 : 0;
+  if (state === 'shoot' && Math.floor(t * 8) !== Math.floor((t - dt) * 8)) shot++;
+  for (const rig of rigs) {
+    const jump = state === 'jump' && t % 2.2 < .72;
+    const jumpY = jump ? 4.2 * (t % 2.2) * (.72 - t % 2.2) : 0;
+    const yaw = state === 'aim' ? Math.sin(t) * .45 : state === 'turn' ? Math.sin(t * .8) * .8 : 0;
+    rig.group.position.x = THREE.MathUtils.lerp(rig.group.position.x, rig.base[0] + packet[0], rig.initialized ? blend : 1);
+    rig.group.position.y = jumpY;
+    rig.group.position.z = THREE.MathUtils.lerp(rig.group.position.z, rig.base[1] + packet[1], rig.initialized ? blend : 1);
+    rig.shadow.position.set(rig.group.position.x, -.009, rig.group.position.z);
+    rig.shadow.scale.setScalar(1 + jumpY * .28);
+    const yawDelta = Math.atan2(Math.sin(yaw - rig.group.rotation.y), Math.cos(yaw - rig.group.rotation.y));
+    rig.group.rotation.y += Math.sign(yawDelta) * Math.max(0, Math.abs(yawDelta) - .30) * (1 - Math.exp(-dt * 12));
+    setInfantryLod(rig, lod, false);
+    if (state === 'death') infantryDeath(rig, t % 4);
+    else if (state === 'seat') infantrySeat(rig, {
+      vehicle: { type: 'tank' }, seat: VEHICLE_TYPES.tank.seats[2], index: 2, relativeYaw: 0, pitch, shotSeq: shot, dt,
+    });
+    else {
+      const reloading = state === 'reload' && t % 3 < 2;
+      const switching = state === 'switch', sidearm = switching && t % 3 > 1.16;
+      const weaponId = sidearm ? 'p19' : $('weapon').value;
+      if (rig.weaponId !== weaponId) setInfantryWeapon(rig, assets.get(rig.team, weaponId).gun, weaponId);
+      if (state === 'throw' && Math.floor(t / 2) !== Math.floor((t - dt) / 2)) infantryAction(rig);
+      if (state === 'hit' && Math.floor(t / 2) !== Math.floor((t - dt) / 2)) infantryHit(rig);
+      updateInfantry(rig, {
+        yaw, pitch, shotSeq: shot, sprint: state === 'sprint', crouch: state.startsWith('crouch'),
+        sliding: state === 'slide' && t % 3 < .85, grounded: !jump, aim: state === 'aim' || state === 'shoot',
+        reloading, reloadProgress: reloading ? (t % 3) / 2 : 0,
+        equipTime: switching ? Math.max(0, .38 - ((t + 2) % 3)) : 0,
+      }, dt, !rig.initialized);
+    }
+    rig.initialized = true;
+  }
+  if (rigs.length && $('diagnostics').checked) {
+    const rig = rigs[0];
+    for (const [side, leg] of rig.legs.entries()) {
+      if (leg.weight <= .5) continue;
+      samples.push({ time: elapsed, mode: state, fps: rate, remote, side, x: leg.foot.getWorldPosition(new THREE.Vector3()).toArray(),
+        anchor: leg.anchor.toArray(), weight: leg.weight });
+    }
+    if (samples.length > 3600) samples.splice(0, samples.length - 3600);
+  }
+  elapsed += dt;
+}
+function render(now) {
+  const dt = Math.min((now - last) / 1000, .1);
+  last = now;
+  if (review.ready && !$('pause').checked) {
+    const quantum = 1 / Number($('fps').value);
+    accumulator += dt;
+    while (accumulator > quantum) {
+      step(quantum);
+      accumulator -= quantum;
+    }
+  }
+  if (rigs.length) {
+    const center = rigs[0].group.position;
+    const x = center.x - rigs[0].base[0], z = center.z - rigs[0].base[1];
+    camera.position.x += x - focus.x;
+    camera.position.z += z - focus.z;
+    focus.set(x, .9, z);
+    controls.target.copy(focus);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  if (review.ready) {
+    const { calls, triangles } = renderer.info.render;
+    $('info').textContent = calls + ' выз. · ' + triangles.toLocaleString('ru') + ' треуг.';
+  }
+  requestAnimationFrame(render);
+}
+$('view').onchange = () => {
+  if (rigs.length === 2) {
+    for (const [i, rig] of rigs.entries()) {
+      rig.base = $('view').value === 'side' ? [0, i ? 1 : -1] : [i ? .58 : -.58, 0];
+      rig.group.position.x = focus.x + rig.base[0];
+      rig.group.position.z = focus.z + rig.base[1];
+      rig.initialized = false;
+    }
+  }
+  view();
+};
+$('count').onchange = $('weapon').onchange = rebuild;
+size();
 rebuild();
-requestAnimationFrame(frame);
+requestAnimationFrame(render);
