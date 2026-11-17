@@ -279,9 +279,8 @@ function step(dt) {
       const secondary = switching && Boolean(half !== Number(afterSwap));
       const weaponId = secondary ? $('sidearm').value : config.id;
       if (rig.weaponId !== weaponId) setInfantryWeapon(rig, assets.get(rig.team, weaponId).gun, weaponId);
-      const eventPhase = t % 2;
       const action = { throw: 'throw', heal: 'heal', revive: 'revive_kneel', interact: 'interact' }[state];
-      if (dt && eventPhase >= .25 && (t - dt) % 2 < .25) {
+      if (dt && Math.floor((t + dt - .25) / 2) !== Math.floor((t - .25) / 2)) {
         if (action) infantryAction(rig, action);
         if (state === 'hit') infantryHit(rig);
       }

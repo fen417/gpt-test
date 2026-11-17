@@ -10,10 +10,10 @@ const weaponNames = {
   mg36: 'm4a1', pkp: 'ak47', sv98: 'm24', dmr12: 'm24', p19: 'p226', m50: 'm1911',
 };
 const weaponFit = {
-  m4a1: { primary: [0, -.17, .215], support: [-.047, -.125, -.541], muzzle: [0, .049, -1.265], scale: .54, foregrip: true },
-  ak47: { primary: [0, -.073, -.122], support: [-.036, -.048, -.43], muzzle: [0, .005, -1.135], scale: .72 },
-  mp5a5: { primary: [0, -.098, -.103], support: [-.043, -.010, -.382], muzzle: [0, .146, -.85], scale: .70 },
-  m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.43], muzzle: [0, .08, -1.42], scale: .68 },
+  m4a1: { primary: [0, -.17, .215], support: [-.047, -.125, -.341], muzzle: [0, .049, -1.265], scale: .41, foregrip: true },
+  ak47: { primary: [0, -.073, -.122], support: [-.036, -.048, -.32], muzzle: [0, .005, -1.135], scale: .72 },
+  mp5a5: { primary: [0, -.098, -.103], support: [-.043, -.010, -.30], muzzle: [0, .146, -.85], scale: .70 },
+  m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.31], muzzle: [0, .08, -1.42], scale: .68 },
   p226: { primary: [0, -.03, .237], support: [-.038, -.052, .255], muzzle: [0, .09, -.08], scale: .60, pistol: true },
   m1911: { primary: [-.011, -.03, .245], support: [-.045, -.053, .262], muzzle: [0, .09, -.08], scale: .70, pistol: true },
 };
@@ -63,10 +63,21 @@ function sampleCycle(root, bones, clip, direction, floor) {
     for (const [side, name] of legNames.entries()) {
       bones[name + 'Foot'].getWorldPosition(ankle);
       bones[name + 'ToeBase'].getWorldPosition(toe);
-      samples[side].push({ height: Math.min(toe.y, ankle.y - .052), across: ankle.dot(direction) });
+      samples[side].push({ height: Math.min(toe.y, ankle.y - .052), across: ankle.dot(direction), position: ankle.toArray() });
     }
   }
   mixer.uncacheRoot(root);
+  // Pair opposite steps from the capture to retain its swing while removing
+  // unequal retargeted reach and contact timing between the two legs.
+  if (clip.name.endsWith('_F')) {
+    const original = samples.map(foot => foot.map(point => ({ ...point, position: [...point.position] })));
+    for (let side = 0; side < 2; side++) for (let frame = 0; frame < frameCount; frame++) {
+      const point = samples[side][frame], other = original[1 - side][(frame + frameCount / 2) % frameCount];
+      point.height = (point.height + other.height) / 2;
+      point.across = (point.across + other.across) / 2;
+      point.position = point.position.map((value, axis) => (value + other.position[axis] * (axis === 0 ? -1 : 1)) / 2);
+    }
+  }
   const lowest = Math.min(...samples.flatMap(foot => foot.map(point => point.height)));
   const getSpeed = (foot, frame) => {
     const previous = (frame + frameCount - 1) % frameCount;
@@ -98,7 +109,9 @@ function sampleCycle(root, bones, clip, direction, floor) {
       hipsTrack.values[i + 2] += offset.z;
     }
   }
-  return { distance: speed * clip.duration, duration: clip.duration, contact, offset: strike / frameCount,
+  const paths = clip.name.endsWith('_F') ? samples.map(foot => foot.map(point =>
+    [point.position[0], point.position[1] + floor - lowest, point.position[2]])) : null;
+  return { distance: speed * clip.duration, duration: clip.duration, contact, paths, offset: strike / frameCount,
     hipsHeight: hipsHeight + (hipsTrack ? floor - lowest : 0) };
 }
 
@@ -180,9 +193,15 @@ function prepareWeapon(gltf, name) {
   const fit = weaponFit[name];
   const primary = from(fit.primary), scale = fit.scale;
   const model = gltf.scene;
+  if (fit.foregrip) {
+    const grip = model.getObjectByName('ForegripGeometryMesh');
+    if (!grip) throw new Error('Missing adjustable foregrip on ' + name);
+    grip.position.z += .20;
+  }
   model.scale.setScalar(scale);
   model.position.copy(primary).multiplyScalar(-scale);
   model.updateMatrixWorld(true);
+  const weaponBounds = new THREE.Box3().setFromObject(model, true);
   const magazine = model.getObjectByName('Magazine');
   let magazineContact;
   if (magazine) {
@@ -196,6 +215,7 @@ function prepareWeapon(gltf, name) {
   }
   return {
     model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol), foregrip: Boolean(fit.foregrip),
+    stock: new THREE.Vector3(0, .07, weaponBounds.max.z),
     support: from(fit.support).sub(primary).multiplyScalar(scale),
     muzzle: from(fit.muzzle).sub(primary).multiplyScalar(scale),
     magazineName: magazine?.name, magazineContact,
