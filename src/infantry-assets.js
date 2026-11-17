@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const weaponNames = {
@@ -146,6 +147,31 @@ function prepareBody({ scene, animations }) {
   return { anchor, clips, levels, gaits };
 }
 
+function batchDistantWeapon(model) {
+  model.updateMatrixWorld(true);
+  const pieces = [], vector = new THREE.Vector3();
+  model.traverse(mesh => {
+    if (!mesh.isMesh) return;
+    const geometry = new THREE.BufferGeometry();
+    const { position, normal } = mesh.geometry.attributes;
+    for (const [key, attribute] of [['position', position], ['normal', normal]]) {
+      const values = new Float32Array(attribute.count * 3);
+      for (let i = 0; i < attribute.count; ++i) vector.fromBufferAttribute(attribute, i).toArray(values, i * 3);
+      geometry.setAttribute(key, new THREE.BufferAttribute(values, 3));
+    }
+    const colors = new Float32Array(position.count * 3);
+    const color = mesh.material.color.clone();
+    if (mesh.material.map) color.multiplyScalar(.23);
+    for (let i = 0; i < position.count; ++i) color.toArray(colors, i * 3);
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setIndex(mesh.geometry.index);
+    pieces.push(geometry.applyMatrix4(mesh.matrixWorld));
+  });
+  const merged = mergeGeometries(pieces);
+  if (!merged) throw new Error('Could not batch the distant weapon');
+  return new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
+}
+
 function prepareWeapon(gltf, name) {
   const fit = weaponFit[name];
   const primary = from(fit.primary), scale = fit.scale;
@@ -154,7 +180,7 @@ function prepareWeapon(gltf, name) {
   model.position.copy(primary).multiplyScalar(-scale);
   const magazine = model.getObjectByName('Magazine');
   return {
-    model, pistol: Boolean(fit.pistol),
+    model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol),
     support: from(fit.support).sub(primary).multiplyScalar(scale),
     muzzle: from(fit.muzzle).sub(primary).multiplyScalar(scale),
     magazineName: magazine?.name,
@@ -213,11 +239,13 @@ export class InfantryAssets {
 
   disposeTemplate(template) {
     const geometry = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set();
-    (template.anchor ?? template.model).traverse(node => {
+    const collect = node => {
       if (node.geometry) geometry.add(node.geometry);
       if (node.material) materials.add(node.material);
       if (node.skeleton) skeletons.add(node.skeleton);
-    });
+    };
+    (template.anchor ?? template.model).traverse(collect);
+    if (template.distantWeapon) collect(template.distantWeapon);
     for (const values of template.levels?.values() ?? []) for (const level of values) for (const value of level ?? []) geometry.add(value);
     for (const material of materials) {
       for (const item of Object.values(material)) if (item?.isTexture) textures.add(item);

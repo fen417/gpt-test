@@ -105,20 +105,26 @@ export function createInfantry({ template, gun }, player) {
 
 export function setInfantryWeapon(rig, template, weaponId) {
   rig.weaponModel?.removeFromParent();
+  rig.distantWeapon?.removeFromParent();
   rig.weaponModel = template.model.clone(true);
+  rig.distantWeapon = template.distantWeapon.clone();
   rig.weaponId = weaponId;
   rig.pistol = template.pistol;
   rig.support.copy(template.support);
   rig.muzzle.copy(template.muzzle);
   rig.flash.position.copy(rig.muzzle);
   rig.flash.position.z -= .052;
-  rig.rifle.add(rig.weaponModel);
+  rig.rifle.add(rig.weaponModel, rig.distantWeapon);
+  rig.weaponModel.visible = rig.lod < 2;
+  rig.distantWeapon.visible = rig.lod >= 2;
   rig.magazine = rig.weaponModel.getObjectByName(template.magazineName);
   rig.magazineRest = rig.magazine?.position.clone();
 }
 
 export function setInfantryLod(rig, level, shadows) {
   rig.lod = level;
+  rig.weaponModel.visible = level < 2;
+  rig.distantWeapon.visible = level >= 2;
   for (const { mesh, geometries } of rig.parts) {
     mesh.geometry = geometries[level];
     mesh.castShadow = shadows;
