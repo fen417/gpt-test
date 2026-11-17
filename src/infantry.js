@@ -13,6 +13,8 @@ const axis = new THREE.Vector3(), bend = new THREE.Vector3(), joint = new THREE.
 const desired = new THREE.Vector3(), q = new THREE.Quaternion(), world = new THREE.Quaternion();
 const target = new THREE.Vector3(), palm = new THREE.Vector3();
 const flatNormal = new THREE.Vector3(0, 1, 0);
+const legPole = new THREE.Vector3(), shoeForward = new THREE.Vector3(), shoeSide = new THREE.Vector3();
+const shoeRotation = new THREE.Quaternion(), shoePitch = new THREE.Quaternion();
 const rotation = new THREE.Euler(0, 0, 0, 'YXZ');
 
 function aimJoint(bone, from, to) {
@@ -45,11 +47,42 @@ function reach(upper, lower, end, goal, weight, pole = null) {
 }
 
 function newLeg(bones, side) {
+  const foot = bones[side + 'Foot'], toe = bones[side + 'ToeBase'];
+  const offset = toe.getWorldPosition(new THREE.Vector3()).sub(foot.getWorldPosition(new THREE.Vector3()));
   return {
     upper: bones[side + 'UpLeg'], knee: bones[side + 'Leg'],
-    foot: bones[side + 'Foot'], toe: bones[side + 'ToeBase'],
-    anchor: new THREE.Vector3(), solved: new THREE.Vector3(), weight: 0, locked: false,
+    foot, toe, side: side === 'Left' ? -1 : 1,
+    bootRotation: foot.getWorldQuaternion(new THREE.Quaternion()),
+    bootYaw: Math.atan2(-offset.x, -offset.z),
+    bootPitch: Math.atan2(offset.y, Math.hypot(offset.x, offset.z)),
+    ankleHeight: clamp(foot.getWorldPosition(new THREE.Vector3()).y, .08, .16),
+    anchor: new THREE.Vector3(), solved: new THREE.Vector3(), weight: 0, locked: false, inContact: false,
   };
+}
+
+// The authored knee is unstable as a pole when the leg is nearly straight.
+function kneePole(rig, leg) {
+  const yaw = rig.group.rotation.y;
+  const side = .13 * leg.side;
+  return leg.upper.getWorldPosition(legPole).add(shoeForward.set(
+    -Math.sin(yaw) + side * Math.cos(yaw), 0, -Math.cos(yaw) - side * Math.sin(yaw),
+  ));
+}
+
+function bootPitchFor(leg) {
+  const offset = leg.toe.getWorldPosition(a).sub(leg.foot.getWorldPosition(b));
+  return Math.atan2(offset.y, Math.hypot(offset.x, offset.z));
+}
+
+function alignBoot(rig, leg, pitch, weight) {
+  const yaw = rig.group.rotation.y - leg.side * .12;
+  const tilt = clamp(pitch - leg.bootPitch, -.50, .76);
+  shoeSide.set(Math.cos(yaw), 0, -Math.sin(yaw));
+  shoeRotation.setFromAxisAngle(flatNormal, yaw - leg.bootYaw).multiply(leg.bootRotation);
+  shoeRotation.premultiply(shoePitch.setFromAxisAngle(shoeSide, tilt));
+  leg.foot.parent.getWorldQuaternion(q).invert();
+  leg.foot.quaternion.slerp(q.multiply(shoeRotation), weight);
+  leg.foot.updateWorldMatrix(false, true);
 }
 
 export function createInfantry({ template, gun }, player) {
@@ -196,58 +229,44 @@ function saveRotation(rig, ...bones) {
   for (const bone of bones) if (!rig.corrections.has(bone)) rig.corrections.set(bone, bone.quaternion.clone());
 }
 
-function applyContacts(rig, dt, confidence, terrain) {
+function applyContacts(rig, dt, confidence, terrain, stance) {
   const { group } = rig;
-  for (const [side, leg] of rig.legs.entries()) {
+  for (const [index, leg] of rig.legs.entries()) {
     leg.foot.getWorldPosition(leg.solved);
-    if (confidence[side] > .52 && !leg.locked) {
+    const pitch = bootPitchFor(leg);
+    if (confidence[index] > .50 && !leg.inContact) {
+      leg.inContact = true;
       leg.anchor.copy(leg.solved);
+      const ground = terrain?.heightAt?.(leg.anchor.x, leg.anchor.z);
+      const y = Number.isFinite(ground) && Math.abs(ground - group.position.y) < .23 ? ground : group.position.y;
+      leg.anchor.y = y + leg.ankleHeight;
       leg.locked = true;
+    }
+    if (confidence[index] < .24) {
+      leg.inContact = false;
+      leg.locked = false;
     }
     leg.upper.getWorldPosition(a);
     const reachLimit = a.distanceTo(leg.knee.getWorldPosition(b)) + b.distanceTo(leg.solved);
-    if (confidence[side] < .22 || leg.anchor.distanceToSquared(leg.solved) > .24 ** 2 ||
-      leg.anchor.distanceToSquared(a) > (reachLimit + .025) ** 2) leg.locked = false;
-    leg.weight = damp(leg.weight, leg.locked ? 1 : 0, leg.locked ? 95 : 29, dt);
-    if (leg.weight < .01 || rig.lod > 1) continue;
-    target.copy(leg.anchor);
-    const slope = terrain?.heightAt?.(target.x, target.z);
-    if (Number.isFinite(slope) && Math.abs(slope - group.position.y) < .23) {
-      const atRoot = terrain.heightAt(group.position.x, group.position.z);
-      target.y += clamp(slope - atRoot, -.14, .14);
+    if (leg.anchor.distanceToSquared(leg.solved) > .24 ** 2 ||
+      leg.anchor.distanceToSquared(a) > (reachLimit + .065) ** 2) leg.locked = false;
+    leg.weight = damp(leg.weight, leg.locked ? 1 : 0, leg.locked ? 48 : 22, dt);
+    if (rig.lod > 1) continue;
+    saveRotation(rig, leg.upper, leg.knee, leg.foot);
+    if (leg.weight > .01) reach(leg.upper, leg.knee, leg.foot, leg.anchor, leg.weight, kneePole(rig, leg));
+    const blend = stance * (1 - leg.weight);
+    if (blend > .015) {
+      target.set(leg.side * lerp(.147, .178, rig.crouchBlend), leg.ankleHeight, leg.side * .105);
+      group.localToWorld(target);
+      const ground = terrain?.heightAt?.(target.x, target.z);
+      if (Number.isFinite(ground) && Math.abs(ground - group.position.y) < .23) target.y = ground + leg.ankleHeight;
+      reach(leg.upper, leg.knee, leg.foot, target, blend, kneePole(rig, leg));
     }
-    saveRotation(rig, leg.upper, leg.knee, leg.foot);
-    leg.foot.getWorldQuaternion(leg.orientation ??= new THREE.Quaternion());
-    reach(leg.upper, leg.knee, leg.foot, target, leg.weight);
-    leg.foot.parent.getWorldQuaternion(q).invert();
-    leg.foot.quaternion.copy(q.multiply(leg.orientation));
-    leg.foot.updateWorldMatrix(false, true);
-  }
-}
-
-function settleStance(rig, terrain, weight, crouch) {
-  if (weight < .015 || rig.lod >= 2) return;
-  const ankleHeight = rig.team ? .096 : .112;
-  for (const [index, leg] of rig.legs.entries()) {
-    const blend = weight * (1 - leg.weight);
-    if (blend < .015) continue;
-    const side = index === 0 ? -1 : 1;
-    target.set(side * lerp(.135, .185, crouch), ankleHeight, side * .145);
-    rig.group.localToWorld(target);
-    const height = terrain?.heightAt?.(target.x, target.z);
-    if (Number.isFinite(height) && Math.abs(height + ankleHeight - target.y) < .22) target.y = height + ankleHeight;
-    saveRotation(rig, leg.upper, leg.knee, leg.foot);
-    const orientation = leg.foot.getWorldQuaternion(leg.orientation ??= new THREE.Quaternion());
-    const from = leg.toe.getWorldPosition(a).sub(leg.foot.getWorldPosition(b)).normalize();
-    const heading = rig.group.rotation.y + side * .12;
-    const to = c.set(-Math.sin(heading), -.42, -Math.cos(heading)).normalize();
-    const rotation = q.setFromUnitVectors(from, to);
-    world.copy(orientation).premultiply(rotation);
-    orientation.slerp(world, blend);
-    reach(leg.upper, leg.knee, leg.foot, target, blend);
-    leg.foot.parent.getWorldQuaternion(q).invert();
-    leg.foot.quaternion.copy(q.multiply(orientation));
-    leg.foot.updateWorldMatrix(false, true);
+    // Keep the authored heel lift within the shoe's sagittal plane. A raw
+    // toe track can roll the shoe sideways or point it back during swing.
+    const support = Math.max(stance, leg.weight);
+    const nextPitch = lerp(clamp(pitch, -.95, .33), leg.bootPitch, support);
+    alignBoot(rig, leg, nextPitch, 1);
   }
 }
 
@@ -303,7 +322,7 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     motion.gait.clear();
     rig.upperWeights?.clear();
     rig.crouchBlend = Number(Boolean(player.crouch || player.crouching));
-    for (const leg of rig.legs) { leg.locked = false; leg.weight = 0; }
+    for (const leg of rig.legs) { leg.locked = false; leg.inContact = false; leg.weight = 0; }
     Object.assign(rig, { lastShot: player.shotSeq, shotAge: Infinity, hitAge: Infinity, recoil: 0,
       airborne: player.grounded === false, sliding: Boolean(player.sliding), jumpAge: Infinity,
       landAge: Infinity, slideAge: Infinity, actionAge: Infinity, slideExit: Infinity });
@@ -336,7 +355,9 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   const measured = weightSum ? stride / weightSum : 1;
   const cycleDistance = Math.max(measured, motion.speed / maxCyclesPerSecond);
   motion.cycleDistance = cycleDistance;
-  if (weightSum && distance > .00015) motion.phase = cycle(motion.phase + distance / cycleDistance);
+  // Smooth packet-sized changes in travel over the same short window used
+  // for the blend. Its integral still tracks rendered travel at steady pace.
+  if (weightSum && motion.speed > .035) motion.phase = cycle(motion.phase + motion.speed * dt / cycleDistance);
 
   const active = new Set();
   const contacts = [0, 0];
@@ -431,10 +452,9 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     }
   }
   if (lowerAction) {
-    for (const leg of rig.legs) { leg.locked = false; leg.weight = 0; }
+    for (const leg of rig.legs) { leg.locked = false; leg.inContact = false; leg.weight = 0; }
   } else {
-    applyContacts(rig, dt, contacts, terrain);
-    settleStance(rig, terrain, 1 - smoothstep(motion.moving, 0, .52), rig.crouchBlend);
+    applyContacts(rig, dt, contacts, terrain, 1 - smoothstep(motion.moving, 0, .52));
   }
   applyWeapon(rig, player, dt, reloadWeight, actionWeight);
 }
