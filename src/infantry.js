@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { weaponSwitchPose } from '../shared/world.js';
 import { cloneInfantry, findInfantryBones, gaitClips, legNames } from './infantry-assets.js';
+import { CREW_CONTROLS } from './vehicles.js';
 
 const { clamp, damp, lerp, smoothstep } = THREE.MathUtils;
 const turn = (from, target) => Math.atan2(Math.sin(target - from), Math.cos(target - from));
@@ -16,7 +17,8 @@ const flatNormal = new THREE.Vector3(0, 1, 0);
 const legPole = new THREE.Vector3(), shoeForward = new THREE.Vector3(), shoeSide = new THREE.Vector3();
 const shoeRotation = new THREE.Quaternion(), shoePitch = new THREE.Quaternion();
 const rotation = new THREE.Euler(0, 0, 0, 'YXZ');
-const deathAttachment = new THREE.Matrix4(), deathWeapon = new THREE.Matrix4();
+const deathWeapon = new THREE.Matrix4();
+const deathBlendTime = .32;
 
 function aimJoint(bone, from, to) {
   q.setFromUnitVectors(from.normalize(), to.normalize());
@@ -178,10 +180,10 @@ function bringGripIntoReach(rig, grip, frame, weight) {
   }
 }
 
-function gripHand(rig, hand, grip, frame, side, weight) {
+function gripHand(rig, hand, grip, frame, side, weight, attachment = rig.rifle) {
   if (weight < .005) return;
-  const { rifle, group } = rig;
-  wristTarget(rifle, hand, grip, frame);
+  const { group } = rig;
+  wristTarget(attachment, hand, grip, frame);
   group.worldToLocal(hand.upper.getWorldPosition(shoulderLocal));
   if (side === 1) {
     // Prefer the elbow position that continues the grip's wrist axis. Keep
@@ -474,7 +476,7 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
   }
 }
 
-function applyWeapon(rig, player, dt, reload, actionWeight, controls = false) {
+function applyWeapon(rig, player, dt, reload, actionWeight) {
   const { bones, group, rifle } = rig;
   const afterSwitch = weaponSwitchPose(player.equipTime).lowered;
   const bodyAim = clamp(turn(group.rotation.y, player.yaw ?? group.rotation.y), -.67, .67);
@@ -519,7 +521,7 @@ function applyWeapon(rig, player, dt, reload, actionWeight, controls = false) {
     lerp(pitch, -.42, lerp(carrying, .7, sprint)) - reload * .28 + magazineWeight * .35 - afterSwitch * .62 + rig.recoil * .06,
     bodyAim + reload * .12 + magazineWeight * (rig.pistol ? .12 : .53) + afterSwitch * .15 + sprint * (rig.pistol ? 0 : .19),
     reload * -.25 - afterSwitch * .19));
-  rifle.visible = !controls && actionWeight < .9;
+  rifle.visible = actionWeight < .9;
   rifle.updateWorldMatrix(true, true);
   if (rig.magazine) {
     rig.magazine.position.copy(rig.magazineRest);
@@ -556,6 +558,7 @@ export function infantryTurnTolerance(rig, aiming, sliding) {
 
 export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   const { group, motion } = rig;
+  rig.deathPose = null;
   dt = Math.max(dt, .001);
   if (reset) {
     Object.assign(motion, { x: group.position.x, z: group.position.z, speed: 0, vx: 0, vz: 0, moving: 0, phase: 0 });
@@ -731,18 +734,48 @@ export function infantryAction(rig, action = 'throw') {
 }
 
 export function infantryDeath(rig, age) {
-  rig.bones.RightHand.updateWorldMatrix(true, false);
-  deathAttachment.copy(rig.bones.RightHand.matrixWorld).invert().multiply(rig.rifle.matrixWorld);
+  const { bones, group, rifle } = rig;
+  const { Hips, RightHand } = bones;
+  if (!rig.deathPose) {
+    group.worldToLocal(Hips.getWorldPosition(target));
+    const blend = rig.activeActions.size > 0 && target.y >= 0;
+    rifle.updateWorldMatrix(true, false);
+    RightHand.updateWorldMatrix(true, false);
+    rig.deathPose = {
+      hips: blend ? Hips.position.clone() : null,
+      rotations: blend ? Object.values(bones).map(bone => [bone, bone.quaternion.clone()]) : null,
+      down: blend && target.y < .32,
+      weapon: rifle.visible ? RightHand.matrixWorld.clone().invert().multiply(rifle.matrixWorld) : null,
+    };
+  }
+  const death = rig.deathPose;
   const active = new Set(), duration = rig.template.clips.get('death').lower.duration;
-  play(rig, active, 'death', false, age, 1);
-  play(rig, active, 'death', true, age, 1);
+  // The source winds the wrists and elbows sharply during the first .17 s.
+  // Blend the rendered pose into the stable part of the upper-body track.
+  const time = age + (death.down ? 1.45 : 0);
+  play(rig, active, 'death', false, time, 1);
+  play(rig, active, 'death', true, Math.max(deathBlendTime, time), 1);
   evalPose(rig, active);
-  deathWeapon.copy(rig.group.matrixWorld).invert().multiply(rig.bones.RightHand.matrixWorld).multiply(deathAttachment);
-  deathWeapon.decompose(rig.rifle.position, rig.rifle.quaternion, rig.rifle.scale);
-  rig.rifle.updateWorldMatrix(false, true);
+  if (death.rotations && age < deathBlendTime) {
+    const weight = smoothstep(age, 0, deathBlendTime);
+    rig.hipsRest = Hips.position.clone();
+    Hips.position.lerp(death.hips, 1 - weight);
+    for (const [bone, from] of death.rotations) {
+      saveRotation(rig, bone);
+      bone.quaternion.slerp(from, 1 - weight);
+    }
+    Hips.updateWorldMatrix(false, true);
+  } else {
+    death.rotations = death.hips = null;
+  }
+  rifle.visible = Boolean(death.weapon && time < duration * .55);
+  if (rifle.visible) {
+    deathWeapon.copy(group.matrixWorld).invert().multiply(RightHand.matrixWorld).multiply(death.weapon);
+    deathWeapon.decompose(rifle.position, rifle.quaternion, rifle.scale);
+    rifle.updateWorldMatrix(false, true);
+  }
   rig.flash.visible = false;
   rig.marker.visible = false;
-  rig.rifle.visible = age < duration * .55;
 }
 
 // The review can inspect the original tracks with the same mixer that runs in play.
@@ -755,26 +788,95 @@ export function sampleInfantryClip(rig, name, time) {
   rig.flash.visible = false;
 }
 
-export function infantrySeat(rig, { vehicle, seat, index, relativeYaw, pitch, shotSeq, dt }) {
-  const active = new Set(), driving = seat.role === 'driver', controls = driving || seat.role === 'gunner';
-  const standing = vehicle.type === 'humvee' && seat.role === 'gunner';
-  play(rig, active, standing ? 'ready_idle' : 'crouch_idle', false, .2, 1);
-  play(rig, active, controls ? 'interact' : 'ready_crouch_idle', true, .22, 1);
+// Heights are measured from the vehicle origin, on the cushion, deck or floor.
+// The ankle targets include clearance for the soles of the remastered boots.
+const ridingPose = {
+  tankSide: { hips: 1.59, ankle: [.15, 1.09, -.46] },
+  tankRear: { hips: 1.42, ankle: [.15, .92, -.46] },
+  atvDriver: { hips: 1.04, ankle: [.35, .64, .13] },
+  atvPassenger: { hips: 1.07, ankle: [.38, .64, -.14] },
+  humveeCabin: { hips: 1.02, ankle: [.18, .86, -.44] },
+  humveeGunner: { hips: 1.61, ankle: [.16, .86, .06] },
+};
+const neutralControl = new THREE.Object3D();
+const controlGrip = new THREE.Vector3();
+const controlFrames = [-1, 1].map(side => ({
+  atv: handBasis(new THREE.Vector3(0, -.42, -1), new THREE.Vector3(-side, 0, 0), new THREE.Quaternion()),
+  driver: handBasis(new THREE.Vector3(-side * .45, 0, -.89), flatNormal, new THREE.Quaternion()),
+  gunner: handBasis(new THREE.Vector3(0, -.12, -1), flatNormal, new THREE.Quaternion()),
+}));
+
+function poseVehicleHands(rig, control, kind, seat) {
+  const { origin, grip } = CREW_CONTROLS[kind];
+  // The standalone animation viewer previews the same controls at rest.
+  if (!control) {
+    neutralControl.position.set(origin[0] - seat.x, origin[1] - seat.height, origin[2] - seat.z);
+    rig.group.add(neutralControl);
+    control = neutralControl;
+  }
+  for (const side of [-1, 1]) {
+    const hand = side < 0 ? rig.leftHand : rig.rightHand;
+    controlGrip.set(side * grip[0], grip[1], grip[2]);
+    gripHand(rig, hand, controlGrip, controlFrames[(side + 1) / 2][kind], side, 1, control);
+    if (rig.lod < 2) closeFingers(rig, hand, 1);
+  }
+  neutralControl.removeFromParent();
+}
+
+export function infantrySeat(rig, { vehicle, seat, index, control, relativeYaw, pitch, aim, shotSeq, dt }) {
+  const { group, bones } = rig;
+  rig.deathPose = null;
+  const active = new Set(), atv = vehicle.type === 'atv', driving = seat.role === 'driver';
+  const gunner = seat.role === 'gunner', controls = driving || gunner;
+  const pose = vehicle.type === 'tank' ? (index === 4 ? ridingPose.tankRear : ridingPose.tankSide) :
+    atv ? (driving ? ridingPose.atvDriver : ridingPose.atvPassenger) :
+    gunner ? ridingPose.humveeGunner : ridingPose.humveeCabin;
+  play(rig, active, 'ready_idle', false, .2, 1);
+  play(rig, active, controls ? 'interact' : 'ready_idle', true, .22, 1);
   evalPose(rig, active);
-  rig.legs.forEach(leg => {
-    if (standing) return;
-    const atv = vehicle.type === 'atv';
-    const hips = rig.group.worldToLocal(rig.bones.Hips.getWorldPosition(a));
-    target.set(hips.x + leg.side * (atv ? .25 : .16), hips.y - (atv ? .30 : .43), hips.z - (atv ? .12 : .30));
-    rig.group.localToWorld(target);
-    saveRotation(rig, leg.upper, leg.knee);
-    reach(leg.upper, leg.knee, leg.foot, target, 1, kneePole(rig, leg));
-  });
+  const { Hips, Spine } = bones;
+  rig.hipsRest = Hips.position.clone();
+  target.set(0, pose.hips - seat.height, 0);
+  Hips.position.copy(Hips.parent.worldToLocal(group.localToWorld(target)));
+  Hips.updateWorldMatrix(false, true);
+  if (driving) {
+    // Lean toward the controls while keeping the pelvis against the seat.
+    saveRotation(rig, Spine);
+    target.set(1, 0, 0).applyQuaternion(group.getWorldQuaternion(shoeRotation));
+    target.applyQuaternion(Spine.parent.getWorldQuaternion(q).invert());
+    Spine.quaternion.premultiply(q.setFromAxisAngle(target, atv ? -.56 : -.24));
+    Spine.updateWorldMatrix(false, true);
+  }
+  for (const leg of rig.legs) {
+    const [width, height, depth] = pose.ankle;
+    group.localToWorld(target.set(leg.side * width, height - seat.height, depth));
+    group.worldToLocal(leg.upper.getWorldPosition(legPole));
+    legPole.x += leg.side * (atv ? .46 : .12);
+    legPole.z -= 1;
+    group.localToWorld(legPole);
+    saveRotation(rig, leg.upper, leg.knee, leg.foot);
+    reach(leg.upper, leg.knee, leg.foot, target, 1, legPole);
+    // Align the soles with the vehicle, including its suspension pitch and roll.
+    group.getWorldQuaternion(shoeRotation).multiply(shoePitch.setFromAxisAngle(flatNormal,
+      -leg.bootYaw - leg.side * .12)).multiply(leg.bootRotation);
+    leg.foot.parent.getWorldQuaternion(q).invert();
+    leg.foot.quaternion.copy(q.multiply(shoeRotation));
+    leg.foot.updateWorldMatrix(false, true);
+  }
   if (shotSeq !== rig.lastShot) {
     rig.lastShot = shotSeq;
     rig.shotAge = 0;
+    rig.recoil = 1;
   } else rig.shotAge += dt;
-  applyWeapon(rig, { yaw: rig.group.rotation.y + relativeYaw, pitch }, dt, 0, 0, controls);
+  if (controls) {
+    poseVehicleHands(rig, control, gunner ? 'gunner' : atv ? 'atv' : 'driver', seat);
+    rig.rifle.visible = rig.flash.visible = false;
+  } else {
+    // On the tandem seat, carry the rifle to the side of the driver until aiming.
+    const carrying = atv && !aim ? smoothstep(rig.shotAge, .06, .23) : 0;
+    const yaw = lerp(clamp(relativeYaw, -.67, .67), .67, carrying);
+    applyWeapon(rig, { yaw: group.rotation.y + yaw, pitch: lerp(pitch ?? 0, -.26, carrying), aim }, dt, 0, 0);
+  }
   rig.marker.visible = false;
   rig.initialized = false;
   rig.alive = true;

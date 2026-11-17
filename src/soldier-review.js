@@ -180,7 +180,7 @@ function restart() {
   elapsed = change = accumulator = shot = 0;
   moving[0] = moving[1] = packet[0] = packet[1] = 0;
   for (const rig of rigs) {
-    Object.assign(rig, { initialized: false, poseTime: 0, action: null });
+    Object.assign(rig, { initialized: false, poseTime: 0, action: null, deathPose: null, reviewDeathAge: null });
     rig.group.rotation.y = 0;
     rig.group.position.y = 0;
     const weapon = $('weapon').value;
@@ -263,10 +263,19 @@ function step(dt) {
     const tolerance = infantryTurnTolerance(rig, aiming, sliding);
     rig.group.rotation.y += Math.sign(yawDelta) * Math.max(0, Math.abs(yawDelta) - tolerance) * (1 - Math.exp(-dt * 12));
     setInfantryLod(rig, lod, false);
-    if (state === 'death') infantryDeath(rig, t % 4);
+    if (state === 'death') {
+      const age = t % 4;
+      if (!rig.deathPose || age < rig.reviewDeathAge) {
+        updateInfantry(rig, { yaw: rig.group.rotation.y, grounded: true, shotSeq: shot }, dt, true);
+      }
+      rig.reviewDeathAge = age;
+      infantryDeath(rig, age);
+    }
     else if (state.startsWith('seat')) {
       const [type, index] = state === 'seat-atv' ? ['atv', 0] : state === 'seat-humvee' ? ['humvee', 1] : ['tank', 2];
-      infantrySeat(rig, { vehicle: { type }, seat: VEHICLE_TYPES[type].seats[index], index,
+      const seat = VEHICLE_TYPES[type].seats[index];
+      rig.group.position.y = seat.height - (type === 'tank' ? 1 : .55);
+      infantrySeat(rig, { vehicle: { type }, seat, index,
         relativeYaw: 0, pitch, shotSeq: shot, dt });
     }
     else {

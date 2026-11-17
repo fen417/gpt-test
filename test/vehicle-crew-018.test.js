@@ -68,7 +68,6 @@ test('Humvee and ATV riders remain visible as fallback and damageable behind act
   }
 });
 
-test('0.18 patch is the visible game release',()=>{
-  assert.equal(GAME_VERSION,'0.18');
-  assert.equal(PATCH_NOTES[0]?.version,'0.18');
+test('the visible game release is the latest patch',()=>{
+  assert.equal(PATCH_NOTES[0]?.version,GAME_VERSION);
 });

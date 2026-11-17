@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import {createWeaponRig} from '../src/weapons.js';
 import {loadFPSHands} from '../src/fps-hands.js';
 import {readFile} from 'node:fs/promises';
-import {GAME_VERSION,PATCH_NOTES} from '../shared/releases.js';
+import {PATCH_NOTES} from '../shared/releases.js';
 
 test('MG-36 and PKP retain a wide, unobstructed rear sight aperture in ADS',async()=>{
   // No browser DOM in Node: provide texture placeholders for model geometry.
@@ -53,7 +53,6 @@ test('MG-36 and PKP retain a wide, unobstructed rear sight aperture in ADS',asyn
 });
 
 test('0.18 patch notes include improved MG sights and gunfire, but no story campaign',()=>{
-  assert.equal(GAME_VERSION,'0.18');
   const release=PATCH_NOTES.find(note=>note.version==='0.18');
   assert.ok(release);
   const text=[...release.added,...release.changed,...release.fixed].join(' ');

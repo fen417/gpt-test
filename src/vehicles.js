@@ -12,6 +12,12 @@ const cylinderGeometry = new THREE.CylinderGeometry(1, 1, 1, 16);
 const sphereGeometry = new THREE.SphereGeometry(1, 12, 8);
 const ringGeometry = new THREE.TorusGeometry(1, .10, 8, 24);
 const H = Math.PI / 2;
+// Rendered control origins and palm contacts in each control's local frame.
+export const CREW_CONTROLS = {
+  atv: { origin: [0, 1.06, -.48], grip: [.33, .045, .01] },
+  driver: { origin: [-.54, 1.24, -.825], grip: [.19, .024, 0] },
+  gunner: { origin: [0, 2.18, .19], grip: [.11, -.012, .07] },
+};
 let tankLibrary,tankLoading;const tankPool=[];
 export function warmTankAssets(renderer,scene,camera,prepare){return tankLoading??=import('./tank-model.js').then(async library=>{
   await library.loadTankAtlas(renderer);for(let i=0;i<2;i++)tankPool.push(library.createTankRig());
@@ -116,7 +122,7 @@ function buildAtv(body, materials) {
     for(let n=0;n<7;n++)prism('rim',-.28,.56+n*.028,-.16,.021,.009,.31);
   });
   const controls = new THREE.Group();
-  controls.position.set(0,1.06,-.48);
+  controls.position.fromArray(CREW_CONTROLS.atv.origin);
   body.add(controls);
   parts(controls,materials,({prism,round,tube})=>{
     tube('rim',.03,0,-.26,.07,0,-.026,.02);
@@ -260,7 +266,7 @@ function buildHumvee(body, materials) {
     cylinder('rim',0,.81,2.38,.21,.08,H);
   });
   const controls = new THREE.Group();
-  controls.position.set(-.54,1.24,-.825);
+  controls.position.fromArray(CREW_CONTROLS.driver.origin);
   body.add(controls);
   parts(controls,materials,({prism,round,ring})=>{
     ring('rubber',0,.024,0,.195,.195,.195,-.44);
@@ -273,7 +279,7 @@ function buildHumvee(body, materials) {
 
 function buildTurret(body, materials) {
   const turret = new THREE.Group(), gun = new THREE.Group();
-  turret.position.set(0,2.18,.19);
+  turret.position.fromArray(CREW_CONTROLS.gunner.origin);
   turret.add(gun);
   body.add(turret);
   parts(turret,materials,({prism,round,cylinder})=>{
