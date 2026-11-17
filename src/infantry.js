@@ -229,6 +229,8 @@ function settleStance(rig, terrain, weight, crouch) {
   if (weight < .015 || rig.lod >= 2) return;
   const ankleHeight = rig.team ? .096 : .112;
   for (const [index, leg] of rig.legs.entries()) {
+    const blend = weight * (1 - leg.weight);
+    if (blend < .015) continue;
     const side = index === 0 ? -1 : 1;
     target.set(side * lerp(.135, .185, crouch), ankleHeight, side * .145);
     rig.group.localToWorld(target);
@@ -241,8 +243,8 @@ function settleStance(rig, terrain, weight, crouch) {
     const to = c.set(-Math.sin(heading), -.42, -Math.cos(heading)).normalize();
     const rotation = q.setFromUnitVectors(from, to);
     world.copy(orientation).premultiply(rotation);
-    orientation.slerp(world, weight);
-    reach(leg.upper, leg.knee, leg.foot, target, weight);
+    orientation.slerp(world, blend);
+    reach(leg.upper, leg.knee, leg.foot, target, blend);
     leg.foot.parent.getWorldQuaternion(q).invert();
     leg.foot.quaternion.copy(q.multiply(orientation));
     leg.foot.updateWorldMatrix(false, true);
@@ -428,8 +430,12 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
       Hips.updateWorldMatrix(false, true);
     }
   }
-  applyContacts(rig, dt, contacts, terrain);
-  if (!lowerAction) settleStance(rig, terrain, 1 - smoothstep(motion.moving, 0, .52), rig.crouchBlend);
+  if (lowerAction) {
+    for (const leg of rig.legs) { leg.locked = false; leg.weight = 0; }
+  } else {
+    applyContacts(rig, dt, contacts, terrain);
+    settleStance(rig, terrain, 1 - smoothstep(motion.moving, 0, .52), rig.crouchBlend);
+  }
   applyWeapon(rig, player, dt, reloadWeight, actionWeight);
 }
 
