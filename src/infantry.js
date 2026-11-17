@@ -594,6 +594,16 @@ export function infantryDeath(rig, age) {
   rig.rifle.visible = age < duration * .55;
 }
 
+// The review can inspect the original tracks with the same mixer that runs in play.
+export function sampleInfantryClip(rig, name, time) {
+  const active = new Set();
+  play(rig, active, name, false, time, 1);
+  play(rig, active, name, true, time, 1);
+  evalPose(rig, active);
+  rig.rifle.visible = false;
+  rig.flash.visible = false;
+}
+
 export function infantrySeat(rig, { vehicle, seat, index, relativeYaw, pitch, shotSeq, dt }) {
   const active = new Set(), driving = seat.role === 'driver', controls = driving || seat.role === 'gunner';
   const exposed = vehicle.type === 'tank' && index > 1;
