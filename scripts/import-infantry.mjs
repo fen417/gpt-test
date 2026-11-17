@@ -21,6 +21,10 @@ const files = {
   p226: '579cb38e8f861ecac5b7c7739946c4620046fffaf94ee5e073cb69b913db72fc',
   m1911: '08b5dc8d4abc14b88b6728f2b4eb007284da54adc30d5295dbd703e5551d3c10',
 };
+const operatorSource = {
+  url: 'https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-132/9e82fabf26194896b5ad4a364d864eab.glb',
+  sha256: 'd33e1bb64ccf35ded1da1f46d3fe6545a38df3e45578105ef3d522b44ad478dc',
+};
 const output = fileURLToPath(new URL('../src/assets/infantry/', import.meta.url));
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   'meshopt.encoder': MeshoptEncoder,
@@ -29,12 +33,12 @@ await Promise.all([MeshoptEncoder.ready, MeshoptSimplifier.ready, mkdir(output, 
 
 async function readSource(name) {
   const folder = name.startsWith('soldier') ? 'characters' : 'weapons';
-  const url = 'https://raw.githubusercontent.com/cktang88/3d-fps/' + revision +
-    '/public/assets/models/' + folder + '/' + name + '.glb';
+  const url = name === 'operator' ? operatorSource.url :
+    'https://raw.githubusercontent.com/cktang88/3d-fps/' + revision + '/public/assets/models/' + folder + '/' + name + '.glb';
   const response = await fetch(url);
   if (!response.ok) throw new Error(url + ' returned ' + response.status);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (createHash('sha256').update(bytes).digest('hex') !== files[name]) throw new Error('Source hash mismatch for ' + name);
+  if (createHash('sha256').update(bytes).digest('hex') !== (name === 'operator' ? operatorSource.sha256 : files[name])) throw new Error('Source hash mismatch for ' + name);
   return io.readBinary(bytes);
 }
 
@@ -86,22 +90,48 @@ function retarget(source, target) {
   }
 }
 
-async function encodeTextures(document) {
+async function encodeTextures(document, operator = false) {
   const root = document.getRoot();
   const colors = new Set(root.listMaterials().map(material => material.getBaseColorTexture()));
   const normals = new Set(root.listMaterials().map(material => material.getNormalTexture()));
   const textures = root.listTextures();
+  const uniforms = new Set(root.listMaterials().filter(material => material.getName() === 'uniform')
+    .flatMap(material => [material.getBaseColorTexture(), material.getNormalTexture()]));
+  const palette = new Map();
+  const rough = new Set();
+  const clothing = {
+    uniform: [62, 61, 38], helmet: [65, 56, 32], pouch: [78, 61, 37],
+    boots: [31, 23, 13], gloves: [25, 20, 11],
+  };
+  if (operator) for (const material of root.listMaterials()) {
+    const tint = clothing[material.getName()];
+    if (!tint) continue;
+    palette.set(material.getBaseColorTexture(), tint);
+    rough.add(material.getMetallicRoughnessTexture());
+  }
   if (!textures.length) return;
   for (const texture of textures) {
     const image = await loadImage(Buffer.from(texture.getImage()));
-    const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
+    const limit = operator && !uniforms.has(texture) ? 512 : 1024;
+    const scale = Math.min(1, limit / Math.max(image.width, image.height));
     const canvas = new Canvas(Math.round(image.width * scale), Math.round(image.height * scale));
     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
     const rgba = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    const tint = palette.get(texture);
+    for (let i = 0; i < rgba.data.length && (tint || rough.has(texture)); i += 4) {
+      if (tint) {
+        const light = (.2126 * rgba.data[i] + .7152 * rgba.data[i + 1] + .0722 * rgba.data[i + 2]) * .78;
+        for (let c = 0; c < 3; c++) rgba.data[i + c] = light + tint[c];
+      } else {
+        rgba.data[i + 1] = 166 + rgba.data[i + 1] * .34;
+        rgba.data[i + 2] = 0;
+      }
+    }
     const srgb = colors.has(texture), normal = normals.has(texture);
     const ktx = await encodeToKTX2(Uint8Array.of(0), {
       isUASTC: normal, isNormalMap: normal, qualityLevel: 160, generateMipmap: true,
-      needSupercompression: normal, isPerceptual: srgb, isSetKTX2SRGBTransferFunc: srgb,
+      needSupercompression: normal, enableRDO: operator && normal, rdoQualityLevel: 1.5,
+      isPerceptual: srgb, isSetKTX2SRGBTransferFunc: srgb,
       imageDecoder: async () => ({ width: canvas.width, height: canvas.height, data: new Uint8Array(rgba.data) }),
     });
     texture.setImage(ktx).setMimeType('image/ktx2');
@@ -110,61 +140,36 @@ async function encodeTextures(document) {
   document.createExtension(KHRTextureBasisu).setRequired(true);
 }
 
-function textile(document, channel) {
-  const size = 128, canvas = new Canvas(size, size), context = canvas.getContext('2d');
-  const image = context.createImageData(size, size);
-  const height = (x, y) => Math.sin((x + y) * Math.PI / 2) * .35 + Math.cos(x * Math.PI / 2) * .2;
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const at = (y * size + x) * 4;
-    const pattern = Math.sin(x * .0491 + 4 * Math.sin(y * .0982)) + Math.sin(y * .1473 - x * .0982);
-    const grain = ((Math.imul(x + 13, 0x9e3779b1) ^ Math.imul(y + 16, 0x4ab9c223)) >>> 27) - 16;
-    if (channel === 'normal') {
-      image.data[at] = 128 + 14 * (height(x - 1, y) - height(x + 1, y));
-      image.data[at + 1] = 128 + 14 * (height(x, y - 1) - height(x, y + 1));
-      image.data[at + 2] = 254;
-    } else if (channel === 'roughness') {
-      image.data[at] = 255;
-      image.data[at + 1] = 226 + pattern * 10 + grain * .25;
-    } else {
-      const shade = pattern < -.60 ? 148 : pattern > .77 ? 226 : 188;
-      image.data[at] = shade + grain * .55;
-      image.data[at + 1] = shade + grain * .58;
-      image.data[at + 2] = shade + grain * .65;
-    }
-    image.data[at + 3] = 255;
-  }
-  context.putImageData(image, 0, 0);
-  return document.createTexture('Baked textile ' + channel).setMimeType('image/png').setImage(canvas.toBuffer('image/png'));
-}
-
 function dressRegular(document) {
-  const colors = {
-    Soldier_Clothes: [.18, .21, .12], Soldier_Fabric: [.30, .25, .15], Soldier_Armor: [.34, .28, .17],
-    Soldier_Elements: [.085, .098, .070], Soldier_Boots: [.065, .054, .039], Soldier_Shoes: [.032, .031, .026],
-  };
-  const buffer = document.getRoot().listBuffers()[0];
-  const fabric = document.createMaterial('Uniform and webbing').setMetallicFactor(0).setRoughnessFactor(.98);
-  fabric.setBaseColorTexture(textile(document, 'base color')).setNormalTexture(textile(document, 'normal'))
-    .setNormalScale(.48).setMetallicRoughnessTexture(textile(document, 'roughness'));
-  const armor = document.createMaterial('Hard surfaces').setMetallicFactor(.13).setRoughnessFactor(.67);
-  for (const mesh of document.getRoot().listMeshes()) {
-    const grouped = new Map([[fabric, []], [armor, []]]);
+  const nodes = document.getRoot().listNodes().filter(node => node.getMesh());
+  const grouped = new Map();
+  for (const node of nodes) {
+    const mesh = node.getMesh();
+    // The source includes a display carbine and separate police insignia.
+    // Weapons in the game already have their own fitted animation sockets.
+    if (!node.getSkin()) { node.dispose(); continue; }
     for (const prim of mesh.listPrimitives()) {
-      const source = prim.getMaterial(), name = source.getName();
-      const material = /Clothes|Fabric|Skin|Boots|Shoes/.test(name) ? fabric : armor;
-      const color = colors[name] ?? source.getBaseColorFactor();
-      const count = prim.getAttribute('POSITION').getCount();
-      const values = new Float32Array(count * 3);
-      for (let i = 0; i < count; i++) values.set(color.slice(0, 3), i * 3);
-      prim.setAttribute('TEXCOORD_1', null).setAttribute('COLOR_0',
-        document.createAccessor().setType('VEC3').setArray(values).setBuffer(buffer));
-      prim.setMaterial(material);
-      grouped.get(material).push(prim);
+      const material = prim.getMaterial();
+      const key = [material.getName(), node.getParentNode().getName(), node.getMatrix(),
+        prim.listSemantics().sort()].join('|');
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push({ node, prim });
     }
-    for (const primitives of grouped.values()) {
-      if (primitives.length < 2) continue;
-      mesh.addPrimitive(joinPrimitives(primitives));
-      for (const prim of primitives) { mesh.removePrimitive(prim); prim.dispose(); }
+  }
+  for (const list of grouped.values()) {
+    if (list.length < 2) continue;
+    const [first] = list;
+    const mesh = first.node.getMesh();
+    mesh.addPrimitive(joinPrimitives(list.map(({ prim }) => prim)));
+    mesh.removePrimitive(first.prim);
+    first.prim.dispose();
+    for (const { node } of list.slice(1)) node.dispose();
+  }
+  const root = document.getRoot();
+  for (const ext of root.listExtensionsUsed()) if (ext.extensionName === 'KHR_materials_transmission') ext.dispose();
+  for (const material of root.listMaterials()) {
+    if (/^(uniform|helmet|pouch|boots|gloves)$/.test(material.getName())) {
+      material.setBaseColorFactor([1, 1, 1, 1]).setMetallicFactor(0).setRoughnessFactor(1);
     }
   }
 }
@@ -224,8 +229,11 @@ async function bakeBody(document, name) {
     if (node.getMesh()?.listPrimitives().some(p => /Headphones/.test(p.getMaterial()?.getName()))) node.dispose();
   }
   await document.transform(dedup(), prune({ keepAttributes: true, keepLeaves: true }));
+  if (name === 'regular') await document.transform(simplify({
+    simplifier: MeshoptSimplifier, ratio: .55, error: .016,
+  }));
   makeLods(document);
-  await encodeTextures(document);
+  await encodeTextures(document, name === 'regular');
   // LOD swaps share a bind pose and dequantization transform with LOD0.
   await document.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium', quantizationVolume: 'scene' }));
   await io.write(pathJoin(output, name + '.glb'), document);
@@ -259,10 +267,14 @@ async function bakeWeapon(document, name) {
   await io.write(pathJoin(output, name + '.glb'), document);
 }
 
-const [regular, militia] = await Promise.all([readSource('soldier'), readSource('soldier_tac')]);
-retarget(regular, militia);
+const [motionSource, regular, militia] = await Promise.all([
+  readSource('soldier'), readSource('operator'), readSource('soldier_tac'),
+]);
+for (const clip of regular.getRoot().listAnimations()) clip.dispose();
+retarget(motionSource, regular);
+retarget(motionSource, militia);
 await bakeBody(regular, 'regular');
-await bakeBody(militia, 'militia');
-for (const name of Object.keys(files).filter(name => !name.startsWith('soldier'))) {
-  await bakeWeapon(await readSource(name), name);
+if (!process.argv.includes('--regular-only')) {
+  await bakeBody(militia, 'militia');
+  for (const name of Object.keys(files).filter(name => !name.startsWith('soldier'))) await bakeWeapon(await readSource(name), name);
 }
