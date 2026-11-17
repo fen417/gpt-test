@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { InfantryAssets } from './infantry-assets.js';
-import { createInfantry, disposeInfantry, infantryAction, infantryDeath, infantryHit, infantrySeat, sampleInfantryClip, setInfantryLod, setInfantryWeapon, updateInfantry } from './infantry.js';
+import { createInfantry, disposeInfantry, infantryAction, infantryDeath, infantryHit, infantrySeat, infantryTurnTolerance, sampleInfantryClip, setInfantryLod, setInfantryWeapon, updateInfantry } from './infantry.js';
 import { VEHICLE_TYPES } from '../shared/vehicles.js';
 import { WEAPONS, WEAPON_SWITCH_TIME, WEAPON_SWAP_PHASE } from '../shared/world.js';
 
@@ -231,10 +231,11 @@ function step(dt) {
   const remote = $('remote').checked;
   const slideAge = t % 3 - .28;
   const jumpAge = t % 2.2 - .28;
+  const config = WEAPONS[$('weapon').value];
   const modeSpeed = {
     walk: [0, -1.4], run: [0, -6.3], sprint: [0, -9.765],
     'strafe-left': [-3.1, 0], 'strafe-right': [3.1, 0], back: [0, 3.1],
-    diagonal: [2.2, -2.2], crouch: [0, -2.45], slide: [0, slideAge >= 0 ? -6 * Math.max(0, 1 - slideAge) : 0],
+    diagonal: [2.2, -2.2], crouch: [0, -config.speed * .5], slide: [0, slideAge >= 0 ? -6 * Math.max(0, 1 - slideAge) : 0],
     stop: [0, t % 4 < 2 ? -3.1 : 0], reverse: [0, t % 4 < 2 ? -3.1 : 3.1], crawl: [0, -1.0],
   }[state] ?? [0, 0];
   moving[0] += modeSpeed[0] * speed * dt;
@@ -245,12 +246,12 @@ function step(dt) {
   }
   const lod = Number($('lod').value);
   const blend = remote ? 1 - Math.exp(-dt * 18) : 1;
-  const config = WEAPONS[$('weapon').value];
   const aiming = state === 'aim' || state === 'shoot';
   const pitch = aiming ? THREE.MathUtils.degToRad(Number($('aim-pitch').value)) : 0;
   if (dt && state === 'shoot' && Math.floor(t / config.interval) !== Math.floor((t - dt) / config.interval)) shot++;
   for (const rig of rigs) {
     const jump = state === 'jump' && jumpAge >= 0 && jumpAge < .72;
+    const sliding = state === 'slide' && slideAge >= 0 && slideAge < .85;
     const jumpY = jump ? 4.2 * jumpAge * (.72 - jumpAge) : 0;
     const yaw = aiming ? THREE.MathUtils.degToRad(Number($('aim-yaw').value)) : state === 'turn' ? Math.sin(t * .8) * .8 : 0;
     rig.group.position.x = THREE.MathUtils.lerp(rig.group.position.x, rig.base[0] + packet[0], rig.initialized ? blend : 1);
@@ -259,7 +260,8 @@ function step(dt) {
     rig.shadow.position.set(rig.group.position.x, -.009, rig.group.position.z);
     rig.shadow.scale.setScalar(1 + jumpY * .28);
     const yawDelta = Math.atan2(Math.sin(yaw - rig.group.rotation.y), Math.cos(yaw - rig.group.rotation.y));
-    rig.group.rotation.y += Math.sign(yawDelta) * Math.max(0, Math.abs(yawDelta) - .30) * (1 - Math.exp(-dt * 12));
+    const tolerance = infantryTurnTolerance(rig, aiming, sliding);
+    rig.group.rotation.y += Math.sign(yawDelta) * Math.max(0, Math.abs(yawDelta) - tolerance) * (1 - Math.exp(-dt * 12));
     setInfantryLod(rig, lod, false);
     if (state === 'death') infantryDeath(rig, t % 4);
     else if (state.startsWith('seat')) {
@@ -286,7 +288,7 @@ function step(dt) {
       updateInfantry(rig, {
         yaw, pitch, shotSeq: shot, sprint: state === 'sprint', crouch: state.startsWith('crouch'),
         prone: ['prone', 'crawl', 'downed'].includes(state), downed: state === 'downed',
-        sliding: state === 'slide' && slideAge >= 0 && slideAge < .85, grounded: !jump, aim: aiming,
+        sliding, grounded: !jump, aim: aiming,
         reloading, reloadProgress: reloading ? reloadTimer / config.reload : 0,
         equipTime: switching && switchAge >= 0 ? Math.max(0, WEAPON_SWITCH_TIME - switchAge) : 0,
       }, dt, !rig.initialized);

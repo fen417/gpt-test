@@ -101,6 +101,13 @@ function handBasis(forward, indexward, out) {
 const primaryPalm = new THREE.Vector3(.024, .013, .015), supportPalm = new THREE.Vector3();
 const rightGrip = handBasis(new THREE.Vector3(-.29, -.13, -.95), flatNormal, new THREE.Quaternion());
 const leftGrip = handBasis(new THREE.Vector3(.58, .08, -.81), new THREE.Vector3(-.81, 0, -.58), new THREE.Quaternion());
+const foregripHold = handBasis(new THREE.Vector3(.84, .27, -.46), new THREE.Vector3(0, .90, -.42), new THREE.Quaternion());
+const pistolSupport = handBasis(new THREE.Vector3(.28, .06, -.96), flatNormal, new THREE.Quaternion());
+const magazineGrip = handBasis(new THREE.Vector3(.78, -.10, -.62), flatNormal, new THREE.Quaternion());
+const supportFrame = new THREE.Quaternion();
+const supportShoulder = new THREE.Vector3(), supportShift = new THREE.Vector3();
+const primaryShoulder = new THREE.Vector3(), primaryWrist = new THREE.Vector3();
+
 
 function bindHand(bones, prefix) {
   const wrist = bones[prefix + 'Hand'];
@@ -117,19 +124,53 @@ function bindHand(bones, prefix) {
     basis: handBasis(middle, across, new THREE.Quaternion()),
     contact: middle.clone().multiplyScalar(.87),
     fingers: ['Index', 'Middle', 'Ring', 'Pinky'].map(name => [1, 2, 3, 4].map(n => bones[prefix + 'Hand' + name + n])),
+    thumb: [1, 2, 3].map(n => bones[prefix + 'HandThumb' + n]),
   };
   hand.closed = closedFingers(hand, prefix === 'Right');
   return hand;
 }
 
-function gripHand(rig, hand, grip, frame, side, weight) {
-  if (weight < .005) return;
-  const { rifle, group } = rig;
+function wristTarget(rifle, hand, grip, frame) {
   rifle.getWorldQuaternion(rifleWorld);
   handWorld.copy(hand.basis).invert().premultiply(frame).premultiply(rifleWorld);
   gripWrist.copy(hand.contact).multiplyScalar(hand.scale).applyQuaternion(handWorld);
-  gripCenter.copy(grip);
-  rifle.localToWorld(gripCenter).sub(gripWrist);
+  rifle.localToWorld(gripCenter.copy(grip)).sub(gripWrist);
+}
+
+function bringGripIntoReach(rig, grip, frame, weight) {
+  const { rifle, group, leftHand, rightHand } = rig;
+  if (weight > .005) {
+    wristTarget(rifle, leftHand, grip, frame);
+    leftHand.upper.getWorldPosition(supportShoulder);
+    supportShift.subVectors(supportShoulder, gripCenter);
+    const distance = supportShift.length();
+    const limit = leftHand.upperLength + leftHand.forearmLength - .021;
+    if (distance > limit) {
+      supportShift.multiplyScalar(Math.min(.27, distance - limit) * weight / distance);
+      rifle.getWorldPosition(gripCenter).add(supportShift);
+      rifle.position.copy(group.worldToLocal(gripCenter));
+      rifle.updateWorldMatrix(true, false);
+    }
+  }
+  // Keep the trigger wrist clear of the torso when reaching with the support
+  // hand, especially as the gun comes up and rolls during a reload.
+  wristTarget(rifle, rightHand, primaryPalm, rightGrip);
+  group.worldToLocal(gripCenter);
+  group.worldToLocal(rightHand.upper.getWorldPosition(primaryShoulder));
+  primaryWrist.subVectors(gripCenter, primaryShoulder);
+  primaryWrist.x = Math.max(primaryWrist.x, -.18);
+  primaryWrist.y = Math.min(primaryWrist.y, -.025);
+  primaryWrist.z = Math.min(primaryWrist.z, rig.foregrip ? -.085 : -.11);
+  const reachLimit = rightHand.upperLength + rightHand.forearmLength - .012;
+  primaryWrist.clampLength(.16, reachLimit);
+  rifle.position.add(primaryWrist.add(primaryShoulder).sub(gripCenter));
+  rifle.updateWorldMatrix(true, false);
+}
+
+function gripHand(rig, hand, grip, frame, side, weight) {
+  if (weight < .005) return;
+  const { rifle, group } = rig;
+  wristTarget(rifle, hand, grip, frame);
   group.worldToLocal(hand.upper.getWorldPosition(shoulderLocal));
   if (side === 1) {
     // Prefer the elbow position that continues the grip's wrist axis. Keep
@@ -159,13 +200,26 @@ function closedFingers(hand, right) {
   fingerAxis.set(right ? -1 : 1, 0, 0).applyQuaternion(rifleWorld);
   const result = [], original = [];
   for (const [index, chain] of hand.fingers.entries()) {
-    const curl = right && index === 0 ? [.15, .54, 1.08] : [.62, 1.52, 2.05];
+    const curl = right ? (index === 0 ? [.15, .54, 1.08] : [.62, 1.52, 2.05]) : [.55, 1.19, 1.72];
     for (let i = 0; i < 3; i++) {
       const bone = chain[i], next = chain[i + 1];
       if (!bone || !next) continue;
       const from = next.getWorldPosition(b).sub(bone.getWorldPosition(a));
       fingerAim.copy(fingerForward).multiplyScalar(Math.cos(curl[i])).addScaledVector(fingerAxis, Math.sin(curl[i]));
       original.push([bone, bone.quaternion.clone()]);
+      aimJoint(bone, from, fingerAim);
+      result.push([bone, bone.quaternion.clone()]);
+    }
+  }
+  if (!right) {
+    palmUp.set(0, 1, 0).applyQuaternion(rifleWorld);
+    for (let i = 0; i < hand.thumb.length - 1; i++) {
+      const bone = hand.thumb[i], next = hand.thumb[i + 1];
+      if (!bone || !next) continue;
+      original.push([bone, bone.quaternion.clone()]);
+      const from = next.getWorldPosition(b).sub(bone.getWorldPosition(a));
+      fingerAim.copy(fingerForward).addScaledVector(palmUp, i === 0 ? .45 : .27)
+        .addScaledVector(fingerAxis, i === 0 ? .30 : .58);
       aimJoint(bone, from, fingerAim);
       result.push([bone, bone.quaternion.clone()]);
     }
@@ -243,6 +297,7 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.weaponId = weaponId;
   rig.pistol = template.pistol;
   rig.support.copy(template.support);
+  rig.foregrip = template.foregrip;
   rig.muzzle.copy(template.muzzle);
   rig.flash.position.copy(rig.muzzle);
   rig.flash.position.z -= .052;
@@ -329,12 +384,36 @@ function saveRotation(rig, ...bones) {
   for (const bone of bones) if (!rig.corrections.has(bone)) rig.corrections.set(bone, bone.quaternion.clone());
 }
 
-function applyContacts(rig, dt, confidence, terrain, stance) {
-  const { group } = rig;
-  for (const [index, leg] of rig.legs.entries()) {
+function shiftHips(rig, worldDelta) {
+  const { Hips } = rig.bones;
+  const shift = worldDelta / Hips.parent.getWorldScale(b).y;
+  rig.hipsRest = Hips.position.clone();
+  b.copy(flatNormal).applyQuaternion(Hips.parent.getWorldQuaternion(q).invert());
+  Hips.position.addScaledVector(b, shift);
+  Hips.updateWorldMatrix(false, true);
+}
+
+function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouchStride) {
+  const { group, motion } = rig;
+  const planarSpeed = crouchStride > 0 ? Math.hypot(motion.vx, motion.vz) : 0;
+  const stretch = planarSpeed > .05;
+  const forwardX = stretch ? motion.vx / planarSpeed : 0;
+  const forwardZ = stretch ? motion.vz / planarSpeed : 0;
+  for (const leg of rig.legs) {
     leg.foot.getWorldPosition(leg.solved);
-    const pitch = bootPitchFor(leg);
-    if (confidence[index] > .50 && !leg.inContact) {
+    leg.pitch = bootPitchFor(leg);
+    if (stretch) {
+      const travel = (leg.solved.x - group.position.x) * forwardX + (leg.solved.z - group.position.z) * forwardZ;
+      const extension = clamp(travel * crouchStride, -.16, .16);
+      leg.solved.x += extension * forwardX;
+      leg.solved.z += extension * forwardZ;
+    }
+  }
+  const lowered = crouchDepth > .001;
+  if (lowered) shiftHips(rig, -crouchDepth);
+  const crouch = rig.crouchBlend;
+  for (const [index, leg] of rig.legs.entries()) {
+    if (confidence[index] > lerp(.50, .36, crouch) && !leg.inContact) {
       leg.inContact = true;
       leg.anchor.copy(leg.solved);
       const ground = terrain?.heightAt?.(leg.anchor.x, leg.anchor.z);
@@ -342,18 +421,24 @@ function applyContacts(rig, dt, confidence, terrain, stance) {
       leg.anchor.y = y + leg.ankleHeight;
       leg.locked = true;
     }
-    if (confidence[index] < .24) {
+    if (confidence[index] < lerp(.24, .15, crouch)) {
       leg.inContact = false;
       leg.locked = false;
     }
     leg.upper.getWorldPosition(a);
-    const reachLimit = a.distanceTo(leg.knee.getWorldPosition(b)) + b.distanceTo(leg.solved);
-    if (leg.anchor.distanceToSquared(leg.solved) > .24 ** 2 ||
+    const reachLimit = a.distanceTo(leg.knee.getWorldPosition(b)) + b.distanceTo(leg.foot.getWorldPosition(c));
+    if (leg.anchor.distanceToSquared(leg.solved) > lerp(.24, .40, crouch) ** 2 ||
       leg.anchor.distanceToSquared(a) > (reachLimit + .065) ** 2) leg.locked = false;
     leg.weight = damp(leg.weight, leg.locked ? 1 : 0, leg.locked ? 48 : 22, dt);
-    if (rig.lod > 1) continue;
+    if (rig.lod > 1 && !lowered) continue;
     saveRotation(rig, leg.upper, leg.knee, leg.foot);
-    if (leg.weight > .01) reach(leg.upper, leg.knee, leg.foot, leg.anchor, leg.weight, kneePole(rig, leg));
+    if (lowered) {
+      // Lower the torso without lowering the boot paths through the ground.
+      target.copy(leg.solved).lerp(leg.anchor, leg.weight);
+      reach(leg.upper, leg.knee, leg.foot, target, 1, kneePole(rig, leg));
+    } else if (leg.weight > .01) {
+      reach(leg.upper, leg.knee, leg.foot, leg.anchor, leg.weight, kneePole(rig, leg));
+    }
     const blend = stance * (1 - leg.weight);
     if (blend > .015) {
       target.set(leg.side * lerp(.147, .178, rig.crouchBlend), leg.ankleHeight, leg.side * .105);
@@ -365,7 +450,7 @@ function applyContacts(rig, dt, confidence, terrain, stance) {
     // Keep the authored heel lift within the shoe's sagittal plane. A raw
     // toe track can roll the shoe sideways or point it back during swing.
     const support = Math.max(stance, leg.weight);
-    const nextPitch = lerp(clamp(pitch, -.95, .33), leg.bootPitch, support);
+    const nextPitch = lerp(clamp(leg.pitch, -.95, .33), leg.bootPitch, support);
     alignBoot(rig, leg, nextPitch, 1);
   }
 }
@@ -375,13 +460,29 @@ function applyWeapon(rig, player, dt, reload, actionWeight, controls = false) {
   const afterSwitch = weaponSwitchPose(player.equipTime).lowered;
   const bodyAim = clamp(turn(group.rotation.y, player.yaw ?? group.rotation.y), -.67, .67);
   const pitch = clamp(player.pitch ?? 0, -.9, .9);
-  const sprint = player.sprint && rig.motion.speed > 5;
+  const sprint = player.sprint ? smoothstep(rig.motion.speed, 4.6, 6.1) : 0;
   const wantsAim = Number(Boolean(player.aim));
   const aimed = rig.gripAim = damp(rig.gripAim ?? wantsAim, wantsAim, 16, dt);
   const carrying = .10 * (1 - aimed);
   const aimWeight = (1 - actionWeight) * (1 - reload * .72);
+  const reloadProgress = player.reloading ? player.reloadProgress ?? 0 : 0;
+  const magazineWeight = rig.magazineContact ?
+    smoothstep(reloadProgress, .06, .20) * (1 - smoothstep(reloadProgress, .79, .94)) : 0;
   if (aimWeight > .01) {
     saveRotation(rig, bones.Spine1, bones.Spine2, bones.Head);
+    if (!rig.pistol) {
+      // Bring the support shoulder forward and leave space behind the stock.
+      bones.Spine1.parent.getWorldQuaternion(q).invert();
+      b.copy(flatNormal).applyQuaternion(q);
+      const foregripTurn = .69 + Math.max(0, -bodyAim) * .45 + Math.max(0, -pitch) * .18;
+      const shoulderTurn = lerp(rig.foregrip ? foregripTurn : .32, .47, magazineWeight) + .12 * sprint;
+      bones.Spine1.quaternion.premultiply(q.setFromAxisAngle(b, -shoulderTurn * (1 - actionWeight)));
+      if (rig.foregrip && pitch < 0) {
+        const yaw = group.rotation.y;
+        b.set(Math.cos(yaw), 0, -Math.sin(yaw)).applyQuaternion(bones.Spine1.parent.getWorldQuaternion(q).invert());
+        bones.Spine1.quaternion.premultiply(q.setFromAxisAngle(b, pitch * .44 * aimWeight));
+      }
+    }
     bones.Spine1.quaternion.premultiply(q.setFromAxisAngle(b.set(0, 0, 1), -pitch * .12 * aimWeight));
     bones.Spine2.rotateY(bodyAim * .22 * aimWeight);
     bones.Head.rotateY(bodyAim * .22 * aimWeight);
@@ -390,43 +491,49 @@ function applyWeapon(rig, player, dt, reload, actionWeight, controls = false) {
   const shoulder = group.worldToLocal(rig.rightHand.upper.getWorldPosition(target));
   const shoulderOffset = rig.pistol ? .10 : .057;
   const armExtension = .252 + Math.max(0, rig.rightHand.upperLength - .20) * .92;
-  const reachDepth = armExtension + (rig.pistol ? .060 : .018) + aimed * .040;
+  const reachDepth = armExtension + (rig.pistol ? .060 : .018) + aimed * .040 - (rig.foregrip ? .04 : 0);
 
   rifle.position.set(
     clamp(shoulder.x - shoulderOffset, .045, .205) + reload * .025,
     shoulder.y - lerp(.225, .105 - pitch * .14, aimed) + reload * .10,
     Math.min(-.15, shoulder.z - reachDepth) + rig.recoil * .015);
   rifle.quaternion.setFromEuler(rotation.set(
-    lerp(pitch, -.42, (sprint ? .7 : carrying)) - reload * .28 - afterSwitch * .62 + rig.recoil * .06,
-    bodyAim + reload * .12 + afterSwitch * .15,
+    lerp(pitch, -.42, lerp(carrying, .7, sprint)) - reload * .28 + magazineWeight * .35 - afterSwitch * .62 + rig.recoil * .06,
+    bodyAim + reload * .12 + magazineWeight * (rig.pistol ? .12 : .53) + afterSwitch * .15 + sprint * (rig.pistol ? 0 : .19),
     reload * -.25 - afterSwitch * .19));
   rifle.visible = !controls && actionWeight < .9;
   rifle.updateWorldMatrix(true, true);
-  const reloadProgress = player.reloadProgress ?? 0;
   if (rig.magazine) {
     rig.magazine.position.copy(rig.magazineRest);
-    rig.magazine.position.y -= .20 * reload * (1 - smoothstep(reloadProgress, .55, .8));
+    const travel = smoothstep(reloadProgress, .20, .37) * (1 - smoothstep(reloadProgress, .58, .79));
+    rig.magazine.position.y -= .14 * travel;
   }
   if (rifle.visible) {
+    const supportWeight = 1 - actionWeight;
+    supportPalm.copy(rig.support);
+    supportFrame.copy(rig.pistol ? pistolSupport : rig.foregrip ? foregripHold : leftGrip);
+    if (magazineWeight) {
+      target.copy(rig.magazineContact);
+      rig.magazine.localToWorld(target);
+      supportPalm.lerp(rifle.worldToLocal(target), magazineWeight);
+      supportFrame.slerp(magazineGrip, magazineWeight);
+    }
+    bringGripIntoReach(rig, supportPalm, supportFrame, supportWeight);
     gripHand(rig, rig.rightHand, primaryPalm, rightGrip, 1, 1);
+    gripHand(rig, rig.leftHand, supportPalm, supportFrame, -1, supportWeight);
     if (rig.lod < 2) {
       closeFingers(rig, rig.rightHand, 1);
-      const magazineWeight = rig.magazineContact ?
-        smoothstep(reloadProgress, .07, .24) * (1 - smoothstep(reloadProgress, .74, .93)) : 0;
-      const supportWeight = Math.max(1 - reload, magazineWeight) * (1 - actionWeight);
-      supportPalm.copy(rig.support);
-      if (magazineWeight) {
-        target.copy(rig.magazineContact);
-        rig.magazine.localToWorld(target);
-        rifle.worldToLocal(target);
-        supportPalm.lerp(target, magazineWeight);
-      }
-      gripHand(rig, rig.leftHand, supportPalm, rig.pistol ? rightGrip : leftGrip, -1, supportWeight);
-      if (!rig.pistol) closeFingers(rig, rig.leftHand, supportWeight * .65);
+      const transition = magazineWeight * (1 - magazineWeight);
+      closeFingers(rig, rig.leftHand, supportWeight * (1 - 1.5 * transition));
     }
   }
   rig.flash.visible = rifle.visible && rig.shotAge < .042 && rig.lod < 2;
   rig.recoil *= Math.exp(-18 * dt);
+}
+
+export function infantryTurnTolerance(rig, aiming, sliding) {
+  if (sliding) return 0;
+  return rig.foregrip && aiming ? .16 : .30;
 }
 
 export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
@@ -459,14 +566,20 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     if (weight < .004) motion.gait.delete(name);
     else motion.gait.set(name, weight);
   }
-  let stride = 0, weightSum = 0;
+  let stride = 0, weightSum = 0, crouchDepth = 0, crouchWeight = 0;
   for (const [name, weight] of motion.gait) {
-    stride += weight * rig.template.gaits.get(name).distance;
+    const gait = rig.template.gaits.get(name);
+    stride += weight * gait.distance;
+    if (name.startsWith('mocap_crouch_')) {
+      crouchDepth += weight * Math.max(0, gait.hipsHeight - .695);
+      crouchWeight += weight;
+    }
     weightSum += weight;
   }
   // Increase distance per cycle when the game outruns a captured gait.
   // Resolve the remaining discrepancy where the boot touches the ground.
-  const maxCyclesPerSecond = crouched ? 2.1 : lerp(1.95, 2.40, smoothstep(motion.speed, 2.6, 6.4));
+  const maxCyclesPerSecond = crouched ? lerp(1.6, 2.1, smoothstep(motion.speed, .55, 3.15)) :
+    lerp(1.95, 2.40, smoothstep(motion.speed, 2.6, 6.4));
   const measured = weightSum ? stride / weightSum : 1;
   const cycleDistance = Math.max(measured, motion.speed / maxCyclesPerSecond);
   motion.cycleDistance = cycleDistance;
@@ -558,18 +671,16 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     let lowest = floor;
     for (const leg of rig.legs) lowest = Math.min(lowest, leg.toe.getWorldPosition(b).y, leg.foot.getWorldPosition(c).y - .06);
     if (lowest < floor) {
-      const { Hips } = rig.bones;
-      const shift = Math.min(.33, floor - lowest) / Hips.parent.getWorldScale(b).y;
-      rig.hipsRest = Hips.position.clone();
-      b.copy(flatNormal).applyQuaternion(Hips.parent.getWorldQuaternion(q).invert());
-      Hips.position.addScaledVector(b, shift);
-      Hips.updateWorldMatrix(false, true);
+      shiftHips(rig, Math.min(.33, floor - lowest));
     }
   }
   if (lowerAction) {
     for (const leg of rig.legs) { leg.locked = false; leg.inContact = false; leg.weight = 0; }
   } else {
-    applyContacts(rig, dt, contacts, terrain, 1 - smoothstep(motion.moving, 0, .52));
+    const movingWeight = weightSum ? motion.moving / weightSum : 0;
+    const drop = crouchDepth * movingWeight;
+    const stretch = clamp(cycleDistance / measured - 1, 0, .85) * crouchWeight * movingWeight;
+    applyContacts(rig, dt, contacts, terrain, 1 - smoothstep(motion.moving, 0, .52), drop, stretch);
   }
   applyWeapon(rig, player, dt, reloadWeight, actionWeight);
 }

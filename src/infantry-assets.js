@@ -10,12 +10,12 @@ const weaponNames = {
   mg36: 'm4a1', pkp: 'ak47', sv98: 'm24', dmr12: 'm24', p19: 'p226', m50: 'm1911',
 };
 const weaponFit = {
-  m4a1: { primary: [0, -.17, .215], support: [-.038, -.031, -.31], muzzle: [0, .049, -1.265], scale: .54 },
-  ak47: { primary: [0, -.073, -.122], support: [-.029, -.027, -.43], muzzle: [0, .005, -1.135], scale: .72 },
-  mp5a5: { primary: [0, -.098, -.103], support: [-.041, .034, -.387], muzzle: [0, .146, -.85], scale: .70 },
-  m24: { primary: [-.005, -.08, -.07], support: [-.025, .023, -.42], muzzle: [0, .08, -1.42], scale: .68 },
-  p226: { primary: [0, -.03, .237], support: [-.065, -.04, .225], muzzle: [0, .09, -.08], scale: .60, pistol: true },
-  m1911: { primary: [-.011, -.03, .245], support: [-.065, -.04, .235], muzzle: [0, .09, -.08], scale: .70, pistol: true },
+  m4a1: { primary: [0, -.17, .215], support: [-.038, -.164, -.577], muzzle: [0, .049, -1.265], scale: .54, foregrip: true },
+  ak47: { primary: [0, -.073, -.122], support: [-.036, -.048, -.43], muzzle: [0, .005, -1.135], scale: .72 },
+  mp5a5: { primary: [0, -.098, -.103], support: [-.043, -.010, -.382], muzzle: [0, .146, -.85], scale: .70 },
+  m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.43], muzzle: [0, .08, -1.42], scale: .68 },
+  p226: { primary: [0, -.03, .237], support: [-.038, -.052, .255], muzzle: [0, .09, -.08], scale: .60, pistol: true },
+  m1911: { primary: [-.011, -.03, .245], support: [-.045, -.053, .262], muzzle: [0, .09, -.08], scale: .70, pistol: true },
 };
 const keyOf = name => name.replace(/^mixamorig:?/, '').replace(/_\d+$/, '');
 const upperBody = /^(Spine|Neck|Head|Left(?:Arm|Shoulder|ForeArm|Hand)|Right(?:Arm|Shoulder|ForeArm|Hand))/;
@@ -51,13 +51,15 @@ function sampleCycle(root, bones, clip, direction, floor) {
   const frameCount = 60;
   const mixer = new THREE.AnimationMixer(root);
   const action = mixer.clipAction(clip).play();
-  const ankle = new THREE.Vector3(), toe = new THREE.Vector3();
+  const ankle = new THREE.Vector3(), toe = new THREE.Vector3(), hips = new THREE.Vector3();
+  let hipsHeight = 0;
   const samples = legNames.map(() => []);
   const hipsTrack = clip.tracks.find(track => /Hips(?:_\d+)?\.position$/.test(track.name));
   for (let frame = 0; frame < frameCount; frame++) {
     action.time = clip.duration * frame / frameCount;
     mixer.update(0);
     root.updateMatrixWorld(true);
+    hipsHeight += bones.Hips.getWorldPosition(hips).y / frameCount;
     for (const [side, name] of legNames.entries()) {
       bones[name + 'Foot'].getWorldPosition(ankle);
       bones[name + 'ToeBase'].getWorldPosition(toe);
@@ -76,9 +78,10 @@ function sampleCycle(root, bones, clip, direction, floor) {
     .filter(speed => speed > .12)).sort((a, b) => a - b);
   const speed = speeds[Math.floor(speeds.length * .55)] ?? 0;
   if (!(speed > .15)) throw new Error('No measured gait travel for ' + clip.name);
+  const crouch = clip.name.startsWith('mocap_crouch_');
   const contact = samples.map(foot => foot.map((point, frame) =>
-    (1 - THREE.MathUtils.smoothstep(point.height - lowest, .025, .105)) *
-    THREE.MathUtils.smoothstep(getSpeed(foot, frame), speed * .15, speed * .6)));
+    (1 - THREE.MathUtils.smoothstep(point.height - lowest, .025, crouch ? .13 : .105)) *
+    THREE.MathUtils.smoothstep(getSpeed(foot, frame), speed * .15, speed * (crouch ? .48 : .6))));
   const left = contact[0];
   let strike = 0, rise = -Infinity;
   for (let i = 0; i < left.length; i++) {
@@ -95,7 +98,8 @@ function sampleCycle(root, bones, clip, direction, floor) {
       hipsTrack.values[i + 2] += offset.z;
     }
   }
-  return { distance: speed * clip.duration, duration: clip.duration, contact, offset: strike / frameCount };
+  return { distance: speed * clip.duration, duration: clip.duration, contact, offset: strike / frameCount,
+    hipsHeight: hipsHeight + (hipsTrack ? floor - lowest : 0) };
 }
 
 function prepareBody({ scene, animations }) {
@@ -178,6 +182,7 @@ function prepareWeapon(gltf, name) {
   const model = gltf.scene;
   model.scale.setScalar(scale);
   model.position.copy(primary).multiplyScalar(-scale);
+  model.updateMatrixWorld(true);
   const magazine = model.getObjectByName('Magazine');
   let magazineContact;
   if (magazine) {
@@ -185,12 +190,12 @@ function prepareWeapon(gltf, name) {
     if (!box.isEmpty()) {
       magazineContact = box.getCenter(new THREE.Vector3());
       magazineContact.x = box.min.x - .006;
-      magazineContact.y = THREE.MathUtils.lerp(box.min.y, box.max.y, .37);
+      magazineContact.y = THREE.MathUtils.lerp(box.min.y, box.max.y, .64);
       magazine.worldToLocal(magazineContact);
     }
   }
   return {
-    model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol),
+    model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol), foregrip: Boolean(fit.foregrip),
     support: from(fit.support).sub(primary).multiplyScalar(scale),
     muzzle: from(fit.muzzle).sub(primary).multiplyScalar(scale),
     magazineName: magazine?.name, magazineContact,

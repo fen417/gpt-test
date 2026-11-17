@@ -29,7 +29,7 @@ import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,t
 import { BulletMarks } from './bullet-marks.js';
 import {
   createInfantry, setInfantryWeapon, disposeInfantry, setInfantryLod, updateInfantry,
-  infantryHit, infantryAction, infantryDeath, infantrySeat,
+  infantryHit, infantryAction, infantryDeath, infantrySeat, infantryTurnTolerance,
 } from './infantry.js';
 
 const COLORS = { friendly: 0x5bd9e8, enemy: 0xf0a15d, neutral: 0xc8c5ae };
@@ -906,7 +906,7 @@ export class GameRenderer {
         const yawDelta = Math.atan2(Math.sin(yawDifference), Math.cos(yawDifference));
         if (reset || !soldier.alive) group.rotation.y = player.yaw || 0;
         else {
-          const tolerance = player.sliding ? 0 : .30;
+          const tolerance = infantryTurnTolerance(soldier, player.aim, player.sliding);
           const turnRate = 1 - Math.exp(-dt * 12);
           group.rotation.y += Math.sign(yawDelta) * Math.max(0, Math.abs(yawDelta) - tolerance) * turnRate;
         }
