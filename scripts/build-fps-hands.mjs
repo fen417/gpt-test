@@ -10,6 +10,17 @@ globalThis.self = globalThis;
 const root = new URL('../', import.meta.url);
 const poses = {
   support: { source: 'rifle', side: 'L', scale: .45, rotation: [-.04, -Math.PI/2, 0], wrist: [-.104, -.067, -.455], cutStart: .045, origin: [-.018, -.075, -.36], index: [.063,.047,-.081], indexWrap: true, fingers: [[.058,.045,-.060],[.051,.043,-.042],[.036,.035,-.023]], fingerPole: [1,0,0], thumb: [-.038,.053,-.127], thumbDirection: [0,.08,-1] },
+  // M4A1 vertical foregrip: distinct closed-finger wrap, not the generic
+  // underhand handguard pose. The fingertip goals follow the far side of
+  // the real vertical handle from top (index) to bottom (little finger).
+  // All points are in leftHand-local metres (origin = underhand glove root).
+  m4Vertical: { source:'rifle',side:'L',scale:.45,
+    rotation:[-.08,-Math.PI/2,-.70],
+    wrist:[-.097,-.086,-.470],origin:[-.018,-.075,-.36],cutStart:.038,
+    index:[.045,.076,-.070],indexWrap:true,
+    fingers:[[.043,.051,-.060],[.043,.029,-.057],[.042,.007,-.053]],
+    fingerPole:[.80,-.3,.10],thumb:[-.005,.075,-.090],
+    thumbDirection:[.75,-.20,.35] },
   trigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.202, .145], origin: [0, 0, 0], index: [.008, -.090, .018], fingers: [[-.024,-.149,.047],[-.024,-.178,.052],[-.022,-.199,.045]], thumb: [-.024,-.129,.055] },
   pistolSupport: { source: 'pistol', side: 'R', mirror: true, scale: .48, rotation: [.35, .02, 0], wrist: [-.035, -.053, -.014], origin: [0, 0, 0], index: [.002,.012,-.064], fingers: [[.004,-.003,-.060],[.002,-.019,-.057],[-.003,-.035,-.050]], thumb: [-.010,.050,-.047] },
   pistolTrigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.195, .175], origin: [0, 0, 0], index: [.006, -.122, .034], fingers: [[-.024,-.157,.081],[-.024,-.177,.087],[-.023,-.198,.092]], thumb: [-.024,-.136,.088] },
