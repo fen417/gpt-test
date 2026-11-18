@@ -77,9 +77,11 @@ try{
     sightType:rig.sightType,
     collimatorVisible:rig.m4Reflex.visible,
     sourceOpticVisible:rig.m4GripMesh?.parent?.getObjectByName('OpticMountGeometryMesh')?.visible,
+    suppressorVisible:rig.weapon.getObjectByName('fpv-m4a1-textured-model')?.getObjectByName('SuppressorGeometryMesh')?.visible,
   };
   if(!reload&&window.__m4Diagnostics.palmToGrip>.025)
     throw Error('Support palm missed M4 foregrip by '+window.__m4Diagnostics.palmToGrip.toFixed(3)+' m');
+  if(window.__m4Diagnostics.suppressorVisible)throw Error('3P suppressor silhouette still protrudes into FPV');
   if(rig.sightType!=='reflex'||!rig.m4Reflex.visible)
     throw Error('Original AR-416 collimator did not replace M4 optics');
   if(aim&&Math.abs(aimPoint.x)>.08||aim&&Math.abs(aimPoint.y)>.08)
