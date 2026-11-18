@@ -958,7 +958,11 @@ export function createWeaponRig(owner = {}) {
   // optical centre and reticle remain the same size as the original FPV sight.
   const m4Reflex=reflex.clone(true);
   m4Reflex.name='m4a1-original-ar416-reflex';
-  m4Reflex.position.set(0,-.080,-.180);
+  // Raised Picatinny mount keeps the original AR-416 red dot above the
+  // fixed iron rear aperture baked into the M4's main receiver mesh.
+  rounded(m4Reflex,0,.057,-.105,.060,.088,.080,dark);
+  rounded(m4Reflex,0,.091,-.105,.054,.022,.077,metal);
+  m4Reflex.position.set(0,-.030,-.180);
   m4Reflex.visible=false;
   rifleAssembly.add(m4Reflex);
   // Dispose unreferenced source buffers after batching, retaining reused shapes.
@@ -1315,7 +1319,7 @@ export function createWeaponRig(owner = {}) {
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':m4Ready&&previousKey==='ar416'&&m4Reflex.visible?'reflex':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    get sightHeight(){return previousKey==='ar416'&&m4Ready?.086:.167;},
+    get sightHeight(){return previousKey==='ar416'&&m4Ready?.136:.167;},
     get m4SupportContact(){return m4SupportContact.clone();},
     get m4Reflex(){return m4Reflex;},
     get m4GripMesh(){return m4GripMesh;},
