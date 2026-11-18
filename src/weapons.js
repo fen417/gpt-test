@@ -1329,7 +1329,7 @@ export function createWeaponRig(owner = {}) {
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':m4Ready&&previousKey==='ar416'&&m4Reflex.visible?'reflex':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    get sightHeight(){return previousKey==='ar416'&&m4Ready?.106:.167;}
+    get sightHeight(){return previousKey==='ar416'&&m4Ready?.106:.167;},
     get m4SupportContact(){return m4SupportContact.clone();},
     get m4Reflex(){return m4Reflex;},
     get m4GripMesh(){return m4GripMesh;},
