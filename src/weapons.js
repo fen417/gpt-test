@@ -1030,7 +1030,7 @@ export function createWeaponRig(owner = {}) {
   const pistolPalmLocal = new THREE.Vector3(-.050,.020,-.086);
   // Same hand-space anchor, but this pose has a distinct baked wrist point.
   const m4VerticalPalmLocal=new THREE.Vector3(-.017,.032,-.063);
-  const m4VerticalWristLocal=new THREE.Vector3(-.079,-.011,-.110);
+  const m4VerticalWristLocal=new THREE.Vector3(-.059,-.040,0);
   // Sleeve contact at the palm heel, not the source rig's sideways wrist pivot.
   // The imported palm/fingers remain at their existing weapon contact points.
   const wristLocal = new THREE.Vector3(...lp([-.064,-.073,-.444]));
@@ -1038,6 +1038,11 @@ export function createWeaponRig(owner = {}) {
   const restShoulder = new THREE.Vector3(-.40,-.47,.25);
   // Bring the elbow/sleeve inward; keep the fitted hand and wrist contact fixed.
   const shoulder = new THREE.Vector3(-.27,-.43,.25);
+  // Actual support-side elbow stays near the viewer rather than riding with
+  // the gun's recoil/ADS translations. Hidden off the lower camera boundary.
+  const m4ShoulderCamera=new THREE.Vector3(-.285,-.655,.035);
+  const m4ShoulderLocal=new THREE.Vector3();
+  const m4CameraInverse=new THREE.Matrix4();
   const armAxis = new THREE.Vector3(0,0,1);
   const armDirection = new THREE.Vector3(-.083,-.108,-.361).sub(restShoulder);
   const armLength = armDirection.length();
@@ -1075,12 +1080,22 @@ export function createWeaponRig(owner = {}) {
     fitRightSleeve(pistolShoulderLocal);
   }
 
-  function fitLeftSleeve(wrist,overlap=.017,bulk=1) {
-    wristDirection.copy(wrist).applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(shoulder);
+  function fitLeftSleeve(wrist,overlap=.017,bulk=1,origin=shoulder) {
+    wristDirection.copy(wrist).applyQuaternion(leftHand.quaternion).add(leftHand.position).sub(origin);
     armScale.set(bulk,bulk,(wristDirection.length()+overlap)/armLength);
     armRotation.setFromUnitVectors(armAxis,wristDirection.normalize());
-    leftArm.matrix.compose(shoulder,armRotation,armScale).multiply(restArmInverse);
+    leftArm.matrix.compose(origin,armRotation,armScale).multiply(restArmInverse);
     leftArm.matrixWorldNeedsUpdate=true;
+  }
+
+  // Called after final weapon positioning so the elbow remains camera-relative
+  // in hip fire, ADS, sway and recoil, with no one-frame lag.
+  function anchorM4Forearm(){
+    if(!m4VerticalHand.visible||!leftHand.visible||!leftArm.visible)return;
+    weapon.updateMatrix();
+    m4CameraInverse.copy(weapon.matrix).invert();
+    m4ShoulderLocal.copy(m4ShoulderCamera).applyMatrix4(m4CameraInverse);
+    fitLeftSleeve(m4VerticalWristLocal,.023,.96,m4ShoulderLocal);
   }
 
   function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null, defibTravel=0) {
@@ -1358,6 +1373,6 @@ export function createWeaponRig(owner = {}) {
     get m4GripMesh(){return m4GripMesh;},
     get m4VerticalHand(){return m4VerticalHand;},
     get isImportedM4(){return previousKey==='ar416'&&m4Ready;},
-    attachM4A1,
+    attachM4A1,anchorM4Forearm,
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
 }
