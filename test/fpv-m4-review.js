@@ -31,6 +31,9 @@ const rig=createWeaponRig();
 camera.add(rig.weapon);
 prepareViewModel(rig.weapon);
 const assets=new InfantryAssets(renderer);
+// The test page is under /test/, unlike the game index at /. KTX2 worker files
+// are served at /basis/, not /test/basis/.
+assets.ktx.setTranscoderPath('/basis/');
 try{
   const model=await assets.request('m4a1',prepareWeapon);
   rig.attachM4A1(model);
