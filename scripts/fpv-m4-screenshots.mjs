@@ -1,0 +1,21 @@
+import {chromium} from 'playwright';
+import {mkdir} from 'node:fs/promises';
+
+const browser=await chromium.launch({headless:true,args:[
+  '--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-dev-shm-usage',
+]});
+await mkdir('docs/fpv-m4',{recursive:true});
+try{
+  const page=await browser.newPage({viewport:{width:1280,height:720},deviceScaleFactor:1});
+  const errors=[];
+  page.on('pageerror',error=>errors.push(String(error)));
+  for(const pose of ['hip','ads','reload']){
+    await page.goto('http://127.0.0.1:5173/test/fpv-m4-review.html?pose='+pose,{waitUntil:'domcontentloaded'});
+    await page.waitForFunction(()=>window.__previewReady||window.__previewError,{timeout:90000});
+    const error=await page.evaluate(()=>window.__previewError);
+    if(error)throw new Error(pose+': '+error);
+    if(errors.length)throw new Error(pose+': '+errors.join('; '));
+    await page.screenshot({path:'docs/fpv-m4/'+pose+'.png',animations:'disabled'});
+    console.log('Rendered '+pose+' M4A1 with imported texture and live FPV rig');
+  }
+}finally{await browser.close();}
