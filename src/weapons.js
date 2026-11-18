@@ -1029,7 +1029,9 @@ export function createWeaponRig(owner = {}) {
     while (next < keys.length - 1 && phase > keys[next].time) next++;
     const from = keys[next - 1], to = keys[next];
     const blend = THREE.MathUtils.smoothstep(phase,from.time,to.time);
-    const value = channel => THREE.MathUtils.lerp(from[channel],to[channel],blend) * amount;
+    const m4Reload=!pistol&&m4Ready&&previousKey==='ar416';
+    const value = channel => THREE.MathUtils.lerp(from[channel],to[channel],blend) * amount *
+      (m4Reload?({x:.65,y:.56,z:.78,pitch:.75,roll:.75}[channel]??1):1);
     const feedDepth = support ? 1.08 : 1;
     feed.position.set(value('x'),value('y')*feedDepth,value('z'));
     if(pistol)feed.position.add(pistol.magazineHome);
