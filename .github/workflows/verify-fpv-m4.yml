@@ -16,6 +16,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Bake animated M4 vertical grip from licensed source hand
+        run: npm run assets:hands
       - run: npm test
       - run: npm run build
       - run: node scripts/analyze-m4-geometry.mjs
@@ -42,6 +44,6 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add docs/fpv-m4/*.png
+          git add docs/fpv-m4/*.png src/fps-hands-data.js src/assets/fps-hands.bin.gz art-source/generated/fps-hands-data.js
           git diff --cached --quiet || git commit -m "docs: capture real FPV M4A1 hip ADS reload previews [skip ci]"
           git push origin HEAD:feat/fpv-m4a1-viewmodel
