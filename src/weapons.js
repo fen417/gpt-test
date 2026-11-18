@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {removeM4IronSights} from './m4-fpv-iron-trim.js';
 import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -675,6 +676,16 @@ export function createWeaponRig(owner = {}) {
     // and give near-camera metal sensible direct-light response.
     model.traverse(part=>{
       if(!part.isMesh)return;
+      // The sights are merged into the receiver mesh in the supplied GLB.
+      // Cut its disconnected iron-sight components only for this FPV clone;
+      // the original third-person mesh and UVs remain untouched.
+      if(part.name==='ChargingHandleGeometryMesh'){
+        const trimmed=removeM4IronSights(part.geometry);
+        if(!trimmed.frontTriangles||!trimmed.rearTriangles)
+          console.warn('M4 FPV: iron sight trim found incomplete components',trimmed);
+        part.geometry=trimmed.geometry;
+        ownedGeometries.add(trimmed.geometry);
+      }
       const brighten=original=>{
         const material=original.clone();
         if(material.isMeshStandardMaterial){
@@ -958,11 +969,10 @@ export function createWeaponRig(owner = {}) {
   // optical centre and reticle remain the same size as the original FPV sight.
   const m4Reflex=reflex.clone(true);
   m4Reflex.name='m4a1-original-ar416-reflex';
-  // Raised Picatinny mount keeps the original AR-416 red dot above the
-  // fixed iron rear aperture baked into the M4's main receiver mesh.
-  rounded(m4Reflex,0,.057,-.105,.060,.088,.080,dark);
-  rounded(m4Reflex,0,.091,-.105,.054,.022,.077,metal);
-  m4Reflex.position.set(0,-.030,-.180);
+  // With both factory iron sights trimmed, use the stock low AR-416 mount
+  // at its original horizontal position and eye relief. The vertical offset
+  // simply seats its Picatinny clamp on the M4's slightly lower rail.
+  m4Reflex.position.set(0,-.060,0);
   m4Reflex.visible=false;
   rifleAssembly.add(m4Reflex);
   // Dispose unreferenced source buffers after batching, retaining reused shapes.
@@ -1319,7 +1329,7 @@ export function createWeaponRig(owner = {}) {
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':m4Ready&&previousKey==='ar416'&&m4Reflex.visible?'reflex':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    get sightHeight(){return previousKey==='ar416'&&m4Ready?.136:.167;},
+    get sightHeight(){return previousKey==='ar416'&&m4Ready?.106:.167;}
     get m4SupportContact(){return m4SupportContact.clone();},
     get m4Reflex(){return m4Reflex;},
     get m4GripMesh(){return m4GripMesh;},
