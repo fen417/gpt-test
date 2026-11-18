@@ -6,14 +6,6 @@ import {prepareViewModel} from '../src/viewmodel.js';
 
 const query=new URLSearchParams(location.search);
 const pose=query.get('pose')||'hip';
-const sweep={
-  gripSweepA:{yaw:.35,dz:0},
-  gripSweepB:{yaw:.65,dz:0},
-  gripSweepC:{yaw:.95,dz:0},
-  gripSweepD:{yaw:.65,dz:-.035},
-  gripSweepE:{yaw:.95,dz:-.035},
-  gripSweepF:{yaw:1.15,dz:0},
-};
 document.querySelector('#pose').textContent={
   hip:'HIP FIRE / FIRST PERSON',ads:'AIM DOWN SIGHTS / FIRST PERSON',
   reload:'MAGAZINE RELOAD / FIRST PERSON',grip:'VERTICAL FOREGRIP / SUPPORT HAND',
@@ -51,7 +43,7 @@ try{
   const reload=pose==='reload',aim=pose==='ads',grip=pose==='grip';
   const diagnostic=pose==='parts'||pose==='profile';
   const side=pose==='side';
-  const inspecting=['gripDetail','gripOpposite','gripSide'].includes(pose)||Boolean(sweep[pose]);
+  const inspecting=['gripDetail','gripOpposite','gripSide'].includes(pose);
   const reloadPhase=reload?.52:1;
   rig.update({classId:'assault',weaponId:'ar416',aim:aim?1:0,reloadPhase,reloadEmpty:reload});
   if(!rig.isImportedM4)throw Error('M4A1 did not replace fallback');
@@ -60,10 +52,6 @@ try{
   rig.weapon.position.y-=reloadMotion*.012;
   rig.weapon.position.z+=reloadMotion*.06;
   rig.weapon.rotation.set(-reloadMotion*.13,pose==='profile'||side?.67:grip?-.24:-reloadMotion*.08,-reloadMotion*.17);
-  if(sweep[pose]){
-    rig.m4WristPivot.rotation.y=sweep[pose].yaw;
-    rig.leftHand.position.z+=sweep[pose].dz;
-  }
   rig.anchorM4Forearm();
   if(side){rig.leftHand.visible=false;rig.leftArm.visible=false;}
   if(diagnostic){
@@ -115,7 +103,6 @@ try{
     supportWristAngleDeg:angle,
     wristYaw:rig.m4WristPivot.rotation.y,
     wristHingeAttached:rig.m4VerticalHand.parent===rig.m4WristPivot,
-    sweep:sweep[pose]??null,
     wristCamera:wrist.toArray(),
     elbowCamera:elbow.toArray(),
     gloveOnLeftOfHandle:nearSide,gloveOnRightOfHandle:farSide,
@@ -130,9 +117,9 @@ try{
     sourceOpticVisible:rig.m4GripMesh?.parent?.getObjectByName('OpticMountGeometryMesh')?.visible,
     suppressorVisible:rig.weapon.getObjectByName('fpv-m4a1-textured-model')?.getObjectByName('SuppressorGeometryMesh')?.visible,
   };
-  if(!sweep[pose]&&!reload&&!diagnostic&&!side&&angle>55)
+  if(!reload&&!diagnostic&&!side&&angle>55)
     throw Error('M4 support wrist exceeds anatomical 55 degree limit: '+angle.toFixed(1));
-  if(!sweep[pose]&&!reload&&window.__m4Diagnostics.palmToGrip>.025)
+  if(!reload&&window.__m4Diagnostics.palmToGrip>.025)
     throw Error('Support palm missed M4 foregrip by '+window.__m4Diagnostics.palmToGrip.toFixed(3)+' m');
   if(!window.__m4Diagnostics.wristHingeAttached)throw Error('M4 grip hand detached from wrist hinge');
   if(!reload&&!diagnostic&&!side&&!window.__m4Diagnostics.verticalHandActive)
