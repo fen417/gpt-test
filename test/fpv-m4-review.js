@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {createWeaponRig} from '../src/weapons.js';
+import {loadFPSHands} from '../src/fps-hands.js';
 import {InfantryAssets,prepareWeapon} from '../src/infantry-assets.js';
 import {prepareViewModel} from '../src/viewmodel.js';
 
@@ -25,6 +26,7 @@ renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.05;
 document.body.prepend(renderer.domElement);
+await loadFPSHands();
 const rig=createWeaponRig();
 camera.add(rig.weapon);
 prepareViewModel(rig.weapon);
