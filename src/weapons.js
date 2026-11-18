@@ -648,6 +648,10 @@ export function createWeaponRig(owner = {}) {
   const fpvM4=new THREE.Group();fpvM4.name='fpv-m4a1';fpvM4.visible=false;rifleAssembly.add(fpvM4);
   const m4Scale=1.75;
   let m4Magazine=null,m4MagazineRest=null,m4Ready=false;
+  // Local-space contact on the actual adjustable vertical foregrip, not the
+  // third-person gun's generic handguard socket.
+  const m4SupportContact=new THREE.Vector3(-.055,-.165,-.33);
+  let m4GripMesh=null;
   function showImportedM4(show){
     for(const part of proceduralRifleParts){
       if(show){
@@ -659,6 +663,7 @@ export function createWeaponRig(owner = {}) {
       }
     }
     fpvM4.visible=show;
+    m4Reflex.visible=show;
   }
   function attachM4A1(template){
     if(m4Ready||!template?.model)return;
@@ -683,9 +688,25 @@ export function createWeaponRig(owner = {}) {
       part.material=Array.isArray(part.material)?part.material.map(brighten):brighten(part.material);
     });
     // Fit the right grip to the trigger hand and enlarge the imported rifle.
-    fpvM4.position.set(.018,-.160,.100);
+    fpvM4.position.set(0,-.160,.100);
     fpvM4.scale.setScalar(m4Scale);
     fpvM4.add(model);
+    // The imported M4 comes with a compact third-person optic, but the
+    // original AR-416's reflex sight gives a much cleaner FPV sight picture.
+    // Keep only the original rifle's optic-free body/foregrip and add the
+    // existing AR-416 collimator on top of its rail.
+    const sourceOptic=model.getObjectByName('OpticMountGeometryMesh');
+    if(sourceOptic)sourceOptic.visible=false;
+    m4GripMesh=model.getObjectByName('ForegripGeometryMesh');
+    if(m4GripMesh){
+      // Geometry is shared with the 3P soldier; use the prepared transform
+      // (including its 20-cm foregrip adjustment) to find the real grip.
+      weapon.updateWorldMatrix(true,true);
+      const gripBounds=new THREE.Box3().setFromObject(m4GripMesh);
+      const gripCenter=gripBounds.getCenter(new THREE.Vector3());
+      weapon.worldToLocal(gripCenter);
+      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.052,-.017,0));
+    }
     m4Magazine=model.getObjectByName('Magazine');
     if(m4Magazine)m4MagazineRest={position:m4Magazine.position.clone(),rotation:m4Magazine.rotation.clone()};
     m4Ready=true;
@@ -932,6 +953,14 @@ export function createWeaponRig(owner = {}) {
     for(const [material,meshes]of materials){if(meshes.length<2)continue;const parts=meshes.map(m=>{m.updateMatrix();const g=m.geometry.clone().applyMatrix4(m.matrix);const n=g.index?g.toNonIndexed():g; if(n!==g)g.dispose();return n;});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!geometry)continue;ownedGeometries.add(geometry);const merged=new THREE.Mesh(geometry,material);merged.name=`batched-${material.name}`;group.add(merged);for(const m of meshes)m.removeFromParent();}
   }
   for(const island of [receiver,handguard,barrelCore,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,...Object.values(variantDetails),scope,reflex,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight,...Object.values(pistols).map(p=>p.root)])batch(island);
+  // Reuse the actual AR-416 collimator geometry/reticle instead of an
+  // enlarged iron sight. It lives outside the scalable GLB model, so its
+  // optical centre and reticle remain the same size as the original FPV sight.
+  const m4Reflex=reflex.clone(true);
+  m4Reflex.name='m4a1-original-ar416-reflex';
+  m4Reflex.position.set(0,-.080,-.180);
+  m4Reflex.visible=false;
+  rifleAssembly.add(m4Reflex);
   // Dispose unreferenced source buffers after batching, retaining reused shapes.
   const liveGeometry=new Set();weapon.traverse(o=>{if(o.geometry)liveGeometry.add(o.geometry);});for(const geometry of ownedGeometries)if(!liveGeometry.has(geometry)){geometry.dispose();ownedGeometries.delete(geometry);}
   const loadouts = {
@@ -1044,13 +1073,14 @@ export function createWeaponRig(owner = {}) {
     // One-handed pistol stance. The spare hand rises from below the view only
     // to handle the magazine/slide, then follows the same path back down.
     if(pistol)palmTarget.set(-.26,-.48,.09);
-    else palmTarget.set(-.035*loadout.width,m4Ready&&previousKey==='ar416'?-.125:-.043,m4Ready&&previousKey==='ar416'?-.30:loadout.handZ);
+    else if(m4Reload)palmTarget.copy(m4SupportContact);
+    else palmTarget.set(-.035*loadout.width,-.043,loadout.handZ);
     palmTarget.lerp(gripTarget,grip);
     if(pistol)palmTarget.lerp(actionTarget.set(-.038,.033,.063+pistol.slide.position.z).applyMatrix4(pistol.modelMatrix),charging);
     else palmTarget.lerp(chargeGrip,charging);
-    let rotX = (pistol ? -.56 : -.92)*grip+feed.rotation.x*grip+charging*.7;
+    let rotX = (pistol ? -.56 : -.92)*grip+feed.rotation.x*grip+charging*.7 - (m4Reload?.10*(1-grip):0);
     let rotY = (pistol ? .24 : .42)*grip+charging*.3;
-    let rotZ = (pistol ? .17 : .27)*grip+feed.rotation.z*grip;
+    let rotZ = (pistol ? .17 : .27)*grip+feed.rotation.z*grip + (m4Reload?.30*(1-grip):0);
     let open = Math.max(Math.sin(grip*Math.PI)*.25,charging*.4);
 
     heldGrenade.visible = false;
@@ -1283,9 +1313,12 @@ export function createWeaponRig(owner = {}) {
     return model;
   }
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
-    get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
+    get sightType(){return visiblePistol?'iron':m4Ready&&previousKey==='ar416'&&m4Reflex.visible?'reflex':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    get sightHeight(){return previousKey==='ar416'&&m4Ready?.090:.167;},
+    get sightHeight(){return previousKey==='ar416'&&m4Ready?.086:.167;},
+    get m4SupportContact(){return m4SupportContact.clone();},
+    get m4Reflex(){return m4Reflex;},
+    get m4GripMesh(){return m4GripMesh;},
     get isImportedM4(){return previousKey==='ar416'&&m4Ready;},
     attachM4A1,
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
