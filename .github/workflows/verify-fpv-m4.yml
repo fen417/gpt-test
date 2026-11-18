@@ -19,7 +19,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm install --no-save playwright@1.58.2
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - name: Start Vite
         run: |
           npm run dev -- --host 127.0.0.1 > /tmp/fpv-m4-vite.log 2>&1 &
