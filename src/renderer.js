@@ -1794,6 +1794,7 @@ export class GameRenderer {
       }
       this.weapon.position.y -= this.wallStow * .28; this.weapon.position.z += this.wallStow * .18; this.weapon.rotation.x -= this.wallStow * .85;
       this.weaponRig.anchorPistolArm(pistolSprint);
+      this.weaponRig.anchorM4Forearm();
     }
     view.campaignRender?.(this,state,dt,view);
     this.camera.updateMatrixWorld();
