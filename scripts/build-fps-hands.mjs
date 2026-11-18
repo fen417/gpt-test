@@ -16,7 +16,10 @@ const poses = {
   // All points are in leftHand-local metres (origin = underhand glove root).
   m4Vertical: { source:'rifle',side:'L',scale:.45,
     rotation:[-.08,-Math.PI/2,-.70],
-    wrist:[-.097,-.086,-.470],origin:[-.018,-.075,-.36],cutStart:.038,
+    // Move the wrist BACK toward the viewer, keeping all fingertip IK targets
+    // on the existing handle. This aligns palm->wrist->forearm rather than
+    // forcing a severe ~100 degree wrist break.
+    wrist:[-.077,-.115,-.360],origin:[-.018,-.075,-.36],cutStart:.038,
     index:[.056,.075,-.042],indexWrap:true,
     fingers:[[.055,.052,-.043],[.055,.030,-.043],[.054,.011,-.041]],
     fingerPole:[.80,-.25,.20],thumb:[-.009,.080,-.101],
