@@ -730,7 +730,7 @@ export function createWeaponRig(owner = {}) {
       const gripBounds=new THREE.Box3().setFromObject(m4GripMesh);
       const gripCenter=gripBounds.getCenter(new THREE.Vector3());
       weapon.worldToLocal(gripCenter);
-      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.032,-.005,.006));
+      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.034,.027,.006));
     }
     m4Magazine=model.getObjectByName('Magazine');
     if(m4Magazine)m4MagazineRest={position:m4Magazine.position.clone(),rotation:m4Magazine.rotation.clone()};
