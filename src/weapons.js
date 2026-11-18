@@ -700,7 +700,7 @@ export function createWeaponRig(owner = {}) {
   const m4ContactBase=new THREE.Vector3();
   let m4GripMesh=null, foregripAnchor=null, m4DebugPanel=null;
   let m4Model=null;
-  const m4GripDebug=typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('gripDebug')==='1';
+  const m4GripDebug=new URLSearchParams(globalThis.location?.search ?? '').get('gripDebug')==='1';
 
   // Translate the measured weapon-local contact into the imported model's local
   // space. This is called at load or on a debug slider change, not every frame.
