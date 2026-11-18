@@ -37,7 +37,11 @@ export function removeM4IronSights(source){
   // front tower is z≈-.55, rear folding aperture is z≈+.40.
   const discarded=new Map();
   for(const [root,b] of islands){
-    const front=b.minZ>-.61&&b.maxZ<-.45&&b.minY>.11&&b.maxY>.20;
+    // The previous filter intentionally/accidentally kept the TALLEST front
+    // sight pieces (the 130/54/12-triangle post and protective ears reach
+    // local Y=.26). Only detached components fully inside the front tower
+    // footprint are removed, not the continuous handguard/barrel.
+    const front=b.minZ>-.61&&b.maxZ<-.45&&b.minY>.11&&b.maxY<.31;
     const rear=b.minZ>.30&&b.maxZ<.51&&b.minY>.14
       &&(b.maxY>.19||(b.minZ>.47&&b.maxY>.16));
     discarded.set(root,front?'front':rear?'rear':null);
