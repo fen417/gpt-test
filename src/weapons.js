@@ -10,6 +10,24 @@ import { createFPSHand, fpsHandTextures } from './fps-hands.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
 
+// M4A1 only. All positions are in weapon-local metres, rotations in radians.
+// The anchor is measured from the imported foregrip's actual mesh bounds.
+// A baked glove has no live finger bones: curl controls its closed/open morph.
+const M4_FOREGRIP_GRIP = Object.freeze({
+  surfaceGap: .002,           // Palm contact 2 mm outside the near foregrip face.
+  height: .68,                // Contact height as a fraction of foregrip mesh height.
+  depth: .50,                 // Centre along the foregrip's local Z extent.
+  offset: [0, 0, 0],          // Fine adjustment (X/Y/Z) around measured contact.
+  handRotation: [-.11, 0, -.06], // Resting wrist pitch/yaw/roll on the M4.
+  wristYaw: 1.08,             // Rotate knuckles from forward/up toward the far side.
+  fingerCurl: 1,              // 1 = original baked closed pose, 0 = open morph.
+  handScale: 1,               // Scale glove around its true wrist hinge.
+  palmLocal: [-.017, .032, -.063],
+  wristLocal: [-.062, -.031, -.033],
+  cameraShoulder: [-.35, -.63, .10], // Keep sleeve origin below/behind the camera.
+  sleeveOverlap: .025,        // Cuff overlap at wrist (metres).
+});
+
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
 // its own depth pass by GameRenderer; no material is allowed to see through it.
 export function createWeaponRig(owner = {}) {
@@ -595,7 +613,7 @@ export function createWeaponRig(owner = {}) {
   // The M4 uses a separately BAKED, closed-finger mesh posed around its
   // vertical front handle. Moving the generic underhand palm cannot make
   // four fingers wrap the grip, no matter how close the palm pivot is.
-  const m4VerticalWristLocal=new THREE.Vector3(-.062,-.031,-.033);
+  const m4VerticalWristLocal=new THREE.Vector3(...M4_FOREGRIP_GRIP.wristLocal);
   const m4VerticalHand=createFPSHand('m4Vertical',importedGloveMat);
   m4VerticalHand.name='imported-fps-hand-m4-vertical';
   m4VerticalHand.visible=false;
@@ -607,7 +625,15 @@ export function createWeaponRig(owner = {}) {
   m4WristPivot.position.copy(m4VerticalWristLocal);
   // Anatomical closed grip: bring the knuckles forward toward the handle,
   // rotating the glove about its actual wrist rather than bending the forearm.
-  m4WristPivot.rotation.y=.28;
+  const m4GripTune={
+    offset:new THREE.Vector3(...M4_FOREGRIP_GRIP.offset),
+    rotation:new THREE.Vector3(...M4_FOREGRIP_GRIP.handRotation),
+    wristYaw:M4_FOREGRIP_GRIP.wristYaw,
+    fingerCurl:M4_FOREGRIP_GRIP.fingerCurl,
+    handScale:M4_FOREGRIP_GRIP.handScale,
+  };
+  m4WristPivot.rotation.y=m4GripTune.wristYaw;
+  m4WristPivot.scale.setScalar(m4GripTune.handScale);
   m4VerticalHand.position.copy(m4VerticalWristLocal).negate();
   m4WristPivot.add(m4VerticalHand);
   // Attached to rifleGlove below; keep the pivot with the rifle-only grip.
@@ -671,7 +697,69 @@ export function createWeaponRig(owner = {}) {
   // Local-space contact on the actual adjustable vertical foregrip, not the
   // third-person gun's generic handguard socket.
   const m4SupportContact=new THREE.Vector3(-.055,-.165,-.33);
-  let m4GripMesh=null;
+  const m4ContactBase=new THREE.Vector3();
+  let m4GripMesh=null, foregripAnchor=null, m4DebugPanel=null;
+  let m4Model=null;
+  const m4GripDebug=typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('gripDebug')==='1';
+
+  // Translate the measured weapon-local contact into the imported model's local
+  // space. This is called at load or on a debug slider change, not every frame.
+  function updateForegripAnchor(){
+    if(!foregripAnchor||!m4Model)return;
+    weapon.updateWorldMatrix(true,true);
+    m4SupportContact.copy(m4ContactBase).add(m4GripTune.offset);
+    const target=weapon.localToWorld(m4SupportContact.clone());
+    foregripAnchor.position.copy(m4Model.worldToLocal(target));
+    foregripAnchor.updateMatrixWorld(true);
+  }
+
+  function createGripDebugPanel(){
+    if(!m4GripDebug||m4DebugPanel||typeof document==='undefined')return;
+    const panel=document.createElement('section');
+    panel.setAttribute('aria-label','M4A1 foregrip debug');
+    Object.assign(panel.style,{
+      position:'fixed',top:'12px',right:'12px',width:'262px',
+      padding:'12px',border:'1px solid #6cae87',borderRadius:'6px',
+      background:'rgba(13,22,18,.94)',color:'#e7f6ea',zIndex:'100000',
+      font:'12px monospace',pointerEvents:'auto',
+    });
+    const title=document.createElement('strong');
+    title.textContent='M4A1 foregrip · live tuning';
+    panel.append(title);
+    const sliders=[
+      ['Offset X / mm',-60,60,1,()=>m4GripTune.offset.x*1000,v=>m4GripTune.offset.x=v/1000],
+      ['Offset Y / mm',-60,60,1,()=>m4GripTune.offset.y*1000,v=>m4GripTune.offset.y=v/1000],
+      ['Offset Z / mm',-60,60,1,()=>m4GripTune.offset.z*1000,v=>m4GripTune.offset.z=v/1000],
+      ['Pitch / deg',-75,75,1,()=>THREE.MathUtils.radToDeg(m4GripTune.rotation.x),v=>m4GripTune.rotation.x=THREE.MathUtils.degToRad(v)],
+      ['Yaw / deg',-75,75,1,()=>THREE.MathUtils.radToDeg(m4GripTune.rotation.y),v=>m4GripTune.rotation.y=THREE.MathUtils.degToRad(v)],
+      ['Roll / deg',-75,75,1,()=>THREE.MathUtils.radToDeg(m4GripTune.rotation.z),v=>m4GripTune.rotation.z=THREE.MathUtils.degToRad(v)],
+      ['Finger direction / deg',-90,110,1,()=>THREE.MathUtils.radToDeg(m4GripTune.wristYaw),v=>m4GripTune.wristYaw=THREE.MathUtils.degToRad(v)],
+      ['Finger curl / %',0,100,1,()=>m4GripTune.fingerCurl*100,v=>m4GripTune.fingerCurl=v/100],
+      ['Hand scale / %',85,115,1,()=>m4GripTune.handScale*100,v=>m4GripTune.handScale=v/100],
+    ];
+    for(const [name,min,max,step,get,set]of sliders){
+      const label=document.createElement('label'), caption=document.createElement('span');
+      const input=document.createElement('input');
+      input.type='range';input.min=String(min);input.max=String(max);
+      input.step=String(step);input.value=String(get());
+      Object.assign(label.style,{display:'block',marginTop:'9px'});
+      Object.assign(input.style,{display:'block',width:'100%'});
+      caption.textContent=name+'  '+Math.round(get());
+      input.addEventListener('input',()=>{
+        const v=Number(input.value);set(v);caption.textContent=name+'  '+v;
+        m4WristPivot.scale.setScalar(m4GripTune.handScale);
+        updateForegripAnchor();
+      });
+      label.append(caption,input);panel.append(label);
+    }
+    const info=document.createElement('div');
+    info.textContent='X red · Y green · Z blue. Sliders only affect this live M4 viewmodel.';
+    Object.assign(info.style,{opacity:'.75',marginTop:'10px'});
+    panel.append(info);
+    document.body.append(panel);
+    m4DebugPanel=panel;
+    panel.style.display=fpvM4.visible?'block':'none';
+  }
   function showImportedM4(show){
     for(const part of proceduralRifleParts){
       if(show){
@@ -684,11 +772,13 @@ export function createWeaponRig(owner = {}) {
     }
     fpvM4.visible=show;
     m4Reflex.visible=show;
+    if(m4DebugPanel)m4DebugPanel.style.display=show?'block':'none';
   }
   function attachM4A1(template){
     if(m4Ready||!template?.model)return;
     const model=template.model.clone(true);
     model.name='fpv-m4a1-textured-model';
+    m4Model=model;
     // These PBR meshes have metallic textures baked for third-person lighting.
     // With no cubemap in the first-person depth pass fully metallic receivers
     // appear pitch black. Clone ONLY materials (textures/geometries stay shared)
@@ -735,14 +825,40 @@ export function createWeaponRig(owner = {}) {
     if(thirdPersonSuppressor)thirdPersonSuppressor.visible=false;
     m4GripMesh=model.getObjectByName('ForegripGeometryMesh');
     if(m4GripMesh){
-      // Geometry is shared with the 3P soldier; use the prepared transform
-      // (including its 20-cm foregrip adjustment) to find the real grip.
+      // Derive a tight axis-aligned collider in *weapon* and *model* local
+      // space from all eight transformed geometry corners. No guessed centre
+      // or world-axis Box3 offset; the 3P asset itself remains unchanged.
       weapon.updateWorldMatrix(true,true);
-      const gripBounds=new THREE.Box3().setFromObject(m4GripMesh);
-      const gripCenter=gripBounds.getCenter(new THREE.Vector3());
-      weapon.worldToLocal(gripCenter);
-      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.034,.067,-.014));
-    }
+      m4GripMesh.geometry.computeBoundingBox();
+      const geometryBounds=m4GripMesh.geometry.boundingBox;
+      const inWeapon=new THREE.Box3(),inModel=new THREE.Box3();
+      for(const x of [geometryBounds.min.x,geometryBounds.max.x])
+        for(const y of [geometryBounds.min.y,geometryBounds.max.y])
+          for(const z of [geometryBounds.min.z,geometryBounds.max.z]){
+            const world=new THREE.Vector3(x,y,z).applyMatrix4(m4GripMesh.matrixWorld);
+            inWeapon.expandByPoint(weapon.worldToLocal(world.clone()));
+            inModel.expandByPoint(model.worldToLocal(world));
+          }
+      m4ContactBase.set(
+        inWeapon.min.x-M4_FOREGRIP_GRIP.surfaceGap,
+        THREE.MathUtils.lerp(inWeapon.min.y,inWeapon.max.y,M4_FOREGRIP_GRIP.height),
+        THREE.MathUtils.lerp(inWeapon.min.z,inWeapon.max.z,M4_FOREGRIP_GRIP.depth),
+      );
+      foregripAnchor=new THREE.Object3D();
+      foregripAnchor.name='foregripAnchor';
+      model.add(foregripAnchor);
+      updateForegripAnchor();
+      if(m4GripDebug){
+        const axes=new THREE.AxesHelper(.09);foregripAnchor.add(axes);
+        ownedGeometries.add(axes.geometry);
+        (Array.isArray(axes.material)?axes.material:[axes.material]).forEach(m=>ownedMaterials.add(m));
+        const collider=new THREE.Box3Helper(inModel,0x67ffac);
+        collider.name='m4-foregrip-debug-collider';
+        collider.material.depthTest=false;model.add(collider);
+        ownedGeometries.add(collider.geometry);ownedMaterials.add(collider.material);
+        createGripDebugPanel();
+      }
+    }else console.warn('M4 FPV: missing ForegripGeometryMesh, grip anchor unavailable');
     m4Magazine=model.getObjectByName('Magazine');
     if(m4Magazine)m4MagazineRest={position:m4Magazine.position.clone(),rotation:m4Magazine.rotation.clone()};
     m4Ready=true;
@@ -1040,7 +1156,7 @@ export function createWeaponRig(owner = {}) {
   const palmLocal = new THREE.Vector3(...lp([-.035,-.043,-.423]));
   const pistolPalmLocal = new THREE.Vector3(-.050,.020,-.086);
   // Same hand-space anchor, but this pose has a distinct baked wrist point.
-  const m4VerticalPalmLocal=new THREE.Vector3(-.017,.032,-.063);
+  const m4VerticalPalmLocal=new THREE.Vector3(...M4_FOREGRIP_GRIP.palmLocal);
   // Sleeve contact at the palm heel, not the source rig's sideways wrist pivot.
   // The imported palm/fingers remain at their existing weapon contact points.
   const wristLocal = new THREE.Vector3(...lp([-.064,-.073,-.444]));
@@ -1050,7 +1166,7 @@ export function createWeaponRig(owner = {}) {
   const shoulder = new THREE.Vector3(-.27,-.43,.25);
   // Actual support-side elbow stays near the viewer rather than riding with
   // the gun's recoil/ADS translations. Hidden off the lower camera boundary.
-  const m4ShoulderCamera=new THREE.Vector3(-.285,-.655,.035);
+  const m4ShoulderCamera=new THREE.Vector3(...M4_FOREGRIP_GRIP.cameraShoulder);
   const m4ShoulderLocal=new THREE.Vector3();
   const m4CameraInverse=new THREE.Matrix4();
   const armAxis = new THREE.Vector3(0,0,1);
@@ -1105,7 +1221,7 @@ export function createWeaponRig(owner = {}) {
     weapon.updateMatrix();
     m4CameraInverse.copy(weapon.matrix).invert();
     m4ShoulderLocal.copy(m4ShoulderCamera).applyMatrix4(m4CameraInverse);
-    fitLeftSleeve(m4VerticalWristLocal,.045,.97,m4ShoulderLocal);
+    fitLeftSleeve(m4VerticalWristLocal,M4_FOREGRIP_GRIP.sleeveOverlap,.97,m4ShoulderLocal);
   }
 
   function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null, defibTravel=0) {
@@ -1127,6 +1243,9 @@ export function createWeaponRig(owner = {}) {
     if(pistol)feed.position.add(pistol.magazineHome);
     feed.rotation.set(value('pitch'),0,value('roll'));
     const grip = THREE.MathUtils.smoothstep(phase,.015,.17) * (1-THREE.MathUtils.smoothstep(phase,.82,.99)) * amount;
+    // The closed grip turns about the baked wrist joint, NOT about a separate
+    // guessed palm pivot. Fade this orientation when reaching for the magazine.
+    m4WristPivot.rotation.y=m4GripTune.wristYaw*(1-grip);
     feedCover.rotation.x = support ? -1.07 * THREE.MathUtils.smoothstep(phase,.04,.19) * (1-THREE.MathUtils.smoothstep(phase,.73,.9)) * amount : 0;
 
     gripTarget.set(...(pistol ? [-.026,.018,.012] : loadout.grasp)).applyQuaternion(feed.quaternion).add(feed.position);
@@ -1139,9 +1258,12 @@ export function createWeaponRig(owner = {}) {
     palmTarget.lerp(gripTarget,grip);
     if(pistol)palmTarget.lerp(actionTarget.set(-.038,.033,.063+pistol.slide.position.z).applyMatrix4(pistol.modelMatrix),charging);
     else palmTarget.lerp(chargeGrip,charging);
-    let rotX = (pistol ? -.56 : -.92)*grip+feed.rotation.x*grip+charging*.7 - (m4OnForegrip?.07*(1-grip):0);
-    let rotY = (pistol ? .24 : .42)*grip+charging*.3;
-    let rotZ = (pistol ? .17 : .27)*grip+feed.rotation.z*grip + (m4OnForegrip?.12*(1-grip):0);
+    let rotX = (pistol ? -.56 : -.92)*grip+feed.rotation.x*grip+charging*.7
+      +(m4OnForegrip?m4GripTune.rotation.x*(1-grip):0);
+    let rotY = (pistol ? .24 : .42)*grip+charging*.3
+      +(m4OnForegrip?m4GripTune.rotation.y*(1-grip):0);
+    let rotZ = (pistol ? .17 : .27)*grip+feed.rotation.z*grip
+      +(m4OnForegrip?m4GripTune.rotation.z*(1-grip):0);
     let open = Math.max(Math.sin(grip*Math.PI)*.25,charging*.4);
 
     heldGrenade.visible = false;
@@ -1188,10 +1310,19 @@ export function createWeaponRig(owner = {}) {
     }
 
     supportGlove.morphTargetInfluences[0]=open;
-    m4VerticalHand.morphTargetInfluences[0]=open;
+    m4VerticalHand.morphTargetInfluences[0]=THREE.MathUtils.clamp(
+      Math.max(open,(1-m4GripTune.fingerCurl)*(1-grip)),0,1);
     pistolSupportMesh.morphTargetInfluences[0]=open;
     leftHand.rotation.set(rotX, rotY, rotZ);
-    palmOffset.copy(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolPalmLocal : m4OnForegrip?m4VerticalPalmLocal:palmLocal);
+    // The baked palm is a point on the child mesh. Its parent wrist hinge can
+    // rotate/scale independently, so transform that point before solving the
+    // parent glove's world-space contact against foregripAnchor.
+    if(m4OnForegrip){
+      palmOffset.copy(m4VerticalPalmLocal).sub(m4VerticalWristLocal)
+        .multiplyScalar(m4GripTune.handScale)
+        .applyQuaternion(m4WristPivot.quaternion)
+        .add(m4VerticalWristLocal);
+    }else palmOffset.copy(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolPalmLocal : palmLocal);
     palmOffset.applyQuaternion(leftHand.quaternion);
     leftHand.position.copy(palmTarget).sub(palmOffset);
 
@@ -1358,6 +1489,7 @@ export function createWeaponRig(owner = {}) {
     flashLight.intensity = !usingTool&&kick > .65 ? 1.8 : 0;
   }
   function dispose(){
+    m4DebugPanel?.remove();
     for(const template of gadgetTemplates(equipmentPalette))template.traverse(mesh=>{if(mesh.geometry?.userData.owned)ownedGeometries.add(mesh.geometry);});
     for(const geometry of ownedGeometries)geometry.dispose();
     for(const material of ownedMaterials)material.dispose();
@@ -1381,6 +1513,8 @@ export function createWeaponRig(owner = {}) {
     get m4SupportContact(){return m4SupportContact.clone();},
     get m4Reflex(){return m4Reflex;},
     get m4GripMesh(){return m4GripMesh;},
+    get foregripAnchor(){return foregripAnchor;},
+    get m4GripTuning(){return m4GripTune;},
     get m4VerticalHand(){return m4VerticalHand;},
     get m4WristPivot(){return m4WristPivot;},
     get m4VerticalWristLocal(){return m4VerticalWristLocal.clone();},
