@@ -59,6 +59,13 @@ for (const [name, pose] of Object.entries(poses)) {
   const rotation = new T.Quaternion().setFromEuler(new T.Euler(...pose.rotation));
   const target = new T.Vector3(...pose.wrist).sub(new T.Vector3(...pose.origin));
   const transform = p => { p.sub(wrist).multiplyScalar(pose.scale).applyQuaternion(rotation); if(pose.mirror) p.x *= -1; return p.add(target); };
+  if (name==='m4Vertical') {
+    const point=id=>{const bone=gltf.scene.getObjectByName('Bone_L'+id);
+      return bone?transform(bone.getWorldPosition(new T.Vector3())).toArray().map(v=>+v.toFixed(4)):null;};
+    console.log('M4 HAND REST JOINTS:',JSON.stringify({target:target.toArray(),
+      digits:[['005','006','007','007_end'],['009','010','011','011_end'],['013','014','015','015_end'],['017','018','019','019_end'],['020','021','022','022_end']]
+      .map(ids=>ids.map(point)),goals:{index:pose.index,fingers:pose.fingers,thumb:pose.thumb}}));
+  }
   function fingerIK(point, numbers=['007','006','005'], tipName='007_end', wrap=false, bendPole=pose.fingerPole||[0,0,-1]) {
     const goal = new T.Vector3(...point).sub(target);
     if(pose.mirror) goal.x *= -1;
