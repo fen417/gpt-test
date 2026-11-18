@@ -9,7 +9,8 @@ const pose=query.get('pose')||'hip';
 document.querySelector('#pose').textContent={
   hip:'HIP FIRE / FIRST PERSON',ads:'AIM DOWN SIGHTS / FIRST PERSON',
   reload:'MAGAZINE RELOAD / FIRST PERSON',grip:'VERTICAL FOREGRIP / SUPPORT HAND',
-  parts:'DIAGNOSTIC / M4 MESH PARTS',profile:'DIAGNOSTIC / SIDE VIEW',side:'M4 / SIDE VIEW WITHOUT IRON SIGHTS'
+  parts:'DIAGNOSTIC / M4 MESH PARTS',profile:'DIAGNOSTIC / SIDE VIEW',side:'M4 / SIDE VIEW WITHOUT IRON SIGHTS',
+  gripDetail:'LEFT HAND / CLOSE GRIP',gripOpposite:'FINGERS / OPPOSITE SIDE',gripSide:'FOREGRIP / SIDE VIEW'
 }[pose]||pose.toUpperCase();
 const scene=new THREE.Scene();
 scene.background=new THREE.Color('#525c59');
@@ -42,6 +43,7 @@ try{
   const reload=pose==='reload',aim=pose==='ads',grip=pose==='grip';
   const diagnostic=pose==='parts'||pose==='profile';
   const side=pose==='side';
+  const inspecting=['gripDetail','gripOpposite','gripSide'].includes(pose);
   const reloadPhase=reload?.52:1;
   rig.update({classId:'assault',weaponId:'ar416',aim:aim?1:0,reloadPhase,reloadEmpty:reload});
   if(!rig.isImportedM4)throw Error('M4A1 did not replace fallback');
@@ -72,11 +74,13 @@ try{
   const aimPoint=rig.m4Reflex.localToWorld(new THREE.Vector3(0,.166,-.103))
     .project(camera);
   const gripBox=rig.m4GripMesh?new THREE.Box3().setFromObject(rig.m4GripMesh):null;
-  const supportMesh=rig.leftHand.getObjectByName('imported-fps-hand-support');
-  const handBox=supportMesh?new THREE.Box3().setFromObject(supportMesh):null;
+  const supportMesh=rig.m4VerticalHand;
+  const handBox=rig.m4VerticalHand?new THREE.Box3().setFromObject(rig.m4VerticalHand):null;
   const toArray=box=>box?{min:box.min.toArray(),max:box.max.toArray(),size:box.getSize(new THREE.Vector3()).toArray()}:null;
   window.__m4Diagnostics={
     palmToGrip:palm.distanceTo(contact),
+    verticalHandActive:rig.m4VerticalHand?.visible,
+    genericSupportHidden:!rig.leftHand.getObjectByName('imported-fps-hand-support')?.visible,
     foregripBounds:toArray(gripBox),handBounds:toArray(handBox),
     gripContact:rig.m4SupportContact.toArray(),
     palmWorld:palm.toArray(),
@@ -88,13 +92,26 @@ try{
   };
   if(!reload&&window.__m4Diagnostics.palmToGrip>.025)
     throw Error('Support palm missed M4 foregrip by '+window.__m4Diagnostics.palmToGrip.toFixed(3)+' m');
+  if(!reload&&!diagnostic&&!side&&!window.__m4Diagnostics.verticalHandActive)
+    throw Error('M4 must use dedicated vertical grip hand, not underhand generic mesh');
   if(window.__m4Diagnostics.suppressorVisible)throw Error('3P suppressor silhouette still protrudes into FPV');
   if(rig.sightType!=='reflex'||!rig.m4Reflex.visible)
     throw Error('Original AR-416 collimator did not replace M4 optics');
   if(aim&&Math.abs(aimPoint.x)>.08||aim&&Math.abs(aimPoint.y)>.08)
     throw Error('Reflex sight is not aligned with the centre of the ADS camera: '+JSON.stringify(window.__m4Diagnostics));
   camera.updateProjectionMatrix();
-  renderer.render(scene,camera);
+  if(inspecting){
+    const closeCamera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.016,20);
+    const center=gripBox.getCenter(new THREE.Vector3());
+    const offset=pose==='gripDetail'?new THREE.Vector3(-.19,.03,.14)
+      :pose==='gripOpposite'?new THREE.Vector3(.20,.018,-.16)
+      :new THREE.Vector3(.23,.035,.055);
+    closeCamera.position.copy(center).add(offset);
+    closeCamera.lookAt(center);
+    closeCamera.layers.enable(1);
+    scene.add(closeCamera);
+    renderer.render(scene,closeCamera);
+  }else renderer.render(scene,camera);
   window.__previewReady=true;
 }catch(error){
   window.__previewError=String(error?.stack||error);
