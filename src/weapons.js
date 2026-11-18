@@ -595,11 +595,19 @@ export function createWeaponRig(owner = {}) {
   // The M4 uses a separately BAKED, closed-finger mesh posed around its
   // vertical front handle. Moving the generic underhand palm cannot make
   // four fingers wrap the grip, no matter how close the palm pivot is.
+  const m4VerticalWristLocal=new THREE.Vector3(-.059,-.040,0);
   const m4VerticalHand=createFPSHand('m4Vertical',importedGloveMat);
   m4VerticalHand.name='imported-fps-hand-m4-vertical';
   m4VerticalHand.visible=false;
   ownedGeometries.add(m4VerticalHand.geometry);
-  leftHand.add(m4VerticalHand);
+  // Rotate the new closed grip about its REAL wrist joint, never the guessed
+  // palm pivot. This retains the sleeve joint while turning the knuckles
+  // around the rifle's vertical handle.
+  const m4WristPivot=new THREE.Group();m4WristPivot.name='m4-fpv-wrist-hinge';
+  m4WristPivot.position.copy(m4VerticalWristLocal);
+  m4VerticalHand.position.copy(m4VerticalWristLocal).negate();
+  m4WristPivot.add(m4VerticalHand);
+  leftHand.add(m4WristPivot);
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
@@ -1030,7 +1038,6 @@ export function createWeaponRig(owner = {}) {
   const pistolPalmLocal = new THREE.Vector3(-.050,.020,-.086);
   // Same hand-space anchor, but this pose has a distinct baked wrist point.
   const m4VerticalPalmLocal=new THREE.Vector3(-.017,.032,-.063);
-  const m4VerticalWristLocal=new THREE.Vector3(-.059,-.040,0);
   // Sleeve contact at the palm heel, not the source rig's sideways wrist pivot.
   // The imported palm/fingers remain at their existing weapon contact points.
   const wristLocal = new THREE.Vector3(...lp([-.064,-.073,-.444]));
@@ -1372,6 +1379,7 @@ export function createWeaponRig(owner = {}) {
     get m4Reflex(){return m4Reflex;},
     get m4GripMesh(){return m4GripMesh;},
     get m4VerticalHand(){return m4VerticalHand;},
+    get m4WristPivot(){return m4WristPivot;},
     get m4VerticalWristLocal(){return m4VerticalWristLocal.clone();},
     get m4ShoulderCamera(){return m4ShoulderCamera.clone();},
     get isImportedM4(){return previousKey==='ar416'&&m4Ready;},
