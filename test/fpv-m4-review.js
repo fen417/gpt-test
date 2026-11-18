@@ -76,9 +76,25 @@ try{
   const gripBox=rig.m4GripMesh?new THREE.Box3().setFromObject(rig.m4GripMesh):null;
   const supportMesh=rig.m4VerticalHand;
   const handBox=rig.m4VerticalHand?new THREE.Box3().setFromObject(rig.m4VerticalHand):null;
+  // A palm pivot can be exactly at the target while the fingers still miss.
+  // Check there is real glove geometry on both sides of the handle through its
+  // gripping height; retain the close-up screenshots as the visual check.
+  let nearSide=0,farSide=0;
+  if(gripBox&&rig.m4VerticalHand?.visible){
+    const hand=rig.m4VerticalHand,positions=hand.geometry.getAttribute('position');
+    const sample=new THREE.Vector3();
+    for(let i=0;i<positions.count;i++){
+      sample.fromBufferAttribute(positions,i).applyMatrix4(hand.matrixWorld);
+      if(sample.y<gripBox.min.y+.006||sample.y>gripBox.max.y-.006||
+        sample.z<gripBox.min.z-.035||sample.z>gripBox.max.z+.035)continue;
+      if(sample.x<gripBox.min.x-.005)nearSide++;
+      if(sample.x>gripBox.max.x+.005)farSide++;
+    }
+  }
   const toArray=box=>box?{min:box.min.toArray(),max:box.max.toArray(),size:box.getSize(new THREE.Vector3()).toArray()}:null;
   window.__m4Diagnostics={
     palmToGrip:palm.distanceTo(contact),
+    gloveOnLeftOfHandle:nearSide,gloveOnRightOfHandle:farSide,
     verticalHandActive:rig.m4VerticalHand?.visible,
     genericSupportHidden:!rig.leftHand.getObjectByName('imported-fps-hand-support')?.visible,
     foregripBounds:toArray(gripBox),handBounds:toArray(handBox),
@@ -103,9 +119,9 @@ try{
   if(inspecting){
     const closeCamera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.016,20);
     const center=gripBox.getCenter(new THREE.Vector3());
-    const offset=pose==='gripDetail'?new THREE.Vector3(-.19,.03,.14)
-      :pose==='gripOpposite'?new THREE.Vector3(.20,.018,-.16)
-      :new THREE.Vector3(.23,.035,.055);
+    const offset=pose==='gripDetail'?new THREE.Vector3(-.28,.055,.20)
+      :pose==='gripOpposite'?new THREE.Vector3(.30,.035,-.19)
+      :new THREE.Vector3(.33,.045,.09);
     closeCamera.position.copy(center).add(offset);
     closeCamera.lookAt(center);
     closeCamera.layers.enable(1);
