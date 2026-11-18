@@ -43,7 +43,7 @@ try{
   rig.update({classId:'assault',weaponId:'ar416',aim:aim?1:0,reloadPhase,reloadEmpty:reload});
   if(!rig.isImportedM4)throw Error('M4A1 did not replace fallback');
   const reloadMotion=reload?1:0;
-  rig.weapon.position.set(aim?0:grip?.20:.15,aim?-rig.sightHeight:grip?-.10:-.23,aim?-.42:grip?-.38:-.60);
+  rig.weapon.position.set(aim?0:grip?.20:.15,aim?-rig.sightHeight:grip?-.10:-.23,aim?-.13:grip?-.38:-.60);
   rig.weapon.position.y-=reloadMotion*.012;
   rig.weapon.position.z+=reloadMotion*.06;
   rig.weapon.rotation.set(-reloadMotion*.13,grip?-.24:-reloadMotion*.08,-reloadMotion*.17);
