@@ -8,7 +8,7 @@ const query=new URLSearchParams(location.search);
 const pose=query.get('pose')||'hip';
 document.querySelector('#pose').textContent={
   hip:'HIP FIRE / FIRST PERSON',ads:'AIM DOWN SIGHTS / FIRST PERSON',
-  reload:'MAGAZINE RELOAD / FIRST PERSON'
+  reload:'MAGAZINE RELOAD / FIRST PERSON',grip:'VERTICAL FOREGRIP / SUPPORT HAND'
 }[pose]||pose.toUpperCase();
 const scene=new THREE.Scene();
 scene.background=new THREE.Color('#525c59');
@@ -38,15 +38,37 @@ try{
   const model=await assets.request('m4a1',prepareWeapon);
   rig.attachM4A1(model);
   prepareViewModel(rig.weapon);
-  const reload=pose==='reload',aim=pose==='ads';
+  const reload=pose==='reload',aim=pose==='ads',grip=pose==='grip';
   const reloadPhase=reload?.52:1;
   rig.update({classId:'assault',weaponId:'ar416',aim:aim?1:0,reloadPhase,reloadEmpty:reload});
   if(!rig.isImportedM4)throw Error('M4A1 did not replace fallback');
   const reloadMotion=reload?1:0;
-  rig.weapon.position.set(aim?0:.15,aim?-rig.sightHeight:-.23,aim?-.42:-.60);
+  rig.weapon.position.set(aim?0:grip?.20:.15,aim?-rig.sightHeight:grip?-.10:-.23,aim?-.42:grip?-.38:-.60);
   rig.weapon.position.y-=reloadMotion*.012;
   rig.weapon.position.z+=reloadMotion*.06;
-  rig.weapon.rotation.set(-reloadMotion*.13,-reloadMotion*.08,-reloadMotion*.17);
+  rig.weapon.rotation.set(-reloadMotion*.13,grip?-.24:-reloadMotion*.08,-reloadMotion*.17);
+  // Verify the fitted palm actually lands on the imported foregrip rather than
+  // merely looking close from the camera's perspective.
+  rig.weapon.updateWorldMatrix(true,true);
+  const palm=rig.leftHand.localToWorld(new THREE.Vector3(-.017,.032,-.063));
+  const contact=rig.weapon.localToWorld(rig.m4SupportContact);
+  const aimPoint=rig.m4Reflex.localToWorld(new THREE.Vector3(0,.166,-.103))
+    .project(camera);
+  window.__m4Diagnostics={
+    palmToGrip:palm.distanceTo(contact),
+    gripContact:rig.m4SupportContact.toArray(),
+    palmWorld:palm.toArray(),
+    sightNDC:[aimPoint.x,aimPoint.y],
+    sightType:rig.sightType,
+    collimatorVisible:rig.m4Reflex.visible,
+    sourceOpticVisible:rig.m4GripMesh?.parent?.getObjectByName('OpticMountGeometryMesh')?.visible,
+  };
+  if(!reload&&window.__m4Diagnostics.palmToGrip>.025)
+    throw Error('Support palm missed M4 foregrip by '+window.__m4Diagnostics.palmToGrip.toFixed(3)+' m');
+  if(rig.sightType!=='reflex'||!rig.m4Reflex.visible)
+    throw Error('Original AR-416 collimator did not replace M4 optics');
+  if(aim&&Math.abs(aimPoint.x)>.08||aim&&Math.abs(aimPoint.y)>.08)
+    throw Error('Reflex sight is not aligned with the centre of the ADS camera: '+JSON.stringify(window.__m4Diagnostics));
   camera.updateProjectionMatrix();
   renderer.render(scene,camera);
   window.__previewReady=true;
