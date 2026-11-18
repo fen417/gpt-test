@@ -1767,18 +1767,19 @@ export class GameRenderer {
       const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(this.weaponRig.sightType);
       // A little extra eye relief makes the MG/PKP aperture less dominant
       // without moving the centred sight line or changing bullet trajectories.
-      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:supportIron?-.288:-.27;
+      const fpvM4=this.weaponRig.isImportedM4;
+      const adsZ=fpvM4?-.42:pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:supportIron?-.288:-.27;
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(
-        lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * weaponBob - this.swayX + rifleSprint * .035 + actionTilt * .055 + lowered * .06,
-        lerp(pistol ? -.105 : -.23, pistol ? -this.weaponRig.pistolSightHeight : -this.weaponRig.sightHeight, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
-        lerp(pistol ? -.50 : -.42, adsZ, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
+        lerp(pistol ? .15 : fpvM4 ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * weaponBob - this.swayX + rifleSprint * .035 + actionTilt * .055 + lowered * .06,
+        lerp(pistol ? -.105 : -.23, pistol ? -this.weaponRig.pistolSightHeight : -this.weaponRig.sightHeight, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * (fpvM4?.045:.10) - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
+        lerp(pistol ? -.50 : fpvM4 ? -.60 : -.42, adsZ, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
       );
       this.weapon.rotation.set(
-        kick * (pistol ? .089 : .062) - reloadMotion * .39 - rifleSprint * .25 + Math.cos(cycle) * weaponBob * .022 - actionTilt * .18 - lowered * .72,
-        -reloadMotion * .22 + rifleSprint * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
-        -reloadMotion * .47 + rifleSprint * .24 + Math.sin(cycle) * weaponBob * .018 - actionTilt * .36 + lowered * .24,
+        kick * (pistol ? .089 : .062) - reloadMotion * (fpvM4?.24:.39) - rifleSprint * .25 + Math.cos(cycle) * weaponBob * .022 - actionTilt * .18 - lowered * .72,
+        -reloadMotion * (fpvM4?.14:.22) + rifleSprint * .34 + this.strafeBlend * .028 * (1 - this.aimAmount) - actionTilt * .22,
+        -reloadMotion * (fpvM4?.26:.47) + rifleSprint * .24 + Math.sin(cycle) * weaponBob * .018 - actionTilt * .36 + lowered * .24,
       );
       const pistolSprint=pistol&&!gadgetKind?applyPistolSprintPose(this.weapon,this.sprintBlend,this.aimAmount,this.reloadAmount,kick,cycle):0;
       if(gadgetKind){
