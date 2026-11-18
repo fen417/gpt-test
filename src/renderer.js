@@ -3,7 +3,7 @@ import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
 import * as THREE from 'three';
 import { CachedShadows } from './cached-shadows.js';
-import { InfantryAssets } from './infantry-assets.js';
+import { InfantryAssets, prepareWeapon } from './infantry-assets.js';
 import {GroundShadows} from './ground-shadows.js';
 import {PostPass} from './post-pass.js';
 import {AdaptiveResolution} from './adaptive-resolution.js';
@@ -743,6 +743,15 @@ export class GameRenderer {
     this.weapon = this.weaponRig.weapon;
     this.camera.add(this.weapon);
     prepareViewModel(this.weapon);
+    // Share the same optimized GLB with third-person soldiers. The fallback
+    // procedural gun remains visible while the asynchronous asset loads.
+    this.infantry ??= new InfantryAssets(this.renderer);
+    const rig=this.weaponRig;
+    this.infantry.request('m4a1',prepareWeapon).then(asset=>{
+      if(this.weaponRig!==rig)return;
+      rig.attachM4A1(asset);
+      prepareViewModel(rig.weapon); // include dynamically added M4 meshes in layer 1
+    }).catch(error=>console.error('FPV M4A1 asset:',error));
   }
 
   makeSoldier(player) {
@@ -1763,7 +1772,7 @@ export class GameRenderer {
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(
         lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * weaponBob - this.swayX + rifleSprint * .035 + actionTilt * .055 + lowered * .06,
-        lerp(pistol ? -.105 : -.23, pistol ? -this.weaponRig.pistolSightHeight : -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
+        lerp(pistol ? -.105 : -.23, pistol ? -this.weaponRig.pistolSightHeight : -this.weaponRig.sightHeight, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
         lerp(pistol ? -.50 : -.42, adsZ, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
       );
       this.weapon.rotation.set(
