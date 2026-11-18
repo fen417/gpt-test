@@ -16,7 +16,18 @@ test('FPV removes only M4 front/rear iron sight islands, leaving third-person ge
   assert(receiver?.isMesh,'expected combined M4 receiver mesh');
   const original=receiver.geometry,sourceTriangles=original.getIndex().count/3;
   const {geometry,frontTriangles,rearTriangles}=removeM4IronSights(original);
-  assert(frontTriangles>=150&&frontTriangles<=250,'front post & protective wings are detached');
+  // The tall iron tower is made of separate islands that were previously
+  // missed by a maxY>.20-only heuristic. Require all those islands to go.
+  assert(frontTriangles>=300&&frontTriangles<=650,'front sight tower and guards are entirely removed');
+  const p=geometry.getAttribute('position'),inds=geometry.getIndex();
+  let residualAboveRail=0;
+  for(let i=0;i<inds.count;i+=3){
+    const verts=[inds.getX(i),inds.getX(i+1),inds.getX(i+2)];
+    if(verts.every(v=>p.getZ(v)>-.61&&p.getZ(v)<-.45)&&
+      verts.some(v=>p.getY(v)>.20&&Math.abs(p.getX(v))<.032))
+      residualAboveRail++;
+  }
+  assert.equal(residualAboveRail,0,'no sight tip above the handguard in front tower zone');
   assert(rearTriangles>=250&&rearTriangles<=700,'rear peep sight & guards are detached');
   assert.equal(geometry.getIndex().count/3,sourceTriangles-frontTriangles-rearTriangles);
   assert.equal(original.getIndex().count/3,sourceTriangles,'original 3P source not modified');
