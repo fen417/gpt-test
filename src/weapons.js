@@ -605,6 +605,9 @@ export function createWeaponRig(owner = {}) {
   // around the rifle's vertical handle.
   const m4WristPivot=new THREE.Group();m4WristPivot.name='m4-fpv-wrist-hinge';
   m4WristPivot.position.copy(m4VerticalWristLocal);
+  // Anatomical closed grip: bring the knuckles forward toward the handle,
+  // rotating the glove about its actual wrist rather than bending the forearm.
+  m4WristPivot.rotation.y=.65;
   m4VerticalHand.position.copy(m4VerticalWristLocal).negate();
   m4WristPivot.add(m4VerticalHand);
   // Attached to rifleGlove below; keep the pivot with the rifle-only grip.
@@ -738,7 +741,7 @@ export function createWeaponRig(owner = {}) {
       const gripBounds=new THREE.Box3().setFromObject(m4GripMesh);
       const gripCenter=gripBounds.getCenter(new THREE.Vector3());
       weapon.worldToLocal(gripCenter);
-      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.034,.027,.006));
+      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.034,.027,-.029));
     }
     m4Magazine=model.getObjectByName('Magazine');
     if(m4Magazine)m4MagazineRest={position:m4Magazine.position.clone(),rotation:m4Magazine.rotation.clone()};
@@ -1102,7 +1105,7 @@ export function createWeaponRig(owner = {}) {
     weapon.updateMatrix();
     m4CameraInverse.copy(weapon.matrix).invert();
     m4ShoulderLocal.copy(m4ShoulderCamera).applyMatrix4(m4CameraInverse);
-    fitLeftSleeve(m4VerticalWristLocal,.023,.96,m4ShoulderLocal);
+    fitLeftSleeve(m4VerticalWristLocal,.045,.97,m4ShoulderLocal);
   }
 
   function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null, defibTravel=0) {
