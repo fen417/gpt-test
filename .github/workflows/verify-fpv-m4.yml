@@ -1,0 +1,46 @@
+name: Verify FPV M4A1 and capture screenshots
+on:
+  push:
+    branches: [feat/fpv-m4a1-viewmodel]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fpv-m4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm install --no-save playwright@1.58.2
+      - run: npx playwright install --with-deps chromium
+      - name: Start Vite
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/fpv-m4-vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5173/test/fpv-m4-review.html > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/fpv-m4-vite.log
+          exit 1
+      - run: node scripts/fpv-m4-screenshots.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fpv-m4-screenshots
+          path: docs/fpv-m4/*.png
+          if-no-files-found: ignore
+      - name: Commit screenshots to feature branch
+        if: success()
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/fpv-m4/*.png
+          git diff --cached --quiet || git commit -m "docs: capture real FPV M4A1 hip ADS reload previews [skip ci]"
+          git push origin HEAD:feat/fpv-m4a1-viewmodel
