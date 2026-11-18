@@ -117,6 +117,8 @@ try{
     sourceOpticVisible:rig.m4GripMesh?.parent?.getObjectByName('OpticMountGeometryMesh')?.visible,
     suppressorVisible:rig.weapon.getObjectByName('fpv-m4a1-textured-model')?.getObjectByName('SuppressorGeometryMesh')?.visible,
   };
+  if(!reload&&!diagnostic&&!side&&(nearSide<100||farSide<100))
+    throw Error('M4 foregrip lacks actual geometry on both sides: '+nearSide+'/'+farSide);
   if(!reload&&!diagnostic&&!side&&angle>55)
     throw Error('M4 support wrist exceeds anatomical 55 degree limit: '+angle.toFixed(1));
   if(!reload&&window.__m4Diagnostics.palmToGrip>.025)
