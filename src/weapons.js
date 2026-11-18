@@ -708,6 +708,12 @@ export function createWeaponRig(owner = {}) {
     // existing AR-416 collimator on top of its rail.
     const sourceOptic=model.getObjectByName('OpticMountGeometryMesh');
     if(sourceOptic)sourceOptic.visible=false;
+    // On the actual FPV render the protruding shape at the tip is this
+    // third-person suppressor mesh, not the front sight. The M4 receiver
+    // already has its own barrel/muzzle: hide the extra suppressor in FPV only.
+    // Keep it in the third-person shared asset.
+    const thirdPersonSuppressor=model.getObjectByName('SuppressorGeometryMesh');
+    if(thirdPersonSuppressor)thirdPersonSuppressor.visible=false;
     m4GripMesh=model.getObjectByName('ForegripGeometryMesh');
     if(m4GripMesh){
       // Geometry is shared with the 3P soldier; use the prepared transform
