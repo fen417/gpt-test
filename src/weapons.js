@@ -1372,6 +1372,8 @@ export function createWeaponRig(owner = {}) {
     get m4Reflex(){return m4Reflex;},
     get m4GripMesh(){return m4GripMesh;},
     get m4VerticalHand(){return m4VerticalHand;},
+    get m4VerticalWristLocal(){return m4VerticalWristLocal.clone();},
+    get m4ShoulderCamera(){return m4ShoulderCamera.clone();},
     get isImportedM4(){return previousKey==='ar416'&&m4Ready;},
     attachM4A1,anchorM4Forearm,
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
