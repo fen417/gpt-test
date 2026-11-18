@@ -607,7 +607,7 @@ export function createWeaponRig(owner = {}) {
   m4WristPivot.position.copy(m4VerticalWristLocal);
   m4VerticalHand.position.copy(m4VerticalWristLocal).negate();
   m4WristPivot.add(m4VerticalHand);
-  leftHand.add(m4WristPivot);
+  // Attached to rifleGlove below; keep the pivot with the rifle-only grip.
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
@@ -959,7 +959,7 @@ export function createWeaponRig(owner = {}) {
   const rifleGlove=new THREE.Group();
   // Only the rifle grip belongs here; gadget grips have independent visibility.
   rifleGlove.add(supportGlove);
-  rifleGlove.add(m4VerticalHand);
+  rifleGlove.add(m4WristPivot);
   leftHand.add(rifleGlove);
   const pistolGlove=new THREE.Group();leftHand.add(pistolGlove);
   pistolGlove.name='pistol-support-glove';
