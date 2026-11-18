@@ -19,10 +19,10 @@ const poses = {
     // Wrist is recessed toward the camera relative to the original clenched
     // grip, but not so far that finger bones lose reach to the vertical handle.
     wrist:[-.080,-.106,-.393],origin:[-.018,-.075,-.36],cutStart:.038,
-    index:[.056,.075,-.042],indexWrap:true,
-    fingers:[[.055,.052,-.043],[.055,.030,-.043],[.054,.011,-.041]],
-    fingerPole:[.80,-.25,.20],thumb:[-.009,.080,-.101],
-    thumbDirection:[.75,-.20,.35] },
+    index:[-.012,-.037,-.071],indexWrap:true,
+    fingers:[[-.010,-.052,-.071],[-.008,-.065,-.068],[-.004,-.080,-.061]],
+    fingerPole:[.85,-.1,.40],thumb:[.018,-.015,-.062],
+    thumbDirection:[.7,.10,-.55],thumbPole:[.35,0,.6] }
   trigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.202, .145], origin: [0, 0, 0], index: [.008, -.090, .018], fingers: [[-.024,-.149,.047],[-.024,-.178,.052],[-.022,-.199,.045]], thumb: [-.024,-.129,.055] },
   pistolSupport: { source: 'pistol', side: 'R', mirror: true, scale: .48, rotation: [.35, .02, 0], wrist: [-.035, -.053, -.014], origin: [0, 0, 0], index: [.002,.012,-.064], fingers: [[.004,-.003,-.060],[.002,-.019,-.057],[-.003,-.035,-.050]], thumb: [-.010,.050,-.047] },
   pistolTrigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.195, .175], origin: [0, 0, 0], index: [.006, -.122, .034], fingers: [[-.024,-.157,.081],[-.024,-.177,.087],[-.023,-.198,.092]], thumb: [-.024,-.136,.088] },
