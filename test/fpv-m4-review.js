@@ -114,6 +114,7 @@ try{
     palmToGrip:palm.distanceTo(contact),
     supportWristAngleDeg:angle,
     wristYaw:rig.m4WristPivot.rotation.y,
+    wristHingeAttached:rig.m4VerticalHand.parent===rig.m4WristPivot,
     sweep:sweep[pose]??null,
     wristCamera:wrist.toArray(),
     elbowCamera:elbow.toArray(),
@@ -131,8 +132,9 @@ try{
   };
   if(!sweep[pose]&&!reload&&!diagnostic&&!side&&angle>55)
     throw Error('M4 support wrist exceeds anatomical 55 degree limit: '+angle.toFixed(1));
-  if(!reload&&window.__m4Diagnostics.palmToGrip>.025)
+  if(!sweep[pose]&&!reload&&window.__m4Diagnostics.palmToGrip>.025)
     throw Error('Support palm missed M4 foregrip by '+window.__m4Diagnostics.palmToGrip.toFixed(3)+' m');
+  if(!window.__m4Diagnostics.wristHingeAttached)throw Error('M4 grip hand detached from wrist hinge');
   if(!reload&&!diagnostic&&!side&&!window.__m4Diagnostics.verticalHandActive)
     throw Error('M4 must use dedicated vertical grip hand, not underhand generic mesh');
   if(window.__m4Diagnostics.suppressorVisible)throw Error('3P suppressor silhouette still protrudes into FPV');
