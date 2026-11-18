@@ -664,6 +664,24 @@ export function createWeaponRig(owner = {}) {
     if(m4Ready||!template?.model)return;
     const model=template.model.clone(true);
     model.name='fpv-m4a1-textured-model';
+    // These PBR meshes have metallic textures baked for third-person lighting.
+    // With no cubemap in the first-person depth pass fully metallic receivers
+    // appear pitch black. Clone ONLY materials (textures/geometries stay shared)
+    // and give near-camera metal sensible direct-light response.
+    model.traverse(part=>{
+      if(!part.isMesh)return;
+      const brighten=original=>{
+        const material=original.clone();
+        if(material.isMeshStandardMaterial){
+          material.metalness=Math.min(material.metalness,.38);
+          material.roughness=Math.max(material.roughness,.45);
+          material.color.multiplyScalar(1.55);
+        }
+        ownedMaterials.add(material);
+        return material;
+      };
+      part.material=Array.isArray(part.material)?part.material.map(brighten):brighten(part.material);
+    });
     // Fit the right grip to the trigger hand and enlarge the imported rifle.
     fpvM4.position.set(.018,-.160,.100);
     fpvM4.scale.setScalar(m4Scale);
