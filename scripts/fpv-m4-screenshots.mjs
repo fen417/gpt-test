@@ -12,7 +12,7 @@ try{
   page.on('console',msg=>{if(msg.type()==='error'||msg.type()==='warning')console.log('BROWSER:',msg.type(),msg.text());});
   page.on('requestfailed',request=>console.error('REQUEST FAILED:',request.url(),request.failure()?.errorText));
   page.on('response',response=>{if(response.request().resourceType()==='script')console.log('SCRIPT:',response.status(),response.headers()['content-type'],response.url());});
-  for(const pose of ['hip','ads','reload','grip','parts','profile','side']){
+  for(const pose of ['hip','ads','reload','grip','gripDetail','gripOpposite','gripSide','side']){
     await page.goto('http://127.0.0.1:5173/test/fpv-m4-review.html?pose='+pose,{waitUntil:'domcontentloaded'});
     await page.waitForTimeout(6500);
     if(errors.length)throw new Error('Initial page errors: '+errors.join('; '));
