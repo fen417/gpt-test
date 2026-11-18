@@ -52,6 +52,7 @@ try{
   rig.weapon.position.y-=reloadMotion*.012;
   rig.weapon.position.z+=reloadMotion*.06;
   rig.weapon.rotation.set(-reloadMotion*.13,pose==='profile'||side?.67:grip?-.24:-reloadMotion*.08,-reloadMotion*.17);
+  rig.anchorM4Forearm();
   if(side){rig.leftHand.visible=false;rig.leftArm.visible=false;}
   if(diagnostic){
     const colorByName={ChargingHandleGeometryMesh:0xff9038,SuppressorGeometryMesh:0x18f6ff,
@@ -71,6 +72,11 @@ try{
   rig.weapon.updateWorldMatrix(true,true);
   const palm=rig.leftHand.localToWorld(new THREE.Vector3(-.017,.032,-.063));
   const contact=rig.weapon.localToWorld(rig.m4SupportContact);
+  const wrist=rig.leftHand.localToWorld(rig.m4VerticalWristLocal);
+  const elbow=rig.m4ShoulderCamera;
+  const angle=Math.acos(THREE.MathUtils.clamp(
+    wrist.clone().sub(elbow).normalize().dot(palm.clone().sub(wrist).normalize()),-1,1
+  ))*180/Math.PI;
   const aimPoint=rig.m4Reflex.localToWorld(new THREE.Vector3(0,.166,-.103))
     .project(camera);
   const gripBox=rig.m4GripMesh?new THREE.Box3().setFromObject(rig.m4GripMesh):null;
@@ -94,6 +100,9 @@ try{
   const toArray=box=>box?{min:box.min.toArray(),max:box.max.toArray(),size:box.getSize(new THREE.Vector3()).toArray()}:null;
   window.__m4Diagnostics={
     palmToGrip:palm.distanceTo(contact),
+    supportWristAngleDeg:angle,
+    wristCamera:wrist.toArray(),
+    elbowCamera:elbow.toArray(),
     gloveOnLeftOfHandle:nearSide,gloveOnRightOfHandle:farSide,
     verticalHandActive:rig.m4VerticalHand?.visible,
     genericSupportHidden:!rig.leftHand.getObjectByName('imported-fps-hand-support')?.visible,
@@ -106,6 +115,8 @@ try{
     sourceOpticVisible:rig.m4GripMesh?.parent?.getObjectByName('OpticMountGeometryMesh')?.visible,
     suppressorVisible:rig.weapon.getObjectByName('fpv-m4a1-textured-model')?.getObjectByName('SuppressorGeometryMesh')?.visible,
   };
+  if(!reload&&!diagnostic&&!side&&angle>55)
+    throw Error('M4 support wrist exceeds anatomical 55 degree limit: '+angle.toFixed(1));
   if(!reload&&window.__m4Diagnostics.palmToGrip>.025)
     throw Error('Support palm missed M4 foregrip by '+window.__m4Diagnostics.palmToGrip.toFixed(3)+' m');
   if(!reload&&!diagnostic&&!side&&!window.__m4Diagnostics.verticalHandActive)
