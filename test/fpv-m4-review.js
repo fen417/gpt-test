@@ -9,7 +9,7 @@ const pose=query.get('pose')||'hip';
 document.querySelector('#pose').textContent={
   hip:'HIP FIRE / FIRST PERSON',ads:'AIM DOWN SIGHTS / FIRST PERSON',
   reload:'MAGAZINE RELOAD / FIRST PERSON',grip:'VERTICAL FOREGRIP / SUPPORT HAND',
-  parts:'DIAGNOSTIC / M4 MESH PARTS',profile:'DIAGNOSTIC / SIDE VIEW'
+  parts:'DIAGNOSTIC / M4 MESH PARTS',profile:'DIAGNOSTIC / SIDE VIEW',side:'M4 / SIDE VIEW WITHOUT IRON SIGHTS'
 }[pose]||pose.toUpperCase();
 const scene=new THREE.Scene();
 scene.background=new THREE.Color('#525c59');
@@ -41,6 +41,7 @@ try{
   prepareViewModel(rig.weapon);
   const reload=pose==='reload',aim=pose==='ads',grip=pose==='grip';
   const diagnostic=pose==='parts'||pose==='profile';
+  const side=pose==='side';
   const reloadPhase=reload?.52:1;
   rig.update({classId:'assault',weaponId:'ar416',aim:aim?1:0,reloadPhase,reloadEmpty:reload});
   if(!rig.isImportedM4)throw Error('M4A1 did not replace fallback');
@@ -48,7 +49,8 @@ try{
   rig.weapon.position.set(aim?0:grip?.20:.15,aim?-rig.sightHeight:grip?-.10:-.23,aim?-.13:grip?-.38:-.60);
   rig.weapon.position.y-=reloadMotion*.012;
   rig.weapon.position.z+=reloadMotion*.06;
-  rig.weapon.rotation.set(-reloadMotion*.13,pose==='profile'?.67:grip?-.24:-reloadMotion*.08,-reloadMotion*.17);
+  rig.weapon.rotation.set(-reloadMotion*.13,pose==='profile'||side?.67:grip?-.24:-reloadMotion*.08,-reloadMotion*.17);
+  if(side){rig.leftHand.visible=false;rig.leftArm.visible=false;}
   if(diagnostic){
     const colorByName={ChargingHandleGeometryMesh:0xff9038,SuppressorGeometryMesh:0x18f6ff,
       ForegripGeometryMesh:0x72ff23,MagazineGeometryMesh:0xff29b2,OpticMountGeometryMesh:0x9f64ff};
