@@ -592,6 +592,14 @@ export function createWeaponRig(owner = {}) {
   const supportGlove = createFPSHand('support', importedGloveMat);
   ownedGeometries.add(supportGlove.geometry);
   leftHand.add(supportGlove);
+  // The M4 uses a separately BAKED, closed-finger mesh posed around its
+  // vertical front handle. Moving the generic underhand palm cannot make
+  // four fingers wrap the grip, no matter how close the palm pivot is.
+  const m4VerticalHand=createFPSHand('m4Vertical',importedGloveMat);
+  m4VerticalHand.name='imported-fps-hand-m4-vertical';
+  m4VerticalHand.visible=false;
+  ownedGeometries.add(m4VerticalHand.geometry);
+  leftHand.add(m4VerticalHand);
 
   // Detailed first-person held grenade & class gadgets attached to leftHand
   const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
@@ -722,7 +730,7 @@ export function createWeaponRig(owner = {}) {
       const gripBounds=new THREE.Box3().setFromObject(m4GripMesh);
       const gripCenter=gripBounds.getCenter(new THREE.Vector3());
       weapon.worldToLocal(gripCenter);
-      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.052,-.017,0));
+      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.032,-.005,.006));
     }
     m4Magazine=model.getObjectByName('Magazine');
     if(m4Magazine)m4MagazineRest={position:m4Magazine.position.clone(),rotation:m4Magazine.rotation.clone()};
@@ -943,6 +951,7 @@ export function createWeaponRig(owner = {}) {
   const rifleGlove=new THREE.Group();
   // Only the rifle grip belongs here; gadget grips have independent visibility.
   rifleGlove.add(supportGlove);
+  rifleGlove.add(m4VerticalHand);
   leftHand.add(rifleGlove);
   const pistolGlove=new THREE.Group();leftHand.add(pistolGlove);
   pistolGlove.name='pistol-support-glove';
@@ -1019,6 +1028,9 @@ export function createWeaponRig(owner = {}) {
   ];
   const palmLocal = new THREE.Vector3(...lp([-.035,-.043,-.423]));
   const pistolPalmLocal = new THREE.Vector3(-.050,.020,-.086);
+  // Same hand-space anchor, but this pose has a distinct baked wrist point.
+  const m4VerticalPalmLocal=new THREE.Vector3(-.017,.032,-.063);
+  const m4VerticalWristLocal=new THREE.Vector3(-.079,-.011,-.110);
   // Sleeve contact at the palm heel, not the source rig's sideways wrist pivot.
   // The imported palm/fingers remain at their existing weapon contact points.
   const wristLocal = new THREE.Vector3(...lp([-.064,-.073,-.444]));
@@ -1079,6 +1091,10 @@ export function createWeaponRig(owner = {}) {
     const from = keys[next - 1], to = keys[next];
     const blend = THREE.MathUtils.smoothstep(phase,from.time,to.time);
     const m4Reload=!pistol&&m4Ready&&previousKey==='ar416';
+    const m4OnForegrip=m4Reload&&!(throwPhase>0&&throwPhase<1)
+      &&!(gadgetPhase>0&&gadgetPhase<1)&&!gadgetKind;
+    m4VerticalHand.visible=m4OnForegrip;
+    supportGlove.visible=!m4OnForegrip;
     const value = channel => THREE.MathUtils.lerp(from[channel],to[channel],blend) * amount *
       (m4Reload?({x:.65,y:.56,z:.78,pitch:.75,roll:.75}[channel]??1):1);
     const feedDepth = support ? 1.08 : 1;
@@ -1098,9 +1114,9 @@ export function createWeaponRig(owner = {}) {
     palmTarget.lerp(gripTarget,grip);
     if(pistol)palmTarget.lerp(actionTarget.set(-.038,.033,.063+pistol.slide.position.z).applyMatrix4(pistol.modelMatrix),charging);
     else palmTarget.lerp(chargeGrip,charging);
-    let rotX = (pistol ? -.56 : -.92)*grip+feed.rotation.x*grip+charging*.7 - (m4Reload?.10*(1-grip):0);
+    let rotX = (pistol ? -.56 : -.92)*grip+feed.rotation.x*grip+charging*.7 - (m4OnForegrip?.07*(1-grip):0);
     let rotY = (pistol ? .24 : .42)*grip+charging*.3;
-    let rotZ = (pistol ? .17 : .27)*grip+feed.rotation.z*grip + (m4Reload?.30*(1-grip):0);
+    let rotZ = (pistol ? .17 : .27)*grip+feed.rotation.z*grip + (m4OnForegrip?.12*(1-grip):0);
     let open = Math.max(Math.sin(grip*Math.PI)*.25,charging*.4);
 
     heldGrenade.visible = false;
@@ -1147,14 +1163,15 @@ export function createWeaponRig(owner = {}) {
     }
 
     supportGlove.morphTargetInfluences[0]=open;
+    m4VerticalHand.morphTargetInfluences[0]=open;
     pistolSupportMesh.morphTargetInfluences[0]=open;
     leftHand.rotation.set(rotX, rotY, rotZ);
-    palmOffset.copy(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolPalmLocal : palmLocal);
+    palmOffset.copy(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolPalmLocal : m4OnForegrip?m4VerticalPalmLocal:palmLocal);
     palmOffset.applyQuaternion(leftHand.quaternion);
     leftHand.position.copy(palmTarget).sub(palmOffset);
 
     // Keep the shoulder anchored while the cuff follows the rotating wrist.
-    fitLeftSleeve(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolWristLocal : wristLocal,pistol?.024:.017);
+    fitLeftSleeve(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolWristLocal : m4OnForegrip?m4VerticalWristLocal:wristLocal,pistol?.024:.017);
   }
 
   const defaultByClass = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
@@ -1339,6 +1356,7 @@ export function createWeaponRig(owner = {}) {
     get m4SupportContact(){return m4SupportContact.clone();},
     get m4Reflex(){return m4Reflex;},
     get m4GripMesh(){return m4GripMesh;},
+    get m4VerticalHand(){return m4VerticalHand;},
     get isImportedM4(){return previousKey==='ar416'&&m4Ready;},
     attachM4A1,
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
