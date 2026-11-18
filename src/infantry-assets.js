@@ -189,7 +189,7 @@ function batchDistantWeapon(model) {
   return new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
 }
 
-function prepareWeapon(gltf, name) {
+export function prepareWeapon(gltf, name) {
   const fit = weaponFit[name];
   const primary = from(fit.primary), scale = fit.scale;
   const model = gltf.scene;
