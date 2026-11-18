@@ -642,6 +642,37 @@ export function createWeaponRig(owner = {}) {
     if(![leftArm,rightArm,leftHand,rightHand,muzzleFlash,heldLauncher,supplyRoot].includes(child))rifleAssembly.add(child);
   }
   weapon.add(rifleAssembly);
+  // Reuse the optimized, textured M4A1 from third-person soldiers. Until it
+  // loads the old rifle stays visible, so slow/offline assets never hide guns.
+  const proceduralRifleParts=[...rifleAssembly.children];
+  const fpvM4=new THREE.Group();fpvM4.name='fpv-m4a1';fpvM4.visible=false;rifleAssembly.add(fpvM4);
+  const m4Scale=1.75;
+  let m4Magazine=null,m4MagazineRest=null,m4Ready=false;
+  function showImportedM4(show){
+    for(const part of proceduralRifleParts){
+      if(show){
+        if(!part.userData.m4Hidden){part.userData.m4Visible=part.visible;part.userData.m4Hidden=true;}
+        part.visible=false;
+      }else if(part.userData.m4Hidden){
+        part.visible=part.userData.m4Visible;
+        delete part.userData.m4Visible;delete part.userData.m4Hidden;
+      }
+    }
+    fpvM4.visible=show;
+  }
+  function attachM4A1(template){
+    if(m4Ready||!template?.model)return;
+    const model=template.model.clone(true);
+    model.name='fpv-m4a1-textured-model';
+    // Fit the right grip to the trigger hand and enlarge the imported rifle.
+    fpvM4.position.set(.018,-.160,.100);
+    fpvM4.scale.setScalar(m4Scale);
+    fpvM4.add(model);
+    m4Magazine=model.getObjectByName('Magazine');
+    if(m4Magazine)m4MagazineRest={position:m4Magazine.position.clone(),rotation:m4Magazine.rotation.clone()};
+    m4Ready=true;
+    if(previousKey==='ar416')showImportedM4(true);
+  }
 
   const defibLeft=createFPSHand('defibLeft',importedGloveMat),defibRight=createFPSHand('defibRight',importedGloveMat);
   ownedGeometries.add(defibLeft.geometry);ownedGeometries.add(defibRight.geometry);
@@ -993,7 +1024,7 @@ export function createWeaponRig(owner = {}) {
     // One-handed pistol stance. The spare hand rises from below the view only
     // to handle the magazine/slide, then follows the same path back down.
     if(pistol)palmTarget.set(-.26,-.48,.09);
-    else palmTarget.set(-.035*loadout.width,-.043,loadout.handZ);
+    else palmTarget.set(-.035*loadout.width,m4Ready&&previousKey==='ar416'?-.125:-.043,m4Ready&&previousKey==='ar416'?-.30:loadout.handZ);
     palmTarget.lerp(gripTarget,grip);
     if(pistol)palmTarget.lerp(actionTarget.set(-.038,.033,.063+pistol.slide.position.z).applyMatrix4(pistol.modelMatrix),charging);
     else palmTarget.lerp(chargeGrip,charging);
@@ -1077,6 +1108,7 @@ export function createWeaponRig(owner = {}) {
     const support = !pistol && classId === 'support', recon = !pistol && classId === 'recon';
     const isAk = key === 'ak12', isVk = key === 'vk45', isPkp = key === 'pkp', isSv = key === 'sv98';
     if (key !== previousKey) {
+      showImportedM4(false);
       previousKey = key;
       visiblePistol = pistol;
       rifleAssembly.visible = !pistol;
@@ -1115,6 +1147,7 @@ export function createWeaponRig(owner = {}) {
       compactOptic.visible = classId === 'medic';
       ironSights.visible = support;
       for (const [name, stamp] of Object.entries(weaponLabels)) stamp.visible = name === key;
+      if(m4Ready)showImportedM4(key==='ar416');
       frontSight.position.z = -.225-loadout.guard+.035;
       weapon.userData.muzzleZ = end-(recon||isVk?.215:.084);
       for (const feed of [magazine,beltBox]) { feed.position.set(0,0,0);feed.rotation.set(0,0,0); }
@@ -1144,6 +1177,16 @@ export function createWeaponRig(owner = {}) {
     const throwing=throwPhase>0&&throwPhase<1;
     const discharge=usingTool&&gadgetKind==='defibrillator'&&toolActive?Math.sin(toolProgress*Math.PI):0;
     poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,usingTool?null:pistol,gadgetKind,discharge*.09);
+    if(m4Ready&&m4Magazine&&m4MagazineRest){
+      // The GLB magazine is a separate node: reuse existing reload keyframes.
+      const transfer=1/(.41*m4Scale);
+      m4Magazine.position.copy(m4MagazineRest.position).addScaledVector(magazine.position,transfer);
+      m4Magazine.rotation.set(
+        m4MagazineRest.rotation.x+magazine.rotation.x,
+        m4MagazineRest.rotation.y+magazine.rotation.y,
+        m4MagazineRest.rotation.z+magazine.rotation.z,
+      );
+    }
     const leftAction=usingTool||throwing||(amount>0&&phase>0&&phase<1);
     leftHand.visible=leftArm.visible=!pistol||leftAction;
     heldLauncher.visible=usingTool&&gadgetKind==='launcher';
@@ -1222,5 +1265,8 @@ export function createWeaponRig(owner = {}) {
   return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
     get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
+    get sightHeight(){return previousKey==='ar416'&&m4Ready?.090:.167;},
+    get isImportedM4(){return previousKey==='ar416'&&m4Ready;},
+    attachM4A1,
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
 }
