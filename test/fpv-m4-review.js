@@ -71,8 +71,13 @@ try{
   const contact=rig.weapon.localToWorld(rig.m4SupportContact);
   const aimPoint=rig.m4Reflex.localToWorld(new THREE.Vector3(0,.166,-.103))
     .project(camera);
+  const gripBox=rig.m4GripMesh?new THREE.Box3().setFromObject(rig.m4GripMesh):null;
+  const supportMesh=rig.leftHand.getObjectByName('imported-fps-hand-support');
+  const handBox=supportMesh?new THREE.Box3().setFromObject(supportMesh):null;
+  const toArray=box=>box?{min:box.min.toArray(),max:box.max.toArray(),size:box.getSize(new THREE.Vector3()).toArray()}:null;
   window.__m4Diagnostics={
     palmToGrip:palm.distanceTo(contact),
+    foregripBounds:toArray(gripBox),handBounds:toArray(handBox),
     gripContact:rig.m4SupportContact.toArray(),
     palmWorld:palm.toArray(),
     sightNDC:[aimPoint.x,aimPoint.y],
