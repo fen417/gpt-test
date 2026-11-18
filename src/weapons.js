@@ -595,7 +595,7 @@ export function createWeaponRig(owner = {}) {
   // The M4 uses a separately BAKED, closed-finger mesh posed around its
   // vertical front handle. Moving the generic underhand palm cannot make
   // four fingers wrap the grip, no matter how close the palm pivot is.
-  const m4VerticalWristLocal=new THREE.Vector3(-.059,-.040,0);
+  const m4VerticalWristLocal=new THREE.Vector3(-.062,-.031,-.033);
   const m4VerticalHand=createFPSHand('m4Vertical',importedGloveMat);
   m4VerticalHand.name='imported-fps-hand-m4-vertical';
   m4VerticalHand.visible=false;
@@ -607,7 +607,7 @@ export function createWeaponRig(owner = {}) {
   m4WristPivot.position.copy(m4VerticalWristLocal);
   // Anatomical closed grip: bring the knuckles forward toward the handle,
   // rotating the glove about its actual wrist rather than bending the forearm.
-  m4WristPivot.rotation.y=.65;
+  m4WristPivot.rotation.y=.28;
   m4VerticalHand.position.copy(m4VerticalWristLocal).negate();
   m4WristPivot.add(m4VerticalHand);
   // Attached to rifleGlove below; keep the pivot with the rifle-only grip.
@@ -741,7 +741,7 @@ export function createWeaponRig(owner = {}) {
       const gripBounds=new THREE.Box3().setFromObject(m4GripMesh);
       const gripCenter=gripBounds.getCenter(new THREE.Vector3());
       weapon.worldToLocal(gripCenter);
-      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.034,.027,-.029));
+      m4SupportContact.copy(gripCenter).add(new THREE.Vector3(-.034,.027,-.014));
     }
     m4Magazine=model.getObjectByName('Magazine');
     if(m4Magazine)m4MagazineRest={position:m4Magazine.position.clone(),rotation:m4Magazine.rotation.clone()};
