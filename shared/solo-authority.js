@@ -21,7 +21,7 @@ export class SoloAuthority {
         if(data.type==='create'){
           this.sim=new Simulation(data);this.sim.addPlayer('local',data.name,0,data.classId,data.weaponId,data.sidearmId);
           this.encoder=new SnapshotEncoder(this.sim.map.size);this.sentEvent=this.sim.eventId;this.last=performance.now();
-          this.control({type:'init',mapId:this.sim.map.id,size:this.sim.map.size,difficulty:this.sim.difficulty,epoch:1,eventAck:this.sentEvent,snapshotHz:30});
+          this.control({type:'init',mapId:this.sim.map.id,size:this.sim.map.size,difficulty:this.sim.difficulty,gameMode:this.sim.gameMode,killLimit:this.sim.killLimit,epoch:1,eventAck:this.sentEvent,snapshotHz:30});
           this.snapshot(true);this.timer=setInterval(()=>this.pump(),1000/60);return;
         }
         if(data.type==='settings'){this.paused=Boolean(data.paused);this.last=performance.now();this.accumulator=0;if(this.paused){this.queue=[];this.sim.setInput('local',{});}return;}
