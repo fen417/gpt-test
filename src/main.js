@@ -1680,17 +1680,17 @@ try{
     webgpuAttempted=true;
     const [
       {WebGpuPostPass},{makeWebGpuSky},
-      {WebGpuGroundShadows},{createWebGpuSmokeMaterial}
+      {WebGpuGroundShadows},{createWebGpuSmokeMaterial},{WebGpuTimer}
     ]=await Promise.all([
       import('./webgpu-post-pass.js'),import('./webgpu-sky.js'),
-      import('./webgpu-ground-shadows.js'),import('./webgpu-smoke.js')
+      import('./webgpu-ground-shadows.js'),import('./webgpu-smoke.js'),import('./webgpu-timer.js')
     ]);
     const instance=await createWebGpuRenderer(canvas,{
       antialias:read('gfx-aa','auto'),
       onDeviceLost:recoverWebGpu,
     });
     gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,
-      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial};
+      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
   renderer.resize();window.addEventListener('resize',()=>renderer.resize());
