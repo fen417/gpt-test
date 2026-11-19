@@ -1775,7 +1775,8 @@ export class GameRenderer {
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
-      this.weapon.visible = isAlive && !this.scoped;
+      // Hide the entire FPV rig, including both hands, until weapon pickup.
+      this.weapon.visible = isAlive && !this.scoped && (state.gameMode!=='tdm'||Boolean(player.weaponId));
       this.weaponRig.update({
         classId: player.classId,
         team: player.team,
