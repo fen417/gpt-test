@@ -40,9 +40,9 @@ export class SoloAuthority {
   }
   step(){
     const frames=this.queue.splice(0,2),p=this.sim.players.get('local');
-    if(frames.length){this.held={...frames.at(-1).input};const input={...this.held};for(const f of frames)for(const key of ['jump','reload','grenade','gadget','secondaryGadget','interact','switchSeat','horn','order'])if(f.input[key])input[key]=true;
+    if(frames.length){this.held={...frames.at(-1).input};const input={...this.held};for(const f of frames)for(const key of ['jump','reload','grenade','drop','gadget','secondaryGadget','interact','switchSeat','horn','order'])if(f.input[key])input[key]=true;
       this.sim.setInput('local',input);p.networkFrames=frames;this.ack=frames.at(-1).sequence;
-    }else{const input={...this.held};for(const key of ['jump','reload','grenade','gadget','secondaryGadget','interact','switchSeat','horn','order'])input[key]=false;this.sim.setInput('local',input);}
+    }else{const input={...this.held};for(const key of ['jump','reload','grenade','drop','gadget','secondaryGadget','interact','switchSeat','horn','order'])input[key]=false;this.sim.setInput('local',input);}
     const order=frames.find(frame=>frame.input.order);p.orderAim=order?{yaw:order.input.yaw,pitch:order.input.pitch}:null;
     p.networkControlled=true;p.networkIdle=false;
     const start=performance.now();this.sim.step(1/60);this.samples.add(performance.now()-start);this.tick++;
