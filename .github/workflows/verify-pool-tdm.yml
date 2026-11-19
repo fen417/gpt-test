@@ -1,7 +1,7 @@
 name: Verify Pool Day TDM branch
 on:
   push:
-    branches: [feature/pool-day-tdm-foundation]
+    branches: [test]
   workflow_dispatch:
 permissions:
   contents: read
