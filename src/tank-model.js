@@ -11,7 +11,7 @@ const modelDirection={x:0,y:0,z:0};
 const barrelVertex=new THREE.Vector3();
 const desertSand={value:new THREE.Color(0xe0c897)},desertBrown={value:new THREE.Color(0xa8875e)};
 let atlas,atlasPromise;
-export function loadTankAtlas(renderer){if(atlasPromise)return atlasPromise;const loader=new KTX2Loader().setWorkerLimit(1).setTranscoderPath(import.meta.env.BASE_URL+'basis/').detectSupport(renderer);return atlasPromise=loader.loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href).then(texture=>{atlas=texture;texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy());}).catch(error=>{atlasPromise=null;throw error;}).finally(()=>loader.dispose());}
+export function loadTankAtlas(renderer){if(atlasPromise)return atlasPromise;const loader=new KTX2Loader().setWorkerLimit(1).setTranscoderPath(import.meta.env.BASE_URL+'basis/').detectSupport(renderer);return atlasPromise=loader.loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href).then(texture=>{atlas=texture;texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.anisotropy=Math.min(16,(renderer.capabilities?.getMaxAnisotropy?.()??renderer.getMaxAnisotropy?.()??1));}).catch(error=>{atlasPromise=null;throw error;}).finally(()=>loader.dispose());}
 function island(parent,material,draw){
   const parts=[];
   const piece=(geometry,x,y,z,sx,sy,sz,color=0x858776,rx=0,ry=0,rz=0)=>{
@@ -135,10 +135,12 @@ function buildLevel(level,material){
   const updateBarrel=level===2?batchDistantTank(hull,hatch,tracks,turretMesh,barrel,gun):null;
   return {group,body,turret,gun,hull,turretMesh,hatch,tracks,wheels,updateBarrel};
 }
-export function createTankRig(){
-  const travel={value:new THREE.Vector2()},material=new THREE.MeshLambertMaterial({vertexColors:true,map:atlas??null}),group=new THREE.Group();
+export function createTankRig(materialFactory=null){
+  const travel={value:new THREE.Vector2()},group=new THREE.Group();
   const desertCamo={value:false};
-  material.onBeforeCompile=shader=>{
+  const material=materialFactory?materialFactory({atlas,travel,desertCamo,desertSand,desertBrown}):
+    new THREE.MeshLambertMaterial({vertexColors:true,map:atlas??null});
+  if(!materialFactory)material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,{tankTravel:travel,desertCamo,desertSand,desertBrown});
     shader.vertexShader=shader.vertexShader
       .replace('#include <common>','#include <common>\nattribute float trackSide;uniform vec2 tankTravel;')
@@ -159,7 +161,7 @@ export function createTankRig(){
           }
         #endif`);
   };
-  material.customProgramCacheKey=()=> 's09-tank-tracks-camo-v1';
+  if(!materialFactory)material.customProgramCacheKey=()=> 's09-tank-tracks-camo-v1';
   const levels=[0,1,2].map(level=>buildLevel(level,material));for(const l of levels)group.add(l.group);
   const body=new THREE.Group();group.add(body); // Shared seated-actor parent, independent of LOD swaps.
   const shadowMaterial=new THREE.MeshLambertMaterial({colorWrite:false,depthWrite:false}),shadow=new THREE.Mesh(mergeGeometries([levels[1].hull.geometry,levels[1].tracks.geometry],false),shadowMaterial);shadow.castShadow=true;shadow.visible=false;body.add(shadow);
@@ -193,6 +195,7 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   }
   rig.recoil=Math.max(0,(rig.recoil??0)-dt*.8);rig.cannonSeq=v.cannonSeq;
   rig.desertCamo.value=v.camo==='desert';
+  if(rig.desertCamo.node)rig.desertCamo.node.value=rig.desertCamo.value?1:0;
   rig.material.color.setHex(v.hp<=0?0x383c38:0xffffff);
   if(reset)group.updateMatrixWorld(true);
 }
