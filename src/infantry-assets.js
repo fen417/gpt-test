@@ -262,6 +262,16 @@ export class InfantryAssets {
     ]);
   }
 
+  // Ground pickups only need the weapon asset. Do not wait for a body GLB:
+  // otherwise every pickup disappears while soldier assets are loading.
+  getWeaponTemplate(weaponId) {
+    const name = weaponNames[weaponId];
+    if (!name) return null;
+    const template = this.templates.get(name);
+    if (!template) this.request(name, prepareWeapon).catch(() => {});
+    return template ?? null;
+  }
+
   get(team, weaponId) {
     const name = team ? 'militia' : 'regular', weapon = weaponNames[weaponId] ?? 'm24';
     const body = this.templates.get(name), gun = this.templates.get(weapon);
