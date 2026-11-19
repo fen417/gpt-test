@@ -22,7 +22,34 @@ try{
     {timeout:45000});
   await page.waitForFunction(()=>document.getElementById('weapon-name').textContent.includes('БЕЗ ОРУЖИЯ'),
     {timeout:30000});
-  await page.waitForTimeout(2000);
+  // Verify that the actual PROCEDURAL firearms exist in the world after
+  // gameplay starts, rather than counting pickup metadata or placeholder boxes.
+  await page.waitForFunction(()=>{
+    const r=window.__S09_POOL_REVIEW?.renderer;
+    return r?.poolWeaponModels?.size>0 &&
+      [...r.poolWeaponModels.values()].some(model=>{
+        let geometry=false;
+        model.traverseVisible(object=>{
+          if(object.isMesh&&object.geometry?.attributes?.position?.count>20)geometry=true;
+        });
+        return model.userData.procedural&&geometry&&model.parent===r.worldRoot;
+      });
+  },{timeout:30000});
+  const floorGuns=await page.evaluate(()=>{
+    const {renderer:r,snapshot}=window.__S09_POOL_REVIEW;
+    const entities=[...r.poolWeaponModels.values()];
+    let meshes=0,triangles=0;
+    for(const entity of entities)entity.traverseVisible(object=>{
+      if(object.isMesh){meshes++;triangles+=(object.geometry.index?.count??object.geometry.attributes.position.count)/3;}
+    });
+    return {shown:entities.length,items:snapshot()?.weaponItems?.length??0,meshes,triangles,
+      names:entities.map(e=>e.name),procedural:entities.every(e=>e.userData.procedural)};
+  });
+  assert.ok(floorGuns.shown>0,'no floor pickup models');
+  assert.ok(floorGuns.meshes>=floorGuns.shown,'not enough visible firearm meshes');
+  assert.ok(floorGuns.triangles>100,'firearm models have no real geometry');
+  assert.ok(floorGuns.procedural,'a non-procedural pickup was rendered');
+  console.log('PASS procedural weapon meshes on ground',floorGuns);
   await page.screenshot({path:'artifacts/pool-day/first-person-wip.png',timeout:20000});
   const before=await page.evaluate(()=>({
     state:window.__S09_POOL_REVIEW?.snapshot(),
