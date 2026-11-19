@@ -1942,6 +1942,20 @@ export class GameRenderer {
     this.drawScene();
   }
 
+  countVisibleObjects() {
+    this.scene.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld(true);
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
+    this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
+    let count=0;
+    this.scene.traverseVisible(object=>{
+      if(!(object.isMesh||object.isLine||object.isSprite||object.isPoints))return;
+      if(!object.layers.test(this.camera.layers)&&!object.layers.isEnabled?.(0))return;
+      if(!object.frustumCulled||this.viewFrustum.intersectsObject(object))count++;
+    });
+    return count;
+  }
+
   getStats() {
     const r=this.renderer,post=this.postPass,isGPU=this.api==='webgpu';
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
@@ -1951,7 +1965,7 @@ export class GameRenderer {
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
       worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
       triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
-      visibleObjects:this.scene.children.length+this.activeSoldiers.size+this.vehicleRigs.size,
+      visibleObjects:this.countVisibleObjects(),
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
       fsrScale:post.fsrScale,sceneWidth:post.target.width,sceneHeight:post.target.height,
       integratedGpu:this.integratedGpu,gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext)
