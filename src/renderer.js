@@ -508,7 +508,7 @@ export class GameRenderer {
       this.scene = root;
       try {
         this.buildWorld();
-        this.mergeStaticWorld(new Set());
+        if(this.map.theme!=='pool-day')this.mergeStaticWorld(new Set());
         const details=[];
         root.traverse(object=>{if(object.userData.detailLevel&&(object.isMesh||object.children.length))details.push(object);});
         world = { root, flags: this.flags, water: this.portWater, details };
