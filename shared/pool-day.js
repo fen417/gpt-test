@@ -61,5 +61,6 @@ export const POOL_DAY_MAP={
     {id:'red-room',name:'Красная сторона',x:-18,z:0},
     {id:'blue-room',name:'Синяя сторона',x:18,z:0}],
   pools,weaponSpawns,spawnPoints,spawns,points:[],vehicleSpawns:[],
+  districts:[{id:'main',name:'Большой бассейн',x:0,z:5.5},{id:'red',name:'Красная сторона',x:-18,z:0},{id:'blue',name:'Синяя сторона',x:18,z:0}],
   navigationCell:1.25,navigationSize:size,stepHeight:.32,
 };
