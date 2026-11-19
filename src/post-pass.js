@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { FSR1_VERTEX, FSR1_EASU_FRAGMENT, FSR1_RCAS_FRAGMENT, fsr1RenderScale } from './fsr1.js';
 
 export class PostPass {
   constructor(renderer,{antialias='auto'}={}){
@@ -28,22 +29,64 @@ export class PostPass {
     const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,2,0,0,2],2));
     this.scene=new THREE.Scene();this.scene.add(new THREE.Mesh(geometry,this.material));this.camera=new THREE.Camera();
     this.size=new THREE.Vector2();
+    this.fsrQuality='off';this.fsrScale=1;
+    // Lazily sized; RGBA8 suffices after the existing display-referred tone map.
+    this.ldrTarget=new THREE.WebGLRenderTarget(1,1,{depthBuffer:false});
+    this.upscaledTarget=new THREE.WebGLRenderTarget(1,1,{depthBuffer:false});
+    this.easuMaterial=new THREE.ShaderMaterial({
+      glslVersion:THREE.GLSL3,vertexShader:FSR1_VERTEX,fragmentShader:FSR1_EASU_FRAGMENT,
+      toneMapped:false,depthTest:false,depthWrite:false,
+      uniforms:{tInput:{value:this.ldrTarget.texture},inputSize:{value:new THREE.Vector2(1,1)},outputSize:{value:new THREE.Vector2(1,1)}},
+    });
+    this.rcasMaterial=new THREE.ShaderMaterial({
+      glslVersion:THREE.GLSL3,vertexShader:FSR1_VERTEX,fragmentShader:FSR1_RCAS_FRAGMENT,
+      toneMapped:false,depthTest:false,depthWrite:false,
+      uniforms:{tInput:{value:this.upscaledTarget.texture},outputSize:{value:new THREE.Vector2(1,1)},sharpness:{value:0.6}},
+    });
+    this.easuScene=new THREE.Scene();this.easuScene.add(new THREE.Mesh(geometry,this.easuMaterial));
+    this.rcasScene=new THREE.Scene();this.rcasScene.add(new THREE.Mesh(geometry,this.rcasMaterial));
+  }
+  setUpscaling(quality='off',adaptive=1) {
+    this.fsrQuality=quality;
+    this.fsrScale=quality==='off'?1:fsr1RenderScale(quality,adaptive);
   }
   begin(quality='high'){
     const samples=quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
     if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
+    const fsr=this.fsrQuality!=='off'&&this.fsrScale<0.995;
     this.material.uniforms.useFxaa.value=this.antialias==='off'?0:quality==='high'&&samples>0?0:1;
-    this.material.uniforms.sharpen.value=quality==='high'?0:.12;
+    this.material.uniforms.sharpen.value=fsr?0:quality==='high'?0:.12;
     const r=this.renderer;r.getDrawingBufferSize(this.size);
-    if(this.target.width!==this.size.x||this.target.height!==this.size.y)this.target.setSize(this.size.x,this.size.y);
-    this.material.uniforms.resolution.value.set(1/this.size.x,1/this.size.y);
+    const w=Math.max(1,Math.round(this.size.x*(fsr?this.fsrScale:1)));
+    const h=Math.max(1,Math.round(this.size.y*(fsr?this.fsrScale:1)));
+    if(this.target.width!==w||this.target.height!==h)this.target.setSize(w,h);
+    this.material.uniforms.resolution.value.set(1/w,1/h);
+    if(fsr){
+      if(this.ldrTarget.width!==w||this.ldrTarget.height!==h)this.ldrTarget.setSize(w,h);
+      if(this.upscaledTarget.width!==this.size.x||this.upscaledTarget.height!==this.size.y)this.upscaledTarget.setSize(this.size.x,this.size.y);
+      this.easuMaterial.uniforms.inputSize.value.set(w,h);
+      this.easuMaterial.uniforms.outputSize.value.copy(this.size);
+      this.rcasMaterial.uniforms.outputSize.value.copy(this.size);
+    }
     r.setRenderTarget(this.target);
   }
   end(time,quality){
     const r=this.renderer;r.setRenderTarget(null);const reset=r.info.autoReset;r.info.autoReset=false;
     this.material.uniforms.time.value=time;this.material.uniforms.grain.value=quality==='low'?0:.0015;
     this.material.uniforms.toneMappingExposure.value=r.toneMappingExposure;
-    try{r.render(this.scene,this.camera);}finally{r.info.autoReset=reset;}
+    try{
+      if(this.fsrQuality!=='off'&&this.fsrScale<0.995){
+        // Display-referred low-resolution image -> EASU at native resolution
+        // -> RCAS sharpening at native resolution. Keep the HTML HUD native.
+        r.setRenderTarget(this.ldrTarget);r.render(this.scene,this.camera);
+        r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
+        r.setRenderTarget(null);r.render(this.rcasScene,this.camera);
+      }else r.render(this.scene,this.camera);
+    }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
   }
-  dispose(){this.target.dispose();this.scene.children[0].geometry.dispose();this.material.dispose();}
+  dispose(){
+    this.target.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
+    this.scene.children[0].geometry.dispose();
+    this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();
+  }
 }

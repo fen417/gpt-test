@@ -61,7 +61,7 @@ function flushDamage(now){
   for(const [target,item] of pendingDamage)if(now>=item.until){showScore(item,now);pendingDamage.delete(target);}
 }
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
-let gfx={shadows:'auto',resolution:'auto',detail:'auto'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
+let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -733,6 +733,20 @@ $('quality').value=read('quality','high');quality=$('quality').value;
 document.body.classList.toggle('low-quality',quality!=='high');
 $('quality').addEventListener('change',event=>{quality=event.target.value;document.body.classList.toggle('low-quality',quality==='low');save('quality',quality);});
 for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution'],['gfx-detail','detail']]){const el=$(id);const stored=read(id,'auto');el.value=[...el.options].some(o=>o.value===stored)?stored:'auto';gfx[key]=el.value;el.addEventListener('change',event=>{gfx[key]=event.target.value;save(id,gfx[key]);});}
+for(const [id,key,fallback] of [['gfx-fsr','fsr','off'],['gfx-fsr-quality','fsrQuality','quality']]){
+  const el=$(id),stored=read(id,fallback);
+  el.value=[...el.options].some(o=>o.value===stored)?stored:fallback;
+  gfx[key]=el.value;
+  el.addEventListener('change',event=>{
+    gfx[key]=event.target.value;save(id,gfx[key]);syncFsrSettings();
+  });
+}
+function syncFsrSettings(){
+  const enabled=gfx.fsr==='on';
+  $('gfx-fsr-quality').disabled=!enabled;
+  $('gfx-resolution').disabled=enabled; // FSR owns the internal render scale.
+}
+syncFsrSettings();
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
 $('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);toast('Сглаживание применится после перезагрузки страницы.');});
 $('volume').value=read('volume','0.5');audio.volume=Number($('volume').value);

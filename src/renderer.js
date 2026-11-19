@@ -156,7 +156,7 @@ export function createMapModelBuilder(surfaces) {
 export class GameRenderer {
   constructor(canvas, { onError, antialias = 'auto' } = {}) {
     this.canvas = canvas;
-    this.gfx = { shadows: 'auto', resolution: 'auto' };
+    this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality' };
     this.clock = 0;
     this.frameCount = 0;
     this.smoothDt = 0.0166;
@@ -1393,9 +1393,13 @@ export class GameRenderer {
 
   updatePixelRatio() {
     const dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 1.5);
-    const ratio = this.gfx.resolution !== 'auto'
-      ? clamp(Number(this.gfx.resolution) || 1, 0.5, 2)
-      : this.resolutionController.ratio(this.viewportWidth??innerWidth,this.lowQuality?1:dpr);
+    // The display canvas must stay native-sized with FSR; only the scene
+    // render target is reduced. Without FSR keep the previous DRS behavior.
+    const ratio = this.gfx.fsr === 'on'
+      ? (this.lowQuality ? 1 : dpr)
+      : this.gfx.resolution !== 'auto'
+        ? clamp(Number(this.gfx.resolution) || 1, 0.5, 2)
+        : this.resolutionController.ratio(this.viewportWidth??innerWidth,this.lowQuality?1:dpr);
     if (this.currentPixelRatio !== ratio) {
       this.currentPixelRatio = ratio;
       this.renderer.setPixelRatio(ratio);
@@ -1492,7 +1496,10 @@ export class GameRenderer {
     }
     if(!menu)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
-    try{this.postPass.begin(this.quality);drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.quality);}
+    try{
+      this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale);
+      this.postPass.begin(this.quality);drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.quality);
+    }
     finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
   }
 
@@ -1533,12 +1540,17 @@ export class GameRenderer {
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
     }
-    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution)) {
-      this.gfx = { shadows: gfx.shadows, resolution: gfx.resolution };
-      this.applyShadows();
+    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality)) {
+      const shadowChanged=gfx.shadows!==this.gfx.shadows;
+      this.gfx={shadows:gfx.shadows,resolution:gfx.resolution,fsr:gfx.fsr??'off',fsrQuality:gfx.fsrQuality??'quality'};
+      if(shadowChanged)this.applyShadows();
       this.updatePixelRatio();
     }
-    if(state?.players&&!view.paused&&this.gfx.resolution==='auto'&&this.resolutionController.update(rawDt,this.lastCpuMs??0,this.gpuTimer.summary()?.p95??null)){this.adaptiveScale=this.resolutionController.scale;this.updatePixelRatio();}
+    const dynamicResolution=this.gfx.fsr==='on'?this.gfx.fsrQuality==='auto':this.gfx.resolution==='auto';
+    if(state?.players&&!view.paused&&dynamicResolution&&this.resolutionController.update(rawDt,this.lastCpuMs??0,this.gpuTimer.summary()?.p95??null)){
+      this.adaptiveScale=this.resolutionController.scale;
+      if(this.gfx.fsr!=='on')this.updatePixelRatio();
+    }
     const baseFov = clamp(Number(view.fov) || 85, 65, 105), shake = view.shake !== false;
     this.renderer.toneMappingExposure = 1.06 * clamp(Number(view.brightness) || 1, .6, 1.5);
     if (!state?.players) {
@@ -1839,7 +1851,7 @@ export class GameRenderer {
     this.drawScene();
   }
 
-  getStats() { return {postSamples:this.postPass.target.samples,fxaa:Boolean(this.postPass.material.uniforms.useFxaa.value),anisotropy:this.textureAnisotropy,shadowsEnabled:this.renderer.shadowMap.enabled,shadowMode:this.gfx.shadows,worldCalls:this.renderer.info.worldRender?.calls,worldTriangles:this.renderer.info.worldRender?.triangles, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
+  getStats() { return {postSamples:this.postPass.target.samples,fxaa:Boolean(this.postPass.material.uniforms.useFxaa.value),anisotropy:this.textureAnisotropy,shadowsEnabled:this.renderer.shadowMap.enabled,shadowMode:this.gfx.shadows,worldCalls:this.renderer.info.worldRender?.calls,worldTriangles:this.renderer.info.worldRender?.triangles, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, fsr: this.gfx.fsr==='on'?this.gfx.fsrQuality:'off', fsrScale: this.postPass.fsrScale, sceneWidth: this.postPass.target.width, sceneHeight: this.postPass.target.height, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
 
   project(x, y, z) {
     const position = this.scratchPosition.set(x, y, z).project(this.camera);
