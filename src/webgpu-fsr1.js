@@ -1,11 +1,11 @@
 // FSR 1.0 spatial EASU and RCAS for Three.js TSL/WebGPU.
 // Mathematically mirrors the 12-tap / 5-tap GLSL paths in fsr1.js.
 // Both stages use unfiltered integer pixel loads, not bilinear shortcuts.
-import { Fn, vec2, vec3, vec4, ivec2, float, uv, texture,
+import { Fn, vec2, vec3, vec4, uvec2, float, uv, texture,
   floor, fract, clamp, min, max, mix, dot, inversesqrt, abs, select } from 'three/tsl';
 
 function source(tex, pixel, size) {
-  return (tex.isNode ? tex : texture(tex)).load(ivec2(clamp(pixel, vec2(0), size.sub(1)))).rgb;
+  return (tex.isNode ? tex : texture(tex)).load(uvec2(clamp(pixel, vec2(0), size.sub(1)))).rgb;
 }
 const lum = c => c.g.add(c.r.add(c.b).mul(0.5));
 
