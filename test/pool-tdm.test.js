@@ -38,6 +38,7 @@ test('atomic pickup and respawn with independent primary and pistol slots',()=>{
   assert.equal(red.weaponSlot,2);assert.equal(red.stowedAmmo.ammo,WEAPONS.ar416.mag);
   assert.equal(takeWeapon(sim,red,pistol),false);
   assert.equal(rifle.active,false);
+  Object.assign(red,{x:0,z:0});Object.assign(blue,{x:0,z:0});
   sim.time+=sim.weaponRespawnSeconds+.01;
   updateWeaponItems(sim,1/60);
   assert.equal(rifle.active,true);assert.equal(pistol.active,true);
@@ -60,6 +61,7 @@ test('dropped weapons retain ammo and have no repeated pickup dupes',()=>{
 test('TDM win limit increments on enemy kills, not friendly kills',()=>{
   const {sim,red,blue}=create();
   sim.killLimit=1;sim.maxTickets=1;
+  sim.time=3;blue.invulnerableUntil=0;
   sim.damage(blue,999,red,{weapon:'AR-416'});
   assert.deepEqual(sim.tickets,[1,0]);
   assert.equal(sim.winner,0);
