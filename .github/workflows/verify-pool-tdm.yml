@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: pool-tdm-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   focused:
     runs-on: ubuntu-24.04
