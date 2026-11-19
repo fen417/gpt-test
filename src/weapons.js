@@ -1152,8 +1152,8 @@ export function createWeaponRig(owner = {}) {
     heldLauncher.visible=usingTool&&gadgetKind==='launcher';
     defibLeft.visible=defibRight.visible=heldDefibLeft.visible=heldDefibRight.visible=defibUnit.visible=usingDefib;
     for(const cable of defibCables)cable.mesh.visible=usingDefib;
-    rifleAssembly.visible=!pistol&&!usingTool;
-    for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool;
+    rifleAssembly.visible=!pistol&&!usingTool&&!unarmed;
+    for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool&&!unarmed;
     rifleGlove.visible=!usingSupply&&!usingDefib&&(usingTool||throwing||!pistol);
     pistolGlove.visible=Boolean(pistol)&&!usingTool&&!throwing;
     supplyLeft.visible=supplyRight.visible=supplyRoot.visible=usingSupply;
