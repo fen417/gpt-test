@@ -54,7 +54,7 @@ export function getPrimaryWeapon(classId = 'assault', weaponId = '') {
   return WEAPONS[defaultWeaponId(validClass)] ?? CLASSES[validClass];
 }
 export function getWeapon(classId = 'assault', weaponId = '') {
-  return SIDEARMS.includes(weaponId) ? WEAPONS[weaponId] : getPrimaryWeapon(classId, weaponId);
+  return WEAPONS[weaponId] ?? getPrimaryWeapon(classId, weaponId);
 }
 export const DIFFICULTIES = {
   recruit: { name: 'Новобранец', awareness: 43, reaction: .85, reactionVariance: .35, turnSpeed: 1.8, aimError: .031, burst: .28, pause: .95 },
