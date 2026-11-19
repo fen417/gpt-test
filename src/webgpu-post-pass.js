@@ -63,7 +63,7 @@ export class WebGpuPostPass {
     this.easuScene=easu.scene;this.easuMaterial=easu.material;
     const rcas=stage(geometry,rcasNode(texture(this.upscaledTarget.texture),this.outputSize,this.rcasSharpness));
     this.rcasScene=rcas.scene;this.rcasMaterial=rcas.material;
-    this.camera=new THREE.Camera();
+    this.camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   }
   setUpscaling(quality='off',adaptive=1){
     this.fsrQuality=quality;
