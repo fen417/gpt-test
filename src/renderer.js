@@ -154,7 +154,10 @@ export function createMapModelBuilder(surfaces) {
 }
 
 export class GameRenderer {
-  constructor(canvas, { onError, antialias = 'auto' } = {}) {
+  constructor(canvas, { onError, antialias = 'auto', webgpu = null } = {}) {
+    this.webgpu=webgpu;
+    this.api=webgpu?'webgpu':'webgl2';
+    this.gpuName=webgpu?.gpuName??null;
     this.canvas = canvas;
     this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality' };
     this.clock = 0;
@@ -210,12 +213,12 @@ export class GameRenderer {
     this.soldierBounds = new THREE.Sphere(new THREE.Vector3(), 2.5);
     this.flagBounds = new THREE.Sphere(new THREE.Vector3(), 4.5);
     this.effectBounds = new THREE.Sphere(new THREE.Vector3(), 12);
-    this.cachedShadows=new CachedShadows();this.interiorVisibility=new InteriorVisibility();
+    this.cachedShadows=webgpu?{install(){},invalidate(){},disposeTargets(){},dispose(){}}:new CachedShadows();this.interiorVisibility=new InteriorVisibility();
     this.surfaceCache = new Map();
     this.random = seeded();
     const integratedProbe = detectIntegratedGpu();
     try {
-      this.renderer = new THREE.WebGLRenderer({
+      this.renderer = webgpu?.renderer ?? new THREE.WebGLRenderer({
         canvas,
         antialias: antialias === 'on' ? true : antialias === 'off' ? false : !integratedProbe,
         stencil: false,
@@ -226,10 +229,11 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
-    this.gpuTimer=new GpuTimer(this.renderer.getContext());this.postPass=new PostPass(this.renderer,{antialias});
-    this.cachedShadows.install(this);
+    this.gpuTimer=webgpu?{enabled:false,ext:null,samples:{reset(){}},begin(){return false;},end(){},summary(){return null;},dispose(){}}:new GpuTimer(this.renderer.getContext());
+    this.postPass=webgpu?new webgpu.PostPass(this.renderer,{antialias}):new PostPass(this.renderer,{antialias});
+    if(!webgpu)this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
-    if (canvas && typeof canvas.addEventListener === 'function') {
+    if (!webgpu && canvas && typeof canvas.addEventListener === 'function') {
       canvas.addEventListener('webglcontextlost', event => {
         event.preventDefault();
       }, false);
@@ -300,13 +304,13 @@ export class GameRenderer {
       red: material(0xd93832, 0.45, 0.1, { emissive: 0x991815, emissiveIntensity: 0.35 }),
       green: material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 }),
     };
-    this.groundShadows=new GroundShadows();
-    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.renderer.capabilities.getMaxAnisotropy() });
+    this.groundShadows=webgpu?new webgpu.GroundShadows():new GroundShadows();
+    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.maxAnisotropy() });
     this.surfaces.ready.then(()=>{this.surfacesReady=true;}).catch(error=>{this.surfacesReady=true;console.error('Surface assets failed',error);});
     for (const m of [this.surfaces.asphalt, this.surfaces.asphalt._lowMaterial]) {
       if (m) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
     }
-    this.atmosphere = makeSky(this.scene, this.renderer);
+    this.atmosphere = webgpu?webgpu.makeSky(this.scene,this.renderer):makeSky(this.scene, this.renderer);
     this.materials = mapMaterials(this.surfaces);
     this.worldRoot = new THREE.Group();
     this.worldRoot.add(this.atmosphere.sky);
@@ -349,7 +353,7 @@ export class GameRenderer {
     const smokeGeometry = new THREE.PlaneGeometry(1, 1);
     smokeGeometry.setAttribute('instanceAlpha', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
     smokeGeometry.setAttribute('instanceRotation', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
-    const smokeMaterial = new THREE.ShaderMaterial({
+    const smokeMaterial = webgpu?webgpu.createSmokeMaterial(this.smokeTexture):new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, fog: true,
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: this.smokeTexture } }]),
       vertexShader: `
@@ -383,7 +387,7 @@ export class GameRenderer {
     this.effectBatches.smoke = smokeBatch;
     this.smokeOrder = [];
     this.worldRoot.add(smokeBatch);
-    this.scene.traverse(optimizeLighting);
+    if(!webgpu)this.scene.traverse(optimizeLighting);
     this.warmup();
     this.resize();
   }
@@ -418,7 +422,7 @@ export class GameRenderer {
     for (const node of temp) this.worldRoot.add(node);
     for (const f of this.flags.values()) f.teamFlag.visible = true;
     try {
-      this.renderer.compile(this.scene, this.camera);
+      if(!this.webgpu)this.renderer.compile(this.scene, this.camera);
     } catch {
       // Ignore compile errors in headless/stub environments.
     }
@@ -531,7 +535,8 @@ export class GameRenderer {
     this.scene.fog.color.set(map.fogColor ?? 0x9aa7a7);
     this.scene.background.set(map.fogColor ?? 0x9aa7a7);
     this.sun.color.set(map.sunColor ?? 0xffd7a4);
-    this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
+    if(this.webgpu)this.atmosphere.hazeAmount.value=map.theme==='desert-village'?.16:0;
+    else this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
     this.staticRoot = world.root;
     this.mapDetails=world.details;this.detailLevel=undefined;
     this.groundShadows.setMap(map);
@@ -545,7 +550,8 @@ export class GameRenderer {
         high.onBeforeCompile=source.onBeforeCompile;low.onBeforeCompile=(source._lowMaterial??source).onBeforeCompile;
         high.customProgramCacheKey=source.customProgramCacheKey;low.customProgramCacheKey=(source._lowMaterial??source).customProgramCacheKey;
         if(source.roadMask)high.roadMask=low.roadMask=source.roadMask;
-        pairMaterials(high,low);this.groundShadows.apply(high);this.groundShadows.apply(low);shadowMaterials.set(source,high);
+        const patchedHigh=this.groundShadows.apply(high)??high,patchedLow=this.groundShadows.apply(low)??low;
+        pairMaterials(patchedHigh,patchedLow);shadowMaterials.set(source,patchedHigh);
       }
       mesh.material=shadowMaterials.get(source);
     });
@@ -1239,7 +1245,13 @@ export class GameRenderer {
     for (const effect of this.smokeOrder) {
       if (smoke.count >= smoke.instanceMatrix.count) break;
       const index = smoke.count++, sprite = effect.mesh;
-      sprite.updateMatrix(); smoke.setMatrixAt(index, sprite.matrix);
+      if(this.webgpu){
+        this._smokeQuat??=new THREE.Quaternion();this._smokeSpin??=new THREE.Quaternion();
+        this._smokeMatrix??=new THREE.Matrix4();this._smokeAxis??=new THREE.Vector3(0,0,1);
+        this._smokeQuat.copy(this.camera.quaternion).multiply(this._smokeSpin.setFromAxisAngle(this._smokeAxis,sprite.material.rotation));
+        this._smokeMatrix.compose(sprite.position,this._smokeQuat,sprite.scale);
+        smoke.setMatrixAt(index,this._smokeMatrix);
+      }else{sprite.updateMatrix();smoke.setMatrixAt(index,sprite.matrix);}
       smoke.setColorAt(index, sprite.material.color);
       smoke.geometry.attributes.instanceAlpha.setX(index, sprite.material.opacity);
       smoke.geometry.attributes.instanceRotation.setX(index, sprite.material.rotation);
@@ -1522,9 +1534,11 @@ export class GameRenderer {
     this.resize();
   }
 
+  maxAnisotropy(){return this.renderer.capabilities?.getMaxAnisotropy?.()??this.renderer.getMaxAnisotropy?.()??1;}
+
   updateTextureFiltering(){
     if(!this.surfaces)return;
-    this.textureAnisotropy=applyTextureFiltering([this.scene,...[...this.worlds.values()].map(world=>world.root)],Object.values(this.surfaces).filter(value=>value?.isMaterial),this.quality??'high',this.renderer.capabilities.getMaxAnisotropy());
+    this.textureAnisotropy=applyTextureFiltering([this.scene,...[...this.worlds.values()].map(world=>world.root)],Object.values(this.surfaces).filter(value=>value?.isMaterial),this.quality??'high',this.maxAnisotropy());
   }
 
   resize() {
@@ -1928,7 +1942,21 @@ export class GameRenderer {
     this.drawScene();
   }
 
-  getStats() { return {postSamples:this.postPass.target.samples,fxaa:Boolean(this.postPass.material.uniforms.useFxaa.value),anisotropy:this.textureAnisotropy,shadowsEnabled:this.renderer.shadowMap.enabled,shadowMode:this.gfx.shadows,worldCalls:this.renderer.info.worldRender?.calls,worldTriangles:this.renderer.info.worldRender?.triangles, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, fsr: this.gfx.fsr==='on'?this.gfx.fsrQuality:'off', fsrScale: this.postPass.fsrScale, sceneWidth: this.postPass.target.width, sceneHeight: this.postPass.target.height, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
+  getStats() {
+    const r=this.renderer,post=this.postPass,isGPU=this.api==='webgpu';
+    return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
+      gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
+      postSamples:post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
+      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.gfx.shadows,
+      worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
+      worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
+      triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
+      visibleObjects:this.scene.children.length+this.activeSoldiers.size+this.vehicleRigs.size,
+      pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
+      fsrScale:post.fsrScale,sceneWidth:post.target.width,sceneHeight:post.target.height,
+      integratedGpu:this.integratedGpu,gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext)
+    };
+  }
 
   project(x, y, z) {
     const position = this.scratchPosition.set(x, y, z).project(this.camera);
