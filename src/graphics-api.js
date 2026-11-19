@@ -1,6 +1,6 @@
 // Only imported when the user explicitly selects WebGPU. The automatic mode
 // deliberately retains the existing WebGL renderer until benchmarked.
-export const GRAPHICS_API_KEY = 'gfx-api';
+export const GRAPHICS_API_KEY = 'sector09-gfx-api';
 export const GRAPHICS_API_CHOICES = ['auto', 'webgl2', 'webgpu'];
 
 export function preferredGraphicsApi(storage = globalThis.localStorage) {
