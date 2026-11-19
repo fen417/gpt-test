@@ -27,6 +27,17 @@ import {CampaignActors} from './campaign/actors.js';
 import {showCampaignOutcome} from './campaign/outcome.js';
 
 const $=id=>document.getElementById(id);
+// Pages /test/ is explicitly a SOLO-only preview, never a multiplayer client.
+const SOLO_ONLY_PREVIEW=import.meta.env.VITE_SOLO_ONLY==='true';
+if(SOLO_ONLY_PREVIEW){
+  const style=document.createElement('style');
+  style.textContent='#join-toggle,#multiplayer-panel,#create-room-panel,#lobby{display:none!important}';
+  document.head.append(style);
+  $('join-toggle').disabled=true;
+  $('host').disabled=true;
+  const label=document.querySelector('.build-label');
+  if(label)label.prepend(document.createTextNode('ТЕСТ · ТОЛЬКО БОТЫ / '));
+}
 mountChangelog();
 const show=(id,visible=true)=>$(id).classList.toggle('hidden',!visible);
 const text=(id,value)=>{const node=$(id),next=String(value);if(node.textContent!==next)node.textContent=next;};
@@ -653,6 +664,7 @@ document.addEventListener('keydown',event=>{
   }
 });
 async function serverAddress(){
+  if(SOLO_ONLY_PREVIEW)throw Error('Сетевая игра отключена в тестовой сборке.');
   const url=$('server-url').value.trim()||await configuredServerUrl();
   if(!url){document.querySelector('.server-details').open=true;throw Error('Сервер ещё не настроен. Укажите его публичный WSS-адрес в разделе «Адрес игрового сервера».');}
   return normalizeServerUrl(url);
@@ -673,7 +685,7 @@ async function refreshRooms(){
 }
 for(const map of Object.values(MAPS))$('room-map').add(new Option(map.name,map.id));
 $('room-map').value=$('map-select').value;
-configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
+if(!SOLO_ONLY_PREVIEW)configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
 function syncRoomMode(){
   const pool=$('room-map').value==='fy_pool_day';
   $('room-mode').value=pool?'tdm':'conquest';
