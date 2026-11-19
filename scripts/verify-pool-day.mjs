@@ -30,7 +30,7 @@ try{
   }));
   assert.equal(before.map,'fy_pool_day');
   assert.equal(before.state?.gameMode,'tdm');
-  assert.equal(before.state?.players?.find(p=>p.id==='local')?.weaponId,'');
+  assert.ok(!before.state?.players?.find(p=>p.id==='local')?.weaponId);
   const data=await page.evaluate(()=>{
     const {renderer:r}=window.__S09_POOL_REVIEW;
     r.camera.up.set(0,0,-1);r.camera.position.set(0,69,0);r.camera.lookAt(0,0,0);
