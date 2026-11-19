@@ -8,7 +8,11 @@ const browser=await chromium.launch({headless:true,args:[
 try{
   for(const api of ['auto','webgl2','webgpu']){
     const ctx=await browser.newContext({viewport:{width:1280,height:720}});
-    await ctx.addInitScript(selected=>localStorage.setItem('sector09-gfx-api',selected),api);
+    await ctx.addInitScript(selected=>{
+      localStorage.setItem('sector09-gfx-api',selected);
+      localStorage.setItem('sector09-gfx-fsr','on');
+      localStorage.setItem('sector09-gfx-fsr-quality','quality');
+    },api);
     const page=await ctx.newPage();
     const pageErrors=[];
     page.on('pageerror',error=>pageErrors.push(error.message));
@@ -55,10 +59,7 @@ try{
     assert.ok(Number.isFinite(stats.calls),'draw calls unavailable');
     assert.ok(Number.isFinite(stats.triangles),'triangle count unavailable');
     // FXAA / FSR is selected after loading: scene target must remain finite.
-    await page.evaluate(()=>{
-      const r=window.__S09_POOL_REVIEW.renderer;
-      r.gfx.fsr='on';r.gfx.fsrQuality='quality';r.updatePixelRatio();r.drawScene();
-    });
+    await page.waitForFunction(()=>window.__S09_POOL_REVIEW.renderer.getStats().fsr==='quality',{timeout:15000});
     const scaled=await page.evaluate(()=>window.__S09_POOL_REVIEW.renderer.getStats());
     assert.equal(scaled.fsr,'quality');
     assert.ok(scaled.fsrScale<1 && scaled.sceneWidth>0);
