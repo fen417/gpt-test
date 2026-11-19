@@ -18,6 +18,7 @@ export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDevic
   }
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) throw new Error('Браузер не предоставил аппаратный WebGPU-адаптер.');
+  if(adapter.isFallbackAdapter)throw new Error('WebGPU работает через программный адаптер, а не аппаратный GPU.');
   // Request no optional extensions: weak GPUs must be able to start at Low.
   const timings = new URLSearchParams(globalThis.location?.search ?? '').has('perf');
   const requiredFeatures = timings && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
