@@ -5,7 +5,7 @@ on:
   workflow_run:
     workflows: [Verify Pool Day TDM branch]
     types: [completed]
-    branches: [feature/pool-day-tdm-foundation]
+    branches: [test]
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,7 +21,8 @@ jobs:
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.head_repository.full_name == github.repository &&
-       github.event.workflow_run.head_branch == 'feature/pool-day-tdm-foundation')
+       github.event.workflow_run.head_branch == 'test' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +73,7 @@ jobs:
       - name: Checkout fy_pool_day preview branch
         uses: actions/checkout@v4
         with:
-          ref: feature/pool-day-tdm-foundation
+          ref: test
           path: pool-test
           persist-credentials: false
       - name: Install preview dependencies
