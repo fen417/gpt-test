@@ -1033,7 +1033,7 @@ export class Simulation {
       this.updateVehicles(dt);
     }
     for(const p of this.players.values()){
-      if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if(p.bot&&p.respawnIn===0&&!this.campaign)this.respawn(p.id);continue;}
+      if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if((p.bot||this.gameMode==='tdm')&&p.respawnIn===0&&!this.campaign)this.respawn(p.id);continue;}
       if(p.bot&&!this.vehicles.length)this.thinkBot(p,dt);
       const i=p.input;p.yaw=i.yaw;p.pitch=i.pitch;
       p.equipTime=Math.max(0,p.equipTime-dt);
