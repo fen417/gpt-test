@@ -21,8 +21,8 @@ export const WEAPONS = {
   m50:  { id: 'm50', name: 'M-50 «Орёл»', weapon: 'M-50 «Орёл»', type: 'ТЯЖЁЛЫЙ ПИСТОЛЕТ', sidearm: true, mag: 7, reserve: 28, damage: 62, interval: .38, spread: .071, recoil: .056, reload: 1.65, speed: 6.25, range: 115, projectileSpeed: 325, semiAuto: true },
   ar416: { id: 'ar416', classId: 'assault', name: 'AR-416', weapon: 'AR-416', type: 'ШТУРМОВАЯ ВИНТОВКА', mag: 30, reserve: 150, damage: 27, interval: .105, spread: .012, recoil: .019, reload: 2, speed: 6.3, range: 150, projectileSpeed: 340 },
   ak12:  { id: 'ak12',  classId: 'assault', name: 'АК-12М', weapon: 'АК-12М', type: 'ТЯЖЁЛЫЙ АВТОМАТ',   mag: 30, reserve: 150, damage: 33, interval: .125, spread: .014, recoil: .024, reload: 2.15, speed: 6.15, range: 165, projectileSpeed: 315 },
-  mcx9:  { id: 'mcx9',  classId: 'medic',   name: 'MCX-9',  weapon: 'MCX-9',  type: 'КАРАБИН / ПП',      mag: 32, reserve: 160, damage: 23, interval: .082, spread: .016, recoil: .012, reload: 2, speed: 6.5, range: 100, projectileSpeed: 265 },
-  vk45:  { id: 'vk45',  classId: 'medic',   name: 'ВК-45 «Шквал»', weapon: 'ВК-45 «Шквал»', type: 'ТАКТИЧЕСКИЙ ПП С ПБС', mag: 40, reserve: 160, damage: 20, interval: .066, spread: .014, recoil: .009, reload: 1.85, speed: 6.65, range: 92, projectileSpeed: 235 },
+  mcx9:  { id: 'mcx9',  classId: 'medic',   name: 'MCX-9',  weapon: 'MCX-9',  type: 'КАРАБИН / ПП',      mag: 32, reserve: 160, damage: 23, interval: .082, spread: .022, recoil: .012, reload: 2, speed: 6.5, range: 100, projectileSpeed: 265 },
+  vk45:  { id: 'vk45',  classId: 'medic',   name: 'ВК-45 «Шквал»', weapon: 'ВК-45 «Шквал»', type: 'ТАКТИЧЕСКИЙ ПП С ПБС', mag: 40, reserve: 160, damage: 20, interval: .066, spread: .020, recoil: .009, reload: 1.85, speed: 6.65, range: 92, projectileSpeed: 235 },
   mg36:  { id: 'mg36',  classId: 'support', name: 'MG-36',  weapon: 'MG-36',  type: 'РУЧНОЙ ПУЛЕМЁТ',    mag: 60, reserve: 240, damage: 25, interval: .115, spread: .021, recoil: .025, reload: 3.1, speed: 5.8, range: 150, projectileSpeed: 340 },
   pkp:   { id: 'pkp',   classId: 'support', name: 'ПКП «Печенег»', weapon: 'ПКП «Печенег»', type: 'ЕДИНЫЙ ПУЛЕМЁТ', mag: 100, reserve: 200, damage: 31, interval: .132, spread: .023, recoil: .029, reload: 3.6, speed: 5.55, range: 175, projectileSpeed: 380 },
   dmr12: { id: 'dmr12', classId: 'recon',   name: 'DMR-12', weapon: 'DMR-12', type: 'МАРКСМАНСКАЯ ВИНТОВКА', mag: 12, reserve: 60, damage: 62, interval: .5, spread: .004, recoil: .043, reload: 2, semiAuto: true, semi: true, speed: 6.1, range: 230, projectileSpeed: 390, zeroRange: 80 },
@@ -36,7 +36,7 @@ export const CLASS_WEAPONS = {
 };
 export const CLASSES = {
   assault: { name: 'Штурмовик', weapon: 'AR-416', weaponId: 'ar416', weapons: CLASS_WEAPONS.assault, mag: 30, reserve: 150, damage: 27, interval: .105, spread: .012, recoil: .019, reload: 2, speed: 6.3, range: 150 },
-  medic: { name: 'Медик', weapon: 'MCX-9', weaponId: 'mcx9', weapons: CLASS_WEAPONS.medic, mag: 32, reserve: 160, damage: 23, interval: .082, spread: .016, recoil: .012, reload: 2, speed: 6.5, range: 100 },
+  medic: { name: 'Медик', weapon: 'MCX-9', weaponId: 'mcx9', weapons: CLASS_WEAPONS.medic, mag: 32, reserve: 160, damage: 23, interval: .082, spread: .022, recoil: .012, reload: 2, speed: 6.5, range: 100 },
   support: { name: 'Инженер', weapon: 'MG-36', weaponId: 'mg36', weapons: CLASS_WEAPONS.support, mag: 60, reserve: 240, damage: 25, interval: .115, spread: .021, recoil: .025, reload: 3.1, speed: 5.8, range: 150 },
   recon: { name: 'Разведчик', weapon: 'DMR-12', weaponId: 'dmr12', weapons: CLASS_WEAPONS.recon, mag: 12, reserve: 60, damage: 62, interval: .5, spread: .004, recoil: .043, reload: 2, semiAuto: true, speed: 6.1, range: 230 },
 };
