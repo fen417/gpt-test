@@ -4,8 +4,8 @@ import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehic
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, prepareVehicleRoutes, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
-import { thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
-import { findBotPath, prepareNavigation, beginNavigationTick } from './bot-navigation.js';
+import { ensureBotState, thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
+import { findBotPath, prepareNavigation, beginNavigationTick, moveBot } from './bot-navigation.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import {shotTrajectory,shotRandom,advanceFireClock,weaponSpread} from './fire-control.js';
@@ -1007,8 +1007,8 @@ export class Simulation {
     if(this.gameMode==='tdm'&&!p.weaponId){
       const target=weaponTarget(this,p);
       p.input=sanitizeInput(p.input);p.input.fire=false;p.input.grenade=false;
-      if(target){const dx=target.x-p.x,dz=target.z-p.z,desired=Math.atan2(-dx,-dz);
-        p.input.yaw=desired;p.input.pitch=0;p.input.forward=1;p.input.strafe=0;p.input.sprint=true;}
+      ensureBotState(this,p);
+      if(target)moveBot(this,p,{x:target.x,y:this.groundAt(target.x,target.z),z:target.z},elapsed,{sprint:true,look:true});
       else {p.input.forward=0;p.input.strafe=0;}
       return;
     }
