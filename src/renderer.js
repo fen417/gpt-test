@@ -738,6 +738,28 @@ export class GameRenderer {
     this.flags.set(point.id, { group, flag, teamFlag, ring, label, neutralH: 1, teamH: 0, fromOwned: false });
   }
 
+  updatePoolWeapons(state){
+    this.poolWeaponModels??=new Map();
+    const alive=new Set();
+    if(state?.gameMode==='tdm')for(const item of state.weaponItems??[]){
+      alive.add(item.id);
+      let mesh=this.poolWeaponModels.get(item.id);
+      if(!mesh){
+        const asset=this.infantry?.get(0,item.weaponId);
+        if(!asset?.gun?.model)continue;
+        mesh=asset.gun.model.clone(true);
+        mesh.traverse(object=>{if(object.isMesh){object.castShadow=false;object.receiveShadow=true;}});
+        this.scene.add(mesh);this.poolWeaponModels.set(item.id,mesh);
+      }
+      mesh.position.set(item.x,item.y,item.z);
+      mesh.rotation.set(Math.PI/2,item.yaw??0,0);
+      mesh.scale.setScalar(.75);
+    }
+    for(const [id,mesh]of this.poolWeaponModels)if(!alive.has(id)){
+      mesh.removeFromParent();this.poolWeaponModels.delete(id);
+    }
+  }
+
   buildWeapon() {
     this.weaponRig = createWeaponRig(this);
     this.weapon = this.weaponRig.weapon;
@@ -957,6 +979,11 @@ export class GameRenderer {
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
       if (mustReset || externalScene || this.scoped || soldier.animationDt >= interval) {
         updateInfantry(soldier, player, soldier.animationDt, mustReset, this.map.terrain);
+        if(state.gameMode==='tdm'&&!player.weaponId){
+          if(soldier.weaponModel)soldier.weaponModel.visible=false;
+          if(soldier.distantWeapon)soldier.distantWeapon.visible=false;
+          if(soldier.flash)soldier.flash.visible=false;
+        }
         soldier.animationDt = 0;
       }
     }
@@ -1748,7 +1775,7 @@ export class GameRenderer {
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
-      this.weapon.visible = isAlive && !this.scoped;
+      this.weapon.visible = isAlive && !this.scoped && (state.gameMode!=='tdm'||Boolean(player.weaponId));
       this.weaponRig.update({
         classId: player.classId,
         team: player.team,
@@ -1846,7 +1873,7 @@ export class GameRenderer {
         }
       }
     }
-    this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
+    this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updatePoolWeapons(state); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
     this.atmosphere.sky.position.copy(this.camera.position);
     this.drawScene();
   }
