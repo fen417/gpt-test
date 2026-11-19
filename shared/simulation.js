@@ -226,10 +226,17 @@ export class Simulation {
     const p=this.players.get(id);if(!p || p.alive || p.respawnIn>0)return false;
     if(this.gameMode==='tdm'){
       const candidates=this.map.spawnPoints?.[p.team]??[this.map.spawns[p.team]];
-      const safe=candidates.filter(q=>!this.collides(q.x,q.z,this.groundAt(q.x,q.z))&&
-        ![...this.players.values()].some(e=>e!==p&&e.alive&&Math.hypot(e.x-q.x,e.z-q.z)<(e.team===p.team?1.2:7)));
-      const pool=safe.length?safe:candidates;
-      p.tdmSpawn=pool[Math.floor(this.random()*pool.length)];
+      const safe=candidates.filter(q=>
+        q&&Number.isFinite(q.x)&&Number.isFinite(q.z)&&
+        (p.team===0?q.x<0:q.x>0)&&
+        Number.isFinite(this.groundAt(q.x,q.z))&&
+        !this.collides(q.x,q.z,this.groundAt(q.x,q.z))&&
+        !this.vehicleAt(q.x,q.z,this.groundAt(q.x,q.z))&&
+        ![...this.players.values()].some(e=>e!==p&&e.alive&&
+          Math.hypot(e.x-q.x,e.z-q.z)<(e.team===p.team?1.7:7)));
+      // Wait for an actually available location instead of stacking players.
+      if(!safe.length)return false;
+      p.tdmSpawn=safe[Math.floor(this.random()*safe.length)];
       pointId=undefined;
     }
     if(this.gameMode!=='tdm'&&p.bot&&!pointId&&!shouldSpawnVehicleBotAtBase(this,p))pointId=botSpawnPoint(this,p)??undefined;
@@ -246,8 +253,8 @@ export class Simulation {
     p.weaponId=p.primaryWeaponId=wep.id;p.sidearmId=sidearm.id;p.weaponSlot=1;p.equipTime=0;
     p.stowedAmmo={ammo:sidearm.mag,reserve:sidearm.reserve};
     const base=p.tdmSpawn||beacon||point||this.map.spawns[p.team];let x=base.x,z=base.z,spawnY=this.groundAt(x,z),placed=!beacon;
-    for(let n=0;n<25;n++){
-      const radius=this.gameMode==='tdm'?.6:beacon?3.2:8,tx=base.x+(this.random()-.5)*radius,tz=base.z+(this.random()-.5)*radius;
+    for(let n=0;this.gameMode!=='tdm'&&n<25;n++){
+      const radius=beacon?3.2:8,tx=base.x+(this.random()-.5)*radius,tz=base.z+(this.random()-.5)*radius;
       const ty=beacon?supportHeight(this,tx,tz,beacon.y):this.groundAt(tx,tz);
       if((!beacon||Math.abs(ty-beacon.y)<.5)&&!this.collides(tx,tz,ty)&&!this.vehicleAt(tx,tz,ty)){x=tx;z=tz;spawnY=ty;placed=true;break;}
     }
