@@ -7,7 +7,7 @@ const CONTROL_NAMES=Object.fromEntries(Object.entries(CONTROL).map(([name,id])=>
 export function encodeControl(message){const type=CONTROL[message.type];if(type===undefined)throw Error('Unknown control message');return JSON.stringify({...message,type});}
 export function decodeControl(value){const data=JSON.parse(value);if(!data||typeof data!=='object'||!Object.hasOwn(CONTROL_NAMES,data.type))throw Error('Некорректное сообщение. Обновите игру.');return {...data,type:CONTROL_NAMES[data.type]};}
 export const INPUT_STEP=16667/1e6;
-export const INPUT_FLAGS=['sprint','crouch','jump','fire','aim','reload','gadget','secondaryGadget','grenade','interact','switchSeat','horn','order'];
+export const INPUT_FLAGS=['sprint','crouch','jump','fire','aim','reload','gadget','secondaryGadget','grenade','drop','interact','switchSeat','horn','order'];
 const BOOLS=['alive','reloading','crouch','sliding','sprint','aim','grounded','bot','protected','spotted'];
 const PRIVATE=new Set(['vy','slideVx','slideVz','slideAt','slideCooldownAt','controlFlags','velocityX','velocityZ','moveSpeed','jumpFatigue','jumpCooldownAt','bloom','shotReadyAt','lastShotAt']);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),finite=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -24,6 +24,7 @@ export const SCHEMAS={
   grenades:specs('team:u8 ownerId:r x:f32 y:f32 z:f32 fuseAt:f32 yaw:a'),
   rockets:specs('ownerId:r team:u8 kind:u8 vehicleId:r x:f32 y:f32 z:f32 vx:v vy:v vz:v lifeAt:f32'),
   points:specs('name:r x:x z:z owner:i8 progress:signed contested:u8 spawnBlocked:u8'),
+  weaponItems:specs('weaponId:r x:x y:y z:z yaw:a home:u8 ammo:u16 reserve:u16'),
 };
 const COLLECTIONS=Object.keys(SCHEMAS),MOVE=new Set(['x','y','z','yaw','pitch','bodyPitch','bodyRoll','speed','steer','aimYaw','aimPitch','vy','slideVx','slideVz','motionAt']);
 const INDEX=Object.fromEntries(COLLECTIONS.map(kind=>[kind,Object.fromEntries(SCHEMAS[kind].map((field,index)=>[field.key,index]))]));
