@@ -674,7 +674,15 @@ async function refreshRooms(){
 for(const map of Object.values(MAPS))$('room-map').add(new Option(map.name,map.id));
 $('room-map').value=$('map-select').value;
 configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
-$('host').addEventListener('click',()=>{$('room-map').value=$('map-select').value;});
+function syncRoomMode(){
+  const pool=$('room-map').value==='fy_pool_day';
+  $('room-mode').value=pool?'tdm':'conquest';
+  $('room-mode').disabled=!pool;
+  $('room-kill-limit').disabled=!pool;
+}
+$('room-map').addEventListener('change',syncRoomMode);
+$('host').addEventListener('click',()=>{$('room-map').value=$('map-select').value;syncRoomMode();});
+syncRoomMode();
 $('create-room').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const opts=prepare('server');setBusy(true);
   try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId:$('room-map').value,gameMode:$('room-mode').value,killLimit:Number($('room-kill-limit').value),maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
@@ -1090,7 +1098,14 @@ function initializeMapPickers(){
     text('menu-map-info',map.size+' × '+map.size+' м · '+map.points.length+' позиций'+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
     save('map',map.id);
   };
-  $('map-select').addEventListener('change',update);
+  const syncSoloMode=()=>{
+    const pool=$('map-select').value==='fy_pool_day';
+    $('solo-mode').value=pool?'tdm':'conquest';
+    $('solo-mode').disabled=!pool;
+    $('solo-kill-limit').disabled=!pool;
+  };
+  $('map-select').addEventListener('change',()=>{syncSoloMode();update();});
+  syncSoloMode();
   update();
 }
 function pickDeploySpawnAt(clientX,clientY){
