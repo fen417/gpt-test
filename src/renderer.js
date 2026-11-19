@@ -743,37 +743,45 @@ export class GameRenderer {
 
   updatePoolWeapons(state){
     this.poolWeaponModels ??= new Map();
-    const active = new Set();
-    if(state?.gameMode==='tdm' && this.map?.id==='fy_pool_day'){
-      // A loaded soldier is not a prerequisite for displaying floor weapons.
-      this.infantry ??= new InfantryAssets(this.renderer);
+    this.poolWeaponTemplates ??= new Map();
+    const active=new Set();
+    if(state?.gameMode==='tdm'&&this.map?.id==='fy_pool_day'){
+      // Reuse the SAME procedural generator as the equipped gun and menu
+      // weapon preview. No imported soldier/GLB asset required.
+      this.poolWeaponRig ??= createWeaponRig({lowQuality:true});
       for(const item of state.weaponItems??[]){
         active.add(item.id);
         if(!Number.isFinite(item.x)||!Number.isFinite(item.y)||!Number.isFinite(item.z))continue;
         let pickup=this.poolWeaponModels.get(item.id);
         if(!pickup){
-          const template=this.infantry.getWeaponTemplate(item.weaponId);
-          if(!template?.model)continue; // Asynchronous GLB load: retry next frame.
-          pickup=new THREE.Group();
-          pickup.name='pool-pickup-'+item.id;
+          let template=this.poolWeaponTemplates.get(item.weaponId);
+          if(!template){
+            const classId=getWeapon('assault',item.weaponId).classId??'assault';
+            const source=this.poolWeaponRig.createPreviewModel(classId,item.weaponId);
+            // Roll the procedural gun so its side rests on the tile.
+            source.rotation.z+=Math.PI/2;
+            const wrapper=new THREE.Group();
+            wrapper.add(source);wrapper.updateMatrixWorld(true);
+            // Only visible geometry belongs to the current gun; the procedural
+            // viewmodel contains hidden variants with different extents.
+            const bounds=new THREE.Box3();
+            wrapper.traverseVisible(object=>{
+              if(!object.isMesh)return;
+              if(!object.geometry.boundingBox)object.geometry.computeBoundingBox();
+              bounds.union(object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld));
+            });
+            if(bounds.isEmpty())continue;
+            source.position.x-=bounds.getCenter(new THREE.Vector3()).x;
+            source.position.y-=bounds.min.y;
+            source.position.z-=bounds.getCenter(new THREE.Vector3()).z;
+            wrapper.traverse(object=>{if(object.isMesh){object.castShadow=false;object.receiveShadow=false;}});
+            wrapper.userData.procedural=true;
+            template=wrapper;
+            this.poolWeaponTemplates.set(item.weaponId,template);
+          }
+          pickup=template.clone(true);pickup.name='pool-pickup-'+item.id;
           pickup.userData.weaponId=item.weaponId;
-          const model=template.model.clone(true);
-          // Preserve the artist's unit conversion and weapon proportions.
-          // The old code replaced the prepared GLB's scale with 0.75 and
-          // rotated its barrel vertically, making weapons effectively invisible.
-          model.rotation.z += Math.PI/2; // On its side, barrel along the ground.
-          pickup.add(model);
-          pickup.updateMatrixWorld(true);
-          const bounds=new THREE.Box3().setFromObject(pickup,true);
-          if(bounds.isEmpty()){pickup.clear();continue;}
-          const center=bounds.getCenter(new THREE.Vector3());
-          model.position.x-=center.x;
-          model.position.y-=bounds.min.y;
-          model.position.z-=center.z;
-          pickup.userData.weaponBounds=bounds.getSize(new THREE.Vector3());
-          pickup.traverse(object=>{
-            if(object.isMesh){object.castShadow=false;object.receiveShadow=true;}
-          });
+          pickup.userData.procedural=true;
           this.worldRoot.add(pickup);
           this.poolWeaponModels.set(item.id,pickup);
         }
@@ -782,9 +790,8 @@ export class GameRenderer {
         pickup.visible=true;
       }
     }
-    for(const [id,pickup] of this.poolWeaponModels)if(!active.has(id)){
-      pickup.removeFromParent();
-      this.poolWeaponModels.delete(id);
+    for(const [id,pickup]of this.poolWeaponModels)if(!active.has(id)){
+      pickup.removeFromParent();this.poolWeaponModels.delete(id);
     }
   }
 
@@ -1920,6 +1927,9 @@ export class GameRenderer {
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
     this.infantry?.dispose();
+    this.poolWeaponRig?.dispose();
+    this.poolWeaponTemplates?.clear();
+    this.poolWeaponModels?.clear();
     this.cachedShadows.dispose();
     this.bulletMarks.dispose();
     this.clearVehicles();
