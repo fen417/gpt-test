@@ -229,7 +229,7 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
-    this.gpuTimer=webgpu?{enabled:false,ext:null,samples:{reset(){}},begin(){return false;},end(){},summary(){return null;},dispose(){}}:new GpuTimer(this.renderer.getContext());
+    this.gpuTimer=webgpu?new webgpu.GpuTimer(this.renderer):new GpuTimer(this.renderer.getContext());
     this.postPass=webgpu?new webgpu.PostPass(this.renderer,{antialias}):new PostPass(this.renderer,{antialias});
     if(!webgpu)this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
@@ -1589,7 +1589,7 @@ export class GameRenderer {
       this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale);
       this.postPass.begin(this.quality);drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.quality);
     }
-    finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
+    finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.gpuTimer.poll?.();this.interiorVisibility.restore();}
   }
 
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
