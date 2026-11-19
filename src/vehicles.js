@@ -18,9 +18,13 @@ export const CREW_CONTROLS = {
   driver: { origin: [-.54, 1.24, -.825], grip: [.19, .024, 0] },
   gunner: { origin: [0, 2.18, .19], grip: [.11, -.012, .07] },
 };
-let tankLibrary,tankLoading;const tankPool=[];
+let tankLibrary,tankLoading,tankMaterialFactory=null;const tankPool=[];
 export function warmTankAssets(renderer,scene,camera,prepare){return tankLoading??=import('./tank-model.js').then(async library=>{
-  await library.loadTankAtlas(renderer);for(let i=0;i<2;i++)tankPool.push(library.createTankRig());
+  if(renderer.isWebGPURenderer){
+    ({createWebGpuTankMaterial:tankMaterialFactory}=await import('./tank-webgpu-material.js'));
+  }
+  await library.loadTankAtlas(renderer);
+  for(let i=0;i<2;i++)tankPool.push(library.createTankRig(tankMaterialFactory));
   if(scene&&camera&&renderer.compileAsync){const warm=new THREE.Scene();for(const child of scene.children)if(child.isLight)warm.add(child.clone());for(const rig of tankPool){rig.group.traverse(o=>prepare?.(o));warm.add(rig.group);}await renderer.compileAsync(warm,camera);for(const rig of tankPool)rig.group.removeFromParent();}
   tankLibrary=library;
 }).catch(error=>{tankLoading=null;throw error;});}
@@ -370,7 +374,7 @@ const riderColors = [
 
 export function createVehicleRig(type, material, teamColors) {
   if(type==='tank'){
-    if(tankLibrary)return tankPool.pop()??tankLibrary.createTankRig();
+    if(tankLibrary)return tankPool.pop()??tankLibrary.createTankRig(tankMaterialFactory);
     const group=new THREE.Group(),body=new THREE.Group(),m=new THREE.MeshLambertMaterial({color:0x788368});group.add(body);const hull=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.4,7),m);hull.position.y=1;body.add(hull);
     return{tankPending:true,group,body,riders:[],materialsToDispose:new Set([m])};
   }
