@@ -1,0 +1,22 @@
+name: Verify Pool Day TDM branch
+on:
+  push:
+    branches: [feature/pool-day-tdm-foundation]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Targeted authoritative TDM tests
+        run: node --test test/pool-tdm.test.js
+      - name: Build browser game
+        run: npm run build
