@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { texture, uv, uniform, vec2, vec3, vec4, select, min, max, distance,
+import { texture, uv, uniform, vec2, vec3, vec4, Fn, If, min, max, distance,
   smoothstep, dot, sin, fract, clamp, renderOutput, acesFilmicToneMapping } from 'three/tsl';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { fsr1RenderScale } from './fsr1.js';
@@ -38,21 +38,25 @@ export class WebGpuPostPass {
     this.geometry=geometry;
     const source=texture(this.target.texture), sampled=source.sample(uv());
     const filtered=fxaa(source);
-    const postColor=(()=>{
-      let color=select(this.useFxaa.greaterThan(.5),filtered.rgb,sampled.rgb);
-      const tx=this.invSize;
-      const a=source.sample(uv().add(vec2(tx.x,0))).rgb;
-      const b=source.sample(uv().sub(vec2(tx.x,0))).rgb;
-      const c=source.sample(uv().add(vec2(0,tx.y))).rgb;
-      const d=source.sample(uv().sub(vec2(0,tx.y))).rgb;
-      const lo=min(color,min(min(a,b),min(c,d))),hi=max(color,max(max(a,b),max(c,d)));
-      const sharp=clamp(color.add(color.sub(a.add(b).add(c).add(d).mul(.25)).mul(this.sharpen)),lo,hi);
-      color=acesFilmicToneMapping(sharp,this.exposure);
+    const postColor=Fn(()=>{
+      const color=vec3(sampled.rgb).toVar();
+      // Shader control flow matters on low-end GPUs: disabled FXAA/sharpening
+      // must not execute their expensive texture samples.
+      If(this.useFxaa.greaterThan(.5),()=>{color.assign(filtered.rgb);});
+      If(this.sharpen.greaterThan(0),()=>{
+        const tx=this.invSize;
+        const a=source.sample(uv().add(vec2(tx.x,0))).rgb;
+        const b=source.sample(uv().sub(vec2(tx.x,0))).rgb;
+        const c=source.sample(uv().add(vec2(0,tx.y))).rgb;
+        const d=source.sample(uv().sub(vec2(0,tx.y))).rgb;
+        const lo=min(color,min(min(a,b),min(c,d))),hi=max(color,max(max(a,b),max(c,d)));
+        color.assign(clamp(color.add(color.sub(a.add(b).add(c).add(d).mul(.25)).mul(this.sharpen)),lo,hi));
+      });
+      const mapped=acesFilmicToneMapping(color,this.exposure);
       const vignette=vec3(1).mul(smoothstep(.1,.8,distance(uv(),vec2(.5)))).mul(-.08).add(1);
-      color=color.mul(vignette);
       const pixel=uv().mul(this.outputSize);
       const noise=fract(sin(dot(pixel.add(this.time),vec2(12.9898,78.233))).mul(43758.5453)).sub(.5).mul(this.grain);
-      return renderOutput(vec4(color.add(noise),1),THREE.NoToneMapping,THREE.SRGBColorSpace);
+      return renderOutput(vec4(mapped.mul(vignette).add(noise),1),THREE.NoToneMapping,THREE.SRGBColorSpace);
     })();
     const post=stage(geometry,postColor);this.scene=post.scene;this.material=post.material;
     const easu=stage(geometry,easuNode(texture(this.ldrTarget.texture),this.inputSize,this.outputSize));
