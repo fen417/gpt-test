@@ -2,12 +2,13 @@
 import { PORT_MAP } from './port.js';
 import { QUARRY_MAP } from './quarry.js';
 import { VILLAGE_MAP } from './village.js';
+import { POOL_DAY_MAP } from './pool-day.js';
 import { applyMapEdits } from './map-edits.js';
 import portEdits from './maps/port.json' with { type: 'json' };
 import quarryEdits from './maps/quarry.json' with { type: 'json' };
 import villageEdits from './maps/village.json' with { type: 'json' };
 
-export const PROTOCOL_VERSION=28;
+export const PROTOCOL_VERSION=29;
 export const WEAPON_SWITCH_TIME = .38;
 export const WEAPON_SWAP_PHASE = .42;
 export function weaponSwitchPose(remaining=0){
@@ -61,14 +62,14 @@ export const DIFFICULTIES = {
   veteran: { name: 'Ветеран', awareness: 66, reaction: .36, reactionVariance: .18, turnSpeed: 3.2, aimError: .012, burst: .5, pause: .48 },
 };
 export const DEFAULT_MAP_ID=PORT_MAP.id;
-export const BASE_MAPS = { port: PORT_MAP, quarry: QUARRY_MAP, village: VILLAGE_MAP };
-export const MAP_EDITS = { port: portEdits, quarry: quarryEdits, village: villageEdits };
+export const BASE_MAPS = { port: PORT_MAP, quarry: QUARRY_MAP, village: VILLAGE_MAP, fy_pool_day: POOL_DAY_MAP };
+export const MAP_EDITS = { port: portEdits, quarry: quarryEdits, village: villageEdits, fy_pool_day: {version:1,moves:{},added:{},removed:[]} };
 function mapLayoutRevision() {
   const hasChanges = Object.values(MAP_EDITS).some(({ moves, added, removed }) =>
     Object.keys(moves).length || Object.keys(added).length || removed.length);
-  if (!hasChanges) return 'quarry-tank-017a';
+  if (!hasChanges) return 'pool-tdm-029';
   let hash = 2166136261;
-  const layout = 'quarry-tank-017a/'+JSON.stringify(MAP_EDITS);
+  const layout = 'pool-tdm-029/'+JSON.stringify(MAP_EDITS);
   for (let i = 0; i < layout.length; i++) hash = Math.imul(hash ^ layout.charCodeAt(i), 16777619);
   return (hash >>> 0).toString(16);
 }
