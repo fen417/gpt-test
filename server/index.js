@@ -58,17 +58,21 @@ export function createGameServer(options={}){
     if(kind==='snapshot'){totals.snapshots++;totals.snapshotBytes+=length;}return true;
   }
   function error(c,message,requestId,code='request'){send(c,{type:'error',message,requestId,code});}
-  function listing(){return room?[{id:room.id,name:room.name,mapId:room.mapId,map:getMap(room.mapId).name,mode:room.mode,difficulty:room.difficulty,ownerId:room.ownerId,maxPlayers:room.maxPlayers,players:connected().length,reserved:sessions.size,bots:room.bots,status:room.phase==='lobby'?'Ожидание игроков':room.sim?.winner!==null?'Матч завершён':'В бою'}]:[];}
+  function listing(){return room?[{id:room.id,name:room.name,mapId:room.mapId,map:getMap(room.mapId).name,mode:room.mode,killLimit:room.killLimit,difficulty:room.difficulty,ownerId:room.ownerId,maxPlayers:room.maxPlayers,players:connected().length,reserved:sessions.size,bots:room.bots,status:room.phase==='lobby'?'Ожидание игроков':room.sim?.winner!==null?'Матч завершён':'В бою'}]:[];}
   function roomsChanged(){const data={type:'rooms',rooms:listing()};for(const c of clients)send(c,data);}
   function lobby(){
     if(!room)return;const map=getMap(room.mapId),players=[...sessions.values()].map(s=>({id:s.id,name:s.name,team:s.team,classId:s.classId,weaponId:s.weaponId,primaryWeaponId:s.weaponId,sidearmId:s.sidearmId,alive:false,hp:100,bot:false,connected:!!s.client,kills:0,deaths:0,score:0}));
     for(let i=0;i<room.bots;i++)players.push({id:'preview-'+i,name:'AI',team:i%2,classId:'assault',bot:true,alive:false,hp:100});
-    return {time:0,mapId:map.id,lobby:true,ownerId:room.ownerId,roomName:room.name,botCount:room.bots,difficulty:room.difficulty,players,points:map.points.map(p=>({...p,owner:-1,progress:0})),tickets:[600,600],vehicles:[],events:[],deployables:[],grenades:[],rockets:[],winner:null};
+    return {time:0,mapId:map.id,lobby:true,ownerId:room.ownerId,roomName:room.name,botCount:room.bots,difficulty:room.difficulty,players,points:map.points.map(p=>({...p,owner:-1,progress:0})),gameMode:room.mode,killLimit:room.killLimit,tickets:room.mode==='tdm'?[0,0]:[600,600],vehicles:[],weaponItems:[],events:[],deployables:[],grenades:[],rockets:[],winner:null};
   }
   function lobbyChanged(){if(room?.phase==='lobby'){const data={type:'lobby',state:lobby()};for(const s of connected())send(s.client,data);}roomsChanged();}
   function loadout(s,data){const cls=Object.hasOwn(CLASSES,data.classId)?data.classId:s.classId??'assault';s.classId=cls;s.weaponId=getPrimaryWeapon(cls,data.weaponId??s.weaponId).id;s.sidearmId=getSidearm(data.sidearmId??s.sidearmId).id;if(data.team===0||data.team===1)s.team=data.team;}
   function settings(data){
     if(Object.hasOwn(MAPS,data.mapId))room.mapId=data.mapId;
+    if(['conquest','tdm'].includes(data.gameMode))room.mode=data.gameMode;
+    if(room.mapId==='fy_pool_day')room.mode='tdm';
+    else if(room.mode==='tdm')room.mode='conquest';
+    if(data.killLimit!==undefined)room.killLimit=Math.floor(bounded(data.killLimit,10,500,50));
     if(Object.hasOwn(DIFFICULTIES,data.difficulty))room.difficulty=data.difficulty;
     if(data.bots!==undefined)room.bots=Math.floor(bounded(data.bots,0,config.maxBots,8));
     if(data.maxPlayers!==undefined)room.maxPlayers=Math.max(sessions.size,Math.floor(bounded(data.maxPlayers,2,config.maxPlayers,7)));
@@ -77,7 +81,7 @@ export function createGameServer(options={}){
   function initialize(s){
     const sim=room.sim;s.encoder=new SnapshotEncoder(sim.map.size);s.eventAck=sim.eventId;s.eventSent=sim.eventId;s.eventLastSent=0;s.inputQueue=[];s.inputReceived=0;s.inputAck=0;s.credit=0;s.heldInput=null;s.finishedSequence=0;s.lastInput=Date.now();
     const p=sim.players.get(s.id);if(p){p.networkControlled=true;p.networkFrames=[];p.networkIdle=true;p.inputAck=0;sim.setInput(s.id,{yaw:p.yaw,pitch:p.pitch});}
-    send(s.client,{type:'init',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,mapId:sim.map.id,size:sim.map.size,difficulty:room.difficulty,roomName:room.name,ownerId:room.ownerId,epoch:room.epoch,eventAck:sim.eventId,inputHz:60,snapshotHz:effectiveSnapshotHz});
+    send(s.client,{type:'init',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,mapId:sim.map.id,size:sim.map.size,difficulty:room.difficulty,gameMode:sim.gameMode,killLimit:sim.killLimit,roomName:room.name,ownerId:room.ownerId,epoch:room.epoch,eventAck:sim.eventId,inputHz:60,snapshotHz:effectiveSnapshotHz});
     snapshot(s,preparedSnapshot(),true);
   }
   function join(c,data,requestId,resume=false){
@@ -105,7 +109,7 @@ export function createGameServer(options={}){
     if(room){if(room.ownerId===s.id)room.ownerId=connected()[0]?.id??s.id;if(!connected().length){room.emptyAt=Date.now();stopLoop();}lobbyChanged();}
   }
   function startMatch(){
-    stopLoop();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId,lagCompensation:env.LAG_COMPENSATION!=='0'});
+    stopLoop();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId,gameMode:room.mode,killLimit:room.killLimit,lagCompensation:env.LAG_COMPENSATION!=='0'});
     sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.0;
     room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;
     for(const s of sessions.values())sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
@@ -216,9 +220,10 @@ export function createGameServer(options={}){
         switch(data.type){
           case 'list':send(c,{type:'rooms',requestId,rooms:listing()});break;
           case 'create':
-            if(data.gameMode&&data.gameMode!=='conquest')throw Error('Доступен режим «Захват территории».');
+            if(data.gameMode&&!['conquest','tdm'].includes(data.gameMode))throw Error('Неизвестный режим.');
+             if(data.gameMode==='tdm'&&data.mapId!=='fy_pool_day')throw Error('Командный бой насмерть пока доступен только на fy_pool_day.');
             if(room){error(c,'На сервере уже есть комната. Присоединитесь к ней в браузере комнат.',requestId,'room_exists');send(c,{type:'rooms',rooms:listing()});break;}
-            room={id:token(),name:clean(data.roomName,'Операция «Рубеж»'),mapId:getMap(data.mapId).id,mode:'conquest',bots:Math.min(config.defaultBots,config.maxBots),maxPlayers:config.maxPlayers,difficulty:'regular',phase:'lobby',ownerId:null,sim:null,epoch:0,emptyAt:0};settings(data);join(c,data,requestId);break;
+            room={id:token(),name:clean(data.roomName,'Операция «Рубеж»'),mapId:getMap(data.mapId).id,mode:data.gameMode==='tdm'?'tdm':'conquest',killLimit:50,bots:Math.min(config.defaultBots,config.maxBots),maxPlayers:config.maxPlayers,difficulty:'regular',phase:'lobby',ownerId:null,sim:null,epoch:0,emptyAt:0};settings(data);join(c,data,requestId);break;
           case 'join':join(c,data,requestId);break;
           case 'resume':join(c,data,requestId,true);break;
           case 'leave':detach(c,true);send(c,{type:'left',requestId});break;
