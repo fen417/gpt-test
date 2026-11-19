@@ -7,9 +7,11 @@ const browser=await chromium.launch({headless:true,args:[
 ]});
 try{
   for(const api of ['auto','webgl2','webgpu']){
-    const ctx=await browser.newContext({viewport:{width:1280,height:720}});
+    const ctx=await browser.newContext({viewport:{width:800,height:450}});
     await ctx.addInitScript(selected=>{
       localStorage.setItem('sector09-gfx-api',selected);
+      localStorage.setItem('sector09-quality',selected==='webgpu'?'low':'high');
+      localStorage.setItem('sector09-gfx-aa',selected==='webgpu'?'off':'auto');
       localStorage.setItem('sector09-gfx-fsr','on');
       localStorage.setItem('sector09-gfx-fsr-quality','quality');
     },api);
@@ -45,10 +47,10 @@ try{
       else assert.equal(state.backend,'WebGPUBackend','WebGL fallback is forbidden');
     }
     await page.locator('#open-solo').waitFor({state:'visible',timeout:60000});
-    await page.locator('#open-solo').click();
+    await page.locator('#open-solo').dispatchEvent('click');
     await page.locator('#map-select').selectOption('fy_pool_day');
-    await page.locator('#population').selectOption('15');
-    await page.locator('#solo').click();
+    await page.locator('#population').selectOption(api==='webgpu'?'4':'15');
+    await page.locator('#solo').dispatchEvent('click');
     await page.waitForFunction(()=>!document.getElementById('hud').classList.contains('hidden'),{timeout:45000});
     await page.waitForFunction(()=>window.__S09_POOL_REVIEW?.renderer?.getStats()?.calls>=0,{timeout:30000});
     const stats=await page.evaluate(()=>window.__S09_POOL_REVIEW.renderer.getStats());
@@ -56,6 +58,10 @@ try{
       api:stats.api,backend:stats.backend,calls:stats.calls,triangles:stats.triangles,
       fsr:stats.fsr,sceneWidth:stats.sceneWidth,sceneHeight:stats.sceneHeight
     }));
+    if(api==='webgpu' && state.api==='webgpu'){
+      assert.equal(stats.api,'webgpu','WebGPU must not silently switch back during gameplay');
+      assert.equal(stats.backend,'WebGPU','Actual backend changed during gameplay');
+    }
     assert.ok(Number.isFinite(stats.calls),'draw calls unavailable');
     assert.ok(Number.isFinite(stats.triangles),'triangle count unavailable');
     // FXAA / FSR is selected after loading: scene target must remain finite.
