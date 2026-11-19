@@ -1693,6 +1693,14 @@ try{
       GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
+  if(gpuOptions){
+    // Reject incompatible shader pipelines before showing a black game canvas.
+    const r=renderer.renderer,p=renderer.postPass;
+    await r.compileAsync(renderer.scene,renderer.camera);
+    for(const scene of [p.scene,p.easuScene,p.rcasScene]){
+      await r.compileAsync(scene,p.camera);
+    }
+  }
   renderer.resize();window.addEventListener('resize',()=>renderer.resize());
   $('gfx-api-active').textContent='Используется: '+graphicsApiName(renderer.api)
     +(renderer.api==='webgpu'?' · аппаратный WebGPU':recoveredReason?' · WebGPU не запустился':'');
