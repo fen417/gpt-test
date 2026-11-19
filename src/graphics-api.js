@@ -19,12 +19,15 @@ export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDevic
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) throw new Error('Браузер не предоставил аппаратный WebGPU-адаптер.');
   // Request no optional extensions: weak GPUs must be able to start at Low.
-  const device = await adapter.requestDevice();
+  const timings = new URLSearchParams(globalThis.location?.search ?? '').has('perf');
+  const requiredFeatures = timings && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
+  const device = await adapter.requestDevice({ requiredFeatures });
   if (!device) throw new Error('Не удалось создать WebGPU device.');
   const { WebGPURenderer } = await import('three/webgpu');
   const renderer = new WebGPURenderer({
     canvas, device, antialias: antialias === 'on', alpha: false,
     stencil: false, powerPreference: 'high-performance',
+    trackTimestamp: requiredFeatures.includes('timestamp-query'),
   });
   renderer.onDeviceLost = info => onDeviceLost?.(info);
   try {
