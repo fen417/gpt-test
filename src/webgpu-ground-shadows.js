@@ -38,8 +38,10 @@ export class WebGpuGroundShadows {
     const NodeType=material.isMeshLambertMaterial?MeshLambertNodeMaterial:
       material.isMeshBasicMaterial?MeshBasicNodeMaterial:MeshStandardNodeMaterial;
     const nodeMaterial=new NodeType();
-    nodeMaterial.copy(material);
-    // NodeMaterial.copy(Material) copies common render state only. The source's
+    // Do not call NodeMaterial.copy() on a classic MeshStandard/Lambert material:
+    // it would assign fragmentNode=undefined and break TSL shader generation.
+    THREE.Material.prototype.copy.call(nodeMaterial,material);
+    // Native Material.copy copies common render state only. The source's
     // PBR/texturing properties must be forwarded explicitly.
     for(const key of ['color','map','emissive','emissiveIntensity','roughness','metalness',
       'normalMap','normalMapType','normalScale','bumpMap','bumpScale','roughnessMap',
