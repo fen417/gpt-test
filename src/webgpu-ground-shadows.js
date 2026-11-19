@@ -39,7 +39,19 @@ export class WebGpuGroundShadows {
       material.isMeshBasicMaterial?MeshBasicNodeMaterial:MeshStandardNodeMaterial;
     const nodeMaterial=new NodeType();
     nodeMaterial.copy(material);
-    nodeMaterial.userData.groundShadowPatched=true;
+    // NodeMaterial.copy(Material) copies common render state only. The source's
+    // PBR/texturing properties must be forwarded explicitly.
+    for(const key of ['color','map','emissive','emissiveIntensity','roughness','metalness',
+      'normalMap','normalMapType','normalScale','bumpMap','bumpScale','roughnessMap',
+      'metalnessMap','aoMap','aoMapIntensity','alphaMap','lightMap','lightMapIntensity',
+      'envMap','envMapIntensity','wireframe','flatShading','specularMap','specular',
+      'shininess','reflectivity','refractionRatio','displacementMap','displacementScale',
+      'displacementBias']){
+      if(!(key in material) || !(key in nodeMaterial))continue;
+      const value=material[key];
+      nodeMaterial[key]=value?.clone&&!value.isTexture?value.clone():value;
+    }
+    nodeMaterial.userData={...material.userData,groundShadowPatched:true};
     const uv=positionWorld.xz.div(this.span).add(vec2(.5));
     const inside=step(0,uv.x).mul(step(uv.x,1)).mul(step(0,uv.y)).mul(step(uv.y,1));
     const lightMask=this.sample.sample(clamp(uv,0,1)).r;
