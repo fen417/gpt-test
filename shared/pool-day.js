@@ -49,10 +49,14 @@ for(const side of [-1,1])for(const [i,weaponId] of armory.entries()){
     x:side*(15.0+column*6),z:-15.3+row*7.1,y:0,yaw:side<0?-Math.PI/2:Math.PI/2});
 }
 const spawns=[{x:-21.6,z:11.7},{x:21.6,z:11.7}];
-const spawnPoints=[
-  [[-22,15],[-20.8,12],[-22,9],[-18.7,16],[-17.7,10]],
-  [[22,15],[20.8,12],[22,9],[18.7,16],[17.7,10]],
-];
+// Valid object coordinates for authoritative TDM spawns. The original
+// [x,z] tuples were read as {x,z} and collapsed every participant at (0,0).
+// A dense, symmetric set gives 30+ fighters separate places in their own rooms.
+// Collision and proximity filtering happens in Simulation.respawn().
+const spawnXs=[14.4,16.6,18.8,21.0,23.2];
+const spawnZs=[-22.7,-19.8,-16.9,-13.9,-11.1,-8.4,-3.5,-.6,2.6,7.0,10.2,13.3,16.5,20.5,23.0];
+const spawnPoints=[-1,1].map(side=>spawnZs.flatMap(z=>
+  spawnXs.map(x=>({x:side*x,z}))));
 export const POOL_DAY_MAP={
   id:'fy_pool_day',name:'fy_pool_day · бассейн (WIP)',theme:'pool-day',size,playArea:{minX:-24.5,maxX:24.5,minZ:-24.5,maxZ:24.5},
   terrain,boxes,structures:[],landforms:[],landmarks:[
