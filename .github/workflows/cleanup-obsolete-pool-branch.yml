@@ -1,0 +1,23 @@
+name: Remove obsolete pool-day feature branch
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cleanup-obsolete-pool-branch.yml'
+permissions:
+  contents: write
+jobs:
+  remove-obsolete-feature-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify replacement branch and delete obsolete ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/branches/test" --jq .name
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/19" --jq .state | grep -qx closed
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feature/pool-day-tdm-foundation" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/feature/pool-day-tdm-foundation"
+          fi
+          echo "Obsolete feature branch is absent; test remains."
