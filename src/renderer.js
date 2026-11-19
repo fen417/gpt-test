@@ -774,7 +774,20 @@ export class GameRenderer {
             source.position.x-=bounds.getCenter(new THREE.Vector3()).x;
             source.position.y-=bounds.min.y;
             source.position.z-=bounds.getCenter(new THREE.Vector3()).z;
-            wrapper.traverse(object=>{if(object.isMesh){object.castShadow=false;object.receiveShadow=false;}});
+            // Procedural viewmodels share material instances whose finishes
+            // mutate when switching AR/AK/SMG. Freeze each weapon's appearance
+            // in its cached template rather than recolouring previous pickups.
+            const materials=new Map();
+            wrapper.traverse(object=>{
+              if(!object.isMesh)return;
+              const frozen=material=>{
+                if(!materials.has(material))materials.set(material,material.clone());
+                return materials.get(material);
+              };
+              if(Array.isArray(object.material))object.material=object.material.map(frozen);
+              else if(object.material)object.material=frozen(object.material);
+              object.castShadow=false;object.receiveShadow=false;
+            });
             wrapper.userData.procedural=true;
             template=wrapper;
             this.poolWeaponTemplates.set(item.weaponId,template);
