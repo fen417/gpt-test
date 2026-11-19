@@ -148,7 +148,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     grain(ctx, s, random, 9000, .09); stains(ctx, s, random);
   });
   const villageSand=surfaceTexture((ctx,size)=>drawVillageSurface(ctx,size,false)),villageStucco=surfaceTexture((ctx,size)=>drawVillageSurface(ctx,size,true));
-  const anisotropy = Math.min(anisotropyLimit, renderer.capabilities.getMaxAnisotropy());
+  const anisotropy = Math.min(anisotropyLimit, renderer.capabilities?.getMaxAnisotropy?.() ?? renderer.getMaxAnisotropy?.() ?? 1);
   for (const map of [concrete, brick, metal, asphalt, ground, cloth, wood,villageSand,villageStucco]) map.anisotropy = anisotropy;
   const normalTexture=name=>{
     const normalMap=bake?null:new THREE.Texture();
