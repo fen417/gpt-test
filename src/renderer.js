@@ -159,6 +159,7 @@ export class GameRenderer {
     this.api=webgpu?'webgpu':'webgl2';
     this.gpuName=webgpu?.gpuName??null;
     this.canvas = canvas;
+    this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
     this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality' };
     this.clock = 0;
     this.frameCount = 0;
@@ -1965,7 +1966,7 @@ export class GameRenderer {
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
       worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
       triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
-      visibleObjects:this.countVisibleObjects(),
+      visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
       fsrScale:post.fsrScale,sceneWidth:post.target.width,sceneHeight:post.target.height,
       integratedGpu:this.integratedGpu,gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext)
