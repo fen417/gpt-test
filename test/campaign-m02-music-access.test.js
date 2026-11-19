@@ -39,10 +39,18 @@ test('resuming the mission after a pause seeks into the correct part of the same
   assert.ok(Math.abs(p.offset-expected)<1e-7);
   assert.ok(p.offset>=music.loopStart&&p.offset<music.loopEnd);
 });
-test('campaign is initially hidden and accepts both keyboard codes',async()=>{
-  const s=await readFile(new URL('../src/main.js',import.meta.url),'utf8');
-  assert.match(s,/campaignButton\.className='home-play hidden';/);
-  assert.match(s,/debugWord\.endsWith\('debug'\)\|\|debugWord==='unlock'/);
-  assert.match(s,/if\(debugWord==='unlock'\)unlockCampaignMissions=true/);
-  assert.match(s,/openCampaignMenu\(startCampaign,\{unlockAll:unlockCampaignMissions\}\)/);
+test('campaign is visible first in main menu without a debug sequence',async()=>{
+  const [code,html]=await Promise.all([
+    readFile(new URL('../src/main.js',import.meta.url),'utf8'),
+    readFile(new URL('../index.html',import.meta.url),'utf8'),
+  ]);
+  const nav=html.match(/<nav class="home-nav"[^>]*>(.*?)<\/nav>/s)?.[1];
+  assert.ok(nav,'the main menu must exist');
+  assert.deepEqual([...nav.matchAll(/id="(open-campaign|open-solo|join-toggle|menu-settings)"/g)].map(m=>m[1]),
+    ['open-campaign','open-solo','join-toggle','menu-settings']);
+  assert.match(nav,/В разработке/);
+  assert.doesNotMatch(nav,/open-campaign" class="home-play hidden"/);
+  assert.match(code,/const campaignButton=\$\('open-campaign'\)/);
+  assert.doesNotMatch(code,/debugWord\.endsWith\('debug'\)/);
+  assert.match(code,/openCampaignMenu\(startCampaign,\{unlockAll:unlockCampaignMissions\}\)/);
 });

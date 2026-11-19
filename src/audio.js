@@ -1,19 +1,12 @@
-// Menu soundtrack, procedural battle ambience and local firearm recordings.
+// Menu soundtrack, sound effects, ambience and local firearm recordings.
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
 import { getMap } from '../shared/world.js';
 export const MENU_MUSIC_TITLE = 'Quiet Resolve';
 const MENU_MUSIC_URL=new URL('./assets/audio/music/quiet-resolve.m4a',import.meta.url);
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
 const midi = n => 440 * 2 ** ((n - 69) / 12);
-const BEAT = 60 / 82, EPSILON = .00001, MAX_VOICES = 56, MUSIC_VOICES = 14;
+const EPSILON = .00001, MAX_VOICES = 56, MUSIC_VOICES = 14;
 const VOICE_FADE = .012, MAX_FADING_VOICES = 8;
-const HARMONY = [
-  [38, [50, 53, 57, 64]], [34, [46, 50, 53, 57]],
-  [41, [48, 53, 57, 60]], [36, [48, 53, 55, 60]],
-  [38, [50, 53, 57, 62]], [31, [43, 50, 53, 57]],
-  [34, [46, 50, 53, 60]], [33, [45, 52, 57, 58]],
-];
-const MELODY = [74,0,69,0,65,0,64,0,62,0,0,69,67,0,65,0,69,0,72,0,74,0,0,77,76,0,72,0,69,0,0,0];
 const WEAPONS = {
   ar416: { sample: 'rifle-light', rate: 1, gain: .92, cutoff: 17000 },
   ak12: { sample: 'rifle-heavy', rate: 1, gain: .94, cutoff: 16000 },
@@ -102,7 +95,7 @@ export class CombatAudio {
     this.ctx=null; this.seen=new Set(); this.lastShot=-1;
     this._volume=.35; this._musicVolume=.62; this._effectsVolume=.85; this._enabled=true;
     this._mode='menu'; this._voices=new Set(); this._ambientSources=[]; this._buffers=new Map(); this._nodes=[];
-    this._scheduler=null; this._nextMusic=0; this._musicStep=0; this._disposed=false;
+    this._scheduler=null; this._disposed=false;
     this._menuTrack=null;this._menuPlayPending=false;
     this._lastStateTime=-1; this._lastMovementTime=-1; this._lastPosition=null;
     this._stride=0; this._leftFoot=false; this._falling=false; this._aim=false;
@@ -143,7 +136,7 @@ export class CombatAudio {
       }
       if(this.ctx.state!=='running')await this.ctx.resume();
       if(!this._scheduler){
-        this._nextMusic=this.ctx.currentTime+.08;
+        // Scheduler is for queued effects only; battle background music was removed.
         this._scheduler=setInterval(()=>this._schedule(),100);this._schedule();
       }
       this._syncMenuMusic();
@@ -220,9 +213,12 @@ export class CombatAudio {
   setMode(mode){
     const next=mode==='battle'?'battle':'menu';if(next===this._mode)return;
     this._stopRocketAudio();this._mode=next;this._lastPosition=null;this._stride=0;this._falling=false;this._suppressedUntil=0;
-    this._pending=next==='menu'?[]:this._pending.filter(sound=>sound.options.bus==='music');
-    for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);
-    if(next==='menu')for(const voice of this._voices)if(voice.bus==='music')this._fadeVoice(voice,.08);
+    this._pending=[];
+    // Kill any residual queued/generated music on either transition.
+    for(const voice of [...this._voices]){
+      if(voice.bus==='music')this._releaseVoice(voice,true);
+      else this._releaseVoice(voice,true);
+    }
     this.seen.clear();this._lastStateTime=-1;this._mix();
     if(this.ctx&&this._enabled&&next==='battle'){
       this._tone(78,1.15,.13,{end:37,send:.3});this._noise(.9,.08,{cutoff:480,send:.35});
@@ -384,29 +380,6 @@ export class CombatAudio {
       if(sound.kind==='tone')this._tone(sound.frequency,sound.duration,sound.gain,sound.options);
       else this._noise(sound.duration,sound.gain,sound.options);
     }
-    if(this._nextMusic<now-.3)this._nextMusic=now+.08;let scheduled=0;
-    while(this._nextMusic<now+.32&&scheduled++<8){
-      if(this._mode==='battle'&&!this.campaignMusicOverride&&this._enabled&&this._musicVolume>0)this._musicTick(this._musicStep,this._nextMusic);
-      this._musicStep=(this._musicStep+1)%256;this._nextMusic+=BEAT/2;
-    }
-  }
-  _musicTick(step,time){
-    const bar=Math.floor(step/8),eighth=step%8,[bass,notes]=HARMONY[Math.floor(bar/4)],section=Math.floor(bar/8),o={time,bus:'music',send:.4};
-    if(eighth===0&&bar%2===0){
-      notes.forEach((note,index)=>this._tone(midi(note),BEAT*8+.8,.041,{...o,type:'triangle',cutoff:760+section*90,attack:1.05,sustain:1.3,pan:(index-1.5)*.37,detune:index%2?5:-5}));
-      this._tone(midi(bass),BEAT*7.7,.052,{...o,attack:.55,sustain:1,cutoff:190});
-    }
-    if(eighth%2===0||(section>=2&&eighth===7))this._tone(midi(bass+(eighth===6?12:0)),BEAT*.48,.105,{...o,type:'triangle',cutoff:310,endCutoff:95,send:.06,attack:.012});
-    const note=MELODY[((bar%8)*4+Math.floor(eighth/2))%MELODY.length];
-    if(eighth%2===0&&note&&(bar%4>=1||section>0)){
-      const transpose=[1,6].includes(Math.floor(bar/4))?-2:0;
-      this._tone(midi(note+transpose),1.45,.075,{...o,attack:.004,cutoff:2500,pan:Math.sin(bar*.8)*.42,send:.65});
-      this._tone(midi(note+transpose+12),.32,.011,{...o,type:'triangle',cutoff:2900,pan:-.25,send:.42});
-    }
-    if(section>=1&&(eighth===0||eighth===4)){this._tone(98,.27,.15,{...o,end:36,send:.16});this._noise(.035,.065,{...o,cutoff:1100,send:.06});}
-    if(section>=1&&(eighth===2||eighth===6)){this._noise(.18,.073,{...o,filter:'bandpass',cutoff:1600,q:.7,pan:-.12,send:.5});this._tone(170,.09,.025,{...o,end:110,type:'triangle',send:.2});}
-    if(section>=2&&(eighth%2||section===3))this._noise(.042,eighth%2?.023:.013,{...o,filter:'highpass',cutoff:6500,pan:.3,send:.12});
-    if(bar===31&&eighth===7)this._noise(.42,.055,{...o,color:'pink',filter:'bandpass',cutoff:1900,attack:.25,send:.65});
   }
   _position(event,local){
     if(!local||(event.playerId!=null&&event.playerId===local.id))return {distance:0,pan:0,gain:1};
@@ -951,8 +924,8 @@ export class CombatAudio {
       else{const bytes=new Uint8Array(this._meter.length);this._analyser.getByteTimeDomainData(bytes);for(let i=0;i<bytes.length;i++)this._meter[i]=(bytes[i]-128)/128;}
       for(const sample of this._meter){peak=Math.max(peak,Math.abs(sample));rms+=sample*sample;}rms=Math.sqrt(rms/this._meter.length);
     }
-    return {state:this.ctx?.state||'locked',mode:this._mode,score:this._mode==='menu'?MENU_MUSIC_TITLE:'AFTER THE RAIN',activeVoices:this._voices.size,queuedSounds:this._pending.length,voiceLimit:MAX_VOICES,
-      musicPlaying:Boolean(this.ctx?.state==='running'&&this._enabled&&this._volume>0&&this._musicVolume>0&&(this._mode==='menu'?this._menuTrack&&!this._menuTrack.paused:this._scheduler)),
+    return {state:this.ctx?.state||'locked',mode:this._mode,score:this._mode==='menu'?MENU_MUSIC_TITLE:null,activeVoices:this._voices.size,queuedSounds:this._pending.length,voiceLimit:MAX_VOICES,
+      musicPlaying:Boolean(this.ctx?.state==='running'&&this._enabled&&this._volume>0&&this._musicVolume>0&&this._mode==='menu'&&this._menuTrack&&!this._menuTrack.paused),
       master:this._volume,music:this._musicVolume,effects:this._effectsVolume,peak,rms,
       shotSamples:[...this._shotBuffers.values()].reduce((count, variants)=>count+variants.length,0),shotLoadFailures:this._shotLoadFailures,shotGroups:[...this._shotBuffers].filter(([,variants])=>variants.length).map(([name])=>name),foleyLoadFailures:this._foleyLoadFailures,shots:{...this._shotStats},fadingVoices:this._fadingVoices.size};
   }

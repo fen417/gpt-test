@@ -263,7 +263,7 @@ function setMusic(){audio.setMusicVolume?.(musicMuted?0:musicVolume);musicUI();}
 document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('#music-toggle'))unlockAudio();},{once:true});
 document.addEventListener('keydown',event=>{if(!event.target.closest?.('#music-toggle'))unlockAudio();},{once:true});
 function local(){return state?.players.find(p=>p.id===localId);}
-function setBusy(value){busy=value;for(const id of ['solo','open-solo','host','join-toggle'])$(id).disabled=value;}
+function setBusy(value){busy=value;for(const id of ['solo','open-solo','host','join-toggle','open-campaign'])$(id).disabled=value;}
 function clearControls(){keys.clear();pulses.clear();fire=false;fireTap=false;aim=false;recoilPitch=0;recoilYaw=0;if(active&&localId){const neutral={yaw,pitch};simulation?.client.clearInput(neutral);multiplayer.clearInput(neutral);}}
 function aimAngles(){
   return { yaw:yaw+recoilYaw, pitch:Math.max(-1.45,Math.min(1.45,pitch+recoilPitch)) };
@@ -629,10 +629,8 @@ async function startCampaign(options){
     setBusy(false);throw error;
   }}
 }
-// The hidden entry listens only on the home screen, outside text fields/dialogs.
-const campaignButton=document.createElement('button');campaignButton.id='open-campaign';campaignButton.type='button';campaignButton.className='home-play hidden';campaignButton.setAttribute('aria-haspopup','dialog');
-campaignButton.innerHTML='<span class="nav-index">04</span><span><b>Кампания</b><small>Песок и сталь · 8 миссий</small></span><span class="nav-arrow">↗</span>';
-document.querySelector('.home-nav').append(campaignButton);
+// Campaign is always visible as the first main menu entry.
+const campaignButton=$('open-campaign');
 let unlockCampaignMissions=false;
 async function showCampaignMenu(){
   try{
@@ -647,10 +645,11 @@ document.addEventListener('keydown',event=>{
   const now=performance.now();if(now-debugAt>2500)debugWord='';debugAt=now;
   const letter=/^Key[A-Z]$/.test(event.code)?event.code.slice(3).toLowerCase():'';
   debugWord=(debugWord+letter).slice(-6);
-  if(debugWord.endsWith('debug')||debugWord==='unlock'){
-    if(debugWord==='unlock')unlockCampaignMissions=true;
-    campaignButton.classList.remove('hidden');debugWord='';audio.click();
-    toast(unlockCampaignMissions?'Все миссии открыты.':'Кампания открыта.');
+  // The optional "unlock" development cheat can bypass mission progression;
+  // normal campaign access no longer requires DEBUG or any key sequence.
+  if(debugWord==='unlock'){
+    unlockCampaignMissions=true;debugWord='';audio.click();
+    toast('Все доступные миссии открыты.');
   }
 });
 async function serverAddress(){

@@ -16,19 +16,19 @@ try{
     await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
     const campaignEntry=page.locator('#open-campaign');
     await campaignEntry.waitFor({state:'attached',timeout:60000});
-    assert.equal(await campaignEntry.isVisible(),false,
-      'campaign must be hidden in the main menu before entering the debug sequence');
-    await page.keyboard.type('debu');
-    assert.equal(await campaignEntry.isVisible(),false,
-      'campaign must not unlock on an incomplete debug sequence');
-    await page.keyboard.type('g');
     assert.equal(await campaignEntry.isVisible(),true,
-      'typing debug on the main menu must reveal campaign');
+      'campaign must be the visible first main menu entry without DEBUG');
+    assert.equal(await page.locator('.home-nav > button').first().getAttribute('id'),'open-campaign');
     await campaignEntry.click();
     const dialog=page.locator('.campaign-map-screen');
     await dialog.waitFor({state:'visible',timeout:25000});
     assert.equal(await dialog.locator('.campaign-map-mission').count(),8,'all eight missions must have cards');
+    assert.match(await dialog.locator('.campaign-development-note').innerText(),/В РАЗРАБОТКЕ/);
+    for(const [missionId,percent] of [['m01',80],['m02',70],['m03',45],['m04',15]]){
+      assert.match(await dialog.locator(`[data-mission="${missionId}"]`).innerText(),new RegExp(`${percent}%`));
+    }
     await dialog.locator('[data-mission="m02"]').click();
+    assert.match(await dialog.locator('.campaign-readiness-text').innerText(),/70%/);
     assert.match(await dialog.locator('.campaign-mission-title').innerText(),/Рассвет над Аль-Хадрой/);
     assert.equal(await dialog.locator('.campaign-play').isDisabled(),false,'dev ?unlockAll must enable m02');
     await page.screenshot({path:`artifacts/campaign-map/${width}x${height}.png`,fullPage:false});
