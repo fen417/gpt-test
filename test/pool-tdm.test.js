@@ -21,6 +21,32 @@ test('pool TDM spawns with zero weapons, grenades, rockets and ammo',()=>{
   assert.equal(sim.weaponItems.length,20);
   assert.equal(sim.points.length,0);
 });
+test('all 32 TDM participants spawn on their own side, collision-free and separated',()=>{
+  const sim=new Simulation({bots:31,mapId:'fy_pool_day',gameMode:'tdm',random:()=>.4});
+  sim.addPlayer('local','Rookie',0);
+  const players=[...sim.players.values()];
+  assert.equal(players.length,32);
+  for(const p of players){
+    assert.equal(p.alive,true,'failed to place '+p.id);
+    assert.ok(Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z),'non-finite spawn for '+p.id);
+    assert.ok(p.team===0?p.x<0:p.x>0,'wrong team side for '+p.id);
+    assert.equal(sim.collides(p.x,p.z,p.y),false,'spawn inside wall for '+p.id);
+  }
+  for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){
+    const a=players[i],b=players[j],distance=Math.hypot(a.x-b.x,a.z-b.z);
+    assert.ok(distance>=1.69,`overlap ${a.id} vs ${b.id}: ${distance}`);
+  }
+});
+test('TDM respawn uses another safe side coordinate, not shared map origin',()=>{
+  const {sim,red,blue}=create();
+  const first={x:red.x,z:red.z};
+  red.alive=false;red.respawnIn=0;
+  assert.equal(sim.respawn(red.id),true);
+  assert.ok(red.x<0&&Number.isFinite(red.z));
+  assert.ok(Math.hypot(red.x-blue.x,red.z-blue.z)>=7);
+  assert.ok(Math.hypot(red.x,red.z)>10);
+  assert.ok(Number.isFinite(first.x)&&Number.isFinite(first.z));
+});
 test('atomic pickup and respawn with independent primary and pistol slots',()=>{
   const {sim,red,blue}=create();
   const rifle=sim.weaponItems.find(i=>i.weaponId==='ar416');
