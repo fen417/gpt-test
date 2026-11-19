@@ -1646,6 +1646,9 @@ try{
   await loadFPSHands();
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto')});renderer.resize();window.addEventListener('resize',()=>renderer.resize());
   renderer.gpuTimer.enabled=perfPanel.enabled;
+  if(new URLSearchParams(location.search).has('poolScreenshot')){
+    window.__S09_POOL_REVIEW={renderer,snapshot:()=>state};
+  }
   if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';document.body.classList.toggle('low-quality',true);}
   initializeMapPickers();
   setBattleMap(DEFAULT_MAP_ID,true);
