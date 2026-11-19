@@ -20,3 +20,24 @@ jobs:
         run: node --test test/pool-tdm.test.js
       - name: Build browser game
         run: npm run build
+      - name: Install headless Chromium
+        run: |
+          npm install --no-save playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Start local browser game
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/pool-vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5173/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/pool-vite.log
+          exit 1
+      - name: Browser smoke test and overview
+        run: node scripts/verify-pool-day.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pool-day-tdm-review-screenshots
+          path: artifacts/pool-day/
+          if-no-files-found: ignore
