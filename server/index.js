@@ -12,7 +12,7 @@ import { Reader, Writer } from '../shared/binary.js';
 
 const bounded=(value,min,max,fallback)=>Number.isFinite(Number(value))?Math.max(min,Math.min(max,Number(value))):fallback;
 const clean=(s,fallback,max=40)=>String(s??fallback).replace(/[<>\x00-\x1f\x7f]/g,'').trim().slice(0,max)||fallback;
-const pulses=['fire','interact','switchSeat','horn','order','grenade','reload','gadget','secondaryGadget'];
+const pulses=['fire','interact','switchSeat','horn','order','grenade','drop','reload','gadget','secondaryGadget'];
 const token=()=>randomBytes(24).toString('base64url');
 const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 
