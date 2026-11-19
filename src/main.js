@@ -6,6 +6,7 @@ import { drawBotDebug } from './bot-debug.js';
 import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isSupplyGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
+import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
 import {Multiplayer,configuredServerUrl,normalizeServerUrl} from './network.js';
@@ -766,6 +767,14 @@ function syncFsrSettings(){
   $('gfx-resolution').disabled=enabled; // FSR owns the internal render scale.
 }
 syncFsrSettings();
+const apiSelector=$('gfx-api');
+apiSelector.value=preferredGraphicsApi();
+apiSelector.addEventListener('change',()=>{
+  const next=apiSelector.value;
+  save('gfx-api',next);
+  try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
+  location.reload();
+});
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
 $('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);toast('Сглаживание применится после перезагрузки страницы.');});
 $('volume').value=read('volume','0.5');audio.volume=Number($('volume').value);
@@ -1654,9 +1663,41 @@ function frame(now){
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
   if(active){renderer.lastCpuMs=performance.now()-cpuBegin;cpuTimes.add(renderer.lastCpuMs);}
 }
+let webgpuAttempted=false;
+function recoverWebGpu(error) {
+  const message=String(error?.message??error??'WebGPU device lost').slice(0,280);
+  console.error('[SECTOR 09] Switching back to WebGL 2:',message);
+  try {sessionStorage.setItem('sector09-webgpu-failed',message);}catch{}
+  location.reload();
+}
 try{
   await loadFPSHands();
-  renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto')});renderer.resize();window.addEventListener('resize',()=>renderer.resize());
+  let gpuOptions=null;
+  const requested=preferredGraphicsApi();
+  let recoveredReason=null;
+  try{recoveredReason=sessionStorage.getItem('sector09-webgpu-failed');}catch{}
+  if(requested==='webgpu'&&!recoveredReason) {
+    webgpuAttempted=true;
+    const [
+      {WebGpuPostPass},{makeWebGpuSky},
+      {WebGpuGroundShadows},{createWebGpuSmokeMaterial}
+    ]=await Promise.all([
+      import('./webgpu-post-pass.js'),import('./webgpu-sky.js'),
+      import('./webgpu-ground-shadows.js'),import('./webgpu-smoke.js')
+    ]);
+    const instance=await createWebGpuRenderer(canvas,{
+      antialias:read('gfx-aa','auto'),
+      onDeviceLost:recoverWebGpu,
+    });
+    gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,
+      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial};
+  }
+  renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
+  renderer.resize();window.addEventListener('resize',()=>renderer.resize());
+  $('gfx-api-active').textContent='Используется: '+graphicsApiName(renderer.api)
+    +(renderer.api==='webgpu'?' · аппаратный WebGPU':recoveredReason?' · WebGPU не запустился':'');
+  if(recoveredReason)toast('WebGPU недоступен ('+recoveredReason+'). Игра запущена через WebGL 2.');
+
   renderer.gpuTimer.enabled=perfPanel.enabled;
   if(new URLSearchParams(location.search).has('poolScreenshot')){
     window.__S09_POOL_REVIEW={renderer,snapshot:()=>state};
@@ -1665,4 +1706,11 @@ try{
   initializeMapPickers();
   setBattleMap(DEFAULT_MAP_ID,true);
   selectClass(selectedClass,false);updateKeybindUI();audio.setMode?.('menu');status('Сектор готов к высадке.');requestAnimationFrame(frame);
-}catch(error){console.error(error);status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);$('solo').disabled=true;$('host').disabled=true;}
+}catch(error){
+  console.error(error);
+  if(webgpuAttempted){recoverWebGpu(error);}
+  else{
+    status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);
+    $('solo').disabled=true;$('host').disabled=true;
+  }
+}
