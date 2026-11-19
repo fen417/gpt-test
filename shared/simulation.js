@@ -1167,7 +1167,7 @@ export class Simulation {
     const players=[...this.players.values()].map(p=>{
       const wep=getWeapon(p.classId,p.weaponId);
       return {
-        id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:p.weaponId||wep.id,primaryWeaponId:p.primaryWeaponId,sidearmId:p.sidearmId,weaponSlot:p.weaponSlot,equipTime:p.equipTime,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
+        id:p.id,name:p.name,team:p.team,classId:p.classId,weaponId:this.gameMode==='tdm'?p.weaponId:p.weaponId||wep.id,primaryWeaponId:p.primaryWeaponId,sidearmId:p.sidearmId,weaponSlot:p.weaponSlot,equipTime:p.equipTime,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,
         hp:p.hp,alive:p.alive,reviveSeq:p.reviveSeq??0,orderKind:this.squadOrders?.get(p.team+'/'+p.squadId)?.kind??null,orderPointId:this.squadOrders?.get(p.team+'/'+p.squadId)?.pointId??null,squadId:p.squadId,squadLeader:p.squadLeader,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
         cooldown:p.cooldown,bloom:p.bloom,lastShotAt:p.lastShotAt,shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
