@@ -1598,7 +1598,7 @@ export class GameRenderer {
         this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
         this.postPass.begin(this.quality);
         try {
-          generator?.beginWorld();
+          generator?.beginWorld(this.scene);
           drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
         } finally {generator?.endWorld();}
         this.postPass.end(this.clock,this.quality);
