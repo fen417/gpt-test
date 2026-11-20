@@ -339,9 +339,13 @@ function updateLobby(){
   const isHost=state.ownerId===localId;
   const difficultyLabel={recruit:'Новобранцы',regular:'Обычные бойцы',veteran:'Ветераны'}[state.difficulty]??'Обычные бойцы';
   text('lobby-role-badge',isHost?'Создатель комнаты':'Участник');
-  text('lobby-status',`Захват территории · Игроки: ${humans.length} · Боты: ${bots.length}`);
+  const lobbyMode=state.gameMode==='tdm'||Boolean(currentMap.tdmLoadout)?'Командный бой насмерть':'Захват территории';
+  text('lobby-game-mode',lobbyMode);
+  text('lobby-status',`${lobbyMode} · Игроки: ${humans.length} · Боты: ${bots.length}`);
   text('lobby-map-name',currentMap.name);
-  text('lobby-map-info',`${currentMap.size} × ${currentMap.size} м · Точки: ${currentMap.points.length}`);
+  text('lobby-map-info',currentMap.tdmLoadout
+    ?`${currentMap.size} × ${currentMap.size} м · TDM · до ${state.killLimit??50} убийств`
+    :`${currentMap.size} × ${currentMap.size} м · Точки: ${currentMap.points.length}`);
   text('lobby-bot-summary',`Боты: ${bots.length} · ${difficultyLabel}`);
   const art=MAP_ART[currentMap.id]??MAP_ART.quarry;
   if($('lobby-map-art').getAttribute('src')!==art)$('lobby-map-art').src=art;

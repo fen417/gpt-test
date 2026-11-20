@@ -19,7 +19,23 @@ try{
   assert.equal(await page.locator('#solo-mode').inputValue(),'tdm');
   await page.locator('#solo').click();
   await page.waitForFunction(()=>!document.getElementById('hud').classList.contains('hidden'),null,{timeout:45000});
-  await page.waitForFunction(()=>document.getElementById('weapon-name').textContent.includes('БЕЗ ОРУЖИЯ'),null,{timeout:30000});
+  try {
+    await page.waitForFunction(()=>document.getElementById('weapon-name').textContent.includes('БЕЗ ОРУЖИЯ'),null,{timeout:30000});
+  } catch (error) {
+    console.error('POOL START DIAGNOSTICS',JSON.stringify(await page.evaluate(()=>{
+      const review=window.__S09_POOL_REVIEW;
+      const snapshot=review?.snapshot();
+      return {
+        hudHidden:document.getElementById('hud')?.classList.contains('hidden'),
+        weaponName:document.getElementById('weapon-name')?.textContent,
+        mapId:snapshot?.mapId,mode:snapshot?.gameMode,
+        players:snapshot?.players?.slice(0,2).map(p=>({id:p.id,alive:p.alive,weaponId:p.weaponId,x:p.x,z:p.z})),
+        reviewPresent:!!review,rendererMap:review?.renderer?.map?.id,
+      };
+    })),errors);
+    await page.screenshot({path:'artifacts/pool-day/startup-diagnostic.png'}).catch(()=>{});
+    throw error;
+  }
   // Verify that the actual PROCEDURAL firearms exist in the world after
   // gameplay starts, rather than counting pickup metadata or placeholder boxes.
   await page.waitForFunction(()=>{
