@@ -3,8 +3,8 @@ import {CampaignAudio} from './audio.js';
 import {prepareViewModel} from '../viewmodel.js';
 import {cinematicCameraPose} from './camera.js';
 import {createCampaignTruck,groundCampaignTruck,burnCampaignTruck} from './props.js';
-import {createVehicleRig,updateVehicleRig,disposeVehicleRig} from '../vehicles.js';
-import {VEHICLE_TYPES} from '../../shared/vehicles.js';
+import {createVehicleRig,updateVehicleRig,disposeVehicleRig,tankAssetsReady} from '../vehicles.js';
+import {vehicleBodyTilt} from '../../shared/vehicles.js';
 import {CampaignFire} from './fire.js';
 import {placeCampaignMarker} from './markers.js';
 import {SIDEARMS,WEAPONS} from '../../shared/world.js';
@@ -28,6 +28,8 @@ export class CampaignPresentation {
     this.original={environment:renderer.scene.environment,environmentIntensity:renderer.scene.environmentIntensity,sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,sunColor:renderer.sun.color.clone(),hemiColor:renderer.hemiLight.color.clone(),groundColor:renderer.hemiLight.groundColor.clone(),sunOffset:renderer.sunOffset.clone(),skyVisible:renderer.atmosphere.sky.visible,
       background:renderer.scene.background?.clone(),fog:renderer.scene.fog?.color.clone(),fogDensity:renderer.scene.fog?.density};
     this.dawnColors=Object.fromEntries(Object.entries(presets).map(([key,values])=>[key,Object.fromEntries(['fog','sun','hemi','ground'].map(name=>[name,new THREE.Color(values[name])]))]));
+    const finale=this.definition.cutscenes.finale;
+    this.convoyRevealAt=finale.lines.find(([,key])=>key===finale.convoy?.cue)?.[0]??Infinity;
     this.props=new THREE.Group();this.props.name='campaign-only-props';renderer.scene.add(this.props);
     this.materials=[];this.geometries=[];this.textures=[];this.fuelMeshes=new Map();this.barrelMeshes=new Map();this.truckMeshes=new Map();this.charges=new Map();this.buildProps();
     this.renderHook=(r,state,dt)=>this.render(r,state,dt);
@@ -70,15 +72,12 @@ export class CampaignPresentation {
       if(i){const [ax,az]=points[i-1],line=new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(x-ax,z-az),.015,.025),red);this.geometries.push(line.geometry);line.position.set(-80+(ax+x)/2,ground(-80,-30)+1.22,-30+(az+z)/2);line.rotation.y=-Math.atan2(z-az,x-ax);this.mapRoute.add(line);}
     }
     this.mapRoute.rotation.y=Math.PI;this.mapRoute.position.set(-160,0,-60);
-    // The finale uses actual recognisable Humvees and ATVs, created only
-    // when needed rather than loading more vehicle meshes during the mission.
     this.horizon=new THREE.Group();this.props.add(this.horizon);
     this.horizon.visible=false;this.finalConvoy=null;
   }
   ensureFinalConvoy(){
     if(this.finalConvoy)return;
     this.finalConvoy=[];
-    const makeMaterial=(color,roughness=.85,metalness=0,extra={})=>new THREE.MeshStandardMaterial({color,roughness,metalness,...extra});
     const dust=document.createElement('canvas');dust.width=dust.height=64;
     const ctx=dust.getContext('2d'),radial=ctx.createRadialGradient(32,32,2,32,32,31);
     radial.addColorStop(0,'rgba(170,147,115,0.50)');
@@ -86,8 +85,8 @@ export class CampaignPresentation {
     radial.addColorStop(1,'rgba(145,125,100,0)');
     ctx.fillStyle=radial;ctx.fillRect(0,0,64,64);
     this.convoyDustTexture=new THREE.CanvasTexture(dust);this.textures.push(this.convoyDustTexture);
-    for(const [index,type] of ['humvee','atv','humvee','atv','humvee'].entries()){
-      const rig=createVehicleRig(type,makeMaterial,[0x71846b,0x84705a]);
+    for(let index=0;index<6;index++){
+      const rig=createVehicleRig('tank');
       this.horizon.add(rig.group);
       const clouds=[];
       for(let i=0;i<3;i++){
@@ -95,27 +94,33 @@ export class CampaignPresentation {
         this.materials.push(material);
         const sprite=new THREE.Sprite(material);this.horizon.add(sprite);clouds.push(sprite);
       }
-      this.finalConvoy.push({rig,type,index,clouds});
+      this.finalConvoy.push({rig,index,clouds});
     }
   }
   drawFinalConvoy(elapsed,dt,terrain){
     this.ensureFinalConvoy();
-    const progress=THREE.MathUtils.smoothstep(elapsed,3,29);
-    for(const {rig,type,index,clouds} of this.finalConvoy){
-      const x=257+index*8-progress*33;
-      const z=155+(index%3-1)*5+progress*5+index*.85;
-      const y=terrain?.heightAt(x,z)??0;
-      const spec=VEHICLE_TYPES[type],seats=spec.seats.map((_,seat)=>seat<2?'enemy-'+index+'-'+seat:null);
-      updateVehicleRig(rig,{id:'final-'+index,type,team:1,x,y,z,yaw:1.95,speed:5,steer:0,
-        hp:100,maxHp:100,seats,modelScale:{x:.91,y:.91,z:.91},
-        aimYaw:1.95,aimPitch:0,gunSeq:0},null,dt,1,{},false,terrain);
+    const {duration,route:[[startX,startZ],[endX,endZ]]}=this.definition.cutscenes.finale.convoy;
+    const progress=THREE.MathUtils.clamp(elapsed/duration,0,1);
+    const dx=endX-startX,dz=endZ-startZ;
+    const travel=Math.hypot(dx,dz),ux=dx/travel,uz=dz/travel,yaw=Math.atan2(-ux,-uz);
+    for(const {rig,index,clouds} of this.finalConvoy){
+      const row=Math.floor(index/2)*8.5,lane=(index%2-.5)*7;
+      const x=startX+progress*dx-row*ux-lane*uz;
+      const z=startZ+progress*dz-row*uz+lane*ux;
+      const y=terrain.heightAt(x,z),vehicle={type:'tank',team:1,camo:'desert',controlScheme:'wot',x,y,z,yaw,
+        speed:travel/duration,steer:0,hp:100,maxHp:100,aimYaw:yaw,aimPitch:0,gunSeq:0};
+      Object.assign(vehicle,vehicleBodyTilt(vehicle,terrain));
+      updateVehicleRig(rig,vehicle,null,dt,1,{},false,terrain);
       clouds.forEach((sprite,i)=>{
         const phase=(elapsed*.17+index*.21+i/3)%1;
-        sprite.position.set(x+Math.sin(1.95)*((i+1)*3+phase*4),y+.9+phase*2.3,z+Math.cos(1.95)*((i+1)*3+phase*4));
+        const trail=(i+1)*3+phase*4;
+        sprite.position.set(x-ux*trail,y+.9+phase*2.3,z-uz*trail);
         sprite.scale.set(5+phase*11,2.5+phase*7,1);
         sprite.material.opacity=Math.sin(phase*Math.PI)*.27;
       });
     }
+    const x=startX+progress*dx-ux*8.5,z=startZ+progress*dz-uz*8.5;
+    return new THREE.Vector3(x,terrain.heightAt(x,z)+1.7,z);
   }
   key(event){
     const m=this.session.state?.campaign;if(!m)return false;
@@ -159,7 +164,7 @@ export class CampaignPresentation {
       if(m.awaitingLoadout)this.$('[data-primary]').focus();
     }
     this.blocking=blocking;
-    this.audio.update(state,this.locale,paused||m.awaitingLoadout||m.complete);
+    this.audio.update(state,this.locale,paused||m.awaitingLoadout);
   }
   render(r,state,dt){
     const m=state.campaign;if(!m)return;
@@ -180,17 +185,24 @@ export class CampaignPresentation {
     r.sun.intensity=lerp('sunPower');blend('sun',r.sun.color);
     r.hemiLight.intensity=lerp('hemiPower');blend('hemi',r.hemiLight.color);blend('ground',r.hemiLight.groundColor);
     r.ambientLight.intensity=lerp('ambient');r.scene.environmentIntensity=lerp('environment');
-    if(m.nightVision&&!m.cutscene){
-      r.scene.background.setRGB(.025,.115,.045);r.scene.fog.color.copy(r.scene.background);r.scene.fog.density=.0068;
-      r.sun.intensity=.22;r.sun.color.setRGB(.22,.72,.31);r.hemiLight.intensity=1.25;r.hemiLight.color.setRGB(.3,1,.45);
-      r.hemiLight.groundColor.setRGB(.04,.22,.08);r.ambientLight.intensity=.42;r.scene.environmentIntensity=.22;
+    if(m.nightVision&&!m.cutscene&&!m.complete&&!m.failed){
+      const glare=THREE.MathUtils.smoothstep(dawn,.45,.82);
+      r.scene.background.setRGB(.025+glare*.51,.115+glare*.76,.045+glare*.5);
+      r.scene.fog.color.copy(r.scene.background);
+      r.scene.fog.density=.081;
+      r.sun.intensity=.22+glare*2.6;r.sun.color.setRGB(.22+glare*.55,.72+glare*.28,.31+glare*.53);
+      r.hemiLight.intensity=1.25+glare;r.hemiLight.color.setRGB(.3+glare*.48,1,.45+glare*.34);
+      r.hemiLight.groundColor.setRGB(.04+glare*.6,.22+glare*.57,.08+glare*.54);
+      r.ambientLight.intensity=.42+glare*.56;r.scene.environmentIntensity=.22;
+      r.renderer.toneMappingExposure*=1+glare*1.65;
     }
     r.sunOffset.set(-90+19*dawn,48+12*dawn,65+14*dawn);
     if(this.lightApplied===undefined||Math.abs(this.lightApplied-dawn)>.015){r.sun.shadow.needsUpdate=true;this.lightApplied=dawn;}
     this.beacon.visible=Math.sin(state.time*5.1)+Math.sin(state.time*11.9)>-.2;
     const briefing=m.cutscene?.id==='briefing';this.table.visible=this.mapSheet.visible=this.mapRoute.visible=briefing;for(const leg of this.tableLegs)leg.visible=briefing;
-    this.horizon.visible=m.cutscene?.id==='finale';
-    if(this.horizon.visible)this.drawFinalConvoy(m.cutscene.elapsed??0,dt,r.map.terrain);
+    const convoyShot=m.cutscene?.id==='finale'&&m.cutscene.elapsed>=this.convoyRevealAt;
+    this.horizon.visible=convoyShot&&tankAssetsReady();
+    const convoyTarget=this.horizon.visible?this.drawFinalConvoy(m.cutscene.elapsed-this.convoyRevealAt,this.paused?0:dt,r.map.terrain):null;
     for(const site of m.chargeSites)this.charges.get(site.id).visible=site.planted;
     for(const fuel of m.fuel){const barrel=this.barrelMeshes.get(fuel.id);barrel.material.color.set(fuel.destroyed?'#302b27':'#806247');barrel.rotation.z=fuel.destroyed?1.3:0;}
     for(const t of m.trucks)burnCampaignTruck(this.truckMeshes.get(t.id),t.destroyed);
@@ -202,9 +214,12 @@ export class CampaignPresentation {
     if(this.knife.visible){r.weapon.scale.setScalar(.001);}else r.weapon.scale.setScalar(1);
     if(m.cutscene){
       const def=this.definition.cutscenes[m.cutscene.id];
-      if(this.cameraScene!==m.cutscene.id){this.cameraScene=m.cutscene.id;this.cameraPosition=null;}
-      const pose=cinematicCameraPose(r.map,def,m.cutscene.elapsed,this.cameraPosition);
-      this.cameraPosition=pose.position.clone();r.camera.position.copy(pose.position);r.camera.lookAt(pose.lookAt);r.camera.fov=briefing?48:62;r.camera.near=.1;r.camera.updateProjectionMatrix();r.updateSunShadow(pose.position.x,pose.position.z);r.weapon.visible=false;r.scoped=false;
+      const cameraScene=convoyShot?'finale-convoy':m.cutscene.id;
+      if(this.cameraScene!==cameraScene){this.cameraScene=cameraScene;this.cameraPosition=null;}
+      const pose=convoyShot
+        ?cinematicCameraPose(r.map,def.convoy,m.cutscene.elapsed-this.convoyRevealAt,this.cameraPosition)
+        :cinematicCameraPose(r.map,def,m.cutscene.elapsed,this.cameraPosition);
+      this.cameraPosition=pose.position.clone();r.camera.position.copy(pose.position);r.camera.lookAt(convoyTarget??pose.lookAt);r.camera.fov=briefing?48:62;r.camera.near=.1;r.camera.updateProjectionMatrix();r.updateSunShadow(pose.position.x,pose.position.z);r.weapon.visible=false;r.scoped=false;
       const fadeIn=1-THREE.MathUtils.smoothstep(m.cutscene.elapsed,0,.7),fadeOut=THREE.MathUtils.smoothstep(m.cutscene.elapsed,def.duration-.7,def.duration);
       this.fade.style.opacity=String(Math.max(fadeIn,fadeOut));this.exitFade=.45;
     }else{this.cameraScene=null;this.cameraPosition=null;this.exitFade=Math.max(0,(this.exitFade??0)-dt);this.fade.style.opacity=String(this.exitFade/.45);}

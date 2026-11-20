@@ -247,7 +247,7 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   for(const [index,l] of rig.levels.entries()){
     l.group.visible=index===rig.level;l.body.rotation.copy(rig.body.rotation);
     l.turret.rotation.y=delta;l.gun.rotation.x=pitch;
-    l.machineGun.visible=v.controlScheme!=='wot';
+    l.machineGun.visible=!view.hideTankMachineGun&&v.controlScheme!=='wot';
     l.machineGun.rotation.y=machineGunYaw;l.machineGunBarrel.rotation.x=machineGunPitch;
     l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,TANK_TURRET_BASE_Y+rig.wreckAge*8-rig.wreckAge**2*10):TANK_TURRET_BASE_Y,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
     if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;

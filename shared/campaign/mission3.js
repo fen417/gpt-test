@@ -121,6 +121,7 @@ export class Mission3Simulation extends Simulation{
 class ColumnDirector{
   constructor(sim,definition,options){
     this.sim=sim;this.definition=definition;this.options=options;this.carry=options.campaignProgress?.carry??{};
+    this.scriptedVehicles=true;
     this.input={};this.previous={};this.rideTime=0;this.rideIndex=0;this.skipHold=0;this.stage=-1;
     this.fired=new Set();this.choiceIndex=0;this.queue=[];this.serial=0;this.radio=null;this.radioEnd=0;
     this.checkpoint=0;this.saveRevision=0;this.epoch=0;this.pending=[];this.enemySerial=0;
@@ -281,17 +282,24 @@ class ColumnDirector{
     if(explosion)Object.assign(explosion,{kind:'rocket',ambushLeadHit:v.convoyIndex===0});
     this.sim.event('m03AmbushHit',{...target,vehicleId:v.id,rocketId,missionTime:this.rideTime});
   }
-  dismount(){
+  dismount(animate=true){
     for(const p of this.sim.players.values())if(p.vehicleId&&p.team===0){
       const v=this.sim.vehicles.find(v=>v.id===p.vehicleId),seat=p.vehicleSeat;
+      if(v?.convoyIndex===undefined)continue;
       this.sim.dismountVehicle(p,true);
       const spot=this.safeSpot({x:v.x+(seat-2)*1.12,z:seat%2?3.4:-3.4},p);
-      const dropHeight=p.id==='local'?1.46:.95;
-      Object.assign(p,spot,{y:spot.y+dropHeight,dropHeight,dropAt:this.time,dropDuration:p.id==='local'?1.5:.3+(seat%4)*.16,
-        grounded:false,invulnerableUntil:this.time+3.2});
+      Object.assign(p,spot);
+      if(animate){
+        const dropHeight=p.id==='local'?1.46:.95;
+        Object.assign(p,{y:spot.y+dropHeight,dropHeight,dropAt:this.time,dropDuration:p.id==='local'?1.5:.3+(seat%4)*.16,
+          grounded:false,invulnerableUntil:this.time+3.2});
+      }else{
+        delete p.dropAt;
+        p.grounded=true;
+      }
       if(p.columnCrew){p.home=spot;p.squadMember=true;}
     }
-    this.player.invulnerableUntil=this.time+3.5;
+    if(animate)this.player.invulnerableUntil=this.time+3.5;
     this.choices=null;
   }
   command(command){
@@ -813,6 +821,7 @@ class ColumnDirector{
       notices:[],playerMedic:null,assaultDoor:null,geometryDirty:true});
     this.latestSave=save.mission.checkpoint?structuredClone(save):null;
     this.saveRevision++;this.epoch++;this.refreshGeometry();
+    if(this.fired.has('dismount'))this.dismount(false);
     const newCover=sim.colliders.filter(box=>box.id.startsWith('street-dressing-'));
     for(const p of sim.players.values()){
       if(!p.alive||p.vehicleId)continue;

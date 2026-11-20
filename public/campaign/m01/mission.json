@@ -915,6 +915,15 @@
         4,
         155
       ],
+      "convoy": {
+        "cue": "m01.lasko.final02",
+        "duration": 23,
+        "route": [[188, 129], [145, 123]],
+        "camera": [[168, 12, 147], [151, 11, 143], [124, 12, 141]],
+        "lookAt": [173, 2, 127],
+        "heightAboveGround": true,
+        "lookHeightAboveGround": true
+      },
       "heightAboveGround": true,
       "lookHeightAboveGround": true
     }

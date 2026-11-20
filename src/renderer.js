@@ -499,7 +499,7 @@ export class GameRenderer {
   }
 
   setMap(mapId) {
-    if(['quarry','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
+    if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
     let world = this.worlds.get(map.id);
@@ -854,6 +854,7 @@ export class GameRenderer {
   updateVehicles(state, player, dt, view) {
     const active = new Set();
     const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
+    const vehicleView = state.campaign ? { ...view, hideTankMachineGun: true } : view;
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
       if(vehicle.type==='tank'&&!tankAssetsReady())continue;
@@ -879,7 +880,7 @@ export class GameRenderer {
         this.worldRoot.add(rig.group);
       }
       rig.group.visible = true;
-      updateVehicleRig(rig, vehicle, player, dt, blend, view, this.lowQuality, this.map.terrain);
+      updateVehicleRig(rig, vehicle, player, dt, blend, vehicleView, this.lowQuality, this.map.terrain);
       if (local) mounted = { vehicle, rig };
       const damaged = vehicle.hp < vehicle.maxHp * .33;
       if (damaged && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {

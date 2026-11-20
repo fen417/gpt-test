@@ -17,7 +17,7 @@
     }
   },
   "timing": {
-    "briefingSeconds": 52,
+    "briefingSeconds": 18,
     "musicSeconds": 188,
     "expectedDurationSeconds": 720
   },
@@ -223,7 +223,7 @@
     ]
   },
   "briefing": {
-    "duration": 52,
+    "duration": 18,
     "caption": "АЛЬ-ХАДРА, 05:12",
     "cameraOffsets": [
       {"forward": 54, "right": 30, "height": 16},
@@ -238,12 +238,12 @@
         "key": "holt.brief01"
       },
       {
-        "at": 16,
+        "at": 6,
         "duration": 4.56,
         "key": "holt.brief02"
       },
       {
-        "at": 36,
+        "at": 12,
         "duration": 4.79,
         "key": "holt.brief03"
       }

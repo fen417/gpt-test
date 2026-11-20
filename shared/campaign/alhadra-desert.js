@@ -121,7 +121,7 @@ const roads=[
 export const ALHADRA_DESERT=registerLocalMap(rotateMapAssets({
   ...ALHADRA,
   id:'alhadra-desert',name:'Аль-Хадра: пустыня',missionId:'m02',
-  campaign:true,theme:'desert-village',size:2000,width:2000,depth:1200,
+  campaign:true,theme:'desert-village',size:2000,width:2000,depth:1200,terrainApron:920,
   playArea:M02_BOUNDS,navigationCell:8,stepHeight:.5,
   terrain,landforms:[...outerLandforms,...shiftedLandforms],
   terrainPads:shiftedPads,terrainPadBlend:8,

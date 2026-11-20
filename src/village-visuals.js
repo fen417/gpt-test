@@ -139,12 +139,15 @@ function shutters(owner, m, structure) {
   const { x, z, w, d, h, baseY = 0, doorWidth = 5.6, doorHeight = 2.65 } = structure;
   const ruined = structure.kind === 'village-ruin';
   if(structure.interactiveShutters){
-    // These houses have their own physical apertures. Fit the trim to the .32 m walls.
+    // Fit the trim to the actual facade and keep the jamb clear of the aperture's wall plane.
+    const frame=structure.wallThickness
+      ?{offset:structure.wallThickness/2+.05,jamb:.08,jambDepth:.14,lintel:.08}
+      :{offset:.16,jamb:.055,jambDepth:.13,lintel:.063};
     for(const side of [-1,1]){
-      const face=z+side*(d/2+.16),windowSide=x+side*(w/2+.16);
-      for(const edge of [-1,1])owner.box(owner.scene,x+edge*(doorWidth/2+.055),baseY+doorHeight/2,face,
-        .11,doorHeight,.13,m.wood,false);
-      owner.box(owner.scene,x,baseY+doorHeight+.063,face,doorWidth+.22,.16,.14,m.wood,false);
+      const face=z+side*(d/2+frame.offset),windowSide=x+side*(w/2+.16);
+      for(const edge of [-1,1])owner.box(owner.scene,x+edge*(doorWidth/2+frame.jamb),baseY+doorHeight/2,face,
+        .11,doorHeight,frame.jambDepth,m.wood,false);
+      owner.box(owner.scene,x,baseY+doorHeight+frame.lintel,face,doorWidth+2*frame.jamb+.11,.16,.14,m.wood,false);
       for(let floor=0;floor<structure.floors;floor++){
         owner.box(owner.scene,windowSide,baseY+floor*3+.955,z,.16,.11,2.39,m.roof,false);
         for(const edge of [-1,1])owner.box(owner.scene,windowSide,baseY+floor*3+1.575,z+edge*1.15,
@@ -306,6 +309,32 @@ export function createVillageModelBuilder(owner) {
   };
 }
 
+function addDesertHorizon(parent, material, span, apron) {
+  const half = span / 2, center = half + apron / 2;
+  for (const [x, z, width, depth] of [
+    [-center, 0, apron, span], [center, 0, apron, span],
+    [0, -center, span, apron], [0, center, span, apron],
+    [-center, -center, apron, apron], [center, -center, apron, apron],
+    [-center, center, apron, apron], [center, center, apron, apron],
+  ]) {
+    const geometry = new THREE.PlaneGeometry(width, depth, Math.ceil(width / 24), Math.ceil(depth / 24));
+    geometry.rotateX(-Math.PI / 2).translate(x, 0, z);
+    const vertices = geometry.attributes.position, uv = geometry.attributes.uv;
+    for (let i = 0; i < vertices.count; i++) {
+      const px = vertices.getX(i), pz = vertices.getZ(i);
+      const edge = Math.max(Math.abs(px), Math.abs(pz)) - half;
+      const dunes = 6 + 4 * Math.sin(px * .021 + pz * .009) + 2 * Math.cos(pz * .035 - px * .014);
+      vertices.setY(i, dunes * THREE.MathUtils.smoothstep(edge, 0, 180));
+      uv.setXY(i, (px + half) / 7, (half - pz) / 7);
+    }
+    geometry.computeVertexNormals();
+    geometry.userData.owned = true;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.noBatch = true;
+    parent.add(mesh);
+  }
+}
+
 export function addVillageGround(owner, map, assets = true) {
   const m = palette(owner), span = map.size + 220, terrain = map.terrain.baseSurface ?? map.terrain;
   const segments=Math.ceil(span/map.terrain.cell);
@@ -321,6 +350,7 @@ export function addVillageGround(owner, map, assets = true) {
   owner.scene.add(ground);
   const roads = terrainRoads(owner, ground, span, map.roads, m.sand, '#bda17a');
   partitionTerrain(owner.scene, geometry);
+  if (map.terrainApron) addDesertHorizon(owner.scene, m.sand, span, map.terrainApron);
   if (assets) {
     createVillageModelBuilder(owner)(map.boxes, map.structures, [], terrain);
     if (map.ship) createPortModelBuilder(owner)({ ship: map.ship });

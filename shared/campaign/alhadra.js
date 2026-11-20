@@ -39,6 +39,7 @@ function house(id,x,z,w=12,d=10,h=4.1){
   const baseY=terrain.heightAt(x,z),part={assetMapId:'village',baseY};
   // Match the two shutter pairs on each side with real window openings.
   const isSchool=id==='school',sill=isSchool?.86:1.15,windowHeight=isSchool?1.64:1.1;
+  const wallThickness=.42;
   const opening=isSchool?3.55:2.6,windowCenter=d*.24,sideDepth=d-.42,endLength=sideDepth/2-windowCenter-opening/2;
   for(const side of [-1,1]){
     const wallX=x+side*w/2;
@@ -57,12 +58,12 @@ function house(id,x,z,w=12,d=10,h=4.1){
   }
   for(const side of [-1,1]){
     const gap=2.6,segment=(w-gap)/2;
-    for(const dir of [-1,1])add('village-wall',x+dir*(gap/2+segment/2),z+side*d/2,segment,.42,h,'#d4bf98',part);
-    add('village-lintel',x,z+side*d/2,gap,.42,h-2.5,'#c6ad86',{...part,baseY:baseY+2.5,overhead:true});
+    for(const dir of [-1,1])add('village-wall',x+dir*(gap/2+segment/2),z+side*d/2,segment,wallThickness,h,'#d4bf98',part);
+    add('village-lintel',x,z+side*d/2,gap,wallThickness,h-2.5,'#c6ad86',{...part,baseY:baseY+2.5,overhead:true});
   }
   add('village-floor',x,z,w+.5,d+.5,.22,'#bba684',{...part,baseY:baseY+h,overhead:true});
   structures.push({id,kind:'village-house',x,z,w,d,h,baseY,assetMapId:'village',floors:1,
-    doorWidth:2.6,doorHeight:2.5,interactiveShutters:isSchool});
+    doorWidth:2.6,doorHeight:2.5,wallThickness,interactiveShutters:isSchool});
   yard.wear(id+'-facade',x,z-d/2-.21,w,{baseY});
   if(isSchool)for(const side of [-1,1])yard.wall(id+'-roof-cap-'+side,x,z+side*d/2,w,{baseY:baseY+h+.22,height:.59});
   // Furniture sits against the side walls; the two central doorways stay open.

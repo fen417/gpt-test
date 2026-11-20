@@ -63,7 +63,7 @@ export class Mission2Presentation {
     this.original={background:renderer.scene.background?.clone(),fogColor:renderer.scene.fog.color.clone(),
       fogDensity:renderer.scene.fog.density,hazeAmount:sky.hazeAmount.value,hazeTint:sky.hazeTint.value.clone(),sunColor:renderer.sun.color.clone(),
       sunIntensity:renderer.sun.intensity,sunOffset:renderer.sunOffset.clone(),
-      hemiIntensity:renderer.hemiLight.intensity,ambientIntensity:renderer.ambientLight.intensity,cameraFar:renderer.camera.far};
+      hemiIntensity:renderer.hemiLight.intensity,ambientIntensity:renderer.ambientLight.intensity,cameraFar:renderer.camera.far,skyVisible:renderer.atmosphere.sky.visible};
     renderer.camera.far=1000;renderer.camera.updateProjectionMatrix();
     this.renderHook=(r,state,dt,view)=>this.render(r,state,dt,view);
     this.loadMusic({time:0});
@@ -219,9 +219,13 @@ export class Mission2Presentation {
     const t=clamp(m.time/this.definition.timing.expectedDurationSeconds,0,1);
     // Dawn grows from the enemy's east to a warmer morning as the mission
     // progresses. Values remain editable in the mission's art direction.
-    r.scene.background.setRGB(.57+.13*t,.42+.13*t,.28+.11*t);
+    const briefing=m.cutscene?.id==='briefing';
+    if(briefing)r.scene.background.setRGB(.48,.35,.215);
+    else r.scene.background.setRGB(.57+.13*t,.42+.13*t,.28+.11*t);
     const gust=.5+.5*Math.sin((m.cutscene?.elapsed??m.time)*.71);
-    r.scene.fog.color.copy(r.scene.background);r.scene.fog.density=.0042+gust*.0004;
+    r.scene.fog.color.copy(r.scene.background);
+    r.scene.fog.density=briefing?.009+gust*.002:.0042+gust*.0004;
+    r.atmosphere.sky.visible=!briefing&&this.original.skyVisible;
     const sky=r.atmosphere.sky.material.uniforms;
     sky.hazeAmount.value=.92+gust*.06;
     sky.hazeTint.value.copy(r.scene.fog.color).convertLinearToSRGB();
@@ -231,7 +235,7 @@ export class Mission2Presentation {
     r.lastShadowTx=NaN;
     const v=state.vehicles.find(v=>v.id==='sokol-7');
     this.engineListener=null;
-    if(m.cutscene?.id==='briefing'&&v){
+    if(briefing&&v){
       const tanks=state.vehicles.filter(tank=>tank.type==='tank'&&tank.team===v.team&&tank.hp>0);
       const {position,target}=mission2BriefingCamera(r.map.terrain,tanks,v,this.definition.briefing,m.cutscene.elapsed);
       this.engineListener=position;
@@ -353,6 +357,7 @@ export class Mission2Presentation {
     r.scene.fog.color.copy(o.fogColor);r.scene.fog.density=o.fogDensity;
     const sky=r.atmosphere.sky.material.uniforms;
     sky.hazeAmount.value=o.hazeAmount;sky.hazeTint.value.copy(o.hazeTint);
+    r.atmosphere.sky.visible=o.skyVisible;
     r.sun.color.copy(o.sunColor);r.sun.intensity=o.sunIntensity;
     r.sunOffset.copy(o.sunOffset);r.hemiLight.intensity=o.hemiIntensity;
     r.ambientLight.intensity=o.ambientIntensity;

@@ -3,10 +3,10 @@
 
 // The defence cue should remain audible at the game's reduced default music
 // slider setting. Multiply the *user's* setting, never override or unmute it.
-export function campaignMusicMix({volume,defence,subtitle,radioReady}){
-  const dedicated=defence&&radioReady;
+export function campaignMusicMix({volume,defence,outro=false,subtitle,radioReady}){
+  const dedicated=(defence||outro)&&radioReady;
   return {
-    bus:volume*(defence?1.2:.35)*(subtitle?(defence?.72:.4):1),
+    bus:volume*(outro?.44:defence?1.2:.35)*(subtitle?((defence||outro)?.72:.4):1),
     radio:dedicated?1:0,
     stems:dedicated?.16:1,
   };
@@ -131,29 +131,29 @@ export class CampaignAudio {
         if(line?.audio)this.voice(line,mission.radioRemaining??line.duration,mission.missionId,lineKey);else this.finishVoice();}
       return;
     }
-    this.paused=paused;this.bus.gain.setTargetAtTime(!paused&&this.combat.enabled?this.combat.volume*.82:0,c.currentTime,.04);
+    const outro=mission.cutscene?.id==='finale'||mission.complete;
+    this.paused=paused;this.bus.gain.setTargetAtTime((!paused||outro)&&this.combat.enabled?this.combat.volume*.82:0,c.currentTime,.04);
     this.voiceBus.gain.setTargetAtTime(this.combat.effectsVolume,c.currentTime,.05);
     const defence=mission.stage===6&&!mission.cutscene&&!mission.complete&&!mission.failed;
-    const musicMix=campaignMusicMix({volume:this.combat.musicVolume,defence,subtitle:Boolean(mission.subtitle?.key),radioReady:Boolean(this.radioDefence)});
+    const musicMix=campaignMusicMix({volume:this.combat.musicVolume,defence,outro,subtitle:!paused&&Boolean(mission.subtitle?.key),radioReady:Boolean(this.radioDefence)});
     this.musicBus.gain.setTargetAtTime(musicMix.bus,c.currentTime,.2);
     if(!this.stemLoading)this.music();
+    if((defence||outro)&&!this.radioDefenceLoading)this.startRadioDefence();
+    // Keep the same loop and mix through the cutscene and debrief.
+    this.radioDefence?.gain.gain.setTargetAtTime(musicMix.radio,c.currentTime,(defence||outro)?.45:1.3);
+    const weights=mission.stage===6||outro?[.65,.65,1,.9,.85]:mission.stage===5?[.4,.15,.45,.15,0]:[.5,.35,mission.alert>0?.6:0,mission.alert===3?.7:0,0];
+    this.stems.forEach((s,i)=>s?.gain.gain.setTargetAtTime(weights[i]*musicMix.stems,c.currentTime,.7));
     if(this.epoch!==mission.epoch){this.epoch=mission.epoch;this.stopVoice();this.key=null;this.lastAlert=mission.alert;}
     if(paused){if(this.sources.length)this.stopVoice();this.key=null;return;}
     if(this.lastAlert!==mission.alert){if(mission.alert>this.lastAlert)this.signal(mission.alert);this.lastAlert=mission.alert;}
     const player=state.players.find(p=>p.id==='local');
-    if(player?.downed&&c.currentTime>=(this.heartbeatAt??0)){
+    if(player?.downed&&!mission.cutscene&&!mission.complete&&c.currentTime>=(this.heartbeatAt??0)){
       this.heartbeatAt=c.currentTime+1;
       for(const offset of [0,.18]){const osc=c.createOscillator(),gain=c.createGain(),at=c.currentTime+offset;osc.frequency.value=58;gain.gain.setValueAtTime(.045,at);gain.gain.exponentialRampToValueAtTime(.001,at+.12);osc.connect(gain);gain.connect(this.voiceBus);osc.start(at);osc.stop(at+.14);osc.onended=()=>{osc.disconnect();gain.disconnect();};}
     }
     const key=mission.subtitle?.serial??null;
     if(key!==this.key){this.key=key;if(mission.subtitle){const line=locale.lines[mission.subtitle.key];
       if(line)this.voice(line,mission.subtitleRemaining??line.duration,mission.missionId,mission.subtitle.key);}else this.finishVoice();}
-    if(defence&&!this.radioDefenceLoading)this.startRadioDefence();
-    // Keep backing stems playing until the optional defence OGG has decoded;
-    // failed/missing downloads no longer silence the battle music.
-    this.radioDefence?.gain.gain.setTargetAtTime(musicMix.radio,c.currentTime,defence?.45:1.3);
-    const weights=mission.stage===6||mission.cutscene?.id==='finale'?[.65,.65,1,.9,.85]:mission.stage===5?[.4,.15,.45,.15,0]:[.5,.35,mission.alert>0?.6:0,mission.alert===3?.7:0,0];
-    this.stems.forEach((s,i)=>s?.gain.gain.setTargetAtTime(weights[i]*musicMix.stems,c.currentTime,.7));
   }
   dispose(){this.closed=true;this.stopVoice();this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}
     try{this.radioDefence?.source.stop();}catch{}

@@ -174,12 +174,12 @@ export class Mission2Simulation extends Simulation{
         if(hidden)goal={x:hidden.x+(v.m02Index%3-1)*26,z:hidden.z-44};
       }
       const playerTank=v.m02Rear&&this.vehicles.find(t=>t.id===c.definition.player.vehicleId&&t.hp>0);
-      if(playerTank&&(wp===route.length-1||playerTank.x>v.x+40))
+      if(playerTank&&(wp===route.length-1||wp>=3&&playerTank.x>v.x+40))
         goal={x:playerTank.x+(v.m02Index%3-1)*18,z:playerTank.z};
       else if(v.team===1&&wp===route.length-1&&target&&nearest>=180&&target.z<-95)
         goal={x:target.x+(v.m02Index%3-1)*18,z:target.z};
       if(this.time<(v.m02DetourUntil??0))goal=v.m02Detour;
-      else if(attack&&nearest<180&&(!v.m02Rear||wp>=2))goal={x:v.x,z:v.z};
+      else if(attack&&(v.m02Rear?wp>=3&&target===playerTank&&nearest<85:nearest<180))goal={x:v.x,z:v.z};
     }
     const desired=bearing(v,goal),delta=angle(desired-v.yaw);
     const companySpeed=v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
@@ -423,7 +423,7 @@ export class Mission2Director{
       const z=rear?base[1]-uz*row*22+ux*lane*20:base[1]+(i-(count-1)/2)*9;
       const yaw=Math.atan2(-ux,-uz);
       const v=this.sim.createMapVehicle({id:`east-tank-${n+1}`,type:'tank',team:1,x,z,yaw});
-      Object.assign(v,{controlScheme:'wot',m02Waypoint:0,m02Index:i,m02Rear:rear,
+      Object.assign(v,{controlScheme:'wot',m02Waypoint:rear?1:0,m02Index:i,m02Rear:rear,
         cannonAmmo:48,campaignWeapons:this.definition.weapons,m02Shell:'ap',
         shellAmmo:{ap:48,he:8},respawnIn:1e8,hp:c.maxHp,maxHp:c.maxHp,dispersion:.12,
         m02FireAt:this.sim.time+(n%3)*.6});

@@ -49,7 +49,7 @@
         "bruno_alive",
         "duran_alive"
       ],
-      "completionPercent": 80
+      "completionPercent": 95
     },
     {
       "id": "m02",
@@ -67,7 +67,7 @@
         "tanks_alive",
         "enemy_order"
       ],
-      "completionPercent": 70
+      "completionPercent": 87
     },
     {
       "id": "m03",
