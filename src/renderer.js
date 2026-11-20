@@ -1976,9 +1976,9 @@ export class GameRenderer {
   }
 
   shouldGenerateFrame(now,meta){return this.frameGeneration?.shouldGenerate(now,meta)??false;}
-  presentGeneratedFrame(now){
+  presentGeneratedFrame(now,meta){
     if(!this.frameGeneration?.enabled)return false;
-    try{return this.frameGeneration.generate(now);}
+    try{return this.frameGeneration.generate(now,meta);}
     catch(error){this.frameGeneration.error(error);return false;}
   }
   noteRealFrame(now,meta,elapsedMs){this.frameGeneration?.noteReal(now,meta,elapsedMs);}
