@@ -858,7 +858,8 @@ document.addEventListener('mousemove',event=>{
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
-  const aimScale = aim ? (!player?.heldGadget&&player?.classId === 'recon' && player.weaponSlot!==2 ? (player.weaponId==='sv98' ? .35*4/scopeZoom : .35) : .65) : 1;
+  const scopedWeapon = !player?.heldGadget && WEAPONS[player?.weaponId]?.zeroRange;
+  const aimScale = aim ? (scopedWeapon ? (player.weaponId==='sv98' ? .35*4/scopeZoom : .35) : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
 });

@@ -1815,10 +1815,10 @@ export class GameRenderer {
       const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
       this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
-      const scopedWeapon = !gadgetKind&&player.classId === 'recon' && !pistol && !this.weaponSwitch;
+      const weapon = getWeapon(player.classId, player.weaponId);
+      const scopedWeapon = !gadgetKind && Boolean(weapon.zeroRange) && !this.weaponSwitch;
       this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
-      const weapon = getWeapon(player.classId, player.weaponId);
       // Local visual time must not be restarted by every authoritative snapshot.
       // Correct small clock differences gradually, never jumping hands backward.
       this.reloadTimeline??=new ReloadTimeline();
