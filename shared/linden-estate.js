@@ -80,7 +80,7 @@ function subtractOpening(piece,opening){
     rect(ix0,ix1,iy0,iy1,iz1,az1,piece),
   ].filter(b=>b.w>.025&&b.d>.025&&b.h>.025);
 }
-const doorOpenings=DOORS.flatMap(door=>[.2,3.3].map(y0=>(
+const doorOpenings=DOORS.flatMap((door,i)=>(i<12?[.2,3.3]:[.2]).map(y0=>(
   door.axis==='z'?{
     x0:door.x-door.width/2,x1:door.x+door.width/2,
     z0:door.z-.34,z1:door.z+.34,y0:y0-.02,y1:y0+2.26,
