@@ -34,7 +34,7 @@ window.runFrameGenerationSmoke=async()=>{
     const custom=new MeshBasicNodeMaterial({depthWrite:false});
     const originalFragment=vec4(.2,.3,.4,1);
     custom.fragmentNode=originalFragment;
-    const sky=new THREE.Mesh(new THREE.SphereGeometry(3,16,8),custom);
+    const sky=new THREE.Mesh(new THREE.SphereGeometry(20,16,8),custom);
     sky.material.side=THREE.BackSide;scene.add(sky);
     const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(1,2,3);scene.add(light);
     const meta={playerId:'ci',mapId:'ci',alive:true,weaponId:'ci',vehicleId:null,seat:null,
