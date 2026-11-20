@@ -10,10 +10,10 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 const canvas=document.getElementById('probe');
 window.runColorSmoke=async(api='webgl2',fsr='off',loadAsset=false)=>{
-  let renderer,device;
+  let renderer,device,adapter;
   if(api==='webgpu'){
     if(!navigator.gpu)return {skipped:'WebGPU unavailable'};
-    const adapter=await navigator.gpu.requestAdapter();
+    adapter=await navigator.gpu.requestAdapter();
     if(!adapter)return {skipped:'No WebGPU adapter'};
     device=await adapter.requestDevice();
     device.addEventListener('uncapturederror',event=>console.error('COLOR PROBE GPU VALIDATION',event.error?.message));
