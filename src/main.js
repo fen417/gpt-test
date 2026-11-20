@@ -1635,8 +1635,8 @@ function frame(now){
     yaw=freeCampaignTank?vehicleLook.yaw:driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
-   if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
-    networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
+   if(renderDue){lastWorldFrame=now;try{renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
+    networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}}
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);
     showCampaignOutcome(campaignPresentation.root,state);
@@ -1664,7 +1664,10 @@ function frame(now){
   if(active){renderer.lastCpuMs=performance.now()-cpuBegin;cpuTimes.add(renderer.lastCpuMs);}
 }
 let webgpuAttempted=false;
+let webgpuRecovering=false;
 function recoverWebGpu(error) {
+  if(webgpuRecovering)return;
+  webgpuRecovering=true;
   const message=String(error?.message??error??'WebGPU device lost').slice(0,280);
   console.error('[SECTOR 09] Switching back to WebGL 2:',message);
   try {sessionStorage.setItem('sector09-webgpu-failed',message);}catch{}
