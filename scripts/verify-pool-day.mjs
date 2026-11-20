@@ -18,10 +18,8 @@ try{
   await page.locator('#population').selectOption('15');
   assert.equal(await page.locator('#solo-mode').inputValue(),'tdm');
   await page.locator('#solo').click();
-  await page.waitForFunction(()=>!document.getElementById('hud').classList.contains('hidden'),
-    {timeout:45000});
-  await page.waitForFunction(()=>document.getElementById('weapon-name').textContent.includes('БЕЗ ОРУЖИЯ'),
-    {timeout:30000});
+  await page.waitForFunction(()=>!document.getElementById('hud').classList.contains('hidden'),null,{timeout:45000});
+  await page.waitForFunction(()=>document.getElementById('weapon-name').textContent.includes('БЕЗ ОРУЖИЯ'),null,{timeout:30000});
   // Verify that the actual PROCEDURAL firearms exist in the world after
   // gameplay starts, rather than counting pickup metadata or placeholder boxes.
   await page.waitForFunction(()=>{
@@ -34,7 +32,7 @@ try{
         });
         return model.userData.procedural&&geometry&&model.parent===r.worldRoot;
       });
-  },null,{timeout:30000});
+  },null,null,{timeout:30000});
   const floorGuns=await page.evaluate(()=>{
     const {renderer:r,snapshot}=window.__S09_POOL_REVIEW;
     const entities=[...r.poolWeaponModels.values()];
