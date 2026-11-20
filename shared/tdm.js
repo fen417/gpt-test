@@ -4,7 +4,7 @@ const near=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const valid=id=>Object.hasOwn(WEAPONS,id);
 export const TDM_PICKUP_RADIUS=1.05;
 export function createWeaponItems(sim){
-  sim.weaponItems=(sim.map.weaponSpawns??[]).filter(s=>valid(s.weaponId)).map(s=>({
+  sim.weaponItems=(sim.map.tdmLoadout==='class'?[]:sim.map.weaponSpawns??[]).filter(s=>valid(s.weaponId)).map(s=>({
     ...s, y:s.y??sim.groundAt(s.x,s.z)+.16,ammo:WEAPONS[s.weaponId].mag,
     reserve:WEAPONS[s.weaponId].reserve,home:true,active:true,respawnAt:0,
     vx:0,vy:0,vz:0,expiresAt:0,
@@ -12,7 +12,7 @@ export function createWeaponItems(sim){
   sim.nextWeaponItem=0;
 }
 export function dropWeapon(sim,p,slot=p.weaponSlot,atDeath=false){
-  if(sim.gameMode!=='tdm'||!p||!p.alive&&!atDeath)return false;
+  if(sim.gameMode!=='tdm'||sim.map.tdmLoadout==='class'||!p||!p.alive&&!atDeath)return false;
   const weaponId=slot===2?p.sidearmId:p.primaryWeaponId;
   if(!valid(weaponId))return false;
   const held=slot===p.weaponSlot,stash=held?{ammo:p.ammo,reserve:p.reserve}:p.stowedAmmo??{ammo:0,reserve:0};
@@ -37,7 +37,7 @@ export function dropWeapon(sim,p,slot=p.weaponSlot,atDeath=false){
   return true;
 }
 export function takeWeapon(sim,p,item){
-  if(sim.gameMode!=='tdm'||!p.alive||!item?.active||!valid(item.weaponId))return false;
+  if(sim.gameMode!=='tdm'||sim.map.tdmLoadout==='class'||!p.alive||!item?.active||!valid(item.weaponId))return false;
   if(item.ownerLock===p.id&&sim.time<item.ownerLockUntil)return false;
   if(near(p,item)>TDM_PICKUP_RADIUS||Math.abs((p.y??0)-item.y)>2.1)return false;
   const slot=WEAPONS[item.weaponId].sidearm?2:1;
@@ -57,7 +57,7 @@ export function takeWeapon(sim,p,item){
   return true;
 }
 export function updateWeaponItems(sim,dt){
-  if(sim.gameMode!=='tdm')return;
+  if(sim.gameMode!=='tdm'||sim.map.tdmLoadout==='class')return;
   for(const item of sim.weaponItems){
     if(!item.active){
       if(item.home&&sim.time>=item.respawnAt){
@@ -92,6 +92,7 @@ export function updateWeaponItems(sim,dt){
   sim.weaponItems=sim.weaponItems.filter(i=>i.home||i.active);
 }
 export function weaponTarget(sim,p){
+  if(sim.map.tdmLoadout==='class')return null;
   const possible=sim.weaponItems.filter(i=>i.active&&
     !(WEAPONS[i.weaponId].sidearm?p.sidearmId:p.primaryWeaponId));
   return possible.sort((a,b)=>near(p,a)-near(p,b))[0]??null;

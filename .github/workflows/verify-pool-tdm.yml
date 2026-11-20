@@ -1,7 +1,7 @@
 name: Verify Pool Day TDM branch
 on:
   push:
-    branches: [test]
+    branches: [test, feature/linden-estate-tdm-023]
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +21,8 @@ jobs:
       - run: npm ci
       - name: Targeted authoritative TDM tests
         run: node --test test/pool-tdm.test.js
+      - name: Linden Estate GLB and class-based TDM tests
+        run: node --test test/linden-estate.test.js
       - name: Graphics API and tank atlas regression tests
         run: node --test test/graphics-api.test.js
       - name: Frame generation scheduling tests
@@ -46,6 +48,8 @@ jobs:
         run: node scripts/verify-color-pipeline.mjs
       - name: Browser smoke test and overview
         run: node scripts/verify-pool-day.mjs
+      - name: Browser Linden Estate GLB scene smoke
+        run: node scripts/verify-linden-estate.mjs
       - name: Browser graphics API + FSR smoke
         run: node scripts/verify-graphics-apis.mjs
       - name: Browser WebGPU FG shader smoke
@@ -54,5 +58,7 @@ jobs:
         if: always()
         with:
           name: pool-day-tdm-review-screenshots
-          path: artifacts/pool-day/
+          path: |
+            artifacts/pool-day/
+            artifacts/linden-estate/
           if-no-files-found: ignore

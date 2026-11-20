@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="384" viewBox="0 0 600 384">
+<defs><linearGradient id="g" x2=".8" y2="1"><stop stop-color="#425749"/><stop offset="1" stop-color="#172520"/></linearGradient><pattern id="l" width="22" height="22" patternUnits="userSpaceOnUse"><path d="M22 0H0V22" fill="none" stroke="#aac3b4" opacity=".09"/></pattern></defs>
+<rect width="600" height="384" fill="url(#g)"/><rect width="600" height="384" fill="url(#l)"/>
+<rect x="64" y="32" width="472" height="320" rx="4" fill="#35443b" stroke="#c4d5c5" stroke-width="5"/>
+<path d="M74 216H526" stroke="#acb6a6" stroke-width="3" opacity=".5"/>
+<rect x="184" y="90" width="232" height="116" fill="#b7b8a0" stroke="#e8dfbc" stroke-width="6"/>
+<path d="M261 90V206M338 90V206M184 146H416" stroke="#3f4f41" stroke-width="8"/>
+<path d="M280 206H320V225H280" fill="#d5bc8d"/>
+<rect x="248" y="262" width="106" height="47" fill="#4e9fb0" stroke="#a9d0c9" stroke-width="7"/>
+<path d="M78 242H230M366 242H524M300 228V258" stroke="#9aa18e" stroke-width="11"/>
+<g fill="#648065"><rect x="91" y="258" width="90" height="26" rx="4"/><rect x="419" y="258" width="90" height="26" rx="4"/><rect x="91" y="302" width="90" height="25" rx="4"/><rect x="419" y="302" width="90" height="25" rx="4"/></g>
+<g font-family="Arial,sans-serif" fill="#edf5e6" font-weight="bold"><text x="25" y="367" font-size="29" letter-spacing="4">LINDEN ESTATE</text><text x="492" y="366" font-size="14">TDM</text></g>
+</svg>

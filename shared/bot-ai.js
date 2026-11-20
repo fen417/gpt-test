@@ -173,6 +173,25 @@ function objectiveGoal(sim,p){
     const leader=sim.players.get(order.playerId);
     if(leader){const side=ai.squadSlot%2?1:-1;return {x:leader.x+Math.cos(leader.yaw)*side*3+Math.sin(leader.yaw)*4,y:leader.y,z:leader.z-Math.sin(leader.yaw)*side*3+Math.cos(leader.yaw)*4};}
   }
+  // TDM has no capture points. Actively hunt enemy players instead of
+  // returning null and leaving bots idle at their spawn zones.
+  if(sim.gameMode==='tdm'){
+    const targets=[...sim.players.values()].filter(other=>other.alive&&other.team!==p.team);
+    const chosen=targets.sort((a,b)=>distance(p,a)-distance(p,b))[0];
+    const center=chosen??sim.map.spawns[1-p.team];
+    if(center){
+      const a=p.botSlot*2.399+Math.floor(sim.time/8)*.53;
+      for(const radius of [2.8,4.4,1.4,0]){
+        const x=center.x+Math.sin(a)*radius,z=center.z+Math.cos(a)*radius;
+        const y=sim.groundAt(x,z);
+        if(!sim.collides(x,z,y)&&(!sim.map.playArea||
+          x>sim.map.playArea.minX+1&&x<sim.map.playArea.maxX-1&&
+          z>sim.map.playArea.minZ+1&&z<sim.map.playArea.maxZ-1))
+          return {x,y,z};
+      }
+    }
+    return {x:sim.map.spawns[1-p.team].x,z:sim.map.spawns[1-p.team].z};
+  }
   const point=squad?.objective??sim.points[0];if(!point)return null;
   p.botObjective=point;
   if(order?.pointId){
