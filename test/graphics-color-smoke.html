@@ -9,6 +9,28 @@ import {SafeWebGpuKtx2Loader} from '../src/webgpu-ktx2.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 const canvas=document.getElementById('probe');
+// Decode the ACTUAL production infantry Basis/KTX2 textures without requiring
+// an unstable SwiftShader WebGPU device in headless Chromium.
+window.runBasisDecodeSmoke=async()=>{
+  const loader=new SafeWebGpuKtx2Loader().setWorkerLimit(1)
+    .setTranscoderPath(new URL('/basis/',location.origin).href)
+    .detectSupport({isWebGPURenderer:true,hasFeature:()=>false});
+  const gltfLoader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).setKTX2Loader(loader);
+  try{
+    const gltf=await gltfLoader.loadAsync('/src/assets/infantry/regular.glb');
+    const maps=new Set();
+    gltf.scene.traverse(object=>{
+      for(const material of Array.isArray(object.material)?object.material:[object.material])
+        if(material?.map)maps.add(material.map);
+    });
+    const images=[...maps];
+    return {count:images.length,formats:images.map(t=>({
+      type:t.isDataTexture?'DataTexture':t.isCompressedTexture?'CompressedTexture':'Texture',
+      width:t.image?.width??0,height:t.image?.height??0,
+      mipmaps:t.mipmaps?.length??0,format:t.format,
+    }))};
+  }finally{loader.dispose();}
+};
 window.runColorSmoke=async(api='webgl2',fsr='off',loadAsset=false)=>{
   let renderer,device,adapter;
   if(api==='webgpu'){
