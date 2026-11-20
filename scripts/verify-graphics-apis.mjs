@@ -67,7 +67,7 @@ try {
       if (message.type() === 'error') console.log('BROWSER', api, message.text().slice(0, 600));
     });
     try {
-      await page.goto('http://127.0.0.1:5173/?poolScreenshot&perf',
+      await page.goto('http://127.0.0.1:5173/?poolScreenshot',
         { waitUntil: 'domcontentloaded', timeout: 60000 });
       let state = await readState(page);
       console.log('API STARTUP', JSON.stringify(state));
