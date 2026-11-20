@@ -126,6 +126,7 @@ export class Simulation {
   constructor({ bots=23, difficulty='regular', mapId, gameMode='conquest', killLimit=50, weaponRespawnSeconds=15, random=Math.random, debugBots=false, lagCompensation=false }={}) {
     this.debugBots=debugBots;this.poseHistory=lagCompensation?new PoseHistory():null;
     this.map=getMap(mapId);
+    this.playerRadius=this.map.playerRadius??PLAYER_RADIUS;
     this.gameMode=gameMode==='tdm'&&this.map.tdmLoadout?'tdm':'conquest';
     this.killLimit=clamp(Math.floor(finite(killLimit,50)),10,500);
     this.weaponRespawnSeconds=clamp(finite(weaponRespawnSeconds,15),3,120);
@@ -145,10 +146,10 @@ export class Simulation {
     this.blocked=new Uint8Array(this.gridSize*this.gridSize);
     this.pathPrevious=new Int32Array(this.blocked.length);
     this.pathQueue=new Int32Array(this.blocked.length);
-    const clearance=this.gridCell/2+PLAYER_RADIUS+.1;
+    const clearance=this.gridCell/2+this.playerRadius+.1;
     const gridIndex=position=>(position-this.gridOrigin)/this.gridCell-.5;
     if(this.map.shoreX!==undefined){
-      const dryColumn=Math.ceil(gridIndex(this.map.shoreX+PLAYER_RADIUS));
+      const dryColumn=Math.ceil(gridIndex(this.map.shoreX+this.playerRadius));
       for(let row=0;row<this.gridSize;row++){
         const offset=row*this.gridSize;
         this.blocked.fill(1,offset,offset+dryColumn);
@@ -300,18 +301,18 @@ export class Simulation {
     const origin={x,y:y+step+.001,z},direction={x:0,y:-1,z:0};
     for(const box of this.rayBoxes(origin,direction,step+.001)){
       if(box.obb||box.parts){
-        const top=rotatedFloor(box,x,z,y+.001,y+step+.001,PLAYER_RADIUS);
+        const top=rotatedFloor(box,x,z,y+.001,y+step+.001,this.playerRadius);
         if(top>height&&!this.collides(x,z,top+1e-5,PLAYER_RADIUS,bodyHeight))height=top+1e-5;
         continue;
       }
       if(!['village-stair','village-floor'].includes(box.kind)||box.h<=height||box.h>y+step)continue;
-      if(Math.abs(x-box.x)>=box.w/2+PLAYER_RADIUS||Math.abs(z-box.z)>=box.d/2+PLAYER_RADIUS)continue;
+      if(Math.abs(x-box.x)>=box.w/2+this.playerRadius||Math.abs(z-box.z)>=box.d/2+this.playerRadius)continue;
       if(!this.collides(x,z,box.h,PLAYER_RADIUS,bodyHeight))height=box.h;
     }
     return height;
   }
   createMapVehicle(spawn){return {...createVehicle(spawn),y:this.groundAt(spawn.x,spawn.z),...vehicleBodyTilt(spawn,this.map.terrain)};}
-  collides(x,z,y=this.groundAt(x,z),radius=PLAYER_RADIUS,height=EYE_HEIGHT){
+  collides(x,z,y=this.groundAt(x,z),radius=this.playerRadius,height=EYE_HEIGHT){
     const limit=this.map.size/2-2;
     if(Math.abs(x)>limit||Math.abs(z)>limit||x<(this.map.shoreX??-Infinity)+radius)return true;
     const area=this.map.playArea;
@@ -944,15 +945,15 @@ export class Simulation {
       const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
       let walkX=followsGround?this.groundAt(p.x+stepX,p.z):p.y;
       const groundX=walkX;
-      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX,bodyHeight);
-      if(!this.collides(p.x+stepX,p.z,walkX,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x+stepX,p.z,walkX))){
+      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,this.playerRadius,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX,bodyHeight);
+      if(!this.collides(p.x+stepX,p.z,walkX,this.playerRadius,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x+stepX,p.z,walkX))){
         p.x+=stepX;
         if(walkX>groundX+.0001){p.y=walkX;followsGround=false;}
       }
       let walkZ=followsGround?this.groundAt(p.x,p.z+stepZ):p.y;
       const groundZ=walkZ;
-      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ,bodyHeight);
-      if(!this.collides(p.x,p.z+stepZ,walkZ,PLAYER_RADIUS,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x,p.z+stepZ,walkZ))){
+      if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,this.playerRadius,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ,bodyHeight);
+      if(!this.collides(p.x,p.z+stepZ,walkZ,this.playerRadius,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x,p.z+stepZ,walkZ))){
         p.z+=stepZ;
         if(walkZ>groundZ+.0001){p.y=walkZ;followsGround=false;}
       }
@@ -965,12 +966,12 @@ export class Simulation {
         p.vy=6*(1-p.jumpFatigue*.5);p.jumpFatigue=Math.min(1,p.jumpFatigue+.42);p.grounded=false;
       }p.jumpHeld=i.jump;
       const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
-      if(p.vy<=0)for(const box of this.floorBoxes(p.x,p.z,PLAYER_RADIUS)){
+      if(p.vy<=0)for(const box of this.floorBoxes(p.x,p.z,this.playerRadius)){
         if(box.obb||box.parts){
-          floor=Math.max(floor,rotatedFloor(box,p.x,p.z,nextY-.01,oldY+.01,PLAYER_RADIUS));
+          floor=Math.max(floor,rotatedFloor(box,p.x,p.z,nextY-.01,oldY+.01,this.playerRadius));
           continue;
         }
-        const support=PLAYER_RADIUS*(['village-stair','village-floor'].includes(box.kind)?1:.6);
+        const support=this.playerRadius*(['village-stair','village-floor'].includes(box.kind)?1:.6);
         if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
       }
       p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
