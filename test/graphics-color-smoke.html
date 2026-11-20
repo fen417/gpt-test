@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8"><title>SECTOR 09 color space smoke</title></head>
+<body style="margin:0;background:#000"><canvas id="probe" style="display:block;width:256px;height:144px"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import {WebGPURenderer} from 'three/webgpu';
+import {PostPass} from '../src/post-pass.js';
+import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
+import {SafeWebGpuKtx2Loader} from '../src/webgpu-ktx2.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+const canvas=document.getElementById('probe');
+window.runColorSmoke=async(api='webgl2',fsr='off')=>{
+  let renderer,device;
+  if(api==='webgpu'){
+    if(!navigator.gpu)return {skipped:'WebGPU unavailable'};
+    const adapter=await navigator.gpu.requestAdapter();
+    if(!adapter)return {skipped:'No WebGPU adapter'};
+    device=await adapter.requestDevice();
+    renderer=new WebGPURenderer({canvas,device,antialias:false,stencil:false,alpha:false});
+    await renderer.init();
+  }else{
+    renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:false,stencil:false});
+  }
+  renderer.setSize(256,144,false);
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.06;
+  const post=api==='webgpu'?new WebGpuPostPass(renderer,{antialias:'off'}):new PostPass(renderer,{antialias:'off'});
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x888888);
+  const camera=new THREE.OrthographicCamera(-1,1,1,-1,.1,8);
+  camera.position.z=2;
+  const material=new THREE.MeshBasicMaterial({color:0x888888,depthTest:false});
+  const plane=new THREE.Mesh(new THREE.PlaneGeometry(5,5),material);
+  scene.add(plane);
+  let textures={};
+  try{
+    post.setUpscaling(fsr,1,40);
+    post.begin('low');
+    renderer.render(scene,camera);
+    post.end(0,'low');
+    if(api==='webgpu'&&fsr==='off'){
+      const loader=new SafeWebGpuKtx2Loader().setTranscoderPath(new URL('/basis/',location.origin).href)
+        .setWorkerLimit(1).detectSupport(renderer);
+      const gltfLoader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).setKTX2Loader(loader);
+      try{
+        const gltf=await gltfLoader.loadAsync('/src/assets/infantry/regular.glb');
+        const maps=new Set();
+        gltf.scene.traverse(obj=>{
+          for(const mat of Array.isArray(obj.material)?obj.material:[obj.material]){
+            if(mat?.map)maps.add(mat.map);
+          }
+        });
+        const values=[...maps];textures={count:values.length,types:values.map(t=>t.isDataTexture?'DataTexture':t.isCompressedTexture?'CompressedTexture':'Texture')};
+        if(values.some(t=>t.isCompressedTexture))throw new Error('WebGPU infantry KTX2 remained compressed after fallback');
+        if(values.length){
+          const testMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:values[0]}));
+          scene.add(testMesh);
+          post.begin('low');renderer.render(scene,camera);post.end(0,'low');
+          scene.remove(testMesh);testMesh.geometry.dispose();testMesh.material.dispose();
+        }
+      }finally{loader.dispose();}
+    }
+    await device?.queue?.onSubmittedWorkDone();
+    return {ok:true,api,fsr,backend:renderer.backend?.constructor?.name??'WebGL2',textures};
+  }finally{
+    post.dispose();plane.geometry.dispose();material.dispose();
+    renderer.dispose();device?.destroy();
+  }
+};
+</script></body></html>
