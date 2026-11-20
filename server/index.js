@@ -221,7 +221,7 @@ export function createGameServer(options={}){
           case 'list':send(c,{type:'rooms',requestId,rooms:listing()});break;
           case 'create':
             if(data.gameMode&&!['conquest','tdm'].includes(data.gameMode))throw Error('Неизвестный режим.');
-             if(data.gameMode==='tdm'&&data.mapId!=='fy_pool_day')throw Error('Командный бой насмерть пока доступен только на fy_pool_day.');
+             if(data.gameMode==='tdm'&&!getMap(data.mapId).tdmLoadout)throw Error('Командный бой насмерть недоступен на выбранной карте.');
             if(room){error(c,'На сервере уже есть комната. Присоединитесь к ней в браузере комнат.',requestId,'room_exists');send(c,{type:'rooms',rooms:listing()});break;}
             room={id:token(),name:clean(data.roomName,'Операция «Рубеж»'),mapId:getMap(data.mapId).id,mode:data.gameMode==='tdm'?'tdm':'conquest',killLimit:50,bots:Math.min(config.defaultBots,config.maxBots),maxPlayers:config.maxPlayers,difficulty:'regular',phase:'lobby',ownerId:null,sim:null,epoch:0,emptyAt:0};settings(data);join(c,data,requestId);break;
           case 'join':join(c,data,requestId);break;
