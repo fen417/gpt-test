@@ -160,7 +160,7 @@ export class GameRenderer {
     this.gpuName=webgpu?.gpuName??null;
     this.canvas = canvas;
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
-    this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality' };
+    this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40 };
     this.clock = 0;
     this.frameCount = 0;
     this.smoothDt = 0.0166;
@@ -1587,7 +1587,7 @@ export class GameRenderer {
     if(!menu)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
     try{
-      this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale);
+      this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
       this.postPass.begin(this.quality);drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.quality);
     }
     finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.gpuTimer.poll?.();this.interiorVisibility.restore();}
@@ -1630,9 +1630,9 @@ export class GameRenderer {
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
     }
-    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality)) {
+    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness)) {
       const shadowChanged=gfx.shadows!==this.gfx.shadows;
-      this.gfx={shadows:gfx.shadows,resolution:gfx.resolution,fsr:gfx.fsr??'off',fsrQuality:gfx.fsrQuality??'quality'};
+      this.gfx={shadows:gfx.shadows,resolution:gfx.resolution,fsr:gfx.fsr??'off',fsrQuality:gfx.fsrQuality??'quality',fsrSharpness:gfx.fsrSharpness??40};
       if(shadowChanged)this.applyShadows();
       this.updatePixelRatio();
     }
@@ -1968,7 +1968,7 @@ export class GameRenderer {
       triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
-      fsrScale:post.fsrScale,sceneWidth:post.target.width,sceneHeight:post.target.height,
+      fsrScale:post.fsrScale,fsrSharpness:this.gfx.fsrSharpness,sceneWidth:post.target.width,sceneHeight:post.target.height,
       integratedGpu:this.integratedGpu,gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext)
     };
   }
