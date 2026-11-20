@@ -4,6 +4,7 @@ import { GRAPHICS_API_KEY,preferredGraphicsApi,graphicsApiName,createWebGpuRende
 import {loadTankAtlas} from '../src/tank-model.js';
 import * as THREE from 'three';
 import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
+import { FSR1_SCALES,fsr1RenderScale } from '../src/fsr1.js';
 
 test('graphics API preference: auto is safe and unknown values are rejected',()=>{
   const storage={ getItem(){return null;} };
@@ -85,5 +86,28 @@ test('WebGPU fullscreen UVs keep image upright with and without FSR',()=>{
       assert.equal(sampleV(1),0,'top row is mirrored');
       assert.equal(sampleV(-1),1,'bottom row is mirrored');
     }
+  }finally{post.dispose();}
+});
+
+test('FSR high-fidelity presets preserve the requested internal resolution',()=>{
+  assert.deepEqual(FSR1_SCALES,{ultra:.92,quality:.85,balanced:.75,performance:.67});
+  assert.equal(Math.round(1920*fsr1RenderScale('ultra')),1766);
+  assert.equal(Math.round(1080*fsr1RenderScale('ultra')),994);
+  assert.equal(fsr1RenderScale('auto',.7),.7);
+  assert.equal(fsr1RenderScale('auto',.2),.6);
+});
+
+test('WebGPU RCAS sharpness applies live and is bounded to 0–100%',()=>{
+  const post=new WebGpuPostPass({});
+  try{
+    post.setUpscaling('ultra',1,40);
+    assert.equal(post.fsrScale,.92);
+    assert.equal(post.rcasSharpness.value,.4);
+    post.setUpscaling('quality',1,0);
+    assert.equal(post.rcasSharpness.value,0);
+    post.setUpscaling('quality',1,200);
+    assert.equal(post.rcasSharpness.value,1);
+    post.setUpscaling('off',1,30);
+    assert.equal(post.fsrScale,1);
   }finally{post.dispose();}
 });
