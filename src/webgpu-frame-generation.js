@@ -3,7 +3,7 @@
 // Intermediate frames use conservative *forward extrapolation* of the last
 // post-processed image (not a delayed 2-frame optical-flow interpolation).
 import * as THREE from 'three';
-import { MeshBasicNodeMaterial, } from 'three/webgpu';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { mrt, output, velocity, texture, uniform, uv, vec2, vec4,
   Fn, abs, clamp, length, max, select } from 'three/tsl';
 import { FrameGenerationPolicy } from './frame-generation-policy.js';
@@ -29,6 +29,8 @@ export class WebGpuFrameGeneration {
     this.target=null;this.history=null;this.geometry=null;
     this.writeIndex=0;this.currentIndex=0;this.colorReady=0;
     this.extrapolation=uniform(.55);
+    this.lateLookCorrection=uniform(new THREE.Vector2());
+    this.lastCameraMotion=new THREE.Vector2();
   }
   initialize(){
     const depth=new THREE.DepthTexture(1,1,THREE.UnsignedIntType);
@@ -52,7 +54,9 @@ export class WebGpuFrameGeneration {
         const p=uv();
         // Three's velocity is current minus previous in NDC, not UV.
         const motion=velocityMap.sample(p).xy.mul(vec2(.5,-.5));
-        const displacement=motion.mul(this.extrapolation);
+        // Keep the latest mouse look on a synthetic frame; do not blindly
+        // extrapolate camera rotation after the player stopped the mouse.
+        const displacement=motion.mul(this.extrapolation).add(this.lateLookCorrection);
         const sourceUV=p.sub(displacement).toVar();
         const clamped=clamp(sourceUV,vec2(0),vec2(1));
         const previousUV=clamp(sourceUV.sub(motion),vec2(0),vec2(1));
@@ -115,8 +119,24 @@ export class WebGpuFrameGeneration {
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.blit[this.currentIndex].scene,this.camera);
   }
-  generate(now){
+  generate(now,meta=null){
     if(!this.enabled||this.colorReady<2)return false;
+    const period=this.policy.lastReal-this.policy.previousReal;
+    const alpha=Math.max(.15,Math.min(1.1,(now-this.policy.lastReal)/Math.max(8,period||16.67)));
+    this.extrapolation.value=alpha;
+    this.lateLookCorrection.value.set(0,0);
+    const last=this.policy.lastMeta;
+    if(meta&&last&&Number.isFinite(meta.yaw)&&Number.isFinite(meta.pitch)){
+      const dyaw=Math.atan2(Math.sin(meta.yaw-last.yaw),Math.cos(meta.yaw-last.yaw));
+      const dpitch=meta.pitch-last.pitch;
+      const size=this.post.size;
+      const aspect=Math.max(.5,(size.x||1)/Math.max(1,size.y||1));
+      const divisor=2*Math.tan((meta.fov??85)*Math.PI/360);
+      this.lateLookCorrection.value.set(
+        -dyaw/(divisor*aspect)-this.lastCameraMotion.x*alpha,
+        dpitch/divisor-this.lastCameraMotion.y*alpha
+      );
+    }
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.synthetic[this.currentIndex].scene,this.camera);
     this.policy.noteGenerated(now);
@@ -125,7 +145,19 @@ export class WebGpuFrameGeneration {
   shouldGenerate(now,meta){
     return this.enabled&&this.colorReady>=2&&this.policy.shouldGenerate(now,meta);
   }
-  noteReal(now,meta,elapsedMs){if(this.enabled)this.policy.noteReal(now,meta,elapsedMs);}
+  noteReal(now,meta,elapsedMs){
+    if(!this.enabled)return;
+    const previous=this.policy.lastMeta;
+    this.lastCameraMotion.set(0,0);
+    if(this.policy.compatible(meta,previous)){
+      const dyaw=Math.atan2(Math.sin(meta.yaw-previous.yaw),Math.cos(meta.yaw-previous.yaw));
+      const dpitch=meta.pitch-previous.pitch;
+      const size=this.post.size,aspect=Math.max(.5,(size.x||1)/Math.max(1,size.y||1));
+      const divisor=2*Math.tan((meta.fov??85)*Math.PI/360);
+      this.lastCameraMotion.set(-dyaw/(divisor*aspect),dpitch/divisor);
+    }
+    this.policy.noteReal(now,meta,elapsedMs);
+  }
   reset(){
     this.colorReady=0;this.policy.clearHistory();
   }
@@ -144,6 +176,6 @@ export class WebGpuFrameGeneration {
     this.geometry?.dispose();this.target=null;this.history=null;this.blit=null;this.synthetic=null;
   }
   stats(){return {...this.policy.summary(),enabled:this.enabled,fault:this.fault,
-    gpuMs:null,latencyEstimateMs:0}; /* non-blocking FG-only GPU timestamps unavailable in r181 */}
+    gpuMs:null,latencyEstimateMs:null}; /* unavailable: don't invent FG GPU timestamps/input latency */}
   dispose(){this.enabled=false;this.release();}
 }
