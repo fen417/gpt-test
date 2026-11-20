@@ -29,6 +29,8 @@ const crouching = player => !player.vehicleId && Boolean(player.crouching || pla
 const rayDir = { x: 0, y: 0, z: 0 };
 const GRENADE_RADIUS = .05;
 const GRENADE_CONTACT_GAP = .002;
+const GRENADE_MAX_THROW_RANGE = 24;
+const GRENADE_GROUND_RETENTION = .45;
 
 
 
@@ -880,7 +882,7 @@ export class Simulation {
       const distance=rayCapsule(eye,direction,other.x,other.z,other.y+.2,other.y+(crouching(other)?.95:1.5),.28);
       if(distance<hit){hit=distance;hitPlayer=true;}
     }
-    const maximum=38, horizontal=Number.isFinite(hit)?Math.min(maximum,hit*Math.cos(p.pitch)):maximum;
+    const maximum=GRENADE_MAX_THROW_RANGE, horizontal=Number.isFinite(hit)?Math.min(maximum,hit*Math.cos(p.pitch)):maximum;
     const range=Math.max(.4,horizontal), x=p.x-Math.sin(p.yaw)*range,z=p.z-Math.cos(p.yaw)*range;
     const targetY=Number.isFinite(hit)&&horizontal<maximum&&!hitPlayer?eye.y+direction.y*hit:this.groundAt(x,z)+.1;
     const origin={x:p.x,y:eye.y-.14,z:p.z},flight=clamp(.4+range*.033,.42,1.65);
@@ -1177,7 +1179,12 @@ export class Simulation {
         grenade.y+=delta.y;
       }
       const ground=this.groundAt(grenade.x,grenade.z)+GRENADE_RADIUS;
-      if(grenade.y<ground){grenade.y=ground;grenade.vy=Math.abs(grenade.vy)*.3;grenade.vx*=.92;grenade.vz*=.92;}
+      if(grenade.y<ground){
+        grenade.y=ground;
+        grenade.vy=Math.abs(grenade.vy)*.3;
+        grenade.vx*=GRENADE_GROUND_RETENTION;
+        grenade.vz*=GRENADE_GROUND_RETENTION;
+      }
       if(grenade.fuse<=0)blast(this,{x:grenade.x,y:grenade.y,z:grenade.z},this.players.get(grenade.owner),'grenade',null,grenade.team,null,false,grenade.vehicleId);
     }
     this.grenades=this.grenades.filter(g=>g.fuse>0);

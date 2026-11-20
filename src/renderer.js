@@ -1867,12 +1867,12 @@ export class GameRenderer {
       });
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetKind?0:gadgetPhase) * Math.PI);
-      const sightType=this.weaponRig.sightType;
-      const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(sightType);
+      const closeOptic=!pistol&&!scopedWeapon&&this.weaponRig.sightType==='compact';
+      const rifleSight=this.weaponRig.rifleSight;
       // A little extra eye relief makes the MG/PKP aperture less dominant
       // without moving the centred sight line or changing bullet trajectories.
-      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:sightType==='aperture'?-.38:supportIron?-.288:-.27;
-      const adsY=pistol?-this.weaponRig.pistolSightHeight:sightType==='aperture'?-.100:-.167;
+      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:rifleSight?.depth??(supportIron?-.288:-.27);
+      const adsY=-(pistol?this.weaponRig.pistolSightHeight:rifleSight?.height??.167);
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(
