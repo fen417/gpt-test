@@ -8,7 +8,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const weaponNames = {
   ar416: 'ar416', ak12: 'ak12m', mcx9: 'mcx9', vk45: 'vk45',
-  mg36: 'mg36', pkp: 'pkp', sv98: 'm24', dmr12: 'm24', p19: 'p19', m50: 'm50',
+  mg36: 'mg36', pkp: 'pkp', sv98: 'sv98', dmr12: 'dmr12', p19: 'p19', m50: 'm50',
 };
 const weaponFit = {
   mg36: { primary: [0, -.138, .077], support: [-.043, -.044, -.440], scale: .72 },
@@ -18,6 +18,8 @@ const weaponFit = {
   mcx9: { primary: [0, -.125, .078], support: [-.044, -.050, -.411], scale: .74 },
   vk45: { primary: [0, -.112, .084], support: [-.045, -.050, -.420], scale: .76 },
   m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.31], muzzle: [0, .08, -1.42], scale: .68 },
+  dmr12: { primary: [0, -.132, .074], support: [-.045, -.050, -.452], scale: .72 },
+  sv98: { primary: [0, -.132, .075], support: [-.046, -.050, -.460], scale: .74 },
   p19: { primary: [0, -.096, .108], support: [-.033, -.124, .113], muzzle: [0, .012, -.185], scale: .57, pistol: true },
   m50: { primary: [0, -.096, .097], support: [-.036, -.125, .106], muzzle: [0, .012, -.258], scale: .64, pistol: true },
 };

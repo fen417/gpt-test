@@ -21,6 +21,7 @@ import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
+import { SCOPE_ZOOMS, scopeMagnification } from './scope-optics.js';
 import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
@@ -1778,7 +1779,7 @@ export class GameRenderer {
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
       this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
       const weapon = getWeapon(player.classId, player.weaponId);
-      const scopedWeapon = !gadgetKind && Boolean(weapon.zeroRange) && !this.weaponSwitch;
+      const scopedWeapon = !gadgetKind && Boolean(SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
       this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       // Local visual time must not be restarted by every authoritative snapshot.
@@ -1835,7 +1836,7 @@ export class GameRenderer {
       // rifles with close optics; don't narrow their ADS FOV as aggressively.
       const supportIron=!pistol&&!gadgetKind&&player.classId==='support';
       const aimFov = scopedWeapon
-        ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / (player.weaponId === 'sv98' ? clamp(Number(view.scopeZoom) || 8, 6, 12) : 4)))
+        ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / scopeMagnification(player.weaponId,view.scopeZoom)))
         : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
       const fov = lerp(baseFov + this.sprintBlend * 6 + this.slideBlend*3, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
@@ -1871,7 +1872,7 @@ export class GameRenderer {
       const rifleSight=this.weaponRig.rifleSight;
       // A little extra eye relief makes the MG/PKP aperture less dominant
       // without moving the centred sight line or changing bullet trajectories.
-      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:rifleSight?.depth??(supportIron?-.288:-.27);
+      const adsZ=pistol?-.46:closeOptic?-.13:rifleSight?.depth??(scopedWeapon?-.32:supportIron?-.288:-.27);
       const adsY=-(pistol?this.weaponRig.pistolSightHeight:rifleSight?.height??.167);
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);

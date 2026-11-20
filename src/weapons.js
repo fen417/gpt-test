@@ -17,6 +17,8 @@ const rifleFits = {
   vk45: {ejection:[.055,.008,-.204], sight:{height:.127,depth:-.37}},
   mg36: {ejection:[.057,.030,-.132], sight:{height:.172,depth:-.385}},
   pkp: {ejection:[.071,.012,-.111], sight:{height:.150,depth:-.33}},
+  dmr12: {ejection:[.052,.034,-.133]},
+  sv98: {ejection:[.055,.010,-.088], rotatingBolt:true},
 };
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
@@ -623,7 +625,10 @@ export function createWeaponRig(owner = {}) {
     const magazine=model.getObjectByName('Magazine');
     const cover=model.getObjectByName('FeedCover');
     const chargePoint=model.getObjectByName('Charge_Grip')?.position;
-    rifles.set(id,{model,bolt,ejection,muzzle,magazine,magazineHome:magazine.position.clone(),cover,chargePoint,fit});
+    const scopeEye=model.getObjectByName('Scope_Eye')?.position;
+    const sight=scopeEye?{height:scopeEye.y,depth:-.25-scopeEye.z}:fit.sight;
+    rifles.set(id,{model,bolt,ejection,muzzle,magazine,magazineHome:magazine.position.clone(),cover,
+      chargePoint,sight,scoped:Boolean(scopeEye),rotatingBolt:fit.rotatingBolt,fit});
   }
 
   const defibLeft=createFPSHand('defibLeft',importedGloveMat),defibRight=createFPSHand('defibRight',importedGloveMat);
@@ -889,8 +894,8 @@ export function createWeaponRig(owner = {}) {
     vk45:{classId:'medic',guard:.225,barrel:.095,width:.98,finish:0x52575c,handZ:-.420,grasp:[-.031,-.264,-.184]},
     mg36:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.143,-.213,-.146]},
     pkp:{classId:'support',guard:.425,barrel:.285,width:1.22,finish:0x484d45,handZ:-.435,grasp:[-.091,-.206,-.145]},
-    dmr12:{classId:'recon',guard:.432,barrel:.266,width:.99,finish:0x766f59,handZ:-.456,grasp:[-.056,-.176,-.112]},
-    sv98:{classId:'recon',guard:.465,barrel:.310,width:1.03,finish:0x4d6147,handZ:-.468,grasp:[-.056,-.182,-.114]},
+    dmr12:{classId:'recon',guard:.432,barrel:.266,width:.99,finish:0x766f59,handZ:-.456,grasp:[-.041,-.201,-.160]},
+    sv98:{classId:'recon',guard:.465,barrel:.310,width:1.03,finish:0x4d6147,handZ:-.468,grasp:[-.041,-.186,-.155]},
     assault:{classId:'assault',guard:.36,barrel:.19,width:1,finish:0x626859,handZ:-.423,grasp:[-.052,-.236,-.124]},
     medic:{classId:'medic',guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.378,grasp:[-.045,-.237,-.123]},
     support:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.092,-.203,-.111]},
@@ -1165,7 +1170,10 @@ export function createWeaponRig(owner = {}) {
       if(visibleRifle)visibleRifle.model.visible=true;
     }
     rifleAssembly.visible=showRifle&&!visibleRifle;
-    if(visibleRifle)visibleRifle.bolt.position.z=bolt.position.z+.02;
+    if(visibleRifle){
+      visibleRifle.bolt.position.z=bolt.position.z+.02;
+      if(visibleRifle.rotatingBolt)visibleRifle.bolt.rotation.z=.81*Math.max(kick,charging);
+    }
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool&&!unarmed;
     rifleGlove.visible=!usingSupply&&!usingDefib&&(usingTool||throwing||!pistol);
     pistolGlove.visible=Boolean(pistol)&&!usingTool&&!throwing;
@@ -1236,8 +1244,8 @@ export function createWeaponRig(owner = {}) {
     return model;
   }
   return {weapon,handguard,bolt,get ejection(){return visibleRifle?.ejection??visiblePistol?.ejection??bolt;},
-    get rifleSight(){return visibleRifle?.fit.sight;},
-    get sightType(){return visiblePistol||visibleRifle?'iron':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
+    get rifleSight(){return visibleRifle?.sight;},
+    get sightType(){return visibleRifle?.scoped?'scope':visiblePistol||visibleRifle?'iron':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
 }

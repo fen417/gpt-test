@@ -1,5 +1,6 @@
 import {loadFPSHands} from './fps-hands.js';
 import {loadWeaponModels} from './weapon-models.js';
+import {SCOPE_ZOOMS,scopeMagnification} from './scope-optics.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import {mountPerfPanel} from './perf-panel.js';
 const frameTimes=new PerformanceSamples(),cpuTimes=new PerformanceSamples(),renderTimes=new PerformanceSamples(),simulationTimes=new PerformanceSamples();
@@ -45,7 +46,7 @@ let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let lobbyTeamRequest=null,lobbyTeamMessage='';
 let fireTap=false, recoilPitch=0, recoilYaw=0;
-let scopeZoom=8;
+let scopeZoom;
 let weaponSlot=1;
 let toolSlot=0;
 let lastWorldFrame=0;
@@ -897,8 +898,8 @@ document.addEventListener('mousemove',event=>{
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
-  const scopedWeapon = !player?.heldGadget && WEAPONS[player?.weaponId]?.zeroRange;
-  const aimScale = aim ? (scopedWeapon ? (player.weaponId==='sv98' ? .35*4/scopeZoom : .35) : .65) : 1;
+  const scopedWeapon = !player?.heldGadget && SCOPE_ZOOMS[player?.weaponId];
+  const aimScale = aim ? (scopedWeapon ? .70/scopeMagnification(player.weaponId,scopeZoom) : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
 });
@@ -909,10 +910,11 @@ document.addEventListener('wheel',event=>{
      isActionHeld('tankZoom')&&event.deltaY){
     event.preventDefault();campaignTankZoom=campaignTankZoom===2.5?5:2.5;return;
   }
-  if(!active||!aim||!local()?.alive||local()?.heldGadget||local()?.weaponId!=='sv98'||
+  const zooms=SCOPE_ZOOMS[player?.weaponId];
+  if(!active||!aim||!player?.alive||player.heldGadget||!zooms||zooms.length<2||
     (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
   event.preventDefault();
-  scopeZoom=Math.max(6,Math.min(12,scopeZoom-Math.sign(event.deltaY)));
+  scopeZoom=event.deltaY<0?zooms.at(-1):zooms[0];
 },{passive:false});
 document.addEventListener('mousedown',event=>{if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){lastFireClick=performance.now();fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
@@ -1715,9 +1717,10 @@ function frame(now){
   renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;
   show('scope-overlay',scoped);
-  const scopedWeapon=currentPlayer&&getWeapon(currentPlayer.classId,currentPlayer.weaponId);
-  const magnification=currentPlayer?.weaponId==='sv98'?scopeZoom:4;
-  const zoomHint=currentPlayer?.weaponId==='sv98'?' · КОЛЕСО — ЗУМ':'';
+  const scopeId=renderPlayer?.weaponId;
+  const scopedWeapon=WEAPONS[scopeId];
+  const magnification=scopeMagnification(scopeId,scopeZoom);
+  const zoomHint=SCOPE_ZOOMS[scopeId]?.length>1?' · КОЛЕСО — ЗУМ':'';
   text('scope-zoom',scoped&&scopedWeapon?.zeroRange?`${magnification}× · ПРИСТРЕЛКА ${scopedWeapon.zeroRange} М${zoomHint}`:'');
   document.body.classList.toggle('scoped',scoped);
   if(renderState)audio.events(renderState,renderPlayer);

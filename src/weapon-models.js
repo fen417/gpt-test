@@ -8,6 +8,8 @@ const urls = {
   vk45: new URL('./assets/infantry/vk45.glb', import.meta.url).href,
   mg36: new URL('./assets/infantry/mg36.glb', import.meta.url).href,
   pkp: new URL('./assets/infantry/pkp.glb', import.meta.url).href,
+  dmr12: new URL('./assets/infantry/dmr12.glb', import.meta.url).href,
+  sv98: new URL('./assets/infantry/sv98.glb', import.meta.url).href,
   p19: new URL('./assets/infantry/p19.glb', import.meta.url).href,
   m50: new URL('./assets/infantry/m50.glb', import.meta.url).href,
 };
@@ -18,6 +20,8 @@ const animatedParts = {
   vk45: ['Bolt', 'Magazine', 'Muzzle_Exit'],
   mg36: ['Bolt', 'Magazine', 'Muzzle_Exit'],
   pkp: ['Bolt', 'Magazine', 'FeedCover', 'Muzzle_Exit'],
+  dmr12: ['Bolt', 'Magazine', 'Optic', 'Scope_Eye', 'Muzzle_Exit'],
+  sv98: ['Bolt', 'Magazine', 'Optic', 'Scope_Eye', 'Muzzle_Exit'],
   p19: ['Slide', 'Trigger', 'Magazine'],
   m50: ['Slide', 'Trigger', 'Magazine', 'Hammer'],
 };
