@@ -49,7 +49,7 @@ try{
     await page.locator('#open-solo').waitFor({state:'visible',timeout:60000});
     await page.locator('#open-solo').dispatchEvent('click');
     await page.locator('#map-select').selectOption('fy_pool_day');
-    await page.locator('#population').selectOption(api==='webgpu'?'4':'15');
+    await page.locator('#population').selectOption('15');
     await page.locator('#solo').dispatchEvent('click');
     await page.waitForFunction(()=>!document.getElementById('hud').classList.contains('hidden'),{timeout:45000});
     await page.waitForFunction(()=>window.__S09_POOL_REVIEW?.renderer?.getStats()?.calls>=0,{timeout:30000});
@@ -62,8 +62,8 @@ try{
       assert.equal(stats.api,'webgpu','WebGPU must not silently switch back during gameplay');
       assert.equal(stats.backend,'WebGPU','Actual backend changed during gameplay');
     }
-    assert.ok(Number.isFinite(stats.calls),'draw calls unavailable');
-    assert.ok(Number.isFinite(stats.triangles),'triangle count unavailable');
+    assert.ok(Number.isFinite(stats.calls) && stats.calls>0,'draw calls unavailable');
+    assert.ok(Number.isFinite(stats.triangles) && stats.triangles>0,'triangle count unavailable');
     // FXAA / FSR is selected after loading: scene target must remain finite.
     await page.waitForFunction(()=>window.__S09_POOL_REVIEW.renderer.getStats().fsr==='quality',{timeout:15000});
     const scaled=await page.evaluate(()=>window.__S09_POOL_REVIEW.renderer.getStats());
