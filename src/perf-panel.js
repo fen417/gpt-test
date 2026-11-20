@@ -43,7 +43,7 @@ document.body.append(panel);
       `Кадр avg/p95/p99: ${ms(data.frameMs.avg)} / ${ms(data.frameMs.p95)} / ${ms(data.frameMs.p99)} мс`,
       `CPU avg/p95: ${ms(data.cpuMs.avg)} / ${ms(data.cpuMs.p95)} мс · GPU avg/p95: ${ms(data.gpuMs?.avg)} / ${ms(data.gpuMs?.p95)} мс`,
       `Draw calls: ${data.calls} · Треугольники: ${data.triangles} · Видимые объекты: ${data.visibleObjects??'н/д'}`,
-      `Рендер: ${data.sceneWidth}×${data.sceneHeight} · FSR: ${data.fsr??'off'} · ×${ms(data.fsrScale)}`,
+      `Рендер: ${data.sceneWidth}×${data.sceneHeight} · FSR: ${data.fsr??'off'} · ×${ms(data.fsrScale)} · RCAS: ${data.fsrSharpness??'—'}%`,
       `AA: ${data.postSamples??0}× MSAA · FXAA: ${data.fxaa?'да':'нет'} · AF: ${data.anisotropy??'—'}×`,
       `Геометрии: ${data.geometries} · Текстуры: ${data.textures} · Масштаб: ${ms(data.pixelRatio)}`,
       `JS heap: ${data.heapBytes==null?'н/д':(data.heapBytes/1048576).toFixed(1)+' МБ'}`,
