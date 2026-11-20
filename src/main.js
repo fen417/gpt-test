@@ -1752,7 +1752,13 @@ try{
   renderer.resize();window.addEventListener('resize',()=>renderer.resize());
   $('gfx-api-active').textContent='Используется: '+graphicsApiName(renderer.api)
     +(renderer.api==='webgpu'?' · аппаратный WebGPU':recoveredReason?' · WebGPU не запустился':'');
-  if(recoveredReason)toast('WebGPU недоступен ('+recoveredReason+'). Игра запущена через WebGL 2.');
+  const gpuRetry=$('gfx-api-retry');
+  gpuRetry.hidden=!(recoveredReason&&requested==='webgpu');
+  gpuRetry.addEventListener('click',()=>{
+    try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
+    location.reload();
+  });
+  if(recoveredReason)toast('WebGPU переключён на WebGL 2 после ошибки ('+recoveredReason+'). Повторный запуск — в настройках изображения.');
 
   renderer.gpuTimer.enabled=perfPanel.enabled;
   if(new URLSearchParams(location.search).has('poolScreenshot')){
