@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getMap } from '../shared/world.js';
-import { Simulation } from '../shared/simulation.js';
+import { Simulation, createPredictionWorld } from '../shared/simulation.js';
 
 const map=getMap('linden_estate');
 const horizontal=[-2.9,2.3].flatMap(z=>[-8.4,-2.9,5.5,9.4].map(x=>({x,z})));
@@ -87,4 +87,39 @@ test('stairs are walkable navigation surfaces, not blocking step solids',()=>{
      previous=y;
    }
  }
+});
+
+
+test('client prediction uses the same capsule radius and collision solids as the server',()=>{
+  for(const id of ['linden_estate','fy_pool_day','port']){
+    const server=new Simulation({mapId:id,gameMode:id==='port'?'conquest':'tdm',bots:0,random:()=>.5});
+    const client=createPredictionWorld(id);
+    assert.equal(client.playerRadius,server.playerRadius, `${id}: capsule must match authority`);
+    assert.ok(Number.isFinite(client.playerRadius)&&client.playerRadius>0);
+    const probes=id==='linden_estate'
+      ?[[-12,0,.2],[-12.1,.2,.2],[12,0,.2],[-10.5,0,.2],[-21,15,0]]
+      :id==='fy_pool_day'?[[0,0,0],[-17,0,0],[17,0,0]]
+      :[[0,0,0],[10,15,0]];
+    for(const [x,z,y] of probes){
+      assert.equal(client.collides(x,z,y),server.collides(x,z,y),
+        `${id}: collision disagrees at (${x},${z},${y})`);
+    }
+  }
+});
+
+test('holding forward against the manor outer wall never passes through it in client prediction',()=>{
+  const prediction=createPredictionWorld('linden_estate');
+  const authority=sim();
+  assert.equal(prediction.collides(-12,0,.2),true,'West external wall must be solid');
+  const player=authority.addPlayer('wall-test','Wall test',0,'assault');
+  Object.assign(player,{x:-10.9,y:.2,z:0,vy:0,grounded:true,jumpCooldown:0,yaw:Math.PI/2,pitch:0});
+  const input={yaw:Math.PI/2,pitch:0,forward:1,strafe:0,sprint:false,aim:false,
+    fire:false,crouch:false,jump:false};
+  for(let i=0;i<180;i++){
+    prediction.movePlayer(player,input,1/60);
+    assert.ok(player.x > -11.54,
+      `player went through visible manor wall at frame ${i}: X=${player.x.toFixed(3)}`);
+    assert.equal(prediction.collides(player.x,player.z,player.y),false,
+      'prediction must never position the player inside a solid');
+  }
 });
