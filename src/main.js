@@ -1,4 +1,5 @@
 import {loadFPSHands} from './fps-hands.js';
+import {loadAk12Model} from './ak12-asset.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import {mountPerfPanel} from './perf-panel.js';
 const frameTimes=new PerformanceSamples(),cpuTimes=new PerformanceSamples(),renderTimes=new PerformanceSamples(),simulationTimes=new PerformanceSamples();
@@ -327,11 +328,34 @@ function getDeployTarget(player){
   const base=currentMap.spawns[player.team]??currentMap.spawns[0];
   return {x:base.x,z:base.z};
 }
+function filterModeMaps(mapId,modeId,limitId,preferred){
+  const mode=$(modeId).value,select=$(mapId);
+  const maps=Object.values(MAPS).filter(map=>Boolean(map.tdmLoadout)===(mode==='tdm'));
+  const choice=preferred??select.value;
+  if(select.dataset.mode!==mode){
+    select.replaceChildren(...maps.map(map=>new Option(map.name,map.id)));
+    select.dataset.mode=mode;
+  }
+  select.value=maps.some(map=>map.id===choice)?choice:maps[0].id;
+  const limit=$(limitId);
+  limit.closest('label').hidden=mode!=='tdm';
+  limit.disabled=mode!=='tdm';
+}
+function selectLobbyTab(tab){
+  for(const button of document.querySelectorAll('[data-lobby-tab]')){
+    const selected=button.dataset.lobbyTab===tab;
+    button.setAttribute('aria-pressed',String(selected));
+    show('lobby-tab-'+button.dataset.lobbyTab,selected);
+  }
+}
 function updateLobby(){
   if(!state)return;
-  $('lobby-map').value=state.mapId;
+  $('lobby-mode').value=state.gameMode??'conquest';
+  filterModeMaps('lobby-map','lobby-mode','lobby-kill-limit',state.mapId);
   $('lobby-difficulty').value=state.difficulty;
-  $('lobby-population').value=String(state.botCount??8);
+  const population=$('lobby-population');
+  population.max=String(multiplayer.hello?.maxBots??30);
+  if(document.activeElement!==population)population.value=String(state.botCount??8);
   const code=state.roomName||room||'Операция';
   text('lobby-code',code);
   const humans=state.players.filter(p=>!p.bot);
@@ -339,9 +363,9 @@ function updateLobby(){
   const isHost=state.ownerId===localId;
   const difficultyLabel={recruit:'Новобранцы',regular:'Обычные бойцы',veteran:'Ветераны'}[state.difficulty]??'Обычные бойцы';
   text('lobby-role-badge',isHost?'Создатель комнаты':'Участник');
-  const lobbyMode=state.gameMode==='tdm'||Boolean(currentMap.tdmLoadout)?'Командный бой насмерть':'Захват территории';
+  const lobbyMode=state.gameMode==='tdm'?'Командный бой насмерть':'Захват территории';
   text('lobby-game-mode',lobbyMode);
-  text('lobby-status',`${lobbyMode} · Игроки: ${humans.length} · Боты: ${bots.length}`);
+  text('lobby-status',`${lobbyMode} · ${currentMap.name}`);
   text('lobby-map-name',currentMap.name);
   text('lobby-map-info',currentMap.tdmLoadout
     ?`${currentMap.size} × ${currentMap.size} м · TDM · до ${state.killLimit??50} убийств`
@@ -350,13 +374,20 @@ function updateLobby(){
   const art=MAP_ART[currentMap.id]??MAP_ART.quarry;
   if($('lobby-map-art').getAttribute('src')!==art)$('lobby-map-art').src=art;
   $('lobby-map-art').alt=currentMap.name;
-  const capacity=multiplayer.rooms.find(item=>item.id===multiplayer.roomId)?.maxPlayers??multiplayer.hello?.maxPlayers??7;
+  const capacity=state.maxPlayers??multiplayer.rooms.find(item=>item.id===multiplayer.roomId)?.maxPlayers??multiplayer.hello?.maxPlayers??7;
+  const playerCap=$('lobby-max');
+  playerCap.min=String(Math.max(2,humans.length));
+  playerCap.max=String(multiplayer.hello?.maxPlayers??Math.max(capacity,7));
+  if(document.activeElement!==playerCap)playerCap.value=String(capacity);
+  if(document.activeElement!==$('lobby-kill-limit'))$('lobby-kill-limit').value=String(state.killLimit??50);
+  const pickup=currentMap.tdmLoadout==='pickup';
+  show('lobby-pickup-info',pickup);
+  document.querySelector('#lobby .lobby-loadout-card').hidden=pickup;
   text('lobby-capacity',`${humans.length} / ${capacity} игроков`);
   show('lobby-host-controls',isHost);
   show('lobby-start',isHost);
   text('lobby-wait-note',lobbyTeamMessage||(isHost?'Все на месте? Начинай операцию.':'Ожидаем запуска операции создателем комнаты.'));
   $('lobby-start').disabled=Boolean(lobbyTeamRequest);
-  $('lobby-switch-team').disabled=Boolean(lobbyTeamRequest)||!local();
   for(const team of [0,1]){
     const teamHumans=humans.filter(p=>p.team===team).sort((a,b)=>Number(b.id===localId)-Number(a.id===localId));
     const teamBots=bots.filter(p=>p.team===team);
@@ -411,6 +442,7 @@ function enterLobby(){
   inLobby=true;active=false;setBusy(false);
   document.exitPointerLock?.();
   show('menu',false);show('hud',false);show('pause',false);show('death',false);show('result',false);show('lobby',true);
+  selectLobbyTab('teams');
   document.body.classList.remove('in-battle');
   $('lobby-map').value=currentMap.id;
   $('lobby-difficulty').value=state?.difficulty||$('difficulty').value;
@@ -676,17 +708,9 @@ async function refreshRooms(){
   try{await multiplayer.browse(await serverAddress());}
   catch(error){text('rooms-note',error.message);status(error.message,true);}
 }
-for(const map of Object.values(MAPS))$('room-map').add(new Option(map.name,map.id));
-$('room-map').value=$('map-select').value;
 configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
-function syncRoomMode(){
-  const pool=Boolean(getMap($('room-map').value).tdmLoadout);
-  $('room-mode').value=pool?'tdm':'conquest';
-  $('room-mode').disabled=!pool;
-  $('room-kill-limit').disabled=!pool;
-}
-$('room-map').addEventListener('change',syncRoomMode);
-$('host').addEventListener('click',()=>{$('room-map').value=$('map-select').value;syncRoomMode();});
+const syncRoomMode=()=>filterModeMaps('room-map','room-mode','room-kill-limit');
+$('room-mode').addEventListener('change',syncRoomMode);
 syncRoomMode();
 $('create-room').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const opts=prepare('server');setBusy(true);
@@ -709,12 +733,27 @@ async function chooseLobbyTeam(team){
   finally{if(lobbyTeamRequest===pending){lobbyTeamRequest=null;if(inLobby&&multiplayer.roomId===pending.roomId)updateLobby();}}
 }
 for(const team of [0,1])$(`lobby-choose-team-${team}`).addEventListener('click',()=>chooseLobbyTeam(team));
-$('lobby-switch-team').addEventListener('click',()=>{const p=local();if(p)chooseLobbyTeam(1-p.team);});
-$('lobby-map').addEventListener('change',event=>multiplayer.updateLobbySettings({mapId:event.target.value}));
-$('lobby-difficulty').addEventListener('change',event=>{multiplayer.updateLobbySettings({difficulty:event.target.value,bots:Number($('lobby-population').value)});});
-$('lobby-population').addEventListener('change',event=>{multiplayer.updateLobbySettings({bots:Number(event.target.value),difficulty:$('lobby-difficulty').value});});
+for(const button of document.querySelectorAll('[data-lobby-tab]'))button.onclick=()=>selectLobbyTab(button.dataset.lobbyTab);
+$('lobby-mode').addEventListener('change',event=>{
+  if(state?.ownerId!==localId)return;
+  filterModeMaps('lobby-map','lobby-mode','lobby-kill-limit');
+  multiplayer.updateLobbySettings({gameMode:event.target.value,mapId:$('lobby-map').value});
+});
+for(const [id,field] of Object.entries({'lobby-map':'mapId','lobby-difficulty':'difficulty',
+  'lobby-population':'bots','lobby-max':'maxPlayers','lobby-kill-limit':'killLimit'})){
+  $(id).addEventListener('change',({target})=>{
+    if(state?.ownerId!==localId)return;
+    if(target.type==='number'){
+      const oldValue=field==='bots'?state.botCount:state[field];
+      const min=Number(target.min);
+      const value=Number.isFinite(target.valueAsNumber)?target.valueAsNumber:oldValue??min;
+      target.value=String(Math.min(Number(target.max),Math.max(min,Math.round(value))));
+    }
+    multiplayer.updateLobbySettings({[field]:target.type==='number'?target.valueAsNumber:target.value});
+  });
+}
 $('lobby-copy').addEventListener('click',async()=>{const url=new URL(location.href);url.search='';url.hash='';try{await navigator.clipboard.writeText(url.href);toast('Ссылка на игру скопирована. Друзья найдут комнату в браузере комнат.');}catch{toast(url.href);}});
-$('lobby-start').addEventListener('click',()=>{if(state?.ownerId!==localId)return;audio.click();multiplayer.startMatch({bots:Number($('lobby-population').value),difficulty:$('lobby-difficulty').value,mapId:$('lobby-map').value});});
+$('lobby-start').addEventListener('click',()=>{if(state?.ownerId!==localId)return;audio.click();multiplayer.startMatch();});
 $('lobby-leave').addEventListener('click',()=>leave());
 $('spawn-point').addEventListener('change',event=>selectSpawnPoint(event.target.value,true));
 $('resume').addEventListener('click',()=>{if(!active){show('pause',false);return;}audio.unlock();requestControl();});
@@ -724,7 +763,7 @@ for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('c
   if(id!=='result-leave'&&performance.now()-lastFireClick<600)return;
   leave();
 });
-$('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(state?.ownerId===localId){multiplayer.startMatch({bots:Number($('lobby-population').value),difficulty:$('lobby-difficulty').value,mapId:$('lobby-map').value});enter();}else{leave();toast('Создай новую комнату для следующей операции.');}});
+$('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(state?.ownerId===localId){multiplayer.startMatch();enter();}else{leave();toast('Создай новую комнату для следующей операции.');}});
 async function triggerRespawn(){
   const p=local();if(!p||p.alive||p.respawnIn>0)return;
   const targetPoint=selectedSpawn;
@@ -820,7 +859,7 @@ $('sound-toggle').addEventListener('click',()=>{audio.enabled=!audio.enabled;tex
 $('music-toggle').addEventListener('click',()=>{if(audioStarted)musicMuted=!musicMuted;else musicMuted=false;save('music-muted',musicMuted);unlockAudio();setMusic();});
 mountMenuPanels(()=>{unlockAudio();audio.click();});
 weaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getGpuDevice:()=>renderer?.webgpu?.device??null,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm})});
-lobbyWeaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getGpuDevice:()=>renderer?.webgpu?.device??null,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm}),panelId:'lobby',prefix:'lobby-weapon-preview'});
+lobbyWeaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getGpuDevice:()=>renderer?.webgpu?.device??null,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm}),panelId:'lobby-tab-loadout',prefix:'lobby-weapon-preview'});
 squadUI=mountSquadUI({getState:()=>state,getLocalId:()=>localId,getKey:()=>formatKeyCode(keybinds.squad),
   getOrderKeys:()=>({order:formatKeyCode(keybinds.order)}),
   onOpen:()=>{clearControls();if(active&&local()?.alive){unlockedPaused=true;document.exitPointerLock?.();show('pause');}audio.click();},
@@ -1120,11 +1159,9 @@ function setBattleMap(mapId,force=false){
   drawMinimapBackground();drawDeployBackground();
 }
 function initializeMapPickers(){
-  for(const map of Object.values(MAPS)){
-    $('map-select').add(new Option(map.name,map.id));
-    $('lobby-map').add(new Option(map.name,map.id));
-  }
-  $('map-select').value=getMap(read('map',DEFAULT_MAP_ID)).id;
+  const saved=getMap(read('map',DEFAULT_MAP_ID));
+  $('solo-mode').value=saved.tdmLoadout?'tdm':'conquest';
+  filterModeMaps('map-select','solo-mode','solo-kill-limit',saved.id);
   const update=()=>{
     const map=getMap($('map-select').value);
     text('menu-map-name',map.name.toUpperCase());
@@ -1132,14 +1169,11 @@ function initializeMapPickers(){
     text('menu-map-info',map.size+' × '+map.size+' м · '+(map.tdmLoadout?'Командный бой':map.points.length+' позиций')+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
     save('map',map.id);
   };
-  const syncSoloMode=()=>{
-    const pool=Boolean(getMap($('map-select').value).tdmLoadout);
-    $('solo-mode').value=pool?'tdm':'conquest';
-    $('solo-mode').disabled=!pool;
-    $('solo-kill-limit').disabled=!pool;
-  };
-  $('map-select').addEventListener('change',()=>{syncSoloMode();update();});
-  syncSoloMode();
+  $('map-select').addEventListener('change',update);
+  $('solo-mode').addEventListener('change',()=>{
+    filterModeMaps('map-select','solo-mode','solo-kill-limit');
+    update();
+  });
   update();
 }
 function pickDeploySpawnAt(clientX,clientY){
@@ -1704,7 +1738,7 @@ function recoverWebGpu(error) {
   location.reload();
 }
 try{
-  await loadFPSHands();
+  await Promise.all([loadFPSHands(),loadAk12Model()]);
   let gpuOptions=null;
   const requested=preferredGraphicsApi();
   let recoveredReason=null;

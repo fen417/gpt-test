@@ -123,11 +123,11 @@ function overlaps(a,b) {
 }
 
 export class Simulation {
-  constructor({ bots=23, difficulty='regular', mapId, gameMode='conquest', killLimit=50, weaponRespawnSeconds=15, random=Math.random, debugBots=false, lagCompensation=false }={}) {
+  constructor({ bots=23, difficulty='regular', mapId, killLimit=50, weaponRespawnSeconds=15, random=Math.random, debugBots=false, lagCompensation=false }={}) {
     this.debugBots=debugBots;this.poseHistory=lagCompensation?new PoseHistory():null;
     this.map=getMap(mapId);
     this.playerRadius=this.map.playerRadius??PLAYER_RADIUS;
-    this.gameMode=gameMode==='tdm'&&this.map.tdmLoadout?'tdm':'conquest';
+    this.gameMode=this.map.tdmLoadout?'tdm':'conquest';
     this.killLimit=clamp(Math.floor(finite(killLimit,50)),10,500);
     this.weaponRespawnSeconds=clamp(finite(weaponRespawnSeconds,15),3,120);
     this.navigationHouses = this.map.theme === 'desert-village'

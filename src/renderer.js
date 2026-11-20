@@ -1906,15 +1906,17 @@ export class GameRenderer {
       });
       const kick = this.kick * clamp(weapon.recoil / .019, .7, 1.65);
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetKind?0:gadgetPhase) * Math.PI);
-      const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(this.weaponRig.sightType);
+      const sightType=this.weaponRig.sightType;
+      const closeOptic=!pistol&&!scopedWeapon&&['reflex','compact'].includes(sightType);
       // A little extra eye relief makes the MG/PKP aperture less dominant
       // without moving the centred sight line or changing bullet trajectories.
-      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:supportIron?-.288:-.27;
+      const adsZ=pistol?-.46:scopedWeapon?-.32:closeOptic?-.13:sightType==='aperture'?-.38:supportIron?-.288:-.27;
+      const adsY=pistol?-this.weaponRig.pistolSightHeight:sightType==='aperture'?-.100:-.167;
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(
         lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * weaponBob - this.swayX + rifleSprint * .035 + actionTilt * .055 + lowered * .06,
-        lerp(pistol ? -.105 : -.23, pistol ? -this.weaponRig.pistolSightHeight : -.167, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
+        lerp(pistol ? -.105 : -.23, adsY, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
         lerp(pistol ? -.50 : -.42, adsZ, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
       );
       this.weapon.rotation.set(

@@ -7,12 +7,13 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const weaponNames = {
-  ar416: 'm4a1', ak12: 'ak47', mcx9: 'mp5a5', vk45: 'mp5a5',
+  ar416: 'm4a1', ak12: 'ak12m', mcx9: 'mp5a5', vk45: 'mp5a5',
   mg36: 'm4a1', pkp: 'ak47', sv98: 'm24', dmr12: 'm24', p19: 'p226', m50: 'm1911',
 };
 const weaponFit = {
   m4a1: { primary: [0, -.17, .215], support: [-.047, -.125, -.341], muzzle: [0, .049, -1.265], scale: .41, foregrip: true },
   ak47: { primary: [0, -.073, -.122], support: [-.036, -.048, -.32], muzzle: [0, .005, -1.135], scale: .72 },
+  ak12m: { primary: [0, -.134, .05], support: [-.042, -.043, -.415], muzzle: [0, .015, -.865], scale: .74 },
   mp5a5: { primary: [0, -.098, -.103], support: [-.043, -.010, -.30], muzzle: [0, .146, -.85], scale: .70 },
   m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.31], muzzle: [0, .08, -1.42], scale: .68 },
   p226: { primary: [0, -.03, .237], support: [-.038, -.052, .255], muzzle: [0, .09, -.08], scale: .60, pistol: true },
@@ -171,7 +172,7 @@ function batchDistantWeapon(model) {
   model.traverse(mesh => {
     if (!mesh.isMesh) return;
     const geometry = new THREE.BufferGeometry();
-    const { position, normal } = mesh.geometry.attributes;
+    const { position, normal, color: vertexColor } = mesh.geometry.attributes;
     for (const [key, attribute] of [['position', position], ['normal', normal]]) {
       const values = new Float32Array(attribute.count * 3);
       for (let i = 0; i < attribute.count; ++i) vector.fromBufferAttribute(attribute, i).toArray(values, i * 3);
@@ -180,7 +181,11 @@ function batchDistantWeapon(model) {
     const colors = new Float32Array(position.count * 3);
     const color = mesh.material.color.clone();
     if (mesh.material.map) color.multiplyScalar(.23);
-    for (let i = 0; i < position.count; ++i) color.toArray(colors, i * 3);
+    const tint = new THREE.Vector3(color.r, color.g, color.b);
+    for (let i = 0; i < position.count; ++i) {
+      if (vertexColor) vector.fromBufferAttribute(vertexColor, i).multiply(tint).toArray(colors, i * 3);
+      else color.toArray(colors, i * 3);
+    }
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.setIndex(mesh.geometry.index);
     pieces.push(geometry.applyMatrix4(mesh.matrixWorld));

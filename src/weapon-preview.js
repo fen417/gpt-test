@@ -12,7 +12,7 @@ function visibleBounds(root){
 export function mountWeaponPreview({getRig,getLoadout,getGpuDevice=()=>null,panelId='single-player-panel',prefix='weapon-preview'}){
   const canvas=document.getElementById(prefix),panel=document.getElementById(panelId);
   const title=document.getElementById(prefix+'-name'),hint=document.getElementById(prefix+'-hint');
-  const isOpen=()=>panel.tagName==='DIALOG'?panel.open:!panel.classList.contains('hidden');
+  const isOpen=()=>canvas.getClientRects().length>0;
   const slots=()=>panel.querySelectorAll('[data-preview-slot]');
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(30,1,.01,20),pivot=new THREE.Group();scene.add(pivot);
   scene.add(new THREE.HemisphereLight(0xf4f6df,0x37483b,3));

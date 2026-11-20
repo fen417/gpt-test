@@ -8,6 +8,7 @@ import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS, pistolGripSectionAt } from 
 import { createFPSHand, fpsHandTextures } from './fps-hands.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
+import { cloneAk12Model } from './ak12-asset.js';
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
 // its own depth pass by GameRenderer; no material is allowed to see through it.
@@ -642,6 +643,15 @@ export function createWeaponRig(owner = {}) {
     if(![leftArm,rightArm,leftHand,rightHand,muzzleFlash,heldLauncher,supplyRoot].includes(child))rifleAssembly.add(child);
   }
   weapon.add(rifleAssembly);
+  const akModel=cloneAk12Model();
+  const akMagazineNode=akModel?.getObjectByName('Magazine');
+  const akBoltNode=akModel?.getObjectByName('Bolt');
+  const akEjection=new THREE.Object3D();
+  if(akBoltNode){
+    akEjection.position.set(.055,.03,-.165);
+    akBoltNode.add(akEjection);
+  }
+  if(akModel)weapon.add(akModel);
 
   const defibLeft=createFPSHand('defibLeft',importedGloveMat),defibRight=createFPSHand('defibRight',importedGloveMat);
   ownedGeometries.add(defibLeft.geometry);ownedGeometries.add(defibRight.geometry);
@@ -1124,7 +1134,7 @@ export function createWeaponRig(owner = {}) {
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!unarmed;
     scope.visible = recon && aim < .92;
     suppressor.visible = recon || isVk;
-    muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : weapon.userData.muzzleZ);
+    muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : isAk&&akModel ? -.865 : weapon.userData.muzzleZ);
     flashLight.position.copy(muzzleFlash.position);
     const hasPhase = Number.isFinite(reloadPhase);
     const phase = hasPhase ? THREE.MathUtils.clamp(reloadPhase,0,1) : reloadMotion > 0 ? .64 : 1;
@@ -1152,7 +1162,14 @@ export function createWeaponRig(owner = {}) {
     heldLauncher.visible=usingTool&&gadgetKind==='launcher';
     defibLeft.visible=defibRight.visible=heldDefibLeft.visible=heldDefibRight.visible=defibUnit.visible=usingDefib;
     for(const cable of defibCables)cable.mesh.visible=usingDefib;
-    rifleAssembly.visible=!pistol&&!usingTool&&!unarmed;
+    const showAk=Boolean(akModel&&isAk&&!usingTool&&!unarmed);
+    rifleAssembly.visible=!pistol&&!usingTool&&!unarmed&&!showAk;
+    if(akModel)akModel.visible=showAk;
+    if(showAk){
+      akMagazineNode.position.copy(magazine.position);
+      akMagazineNode.quaternion.copy(magazine.quaternion);
+      akBoltNode.position.z=bolt.position.z+.02;
+    }
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool&&!unarmed;
     rifleGlove.visible=!usingSupply&&!usingDefib&&(usingTool||throwing||!pistol);
     pistolGlove.visible=Boolean(pistol)&&!usingTool&&!throwing;
@@ -1216,14 +1233,14 @@ export function createWeaponRig(owner = {}) {
     // Menus use a rigid copy of the actual equipped model, without hands,
     // sleeves, muzzle effects or gadget geometry. GPU assets stay shared.
     update({classId,weaponId,reloadPhase:1,reloadEmpty:false});
-    const model=(visiblePistol?visiblePistol.root:rifleAssembly).clone(true);
+    const model=(visiblePistol?.root??(akModel?.visible?akModel:rifleAssembly)).clone(true);
     // The gameplay rig uses VIEWMODEL_LAYER. Standalone preview cameras and
     // their lights use the default layer; change the copy, never the live rig.
     model.traverse(object=>object.layers.set(0));model.visible=true;
     return model;
   }
-  return {weapon,handguard,bolt,get ejection(){return visiblePistol?.ejection??bolt;},
-    get sightType(){return visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
+  return {weapon,handguard,bolt,get ejection(){return akModel?.visible?akEjection:visiblePistol?.ejection??bolt;},
+    get sightType(){return akModel?.visible?'aperture':visiblePistol?'iron':reflex.visible?'reflex':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
 }
