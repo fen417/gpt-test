@@ -4,10 +4,10 @@
 // Input to EASU is an already tone-mapped, display-referred RGB texture.
 // Both stages use explicit texelFetch for compatibility with WebGL2 GPUs.
 export const FSR1_SCALES = Object.freeze({
-  ultra: 1 / 1.3,
-  quality: 1 / 1.5,
-  balanced: 1 / 1.7,
-  performance: 0.5,
+  ultra: 0.92,
+  quality: 0.85,
+  balanced: 0.75,
+  performance: 0.67,
 });
 export function fsr1RenderScale(quality, adaptive = 1) {
   return quality === 'auto'
@@ -121,6 +121,7 @@ vec3 source(ivec2 p) {
 }
 void main() {
   ivec2 p=ivec2(gl_FragCoord.xy);
+  if(sharpness<=0.0){outColor=vec4(source(p),1.0);return;}
   vec3 b=source(p+ivec2( 0,-1));
   vec3 d=source(p+ivec2(-1, 0));
   vec3 e=source(p);
