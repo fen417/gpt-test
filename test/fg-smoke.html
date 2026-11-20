@@ -55,11 +55,12 @@ window.runFrameGenerationSmoke=async()=>{
     }
     if(!fg.generate(80))throw new Error('History was ready but generated frame not presented');
     if(!fg.enabled||fg.target.textures.length!==2)throw new Error('MRT velocity was not attached');
+    const generated=fg.policy.summary().generatedFrames;
     fg.setMode('off');
     if(custom.fragmentNode!==originalFragment)throw new Error('Custom fragment shader not restored when FG is off');
     fg.setMode('1.5');
 
-    return {ok:true,generated:fg.policy.summary().generatedFrames,mode:fg.policy.mode,
+    return {ok:true,generated,mode:fg.policy.mode,
       mrt:fg.target.textures.length,depth:!!fg.target.depthTexture,renderScale:post.fsrScale,
       customFragmentRestored:true,
       backend:renderer.backend.constructor.name};
