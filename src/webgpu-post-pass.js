@@ -29,6 +29,7 @@ export class WebGpuPostPass {
   constructor(renderer,{antialias='auto'}={}){
     this.renderer=renderer;this.antialias=antialias;
     this.target=new THREE.RenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:true});
+    this.nativeTarget=this.target;this.frameGeneration=null;
     this.maxSamples=4;
     this.ldrTarget=new THREE.RenderTarget(1,1,{depthBuffer:false});
     this.upscaledTarget=new THREE.RenderTarget(1,1,{depthBuffer:false});
@@ -41,6 +42,7 @@ export class WebGpuPostPass {
     const geometry=fullScreenGeometry();
     this.geometry=geometry;
     const source=texture(this.target.texture), sampled=source.sample(uv());
+    this.sourceTexture=source; // Rebind scene color only while opt-in FG uses the velocity MRT.
     const filtered=fxaa(source);
     const postColor=Fn(()=>{
       const color=vec3(sampled.rgb).toVar();
@@ -75,7 +77,7 @@ export class WebGpuPostPass {
     this.rcasSharpness.value=Math.max(0,Math.min(1,Number(sharpness)/100||0));
   }
   begin(quality='high'){
-    const samples=quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
+    const samples=this.frameGeneration?.enabled?0:quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
     if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
     const fsr=this.fsrQuality!=='off'&&this.fsrScale<.995;
     this.useFxaa.value=this.antialias==='off'?0:quality==='high'&&samples>0?0:1;
@@ -83,7 +85,17 @@ export class WebGpuPostPass {
     const r=this.renderer;r.getDrawingBufferSize(this.size);
     const w=Math.max(1,Math.round(this.size.x*(fsr?this.fsrScale:1)));
     const h=Math.max(1,Math.round(this.size.y*(fsr?this.fsrScale:1)));
-    if(this.target.width!==w||this.target.height!==h)this.target.setSize(w,h);
+    if(this.target.width!==w||this.target.height!==h){
+      this.target.setSize(w,h);
+      if(this.frameGeneration?.enabled){
+        // DepthTexture image dimensions must match the resized MRT color textures.
+        this.target.depthTexture.image.width=w;
+        this.target.depthTexture.image.height=h;
+        this.target.depthTexture.needsUpdate=true;
+        this.frameGeneration.reset();
+      }
+    }
+    this.frameGeneration?.resize(this.size.x,this.size.y);
     this.invSize.value.set(1/w,1/h);
     this.outputSize.value.copy(this.size);
     if(fsr){
@@ -101,12 +113,17 @@ export class WebGpuPostPass {
       if(this.fsrQuality!=='off'&&this.fsrScale<.995){
         r.setRenderTarget(this.ldrTarget);r.render(this.scene,this.camera);
         r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-        r.setRenderTarget(null);r.render(this.rcasScene,this.camera);
-      }else {r.setRenderTarget(null);r.render(this.scene,this.camera);}
+        r.setRenderTarget(this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null);
+        r.render(this.rcasScene,this.camera);
+      }else {
+        r.setRenderTarget(this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null);
+        r.render(this.scene,this.camera);
+      }
+      this.frameGeneration?.presentReal();
     }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
   }
   dispose(){
-    this.target.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
+    this.nativeTarget.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
     this.geometry.dispose();this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();
   }
 }
