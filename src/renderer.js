@@ -1547,6 +1547,9 @@ export class GameRenderer {
   resize() {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
+    if(this.viewportWidth && (width!==this.viewportWidth||height!==this.viewportHeight)){
+      this.frameGeneration?.reset(); // never reproject history from the old viewport
+    }
     this.viewportWidth = width;
     this.viewportHeight = height;
     this.renderer.setSize(width, height, false); this.camera.aspect = width / height; this.camera.updateProjectionMatrix();
