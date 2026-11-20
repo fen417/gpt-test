@@ -463,7 +463,7 @@ function receive(next){
       show('pause',false);show('revive-control-hint',reviveAwaitingControl);
     }else if(active&&!locked&&!unlocked)show('pause');
   }
-  if(!player.alive&&wasAlive&&!next.campaign&&next.gameMode!=='tdm'){ 
+  if(!player.alive&&wasAlive&&!next.campaign&&(next.gameMode!=='tdm'||currentMap.tdmLoadout==='class')){ 
     reviveAwaitingControl=false;show('revive-control-hint',false);
     lastDeathPos={x:player.x,z:player.z};
     if(!spawnPointAvailable(player,selectedSpawn)){
@@ -966,12 +966,12 @@ function input(){
     fire:firing,
     aim:enabled&&aim,
     weaponSlot:enabled?weaponSlot:0,
-    toolSlot:state?.gameMode==='tdm'?0:toolSlot,
+    toolSlot:state?.gameMode==='tdm'&&currentMap.tdmLoadout!=='class'?0:toolSlot,
     reload:enabled&&pulses.has(keybinds.reload),
     gadget:false,
     secondaryGadget:false,
     grenade:enabled&&state?.gameMode!=='tdm'&&pulses.has(keybinds.grenade),
-    drop:enabled&&state?.gameMode==='tdm'&&pulses.has(keybinds.drop),
+    drop:enabled&&state?.gameMode==='tdm'&&currentMap.tdmLoadout==='pickup'&&pulses.has(keybinds.drop),
     interact:enabled&&pulses.has(keybinds.interact),
     switchSeat:enabled&&pulses.has(keybinds.switchSeat),
     horn:enabled&&pulses.has(keybinds.horn),
@@ -1431,7 +1431,7 @@ function hud(now){
   const seconds=Math.floor(state.time);text('match-time',`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`);
   text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;
   if(personalWeapon){
-    const tool=state.gameMode==='tdm'?null:player.heldGadget;
+    const tool=state.gameMode==='tdm'&&currentMap.tdmLoadout==='pickup'?null:player.heldGadget;
     text('ammo',tool?(tool==='launcher'?player.rockets:'—'):((simulation?.client??multiplayer).prediction?.player?.weaponId===player.weaponId?(simulation?.client??multiplayer).prediction.player.ammo:player.ammo));text('reserve',tool?(tool==='launcher'?'РАКЕТЫ':'СНАРЯЖЕНИЕ'):player.reserve);
     text('weapon-name',!player.weaponId?'БЕЗ ОРУЖИЯ':tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`);
     if(state.gameMode==='tdm'&&!player.weaponId){text('ammo','—');text('reserve','—');}
@@ -1450,12 +1450,12 @@ function hud(now){
     if(vehicle)toolHint=` · ${Math.round(vehicle.hp/VEHICLE_TYPES[vehicle.type].maxHp*100)}% · УДЕРЖИВАЙ ЛКМ`;
   }
   text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${toolHint}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
-  show('gadget-label',state.gameMode!=='tdm');
-  show('grenade-label',true);
+  show('gadget-label',state.gameMode!=='tdm'||currentMap.tdmLoadout==='class');
+  show('grenade-label',state.gameMode!=='tdm'||currentMap.tdmLoadout==='pickup');
   text('grenade-label',state.gameMode==='tdm'?`${formatKeyCode(keybinds.drop)} · ВЫБРОСИТЬ ОРУЖИЕ`:`${formatKeyCode(keybinds.grenade)} · ГРАНАТА`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const secondary=player.classId==='assault'?`ПТ-90 · ${player.rockets??0}`:player.classId==='medic'?'АПТЕЧКА':'';
-  show('secondary-gadget-label',state.gameMode!=='tdm'&&Boolean(secondary));
+  show('secondary-gadget-label',(state.gameMode!=='tdm'||currentMap.tdmLoadout==='class')&&Boolean(secondary));
   text('secondary-gadget-label',`${formatKeyCode(keybinds.secondaryGadget)} · ${secondary}${player.secondaryCooldown>0?' · '+Math.ceil(player.secondaryCooldown)+'с':''}`);
   const nearby=state.gameMode==='tdm'?null:state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
   if(state.gameMode==='tdm'){
@@ -1520,7 +1520,7 @@ function hud(now){
   const dmgOpacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
   const dmgEl=$('damage-flash');
   if(dmgEl.dataset.opacity!==dmgOpacity){dmgEl.dataset.opacity=dmgOpacity;dmgEl.style.opacity=dmgOpacity;}
-  if(!player.alive&&state.gameMode!=='tdm')updateDeployScreen(player,now);
+  if(!player.alive&&(state.gameMode!=='tdm'||currentMap.tdmLoadout==='class'))updateDeployScreen(player,now);
   if(!$('scoreboard').classList.contains('hidden')){
     text('scoreboard-tickets',`${Math.ceil(state.tickets[player.team])} : ${Math.ceil(state.tickets[1-player.team])}`);
     const allies=[...state.players].filter(p=>p.team===player.team).sort((a,b)=>(b.score||0)-(a.score||0)||b.kills-a.kills);
