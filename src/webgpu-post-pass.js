@@ -92,13 +92,9 @@ export class WebGpuPostPass {
     const h=Math.max(1,Math.round(this.size.y*(fsr?this.fsrScale:1)));
     if(this.target.width!==w||this.target.height!==h){
       this.target.setSize(w,h);
-      if(this.frameGeneration?.enabled){
-        // DepthTexture image dimensions must match the resized MRT color textures.
-        this.target.depthTexture.image.width=w;
-        this.target.depthTexture.image.height=h;
-        this.target.depthTexture.needsUpdate=true;
-        this.frameGeneration.reset();
-      }
+      // The scene target is always single-color attachment and normally has
+      // no explicit DepthTexture. FG history is owned separately.
+      this.frameGeneration?.reset();
     }
     this.frameGeneration?.resize(this.size.x,this.size.y);
     this.invSize.value.set(1/w,1/h);
