@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildPoolDay } from './pool-day-visuals.js';
+import { buildLindenEstate } from './linden-estate-visuals.js';
 import { mapItems } from '../shared/map-edits.js';
 import { localAsset, UNIT_SCALE } from '../shared/asset-scale.js';
 import { addPortGround, createPortModelBuilder } from './port-visuals.js';
@@ -38,6 +39,10 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
   owner.scene = background;
   owner.map = map;
   try {
+    if(map.theme==='linden-estate'){
+      buildLindenEstate(map,background);
+      return {root,groups,owner,roadSurface};
+    }
     if(map.theme==='pool-day'){
       buildPoolDay(owner,map,background);
       return {root,groups,owner,roadSurface};
