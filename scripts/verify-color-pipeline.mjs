@@ -14,10 +14,11 @@ try{
       const page=await ctx.newPage();
       const pageErrors=[];
       page.on('pageerror',error=>pageErrors.push(error.message));
+      page.on('console',message=>{if(api==='webgpu')console.log('PROBE LOG',message.type(),message.text().slice(0,500));});
       try{
         await page.goto('http://127.0.0.1:5173/test/graphics-color-smoke.html',{waitUntil:'domcontentloaded'});
         await page.waitForFunction(()=>typeof window.runColorSmoke==='function');
-        const info=await page.evaluate(([a,q])=>window.runColorSmoke(a,q),[api,fsr]);
+        const info=await page.evaluate(([a,q])=>window.runColorSmoke(a,q,false),[api,fsr]);
         if(info.skipped){console.log('COLOR SMOKE SKIPPED',info);continue;}
         assert.equal(info.ok,true);
         assert.deepEqual(pageErrors,[]);
@@ -46,8 +47,19 @@ try{
   }
   assert.ok(results['webgl2:off']?.rgb.every(v=>v>25&&v<245),'WebGL color probe is black or blown out');
   if(results['webgpu:off']){
-    assert.ok(results['webgpu:off'].textures.count>0,'The real infantry GLB has no tested texture');
-    assert.ok(results['webgpu:off'].textures.types.every(t=>t!=='CompressedTexture'),
-      'WebGPU Basis fallback is still compressed');
+    // Isolate texture/transcoder failures from the color-space comparison:
+    // a failed GLB import must not hide the measured WebGPU vs WebGL pixels.
+    const ctx=await browser.newContext({viewport:{width:320,height:200}});
+    const page=await ctx.newPage();
+    page.on('console',message=>console.log('ASSET PROBE',message.type(),message.text().slice(0,700)));
+    try{
+      await page.goto('http://127.0.0.1:5173/test/graphics-color-smoke.html',{waitUntil:'domcontentloaded'});
+      await page.waitForFunction(()=>typeof window.runColorSmoke==='function');
+      const result=await page.evaluate(()=>window.runColorSmoke('webgpu','off',true));
+      console.log('WEBGPU INFANTRY KTX2 SMOKE',JSON.stringify(result));
+      assert.ok(result.textures.count>0,'The real infantry GLB has no tested texture');
+      assert.ok(result.textures.types.every(t=>t!=='CompressedTexture'),
+        'WebGPU Basis fallback is still compressed');
+    }finally{await ctx.close();}
   }
 }finally{await browser.close();}
