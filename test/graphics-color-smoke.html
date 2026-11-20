@@ -9,13 +9,15 @@ import {SafeWebGpuKtx2Loader} from '../src/webgpu-ktx2.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 const canvas=document.getElementById('probe');
-window.runColorSmoke=async(api='webgl2',fsr='off')=>{
+window.runColorSmoke=async(api='webgl2',fsr='off',loadAsset=false)=>{
   let renderer,device;
   if(api==='webgpu'){
     if(!navigator.gpu)return {skipped:'WebGPU unavailable'};
     const adapter=await navigator.gpu.requestAdapter();
     if(!adapter)return {skipped:'No WebGPU adapter'};
     device=await adapter.requestDevice();
+    device.addEventListener('uncapturederror',event=>console.error('COLOR PROBE GPU VALIDATION',event.error?.message));
+    device.lost.then(info=>console.error('COLOR PROBE GPU LOST',info.reason,info.message));
     renderer=new WebGPURenderer({canvas,device,antialias:false,stencil:false,alpha:false});
     await renderer.init();
   }else{
@@ -39,12 +41,14 @@ window.runColorSmoke=async(api='webgl2',fsr='off')=>{
     post.begin('low');
     renderer.render(scene,camera);
     post.end(0,'low');
-    if(api==='webgpu'&&fsr==='off'){
+    if(api==='webgpu'&&loadAsset){
       const loader=new SafeWebGpuKtx2Loader().setTranscoderPath(new URL('/basis/',location.origin).href)
         .setWorkerLimit(1).detectSupport(renderer);
       const gltfLoader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).setKTX2Loader(loader);
       try{
+        console.log('COLOR PROBE loading real infantry GLB');
         const gltf=await gltfLoader.loadAsync('/src/assets/infantry/regular.glb');
+        console.log('COLOR PROBE GLB loaded');
         const maps=new Set();
         gltf.scene.traverse(obj=>{
           for(const mat of Array.isArray(obj.material)?obj.material:[obj.material]){
@@ -52,11 +56,13 @@ window.runColorSmoke=async(api='webgl2',fsr='off')=>{
           }
         });
         const values=[...maps];textures={count:values.length,types:values.map(t=>t.isDataTexture?'DataTexture':t.isCompressedTexture?'CompressedTexture':'Texture')};
+        console.log('COLOR PROBE texture types',JSON.stringify(textures));
         if(values.some(t=>t.isCompressedTexture))throw new Error('WebGPU infantry KTX2 remained compressed after fallback');
         if(values.length){
           const testMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:values[0]}));
           scene.add(testMesh);
           post.begin('low');renderer.render(scene,camera);post.end(0,'low');
+          console.log('COLOR PROBE uploaded texture to GPU');
           scene.remove(testMesh);testMesh.geometry.dispose();testMesh.material.dispose();
         }
       }finally{loader.dispose();}
@@ -64,7 +70,9 @@ window.runColorSmoke=async(api='webgl2',fsr='off')=>{
     // Restore a uniform reference frame after the texture upload validation,
     // so luminance comparisons measure the color pipeline, not artwork.
     post.begin('low');renderer.render(scene,camera);post.end(0,'low');
+    console.log('COLOR PROBE awaiting GPU queue',api,fsr,loadAsset);
     await device?.queue?.onSubmittedWorkDone();
+    console.log('COLOR PROBE queue completed');
     return {ok:true,api,fsr,backend:renderer.backend?.constructor?.name??'WebGL2',textures};
   }finally{
     // Keep the canvas alive for the test runner's screenshot. The test closes
