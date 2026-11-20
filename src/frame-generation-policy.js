@@ -14,7 +14,7 @@ export class FrameGenerationPolicy {
     this.windowStart=0;this.rates={real:0,generated:0,display:0};
     this.previousPresent=0;this.slowFrames=0;
   }
-  clearHistory(){this.history=0;this.lastReal=0;this.lastMeta=null;this.cycles=0;}
+  clearHistory(){this.history=0;this.lastReal=0;this.previousReal=0;this.lastMeta=null;this.cycles=0;}
   compatible(meta,previous=this.lastMeta) {
     if(!meta||!previous)return false;
     for(const key of ['playerId','mapId','alive','weaponId','vehicleId','seat','scoped','aim','thirdPerson']){
@@ -26,14 +26,17 @@ export class FrameGenerationPolicy {
       if(dist>1.6)return false;
     }
     const yaw=Math.atan2(Math.sin(meta.yaw-previous.yaw),Math.cos(meta.yaw-previous.yaw));
-    if(Math.abs(yaw)>.07||Math.abs(meta.pitch-previous.pitch)>.07)return false;
+    if(Math.abs(yaw)>.04||Math.abs(meta.pitch-previous.pitch)>.04)return false;
     return true;
   }
   shouldGenerate(now,meta){
-    if(this.mode==='off'||!Number.isFinite(now)||this.history<2||!this.compatible(meta))return false;
-    // Never present a stale reconstructed image following a tab stall, teleport,
-    // dropped native frame or an unexpectedly slow GPU.
-    if(now-this.lastReal>50)return false;
+    if(this.mode==='off'||!Number.isFinite(now)||this.history<2)return false;
+    // The safe-mode gate also applies to explicit presets on overloaded GPUs.
+    if(!this.compatible(meta)||now-this.lastReal>50||this.slowFrames>4){
+      this.reject(now);return false;
+    }
+    // Never present a stale reconstructed image following a tab stall,
+    // camera cut or unexpectedly slow real frame.
     if(this.mode==='auto'&&(this.slowFrames>2||this.rates.real>=58))return false;
     const stride=this.mode==='2'?2:3; // 1.5x: 2 native + 1 generated
     this.cycles++;
@@ -41,6 +44,7 @@ export class FrameGenerationPolicy {
   }
   noteReal(now,meta,elapsedMs=0) {
     if(!this.compatible(meta))this.clearHistory();
+    this.previousReal=this.lastReal;
     this.history=Math.min(2,this.history+1);
     this.lastReal=now;this.lastMeta={...meta};
     if(elapsedMs>34)this.slowFrames=Math.min(6,this.slowFrames+1);
