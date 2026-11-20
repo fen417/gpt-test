@@ -26,7 +26,7 @@ jobs:
       - name: Install headless Chromium
         run: |
           npm install --no-save playwright@1.58.2
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Start local browser game
         run: |
           npm run dev -- --host 127.0.0.1 > /tmp/pool-vite.log 2>&1 &
