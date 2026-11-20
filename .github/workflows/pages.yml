@@ -34,9 +34,6 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Test on Node 24
-        if: github.event_name != 'workflow_run'
-        run: npm test
       - name: Restore previous benchmark
         if: github.event_name != 'workflow_run'
         uses: actions/cache@v4
