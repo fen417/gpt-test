@@ -31,6 +31,7 @@ export class WebGpuFrameGeneration {
     this.extrapolation=uniform(.55);
     this.lateLookCorrection=uniform(new THREE.Vector2());
     this.lastCameraMotion=new THREE.Vector2();
+    this.customFragmentMaterials=new Map();
   }
   initialize(){
     const depth=new THREE.DepthTexture(1,1,THREE.UnsignedIntType);
@@ -38,7 +39,11 @@ export class WebGpuFrameGeneration {
     depth.minFilter=THREE.NearestFilter;depth.magFilter=THREE.NearestFilter;
     this.target=new THREE.RenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:true,
       depthTexture:depth,count:2,samples:0});
-    this.target.textures[1].name='FG velocity (NDC delta)';
+    // Three.js MRTNode resolves fragment outputs by EXACT texture name.
+    // A debug label such as 'FG velocity ...' silently produces an output
+    // with no shader location and invalidates WebGPU's render pipelines.
+    this.target.textures[0].name='output';
+    this.target.textures[1].name='velocity';
     this.target.textures[1].colorSpace=THREE.NoColorSpace;
     this.history=[0,1].map(()=>new THREE.RenderTarget(1,1,{depthBuffer:false,type:THREE.UnsignedByteType}));
     for(const target of this.history)target.texture.colorSpace=THREE.NoColorSpace;
@@ -97,16 +102,47 @@ export class WebGpuFrameGeneration {
       this.post.sourceTexture.value=this.target.texture;
       this.colorReady=0;
     }else{
+      this.renderer.setMRT(null);
+      this.restoreCustomMaterials();
       this.post.target=this.post.nativeTarget;
       this.post.sourceTexture.value=this.post.nativeTarget.texture;
       this.release();
     }
   }
-  beginWorld(){
-    if(this.enabled)this.renderer.setMRT(this.mrt);
+  beginWorld(scene){
+    if(!this.enabled)return;
+    // In r181 NodeMaterial.setup() only merges renderer.getMRT() when the
+    // material uses the built-in fragment path. Custom fragmentNode shaders
+    // bypass that path, so they must provide both attachments explicitly.
+    // Scan once when enabled (and again if a different scene is loaded).
+    if(scene && scene!==this.patchedScene){
+      this.restoreCustomMaterials();
+      scene.traverse(object=>{
+        const materials=Array.isArray(object.material)?object.material:[object.material];
+        for(const material of materials){
+          if(!material?.isNodeMaterial || !material.fragmentNode ||
+            this.customFragmentMaterials.has(material))continue;
+          const original=material.fragmentNode;
+          this.customFragmentMaterials.set(material,original);
+          material.fragmentNode=mrt({output:original,velocity});
+          material.needsUpdate=true;
+        }
+      });
+      this.patchedScene=scene;
+    }
+    this.renderer.setMRT(this.mrt);
   }
   endWorld(){
-    if(this.enabled)this.renderer.setMRT(null);
+    // Always restore, including after a synchronous draw exception.
+    this.renderer.setMRT(null);
+  }
+  restoreCustomMaterials(){
+    for(const [material,original] of this.customFragmentMaterials){
+      material.fragmentNode=original;
+      material.needsUpdate=true;
+    }
+    this.customFragmentMaterials.clear();
+    this.patchedScene=null;
   }
   nextRealTarget(){
     this.writeIndex=1-this.currentIndex;
@@ -175,7 +211,7 @@ export class WebGpuFrameGeneration {
     this.enabled=false;this.policy.setMode('off');
     this.post.target=this.post.nativeTarget;
     this.post.sourceTexture.value=this.post.nativeTarget.texture;
-    this.renderer.setMRT(null);this.release();
+    this.renderer.setMRT(null);this.restoreCustomMaterials();this.release();
   }
   release(){
     this.target?.dispose();this.target?.depthTexture?.dispose();
@@ -185,5 +221,5 @@ export class WebGpuFrameGeneration {
   }
   stats(){return {...this.policy.summary(),enabled:this.enabled,fault:this.fault,
     gpuMs:null,latencyEstimateMs:null}; /* unavailable: don't invent FG GPU timestamps/input latency */}
-  dispose(){this.enabled=false;this.release();}
+  dispose(){this.enabled=false;this.renderer.setMRT(null);this.restoreCustomMaterials();this.release();}
 }
