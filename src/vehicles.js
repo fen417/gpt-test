@@ -23,7 +23,7 @@ export function warmTankAssets(renderer,scene,camera,prepare){return tankLoading
   if(renderer.isWebGPURenderer){
     ({createWebGpuTankMaterial:tankMaterialFactory}=await import('./tank-webgpu-material.js'));
   }
-  await library.loadTankAtlas(renderer);
+  await Promise.all([library.loadTankAtlas(renderer),library.loadTankModel()]);
   for(let i=0;i<2;i++)tankPool.push(library.createTankRig(tankMaterialFactory));
   if(scene&&camera&&renderer.compileAsync){const warm=new THREE.Scene();for(const child of scene.children)if(child.isLight)warm.add(child.clone());for(const rig of tankPool){rig.group.traverse(o=>prepare?.(o));warm.add(rig.group);}await renderer.compileAsync(warm,camera);for(const rig of tankPool)rig.group.removeFromParent();}
   tankLibrary=library;
@@ -501,6 +501,8 @@ export function disposeVehicleRig(rig) {
   for(const child of [...rig.body.children])if(child.userData.seatedActor)child.removeFromParent();
   rig.group.removeFromParent();
   if(rig.tank&&tankPool.length<2){rig.initialized=false;tankPool.push(rig);return;}
-  rig.group.traverse(node=>{if(node.geometry&&node.geometry!==sphereGeometry)node.geometry.dispose();});
+  rig.group.traverse(node=>{
+    if(node.geometry&&node.geometry!==sphereGeometry&&!node.geometry.userData.sharedTankGeometry)node.geometry.dispose();
+  });
   for(const material of rig.materialsToDispose)material.dispose();
 }
