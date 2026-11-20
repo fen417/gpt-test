@@ -1252,5 +1252,11 @@ function initializeCollisionWorld(world,indexGrenades=false,colliders=getAssetCo
 // Collision-only view: no bots, pathfinding grid, combat, or match simulation on clients.
 export function createPredictionWorld(mapId){
   const world=Object.create(Simulation.prototype);world.map=getMap(mapId);world.vehicles=[];
+  // A prediction-only world bypasses Simulation's constructor. It MUST
+  // initialize the same collision capsule as the authoritative server.
+  // Without this, the default collides(..., radius=this.playerRadius)
+  // receives undefined: grid indices become NaN, no solid is checked,
+  // and the client can walk straight through walls until correction.
+  world.playerRadius=world.map.playerRadius??PLAYER_RADIUS;
   initializeCollisionWorld(world);return world;
 }
