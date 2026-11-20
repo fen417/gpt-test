@@ -8,11 +8,11 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const weaponNames = {
   ar416: 'ar416', ak12: 'ak12m', mcx9: 'mcx9', vk45: 'vk45',
-  mg36: 'm4a1', pkp: 'ak47', sv98: 'm24', dmr12: 'm24', p19: 'p19', m50: 'm50',
+  mg36: 'mg36', pkp: 'pkp', sv98: 'm24', dmr12: 'm24', p19: 'p19', m50: 'm50',
 };
 const weaponFit = {
-  m4a1: { primary: [0, -.17, .215], support: [-.047, -.125, -.341], muzzle: [0, .049, -1.265], scale: .41, foregrip: true },
-  ak47: { primary: [0, -.073, -.122], support: [-.036, -.048, -.32], muzzle: [0, .005, -1.135], scale: .72 },
+  mg36: { primary: [0, -.138, .077], support: [-.043, -.044, -.440], scale: .72 },
+  pkp: { primary: [0, -.138, .077], support: [-.042, -.052, -.435], scale: .73 },
   ak12m: { primary: [0, -.134, .05], support: [-.042, -.043, -.415], muzzle: [0, .015, -.865], scale: .74 },
   ar416: { primary: [0, -.137, .072], support: [-.042, -.045, -.423], muzzle: [0, .015, -.863], scale: .74 },
   mcx9: { primary: [0, -.125, .078], support: [-.044, -.050, -.411], scale: .74 },

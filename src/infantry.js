@@ -323,6 +323,7 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.magazine = rig.weaponModel.getObjectByName(template.magazineName);
   rig.magazineRest = rig.magazine?.position.clone();
   rig.magazineContact = template.magazineContact;
+  rig.feedCover = rig.weaponModel.getObjectByName('FeedCover');
 }
 
 export function setInfantryLod(rig, level, shadows) {
@@ -527,6 +528,9 @@ function applyWeapon(rig, player, dt, reload, actionWeight) {
     rig.magazine.position.copy(rig.magazineRest);
     const travel = smoothstep(reloadProgress, .20, .37) * (1 - smoothstep(reloadProgress, .58, .79));
     rig.magazine.position.y -= .14 * travel;
+  }
+  if (rig.feedCover) {
+    rig.feedCover.rotation.x = -1.07 * smoothstep(reloadProgress,.04,.19) * (1-smoothstep(reloadProgress,.73,.90));
   }
   if (rifle.visible) {
     const supportWeight = 1 - actionWeight;

@@ -15,6 +15,8 @@ const rifleFits = {
   ar416: {muzzleZ:-.863, ejection:[.054,.028,-.093], sight:{height:.132,depth:-.38}},
   mcx9: {ejection:[.056,.040,-.142], sight:{height:.142,depth:-.37}},
   vk45: {ejection:[.055,.008,-.204], sight:{height:.127,depth:-.37}},
+  mg36: {ejection:[.057,.030,-.132], sight:{height:.172,depth:-.385}},
+  pkp: {ejection:[.071,.012,-.111], sight:{height:.150,depth:-.33}},
 };
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
@@ -618,7 +620,10 @@ export function createWeaponRig(owner = {}) {
     model.visible=false;
     weapon.add(model);
     const muzzle=model.getObjectByName('Muzzle_Exit')?.position;
-    rifles.set(id,{model,bolt,ejection,muzzle,magazine:model.getObjectByName('Magazine'),fit});
+    const magazine=model.getObjectByName('Magazine');
+    const cover=model.getObjectByName('FeedCover');
+    const chargePoint=model.getObjectByName('Charge_Grip')?.position;
+    rifles.set(id,{model,bolt,ejection,muzzle,magazine,magazineHome:magazine.position.clone(),cover,chargePoint,fit});
   }
 
   const defibLeft=createFPSHand('defibLeft',importedGloveMat),defibRight=createFPSHand('defibRight',importedGloveMat);
@@ -882,8 +887,8 @@ export function createWeaponRig(owner = {}) {
     ak12:{classId:'assault',guard:.34,barrel:.21,width:1.04,finish:0x3f433e,handZ:-.415,grasp:[-.043,-.237,-.251]},
     mcx9:{classId:'medic',guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.416,grasp:[-.036,-.241,-.170]},
     vk45:{classId:'medic',guard:.225,barrel:.095,width:.98,finish:0x52575c,handZ:-.420,grasp:[-.031,-.264,-.184]},
-    mg36:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.092,-.203,-.111]},
-    pkp:{classId:'support',guard:.425,barrel:.285,width:1.22,finish:0x484d45,handZ:-.458,grasp:[-.096,-.208,-.114]},
+    mg36:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.143,-.213,-.146]},
+    pkp:{classId:'support',guard:.425,barrel:.285,width:1.22,finish:0x484d45,handZ:-.435,grasp:[-.091,-.206,-.145]},
     dmr12:{classId:'recon',guard:.432,barrel:.266,width:.99,finish:0x766f59,handZ:-.456,grasp:[-.056,-.176,-.112]},
     sv98:{classId:'recon',guard:.465,barrel:.310,width:1.03,finish:0x4d6147,handZ:-.468,grasp:[-.056,-.182,-.114]},
     assault:{classId:'assault',guard:.36,barrel:.19,width:1,finish:0x626859,handZ:-.423,grasp:[-.052,-.236,-.124]},
@@ -965,8 +970,9 @@ export function createWeaponRig(owner = {}) {
     leftArm.matrixWorldNeedsUpdate=true;
   }
 
-  function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null, defibTravel=0) {
-    const feed = pistol?.magazine ?? (support ? beltBox : magazine);
+  function poseReload(loadout, classId, support, phase, amount, charging, throwPhase=0, gadgetPhase=0, pistol=null, gadgetKind=null, defibTravel=0, rifle=null) {
+    const feed = pistol?.magazine ?? rifle?.magazine ?? (support ? beltBox : magazine);
+    const magazineHome=pistol?.magazineHome??rifle?.magazineHome;
     const keys = pistol ? pistolReloadKeys : reloadKeys;
     let next = 1;
     while (next < keys.length - 1 && phase > keys[next].time) next++;
@@ -975,12 +981,15 @@ export function createWeaponRig(owner = {}) {
     const value = channel => THREE.MathUtils.lerp(from[channel],to[channel],blend) * amount;
     const feedDepth = support ? 1.08 : 1;
     feed.position.set(value('x'),value('y')*feedDepth,value('z'));
-    if(pistol)feed.position.add(pistol.magazineHome);
+    if(magazineHome)feed.position.add(magazineHome);
     feed.rotation.set(value('pitch'),0,value('roll'));
     const grip = THREE.MathUtils.smoothstep(phase,.015,.17) * (1-THREE.MathUtils.smoothstep(phase,.82,.99)) * amount;
     feedCover.rotation.x = support ? -1.07 * THREE.MathUtils.smoothstep(phase,.04,.19) * (1-THREE.MathUtils.smoothstep(phase,.73,.9)) * amount : 0;
+    if(rifle?.cover)rifle.cover.rotation.x=feedCover.rotation.x;
 
-    gripTarget.set(...(pistol ? [-.026,.018,.012] : loadout.grasp)).applyQuaternion(feed.quaternion).add(feed.position);
+    gripTarget.set(...(pistol ? [-.026,.018,.012] : loadout.grasp));
+    if(rifle)gripTarget.sub(rifle.magazineHome);
+    gripTarget.applyQuaternion(feed.quaternion).add(feed.position);
     if(pistol)gripTarget.applyMatrix4(pistol.modelMatrix);
     // One-handed pistol stance. The spare hand rises from below the view only
     // to handle the magazine/slide, then follows the same path back down.
@@ -988,6 +997,7 @@ export function createWeaponRig(owner = {}) {
     else palmTarget.set(-.035*loadout.width,-.043,loadout.handZ);
     palmTarget.lerp(gripTarget,grip);
     if(pistol)palmTarget.lerp(actionTarget.set(-.038,.033,.063+pistol.slide.position.z).applyMatrix4(pistol.modelMatrix),charging);
+    else if(rifle?.chargePoint)palmTarget.lerp(actionTarget.copy(rifle.chargePoint).addScaledVector(armAxis,charging*.045),charging);
     else palmTarget.lerp(chargeGrip,charging);
     let rotX = (pistol ? -.56 : -.92)*grip+feed.rotation.x*grip+charging*.7;
     let rotY = (pistol ? .24 : .42)*grip+charging*.3;
@@ -1141,7 +1151,7 @@ export function createWeaponRig(owner = {}) {
     const usingDefib=usingTool&&gadgetKind==='defibrillator';
     const throwing=throwPhase>0&&throwPhase<1;
     const discharge=usingTool&&gadgetKind==='defibrillator'&&toolActive?Math.sin(toolProgress*Math.PI):0;
-    poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,usingTool?null:pistol,gadgetKind,discharge*.09);
+    poseReload(loadout,classId,support,phase,amount,charging,throwPhase,gadgetPhase,usingTool?null:pistol,gadgetKind,discharge*.09,rifle);
     const leftAction=usingTool||throwing||(amount>0&&phase>0&&phase<1);
     leftHand.visible=leftArm.visible=!pistol||leftAction;
     heldLauncher.visible=usingTool&&gadgetKind==='launcher';
@@ -1155,11 +1165,7 @@ export function createWeaponRig(owner = {}) {
       if(visibleRifle)visibleRifle.model.visible=true;
     }
     rifleAssembly.visible=showRifle&&!visibleRifle;
-    if(visibleRifle){
-      visibleRifle.magazine.position.copy(magazine.position);
-      visibleRifle.magazine.quaternion.copy(magazine.quaternion);
-      visibleRifle.bolt.position.z=bolt.position.z+.02;
-    }
+    if(visibleRifle)visibleRifle.bolt.position.z=bolt.position.z+.02;
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool&&!unarmed;
     rifleGlove.visible=!usingSupply&&!usingDefib&&(usingTool||throwing||!pistol);
     pistolGlove.visible=Boolean(pistol)&&!usingTool&&!throwing;
