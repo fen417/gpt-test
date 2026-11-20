@@ -146,7 +146,7 @@ export class Simulation {
     this.blocked=new Uint8Array(this.gridSize*this.gridSize);
     this.pathPrevious=new Int32Array(this.blocked.length);
     this.pathQueue=new Int32Array(this.blocked.length);
-    const clearance=this.gridCell/2+this.playerRadius+.1;
+    const clearance=this.map.navigationClearance??(this.gridCell/2+this.playerRadius+.1);
     const gridIndex=position=>(position-this.gridOrigin)/this.gridCell-.5;
     if(this.map.shoreX!==undefined){
       const dryColumn=Math.ceil(gridIndex(this.map.shoreX+this.playerRadius));
