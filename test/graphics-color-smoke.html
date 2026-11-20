@@ -70,9 +70,11 @@ window.runColorSmoke=async(api='webgl2',fsr='off',loadAsset=false)=>{
     // Restore a uniform reference frame after the texture upload validation,
     // so luminance comparisons measure the color pipeline, not artwork.
     post.begin('low');renderer.render(scene,camera);post.end(0,'low');
-    console.log('COLOR PROBE awaiting GPU queue',api,fsr,loadAsset);
-    await device?.queue?.onSubmittedWorkDone();
-    console.log('COLOR PROBE queue completed');
+    // Chromium SwiftShader in CI can throw "external Instance reference no
+    // longer exists" from GPUQueue.onSubmittedWorkDone even after a successful
+    // WebGPU render. Don't use a synchronous GPU wait for a visual smoke test.
+    // Playwright takes an actual canvas screenshot after the browser paints.
+    await new Promise(resolve=>requestAnimationFrame(resolve));
     return {ok:true,api,fsr,backend:renderer.backend?.constructor?.name??'WebGL2',textures};
   }finally{
     // Keep the canvas alive for the test runner's screenshot. The test closes
