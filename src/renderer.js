@@ -160,7 +160,7 @@ export class GameRenderer {
     this.gpuName=webgpu?.gpuName??null;
     this.canvas = canvas;
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
-    this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40 };
+    this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40, frameGeneration:'off' };
     this.clock = 0;
     this.frameCount = 0;
     this.smoothDt = 0.0166;
@@ -232,6 +232,8 @@ export class GameRenderer {
     }
     this.gpuTimer=webgpu?new webgpu.GpuTimer(this.renderer):new GpuTimer(this.renderer.getContext());
     this.postPass=webgpu?new webgpu.PostPass(this.renderer,{antialias}):new PostPass(this.renderer,{antialias});
+    this.frameGeneration=webgpu?new webgpu.FrameGeneration(this.renderer,this.postPass):null;
+    if(this.frameGeneration)this.postPass.frameGeneration=this.frameGeneration;
     if(!webgpu)this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
     if (!webgpu && canvas && typeof canvas.addEventListener === 'function') {
@@ -1587,8 +1589,24 @@ export class GameRenderer {
     if(!menu)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
     try{
-      this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
-      this.postPass.begin(this.quality);drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.quality);
+      const generator=this.frameGeneration;
+      try{
+        generator?.setMode(this.gfx.frameGeneration??'off');
+        this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
+        this.postPass.begin(this.quality);
+        try {
+          generator?.beginWorld();
+          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
+        } finally {generator?.endWorld();}
+        this.postPass.end(this.clock,this.quality);
+      }catch(error){
+        if(!generator?.enabled)throw error;
+        // A bad pipeline/unsupported MRT disables only FG, not the whole WebGPU game.
+        generator.error(error);
+        this.postPass.begin(this.quality);
+        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
+        this.postPass.end(this.clock,this.quality);
+      }
     }
     finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.gpuTimer.poll?.();this.interiorVisibility.restore();}
   }
@@ -1630,9 +1648,9 @@ export class GameRenderer {
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
     }
-    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness)) {
+    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness || gfx.frameGeneration !== this.gfx.frameGeneration)) {
       const shadowChanged=gfx.shadows!==this.gfx.shadows;
-      this.gfx={shadows:gfx.shadows,resolution:gfx.resolution,fsr:gfx.fsr??'off',fsrQuality:gfx.fsrQuality??'quality',fsrSharpness:gfx.fsrSharpness??40};
+      this.gfx={shadows:gfx.shadows,resolution:gfx.resolution,fsr:gfx.fsr??'off',fsrQuality:gfx.fsrQuality??'quality',fsrSharpness:gfx.fsrSharpness??40,frameGeneration:this.api==='webgpu'?gfx.frameGeneration??'off':'off'};
       if(shadowChanged)this.applyShadows();
       this.updatePixelRatio();
     }
@@ -1957,6 +1975,14 @@ export class GameRenderer {
     return count;
   }
 
+  shouldGenerateFrame(now,meta){return this.frameGeneration?.shouldGenerate(now,meta)??false;}
+  presentGeneratedFrame(now){
+    if(!this.frameGeneration?.enabled)return false;
+    try{return this.frameGeneration.generate(now);}
+    catch(error){this.frameGeneration.error(error);return false;}
+  }
+  noteRealFrame(now,meta,elapsedMs){this.frameGeneration?.noteReal(now,meta,elapsedMs);}
+
   getStats() {
     const r=this.renderer,post=this.postPass,isGPU=this.api==='webgpu';
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
@@ -1969,6 +1995,7 @@ export class GameRenderer {
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
       fsrScale:post.fsrScale,fsrSharpness:this.gfx.fsrSharpness,sceneWidth:post.target.width,sceneHeight:post.target.height,
+      frameGeneration:this.frameGeneration?.stats()??null,
       integratedGpu:this.integratedGpu,gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext)
     };
   }
@@ -2010,6 +2037,6 @@ export class GameRenderer {
     skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();
     this.atmosphere.target.dispose();
-    this.groundShadows.dispose();this.postPass.dispose();this.gpuTimer.dispose();this.renderer.dispose();
+    this.groundShadows.dispose();this.frameGeneration?.dispose();this.postPass.dispose();this.gpuTimer.dispose();this.renderer.dispose();
   }
 }
