@@ -58,7 +58,7 @@ const spawnZs=[-22.7,-19.8,-16.9,-13.9,-11.1,-8.4,-3.5,-.6,2.6,7.0,10.2,13.3,16.
 const spawnPoints=[-1,1].map(side=>spawnZs.flatMap(z=>
   spawnXs.map(x=>({x:side*x,z}))));
 export const POOL_DAY_MAP={
-  id:'fy_pool_day',name:'fy_pool_day · бассейн (WIP)',theme:'pool-day',size,playArea:{minX:-24.5,maxX:24.5,minZ:-24.5,maxZ:24.5},
+  id:'fy_pool_day',name:'Комплекс «Лагуна» (WIP)',theme:'pool-day',size,playArea:{minX:-24.5,maxX:24.5,minZ:-24.5,maxZ:24.5},
   terrain,boxes,structures:[],landforms:[],landmarks:[
     {id:'main-pool',name:'Большой бассейн',x:0,z:5.5},
     {id:'small-pool',name:'Малый бассейн',x:-1.9,z:-19.1},
