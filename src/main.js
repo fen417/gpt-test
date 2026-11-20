@@ -1662,11 +1662,11 @@ function frame(now){
     mapId:renderState?.mapId??null,weaponId:renderPlayer?.weaponId??null,
     vehicleId:renderPlayer?.vehicleId??null,seat:renderPlayer?.vehicleSeat??null,
     scoped:Boolean(renderer.scoped),aim,thirdPerson:vehicleThirdPerson,
-    yaw:fgAngles.yaw,pitch:fgAngles.pitch,
+    yaw:fgAngles.yaw,pitch:fgAngles.pitch,fov,
     x:renderPlayer?.x,y:renderPlayer?.y,z:renderPlayer?.z};
   let generated=false;
   if(renderDue&&active&&!paused&&renderer.shouldGenerateFrame(now,fgMeta)){
-    generated=renderer.presentGeneratedFrame(now);
+    generated=renderer.presentGeneratedFrame(now,fgMeta);
   }
   if(renderDue&&!generated){
     const renderDelta=lastWorldFrame>0?Math.min(.08,Math.max(0,(now-lastWorldFrame)/1000)):dt;
