@@ -154,9 +154,13 @@ export function createMapModelBuilder(surfaces) {
 }
 
 export class GameRenderer {
-  constructor(canvas, { onError, antialias = 'auto' } = {}) {
+  constructor(canvas, { onError, antialias = 'auto', webgpu = null } = {}) {
+    this.webgpu=webgpu;
+    this.api=webgpu?'webgpu':'webgl2';
+    this.gpuName=webgpu?.gpuName??null;
     this.canvas = canvas;
-    this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality' };
+    this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
+    this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40, frameGeneration:'off' };
     this.clock = 0;
     this.frameCount = 0;
     this.smoothDt = 0.0166;
@@ -210,12 +214,12 @@ export class GameRenderer {
     this.soldierBounds = new THREE.Sphere(new THREE.Vector3(), 2.5);
     this.flagBounds = new THREE.Sphere(new THREE.Vector3(), 4.5);
     this.effectBounds = new THREE.Sphere(new THREE.Vector3(), 12);
-    this.cachedShadows=new CachedShadows();this.interiorVisibility=new InteriorVisibility();
+    this.cachedShadows=webgpu?{install(){},invalidate(){},disposeTargets(){},dispose(){}}:new CachedShadows();this.interiorVisibility=new InteriorVisibility();
     this.surfaceCache = new Map();
     this.random = seeded();
     const integratedProbe = detectIntegratedGpu();
     try {
-      this.renderer = new THREE.WebGLRenderer({
+      this.renderer = webgpu?.renderer ?? new THREE.WebGLRenderer({
         canvas,
         antialias: antialias === 'on' ? true : antialias === 'off' ? false : !integratedProbe,
         stencil: false,
@@ -226,10 +230,13 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
-    this.gpuTimer=new GpuTimer(this.renderer.getContext());this.postPass=new PostPass(this.renderer,{antialias});
-    this.cachedShadows.install(this);
+    this.gpuTimer=webgpu?new webgpu.GpuTimer(this.renderer):new GpuTimer(this.renderer.getContext());
+    this.postPass=webgpu?new webgpu.PostPass(this.renderer,{antialias}):new PostPass(this.renderer,{antialias});
+    this.frameGeneration=webgpu?new webgpu.FrameGeneration(this.renderer,this.postPass):null;
+    if(this.frameGeneration)this.postPass.frameGeneration=this.frameGeneration;
+    if(!webgpu)this.cachedShadows.install(this);
     this.integratedGpu = integratedProbe || detectIntegratedGpu(this.renderer);
-    if (canvas && typeof canvas.addEventListener === 'function') {
+    if (!webgpu && canvas && typeof canvas.addEventListener === 'function') {
       canvas.addEventListener('webglcontextlost', event => {
         event.preventDefault();
       }, false);
@@ -300,13 +307,13 @@ export class GameRenderer {
       red: material(0xd93832, 0.45, 0.1, { emissive: 0x991815, emissiveIntensity: 0.35 }),
       green: material(0x52e088, 0.3, 0.2, { emissive: 0x28b862, emissiveIntensity: 0.65 }),
     };
-    this.groundShadows=new GroundShadows();
-    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.renderer.capabilities.getMaxAnisotropy() });
+    this.groundShadows=webgpu?new webgpu.GroundShadows():new GroundShadows();
+    this.surfaces = createSurfaceMaterials(this.renderer, { useBump: true, anisotropy:this.maxAnisotropy() });
     this.surfaces.ready.then(()=>{this.surfacesReady=true;}).catch(error=>{this.surfacesReady=true;console.error('Surface assets failed',error);});
     for (const m of [this.surfaces.asphalt, this.surfaces.asphalt._lowMaterial]) {
       if (m) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
     }
-    this.atmosphere = makeSky(this.scene, this.renderer);
+    this.atmosphere = webgpu?webgpu.makeSky(this.scene,this.renderer):makeSky(this.scene, this.renderer);
     this.materials = mapMaterials(this.surfaces);
     this.worldRoot = new THREE.Group();
     this.worldRoot.add(this.atmosphere.sky);
@@ -349,7 +356,7 @@ export class GameRenderer {
     const smokeGeometry = new THREE.PlaneGeometry(1, 1);
     smokeGeometry.setAttribute('instanceAlpha', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
     smokeGeometry.setAttribute('instanceRotation', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
-    const smokeMaterial = new THREE.ShaderMaterial({
+    const smokeMaterial = webgpu?webgpu.createSmokeMaterial(this.smokeTexture):new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, fog: true,
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: this.smokeTexture } }]),
       vertexShader: `
@@ -383,7 +390,7 @@ export class GameRenderer {
     this.effectBatches.smoke = smokeBatch;
     this.smokeOrder = [];
     this.worldRoot.add(smokeBatch);
-    this.scene.traverse(optimizeLighting);
+    if(!webgpu)this.scene.traverse(optimizeLighting);
     this.warmup();
     this.resize();
   }
@@ -418,7 +425,7 @@ export class GameRenderer {
     for (const node of temp) this.worldRoot.add(node);
     for (const f of this.flags.values()) f.teamFlag.visible = true;
     try {
-      this.renderer.compile(this.scene, this.camera);
+      if(!this.webgpu)this.renderer.compile(this.scene, this.camera);
     } catch {
       // Ignore compile errors in headless/stub environments.
     }
@@ -508,7 +515,7 @@ export class GameRenderer {
       this.scene = root;
       try {
         this.buildWorld();
-        this.mergeStaticWorld(new Set());
+        if(this.map.theme!=='pool-day')this.mergeStaticWorld(new Set());
         const details=[];
         root.traverse(object=>{if(object.userData.detailLevel&&(object.isMesh||object.children.length))details.push(object);});
         world = { root, flags: this.flags, water: this.portWater, details };
@@ -531,7 +538,8 @@ export class GameRenderer {
     this.scene.fog.color.set(map.fogColor ?? 0x9aa7a7);
     this.scene.background.set(map.fogColor ?? 0x9aa7a7);
     this.sun.color.set(map.sunColor ?? 0xffd7a4);
-    this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
+    if(this.webgpu)this.atmosphere.hazeAmount.value=map.theme==='desert-village'?.16:0;
+    else this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
     this.staticRoot = world.root;
     this.mapDetails=world.details;this.detailLevel=undefined;
     this.groundShadows.setMap(map);
@@ -545,7 +553,8 @@ export class GameRenderer {
         high.onBeforeCompile=source.onBeforeCompile;low.onBeforeCompile=(source._lowMaterial??source).onBeforeCompile;
         high.customProgramCacheKey=source.customProgramCacheKey;low.customProgramCacheKey=(source._lowMaterial??source).customProgramCacheKey;
         if(source.roadMask)high.roadMask=low.roadMask=source.roadMask;
-        pairMaterials(high,low);this.groundShadows.apply(high);this.groundShadows.apply(low);shadowMaterials.set(source,high);
+        const patchedHigh=this.groundShadows.apply(high)??high,patchedLow=this.groundShadows.apply(low)??low;
+        pairMaterials(patchedHigh,patchedLow);shadowMaterials.set(source,patchedHigh);
       }
       mesh.material=shadowMaterials.get(source);
     });
@@ -564,6 +573,9 @@ export class GameRenderer {
   }
 
   clearMapDynamics() {
+    // Weapon templates share geometries with soldier assets; unparent only.
+    for(const pickup of this.poolWeaponModels?.values()??[])pickup.removeFromParent();
+    this.poolWeaponModels?.clear();
     this.bulletMarks.clear();
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
@@ -736,6 +748,73 @@ export class GameRenderer {
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true }));
     label.position.set(0, 6.2, 0); label.scale.set(1.75, 1.75, 1.75); group.add(label);
     this.flags.set(point.id, { group, flag, teamFlag, ring, label, neutralH: 1, teamH: 0, fromOwned: false });
+  }
+
+  updatePoolWeapons(state){
+    this.poolWeaponModels ??= new Map();
+    this.poolWeaponTemplates ??= new Map();
+    const active=new Set();
+    if(state?.gameMode==='tdm'&&this.map?.id==='fy_pool_day'){
+      // Reuse the SAME procedural generator as the equipped gun and menu
+      // weapon preview. No imported soldier/GLB asset required.
+      this.poolWeaponRig ??= createWeaponRig({lowQuality:true});
+      for(const item of state.weaponItems??[]){
+        active.add(item.id);
+        if(!Number.isFinite(item.x)||!Number.isFinite(item.y)||!Number.isFinite(item.z))continue;
+        let pickup=this.poolWeaponModels.get(item.id);
+        if(!pickup){
+          let template=this.poolWeaponTemplates.get(item.weaponId);
+          if(!template){
+            const classId=getWeapon('assault',item.weaponId).classId??'assault';
+            const source=this.poolWeaponRig.createPreviewModel(classId,item.weaponId);
+            // Roll the procedural gun so its side rests on the tile.
+            source.rotation.z+=Math.PI/2;
+            const wrapper=new THREE.Group();
+            wrapper.add(source);wrapper.updateMatrixWorld(true);
+            // Only visible geometry belongs to the current gun; the procedural
+            // viewmodel contains hidden variants with different extents.
+            const bounds=new THREE.Box3();
+            wrapper.traverseVisible(object=>{
+              if(!object.isMesh)return;
+              if(!object.geometry.boundingBox)object.geometry.computeBoundingBox();
+              bounds.union(object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld));
+            });
+            if(bounds.isEmpty())continue;
+            source.position.x-=bounds.getCenter(new THREE.Vector3()).x;
+            source.position.y-=bounds.min.y;
+            source.position.z-=bounds.getCenter(new THREE.Vector3()).z;
+            // Procedural viewmodels share material instances whose finishes
+            // mutate when switching AR/AK/SMG. Freeze each weapon's appearance
+            // in its cached template rather than recolouring previous pickups.
+            const materials=new Map();
+            wrapper.traverse(object=>{
+              if(!object.isMesh)return;
+              const frozen=material=>{
+                if(!materials.has(material))materials.set(material,material.clone());
+                return materials.get(material);
+              };
+              if(Array.isArray(object.material))object.material=object.material.map(frozen);
+              else if(object.material)object.material=frozen(object.material);
+              object.castShadow=false;object.receiveShadow=false;
+            });
+            wrapper.userData.procedural=true;
+            template=wrapper;
+            this.poolWeaponTemplates.set(item.weaponId,template);
+          }
+          pickup=template.clone(true);pickup.name='pool-pickup-'+item.id;
+          pickup.userData.weaponId=item.weaponId;
+          pickup.userData.procedural=true;
+          this.worldRoot.add(pickup);
+          this.poolWeaponModels.set(item.id,pickup);
+        }
+        pickup.position.set(item.x,item.y,item.z);
+        pickup.rotation.y=item.yaw??0;
+        pickup.visible=true;
+      }
+    }
+    for(const [id,pickup]of this.poolWeaponModels)if(!active.has(id)){
+      pickup.removeFromParent();this.poolWeaponModels.delete(id);
+    }
   }
 
   buildWeapon() {
@@ -957,6 +1036,11 @@ export class GameRenderer {
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
       if (mustReset || externalScene || this.scoped || soldier.animationDt >= interval) {
         updateInfantry(soldier, player, soldier.animationDt, mustReset, this.map.terrain);
+        if(state.gameMode==='tdm'&&!player.weaponId){
+          if(soldier.weaponModel)soldier.weaponModel.visible=false;
+          if(soldier.distantWeapon)soldier.distantWeapon.visible=false;
+          if(soldier.flash)soldier.flash.visible=false;
+        }
         soldier.animationDt = 0;
       }
     }
@@ -1164,7 +1248,13 @@ export class GameRenderer {
     for (const effect of this.smokeOrder) {
       if (smoke.count >= smoke.instanceMatrix.count) break;
       const index = smoke.count++, sprite = effect.mesh;
-      sprite.updateMatrix(); smoke.setMatrixAt(index, sprite.matrix);
+      if(this.webgpu){
+        this._smokeQuat??=new THREE.Quaternion();this._smokeSpin??=new THREE.Quaternion();
+        this._smokeMatrix??=new THREE.Matrix4();this._smokeAxis??=new THREE.Vector3(0,0,1);
+        this._smokeQuat.copy(this.camera.quaternion).multiply(this._smokeSpin.setFromAxisAngle(this._smokeAxis,sprite.material.rotation));
+        this._smokeMatrix.compose(sprite.position,this._smokeQuat,sprite.scale);
+        smoke.setMatrixAt(index,this._smokeMatrix);
+      }else{sprite.updateMatrix();smoke.setMatrixAt(index,sprite.matrix);}
       smoke.setColorAt(index, sprite.material.color);
       smoke.geometry.attributes.instanceAlpha.setX(index, sprite.material.opacity);
       smoke.geometry.attributes.instanceRotation.setX(index, sprite.material.rotation);
@@ -1447,14 +1537,19 @@ export class GameRenderer {
     this.resize();
   }
 
+  maxAnisotropy(){return this.renderer.capabilities?.getMaxAnisotropy?.()??this.renderer.getMaxAnisotropy?.()??1;}
+
   updateTextureFiltering(){
     if(!this.surfaces)return;
-    this.textureAnisotropy=applyTextureFiltering([this.scene,...[...this.worlds.values()].map(world=>world.root)],Object.values(this.surfaces).filter(value=>value?.isMaterial),this.quality??'high',this.renderer.capabilities.getMaxAnisotropy());
+    this.textureAnisotropy=applyTextureFiltering([this.scene,...[...this.worlds.values()].map(world=>world.root)],Object.values(this.surfaces).filter(value=>value?.isMaterial),this.quality??'high',this.maxAnisotropy());
   }
 
   resize() {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
+    if(this.viewportWidth && (width!==this.viewportWidth||height!==this.viewportHeight)){
+      this.frameGeneration?.reset(); // never reproject history from the old viewport
+    }
     this.viewportWidth = width;
     this.viewportHeight = height;
     this.renderer.setSize(width, height, false); this.camera.aspect = width / height; this.camera.updateProjectionMatrix();
@@ -1497,10 +1592,28 @@ export class GameRenderer {
     if(!menu)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
     try{
-      this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale);
-      this.postPass.begin(this.quality);drawWorldAndViewModel(this.renderer, this.scene, this.camera, this.weapon, this.worldRoot);this.postPass.end(this.clock,this.quality);
+      const generator=this.frameGeneration;
+      try{
+        // No simulated gameplay frames exist in menu. Keep the ordinary
+        // WebGPU renderer there; enable temporal history only in a match.
+        generator?.setMode(menu?'off':this.gfx.frameGeneration??'off');
+        this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
+        this.postPass.begin(this.quality);
+        try {
+          generator?.beginWorld(this.scene);
+          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
+        } finally {generator?.endWorld();}
+        this.postPass.end(this.clock,this.quality);
+      }catch(error){
+        if(!generator?.enabled)throw error;
+        // A bad pipeline/unsupported MRT disables only FG, not the whole WebGPU game.
+        generator.error(error);
+        this.postPass.begin(this.quality);
+        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
+        this.postPass.end(this.clock,this.quality);
+      }
     }
-    finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.interiorVisibility.restore();}
+    finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.gpuTimer.poll?.();this.interiorVisibility.restore();}
   }
 
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
@@ -1540,9 +1653,9 @@ export class GameRenderer {
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
     }
-    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality)) {
+    if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness || gfx.frameGeneration !== this.gfx.frameGeneration)) {
       const shadowChanged=gfx.shadows!==this.gfx.shadows;
-      this.gfx={shadows:gfx.shadows,resolution:gfx.resolution,fsr:gfx.fsr??'off',fsrQuality:gfx.fsrQuality??'quality'};
+      this.gfx={shadows:gfx.shadows,resolution:gfx.resolution,fsr:gfx.fsr??'off',fsrQuality:gfx.fsrQuality??'quality',fsrSharpness:gfx.fsrSharpness??40,frameGeneration:this.api==='webgpu'?gfx.frameGeneration??'off':'off'};
       if(shadowChanged)this.applyShadows();
       this.updatePixelRatio();
     }
@@ -1748,11 +1861,13 @@ export class GameRenderer {
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
-      this.weapon.visible = isAlive && !this.scoped;
+      // Hide the entire FPV rig, including both hands, until weapon pickup.
+      this.weapon.visible = isAlive && !this.scoped && (state.gameMode!=='tdm'||Boolean(player.weaponId));
       this.weaponRig.update({
         classId: player.classId,
         team: player.team,
         weaponId: this.presentedWeaponId,
+        unarmed: state.gameMode==='tdm'&&!player.weaponId,
         aim: this.aimAmount,
         reloadMotion,
         reloadPhase,
@@ -1846,12 +1961,49 @@ export class GameRenderer {
         }
       }
     }
-    this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
+    this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updatePoolWeapons(state); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
     this.atmosphere.sky.position.copy(this.camera.position);
     this.drawScene();
   }
 
-  getStats() { return {postSamples:this.postPass.target.samples,fxaa:Boolean(this.postPass.material.uniforms.useFxaa.value),anisotropy:this.textureAnisotropy,shadowsEnabled:this.renderer.shadowMap.enabled,shadowMode:this.gfx.shadows,worldCalls:this.renderer.info.worldRender?.calls,worldTriangles:this.renderer.info.worldRender?.triangles, calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles, effects: this.effects.length, geometries: this.renderer.info.memory.geometries, textures:this.renderer.info.memory.textures, pixelRatio: this.currentPixelRatio, fsr: this.gfx.fsr==='on'?this.gfx.fsrQuality:'off', fsrScale: this.postPass.fsrScale, sceneWidth: this.postPass.target.width, sceneHeight: this.postPass.target.height, integratedGpu: this.integratedGpu, gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext),gpuRenderer:this.renderer.getContext().getParameter(this.renderer.getContext().RENDERER) }; }
+  countVisibleObjects() {
+    this.scene.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld(true);
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
+    this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
+    let count=0;
+    this.scene.traverseVisible(object=>{
+      if(!(object.isMesh||object.isLine||object.isSprite||object.isPoints))return;
+      if(!object.layers.test(this.camera.layers)&&!object.layers.isEnabled?.(0))return;
+      if(!object.frustumCulled||this.viewFrustum.intersectsObject(object))count++;
+    });
+    return count;
+  }
+
+  shouldGenerateFrame(now,meta){return this.frameGeneration?.shouldGenerate(now,meta)??false;}
+  presentGeneratedFrame(now,meta){
+    if(!this.frameGeneration?.enabled)return false;
+    try{return this.frameGeneration.generate(now,meta);}
+    catch(error){this.frameGeneration.error(error);return false;}
+  }
+  noteRealFrame(now,meta,elapsedMs){this.frameGeneration?.noteReal(now,meta,elapsedMs);}
+
+  getStats() {
+    const r=this.renderer,post=this.postPass,isGPU=this.api==='webgpu';
+    return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
+      gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
+      postSamples:post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
+      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.gfx.shadows,
+      worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
+      worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
+      triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
+      visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
+      pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
+      fsrScale:post.fsrScale,fsrSharpness:this.gfx.fsrSharpness,sceneWidth:post.target.width,sceneHeight:post.target.height,
+      frameGeneration:this.frameGeneration?.stats()??null,
+      integratedGpu:this.integratedGpu,gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext)
+    };
+  }
 
   project(x, y, z) {
     const position = this.scratchPosition.set(x, y, z).project(this.camera);
@@ -1863,6 +2015,9 @@ export class GameRenderer {
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
     this.infantry?.dispose();
+    this.poolWeaponRig?.dispose();
+    this.poolWeaponTemplates?.clear();
+    this.poolWeaponModels?.clear();
     this.cachedShadows.dispose();
     this.bulletMarks.dispose();
     this.clearVehicles();
@@ -1887,6 +2042,6 @@ export class GameRenderer {
     skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();
     this.atmosphere.target.dispose();
-    this.groundShadows.dispose();this.postPass.dispose();this.gpuTimer.dispose();this.renderer.dispose();
+    this.groundShadows.dispose();this.frameGeneration?.dispose();this.postPass.dispose();this.gpuTimer.dispose();this.renderer.dispose();
   }
 }

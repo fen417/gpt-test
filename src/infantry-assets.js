@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { SafeWebGpuKtx2Loader } from './webgpu-ktx2.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -225,7 +226,8 @@ function prepareWeapon(gltf, name) {
 export class InfantryAssets {
   constructor(renderer) {
     this.loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-    this.ktx = new KTX2Loader().setWorkerLimit(2)
+    const KtxLoader=renderer.isWebGPURenderer ? SafeWebGpuKtx2Loader : KTX2Loader;
+    this.ktx = new KtxLoader().setWorkerLimit(2)
       .setTranscoderPath(new URL('basis/', document.baseURI).href).detectSupport(renderer);
     this.loader.setKTX2Loader(this.ktx);
     this.templates = new Map();

@@ -31,21 +31,28 @@ document.body.append(panel);
   const ms=value=>value==null?'н/д':Number(value).toFixed(2);
   return {enabled:true,update(data){
     latest={timestamp:new Date().toISOString(),...data};
-    const nextContext=JSON.stringify([data.mapId,data.quality,data.mode]);
+    const nextContext=JSON.stringify([data.mapId,data.quality,data.mode,data.api]);
     if(recording&&data.active){
       if(context&&context!==nextContext){recording=false;stoppedAt=latest.timestamp;record.textContent='Новая запись';}
       else{context=nextContext;samples.push(latest);if(samples.length>=3600){recording=false;stoppedAt=latest.timestamp;record.textContent='Новая запись';}}
     }
     values.textContent=[`${data.mapId} · ${data.quality} · ${data.mode}${recording?' · REC':''} · ${samples.length} сэмпл.`,
+      `API: ${data.api??'webgl2'} · Backend: ${data.backend??'WebGL 2'}`,
+      `GPU: ${data.gpuRenderer??'название недоступно'}`,
+      `Frame Gen: ${data.frameGeneration?.mode??'off'}${data.frameGeneration?.enabled?' (активен)':''}${data.frameGeneration?.fault?' · ошибка: '+data.frameGeneration.fault:' '}`,
+      `FPS настоящие / отображаемые / сгенерированные: ${ms(data.frameGeneration?.realFPS)} / ${ms(data.frameGeneration?.displayFPS)} / ${ms(data.frameGeneration?.generatedFPS)}`,
+      `FG готово: ${data.frameGeneration?.historyReady?'да':'нет'} · сгенерировано: ${data.frameGeneration?.generatedFrames??0} · отклонено: ${data.frameGeneration?.rejected??0} · GPU FG: ${ms(data.frameGeneration?.gpuMs)} мс`,
+      `FPS средний: ${data.frameMs?.avg>0?(1000/data.frameMs.avg).toFixed(1):'н/д'}`,
       `Кадр avg/p95/p99: ${ms(data.frameMs.avg)} / ${ms(data.frameMs.p95)} / ${ms(data.frameMs.p99)} мс`,
-      `CPU p95: ${ms(data.cpuMs.p95)} · GPU p95: ${ms(data.gpuMs?.p95)} мс`,
-      `Draw calls: ${data.calls} · Треугольники: ${data.triangles}`,
+      `CPU avg/p95: ${ms(data.cpuMs.avg)} / ${ms(data.cpuMs.p95)} мс · GPU avg/p95: ${ms(data.gpuMs?.avg)} / ${ms(data.gpuMs?.p95)} мс`,
+      `Draw calls: ${data.calls} · Треугольники: ${data.triangles} · Видимые объекты: ${data.visibleObjects??'н/д'}`,
+      `Рендер: ${data.sceneWidth}×${data.sceneHeight} · FSR: ${data.fsr??'off'} · ×${ms(data.fsrScale)} · RCAS: ${data.fsrSharpness??'—'}%`,
       `AA: ${data.postSamples??0}× MSAA · FXAA: ${data.fxaa?'да':'нет'} · AF: ${data.anisotropy??'—'}×`,
       `Геометрии: ${data.geometries} · Текстуры: ${data.textures} · Масштаб: ${ms(data.pixelRatio)}`,
       `JS heap: ${data.heapBytes==null?'н/д':(data.heapBytes/1048576).toFixed(1)+' МБ'}`,
       `RTT: ${data.network?.rttMs??'—'} · jitter: ${ms(data.network?.jitterMs)} мс · replay: ${data.network?.replayedInputs??0}`,
       `Звук: ${data.audio?.shots?.played??0}/${data.audio?.shots?.received??0} · старые: ${data.audio?.shots?.stale??0} · лимит: ${data.audio?.shots?.budget??0} · загрузка: ${data.audio?.shotGroups?.length??0}/9`,
       `Восстановления часов: ${data.network?.playbackRecoveries??0}`,
-      `Просадки >33 мс: ${data.frameMs.over33} / ${data.frameMs.count}`].join('\n');
+      `Просадки >33 / >50 / >100 мс: ${data.frameMs.over33} / ${data.frameMs.over50} / ${data.frameMs.over100} (из ${data.frameMs.count})`].join('\n');
   }};
 }

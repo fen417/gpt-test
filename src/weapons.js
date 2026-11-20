@@ -1060,7 +1060,7 @@ export function createWeaponRig(owner = {}) {
   let previousKey = '';
   let previousTeam = -1;
   let visiblePistol = null;
-  function update({classId='assault',weaponId='',team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0}={}){
+  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1073,6 +1073,7 @@ export function createWeaponRig(owner = {}) {
     if (!Object.hasOwn(defaultByClass,classId)) classId = 'assault';
     const pistol = Object.hasOwn(pistols,weaponId) ? pistols[weaponId] : null;
     const key = pistol || Object.hasOwn(loadouts,weaponId) ? weaponId : defaultByClass[classId];
+    if(!pistol){classId=['mg36','pkp'].includes(key)?'support':['dmr12','sv98'].includes(key)?'recon':['mcx9','vk45'].includes(key)?'medic':'assault';}
     const loadout = loadouts[key] ?? loadouts[classId];
     const support = !pistol && classId === 'support', recon = !pistol && classId === 'recon';
     const isAk = key === 'ak12', isVk = key === 'vk45', isPkp = key === 'pkp', isSv = key === 'sv98';
@@ -1119,6 +1120,8 @@ export function createWeaponRig(owner = {}) {
       weapon.userData.muzzleZ = end-(recon||isVk?.215:.084);
       for (const feed of [magazine,beltBox]) { feed.position.set(0,0,0);feed.rotation.set(0,0,0); }
     }
+    rifleAssembly.visible=!pistol&&!unarmed;
+    for(const model of Object.values(pistols))model.root.visible=model===pistol&&!unarmed;
     scope.visible = recon && aim < .92;
     suppressor.visible = recon || isVk;
     muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : weapon.userData.muzzleZ);
@@ -1149,8 +1152,8 @@ export function createWeaponRig(owner = {}) {
     heldLauncher.visible=usingTool&&gadgetKind==='launcher';
     defibLeft.visible=defibRight.visible=heldDefibLeft.visible=heldDefibRight.visible=defibUnit.visible=usingDefib;
     for(const cable of defibCables)cable.mesh.visible=usingDefib;
-    rifleAssembly.visible=!pistol&&!usingTool;
-    for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool;
+    rifleAssembly.visible=!pistol&&!usingTool&&!unarmed;
+    for(const model of Object.values(pistols))model.root.visible=model===pistol&&!usingTool&&!unarmed;
     rifleGlove.visible=!usingSupply&&!usingDefib&&(usingTool||throwing||!pistol);
     pistolGlove.visible=Boolean(pistol)&&!usingTool&&!throwing;
     supplyLeft.visible=supplyRight.visible=supplyRoot.visible=usingSupply;

@@ -9,7 +9,16 @@ export default defineConfig({
     target: 'es2022',
     manifest:true,
     rollupOptions: {
-      output:{manualChunks(id){if(id.includes('/node_modules/three/'))return 'vendor-three';if(id.includes('/node_modules/meshoptimizer/'))return 'vendor-meshopt';if(id.includes('/node_modules/fflate/'))return 'vendor-compression';}},
+      output:{manualChunks(id){
+        if(id.includes('/node_modules/three/')){
+          // Keep WebGPU nodes and backend out of the original WebGL boot payload.
+          // Core scene/geometry/math modules remain shared, not duplicated.
+          if(/\/three\/(?:src\/(?:nodes\/|materials\/nodes\/|renderers\/(?:common\/|webgpu\/|webgl-fallback\/)|Three\.(?:WebGPU|TSL)\.js)|examples\/jsm\/tsl\/|build\/three\.(?:webgpu|tsl)\.js)/.test(id))return 'vendor-three-webgpu';
+          return 'vendor-three';
+        }
+        if(id.includes('/node_modules/meshoptimizer/'))return 'vendor-meshopt';
+        if(id.includes('/node_modules/fflate/'))return 'vendor-compression';
+      }},
       input: {
         credits: fileURLToPath(new URL('./credits.html', import.meta.url)),
         soldiers: fileURLToPath(new URL('./soldier-review.html', import.meta.url)),

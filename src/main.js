@@ -6,6 +6,7 @@ import { drawBotDebug } from './bot-debug.js';
 import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isSupplyGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
+import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
 import {Multiplayer,configuredServerUrl,normalizeServerUrl} from './network.js';
@@ -61,7 +62,7 @@ function flushDamage(now){
   for(const [target,item] of pendingDamage)if(now>=item.until){showScore(item,now);pendingDamage.delete(target);}
 }
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
-let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
+let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality',fsrSharpness:40,frameGeneration:'off'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -78,7 +79,7 @@ const DEFAULT_BINDS={
   reload:'KeyR',
   gadget:'Digit3',
   secondaryGadget:'KeyX',
-  grenade:'KeyG',
+  grenade:'KeyG',drop:'KeyG',
   score:'Tab',
   interact:'KeyE',
   switchSeat:'KeyF',vehicleCamera:'KeyV',
@@ -95,7 +96,7 @@ const BIND_LABELS=[
   ['crouch','Присесть'],
   ['reload','Перезарядка'],
   ['secondaryGadget','Достать гранатомёт / аптечку'],
-  ['grenade','Граната'],
+  ['grenade','Граната'],['drop','Выбросить оружие (TDM)'],
   ['score','Таблица счёта'],
   ['interact','Сесть в технику / выйти'],
   ['switchSeat','Сменить место в технике'],
@@ -462,7 +463,7 @@ function receive(next){
       show('pause',false);show('revive-control-hint',reviveAwaitingControl);
     }else if(active&&!locked&&!unlocked)show('pause');
   }
-  if(!player.alive&&wasAlive&&!next.campaign){
+  if(!player.alive&&wasAlive&&!next.campaign&&next.gameMode!=='tdm'){ 
     reviveAwaitingControl=false;show('revive-control-hint',false);
     lastDeathPos={x:player.x,z:player.z};
     if(!spawnPointAvailable(player,selectedSpawn)){
@@ -538,7 +539,7 @@ function prepare(which){
   reviveAwaitingControl=false;show('revive-control-hint',false);
   pendingDamage.clear();
   clearControls();simulation?.close();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
-  const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value};
+  const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value,gameMode:which==='solo'?$('solo-mode').value:$('room-mode').value,killLimit:Number(which==='solo'?$('solo-kill-limit').value:$('room-kill-limit').value)};
 }
 function enter(){
   closeMenuPanels();
@@ -674,10 +675,18 @@ async function refreshRooms(){
 for(const map of Object.values(MAPS))$('room-map').add(new Option(map.name,map.id));
 $('room-map').value=$('map-select').value;
 configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
-$('host').addEventListener('click',()=>{$('room-map').value=$('map-select').value;});
+function syncRoomMode(){
+  const pool=$('room-map').value==='fy_pool_day';
+  $('room-mode').value=pool?'tdm':'conquest';
+  $('room-mode').disabled=!pool;
+  $('room-kill-limit').disabled=!pool;
+}
+$('room-map').addEventListener('change',syncRoomMode);
+$('host').addEventListener('click',()=>{$('room-map').value=$('map-select').value;syncRoomMode();});
+syncRoomMode();
 $('create-room').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const opts=prepare('server');setBusy(true);
-  try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId:$('room-map').value,gameMode:$('room-mode').value,maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
+  try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId:$('room-map').value,gameMode:$('room-mode').value,killLimit:Number($('room-kill-limit').value),maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
   catch(error){status(error.message,true);setBusy(false);if(multiplayer.rooms.length){show('room-browser');renderRooms(multiplayer.rooms);}}
 });
 $('join-toggle').addEventListener('click',refreshRooms);
@@ -740,12 +749,42 @@ for(const [id,key,fallback] of [['gfx-fsr','fsr','off'],['gfx-fsr-quality','fsrQ
     gfx[key]=event.target.value;save(id,gfx[key]);syncFsrSettings();
   });
 }
+const fsrSharpnessControl=$('gfx-fsr-sharpness');
+const savedFsrSharpness=Number(read('gfx-fsr-sharpness','40'));
+gfx.fsrSharpness=Number.isFinite(savedFsrSharpness)?Math.max(0,Math.min(100,savedFsrSharpness)):40;
+fsrSharpnessControl.value=String(gfx.fsrSharpness);
+const fsrSharpnessOutput=$('gfx-fsr-sharpness-value');
+function updateFsrSharpness(){
+  gfx.fsrSharpness=Number(fsrSharpnessControl.value);
+  fsrSharpnessOutput.textContent=gfx.fsrSharpness+'%';
+  save('gfx-fsr-sharpness',gfx.fsrSharpness);
+}
+fsrSharpnessControl.addEventListener('input',updateFsrSharpness);
+fsrSharpnessOutput.textContent=gfx.fsrSharpness+'%';
 function syncFsrSettings(){
   const enabled=gfx.fsr==='on';
   $('gfx-fsr-quality').disabled=!enabled;
+  fsrSharpnessControl.disabled=!enabled;
   $('gfx-resolution').disabled=enabled; // FSR owns the internal render scale.
 }
 syncFsrSettings();
+const fgSelector=$('gfx-frame-generation');
+fgSelector.value=read('gfx-frame-generation','off');
+if(!['off','auto','1.5','2'].includes(fgSelector.value))fgSelector.value='off';
+gfx.frameGeneration=fgSelector.value;
+fgSelector.addEventListener('change',event=>{
+  gfx.frameGeneration=event.target.value;
+  save('gfx-frame-generation',gfx.frameGeneration);
+  if(renderer?.api!=='webgpu')toast('Для генерации кадров выбери WebGPU.');
+});
+const apiSelector=$('gfx-api');
+apiSelector.value=preferredGraphicsApi();
+apiSelector.addEventListener('change',()=>{
+  const next=apiSelector.value;
+  save('gfx-api',next);
+  try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
+  location.reload();
+});
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
 $('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);toast('Сглаживание применится после перезагрузки страницы.');});
 $('volume').value=read('volume','0.5');audio.volume=Number($('volume').value);
@@ -776,8 +815,8 @@ $('reset-binds')?.addEventListener('click',()=>{
 $('sound-toggle').addEventListener('click',()=>{audio.enabled=!audio.enabled;text('sound-toggle',audio.enabled?'ЗВУК ВКЛ.':'ЗВУК ВЫКЛ.');$('sound-toggle').setAttribute('aria-pressed',String(audio.enabled));unlockAudio();musicUI();});
 $('music-toggle').addEventListener('click',()=>{if(audioStarted)musicMuted=!musicMuted;else musicMuted=false;save('music-muted',musicMuted);unlockAudio();setMusic();});
 mountMenuPanels(()=>{unlockAudio();audio.click();});
-weaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm})});
-lobbyWeaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm}),panelId:'lobby',prefix:'lobby-weapon-preview'});
+weaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getGpuDevice:()=>renderer?.webgpu?.device??null,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm})});
+lobbyWeaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getGpuDevice:()=>renderer?.webgpu?.device??null,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm}),panelId:'lobby',prefix:'lobby-weapon-preview'});
 squadUI=mountSquadUI({getState:()=>state,getLocalId:()=>localId,getKey:()=>formatKeyCode(keybinds.squad),
   getOrderKeys:()=>({order:formatKeyCode(keybinds.order)}),
   onOpen:()=>{clearControls();if(active&&local()?.alive){unlockedPaused=true;document.exitPointerLock?.();show('pause');}audio.click();},
@@ -905,7 +944,7 @@ document.addEventListener('keydown',event=>{
   }
   if(event.ctrlKey||['ControlLeft','ControlRight','Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',keybinds.jump,keybinds.score,keybinds.crouch,keybinds.forward,keybinds.back,keybinds.left,keybinds.right].includes(event.code))event.preventDefault();
   keys.add(event.code);
-  if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('secondaryGadget',event.code)||isBound('grenade',event.code)||isBound('interact',event.code)||isBound('switchSeat',event.code)||isBound('horn',event.code)||isBound('order',event.code))){
+  if(!event.repeat&&(isBound('reload',event.code)||isBound('gadget',event.code)||isBound('secondaryGadget',event.code)||isBound('grenade',event.code)||isBound('drop',event.code)||isBound('interact',event.code)||isBound('switchSeat',event.code)||isBound('horn',event.code)||isBound('order',event.code))){
     pulses.add(event.code);
   }
 });
@@ -927,11 +966,12 @@ function input(){
     fire:firing,
     aim:enabled&&aim,
     weaponSlot:enabled?weaponSlot:0,
-    toolSlot,
+    toolSlot:state?.gameMode==='tdm'?0:toolSlot,
     reload:enabled&&pulses.has(keybinds.reload),
     gadget:false,
     secondaryGadget:false,
-    grenade:enabled&&pulses.has(keybinds.grenade),
+    grenade:enabled&&state?.gameMode!=='tdm'&&pulses.has(keybinds.grenade),
+    drop:enabled&&state?.gameMode==='tdm'&&pulses.has(keybinds.drop),
     interact:enabled&&pulses.has(keybinds.interact),
     switchSeat:enabled&&pulses.has(keybinds.switchSeat),
     horn:enabled&&pulses.has(keybinds.horn),
@@ -1089,7 +1129,14 @@ function initializeMapPickers(){
     text('menu-map-info',map.size+' × '+map.size+' м · '+map.points.length+' позиций'+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
     save('map',map.id);
   };
-  $('map-select').addEventListener('change',update);
+  const syncSoloMode=()=>{
+    const pool=$('map-select').value==='fy_pool_day';
+    $('solo-mode').value=pool?'tdm':'conquest';
+    $('solo-mode').disabled=!pool;
+    $('solo-kill-limit').disabled=!pool;
+  };
+  $('map-select').addEventListener('change',()=>{syncSoloMode();update();});
+  syncSoloMode();
   update();
 }
 function pickDeploySpawnAt(clientX,clientY){
@@ -1379,15 +1426,17 @@ function hud(now){
   text('location-label',nearest?nearest.name+(captureId?' / СЕКТОР '+captureId:''):'SECTOR 09');
   text('protection-label',player.protected?'◇ ЗАЩИТА ПОСЛЕ ВЫСАДКИ':'');
   const maxT=state.maxTickets||600;
+  document.querySelector('.match-center > span').textContent=state.gameMode==='tdm'?`КОМАНДНЫЙ БОЙ · ДО ${state.maxTickets} УБИЙСТВ`:'ЗАХВАТ ТЕРРИТОРИИ';
   text('tickets-blue',Math.ceil(state.tickets[player.team]));text('tickets-orange',Math.ceil(state.tickets[1-player.team]));$('blue-bar').style.width=`${(state.tickets[player.team]/maxT)*100}%`;$('orange-bar').style.width=`${(state.tickets[1-player.team]/maxT)*100}%`;
   const seconds=Math.floor(state.time);text('match-time',`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`);
   text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;
   if(personalWeapon){
-    const tool=player.heldGadget;
+    const tool=state.gameMode==='tdm'?null:player.heldGadget;
     text('ammo',tool?(tool==='launcher'?player.rockets:'—'):((simulation?.client??multiplayer).prediction?.player?.weaponId===player.weaponId?(simulation?.client??multiplayer).prediction.player.ammo:player.ammo));text('reserve',tool?(tool==='launcher'?'РАКЕТЫ':'СНАРЯЖЕНИЕ'):player.reserve);
-    text('weapon-name',tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`);
+    text('weapon-name',!player.weaponId?'БЕЗ ОРУЖИЯ':tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`);
+    if(state.gameMode==='tdm'&&!player.weaponId){text('ammo','—');text('reserve','—');}
     const cooldown=tool==='launcher'||tool==='medkit'?player.secondaryCooldown:player.gadgetCooldown;
-    text('ammo-status',player.equipTime>0?'СМЕНА СНАРЯЖЕНИЯ…':tool?(cooldown>0?`ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(cooldown)}с`:tool==='repair'?'УДЕРЖИВАЙ ЛКМ · РЕМОНТ':tool==='launcher'&&player.rockets===0?'НЕТ РАКЕТ · НУЖЕН ЯЩИК ПАТРОНОВ':tool==='launcher'?'ПКМ · ПРИЦЕЛ · ЛКМ · ВЫСТРЕЛ':'ЛКМ · ПРИМЕНИТЬ · 1 / 2 · ОРУЖИЕ'):player.reloading?'ПЕРЕЗАРЯДКА…':
+    text('ammo-status',state.gameMode==='tdm'&&!player.weaponId?'ПОДБЕРИ ОРУЖИЕ С ПОЛА':player.equipTime>0?'СМЕНА СНАРЯЖЕНИЯ…':tool?(cooldown>0?`ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(cooldown)}с`:tool==='repair'?'УДЕРЖИВАЙ ЛКМ · РЕМОНТ':tool==='launcher'&&player.rockets===0?'НЕТ РАКЕТ · НУЖЕН ЯЩИК ПАТРОНОВ':tool==='launcher'?'ПКМ · ПРИЦЕЛ · ЛКМ · ВЫСТРЕЛ':'ЛКМ · ПРИМЕНИТЬ · 1 / 2 · ОРУЖИЕ'):player.reloading?'ПЕРЕЗАРЯДКА…':
       player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
   }
   text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);
@@ -1401,11 +1450,20 @@ function hud(now){
     if(vehicle)toolHint=` · ${Math.round(vehicle.hp/VEHICLE_TYPES[vehicle.type].maxHp*100)}% · УДЕРЖИВАЙ ЛКМ`;
   }
   text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${toolHint}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
+  show('gadget-label',state.gameMode!=='tdm');
+  show('grenade-label',true);
+  text('grenade-label',state.gameMode==='tdm'?`${formatKeyCode(keybinds.drop)} · ВЫБРОСИТЬ ОРУЖИЕ`:`${formatKeyCode(keybinds.grenade)} · ГРАНАТА`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const secondary=player.classId==='assault'?`ПТ-90 · ${player.rockets??0}`:player.classId==='medic'?'АПТЕЧКА':'';
-  show('secondary-gadget-label',Boolean(secondary));
+  show('secondary-gadget-label',state.gameMode!=='tdm'&&Boolean(secondary));
   text('secondary-gadget-label',`${formatKeyCode(keybinds.secondaryGadget)} · ${secondary}${player.secondaryCooldown>0?' · '+Math.ceil(player.secondaryCooldown)+'с':''}`);
-  const nearby=state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
+  const nearby=state.gameMode==='tdm'?null:state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
+  if(state.gameMode==='tdm'){
+    const item=(state.weaponItems??[]).filter(w=>Math.hypot(w.x-player.x,w.z-player.z)<2.1).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0];
+    show('vehicle-prompt',!!item&&player.alive);
+    if(item){const occupied=WEAPONS[item.weaponId]?.sidearm?player.sidearmId:player.primaryWeaponId;
+      text('vehicle-prompt',`${WEAPONS[item.weaponId]?.name??item.weaponId} · ${occupied?'СЛОТ ЗАНЯТ · G ВЫБРОСИТЬ':'АВТОПОДБОР ПРИ ПРИБЛИЖЕНИИ'}`);}
+  }
   const capPct=nearby?Math.round(Math.abs(nearby.progress)*100):0;
   const capSig=nearby&&player.alive?`${nearby.id}:${nearby.contested}:${nearby.owner===player.team}:${capPct}`:'';
   const capEl=$('capture-notice');
@@ -1455,14 +1513,14 @@ function hud(now){
   const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
   const gap=`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`;
   if(crosshair.dataset.gap!==gap){crosshair.dataset.gap=gap;crosshair.style.setProperty('--spread-gap',gap);}
-  const showCrosshair=player.alive&&(mounted?.role==='gunner'||(personalWeapon&&!player.reloading&&(!mounted||mounted.canFire)));
+  const showCrosshair=player.alive&&(mounted?.role==='gunner'||(personalWeapon&&Boolean(player.weaponId)&&!player.reloading&&(!mounted||mounted.canFire)));
   crosshair.classList.toggle('aim',aim&&personalWeapon);
   crosshair.style.opacity=showCrosshair?'':'0';
   $('hitmarker').style.opacity=now<hitUntil?'1':'0';
   const dmgOpacity=now<damageUntil?'.45':player.hp<30?'.15':'0';
   const dmgEl=$('damage-flash');
   if(dmgEl.dataset.opacity!==dmgOpacity){dmgEl.dataset.opacity=dmgOpacity;dmgEl.style.opacity=dmgOpacity;}
-  if(!player.alive)updateDeployScreen(player,now);
+  if(!player.alive&&state.gameMode!=='tdm')updateDeployScreen(player,now);
   if(!$('scoreboard').classList.contains('hidden')){
     text('scoreboard-tickets',`${Math.ceil(state.tickets[player.team])} : ${Math.ceil(state.tickets[1-player.team])}`);
     const allies=[...state.players].filter(p=>p.team===player.team).sort((a,b)=>(b.score||0)-(a.score||0)||b.kills-a.kills);
@@ -1587,14 +1645,33 @@ function frame(now){
     yaw=freeCampaignTank?vehicleLook.yaw:driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
-   if(renderDue){lastWorldFrame=now;renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
-    networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}
+  const fgAngles=aimAngles();
+  const fgMeta={playerId:renderPlayer?.id??null,alive:Boolean(renderPlayer?.alive),
+    mapId:renderState?.mapId??null,weaponId:renderPlayer?.weaponId??null,
+    vehicleId:renderPlayer?.vehicleId??null,seat:renderPlayer?.vehicleSeat??null,
+    scoped:Boolean(renderer.scoped),aim,thirdPerson:vehicleThirdPerson,
+    yaw:fgAngles.yaw,pitch:fgAngles.pitch,fov,
+    x:renderPlayer?.x,y:renderPlayer?.y,z:renderPlayer?.z};
+  let generated=false;
+  if(renderDue&&active&&!paused&&renderer.shouldGenerateFrame(now,fgMeta)){
+    generated=renderer.presentGeneratedFrame(now,fgMeta);
+  }
+  if(renderDue&&!generated){
+    const renderDelta=lastWorldFrame>0?Math.min(.08,Math.max(0,(now-lastWorldFrame)/1000)):dt;
+    lastWorldFrame=now;
+    try{
+      const realBegin=performance.now();
+      renderer.render(renderState,localId,renderDelta,{mapId:inLobby?state?.mapId:$('map-select').value,...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
+        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+      if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
+    }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
+  }
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);
     showCampaignOutcome(campaignPresentation.root,state);
     campaignActors??=new CampaignActors();
   }
-  if(campaignActors&&renderDue){
+  if(campaignActors&&renderDue&&!generated){
     campaignActors.animate(renderer,renderState,campaignPresentation,paused);
     campaignActors.aim(renderer,renderState,renderPlayer,paused);
   }
@@ -1615,12 +1692,75 @@ function frame(now){
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
   if(active){renderer.lastCpuMs=performance.now()-cpuBegin;cpuTimes.add(renderer.lastCpuMs);}
 }
+let webgpuAttempted=false;
+let webgpuRecovering=false;
+function recoverWebGpu(error) {
+  if(webgpuRecovering)return;
+  webgpuRecovering=true;
+  const message=String(error?.message??error??'WebGPU device lost').slice(0,280);
+  console.error('[SECTOR 09] Switching back to WebGL 2:',message);
+  try {sessionStorage.setItem('sector09-webgpu-failed',message);}catch{}
+  location.reload();
+}
 try{
   await loadFPSHands();
-  renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto')});renderer.resize();window.addEventListener('resize',()=>renderer.resize());
+  let gpuOptions=null;
+  const requested=preferredGraphicsApi();
+  let recoveredReason=null;
+  try{recoveredReason=sessionStorage.getItem('sector09-webgpu-failed');}catch{}
+  if(requested==='webgpu'&&!recoveredReason) {
+    webgpuAttempted=true;
+    const [
+      {WebGpuPostPass},{makeWebGpuSky},
+      {WebGpuGroundShadows},{createWebGpuSmokeMaterial},{WebGpuTimer},{WebGpuFrameGeneration}
+    ]=await Promise.all([
+      import('./webgpu-post-pass.js'),import('./webgpu-sky.js'),
+      import('./webgpu-ground-shadows.js'),import('./webgpu-smoke.js'),import('./webgpu-timer.js'),
+      import('./webgpu-frame-generation.js')
+    ]);
+    const instance=await createWebGpuRenderer(canvas,{
+      antialias:read('gfx-aa','auto'),
+      onDeviceLost:recoverWebGpu,
+    });
+    gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,
+      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer,
+      FrameGeneration:WebGpuFrameGeneration};
+  }
+  renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
+  fgSelector.disabled=renderer.api!=='webgpu';
+  fgSelector.title=renderer.api!=='webgpu'?'Для Frame Generation нужен аппаратный WebGPU':'';
+  if(gpuOptions){
+    // Reject incompatible shader pipelines before showing a black game canvas.
+    const r=renderer.renderer,p=renderer.postPass;
+    await r.compileAsync(renderer.scene,renderer.camera);
+    for(const scene of [p.scene,p.easuScene,p.rcasScene]){
+      await r.compileAsync(scene,p.camera);
+    }
+  }
+  renderer.resize();window.addEventListener('resize',()=>renderer.resize());
+  $('gfx-api-active').textContent='Используется: '+graphicsApiName(renderer.api)
+    +(renderer.api==='webgpu'?' · аппаратный WebGPU':recoveredReason?' · WebGPU не запустился':'');
+  const gpuRetry=$('gfx-api-retry');
+  gpuRetry.hidden=!(recoveredReason&&requested==='webgpu');
+  gpuRetry.addEventListener('click',()=>{
+    try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
+    location.reload();
+  });
+  if(recoveredReason)toast('WebGPU переключён на WebGL 2 после ошибки ('+recoveredReason+'). Повторный запуск — в настройках изображения.');
+
   renderer.gpuTimer.enabled=perfPanel.enabled;
+  if(new URLSearchParams(location.search).has('poolScreenshot')){
+    window.__S09_POOL_REVIEW={renderer,snapshot:()=>state};
+  }
   if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';document.body.classList.toggle('low-quality',true);}
   initializeMapPickers();
   setBattleMap(DEFAULT_MAP_ID,true);
   selectClass(selectedClass,false);updateKeybindUI();audio.setMode?.('menu');status('Сектор готов к высадке.');requestAnimationFrame(frame);
-}catch(error){console.error(error);status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);$('solo').disabled=true;$('host').disabled=true;}
+}catch(error){
+  console.error(error);
+  if(webgpuAttempted){recoverWebGpu(error);}
+  else{
+    status('Не удалось запустить 3D. Проверь поддержку WebGL 2 и аппаратное ускорение браузера.',true);
+    $('solo').disabled=true;$('host').disabled=true;
+  }
+}

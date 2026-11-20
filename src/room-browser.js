@@ -2,7 +2,7 @@ import { MAPS } from '../shared/world.js';
 import {MAP_ART as mapArt} from './map-art.js';
 
 const difficulties={recruit:'Новобранцы',regular:'Обычные бойцы',veteran:'Ветераны'};
-const modes={conquest:'Захват территории'};
+const modes={conquest:'Захват территории',tdm:'Командный бой насмерть'};
 const get=id=>document.getElementById(id);
 const el=(tag,className,value)=>{const node=document.createElement(tag);node.className=className;if(value!==undefined)node.textContent=value;return node;};
 

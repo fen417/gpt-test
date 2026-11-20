@@ -41,14 +41,16 @@ export class PostPass {
     this.rcasMaterial=new THREE.ShaderMaterial({
       glslVersion:THREE.GLSL3,vertexShader:FSR1_VERTEX,fragmentShader:FSR1_RCAS_FRAGMENT,
       toneMapped:false,depthTest:false,depthWrite:false,
-      uniforms:{tInput:{value:this.upscaledTarget.texture},outputSize:{value:new THREE.Vector2(1,1)},sharpness:{value:0.6}},
+      uniforms:{tInput:{value:this.upscaledTarget.texture},outputSize:{value:new THREE.Vector2(1,1)},sharpness:{value:0.4}},
     });
     this.easuScene=new THREE.Scene();this.easuScene.add(new THREE.Mesh(geometry,this.easuMaterial));
     this.rcasScene=new THREE.Scene();this.rcasScene.add(new THREE.Mesh(geometry,this.rcasMaterial));
   }
-  setUpscaling(quality='off',adaptive=1) {
+  setUpscaling(quality='off',adaptive=1,sharpness=40) {
     this.fsrQuality=quality;
     this.fsrScale=quality==='off'?1:fsr1RenderScale(quality,adaptive);
+    // RCAS is the only sharpener in FSR mode; no extra post-sharpen pass.
+    this.rcasMaterial.uniforms.sharpness.value=Math.max(0,Math.min(1,Number(sharpness)/100||0));
   }
   begin(quality='high'){
     const samples=quality==='high'&&this.antialias!=='off'?this.maxSamples:0;

@@ -21,7 +21,7 @@ export class SoloAuthority {
         if(data.type==='create'){
           this.sim=new Simulation(data);this.sim.addPlayer('local',data.name,0,data.classId,data.weaponId,data.sidearmId);
           this.encoder=new SnapshotEncoder(this.sim.map.size);this.sentEvent=this.sim.eventId;this.last=performance.now();
-          this.control({type:'init',mapId:this.sim.map.id,size:this.sim.map.size,difficulty:this.sim.difficulty,epoch:1,eventAck:this.sentEvent,snapshotHz:30});
+          this.control({type:'init',mapId:this.sim.map.id,size:this.sim.map.size,difficulty:this.sim.difficulty,gameMode:this.sim.gameMode,killLimit:this.sim.killLimit,epoch:1,eventAck:this.sentEvent,snapshotHz:30});
           this.snapshot(true);this.timer=setInterval(()=>this.pump(),1000/60);return;
         }
         if(data.type==='settings'){this.paused=Boolean(data.paused);this.last=performance.now();this.accumulator=0;if(this.paused){this.queue=[];this.sim.setInput('local',{});}return;}
@@ -40,9 +40,9 @@ export class SoloAuthority {
   }
   step(){
     const frames=this.queue.splice(0,2),p=this.sim.players.get('local');
-    if(frames.length){this.held={...frames.at(-1).input};const input={...this.held};for(const f of frames)for(const key of ['jump','reload','grenade','gadget','secondaryGadget','interact','switchSeat','horn','order'])if(f.input[key])input[key]=true;
+    if(frames.length){this.held={...frames.at(-1).input};const input={...this.held};for(const f of frames)for(const key of ['jump','reload','grenade','drop','gadget','secondaryGadget','interact','switchSeat','horn','order'])if(f.input[key])input[key]=true;
       this.sim.setInput('local',input);p.networkFrames=frames;this.ack=frames.at(-1).sequence;
-    }else{const input={...this.held};for(const key of ['jump','reload','grenade','gadget','secondaryGadget','interact','switchSeat','horn','order'])input[key]=false;this.sim.setInput('local',input);}
+    }else{const input={...this.held};for(const key of ['jump','reload','grenade','drop','gadget','secondaryGadget','interact','switchSeat','horn','order'])input[key]=false;this.sim.setInput('local',input);}
     const order=frames.find(frame=>frame.input.order);p.orderAim=order?{yaw:order.input.yaw,pitch:order.input.pitch}:null;
     p.networkControlled=true;p.networkIdle=false;
     const start=performance.now();this.sim.step(1/60);this.samples.add(performance.now()-start);this.tick++;
