@@ -176,6 +176,25 @@ function build(kind,m) {
     wire([[-.07,.08,0],[-.07,.13,0],[.07,.13,0],[.07,.08,0]],.01,m.dark);
     box(0,0,-.097,.09,.018,.008,m.white);box(0,0,-.097,.018,.075,.008,m.white);
     for(const x of [-.11,.11])box(x,-.02,-.09,.03,.035,.018,m.metal);
+  }else if(kind==='grenade'){
+    const profile=[
+      [0,-.046],[.013,-.046],[.021,-.042],[.028,-.032],[.031,-.019],
+      [.031,-.006],[.028,.007],[.021,.018],[.013,.024],[0,.024],
+    ];
+    const shell=new THREE.LatheGeometry(profile.map(([radius,y])=>new THREE.Vector2(radius,y)),24);
+    shell.userData.temporary=true;
+    add(root,shell,m.olive,0,0,0,1,1,1);
+    tube(0,.018,0,.022,.003,m.orange);
+    tube(0,.026,0,.013,.013,m.dark);
+    box(0,.036,.002,.021,.010,.026,m.metal);
+    const lever=box(0,.009,.024,.013,.040,.004,m.metal);
+    lever.rotation.x=-.46;
+    const tip=box(0,-.016,.031,.012,.015,.004,m.metal);
+    tip.rotation.x=-.12;
+    const pullLoop=new THREE.TorusGeometry(.008,.0013,8,18);
+    pullLoop.userData.temporary=true;
+    const loop=add(root,pullLoop,m.metal,-.016,.029,-.007,1,1,1);
+    loop.rotation.y=.48;
   }else if(kind==='rocket'){
     tube(0,0,0,.034,.48,m.olive,'z');
     tube(0,0,-.17,.049,.15,m.orange,'z');

@@ -226,8 +226,8 @@ export function rayCollider(origin, direction, box, maximum) {
 
 function boundedShape(box) {
   return box.obb ?? affineBox(
-    { x: box.x, y: (box.minY + box.h) / 2, z: box.z },
-    [box.w / 2, (box.h - box.minY) / 2, box.d / 2],
+    { x: (box.minX + box.maxX) / 2, y: (box.minY + box.h) / 2, z: (box.minZ + box.maxZ) / 2 },
+    [(box.maxX - box.minX) / 2, (box.h - box.minY) / 2, (box.maxZ - box.minZ) / 2],
   );
 }
 

@@ -249,8 +249,6 @@ export class GameRenderer {
         this.renderer.shadowMap.needsUpdate = true;
       }, false);
     }
-    this.grenadeMaterial = material(0x4b5842, 0.72, 0.32);
-    this.grenadeLedMaterial = material(0xff3b28, 0.25, 0.1, { emissive: 0xff3b28, emissiveIntensity: 1.4 });
     this.updatePixelRatio();
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = this.integratedGpu ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
@@ -1277,46 +1275,13 @@ export class GameRenderer {
   }
 
   createGrenadeMesh() {
-    const group = new THREE.Group();
-    group.scale.setScalar(1.65);
-    const body = new THREE.Mesh(this.geo.cylinder, this.grenadeMaterial);
-    body.scale.set(0.088, 0.125, 0.088);
-    body.castShadow = !this.lowQuality;
-    group.add(body);
-    for (const dy of [-0.056, 0.056]) {
-      const cap = new THREE.Mesh(this.geo.sphere, this.grenadeMaterial);
-      cap.position.y = dy;
-      cap.scale.set(0.086, 0.052, 0.086);
-      group.add(cap);
-    }
-    for (const ry of [-0.036, 0, 0.036]) {
-      const rib = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
-      rib.position.y = ry;
-      rib.scale.set(0.094, 0.012, 0.094);
-      group.add(rib);
-    }
-    const band = new THREE.Mesh(this.geo.cylinder, this.materials.stripe);
-    band.position.y = 0.022;
-    band.scale.set(0.095, 0.015, 0.095);
-    group.add(band);
-    const neck = new THREE.Mesh(this.geo.cylinder, this.materials.steel);
-    neck.position.y = 0.088;
-    neck.scale.set(0.038, 0.038, 0.038);
-    group.add(neck);
-    const fuze = new THREE.Mesh(this.geo.box, this.materials.steel);
-    fuze.position.set(0, 0.112, -0.008);
-    fuze.scale.set(0.055, 0.034, 0.068);
-    group.add(fuze);
-    const spoon = new THREE.Mesh(this.geo.box, this.materials.steel);
-    spoon.position.set(0, 0.035, 0.072);
-    spoon.rotation.x = 0.16;
-    spoon.scale.set(0.026, 0.135, 0.014);
-    group.add(spoon);
-    const led = new THREE.Mesh(this.geo.sphere, this.grenadeLedMaterial);
-    led.position.set(0, 0.134, 0);
-    led.scale.setScalar(0.028);
-    group.add(led);
-    return group;
+    const model=createGadgetModel('grenade',this.equipmentPalette);
+    model.traverse(object=>{
+      if(!object.isMesh)return;
+      object.material=this.getQualityMaterial(object.material);
+      object.castShadow=!this.lowQuality;
+    });
+    return model;
   }
 
   createRocketVisual(item,time) {
@@ -1458,7 +1423,6 @@ export class GameRenderer {
     const active = this.activeGrenades;
     active.clear();
     const localPlayer = state.players?.find(p => p.id === localId);
-    this.grenadeLedMaterial.emissiveIntensity = 0.5 + (Math.sin(this.clock * 22) + 1) * 1.25;
     for (const grenade of state.grenades || []) {
       active.add(grenade.id);
       let mesh = this.grenadeMeshes.get(grenade.id);
@@ -1483,9 +1447,6 @@ export class GameRenderer {
       }
       mesh.position.set(gx, gy, gz);
       mesh.rotation.set(this.clock * 9.5 + numId, this.clock * 6.2 + numId * 0.7, this.clock * 7.4);
-      if (!this.lowQuality && ((this.frameCount + numId) % 3 === 0)) {
-        this.smoke(gx, gy, gz, 0.2, 0.35, 0x8d9087);
-      }
     }
     for (const [id, mesh] of this.grenadeMeshes) if (!active.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
   }
@@ -2061,7 +2022,6 @@ export class GameRenderer {
     for (const soldier of this.soldiers.values()) if (!soldier.group.parent) soldier.group.traverse(collect);
     for (const pool of Object.values(this.effectPools)) for (const effect of pool) collect(effect.mesh);
     textures.add(this.smokeTexture);
-    materials.add(this.grenadeMaterial);
     materials.add(this.reviveMaterial);
     materials.add(this.rocketFlareMaterial);textures.add(this.rocketFlareTexture);materials.add(this.rocketGlowMaterial);materials.add(this.rocketTrailMaterial);
     geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose());

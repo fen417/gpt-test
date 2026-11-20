@@ -230,11 +230,8 @@ export function createWeaponRig(owner = {}) {
   const rifleFeed = new THREE.Group(), compactFeed = new THREE.Group(), marksmanFeed = new THREE.Group(), akFeed = new THREE.Group(), vkFeed = new THREE.Group();
   magazine.add(rifleFeed,compactFeed,marksmanFeed,akFeed,vkFeed);
   const bakelite=mat('weapon-bakelite-plum',0x6b3e2e,.68,.12,{bumpMap:polymerGrain,bumpScale:.00022});
-  const oliveMetal=mat('weapon-olive-ordnance',0x46543e,.62,.35);
   const medWhite=mat('gadget-med-case',0xd6dbd4,.55,.1);
-  const medRed=mat('gadget-med-cross',0xc8322b,.5,.1);
   const stimGlow=new THREE.MeshBasicMaterial({name:'gadget-stim-glow',color:0x5bd9e8,toneMapped:false});ownedMaterials.add(stimGlow);
-  const warnYellow=mat('gadget-warn-yellow',0xd4a438,.55,.2);
   profile(rifleFeed,[[-.155,-.092],[-.077,-.092],[-.071,-.181],[-.087,-.272],[-.116,-.337],[-.192,-.321],[-.17,-.24],[-.155,-.168]],.067,polymer,{bevel:.005});
   profile(rifleFeed,[[-.194,-.314],[-.115,-.331],[-.11,-.347],[-.197,-.33]],.076,dark,{bevel:.002});
   for(const side of [-1,1])for(let i=0;i<3;i++){
@@ -593,25 +590,10 @@ export function createWeaponRig(owner = {}) {
   ownedGeometries.add(supportGlove.geometry);
   leftHand.add(supportGlove);
 
-  // Detailed first-person held grenade & class gadgets attached to leftHand
-  const heldGrenade=new THREE.Group();heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
-  heldGrenade.position.set(-.005,.080,-.060);heldGrenade.rotation.set(-.25,.22,-.12);heldGrenade.scale.setScalar(1.40);heldGrenade.visible=false;
-  cylinder(heldGrenade,0,0,0,.025,.062,oliveMetal,'y',16);
-  ellipsoid(heldGrenade,[0,.028,0],[.025,.018,.025],oliveMetal);
-  ellipsoid(heldGrenade,[0,-.028,0],[.023,.016,.023],oliveMetal);
-  for(const y of [-.020,-.007,.007,.020])ring(heldGrenade,0,y,0,.027,.023,.005,anodized,'y',16);
-  for(let i=0;i<6;i++){
-    const a=i*Math.PI/3;
-    rounded(heldGrenade,Math.cos(a)*.0245,0,Math.sin(a)*.0245,.004,.054,.004,anodized);
-  }
-  cylinder(heldGrenade,0,.013,0,.0262,.007,warnYellow,'y',16);
-  cylinder(heldGrenade,0,.043,0,.013,.018,metal,'y',14);
-  rounded(heldGrenade,0,.055,-.002,.018,.014,.022,metal);
-  curve(heldGrenade,[[0,.059,.008],[.016,.054,.016],[.029,.022,.018],[.027,-.018,.014]],.0032,metal,12,6);
-  ring(heldGrenade,-.016,.054,-.006,.012,.009,.003,brass,'x',14);
-  ellipsoid(heldGrenade,[0,.063,0],[.0045,.0045,.0045],medRed);
-
   const equipmentPalette=gadgetPalette(mat);
+  const heldGrenade=createGadgetModel('grenade',equipmentPalette);
+  heldGrenade.name='held-grenade';leftHand.add(heldGrenade);
+  heldGrenade.position.set(-.005,.080,-.060);heldGrenade.rotation.set(-.25,.22,-.12);heldGrenade.visible=false;
   const supplyRoot=new THREE.Group();supplyRoot.name='held-supply-case';weapon.add(supplyRoot);supplyRoot.visible=false;
   const supplyLeft=new THREE.Group();supplyLeft.name='supply-left-grip';leftHand.add(supplyLeft);
   const supplyLeftMesh=createFPSHand('supplyLeft',importedGloveMat);ownedGeometries.add(supplyLeftMesh.geometry);supplyLeft.add(supplyLeftMesh);supplyLeft.visible=false;

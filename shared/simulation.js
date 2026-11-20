@@ -27,6 +27,8 @@ const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 
 const crouching = player => !player.vehicleId && Boolean(player.crouching || player.slideTime > 0 || player.input.crouch);
 const rayDir = { x: 0, y: 0, z: 0 };
+const GRENADE_RADIUS = .05;
+const GRENADE_CONTACT_GAP = .002;
 
 
 
@@ -885,6 +887,18 @@ export class Simulation {
     let vx=(x-origin.x)/flight,vz=(z-origin.z)/flight,vy=(targetY-origin.y+7*flight*flight)/flight;
     const speed=Math.hypot(vx,vy,vz),limit=Math.min(1,26/Math.max(.001,speed));
     vx*=limit;vy*=limit;vz*=limit;
+    const horizontalSpeed=Math.hypot(vx,vz);
+    const previewTime=Math.min(flight,18/horizontalSpeed);
+    const obstruction=this.grenadeArcObstruction(origin,vx,vy,vz,previewTime);
+    if(obstruction>0&&obstruction*horizontalSpeed+.8<horizontal){
+      // If the lob clips cover before the aimed point, try crossing that
+      // cover at sight height. Keep the original throw if this arc also clips.
+      const across=Math.min(previewTime,obstruction+.8/horizontalSpeed);
+      const sightHeight=eye.y-origin.y+Math.tan(p.pitch)*horizontalSpeed*across;
+      const lowerVy=sightHeight/across+7*across;
+      if(lowerVy<vy&&Math.hypot(horizontalSpeed,lowerVy)<=26&&
+        this.grenadeArcObstruction(origin,vx,lowerVy,vz,across)===null)vy=lowerVy;
+    }
     this.grenades.push({id:`grenade-${++this.eventId}`,owner:p.id,team:p.team,vehicleId:p.vehicleId,...origin,vx,vz,vy,fuse:1.8,yaw:p.yaw||0});
     this.event('grenade',{playerId:p.id,x:p.x,y:p.y||0,z:p.z,yaw:p.yaw||0});
   }
@@ -1002,6 +1016,28 @@ export class Simulation {
       }
     return out;
   }
+  traceGrenade(origin,direction,length){
+    let distance=length,collider=null;
+    for(const box of this.grenadeBoxes(origin.x,origin.z,origin.x+direction.x*length,origin.z+direction.z*length)){
+      const contact=rayBox(origin,direction,box,distance);
+      if(contact<distance){distance=contact;collider=box;}
+    }
+    return collider?{distance,collider}:null;
+  }
+  grenadeArcObstruction(origin,vx,vy,vz,until){
+    let start=origin;
+    const segments=Math.ceil(until/.05);
+    for(let i=1;i<=segments;i++){
+      const t=i*until/segments;
+      const end={x:origin.x+vx*t,y:origin.y+(vy-7*t)*t,z:origin.z+vz*t};
+      const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z,length=Math.hypot(dx,dy,dz);
+      if(end.y<this.groundAt(end.x,end.z)+GRENADE_RADIUS)return t;
+      const hit=this.traceGrenade(start,{x:dx/length,y:dy/length,z:dz/length},length);
+      if(hit)return (i-1+hit.distance/length)*until/segments;
+      start=end;
+    }
+    return null;
+  }
   floorBoxes(x,z,radius){
     const half=this.map.size/2,cell=this.collisionCell,size=this.collisionSize;
     const loX=Math.floor((x-radius+half)/cell),hiX=Math.floor((x+radius+half)/cell);
@@ -1118,31 +1154,29 @@ export class Simulation {
       grenade.fuse-=dt;grenade.vy-=14*dt;
       const delta={x:grenade.vx*dt,y:(grenade.vy+7*dt)*dt,z:grenade.vz*dt},length=Math.hypot(delta.x,delta.y,delta.z);
       const direction=length>0?{x:delta.x/length,y:delta.y/length,z:delta.z/length}:{x:0,y:0,z:0};
-      let nearest=length,hit=null;
-      for(const box of this.grenadeBoxes(grenade.x,grenade.z,grenade.x+delta.x,grenade.z+delta.z)){
-        const distance=rayBox(grenade,direction,box,length);
-        if(distance<nearest){nearest=distance;hit=box;}
+      const impact=this.traceGrenade(grenade,direction,length);
+      if(impact){
+        const {distance,collider}=impact;
+        const hit=collider.parts?.find(part=>rayBox(grenade,direction,part,length)===distance)??collider;
+        const travel=Math.max(0,distance-GRENADE_CONTACT_GAP);
+        grenade.x+=direction.x*travel;grenade.y+=direction.y*travel;grenade.z+=direction.z*travel;
+        const normal=colliderNormal(hit,grenade);
+        const speed=grenade.vx*normal.x+grenade.vy*normal.y+grenade.vz*normal.z;
+        if(speed<0){grenade.vx-=1.35*speed*normal.x;grenade.vy-=1.35*speed*normal.y;grenade.vz-=1.35*speed*normal.z;}
+      }else{
+        // Geometry was already swept at projectile height. The infantry
+        // collision check treats some elevated walls as solid down to ground.
+        const limit=this.map.size/2-2,area=this.map.playArea;
+        const x=grenade.x+delta.x,z=grenade.z+delta.z;
+        if(x<Math.max(-limit,area?.minX??-Infinity,this.map.shoreX??-Infinity)+GRENADE_RADIUS||
+          x>Math.min(limit,area?.maxX??Infinity)-GRENADE_RADIUS)grenade.vx*=-.35;
+        else grenade.x=x;
+        if(z<Math.max(-limit,area?.minZ??-Infinity)+GRENADE_RADIUS||
+          z>Math.min(limit,area?.maxZ??Infinity)-GRENADE_RADIUS)grenade.vz*=-.35;
+        else grenade.z=z;
+        grenade.y+=delta.y;
       }
-      if(hit?.parts){
-        const asset=hit;
-        let closest=length;
-        for(const part of asset.parts){
-          const distance=rayBox(grenade,direction,part,closest);
-          if(distance<closest){closest=distance;hit=part;}
-        }
-      }
-      if(hit){
-        const travel=Math.max(0,nearest-.02);grenade.x+=direction.x*travel;grenade.y+=direction.y*travel;grenade.z+=direction.z*travel;
-        if(hit.obb){
-          const normal=colliderNormal(hit,grenade),speed=grenade.vx*normal.x+grenade.vy*normal.y+grenade.vz*normal.z;
-          if(speed<0){grenade.vx-=1.35*speed*normal.x;grenade.vy-=1.35*speed*normal.y;grenade.vz-=1.35*speed*normal.z;}
-        }else{
-          const faces=[['x',Math.abs(Math.abs(grenade.x-hit.x)-hit.w/2)],['z',Math.abs(Math.abs(grenade.z-hit.z)-hit.d/2)],['y',Math.min(Math.abs(grenade.y-hit.h),Math.abs(grenade.y-hit.minY))]];
-          const axis=faces.sort((a,b)=>a[1]-b[1])[0][0];grenade[`v${axis}`]*=-.35;
-        }
-      }else if(this.collides(grenade.x+delta.x,grenade.z+delta.z,grenade.y+delta.y-.12,.12,.24)){grenade.vx*=-.35;grenade.vz*=-.35;}
-      else{grenade.x+=delta.x;grenade.y+=delta.y;grenade.z+=delta.z;}
-      const ground=this.groundAt(grenade.x,grenade.z)+.15;
+      const ground=this.groundAt(grenade.x,grenade.z)+GRENADE_RADIUS;
       if(grenade.y<ground){grenade.y=ground;grenade.vy=Math.abs(grenade.vy)*.3;grenade.vx*=.92;grenade.vz*=.92;}
       if(grenade.fuse<=0)blast(this,{x:grenade.x,y:grenade.y,z:grenade.z},this.players.get(grenade.owner),'grenade',null,grenade.team,null,false,grenade.vehicleId);
     }
@@ -1235,7 +1269,7 @@ function initializeCollisionWorld(world,indexGrenades=false,colliders=getAssetCo
     world.rayCandidates=[];
     world.rayVisited=new Uint32Array(world.colliders.length);
     world.rayVisit=0;
-    world.grenadeColliders=world.colliders.map(box=>expandCollider(box,.12));
+    world.grenadeColliders=world.colliders.map(box=>expandCollider(box,GRENADE_RADIUS));
     if(indexGrenades){
       // A dense village can have thousands of solid building parts. Expanding
       // each collider is a one-time cost, not a per-grenade/per-tick cost.
