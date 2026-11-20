@@ -23,6 +23,8 @@ jobs:
         run: node --test test/pool-tdm.test.js
       - name: Graphics API and tank atlas regression tests
         run: node --test test/graphics-api.test.js
+      - name: Frame generation scheduling tests
+        run: node --test test/frame-generation.test.js
       - name: Build browser game
         run: npm run build
       - name: Install headless Chromium
@@ -42,6 +44,8 @@ jobs:
         run: node scripts/verify-pool-day.mjs
       - name: Browser graphics API + FSR smoke
         run: node scripts/verify-graphics-apis.mjs
+      - name: Browser WebGPU FG shader smoke
+        run: node scripts/verify-frame-generation.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
