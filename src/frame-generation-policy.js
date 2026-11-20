@@ -17,7 +17,7 @@ export class FrameGenerationPolicy {
   clearHistory(){this.history=0;this.lastReal=0;this.previousReal=0;this.lastMeta=null;this.cycles=0;}
   compatible(meta,previous=this.lastMeta) {
     if(!meta||!previous)return false;
-    for(const key of ['playerId','mapId','alive','weaponId','vehicleId','seat','scoped','aim','thirdPerson']){
+    for(const key of ['playerId','mapId','alive','weaponId','vehicleId','seat','scoped','aim','thirdPerson','fov']){
       if(meta[key]!==previous[key])return false;
     }
     if(!meta.alive||!Number.isFinite(meta.yaw)||!Number.isFinite(meta.pitch))return false;
