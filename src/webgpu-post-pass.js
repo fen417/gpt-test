@@ -42,7 +42,7 @@ export class WebGpuPostPass {
     const geometry=fullScreenGeometry();
     this.geometry=geometry;
     const source=texture(this.target.texture), sampled=source.sample(uv());
-    this.sourceTexture=source; // Rebind scene color only while opt-in FG uses the velocity MRT.
+    this.sourceTexture=source; // Single attachment scene color; FG captures finished post output.
     const filtered=fxaa(source);
     const postColor=Fn(()=>{
       const color=vec3(sampled.rgb).toVar();
