@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { GRAPHICS_API_KEY,preferredGraphicsApi,graphicsApiName,createWebGpuRenderer } from '../src/graphics-api.js';
 import {loadTankAtlas} from '../src/tank-model.js';
 import * as THREE from 'three';
+import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
 
 test('graphics API preference: auto is safe and unknown values are rejected',()=>{
   const storage={ getItem(){return null;} };
@@ -61,4 +62,28 @@ test('WebGPU tank atlas is an uncompressed, mipmapped texture independent of KTX
     if(previous===undefined)delete globalThis.document;
     else globalThis.document=previous;
   }
+});
+
+test('WebGPU fullscreen UVs keep image upright with and without FSR',()=>{
+  // Three.js WebGPU QuadMesh uses a top-left texture origin. The world, gun
+  // viewmodel and both intermediate FSR targets must use that same convention.
+  const post=new WebGpuPostPass({});
+  try{
+    const scenes=[post.scene,post.easuScene,post.rcasScene];
+    for(const scene of scenes){
+      const geometry=scene.children[0].geometry;
+      assert.equal(geometry,post.geometry);
+      const position=geometry.getAttribute('position');
+      const uv=geometry.getAttribute('uv');
+      assert.deepEqual(Array.from(position.array),[-1,-1,0,3,-1,0,-1,3,0]);
+      assert.deepEqual(Array.from(uv.array),[0,1,2,1,0,-1]);
+      // For this fullscreen triangle, texture V = (1 - clipY)/2.
+      // The top of the physical screen must sample the first texture row.
+      const y0=position.getY(0),y2=position.getY(2);
+      const v0=uv.getY(0),v2=uv.getY(2);
+      const sampleV=y=>v0+(v2-v0)*(y-y0)/(y2-y0);
+      assert.equal(sampleV(1),0,'top row is mirrored');
+      assert.equal(sampleV(-1),1,'bottom row is mirrored');
+    }
+  }finally{post.dispose();}
 });
