@@ -9,7 +9,7 @@ function visibleBounds(root){
   });return bounds;
 }
 
-export function mountWeaponPreview({getRig,getLoadout,panelId='single-player-panel',prefix='weapon-preview'}){
+export function mountWeaponPreview({getRig,getLoadout,getGpuDevice=()=>null,panelId='single-player-panel',prefix='weapon-preview'}){
   const canvas=document.getElementById(prefix),panel=document.getElementById(panelId);
   const title=document.getElementById(prefix+'-name'),hint=document.getElementById(prefix+'-hint');
   const isOpen=()=>panel.tagName==='DIALOG'?panel.open:!panel.classList.contains('hidden');
@@ -17,7 +17,8 @@ export function mountWeaponPreview({getRig,getLoadout,panelId='single-player-pan
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(30,1,.01,20),pivot=new THREE.Group();scene.add(pivot);
   scene.add(new THREE.HemisphereLight(0xf4f6df,0x37483b,3));
   for(const [color,power,position] of [[0xffedca,3.5,[1,2,3]],[0xa9ced1,2,[-2,1,-1]]]){const light=new THREE.DirectionalLight(color,power);light.position.set(...position);scene.add(light);}
-  let renderer,model,key='',sidearm=false,raf=0,drag=null,size=new THREE.Vector3(),distance=1,loadingUntil=0;
+  let renderer,rendererPromise,model,key='',sidearm=false,raf=0,drag=null,size=new THREE.Vector3(),distance=1,loadingUntil=0;
+  let closed=false;
   const reset=()=>{pivot.rotation.set(-.10,Math.PI/2-.22,-.05);fit();invalidate();};
   function fit(){
     if(!model)return;size.copy(visibleBounds(pivot).getSize(new THREE.Vector3()));
@@ -38,15 +39,37 @@ export function mountWeaponPreview({getRig,getLoadout,panelId='single-player-pan
     if(performance.now()<loadingUntil)raf=requestAnimationFrame(draw);
   }
   function invalidate(){if(!raf&&isOpen()&&!document.hidden)raf=requestAnimationFrame(draw);}
-  function update(slot){
+  async function ensureRenderer(){
+    if(renderer)return renderer;
+    if(!rendererPromise)rendererPromise=(async()=>{
+      const device=getGpuDevice();
+      // Reuse the live WebGPU device, rather than creating a separate WebGL
+      // context. Some low-end drivers cannot sustain mixed GPU contexts.
+      const next=device
+        ?new (await import('three/webgpu')).WebGPURenderer({canvas,device,alpha:true,antialias:false,stencil:false})
+        :new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'low-power'});
+      try{
+        if(device)await next.init();
+        if(closed){next.dispose();return null;}
+        next.setPixelRatio(Math.min(devicePixelRatio||1,1.25));
+        next.setClearColor(0,0);
+        next.toneMapping=THREE.ACESFilmicToneMapping;
+        next.toneMappingExposure=1.15;
+        renderer=next;
+        return renderer;
+      }catch(error){next.dispose();throw error;}
+    })().catch(error=>{rendererPromise=null;throw error;});
+    return rendererPromise;
+  }
+  async function update(slot){
     if(slot==='primary'||slot==='sidearm'){
       sidearm=slot==='sidearm';for(const button of slots())button.setAttribute('aria-pressed',String(button.dataset.previewSlot===slot));
     }
-    if(!isOpen())return;const rig=getRig();if(!rig)return;
+    if(!isOpen()||closed)return;const rig=getRig();if(!rig)return;
     const loadout=getLoadout(),id=sidearm?loadout.sidearmId:loadout.weaponId;
     if(key===id){invalidate();return;}key=id;
     try{
-      if(!renderer){renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'low-power'});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.25));renderer.setClearColor(0,0);renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;}
+      if(!await ensureRenderer()||!isOpen()||key!==id)return;
       model?.removeFromParent();pivot.rotation.set(0,0,0);model=rig.createPreviewModel(loadout.classId,id);pivot.add(model);
       const center=visibleBounds(model).getCenter(new THREE.Vector3());model.position.sub(center);
       title.textContent=WEAPONS[id]?.name??id;hint.textContent='Потяни, чтобы повернуть';
@@ -66,6 +89,6 @@ export function mountWeaponPreview({getRig,getLoadout,panelId='single-player-pan
   new ResizeObserver(resize).observe(canvas);
   new MutationObserver(()=>{if(isOpen()){update();resize();}else{cancelAnimationFrame(raf);raf=0;drag=null;}}).observe(panel,{attributes:true,attributeFilter:['open','class']});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)invalidate();});
-  window.addEventListener('pagehide',()=>{cancelAnimationFrame(raf);renderer?.dispose();});
+  window.addEventListener('pagehide',()=>{closed=true;cancelAnimationFrame(raf);renderer?.dispose();});
   return {update};
 }
