@@ -1,5 +1,6 @@
 import {loadFPSHands} from './fps-hands.js';
 import {loadWeaponModels} from './weapon-models.js';
+import {loadSupplyModels} from './gadget-models.js';
 import {SCOPE_ZOOMS,scopeMagnification} from './scope-optics.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import {mountPerfPanel} from './perf-panel.js';
@@ -1741,7 +1742,7 @@ function recoverWebGpu(error) {
   location.reload();
 }
 try{
-  await Promise.all([loadFPSHands(),loadWeaponModels()]);
+  await Promise.all([loadFPSHands(),loadWeaponModels(),loadSupplyModels()]);
   let gpuOptions=null;
   const requested=preferredGraphicsApi();
   let recoveredReason=null;

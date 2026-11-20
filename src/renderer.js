@@ -1360,7 +1360,7 @@ export class GameRenderer {
       for(const item of items){
         active.add(item.id);let model=cache.get(item.id);
         if(!model){
-          model=createGadgetModel(kindOf(item),this.equipmentPalette);
+          model=createGadgetModel(kindOf(item),this.equipmentPalette,{deployed:true});
           if(item.kind==='beacon'){
             const led=new THREE.Mesh(this.geo.sphere,this.getQualityMaterial(item.team===1?this.gadgetAssets.team1:this.gadgetAssets.team0));
             led.name='equipment-status';led.position.set(.06,.34,-.14);led.scale.setScalar(.022);model.add(led);
@@ -1373,11 +1373,10 @@ export class GameRenderer {
           led.visible=Math.sin(this.clock*4.5)>-.2;
           led.material=this.getQualityMaterial(sameSquad(local,item)?this.gadgetAssets.green:item.team===local?.team?this.gadgetAssets.team0:this.gadgetAssets.team1);
         }
-        // The medical case is authored around its centre; its base must rest
-        // on the same authoritative support height as the ammo box.
-        model.position.set(item.x,item.y+(item.kind==='medkit'?.08:0),item.z);
+        model.position.set(item.x,item.y,item.z);
         model.rotation.order='YXZ';
-        model.rotation.y=item.yaw??Math.atan2(-item.vx,-item.vz);
+        const yaw=item.yaw??Math.atan2(-item.vx,-item.vz);
+        model.rotation.y=yaw+(item.kind==='ammo'?Math.PI:0);
         if(item.vy!==undefined)model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));
       }
       for(const [id,model] of cache)if(!active.has(id)){model.removeFromParent();cache.delete(id);}
@@ -1410,7 +1409,7 @@ export class GameRenderer {
         this.remoteTools.set(player.id,model);
       }
       if(model.parent!==soldier.group)soldier.group.add(model);
-      model.position.set(.10,(player.crouch?.86:1.22),-.30);
+      model.position.set(.10,(player.crouch?.86:1.22)-(kind==='medkit'?.08:0),-.30);
       model.rotation.set(player.pitch??0,0,0);
       model.scale.setScalar(kind==='beacon'?.4:kind==='ammo'?.75:1);
       soldier.rifle.scale.setScalar(.001);soldier.flash.visible=false;

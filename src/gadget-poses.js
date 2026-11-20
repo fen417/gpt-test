@@ -13,7 +13,7 @@ export const SUPPLY_POSE = {
   hip: [0,-.22,-.58], ads: [0,-.19,-.56],
   // Both cases put their bottom on y=0 and their near edge at z=.10.
   ammo: { scale:.55, position:[0,0,.00375], handSpread:.008 },
-  medkit: { scale:1, position:[0,.080,.015], handSpread:0 },
+  medkit: { scale:1, position:[0,0,.015], handSpread:0 },
 };
 export const DEFIB_POSE = {
   leftWrist:[-.032,.086,.089], rightWrist:[.032,.086,.089],

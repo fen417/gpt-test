@@ -75,11 +75,12 @@ def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, view_distance=
     material.node_tree.links.new(paint.outputs['Color'], shader.inputs['Base Color'])
     if finish_rows is not None:
         from weapon_finish import finish_uv, shader_finish
-        shader_finish(material, shader)
+        row_count = max(3, max(finish_rows.values(), default=0)+1)
+        shader_finish(material, shader, row_count)
     for name, assembly in parts:
         obj = assembly.object(name, collection)
         if finish_rows is not None:
-            finish_uv(obj.data, assembly.colors, finish_rows)
+            finish_uv(obj.data, assembly.colors, finish_rows, row_count)
         else:
             obj.data.uv_layers.remove(obj.data.uv_layers.active)
         if pivots and name in pivots:

@@ -1,4 +1,4 @@
-"""Generate a small packed surface atlas for the rifle props."""
+"""Generate packed surface atlases for the game props."""
 from array import array
 import math
 import random
@@ -10,21 +10,22 @@ import bpy
 SIZE = 192
 # Coated alloy, molded polymer, and exposed steel.
 FINISHES = ((.49, .48, .105), (.78, .04, .22), (.38, .69, .10))
+FABRIC = (.90, .0, .19)
 
 
 def finish_image(name, pixels):
     data = array('f', chain.from_iterable(pixels))
-    image = bpy.data.images.new(name, width=SIZE, height=SIZE * len(FINISHES), alpha=False)
+    image = bpy.data.images.new(name, width=SIZE, height=len(pixels)//SIZE, alpha=False)
     image.colorspace_settings.name = 'Non-Color'
     image.pixels.foreach_set(data)
     image.pack()
     return image
 
 
-def shader_finish(material, shader):
+def shader_finish(material, shader, row_count):
     rng = random.Random(416)
     normal, orm = [], []
-    for row, (roughness, metalness, strength) in enumerate(FINISHES):
+    for row, (roughness, metalness, strength) in enumerate((*FINISHES,FABRIC)[:row_count]):
         grain = [rng.uniform(-1, 1) for _ in range(SIZE * SIZE)]
         for y in range(SIZE):
             machining = .42 * math.sin(y * math.tau / 8)
@@ -33,7 +34,11 @@ def shader_finish(material, shader):
                 value = grain[point]
                 dx = grain[y * SIZE + (x + 1) % SIZE] - value
                 dy = grain[((y + 1) % SIZE) * SIZE + x] - value
-                if row != 1:
+                if row == 3:
+                    # Crossed threads catch light along both axes of the weave.
+                    dx = .38*dx + .8*math.sin(x*math.tau/4)*math.cos(y*math.tau/8)
+                    dy = .38*dy + .8*math.sin(y*math.tau/4)*math.cos(x*math.tau/8)
+                elif row != 1:
                     dy += machining
                     dx *= .35
                 depth = math.hypot(dx * strength, dy * strength, 1)
@@ -56,7 +61,7 @@ def shader_finish(material, shader):
     graph.links.new(channels.outputs['Blue'], shader.inputs['Metallic'])
 
 
-def finish_uv(mesh, face_colors, finish_rows):
+def finish_uv(mesh, face_colors, finish_rows, row_count):
     uv = mesh.uv_layers.active
     uv.name = 'Surface finish'
     for face, color in zip(mesh.polygons, face_colors):
@@ -67,4 +72,4 @@ def finish_uv(mesh, face_colors, finish_rows):
             z = -z
             u, v = (z,x) if abs(ny) > .65 else ((z,y) if abs(nx) > abs(nz) else (x,y))
             # Leave eight pixels at every row edge for filtering and mipmaps.
-            uv.data[index].uv = ((u + .97) * .61, (row + .043 + (v + .41) * 1.24) / len(FINISHES))
+            uv.data[index].uv = ((u + .97) * .61, (row + .043 + (v + .41) * 1.24) / row_count)

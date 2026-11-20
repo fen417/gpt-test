@@ -195,12 +195,23 @@ def scope(sv, eye_y):
     for z,r in [(front-.002,lens-.005),(rear+.001,housing+.003)]:
         sight_ring(optic,eye_y,z,r-.005,r+.004,.008,EDGE)
         optic.cylinder((0,eye_y,z),r-.0055,.0015,'z',GLASS,28)
-    for z in (-.221,-.034) if sv else (-.192,-.036):
-        optic.box((0,.100,z),(.073,.022,.042),STEEL,.003)
+    clamp_y=.098 if sv else .094
+    ring_centers=(-.221,-.054) if sv else (-.192,-.073)
+    for z in ring_centers:
+        inner=housing-.002
+        outer=housing+.009
+        optic.box((0,clamp_y,z),(.071,.020,.038),STEEL,.003)
         for side in (-1,1):
-            optic.box((side*.024,.126,z),(.015,.051,.028),POLYMER,.003)
-            screw(optic,side*.036,.106,z,.005)
-        sight_ring(optic,eye_y,z,housing-.002,housing+.007,.022,STEEL)
+            screw(optic,side*.036,clamp_y,z,.005)
+        # The centered saddle overlaps both the lower ring and the rail clamp.
+        # Splitting it into side columns leaves a gap below the circular tube.
+        support_low=clamp_y+.006
+        support_high=eye_y-outer+.012
+        optic.box((0,(support_low+support_high)/2,z),(.036,support_high-support_low,.025),STEEL,.003)
+        sight_ring(optic,eye_y,z,inner,outer,.024,STEEL)
+        for side in (-1,1):
+            optic.box((side*(outer-.003),eye_y-.008,z),(.010,.010,.022),STEEL,.002)
+            screw(optic,side*(outer+.003),eye_y-.008,z,.0034)
     turret_z=-.133
     optic.cylinder((0,eye_y+.026,turret_z),.025,.043,'y',POLYMER,24)
     optic.cylinder((.032,eye_y,turret_z),.018,.035,'x',STEEL,20)
@@ -230,7 +241,7 @@ def barrel(sv,bore,nose):
 
 
 def build(sv):
-    bore,nose,eye_y=(.026,-1.057,.179) if sv else (.016,-.920,.167)
+    bore,nose,eye_y=(.026,-1.057,.166) if sv else (.016,-.920,.167)
     tube,brake=barrel(sv,bore,nose)
     receiver=sv_receiver() if sv else dmr_receiver()
     parts=[('Receiver',receiver),('ForeEnd',forend(sv)),('Stock',stock(sv)),('Optic',scope(sv,eye_y)),

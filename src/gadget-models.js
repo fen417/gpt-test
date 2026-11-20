@@ -1,12 +1,38 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { LAUNCHER_POSE } from './gadget-poses.js';
 
 const boxGeometry=new RoundedBoxGeometry(1,1,1,2,.055);
 const cylinderGeometry=new THREE.CylinderGeometry(1,1,1,12);
 const sphereGeometry=new THREE.SphereGeometry(1,12,8);
 const templates=new WeakMap();
+const supplyTemplates=new Map();
+let supplyLoading;
+
+export function loadSupplyModels() {
+  if(supplyLoading)return supplyLoading;
+  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const urls={
+    ammo:new URL('./assets/equipment/ammo.glb',import.meta.url).href,
+    medkit:new URL('./assets/equipment/medkit.glb',import.meta.url).href,
+  };
+  supplyLoading=Promise.all(Object.entries(urls).map(async ([kind,url])=>{
+    try{
+      const {scene}=await loader.loadAsync(url);
+      if(kind==='ammo'&&(!scene.getObjectByName('Lid')||!scene.getObjectByName('Contents')))
+        throw new Error('Missing crate lid or contents');
+      scene.name='equipment-'+kind;
+      scene.traverse(object=>{
+        if(object.isMesh)object.castShadow=object.receiveShadow=true;
+      });
+      supplyTemplates.set(kind,scene);
+    }catch(error){console.warn('Supply model:',kind,error);}
+  }));
+  return supplyLoading;
+}
 
 export function gadgetPalette(create) {
   return {
@@ -176,6 +202,7 @@ function build(kind,m) {
     wire([[-.07,.08,0],[-.07,.13,0],[.07,.13,0],[.07,.08,0]],.01,m.dark);
     box(0,0,-.097,.09,.018,.008,m.white);box(0,0,-.097,.018,.075,.008,m.white);
     for(const x of [-.11,.11])box(x,-.02,-.09,.03,.035,.018,m.metal);
+    for(const part of root.children)part.position.y+=.08;
   }else if(kind==='grenade'){
     const profile=[
       [0,-.046],[.013,-.046],[.021,-.042],[.028,-.032],[.031,-.019],
@@ -226,7 +253,16 @@ function build(kind,m) {
   return root;
 }
 
-export function createGadgetModel(kind,palette) {
+export function createGadgetModel(kind,palette,{deployed=false}={}) {
+  const supply=supplyTemplates.get(kind);
+  if(supply){
+    const model=supply.clone(true);
+    if(kind==='ammo'){
+      model.getObjectByName('Lid').rotation.x=deployed?.62:0;
+      model.getObjectByName('Contents').visible=deployed;
+    }
+    return model;
+  }
   if(!templates.has(palette))templates.set(palette,new Map());
   const models=templates.get(palette);
   if(!models.has(kind))models.set(kind,build(kind,palette));
