@@ -21,12 +21,12 @@ export class Mission3Presentation{
     this.oldMusicOverride=audio.campaignMusicOverride;audio.campaignMusicOverride=true;
     this.root=document.createElement('section');this.root.className='campaign-ui campaign-m03';
     this.root.setAttribute('aria-label','Миссия 3 — Колонна');
-    this.root.innerHTML=`<header class="campaign-objective m03-objective"><small>ТЕЛЬ-МАЗИН · КОЛОННА</small><strong></strong><span></span></header>
+    this.root.innerHTML=`<header class="campaign-objective m03-objective"><small>ТЕЛЬ-МАЗИН · КОЛОННА</small><strong></strong><span></span><p class="m03-status"></p></header>
       <div class="campaign-subtitle hidden" role="status" aria-live="polite"><b></b><span></span></div>
       <div class="m03-interaction"><span></span><progress max="1" value="0" hidden></progress></div>
       <div class="m03-choices" hidden><button type="button"></button><button type="button"></button></div>
       <div class="campaign-injury hidden"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span><progress max="1" hidden></progress></div>
-      <div class="m03-status"></div><div class="m03-bindings"></div><span class="m03-marker" hidden></span>
+      <div class="m03-bindings"></div><span class="m03-marker" hidden></span>
       <aside class="m03-squad" hidden><div class="m03-temporary"></div><div class="m03-notices" role="status"></div></aside>
       <canvas class="m03-map" width="168" height="168" aria-label="Карта Тель-Мазина" hidden></canvas>
       <div class="m03-cinematic" hidden></div>

@@ -72,6 +72,13 @@ dialog.campaign-map-screen{
 .campaign-mission-brief>div{display:grid;gap:5px}
 .campaign-mission-brief small{font:800 9px monospace;letter-spacing:.16em;color:#8b604a}
 .campaign-mission-brief strong{font:700 13px Arial,sans-serif}
+.campaign-mission-loadout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;
+  margin:12px 0 0;padding:9px 12px 12px;min-width:0;border:1px solid #705a41}
+.campaign-mission-loadout[hidden]{display:none}
+.campaign-mission-loadout legend{padding:0 5px;font:700 12px monospace;color:#694831}
+.campaign-mission-loadout label{display:grid;gap:5px;font:700 11px monospace}
+.campaign-mission-loadout select{width:100%;min-width:0;padding:7px;border:1px solid #705a41;background:#e6d8b8;color:#382d24}
+@media(max-width:520px){.campaign-mission-loadout{grid-template-columns:1fr}}
 .campaign-mission-result,.campaign-storage-warning,.campaign-menu-error{
   margin:6px 0 0;font:12px/1.6 monospace}
 .campaign-storage-warning,.campaign-menu-error{color:#923a31}

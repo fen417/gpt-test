@@ -1,5 +1,6 @@
 import {CampaignSession,readCampaignSave} from './session.js';
 import {CampaignPresentation} from './presentation.js';
+import {SIDEARMS,WEAPONS} from '../../shared/world.js';
 import {describeCampaignOutcome} from './outcome.js';
 import {campaignCatalog,readCampaignProgress,saveCampaignProgress,setCampaignDifficulty,
   campaignStorageWarning,campaignMissionStatus,canStartCampaignMission} from './progress.js';
@@ -80,6 +81,11 @@ function buildScreen(){
           <p class="campaign-mission-kind"></p><p class="campaign-mission-description"></p>
           <div class="campaign-mission-brief"><div><small>ЗАДАЧА</small><strong class="campaign-mission-objective"></strong></div>
           <div><small>ОПЕРАЦИЯ</small><strong class="campaign-mission-duration"></strong></div></div>
+          <fieldset class="campaign-mission-loadout" hidden>
+            <legend>Снаряжение Мартена</legend>
+            <label>Основное оружие <select name="primary"></select></label>
+            <label>Пистолет <select name="sidearm"></select></label>
+          </fieldset>
           <p class="campaign-mission-result"></p><p class="campaign-storage-warning" role="status"></p>
           <p class="campaign-menu-error" role="alert"></p>
           <footer class="campaign-mission-buttons"><button type="button" class="campaign-continue panel-secondary">ПРОДОЛЖИТЬ</button>
@@ -90,6 +96,10 @@ function buildScreen(){
     <footer class="campaign-map-foot"><span>ЧАСТОТА «МАЯК» / МАРШРУТ К ЭР-САХИРУ</span><span>← ↑ ↓ ENTER · ESC</span></footer>
   </div>`;
   dialog.querySelector('.campaign-back').onclick=()=>dialog.close();
+  const loadout=dialog.querySelector('.campaign-mission-loadout');
+  const primary=Object.values(WEAPONS).filter(weapon=>!weapon.sidearm);
+  loadout.querySelector('[name="primary"]').replaceChildren(...primary.map(weapon=>new Option(weapon.name,weapon.id)));
+  loadout.querySelector('[name="sidearm"]').replaceChildren(...SIDEARMS.map(id=>new Option(WEAPONS[id].name,id)));
   document.body.append(dialog);
   return dialog;
 }
@@ -160,6 +170,7 @@ export async function openCampaignMenu(onStart,{unlockAll=false}={}){
     dialog.querySelector('.campaign-continue').disabled=!mission.implemented||!canStartCampaignMission(id,progress,unlocked);
     const play=dialog.querySelector('.campaign-play');
     play.disabled=!canStartCampaignMission(id,progress,unlocked);
+    dialog.querySelector('.campaign-mission-loadout').hidden=id!=='m03'||play.disabled;
     play.textContent=status==='planned'?'В РАЗРАБОТКЕ':status==='locked'?'ЗАКРЫТО':status==='complete'?'ПЕРЕИГРАТЬ ↗':'НАЧАТЬ МИССИЮ ↗';
     dialog.dataset.mission=id;
   };
@@ -170,11 +181,15 @@ export async function openCampaignMenu(onStart,{unlockAll=false}={}){
     const save=resume?readCampaignSave(missionId):null;
     if(resume&&!save){dialog.querySelector('.campaign-menu-error').textContent='Контрольная точка недоступна. Начните миссию заново.';return;}
     if(!resume&&readCampaignSave(missionId)&&!window.confirm('Начать миссию сначала? Последняя контрольная точка будет перезаписана.'))return;
+    const loadout=!resume&&missionId==='m03'?{
+      primary:dialog.querySelector('.campaign-mission-loadout [name="primary"]').value,
+      sidearm:dialog.querySelector('.campaign-mission-loadout [name="sidearm"]').value,
+    }:undefined;
     launching=true;
     try{
       const data=await campaignData(missionId);
       dialog.close();
-      await onStart({...data,difficulty:resume?save.difficulty:selector.value,save,missionId,campaignProgress:progress});
+      await onStart({...data,difficulty:resume?save.difficulty:selector.value,save,missionId,campaignProgress:progress,loadout});
     }catch(error){
       dialog.querySelector('.campaign-menu-error').textContent=error?.message??String(error);
       if(!dialog.open)dialog.showModal();

@@ -65,6 +65,6 @@ export function makeWebGpuSky(scene, renderer) {
   })();
   const sky=new THREE.Mesh(new THREE.SphereGeometry(700,20,12),baked);
   sky.renderOrder=1000;sky.frustumCulled=false;sky.userData.noBatch=true;scene.add(sky);
-  return {sky,hazeAmount,envTexture:pmremTarget.texture,
+  return {sky,hazeAmount,hazeTint,envTexture:pmremTarget.texture,
     target:{dispose(){pmremTarget.dispose();cubeTarget.dispose();baked.dispose();}}};
 }

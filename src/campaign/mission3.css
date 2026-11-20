@@ -8,9 +8,10 @@
 .m03-interaction progress{display:block;margin:7px auto 0;width:150px;height:8px;accent-color:#e7bd78}
 .m03-interaction progress[hidden]{display:none}
 .m03-choices{bottom:140px}
-.m03-status,.m03-bindings{position:absolute;bottom:26px;color:#ecd6ab;background:#141a1bd9;padding:7px 10px;
+.m03-bindings{position:absolute;color:#ecd6ab;background:#141a1bd9;padding:7px 10px;
   font:700 10px/1.4 monospace;max-width:calc(100vw - 35px)}
-.m03-status{left:24px}.m03-bindings{left:50%;bottom:62px;transform:translateX(-50%);text-align:center;white-space:nowrap}
+.m03-status{margin:8px 0 0;color:#ecd6ab;font:700 10px/1.45 monospace}
+.m03-bindings{left:50%;bottom:62px;transform:translateX(-50%);text-align:center;white-space:nowrap}
 .m03-map{position:absolute;right:0;bottom:calc(100% + 12px);width:145px;height:145px;border:1px solid #c8a87499}
 .m03-marker{position:absolute;top:0;left:0;color:#f1d7a3;padding:4px 6px;background:#181b1bb8;font:700 11px monospace;white-space:nowrap}
 .m03-squad{position:absolute;right:24px;top:26px;max-width:min(290px,38vw);color:#cde8c9;text-align:right;
@@ -23,7 +24,6 @@
 @media(max-width:700px){
   .m03-map{width:92px;height:92px}
   .m03-squad{right:8px;top:95px;max-width:55vw}
-  .m03-status{left:8px;bottom:10px;max-width:66vw}
   .m03-bindings{bottom:105px;width:max-content;max-width:80vw;white-space:normal}
   .m03-interaction{bottom:148px}.m03-choices{bottom:177px}
 }

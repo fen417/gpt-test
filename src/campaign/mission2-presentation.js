@@ -59,11 +59,11 @@ export class Mission2Presentation {
     this.$('.m02-skip').onclick=()=>{clearControls();session.command({type:'skip'});resume();};
     this.$('.m02-restart').onclick=()=>{clearControls();session.command({type:'retry'});resume();};
     this.$('.m02-return').onclick=leave;
-    const sky=renderer.atmosphere.sky.material.uniforms;
+    const sky=renderer.webgpu?renderer.atmosphere:renderer.atmosphere.sky.material.uniforms;
     this.original={background:renderer.scene.background?.clone(),fogColor:renderer.scene.fog.color.clone(),
       fogDensity:renderer.scene.fog.density,hazeAmount:sky.hazeAmount.value,hazeTint:sky.hazeTint.value.clone(),sunColor:renderer.sun.color.clone(),
       sunIntensity:renderer.sun.intensity,sunOffset:renderer.sunOffset.clone(),
-      hemiIntensity:renderer.hemiLight.intensity,ambientIntensity:renderer.ambientLight.intensity,cameraFar:renderer.camera.far,skyVisible:renderer.atmosphere.sky.visible};
+      hemiIntensity:renderer.hemiLight.intensity,ambientIntensity:renderer.ambientLight.intensity,cameraFar:renderer.camera.far};
     renderer.camera.far=1000;renderer.camera.updateProjectionMatrix();
     this.renderHook=(r,state,dt,view)=>this.render(r,state,dt,view);
     this.loadMusic({time:0});
@@ -220,15 +220,17 @@ export class Mission2Presentation {
     // Dawn grows from the enemy's east to a warmer morning as the mission
     // progresses. Values remain editable in the mission's art direction.
     const briefing=m.cutscene?.id==='briefing';
-    if(briefing)r.scene.background.setRGB(.48,.35,.215);
-    else r.scene.background.setRGB(.57+.13*t,.42+.13*t,.28+.11*t);
-    const gust=.5+.5*Math.sin((m.cutscene?.elapsed??m.time)*.71);
+    if(briefing)this.briefingDustTime=m.cutscene.elapsed;
+    const gust=.5+.5*Math.sin(((this.briefingDustTime??0)+m.time)*.71);
+    const storm=1-THREE.MathUtils.smoothstep(m.time,8,68);
+    const {lerp}=THREE.MathUtils;
+    r.scene.background.setRGB(lerp(.57+.13*t,.48,storm),lerp(.42+.13*t,.35,storm),lerp(.28+.11*t,.215,storm));
     r.scene.fog.color.copy(r.scene.background);
-    r.scene.fog.density=briefing?.009+gust*.002:.0042+gust*.0004;
-    r.atmosphere.sky.visible=!briefing&&this.original.skyVisible;
-    const sky=r.atmosphere.sky.material.uniforms;
-    sky.hazeAmount.value=.92+gust*.06;
-    sky.hazeTint.value.copy(r.scene.fog.color).convertLinearToSRGB();
+    r.scene.fog.density=lerp(.0042+gust*.0004,.009+gust*.002,storm);
+    const sky=r.webgpu?r.atmosphere:r.atmosphere.sky.material.uniforms;
+    sky.hazeAmount.value=lerp(.92+gust*.06,1,storm);
+    sky.hazeTint.value.copy(r.scene.fog.color);
+    if(!r.webgpu)sky.hazeTint.value.convertLinearToSRGB();
     r.sun.color.setRGB(1,.78+.15*t,.56+.28*t);r.sun.intensity=1.6+1.2*t;
     r.hemiLight.intensity=1.55+.55*t;r.ambientLight.intensity=.23+.15*t;
     const elevation=(3+12*t)*Math.PI/180;r.sunOffset.set(130,Math.tan(elevation)*130,0);
@@ -355,9 +357,8 @@ export class Mission2Presentation {
     const r=this.renderer,o=this.original;
     if(o.background)r.scene.background.copy(o.background);
     r.scene.fog.color.copy(o.fogColor);r.scene.fog.density=o.fogDensity;
-    const sky=r.atmosphere.sky.material.uniforms;
+    const sky=r.webgpu?r.atmosphere:r.atmosphere.sky.material.uniforms;
     sky.hazeAmount.value=o.hazeAmount;sky.hazeTint.value.copy(o.hazeTint);
-    r.atmosphere.sky.visible=o.skyVisible;
     r.sun.color.copy(o.sunColor);r.sun.intensity=o.sunIntensity;
     r.sunOffset.copy(o.sunOffset);r.hemiLight.intensity=o.hemiIntensity;
     r.ambientLight.intensity=o.ambientIntensity;

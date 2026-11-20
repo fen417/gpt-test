@@ -1,4 +1,4 @@
-import { getWeapon, getPrimaryWeapon, getSidearm, EYE_HEIGHT } from './world.js';
+import { getWeapon, getSidearm, EYE_HEIGHT } from './world.js';
 import { VEHICLE_TYPES, vehicleShape } from './vehicles.js';
 import { boxBounds, rayAffineBox, uprightBox } from './geometry.js';
 import { rayCollider } from './asset-colliders.js';
@@ -346,7 +346,7 @@ export function updateEquipment(sim,dt) {
         }
         continue;
       }
-      const current=getWeapon(ally.classId,ally.weaponId),stowed=ally.weaponSlot===1?getSidearm(ally.sidearmId):getPrimaryWeapon(ally.classId,ally.primaryWeaponId);
+      const current=getWeapon(ally.classId,ally.weaponId),stowed=ally.weaponSlot===1?getSidearm(ally.sidearmId):getWeapon(ally.classId,ally.primaryWeaponId);
       const before=ally.reserve+ally.stowedAmmo.reserve+ally.grenades+(ally.rockets??0);
       ally.reserve=Math.min(current.reserve,ally.reserve+20);ally.stowedAmmo.reserve=Math.min(stowed.reserve,ally.stowedAmmo.reserve+20);
       if(sim.time>=(ally.nextExplosiveSupply??0)){

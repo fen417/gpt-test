@@ -5,7 +5,7 @@ import {blast} from '../gadgets.js';
 import {overlapsCollider,rayCollider} from '../asset-colliders.js';
 import {uprightBox} from '../geometry.js';
 import {vehicleBodyTilt} from '../vehicles.js';
-import {getWeapon} from '../world.js';
+import {getSidearm,getWeapon,WEAPONS} from '../world.js';
 import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels} from './tel-mazin.js';
 
 const SAVE_VERSION=1,MAX_ENEMIES=14;
@@ -86,7 +86,7 @@ export class Mission3Simulation extends Simulation{
       if(p.storyCrew&&!p.columnCrew)return;
       amount*=this.difficulty==='recruit'?.7:this.difficulty==='veteran'?1.25:1;
       if(p.downed){
-        if(this.time-p.downedAt>5)p.downedTimer-=amount*(p.id==='local'&&c.playerMedic?.alive ? .025 : .08);
+        if(this.time-p.downedAt>5&&!c.reviveInProgress(p))p.downedTimer-=amount*(p.id==='local'&&c.playerMedic?.alive ? .025 : .08);
         return;
       }
       if(amount>=p.hp){c.down(p);this.event('damage',{playerId:p.id,attackerId:attacker?.id,amount,x:attacker?.x??p.x,z:attacker?.z??p.z});return;}
@@ -137,7 +137,12 @@ class ColumnDirector{
   get section(){return this.definition.stages[this.stage];}
   initialize(){
     const sim=this.sim,p=this.add('local','Ян Мартен',0,['assault','ar416'],{x:-832,z:-38},'marten',false);
-    Object.assign(p,{medkits:2,syringes:2,rockets:0,squadMember:false});
+    const selected=this.options.loadout?.primary;
+    const primary=Object.hasOwn(WEAPONS,selected)&&!WEAPONS[selected].sidearm?WEAPONS[selected]:WEAPONS.ar416;
+    const sidearm=getSidearm(this.options.loadout?.sidearm);
+    Object.assign(p,{primaryWeaponId:primary.id,weaponId:primary.id,ammo:primary.mag,reserve:primary.reserve,
+      sidearmId:sidearm.id,stowedAmmo:{ammo:sidearm.mag,reserve:sidearm.reserve},
+      medkits:2,syringes:2,rockets:0,squadMember:false});
     const count=Math.max(7,Math.min(9,Math.floor(this.carry.tanks_alive??8)));
     for(let n=0;n<count;n++){
       const v=sim.createMapVehicle({id:n===3?'sokol-7':`m03-tank-${n+1}`,type:'tank',team:0,...m03ConvoyPose(this.definition,n,0)});
@@ -229,7 +234,7 @@ class ColumnDirector{
       return;
     }
     this.rideTime+=dt;
-    this.updateWounds(dt);this.updateMedic(dt);this.processExplosions();this.flushEnemies();
+    this.updateMedic(dt);this.updateWounds(dt);this.processExplosions();this.flushEnemies();
     this.notices=this.notices.filter(notice=>notice.until>this.time);
     if(!this.player.alive){this.failed='Мартен погиб. Вернитесь к контрольной точке.';return;}
     const atTarget=!this.player.downed&&distance(this.player,point(this.section.target))<this.section.radius;
@@ -497,6 +502,16 @@ class ColumnDirector{
   medicCanTreat(medic,patient){
     return distance(medic,patient)<2.55&&Math.abs(medic.y-patient.y)<.8&&this.sim.lineClear(eye(medic,.95),eye(patient,.35));
   }
+  canHelpInjured(player,patient){
+    return distance(player,patient)<2.65&&this.sim.lineClear(eye(player),eye(patient,.35));
+  }
+  reviveInProgress(patient){
+    if(patient===this.player&&this.interaction==='self'&&this.input.selfRevive&&patient.syringes>0&&this.progress>0)return true;
+    const medic=this.sim.players.get(patient.reviver);
+    if(!medic?.alive||medic.downed)return false;
+    if(medic===this.player)return this.interaction===patient.id&&this.input.use&&this.progress>0&&this.canHelpInjured(medic,patient);
+    return medic.medicTarget===patient.id&&medic.medicProgress>0&&this.medicCanTreat(medic,patient);
+  }
   treatmentSpot(medic,patient){
     if(distance(medic,patient)>5||Math.abs(medic.y-patient.y)>.8)return patient;
     for(let i=0;i<8;i++){
@@ -559,6 +574,8 @@ class ColumnDirector{
   }
   interact(dt){
     const p=this.player,i=this.input;this.prompt='';
+    const previousPatient=this.sim.players.get(this.interaction);
+    if(previousPatient?.reviver===p.id)previousPatient.reviver=null;
     if(i.heal&&!this.previous.heal&&p.medkits>0&&!p.downed&&(p.hp<100||this.limp)){
       p.medkits--;p.hp=100;this.limp=false;
     }
@@ -572,14 +589,13 @@ class ColumnDirector{
       this.prompt=p.syringes>0?'X · удерживать шприц':'Дождитесь медика';
       this.hold('self',i.selfRevive&&p.syringes>0,dt,4,()=>{p.syringes--;this.revive(p);});return;
     }
-    const wounded=[...this.sim.players.values()].find(a=>a!==p&&a.team===0&&a.alive&&a.downed&&distance(p,a)<2.65&&
-      this.sim.lineClear(eye(p),eye(a,.35)));
+    const wounded=[...this.sim.players.values()].find(a=>a!==p&&a.team===0&&a.alive&&a.downed&&this.canHelpInjured(p,a));
     if(wounded){
       this.prompt=`E · удерживать: помочь · ${wounded.name}`;
       if(i.use)wounded.reviver=p.id;
-      else if(wounded.reviver===p.id)wounded.reviver=null;
       this.hold(wounded.id,i.use,dt,6,()=>this.revive(wounded));return;
     }
+    if(previousPatient){this.interaction=null;this.progress=0;}
     if(this.stage===4&&!this.flags.breached&&!this.chargesCollected&&distance(p,chargeCache)<2.75){
       this.prompt='E · взять два заряда';
       this.hold('charge-cache',i.use,dt,.55,()=>{this.chargesCollected=true;});return;
@@ -703,6 +719,7 @@ class ColumnDirector{
         if(distance(p,this.player)>20)continue;
         p.downedTimer=115;
       }
+      if(this.reviveInProgress(p))continue;
       p.downedTimer-=dt;
       if(p.downedTimer<=0){
         p.downed=false;p.prone=false;
@@ -731,7 +748,7 @@ class ColumnDirector{
     }
     this.playerMedic=lead;
     if(previous&&previous!==lead&&player.reviver===previous.id)player.reviver=null;
-    const patients=allies.filter(p=>p!==player&&p.downed&&(!p.rescue||p.downedTimer<=115)&&!(p.reviver==='local'&&this.input.use));
+    const patients=allies.filter(p=>p!==player&&p.downed&&(!p.rescue||p.downedTimer<=115)&&!(p.reviver===player.id&&this.reviveInProgress(p)));
     for(const medic of medics){
       const candidate=medic===lead?player:patients.filter(p=>!assigned.has(p.id)&&distance(p,medic)<(this.order==='revive'?30:13))
         .sort((a,b)=>distance(a,medic)-distance(b,medic))[0];
