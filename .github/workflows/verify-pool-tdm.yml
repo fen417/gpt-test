@@ -1,7 +1,7 @@
 name: Verify Pool Day TDM branch
 on:
   push:
-    branches: [test]
+    branches: [test, feature/linden-estate-tdm-023]
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +21,8 @@ jobs:
       - run: npm ci
       - name: Targeted authoritative TDM tests
         run: node --test test/pool-tdm.test.js
+      - name: Linden Estate GLB and class-based TDM tests
+        run: node --test test/linden-estate.test.js
       - name: Graphics API and tank atlas regression tests
         run: node --test test/graphics-api.test.js
       - name: Frame generation scheduling tests
