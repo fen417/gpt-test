@@ -39,9 +39,9 @@ export class Mission2Simulation extends Simulation{
     const wasAlive=vehicle.hp>0;
     if(vehicle.type==='tank'&&vehicle.controlScheme==='wot'&&kind==='blast'&&!vehicle.scriptedLoss){
       // A tank has one health pool. Even a rear/roof hit cannot erase it in
-      // one shot; simultaneous attackers are also spread across the company.
+      // one shot. Keep the damage limit tied to base health across difficulties.
       const armor=VEHICLE_TYPES.tank.armorZones[tankArmorZone(vehicle,origin)]??1;
-      amount=Math.min(amount,vehicle.maxHp*.34/armor);
+      amount=Math.min(amount,this.campaign.tankMaxHp(vehicle)*.34/armor);
     }
     const hit=super.damageVehicle(vehicle,amount,attacker,kind,origin,sourceVehicleId);
     if(vehicle.id==='sokol-7'&&vehicle.hp>0&&vehicle.hp<(vehicle.maxHp*.45)&&!this.campaign.flags.repairHint){
@@ -284,6 +284,13 @@ export class Mission2Director{
     this.groundWave=0;this.villageStartedAt=null;this.intelProgress=0;this.lastCheckpointAt=0;
     this.feedback=null;this.smoke=[];this.completedObjectives=[];
   }
+  tankMaxHp(vehicle,difficulty){
+    const {player,friendlyCompany,enemyCompany}=this.definition;
+    const tuning=this.definition.difficulty[difficulty];
+    if(vehicle.id===player.vehicleId)return player.maxHp+(tuning?.playerTankHpBonus??0);
+    if(vehicle.team===0)return friendlyCompany.maxHp*(tuning?.alliedTankHpMultiplier??1);
+    return enemyCompany.maxHp;
+  }
   initialize(){
     const c=this.definition,team=c.friendlyCompany,base=team.start;
     const forward=bearing({x:base[0],z:base[1]},{x:0,z:0});
@@ -297,11 +304,12 @@ export class Mission2Director{
         base[0]+ux*(35-row*17)-uz*lane*15,base[1]+uz*(35-row*17)+ux*lane*15,
       ];
       const v=this.sim.createMapVehicle({id:meta.id,type:'tank',team:0,x,z,yaw:forward});
+      const maxHp=this.tankMaxHp(v,this.sim.difficulty);
       Object.assign(v,{controlScheme:'wot',m02Index:i,m02Waypoint:0,
         shellAmmo:{ap:c.weapons.ap.ammo,he:c.weapons.he.ammo},
         m02Shell:'ap',campaignWeapons:c.weapons,
         cannonAmmo:c.weapons.ap.ammo,respawnIn:1e8,dispersion:.12,
-        hp:isPlayer?c.player.maxHp:team.maxHp,maxHp:isPlayer?c.player.maxHp:team.maxHp,
+        hp:maxHp,maxHp,
         m02FireAt:this.sim.time+(i%4)*.6});
       // Re-seed total location from actual collision-free start. All tanks
       // are placed with full physics and remain separate actors.
@@ -615,8 +623,9 @@ export class Mission2Director{
     this.sim.vehicles=structuredClone(save.vehicles);
     for(const v of this.sim.vehicles){
       v.y=this.sim.groundAt(v.x,v.z);
-      if(v.team===1&&v.maxHp!==this.definition.enemyCompany.maxHp){
-        v.hp*=this.definition.enemyCompany.maxHp/v.maxHp;v.maxHp=this.definition.enemyCompany.maxHp;
+      const maxHp=this.tankMaxHp(v,save.difficulty);
+      if(v.maxHp!==maxHp){
+        v.hp=v.hp/v.maxHp*maxHp;v.maxHp=maxHp;
       }
     }
     for(const p of save.players){

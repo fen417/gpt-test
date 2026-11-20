@@ -7,13 +7,19 @@
   "controlScheme": "wot",
   "difficulty": {
     "recruit": {
-      "enemyAccuracy": 0.65
+      "enemyAccuracy": 0.65,
+      "alliedTankHpMultiplier": 3,
+      "playerTankHpBonus": 500
     },
     "regular": {
-      "enemyAccuracy": 1
+      "enemyAccuracy": 1,
+      "alliedTankHpMultiplier": 2,
+      "playerTankHpBonus": 250
     },
     "veteran": {
-      "enemyAccuracy": 1.28
+      "enemyAccuracy": 1.28,
+      "alliedTankHpMultiplier": 1,
+      "playerTankHpBonus": 0
     }
   },
   "timing": {
