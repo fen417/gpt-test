@@ -133,6 +133,9 @@ void main() {
   vec3 lobes=max(-hitMin,hitMax);
   float lobe=clamp(max(max(lobes.r,lobes.g),lobes.b),-0.1875,0.0)*sharpness;
   vec3 result=(e+lobe*(b+d+f+h))/(1.0+4.0*lobe);
-  outColor=vec4(clamp(result,0.0,1.0),1.0);
+  // The intermediate EASU/RCAS targets contain LINEAR display-referred RGB.
+  // The final WebGL framebuffer requires exactly one linear -> sRGB encoding;
+  // without this FSR looks substantially darker than the non-FSR path.
+  outColor=linearToOutputTexel(vec4(clamp(result,0.0,1.0),1.0));
 }
 `;
