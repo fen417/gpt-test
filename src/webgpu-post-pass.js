@@ -37,7 +37,7 @@ export class WebGpuPostPass {
     this.useFxaa=uniform(1);this.sharpen=uniform(.12);this.grain=uniform(.0015);
     this.time=uniform(0);this.exposure=uniform(1.06);this.invSize=uniform(new THREE.Vector2(1,1));
     this.inputSize=uniform(new THREE.Vector2(1,1));this.outputSize=uniform(new THREE.Vector2(1,1));
-    this.rcasSharpness=uniform(.6);
+    this.rcasSharpness=uniform(.4);
     const geometry=fullScreenGeometry();
     this.geometry=geometry;
     const source=texture(this.target.texture), sampled=source.sample(uv());
@@ -69,9 +69,10 @@ export class WebGpuPostPass {
     this.rcasScene=rcas.scene;this.rcasMaterial=rcas.material;
     this.camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   }
-  setUpscaling(quality='off',adaptive=1){
+  setUpscaling(quality='off',adaptive=1,sharpness=40){
     this.fsrQuality=quality;
     this.fsrScale=quality==='off'?1:fsr1RenderScale(quality,adaptive);
+    this.rcasSharpness.value=Math.max(0,Math.min(1,Number(sharpness)/100||0));
   }
   begin(quality='high'){
     const samples=quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
