@@ -16,7 +16,10 @@ export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDevic
   if (!globalThis.isSecureContext || !navigator.gpu) {
     throw new Error('WebGPU требует HTTPS и поддержки браузера.');
   }
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+  // Chromium ignores powerPreference on Windows and logs a warning for it.
+  // Omit the ignored hint there; other platforms still prefer the fast GPU.
+  const isWindows=navigator.userAgentData?.platform==='Windows'||/Windows/i.test(navigator.userAgent??'');
+  const adapter = await navigator.gpu.requestAdapter(isWindows?{}:{powerPreference:'high-performance'});
   if (!adapter) throw new Error('Браузер не предоставил аппаратный WebGPU-адаптер.');
   if(adapter.isFallbackAdapter)throw new Error('WebGPU работает через программный адаптер, а не аппаратный GPU.');
   // Some browsers expose SwiftShader as a regular (non-fallback) adapter.
