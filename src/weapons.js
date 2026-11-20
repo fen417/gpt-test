@@ -13,6 +13,8 @@ import { cloneWeaponModel } from './weapon-models.js';
 const rifleFits = {
   ak12: {muzzleZ:-.865, ejection:[.055,.03,-.165], sight:{height:.100,depth:-.38}},
   ar416: {muzzleZ:-.863, ejection:[.054,.028,-.093], sight:{height:.132,depth:-.38}},
+  mcx9: {ejection:[.056,.040,-.142], sight:{height:.142,depth:-.37}},
+  vk45: {ejection:[.055,.008,-.204], sight:{height:.127,depth:-.37}},
 };
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
@@ -615,7 +617,8 @@ export function createWeaponRig(owner = {}) {
     bolt.add(ejection);
     model.visible=false;
     weapon.add(model);
-    rifles.set(id,{model,bolt,ejection,magazine:model.getObjectByName('Magazine'),fit});
+    const muzzle=model.getObjectByName('Muzzle_Exit')?.position;
+    rifles.set(id,{model,bolt,ejection,muzzle,magazine:model.getObjectByName('Magazine'),fit});
   }
 
   const defibLeft=createFPSHand('defibLeft',importedGloveMat),defibRight=createFPSHand('defibRight',importedGloveMat);
@@ -877,8 +880,8 @@ export function createWeaponRig(owner = {}) {
   const loadouts = {
     ar416:{classId:'assault',guard:.36,barrel:.19,width:1,finish:0x626859,handZ:-.423,grasp:[-.052,-.236,-.124]},
     ak12:{classId:'assault',guard:.34,barrel:.21,width:1.04,finish:0x3f433e,handZ:-.415,grasp:[-.043,-.237,-.251]},
-    mcx9:{classId:'medic',guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.378,grasp:[-.045,-.237,-.123]},
-    vk45:{classId:'medic',guard:.225,barrel:.095,width:.98,finish:0x52575c,handZ:-.368,grasp:[-.046,-.242,-.142]},
+    mcx9:{classId:'medic',guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.416,grasp:[-.036,-.241,-.170]},
+    vk45:{classId:'medic',guard:.225,barrel:.095,width:.98,finish:0x52575c,handZ:-.420,grasp:[-.031,-.264,-.184]},
     mg36:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.092,-.203,-.111]},
     pkp:{classId:'support',guard:.425,barrel:.285,width:1.22,finish:0x484d45,handZ:-.458,grasp:[-.096,-.208,-.114]},
     dmr12:{classId:'recon',guard:.432,barrel:.266,width:.99,finish:0x766f59,handZ:-.456,grasp:[-.056,-.176,-.112]},
@@ -1114,7 +1117,8 @@ export function createWeaponRig(owner = {}) {
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!unarmed;
     scope.visible = recon && aim < .92;
     suppressor.visible = recon || isVk;
-    muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : rifle?.fit.muzzleZ??weapon.userData.muzzleZ);
+    if(rifle?.muzzle)muzzleFlash.position.copy(rifle.muzzle);
+    else muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : rifle?.fit.muzzleZ??weapon.userData.muzzleZ);
     flashLight.position.copy(muzzleFlash.position);
     const hasPhase = Number.isFinite(reloadPhase);
     const phase = hasPhase ? THREE.MathUtils.clamp(reloadPhase,0,1) : reloadMotion > 0 ? .64 : 1;

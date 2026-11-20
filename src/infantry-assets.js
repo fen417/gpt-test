@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const weaponNames = {
-  ar416: 'ar416', ak12: 'ak12m', mcx9: 'mp5a5', vk45: 'mp5a5',
+  ar416: 'ar416', ak12: 'ak12m', mcx9: 'mcx9', vk45: 'vk45',
   mg36: 'm4a1', pkp: 'ak47', sv98: 'm24', dmr12: 'm24', p19: 'p19', m50: 'm50',
 };
 const weaponFit = {
@@ -15,7 +15,8 @@ const weaponFit = {
   ak47: { primary: [0, -.073, -.122], support: [-.036, -.048, -.32], muzzle: [0, .005, -1.135], scale: .72 },
   ak12m: { primary: [0, -.134, .05], support: [-.042, -.043, -.415], muzzle: [0, .015, -.865], scale: .74 },
   ar416: { primary: [0, -.137, .072], support: [-.042, -.045, -.423], muzzle: [0, .015, -.863], scale: .74 },
-  mp5a5: { primary: [0, -.098, -.103], support: [-.043, -.010, -.30], muzzle: [0, .146, -.85], scale: .70 },
+  mcx9: { primary: [0, -.125, .078], support: [-.044, -.050, -.411], scale: .74 },
+  vk45: { primary: [0, -.112, .084], support: [-.045, -.050, -.420], scale: .76 },
   m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.31], muzzle: [0, .08, -1.42], scale: .68 },
   p19: { primary: [0, -.096, .108], support: [-.033, -.124, .113], muzzle: [0, .012, -.185], scale: .57, pistol: true },
   m50: { primary: [0, -.096, .097], support: [-.036, -.125, .106], muzzle: [0, .012, -.258], scale: .64, pistol: true },
@@ -200,6 +201,7 @@ function prepareWeapon(gltf, name) {
   const fit = weaponFit[name];
   const primary = from(fit.primary), scale = fit.scale;
   const model = gltf.scene;
+  const muzzle = model.getObjectByName('Muzzle_Exit')?.position.clone() ?? from(fit.muzzle);
   if (fit.foregrip) {
     const grip = model.getObjectByName('ForegripGeometryMesh');
     if (!grip) throw new Error('Missing adjustable foregrip on ' + name);
@@ -224,7 +226,7 @@ function prepareWeapon(gltf, name) {
     model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol), foregrip: Boolean(fit.foregrip),
     stock: new THREE.Vector3(0, .07, weaponBounds.max.z),
     support: from(fit.support).sub(primary).multiplyScalar(scale),
-    muzzle: from(fit.muzzle).sub(primary).multiplyScalar(scale),
+    muzzle: muzzle.sub(primary).multiplyScalar(scale),
     magazineName: magazine?.name, magazineContact,
   };
 }

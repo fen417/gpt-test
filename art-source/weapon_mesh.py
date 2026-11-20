@@ -36,10 +36,13 @@ def sight_ring(mesh, y, z, inner, outer, depth, color):
 def surface_mark(mesh, text, x, y, z, step, color):
     glyphs = {
         'A': ('010','101','111','101','101'), 'K': ('101','101','110','101','101'),
+        'C': ('011','100','100','100','011'), 'V': ('101','101','101','101','010'),
+        'X': ('101','101','010','101','101'),
         'M': ('101','111','111','101','101'), 'R': ('110','101','110','101','101'),
         '0': ('111','101','101','101','111'), '1': ('010','110','010','010','111'),
         '2': ('110','001','010','100','111'), '4': ('101','101','111','001','001'),
         '6': ('111','100','111','101','111'), '-': ('000','000','111','000','000'),
+        '5': ('111','100','111','001','111'), '9': ('111','101','111','001','111'),
     }
     for char, character in enumerate(text):
         for row, bits in enumerate(glyphs[character]):
@@ -54,7 +57,7 @@ def surface_mark(mesh, text, x, y, z, step, color):
                 mesh.add(vertices, [face], color)
 
 
-def export_weapon(parts, glb, blend, *, pivots=None, view_distance=2.1, finish_rows=None):
+def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, view_distance=2.1, finish_rows=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     collection = bpy.context.scene.collection
     material = bpy.data.materials.new('Blued steel and molded polymer')
@@ -81,6 +84,13 @@ def export_weapon(parts, glb, blend, *, pivots=None, view_distance=2.1, finish_r
             for vertex in obj.data.vertices:
                 vertex.co -= obj.location
         obj.data.materials.append(material)
+    # Mounts share the game's weapon axes, with Y up and -Z downrange in GLB.
+    for name, (x, y, z) in (mounts or {}).items():
+        mount = bpy.data.objects.new(name, None)
+        mount.location = (x, -z, y)
+        mount.empty_display_type = 'ARROWS'
+        mount.empty_display_size = .018
+        collection.objects.link(mount)
     bpy.ops.export_scene.gltf(filepath=str(glb.resolve()), export_format='GLB', export_vertex_color='ACTIVE',
                               export_meshopt_compression_enable=True, export_meshopt_extension='EXT_meshopt_compression')
     for screen in bpy.data.screens:
