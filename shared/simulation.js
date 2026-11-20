@@ -282,7 +282,7 @@ export class Simulation {
       p.grenades=0;
     }
     if(this.gameMode==='tdm'&&this.map.tdmLoadout==='pickup'){
-      Object.assign(p,{weaponId:'primaryWeaponId:'',sidearmId:'',weaponSlot:0,
+      Object.assign(p,{weaponId:'',primaryWeaponId:'',sidearmId:'',weaponSlot:0,
         ammo:0,reserve:0,stowedAmmo:{ammo:0,reserve:0},grenades:0,rockets:0,heldGadget:null});
       p.tdmSpawn=null;
     }
