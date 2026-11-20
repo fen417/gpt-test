@@ -33,7 +33,28 @@ def sight_ring(mesh, y, z, inner, outer, depth, color):
     mesh.add(vertices, faces, color)
 
 
-def export_weapon(parts, glb, blend, *, pivots=None, view_distance=2.1):
+def surface_mark(mesh, text, x, y, z, step, color):
+    glyphs = {
+        'A': ('010','101','111','101','101'), 'K': ('101','101','110','101','101'),
+        'M': ('101','111','111','101','101'), 'R': ('110','101','110','101','101'),
+        '0': ('111','101','101','101','111'), '1': ('010','110','010','010','111'),
+        '2': ('110','001','010','100','111'), '4': ('101','101','111','001','001'),
+        '6': ('111','100','111','101','111'), '-': ('000','000','111','000','000'),
+    }
+    for char, character in enumerate(text):
+        for row, bits in enumerate(glyphs[character]):
+            for pixel, bit in enumerate(bits):
+                if bit != '1':
+                    continue
+                cy = y - row * step
+                cz = z - math.copysign(1, x) * (char * 4 + pixel) * step
+                d = step * .40
+                vertices = [(x,cy-d,cz-d),(x,cy+d,cz-d),(x,cy+d,cz+d),(x,cy-d,cz+d)]
+                face = (0,1,2,3) if x > 0 else (3,2,1,0)
+                mesh.add(vertices, [face], color)
+
+
+def export_weapon(parts, glb, blend, *, pivots=None, view_distance=2.1, finish_rows=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     collection = bpy.context.scene.collection
     material = bpy.data.materials.new('Blued steel and molded polymer')
@@ -45,16 +66,21 @@ def export_weapon(parts, glb, blend, *, pivots=None, view_distance=2.1):
     paint = material.node_tree.nodes.new('ShaderNodeVertexColor')
     paint.layer_name = 'Paint'
     material.node_tree.links.new(paint.outputs['Color'], shader.inputs['Base Color'])
+    if finish_rows is not None:
+        from weapon_finish import finish_uv, shader_finish
+        shader_finish(material, shader)
     for name, assembly in parts:
         obj = assembly.object(name, collection)
+        if finish_rows is not None:
+            finish_uv(obj.data, assembly.colors, finish_rows)
+        else:
+            obj.data.uv_layers.remove(obj.data.uv_layers.active)
         if pivots and name in pivots:
             x, y, z = pivots[name]
             obj.location = (x, -z, y)
             for vertex in obj.data.vertices:
                 vertex.co -= obj.location
         obj.data.materials.append(material)
-        uv = obj.data.uv_layers.active
-        obj.data.uv_layers.remove(uv)
     bpy.ops.export_scene.gltf(filepath=str(glb.resolve()), export_format='GLB', export_vertex_color='ACTIVE',
                               export_meshopt_compression_enable=True, export_meshopt_extension='EXT_meshopt_compression')
     for screen in bpy.data.screens:

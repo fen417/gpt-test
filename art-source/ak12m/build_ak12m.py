@@ -4,16 +4,17 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from weapon_mesh import Assembly, export_weapon, side_profile, sight_ring
+from weapon_mesh import Assembly, export_weapon, side_profile, sight_ring, surface_mark
 
 
-FRAME = (.116, .123, .135)
-COVER = (.065, .074, .088)
-POLYMER = (.043, .047, .052)
-MOLDING = (.071, .076, .081)
-STEEL = (.142, .150, .164)
-RUBBER = (.023, .025, .029)
-RECESS = (.012, .014, .017)
+FRAME = (.069, .078, .094)
+COVER = (.027, .036, .052)
+POLYMER = (.032, .033, .030)
+MOLDING = (.048, .049, .044)
+STEEL = (.128, .149, .177)
+RUBBER = (.016, .017, .017)
+RECESS = (.010, .012, .015)
+MARK = (.28, .31, .32)
 
 
 def receiver():
@@ -27,11 +28,16 @@ def receiver():
             body.cylinder((side * .047, y, z), .008, .005, 'x', COVER, 14)
         body.box((side * .047, -.043, -.171), (.006, .022, .058), COVER, .004)
         body.box((side * .050, -.042, -.171), (.001, .009, .035), RECESS, .002)
+        for z in [-.256, .075]:
+            body.box((side * .047, -.017, z), (.003, .037, .004), STEEL, .001)
     body.box((.047, .024, -.165), (.007, .024, .192), RECESS, .003)
     side_profile(body, [(.058, -.025), (.015, -.047), (-.152, -.018), (-.179, .011),
                         (-.142, .012), (-.055, .000), (.047, -.009)], .011, STEEL, .050)
     body.cylinder((.055, -.026, .043), .015, .008, 'x', COVER, 18)
     body.cylinder((.059, -.026, .043), .007, .004, 'x', FRAME, 14)
+    surface_mark(body, 'AK-12M', -.0476, -.007, -.113, .0033, MARK)
+    for y, z in [(-.037,-.139),(-.044,-.121),(-.051,-.099)]:
+        body.box((.0475,y,z),(.001,.002,.011),MARK,0)
     return body
 
 
@@ -97,10 +103,11 @@ def front():
 
 def magazine():
     mesh = Assembly()
-    rows = [(-.067, -.190, -.292, .035), (-.122, -.184, -.276, .039),
-            (-.190, -.188, -.280, .040), (-.254, -.210, -.302, .040),
-            (-.310, -.239, -.336, .038), (-.343, -.265, -.363, .036)]
-    rows += [(-.351, -.271, -.372, .041), (-.362, -.275, -.370, .039)]
+    rows = [(-.067, -.189, -.292, .034), (-.114, -.187, -.289, .036),
+            (-.156, -.190, -.290, .036), (-.198, -.197, -.296, .036),
+            (-.240, -.207, -.305, .035), (-.279, -.218, -.315, .034),
+            (-.308, -.227, -.323, .033), (-.314, -.229, -.325, .035),
+            (-.323, -.232, -.327, .034)]
     rings = []
     for y, rear, fore, edge in rows:
         inset = .009
@@ -110,13 +117,20 @@ def magazine():
             (edge - inset, -.009, fore), (-edge + inset, -.009, fore),
             (-edge, -.006, fore + inset), (-edge, .006, rear - inset)]])
     mesh.rings(rings, POLYMER)
-    for y, rear in [(-.152, -.185), (-.193, -.189), (-.234, -.201), (-.275, -.219), (-.316, -.245)]:
-        for column in range(3):
-            for side in (-1, 1):
-                z = rear - .022 - column * .023
-                tile_y = y - column * .003
-                mesh.box((side * .038, tile_y, z), (.005, .026, .017), MOLDING, .002)
-                mesh.box((side * .040, tile_y, z), (.002, .019, .011), POLYMER, .002)
+    for y, rear, front, width in rows[2:7]:
+        for side in (-1, 1):
+            center = (rear+front)/2
+            mesh.box((side * width, y, center), (.0025, .0035, .070), MOLDING, .0005)
+            mesh.box((side * width, y-.015, front+.016), (.002, .013, .008), RECESS, .0004)
+    for side in (-1, 1):
+        for u in (.31, .61):
+            for top, bottom in zip(rows[1:6],rows[2:7]):
+                ay, ar, af, aw = top
+                by, br, bf, bw = bottom
+                az, bz = ar+(af-ar)*u, br+(bf-br)*u
+                face = [(side*(aw+.0007), ay, az-.002), (side*(aw+.0007), ay, az+.002),
+                        (side*(bw+.0007), by, bz+.002), (side*(bw+.0007), by, bz-.002)]
+                mesh.add(face, [(0,1,2,3) if side > 0 else (3,2,1,0)], MOLDING)
     return mesh
 
 
@@ -128,8 +142,7 @@ def main():
     moving.cylinder((.080, .027, -.110), .012, .017, 'x', FRAME, 16)
     parts = [('Receiver', receiver()), ('Furniture', furniture()), ('Front', front()),
              ('Magazine', magazine()), ('Bolt', moving)]
-    export_weapon(parts, glb, blend)
-
+    export_weapon(parts, glb, blend, finish_rows={POLYMER:1, MOLDING:1, RUBBER:1, STEEL:2})
 
 
 if __name__ == '__main__':

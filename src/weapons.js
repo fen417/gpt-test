@@ -876,7 +876,7 @@ export function createWeaponRig(owner = {}) {
   const liveGeometry=new Set();weapon.traverse(o=>{if(o.geometry)liveGeometry.add(o.geometry);});for(const geometry of ownedGeometries)if(!liveGeometry.has(geometry)){geometry.dispose();ownedGeometries.delete(geometry);}
   const loadouts = {
     ar416:{classId:'assault',guard:.36,barrel:.19,width:1,finish:0x626859,handZ:-.423,grasp:[-.052,-.236,-.124]},
-    ak12:{classId:'assault',guard:.34,barrel:.21,width:1.04,finish:0x3f433e,handZ:-.415,grasp:[-.052,-.242,-.128]},
+    ak12:{classId:'assault',guard:.34,barrel:.21,width:1.04,finish:0x3f433e,handZ:-.415,grasp:[-.043,-.237,-.251]},
     mcx9:{classId:'medic',guard:.245,barrel:.109,width:.93,finish:0x474f50,handZ:-.378,grasp:[-.045,-.237,-.123]},
     vk45:{classId:'medic',guard:.225,barrel:.095,width:.98,finish:0x52575c,handZ:-.368,grasp:[-.046,-.242,-.142]},
     mg36:{classId:'support',guard:.397,barrel:.255,width:1.16,finish:0x555e55,handZ:-.447,grasp:[-.092,-.203,-.111]},
