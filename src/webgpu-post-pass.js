@@ -80,7 +80,9 @@ export class WebGpuPostPass {
     this.rcasSharpness.value=Math.max(0,Math.min(1,Number(sharpness)/100||0));
   }
   begin(quality='high'){
-    const samples=this.frameGeneration?.enabled?0:quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
+    // FG never changes the world render target or its MSAA policy.
+    // There is no velocity MRT, so the normal scene AA is safe to retain.
+    const samples=quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
     if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
     const fsr=this.fsrQuality!=='off'&&this.fsrScale<.995;
     this.useFxaa.value=this.antialias==='off'?0:quality==='high'&&samples>0?0:1;
