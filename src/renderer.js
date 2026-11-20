@@ -537,7 +537,14 @@ export class GameRenderer {
     this.scene.fog.density = map.fogDensity ?? .0034;
     this.scene.fog.color.set(map.fogColor ?? 0x9aa7a7);
     this.scene.background.set(map.fogColor ?? 0x9aa7a7);
+    // Map-specific light balance: Linden Estate has enclosed rooms and large
+    // roof shadows. Neutral daylight + ambient bounce keeps the house legible
+    // without overexposing the courtyard. Defaults preserve all other maps.
     this.sun.color.set(map.sunColor ?? 0xffd7a4);
+    this.sun.intensity=map.sunIntensity??3.5;
+    this.hemiLight.intensity=map.hemisphereLightIntensity??2.0;
+    this.ambientLight.intensity=map.ambientLightIntensity??.2;
+    this.renderer.toneMappingExposure=map.toneMappingExposure??1.06;
     if(this.webgpu)this.atmosphere.hazeAmount.value=map.theme==='desert-village'?.16:0;
     else this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
     this.staticRoot = world.root;
