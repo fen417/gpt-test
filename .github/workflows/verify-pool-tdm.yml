@@ -21,6 +21,8 @@ jobs:
       - run: npm ci
       - name: Targeted authoritative TDM tests
         run: node --test test/pool-tdm.test.js
+      - name: Graphics API and tank atlas regression tests
+        run: node --test test/graphics-api.test.js
       - name: Build browser game
         run: npm run build
       - name: Install headless Chromium
