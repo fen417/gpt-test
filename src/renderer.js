@@ -1594,7 +1594,9 @@ export class GameRenderer {
     try{
       const generator=this.frameGeneration;
       try{
-        generator?.setMode(this.gfx.frameGeneration??'off');
+        // No simulated gameplay frames exist in menu. Keep the ordinary
+        // WebGPU renderer there; enable temporal history only in a match.
+        generator?.setMode(menu?'off':this.gfx.frameGeneration??'off');
         this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
         this.postPass.begin(this.quality);
         try {
