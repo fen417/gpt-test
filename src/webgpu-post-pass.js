@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, vec2, vec3, vec4, Fn, If, min, max, distance,
-  smoothstep, dot, sin, fract, clamp, renderOutput, acesFilmicToneMapping } from 'three/tsl';
+  smoothstep, dot, sin, fract, clamp, acesFilmicToneMapping } from 'three/tsl';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { fsr1RenderScale } from './fsr1.js';
 import { easuNode, rcasNode } from './webgpu-fsr1.js';
@@ -62,7 +62,10 @@ export class WebGpuPostPass {
       const vignette=vec3(1).mul(smoothstep(.1,.8,distance(uv(),vec2(.5)))).mul(-.08).add(1);
       const pixel=uv().mul(this.outputSize);
       const noise=fract(sin(dot(pixel.add(this.time),vec2(12.9898,78.233))).mul(43758.5453)).sub(.5).mul(this.grain);
-      return renderOutput(vec4(mapped.mul(vignette).add(noise),1),THREE.NoToneMapping,THREE.SRGBColorSpace);
+      // WebGPU Renderer r181 does its own color-space output pass on
+      // the default framebuffer. Keep intermediate FSR/FG targets linear and
+      // don't manually encode sRGB, or the image becomes blown out.
+      return vec4(mapped.mul(vignette).add(noise),1);
     })();
     const post=stage(geometry,postColor);this.scene=post.scene;this.material=post.material;
     const easu=stage(geometry,easuNode(texture(this.ldrTarget.texture),this.inputSize,this.outputSize));
@@ -106,7 +109,11 @@ export class WebGpuPostPass {
     r.setRenderTarget(this.target);
   }
   end(time,quality){
-    const r=this.renderer,reset=r.info.autoReset;r.info.autoReset=false;
+    const r=this.renderer,reset=r.info.autoReset,oldToneMapping=r.toneMapping;
+    r.info.autoReset=false;
+    // ACES is already applied in postColor. Disable the automatic tone map,
+    // but keep automatic sRGB conversion for final screen presentations.
+    r.toneMapping=THREE.NoToneMapping;
     this.time.value=time;this.grain.value=quality==='low'?0:.0015;
     this.exposure.value=r.toneMappingExposure;
     try {
@@ -120,7 +127,7 @@ export class WebGpuPostPass {
         r.render(this.scene,this.camera);
       }
       this.frameGeneration?.presentReal();
-    }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
+    }finally{r.setRenderTarget(null);r.toneMapping=oldToneMapping;r.info.autoReset=reset;}
   }
   dispose(){
     this.nativeTarget.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
