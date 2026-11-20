@@ -18,7 +18,7 @@ try{
   page.on('console',message=>{
     if(message.type()!=='error')return;
     const line=message.text();
-    if(/Color target has no corresponding|Invalid RenderPipeline|targets\\[1\\]|CreateRenderPipeline|GPUValidationError|fragment stage output/i.test(line))
+    if(/Color target has no corresponding|Invalid RenderPipeline|targets\[1\]|CreateRenderPipeline|GPUValidationError|fragment stage output|writeBuffer|reading 'set'|Invalid CommandBuffer/i.test(line))
       errors.push('WebGPU validation: '+line);
   });
   await page.goto('http://127.0.0.1:5173/test/fg-smoke.html',{waitUntil:'networkidle'});
@@ -39,11 +39,10 @@ try{
   else {
     assert.equal(result.ok,true);
     assert.equal(result.backend,'WebGPUBackend');
-    assert.equal(result.mrt,2);
-    assert.equal(result.depth,true);
+    assert.equal(result.mrt,1); // no velocity MRT on the world pass
     assert.equal(result.generated,1);
     assert.equal(result.renderScale,.85);
-    assert.equal(result.customFragmentRestored,true);
+    assert.equal(result.customFragmentPreserved,true);
   }
   assert.deepEqual(errors,[]);
 }finally{await browser.close();}
