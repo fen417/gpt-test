@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rifle_mesh import Assembly, export_rifle, side_profile, sight_ring
+from weapon_mesh import Assembly, export_weapon, side_profile, sight_ring
 
 
 FRAME = (.108, .113, .123)
@@ -151,7 +151,7 @@ def main():
         bolt.box((side * .046, .069, .101), (.016, .015, .031), FRAME, .003)
     parts = [('Receiver', receiver()), ('Handguard', front()), ('Furniture', furniture()),
              ('Sights', sights()), ('Magazine', magazine()), ('Bolt', bolt)]
-    export_rifle(parts, glb, blend)
+    export_weapon(parts, glb, blend)
 
 
 if __name__ == '__main__':

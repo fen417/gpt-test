@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rifle_mesh import Assembly, export_rifle, side_profile, sight_ring
+from weapon_mesh import Assembly, export_weapon, side_profile, sight_ring
 
 
 FRAME = (.116, .123, .135)
@@ -128,7 +128,7 @@ def main():
     moving.cylinder((.080, .027, -.110), .012, .017, 'x', FRAME, 16)
     parts = [('Receiver', receiver()), ('Furniture', furniture()), ('Front', front()),
              ('Magazine', magazine()), ('Bolt', moving)]
-    export_rifle(parts, glb, blend)
+    export_weapon(parts, glb, blend)
 
 
 

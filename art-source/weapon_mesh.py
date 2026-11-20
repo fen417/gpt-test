@@ -1,4 +1,4 @@
-"""Mesh and export helpers for the game’s editable rifle props."""
+"""Mesh and export helpers for the game’s editable weapon props."""
 import math
 import sys
 from pathlib import Path
@@ -33,7 +33,7 @@ def sight_ring(mesh, y, z, inner, outer, depth, color):
     mesh.add(vertices, faces, color)
 
 
-def export_rifle(parts, glb, blend):
+def export_weapon(parts, glb, blend, *, pivots=None, view_distance=2.1):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     collection = bpy.context.scene.collection
     material = bpy.data.materials.new('Blued steel and molded polymer')
@@ -47,6 +47,11 @@ def export_rifle(parts, glb, blend):
     material.node_tree.links.new(paint.outputs['Color'], shader.inputs['Base Color'])
     for name, assembly in parts:
         obj = assembly.object(name, collection)
+        if pivots and name in pivots:
+            x, y, z = pivots[name]
+            obj.location = (x, -z, y)
+            for vertex in obj.data.vertices:
+                vertex.co -= obj.location
         obj.data.materials.append(material)
         uv = obj.data.uv_layers.active
         obj.data.uv_layers.remove(uv)
@@ -56,6 +61,6 @@ def export_rifle(parts, glb, blend):
         for area in screen.areas:
             if area.type == 'VIEW_3D':
                 area.spaces.active.shading.color_type = 'VERTEX'
-                area.spaces.active.region_3d.view_distance = 2.1
+                area.spaces.active.region_3d.view_distance = view_distance
     bpy.context.preferences.filepaths.save_version = 0
     bpy.ops.wm.save_as_mainfile(filepath=str(blend.resolve()), compress=True)

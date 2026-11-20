@@ -9,8 +9,9 @@
 <script type="module">
 import {GameRenderer} from '../src/renderer.js';
 import {loadFPSHands} from '../src/fps-hands.js';
+import {loadWeaponModels} from '../src/weapon-models.js';
 import {Simulation} from '../shared/simulation.js';
-document.querySelector('#metrics').textContent='Загрузка рук…';await loadFPSHands();document.querySelector('#metrics').textContent='Создание сцены…';const canvas=document.querySelector('#view'),renderer=new GameRenderer(canvas);document.querySelector('#metrics').textContent='Загрузка текстур…';renderer.surfaces.ready.catch(console.error);document.querySelector('#metrics').textContent='Подготовка позы…';
+document.querySelector('#metrics').textContent='Загрузка моделей…';await Promise.all([loadFPSHands(),loadWeaponModels()]);document.querySelector('#metrics').textContent='Создание сцены…';const canvas=document.querySelector('#view'),renderer=new GameRenderer(canvas);document.querySelector('#metrics').textContent='Загрузка текстур…';renderer.surfaces.ready.catch(console.error);document.querySelector('#metrics').textContent='Подготовка позы…';
 const sim=new Simulation({mapId:'village',bots:0}),player=sim.addPlayer('preview','Боец',0,'assault');
 const state=sim.snapshot();let time=0,last=performance.now(),freeze=false;
 Object.assign(state.players[0],{weaponSlot:2,weaponId:'p19',heldGadget:null,equipTime:0});

@@ -8,7 +8,7 @@ import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS, pistolGripSectionAt } from 
 import { createFPSHand, fpsHandTextures } from './fps-hands.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
-import { cloneRifleModel } from './rifle-assets.js';
+import { cloneWeaponModel } from './weapon-models.js';
 
 const rifleFits = {
   ak12: {muzzleZ:-.865, ejection:[.055,.03,-.165], sight:{height:.100,depth:-.38}},
@@ -607,7 +607,7 @@ export function createWeaponRig(owner = {}) {
   weapon.add(rifleAssembly);
   const rifles=new Map();
   for(const [id,fit] of Object.entries(rifleFits)){
-    const model=cloneRifleModel(id);
+    const model=cloneWeaponModel(id);
     if(!model)continue;
     const bolt=model.getObjectByName('Bolt');
     const ejection=new THREE.Object3D();
@@ -646,13 +646,37 @@ export function createWeaponRig(owner = {}) {
       depth:to-from-.0016,bevelEnabled:true,bevelSegments:1,bevelSize:.0008,bevelThickness:.0008,curveSegments:14,
     }),finish,0,0,from+.0008);
   }
+  function mountPistol(heavy,front,root,slide,magazine,trigger,hammer,ejection){
+    root.name=heavy?'m50-viewmodel':'p19-viewmodel';
+    root.scale.set(heavy?.60:.58,heavy?.60:.56,heavy?.72:.62);
+    // Keep the existing palm contact when fitting the new geometry.
+    const palmContact=new THREE.Vector3(0,-.162,.071);
+    root.position.copy(palmContact).sub(palmContact.clone().multiply(root.scale));
+    root.updateMatrix();
+    root.visible=false;
+    weapon.add(root);
+    const modelMatrix=root.matrix.clone();
+    const muzzlePoint=new THREE.Vector3(0,.012,front).applyMatrix4(modelMatrix);
+    const sightPoint=new THREE.Vector3(0,.054,.123).applyMatrix4(modelMatrix);
+    return {root,slide,hammer,trigger,magazine,magazineHome:magazine.position.clone(),ejection,
+      front:muzzlePoint.z,boreY:muzzlePoint.y,sightY:sightPoint.y,heavy,modelMatrix};
+  }
   function buildPistol(heavy){
+    const imported=cloneWeaponModel(heavy?'m50':'p19');
+    if(imported){
+      const slide=imported.getObjectByName('Slide');
+      const ejection=new THREE.Object3D();
+      ejection.position.set(heavy?.040:.032,.026,-.020);
+      slide.add(ejection);
+      return mountPistol(heavy,heavy?-.258:-.185,imported,slide,imported.getObjectByName('Magazine'),
+        imported.getObjectByName('Trigger'),imported.getObjectByName('Hammer'),ejection);
+    }
     const root=new THREE.Group(), slide=new THREE.Group(), magazine=new THREE.Group(), ejection=new THREE.Group();
-    root.name=heavy?'m50-viewmodel':'p19-viewmodel';slide.name='pistol-slide';magazine.name='pistol-magazine';ejection.name='pistol-ejection';
+    slide.name='pistol-slide';magazine.name='pistol-magazine';ejection.name='pistol-ejection';
     // Small bevelled fittings need one segment; the former shared rifle boxes
     // spent 300 triangles on every pin and button, obscuring the larger forms.
     const rounded=(parent,x,y,z,w,h,d,material)=>{const m=mesh(parent,pistolBox,material,x,y,z);m.scale.set(w,h,d);return m;};
-    root.add(slide,magazine);slide.add(ejection);weapon.add(root);root.visible=false;
+    root.add(slide,magazine);slide.add(ejection);
     const front=heavy?-.248:-.181, width=heavy?.075:.059, rear=.136, gripWidth=heavy?.066:.060;
     const gripSections=(heavy?HEAVY_GRIP_SECTIONS:COMPACT_GRIP_SECTIONS).map(([y,w,f,b,z])=>[y,w*(heavy?1.5:1),f,b,z]);
     const gripSection=y=>pistolGripSectionAt(gripSections,y);
@@ -813,18 +837,8 @@ export function createWeaponRig(owner = {}) {
     rounded(magazine,0,0,0,gripWidth*.94,.012,heavy?.075:.071,heavy?edge:rubber);
     rounded(magazine,0,.151,topZ,gripWidth*.56,.008,.038,dark);
     for(let n=0;n<3;n++)cylinder(magazine,gripWidth*.37,.057-n*.014,.002,.003,.002,brass,'x');
-    // Fit the metalwork around the existing palm contact, using metre-scale
-    // dimensions. Articulated slide and magazine remain in their local space.
-    root.scale.set(heavy?.60:.58,heavy?.60:.56,heavy?.72:.62);
-    // Rebalanced grip/upper proportions around the same action contact. Sight,
-    // muzzle and reload anchors still come from this exact model matrix.
-    const palmContact=new THREE.Vector3(0,-.162,.071);
-    root.position.copy(palmContact).sub(palmContact.clone().multiply(root.scale));
-    root.updateMatrix();
-    const modelMatrix=root.matrix.clone();
-    const muzzlePoint=new THREE.Vector3(0,.012,front).applyMatrix4(modelMatrix);
-    const sightPoint=new THREE.Vector3(0,.054,.123).applyMatrix4(modelMatrix);
-    return {root,slide,hammer,trigger,magazine,magazineHome,ejection,front:muzzlePoint.z,boreY:muzzlePoint.y,sightY:sightPoint.y,heavy,modelMatrix};
+    batch(root);
+    return mountPistol(heavy,front,root,slide,magazine,trigger,hammer,ejection);
   }
   const pistols={p19:buildPistol(false),m50:buildPistol(true)};
 
@@ -857,7 +871,7 @@ export function createWeaponRig(owner = {}) {
     }
     for(const [material,meshes]of materials){if(meshes.length<2)continue;const parts=meshes.map(m=>{m.updateMatrix();const g=m.geometry.clone().applyMatrix4(m.matrix);const n=g.index?g.toNonIndexed():g; if(n!==g)g.dispose();return n;});const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!geometry)continue;ownedGeometries.add(geometry);const merged=new THREE.Mesh(geometry,material);merged.name=`batched-${material.name}`;group.add(merged);for(const m of meshes)m.removeFromParent();}
   }
-  for(const island of [receiver,handguard,barrelCore,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,...Object.values(variantDetails),scope,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight,...Object.values(pistols).map(p=>p.root)])batch(island);
+  for(const island of [receiver,handguard,barrelCore,barrel,barrelSleeve,muzzle,suppressor,magazine,supportAttachment,akVariant,vkVariant,pkpVariant,svVariant,...Object.values(variantDetails),scope,compactOptic,ironSights,leftArm,rightArm,leftHand,rightHand,pistolRight])batch(island);
   // Dispose unreferenced source buffers after batching, retaining reused shapes.
   const liveGeometry=new Set();weapon.traverse(o=>{if(o.geometry)liveGeometry.add(o.geometry);});for(const geometry of ownedGeometries)if(!liveGeometry.has(geometry)){geometry.dispose();ownedGeometries.delete(geometry);}
   const loadouts = {
@@ -1114,7 +1128,8 @@ export function createWeaponRig(owner = {}) {
     if(pistol){
       const travel=pistol.heavy ? .041 : .027;
       pistol.slide.position.z=Math.max(kick*travel,reloadEmpty?travel*.85:0,charging*travel);
-      pistol.trigger.rotation.x=-kick*.12;pistol.hammer.rotation.x=-kick*.34+charging*.22;
+      pistol.trigger.rotation.x=-kick*.12;
+      if(pistol.hammer)pistol.hammer.rotation.x=-kick*.34+charging*.22;
       pistolGripMesh.morphTargetInfluences[0]=THREE.MathUtils.clamp(kick,0,1);
     }
     const usingTool=Boolean(gadgetKind&&gadgetPhase>0&&gadgetPhase<1);

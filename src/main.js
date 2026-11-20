@@ -1,5 +1,5 @@
 import {loadFPSHands} from './fps-hands.js';
-import {loadRifleModels} from './rifle-assets.js';
+import {loadWeaponModels} from './weapon-models.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import {mountPerfPanel} from './perf-panel.js';
 const frameTimes=new PerformanceSamples(),cpuTimes=new PerformanceSamples(),renderTimes=new PerformanceSamples(),simulationTimes=new PerformanceSamples();
@@ -1738,7 +1738,7 @@ function recoverWebGpu(error) {
   location.reload();
 }
 try{
-  await Promise.all([loadFPSHands(),loadRifleModels()]);
+  await Promise.all([loadFPSHands(),loadWeaponModels()]);
   let gpuOptions=null;
   const requested=preferredGraphicsApi();
   let recoveredReason=null;
