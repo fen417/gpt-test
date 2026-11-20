@@ -70,7 +70,7 @@ jobs:
             .perf-local/bundle.html
       # A Pages deployment replaces the entire published directory. Build both
       # versions together so updating /test/ never overwrites the stable site.
-      - name: Checkout fy_pool_day preview branch
+      - name: Checkout test preview branch
         uses: actions/checkout@v4
         with:
           ref: test
@@ -79,11 +79,10 @@ jobs:
       - name: Install preview dependencies
         working-directory: pool-test
         run: npm ci
-      - name: Build solo-only preview (without multiplayer)
+      - name: Build preview with multiplayer enabled
         working-directory: pool-test
         env:
-          VITE_SOLO_ONLY: 'true'
-          VITE_SERVER_URL: ''
+          VITE_SERVER_URL: ${{ vars.SECTOR_SERVER_URL }}
         run: npm run build
       - name: Place preview at /gpt-test/test/
         run: |
@@ -94,7 +93,7 @@ jobs:
           test -d dist/assets
           test -d dist/test/assets
           grep -q 'preview.href' dist/index.html
-          echo 'Stable and solo-only preview are both bundled into the Pages artifact.'
+          echo 'Stable and multiplayer-enabled test preview are both bundled into the Pages artifact.'
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
