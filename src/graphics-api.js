@@ -30,19 +30,23 @@ export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDevic
     stencil: false, powerPreference: 'high-performance',
     trackTimestamp: requiredFeatures.includes('timestamp-query'),
   });
-  renderer.onDeviceLost = info => onDeviceLost?.(info);
+  // Don't treat an intentional device.destroy() during failed initialization as
+  // an unexpected hardware loss. The backend invokes this callback dynamically.
+  renderer.onDeviceLost = () => {};
   try {
     await renderer.init();
     // WebGPURenderer may otherwise silently fall back to a WebGL backend.
     if (!renderer.backend?.isWebGPUBackend || renderer.backend.device !== device) {
       throw new Error('WebGPU backend не активирован: запуск через WebGL fallback запрещён.');
     }
+    renderer.onDeviceLost = info => onDeviceLost?.(info);
     const info = adapter.info || {};
     const gpuName = [info.vendor, info.architecture, info.device, info.description].filter(Boolean).join(' ') || null;
     return { renderer, device, adapter, gpuName, api: 'webgpu' };
   } catch (error) {
-    renderer.dispose();
-    device.destroy();
+    renderer.onDeviceLost = () => {};
+    try { renderer.dispose(); } catch (disposeError) { console.warn('WebGPU cleanup:',disposeError); }
+    try { device.destroy(); } catch (destroyError) { console.warn('WebGPU device cleanup:',destroyError); }
     throw error;
   }
 }
