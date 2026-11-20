@@ -19,6 +19,14 @@ export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDevic
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) throw new Error('Браузер не предоставил аппаратный WebGPU-адаптер.');
   if(adapter.isFallbackAdapter)throw new Error('WebGPU работает через программный адаптер, а не аппаратный GPU.');
+  // Some browsers expose SwiftShader as a regular (non-fallback) adapter.
+  // Reject known software implementations instead of reporting them as hardware.
+  const adapterInfo=adapter.info??{};
+  const adapterDescription=[adapterInfo.vendor,adapterInfo.architecture,adapterInfo.device,adapterInfo.description]
+    .filter(Boolean).join(' ');
+  if(/swiftshader|llvmpipe|softpipe|lavapipe|software rasterizer|microsoft basic render/i.test(adapterDescription)){
+    throw new Error('WebGPU обнаружил программный адаптер ('+adapterDescription+'). Выбран аппаратный WebGL 2.');
+  }
   // Request no optional extensions: weak GPUs must be able to start at Low.
   const timings = new URLSearchParams(globalThis.location?.search ?? '').has('perf');
   const requiredFeatures = timings && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
@@ -40,8 +48,7 @@ export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDevic
       throw new Error('WebGPU backend не активирован: запуск через WebGL fallback запрещён.');
     }
     renderer.onDeviceLost = info => onDeviceLost?.(info);
-    const info = adapter.info || {};
-    const gpuName = [info.vendor, info.architecture, info.device, info.description].filter(Boolean).join(' ') || null;
+    const gpuName = adapterDescription || null;
     return { renderer, device, adapter, gpuName, api: 'webgpu' };
   } catch (error) {
     renderer.onDeviceLost = () => {};
