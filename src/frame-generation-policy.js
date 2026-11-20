@@ -21,6 +21,10 @@ export class FrameGenerationPolicy {
       if(meta[key]!==previous[key])return false;
     }
     if(!meta.alive||!Number.isFinite(meta.yaw)||!Number.isFinite(meta.pitch))return false;
+    if(Number.isFinite(meta.x)&&Number.isFinite(previous.x)){
+      const dist=Math.hypot(meta.x-previous.x,(meta.y??0)-(previous.y??0),(meta.z??0)-(previous.z??0));
+      if(dist>1.6)return false;
+    }
     const yaw=Math.atan2(Math.sin(meta.yaw-previous.yaw),Math.cos(meta.yaw-previous.yaw));
     if(Math.abs(yaw)>.07||Math.abs(meta.pitch-previous.pitch)>.07)return false;
     return true;
