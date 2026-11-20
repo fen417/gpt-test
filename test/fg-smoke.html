@@ -1,0 +1,46 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>FG WebGPU smoke</title></head>
+<body><script type="module">
+import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
+import { WebGpuPostPass } from '../src/webgpu-post-pass.js';
+import { WebGpuFrameGeneration } from '../src/webgpu-frame-generation.js';
+
+window.runFrameGenerationSmoke=async()=>{
+  if(!navigator.gpu)return {skipped:'navigator.gpu unavailable'};
+  const adapter=await navigator.gpu.requestAdapter();
+  if(!adapter)return {skipped:'No WebGPU adapter'};
+  const device=await adapter.requestDevice();
+  const canvas=document.createElement('canvas');
+  canvas.style.width='256px';canvas.style.height='144px';document.body.append(canvas);
+  const renderer=new WebGPURenderer({canvas,device,alpha:false,stencil:false,antialias:false});
+  let post=null,fg=null;
+  try{
+    await renderer.init();renderer.setSize(256,144,false);
+    post=new WebGpuPostPass(renderer,{antialias:'off'});
+    fg=new WebGpuFrameGeneration(renderer,post);post.frameGeneration=fg;
+    fg.setMode('1.5');
+    const scene=new THREE.Scene();scene.background=new THREE.Color(0x888899);
+    const camera=new THREE.PerspectiveCamera(65,256/144,.1,100);
+    camera.position.set(0,0,4);
+    scene.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0xd0b37c})));
+    const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(1,2,3);scene.add(light);
+    const meta={playerId:'ci',mapId:'ci',alive:true,weaponId:'ci',vehicleId:null,seat:null,
+      scoped:false,aim:false,thirdPerson:false,yaw:0,pitch:0,x:0,y:0,z:0};
+    for(const [index,upscale] of ['off','quality','quality'].entries()){
+      scene.children[0].rotation.y+=.04;
+      post.setUpscaling(upscale,1,40);
+      post.begin('low');
+      try{fg.beginWorld();renderer.render(scene,camera);}finally{fg.endWorld();}
+      post.end(index/60,'low');
+      fg.noteReal(16+index*16,meta,4);
+    }
+    if(!fg.generate(80))throw new Error('History was ready but generated frame not presented');
+    if(!fg.enabled||fg.target.textures.length!==2)throw new Error('MRT velocity was not attached');
+    return {ok:true,generated:fg.policy.summary().generatedFrames,mode:fg.policy.mode,
+      mrt:fg.target.textures.length,depth:!!fg.target.depthTexture,renderScale:post.fsrScale,
+      backend:renderer.backend.constructor.name};
+  } finally {
+    fg?.dispose();post?.dispose();renderer.dispose();device.destroy();canvas.remove();
+  }
+};
+</script></body></html>
