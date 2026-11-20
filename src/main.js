@@ -805,8 +805,8 @@ $('reset-binds')?.addEventListener('click',()=>{
 $('sound-toggle').addEventListener('click',()=>{audio.enabled=!audio.enabled;text('sound-toggle',audio.enabled?'ЗВУК ВКЛ.':'ЗВУК ВЫКЛ.');$('sound-toggle').setAttribute('aria-pressed',String(audio.enabled));unlockAudio();musicUI();});
 $('music-toggle').addEventListener('click',()=>{if(audioStarted)musicMuted=!musicMuted;else musicMuted=false;save('music-muted',musicMuted);unlockAudio();setMusic();});
 mountMenuPanels(()=>{unlockAudio();audio.click();});
-weaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm})});
-lobbyWeaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm}),panelId:'lobby',prefix:'lobby-weapon-preview'});
+weaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getGpuDevice:()=>renderer?.webgpu?.device??null,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm})});
+lobbyWeaponPreview=mountWeaponPreview({getRig:()=>renderer?.weaponRig,getGpuDevice:()=>renderer?.webgpu?.device??null,getLoadout:()=>({classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm}),panelId:'lobby',prefix:'lobby-weapon-preview'});
 squadUI=mountSquadUI({getState:()=>state,getLocalId:()=>localId,getKey:()=>formatKeyCode(keybinds.squad),
   getOrderKeys:()=>({order:formatKeyCode(keybinds.order)}),
   onOpen:()=>{clearControls();if(active&&local()?.alive){unlockedPaused=true;document.exitPointerLock?.();show('pause');}audio.click();},
