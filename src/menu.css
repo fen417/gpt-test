@@ -159,6 +159,8 @@ body:has(dialog.menu-dialog[open]),body:has(#pause:not(.hidden)){overflow:hidden
 .settings-page-heading{margin-bottom:22px;}
 .settings-page-heading h3{font-size:18px;font-weight:500;margin:0 0 8px;}
 .settings-page-heading p{font-size:11px;line-height:1.5;color:var(--menu-muted);margin:0;}
+#pause #gfx-api-retry[hidden]{display:none!important;}
+#pause #gfx-api-retry{cursor:pointer;text-align:left;background:transparent;font:inherit;letter-spacing:.02em;color:var(--menu-accent);}
 #pause .setting-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,210px);gap:24px;align-items:center;margin:0;padding:15px 0;border-bottom:1px solid var(--menu-line);color:#d0d8c7;}
 .setting-row>span:first-child b{font-size:12px;font-weight:400;display:block;}
 .setting-row>span:first-child small{display:block;color:#819176;font-size:10px;line-height:1.6;margin-top:6px;}
