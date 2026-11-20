@@ -1,6 +1,6 @@
 import {createNetworkSocket} from './network-simulator.js';
 import {predictPersonalFire} from '../shared/fire-control.js';
-import {advanceTankSystems,fireTank} from '../shared/tank.js';
+import {advanceTankSystems,aimTankMachineGun,fireTank} from '../shared/tank.js';
 import {BULLET_GRAVITY} from '../shared/ballistics.js';
 import { EquipmentPresentation } from './equipment-presentation.js';
 import { sanitizeInput, createPredictionWorld } from '../shared/simulation.js';
@@ -53,10 +53,23 @@ export class Prediction{
     this.time=(this.time??0)+frame.dt;
     if(!this.player?.alive)return;
     this.player.input=frame.input;
-    if(this.player.vehicleId){const vehicle=this.world.vehicles.find(v=>v.id===this.player.vehicleId);if(vehicle&&this.player.vehicleSeat===0){this.world.moveVehicle(vehicle,frame.input,frame.dt);this.world.syncVehicleSeat(this.player,vehicle);}
-      else if(vehicle?.type==='tank'&&this.player.vehicleSeat===1){
-        this.world.time=this.time;vehicle.gunCooldown=Math.max(-frame.dt,(vehicle.gunCooldown??0)-frame.dt);vehicle.heat=Math.max(0,vehicle.heat-frame.dt*.26);if(vehicle.heat<=.3)vehicle.overheated=false;
-        advanceTankSystems(this.world,vehicle,this.player,frame.dt);this.world.rockets.length=0;this.emitTank=emit;
+    if(this.player.vehicleId){
+      const vehicle=this.world.vehicles.find(v=>v.id===this.player.vehicleId);
+      const driver=this.player.vehicleSeat===0,machineGunner=this.player.vehicleSeat===1;
+      if(vehicle&&driver){
+        this.world.moveVehicle(vehicle,frame.input,frame.dt);
+        this.world.syncVehicleSeat(this.player,vehicle);
+      }
+      if(vehicle?.type==='tank'&&(driver||machineGunner)){
+        this.world.time=this.time;
+        if(driver)advanceTankSystems(this.world,vehicle,this.player,frame.dt);
+        else{
+          vehicle.gunCooldown=Math.max(-frame.dt,(vehicle.gunCooldown??0)-frame.dt);
+          vehicle.heat=Math.max(0,vehicle.heat-frame.dt*(vehicle.overheated?.28:.26));
+          if(vehicle.heat<=.3)vehicle.overheated=false;
+          aimTankMachineGun(vehicle,this.player.input);
+        }
+        this.world.rockets.length=0;this.emitTank=emit;
         if(this.predictShots)fireTank(this.world,this.player,vehicle,frame.dt);
       }
     }
@@ -311,8 +324,18 @@ export class Multiplayer{
     for(const kind of ['players','vehicles'])render[kind]=this.state[kind].map(p=>this.sampleMotion(kind,p,target,dt));
     const predicted=this.prediction.sample(dt);
     if(predicted?.alive&&(!predicted.vehicleId||predicted.vehicleSeat===0)){const index=render.players.findIndex(p=>p.id===this.id);if(index>=0)render.players[index]={...this.state.players.find(p=>p.id===this.id),...predicted,yaw:this.input.yaw??predicted.yaw,pitch:this.input.pitch??predicted.pitch};}
-    if(predicted?.vehicleId&&predicted.vehicleSeat===0){const vehicle=this.prediction.sampleVehicle(this.accumulator,this.input,dt),index=render.vehicles.findIndex(v=>v.id===predicted.vehicleId);if(vehicle&&index>=0)render.vehicles[index]=vehicle;}
-    if(predicted?.vehicleId&&predicted.vehicleSeat===1){const v=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId),out=render.vehicles.find(v=>v.id===predicted.vehicleId);if(v?.type==='tank'&&out)for(const key of ['aimYaw','aimPitch','wantedYaw','wantedPitch','weapon','weaponReadyAt','cannonAmmo','cannonReadyAt','cannonSeq','gunSeq','heat','overheated'])out[key]=v[key];}
+    if(predicted?.vehicleId){
+      const index=render.vehicles.findIndex(v=>v.id===predicted.vehicleId),remote=render.vehicles[index];
+      if(remote&&predicted.vehicleSeat===0){
+        const vehicle=this.prediction.sampleVehicle(this.accumulator,this.input,dt);
+        if(vehicle)render.vehicles[index]=vehicle.type==='tank'
+          ?{...vehicle,gunAimYaw:remote.gunAimYaw,gunAimPitch:remote.gunAimPitch,gunSeq:remote.gunSeq,heat:remote.heat,overheated:remote.overheated}
+          :vehicle;
+      }else if(remote?.type==='tank'&&predicted.vehicleSeat===1){
+        const vehicle=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId);
+        if(vehicle)for(const key of ['gunAimYaw','gunAimPitch','gunSeq','heat','overheated'])remote[key]=vehicle[key];
+      }
+    }
     // Derive every seated body from the very same interpolated/predicted vehicle.
     for(const p of render.players)if(p.vehicleId){const vehicle=render.vehicles.find(v=>v.id===p.vehicleId);if(vehicle){const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);p.x=pose.x;p.y=pose.y-EYE_HEIGHT;p.z=pose.z;}}
     const ownIndex=render.players.findIndex(p=>p.id===this.id);
@@ -329,7 +352,7 @@ export class Multiplayer{
     if(a.pose.alive!==b.pose.alive||a.pose.vehicleId!==b.pose.vehicleId||a.pose.reviveSeq!==b.pose.reviveSeq||Math.hypot(a.pose.x-b.pose.x,a.pose.z-b.pose.z)>8){for(const key of ['x','y','z','yaw','pitch','bodyPitch','bodyRoll'])if(Number.isFinite(discrete[key]))out[key]=discrete[key];return out;}
     const alpha=span>0?clamp((target-a.time)/span,0,1):1;
     for(const key of ['x','y','z'])out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;
-    for(const key of ['yaw','pitch','bodyPitch','bodyRoll','aimYaw','aimPitch'])if(Number.isFinite(current[key]))out[key]=a.pose[key]+difference(b.pose[key],a.pose[key])*alpha;
+    for(const key of ['yaw','pitch','bodyPitch','bodyRoll','aimYaw','aimPitch','gunAimYaw','gunAimPitch'])if(Number.isFinite(a.pose[key])&&Number.isFinite(b.pose[key]))out[key]=a.pose[key]+difference(b.pose[key],a.pose[key])*alpha;
     if(kind==='vehicles')for(const key of ['speed','steer'])if(Number.isFinite(a.pose[key])&&Number.isFinite(b.pose[key]))out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;
     if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;if(kind==='players'&&!out.grounded)out.y+=(last.pose.y-previous.pose.y)/interval*extra;}}
     if(kind==='vehicles'&&target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0)for(const key of ['yaw','aimYaw'])if(Number.isFinite(last.pose[key])&&Number.isFinite(previous.pose[key]))out[key]+=clamp(difference(last.pose[key],previous.pose[key])/interval,-2.5,2.5)*extra;}

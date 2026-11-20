@@ -25,6 +25,7 @@ import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
+import { tankMachineGunMuzzle, tankMuzzle, TANK_MG } from '../shared/tank.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
@@ -1752,12 +1753,27 @@ export class GameRenderer {
       }
       this.updateSunShadow(focusX, focusZ);
     } else if (mounted && !passenger) {
-      if(mounted.vehicle.type==='tank'&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankCamera(this,mounted,view,dt);
+      const vehicle=mounted.vehicle;
+      const tank=vehicle.type==='tank',fieldTank=tank&&state.campaign?.missionId!=='m02';
+      const machineGunner=fieldTank&&seat.role==='gunner';
+      const optic=fieldTank&&(view.aim||machineGunner||view.vehicleThirdPerson===false);
+      if(optic){
+        const yaw=machineGunner?view.yaw??vehicle.gunAimYaw??vehicle.yaw:vehicle.aimYaw;
+        const pitch=machineGunner?clamp(view.pitch??0,TANK_MG.minPitch,TANK_MG.maxPitch):vehicle.aimPitch;
+        const mouth=machineGunner?tankMachineGunMuzzle({...vehicle,gunAimYaw:yaw,gunAimPitch:pitch}):tankMuzzle(vehicle);
+        if(this.tankCamera)this.tankCamera.initialized=false;
+        this.camera.position.set(mouth.x,mouth.y+.12,mouth.z);
+        this.camera.rotation.set(pitch,yaw,0,'YXZ');
+        this.cameraPlayerId=null;
+        this.cameraAlive=true;
+        this.updateSunShadow(vehicle.x,vehicle.z);
+      }
+      else if(tank&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankCamera(this,mounted,view,dt);
       else{if(this.tankCamera)this.tankCamera.initialized=false;this.placeVehicleCamera(mounted, seat, view.yaw ?? player.yaw, view.pitch ?? player.pitch, shake);}
       this.weapon.visible = false;
       this.viewWeaponTarget = null;
       this.wallStow = this.aimAmount = this.sprintBlend = 0;
-      const mountedFov=mounted.vehicle.type==='tank'&&seat.role==='gunner'&&view.aim?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov)/2)/3)):baseFov;
+      const mountedFov=fieldTank&&view.aim?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov)/2)/2.5)):baseFov;
       if (Math.abs(this.camera.fov - mountedFov) > .03 || this.camera.near !== .045) {
         this.camera.fov = mountedFov;
         this.camera.near = .045;

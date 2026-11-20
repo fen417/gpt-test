@@ -7,6 +7,7 @@ import {createVehicleRig,updateVehicleRig,disposeVehicleRig} from '../vehicles.j
 import {VEHICLE_TYPES} from '../../shared/vehicles.js';
 import {CampaignFire} from './fire.js';
 import {placeCampaignMarker} from './markers.js';
+import {SIDEARMS,WEAPONS} from '../../shared/world.js';
 
 const presets={night:{fog:'#101b30',sun:'#a8c9ef',hemi:'#a2b9d7',ground:'#45434a',sunPower:.8,hemiPower:.52,ambient:.16,environment:.09},alarm:{fog:'#202538',sun:'#a4bfdf',hemi:'#b0bed5',ground:'#67564a',sunPower:1,hemiPower:.72,ambient:.22,environment:.12},dawn:{fog:'#a58e7c',sun:'#ffd19d',hemi:'#b8c5dd',ground:'#8e7560',sunPower:2,hemiPower:1.3,ambient:.3,environment:.45}};
 export class CampaignPresentation {
@@ -14,11 +15,14 @@ export class CampaignPresentation {
     this.session=session;this.renderer=renderer;this.leave=leave;this.clearControls=clearControls;this.locale=session.locale;this.definition=session.definition;
     this.audio=new CampaignAudio(audio,new URL(`${import.meta.env.BASE_URL}campaign/m01/`,location.href),this.definition);
     this.root=document.createElement('section');this.root.className='campaign-ui';this.root.setAttribute('aria-label','Сюжетная миссия');
-    this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-detection"><span></span><meter min="0" max="1" value="0"></meter><b>▲</b></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>До рассвета — одна ночь.</h2><p>Выберите набор. Оба маршрута позволяют выполнить задачу.</p><div><button data-loadout="silent"><b>Тихий</b><span>AR-416 с ПБС · нож · 2 гранаты</span></button><button data-loadout="loud"><b>Штурмовой</b><span>АК-12М · нож · 5 гранат</span></button></div><p>В обоих наборах: пистолет, ПТ-90, аптечки и шприцы.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
+    this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>Выберите вооружение</h2><p>Основное и дополнительное оружие доступны без ограничений класса.</p><div class="campaign-loadout-selects"><label>ОСНОВНОЕ <select data-primary></select></label><label>ДОПОЛНИТЕЛЬНОЕ <select data-sidearm></select></label></div><button data-loadout="custom">Начать операцию</button><p>ПТ-90 и ящик патронов выдаются обязательно. N в миссии — ПНВ.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
     document.body.append(this.root);this.$=selector=>this.root.querySelector(selector);
     this.fade=document.createElement('div');this.fade.className='campaign-camera-fade';this.root.append(this.fade);
     this.$('.campaign-cutscene button').onclick=()=>this.session.command({type:'skip'});
-    for(const b of this.root.querySelectorAll('[data-loadout]'))b.onclick=()=>{this.clearControls();this.session.command({type:'loadout',loadout:b.dataset.loadout});resume();};
+    const primary=this.$('[data-primary]'),sidearm=this.$('[data-sidearm]');
+    for(const weapon of Object.values(WEAPONS))if(!weapon.sidearm)primary.add(new Option(`${weapon.name} · ${weapon.type}`,weapon.id));
+    for(const id of SIDEARMS){const weapon=WEAPONS[id];sidearm.add(new Option(weapon.name,weapon.id));}
+    for(const b of this.root.querySelectorAll('[data-loadout]'))b.onclick=()=>{this.clearControls();this.session.command({type:'loadout',primary:primary.value,sidearm:sidearm.value});resume();};
     this.$('.campaign-retry').onclick=()=>{this.clearControls();this.session.command({type:'retry'});};
     this.$('.campaign-exit').onclick=leave;
     this.original={environment:renderer.scene.environment,environmentIntensity:renderer.scene.environmentIntensity,sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,sunColor:renderer.sun.color.clone(),hemiColor:renderer.hemiLight.color.clone(),groundColor:renderer.hemiLight.groundColor.clone(),sunOffset:renderer.sunOffset.clone(),skyVisible:renderer.atmosphere.sky.visible,
@@ -115,11 +119,16 @@ export class CampaignPresentation {
   }
   key(event){
     const m=this.session.state?.campaign;if(!m)return false;
+    if(m.awaitingLoadout&&(event.code==='Tab'||event.target?.closest?.('.campaign-choice')))return false;
+    if(!m.cutscene&&!m.awaitingLoadout&&!m.failed&&!m.complete&&event.code==='KeyN'){
+      if(!event.repeat)this.session.command({type:'nightVision'});
+      return true;
+    }
     if(m.cutscene&&['Space','Enter'].includes(event.code)&&!event.repeat){this.clearControls();this.session.command({type:'skip'});return true;}
     if(m.failed&&event.code==='Enter'&&!event.repeat){this.clearControls();this.session.command({type:'retry'});return true;}
     return Boolean((m.cutscene||m.awaitingLoadout||m.failed||m.complete)&&event.code!=='Escape');
   }
-  update(state,paused,yaw){
+  update(state,paused){
     if(!state?.campaign)return;
     const m=state.campaign,p=state.players.find(p=>p.id==='local');if(!p)return;this.paused=paused;
     this.root.classList.toggle('campaign-ui-paused',paused);document.body.classList.add('campaign-active');
@@ -130,14 +139,12 @@ export class CampaignPresentation {
     const objectiveHeading=target?((Math.atan2(target.x-p.x,target.z-p.z)*180/Math.PI+360)%360):0,objectiveDirection=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'][Math.round(objectiveHeading/45)%8];
     this.$('.campaign-objective > span').textContent=`${m.stage===6?'ПЕРЕДАЧА · '+Math.ceil(m.radioRemaining)+' с · ':''}КП ${m.checkpoint}/4 · ${m.order==='hold'?'ВЗВОД ДЕРЖИТ ПОЗИЦИЮ':'ВЗВОД СЛЕДУЕТ'}${d?' · '+objectiveDirection+' '+d+' м':''}`;
     this.$('.campaign-optional').textContent=m.stage>=4?`${m.flags.documents?'✓':'◇'} Документы офицера · ${m.flags.courierSaved?'✓':m.flags.courierRevived?'→':'◇'} Связной${m.flags.courierRevived&&!m.flags.courierSaved?' → восточная дорога':''}`:'';
-    const levels=['ТИШИНА','ПОДОЗРЕНИЕ','ПОИСК','ТРЕВОГА'];this.$('.campaign-detection > span').textContent=levels[m.alert];this.$('.campaign-detection meter').value=m.detection;
-    const direction=m.detectingEnemy?Math.atan2(p.x-m.detectingEnemy.x,p.z-m.detectingEnemy.z)-yaw:0;this.$('.campaign-detection b').style.transform=`rotate(${direction}rad)`;this.$('.campaign-detection').classList.toggle('danger',m.alert===3);
     const line=this.locale.lines[m.subtitle?.key];this.$('.campaign-subtitle').classList.toggle('hidden',!line);
     this.$('.campaign-subtitle b').textContent=line?this.locale.speakers[line.speaker]:'';this.$('.campaign-subtitle > span').textContent=line?.text??'';
-    this.$('.campaign-prompt').textContent=m.prompt??(p.downed?'X удерживать · шприц / санитар идёт на помощь':'Z · лечь   V · нож   E · взаимодействие   H · аптечка   Q · приказ');
+    this.$('.campaign-prompt').textContent=m.prompt??(p.downed?'X удерживать · шприц / санитар идёт на помощь':'Z · лечь   V · нож   E · взаимодействие   H · аптечка   Q · приказ   N · ПНВ');
     const progress=Math.max(m.progress,m.reviveProgress);this.$('.campaign-progress').classList.toggle('hidden',progress<=0);this.$('.campaign-progress-fill').style.strokeDashoffset=String(276.46*(1-Math.min(1,progress)));this.$('.campaign-progress > span').textContent=`${Math.round(progress*100)}%`;
     this.$('.campaign-injury').classList.toggle('hidden',!p.downed);this.$('.campaign-injury strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;this.$('.campaign-injury > span').textContent=p.syringes?`X удерживать 4 с · шприцы: ${p.syringes}`:'Шприцов нет · дождись помощи союзника';
-    this.$('.campaign-supplies').textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes}${m.fuze>0?' · ЗАРЯДЫ '+Math.ceil(m.fuze)+' с':''}`;
+    this.$('.campaign-supplies').textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes}${m.nightVision&&!m.cutscene?' · ПНВ ВКЛ':''}${m.fuze>0?' · ЗАРЯДЫ '+Math.ceil(m.fuze)+' с':''}`;
     this.$('.campaign-cutscene').classList.toggle('hidden',!m.cutscene);this.$('.campaign-cutscene > span').textContent=m.cutscene?.id==='briefing'?'02:00 / БРИФИНГ':m.cutscene?.id==='finale'?'05:40 / РАССВЕТ':'АЛЬ-ХАДРА / ЭКСПЕДИЦИОННАЯ БРИГАДА';
     this.$('.campaign-choice').classList.toggle('hidden',!m.awaitingLoadout);
     const ending=this.$('.campaign-ending');ending.classList.toggle('hidden',!m.failed&&!m.complete);
@@ -146,7 +153,12 @@ export class CampaignPresentation {
       this.$('.campaign-final-stats').textContent=`Убийств: ${stats.kills??0}   ·   Время: ${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}   ·   Реанимаций союзников: ${stats.revives??0}`;
     }
     const blocking=Boolean(m.awaitingLoadout||m.failed||m.complete);
-    if(blocking&&!this.blocking){this.clearControls();document.exitPointerLock?.();}this.blocking=blocking;
+    if(blocking&&!this.blocking){
+      this.clearControls();
+      document.exitPointerLock?.();
+      if(m.awaitingLoadout)this.$('[data-primary]').focus();
+    }
+    this.blocking=blocking;
     this.audio.update(state,this.locale,paused||m.awaitingLoadout||m.complete);
   }
   render(r,state,dt){
@@ -168,6 +180,11 @@ export class CampaignPresentation {
     r.sun.intensity=lerp('sunPower');blend('sun',r.sun.color);
     r.hemiLight.intensity=lerp('hemiPower');blend('hemi',r.hemiLight.color);blend('ground',r.hemiLight.groundColor);
     r.ambientLight.intensity=lerp('ambient');r.scene.environmentIntensity=lerp('environment');
+    if(m.nightVision&&!m.cutscene){
+      r.scene.background.setRGB(.025,.115,.045);r.scene.fog.color.copy(r.scene.background);r.scene.fog.density=.0068;
+      r.sun.intensity=.22;r.sun.color.setRGB(.22,.72,.31);r.hemiLight.intensity=1.25;r.hemiLight.color.setRGB(.3,1,.45);
+      r.hemiLight.groundColor.setRGB(.04,.22,.08);r.ambientLight.intensity=.42;r.scene.environmentIntensity=.22;
+    }
     r.sunOffset.set(-90+19*dawn,48+12*dawn,65+14*dawn);
     if(this.lightApplied===undefined||Math.abs(this.lightApplied-dawn)>.015){r.sun.shadow.needsUpdate=true;this.lightApplied=dawn;}
     this.beacon.visible=Math.sin(state.time*5.1)+Math.sin(state.time*11.9)>-.2;

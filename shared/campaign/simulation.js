@@ -1,7 +1,7 @@
 import {Simulation,sanitizeInput} from '../simulation.js';
 import {thinkInfantryBot,ensureBotState} from '../bot-ai.js';
 import {moveBot,prepareNavigation} from '../bot-navigation.js';
-import {getWeapon,DIFFICULTIES} from '../world.js';
+import {getWeapon,DIFFICULTIES,SIDEARMS,WEAPONS} from '../world.js';
 import {aimCrew} from '../vehicle-ai.js';
 import {vehicleBoardingRange} from '../vehicles.js';
 import {ALHADRA,COURIER_SERVICE_ROAD,ROUTES} from './alhadra.js';
@@ -14,6 +14,7 @@ const bearing=(a,b)=>Math.atan2(a.x-b.x,a.z-b.z);
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const eye=p=>({x:p.x,y:p.y+((p.prone||p.downed)? .48:p.input.crouch?1.05:1.65),z:p.z});
 const settings={recruit:{damage:.7,detection:1.4,bleed:35,syringes:3,medkits:4,cap:10,accuracy:.6},regular:{damage:1,detection:1,bleed:25,syringes:2,medkits:3,cap:14,accuracy:1},veteran:{damage:1.3,detection:.8,bleed:18,syringes:1,medkits:2,cap:14,accuracy:1.25}};
+const ALLY_HP=115;
 const roles={mg:['support','mg36'],sniper:['recon','dmr12'],assault:['medic','mcx9'],grenadier:['assault','ar416'],officer:['assault','ar416'],sentry:['assault','ar416'],patrol:['assault','ar416']};
 const allyInfo={duran:['Гари Дюран','assault','ar416'],lasko:['Тео Ласко','medic','mcx9'],bruno:['Бруно Валь','assault','ar416'],kane:['Рядовой Кейн','support','mg36'],courier:['Связной','assault','ar416']};
 const quietLines=new Set(['m01.bruno.patrol','m01.duran.crouch','m01.duran.prone','m01.duran.knife']);
@@ -121,7 +122,7 @@ export class CampaignDirector {
     this.trucks=[{id:'truck-0',x:0,z:24,destroyed:false},{id:'truck-1',x:21,z:24,destroyed:false},{id:'truck-2',x:42,z:24,destroyed:false}];
     this.processedEvent=0;this.interaction=null;this.progress=0;this.checkpoint=0;this.saveRevision=0;this.epoch=0;
     this.lastInput={};this.cutscene=null;this.failed=null;this.complete=false;this.pickups={};this.unitSerial=0;
-    this.revives=0;
+    this.revives=0;this.nightVision=false;
   }
   get time(){return this.sim.time;}
   get player(){return this.sim.players.get('local');}
@@ -152,7 +153,7 @@ export class CampaignDirector {
     evac.campaignRoute={points:COURIER_ESCAPE_ROUTE.map(point=>({...point})),index:0,speed:.63,kind:'courier'};
     evac.campaignEvacuation=true;
   }
-  addAlly(id,x,z){const [name,cls,weapon]=allyInfo[id];const p=this.sim.addPlayer(id,name,0,cls,weapon,'p19',true);Object.assign(p,{campaignRole:id,campaignZone:'wadi',grenades:0,invulnerableUntil:0,home:{x,z}});this.place(p,x,z);return p;}
+  addAlly(id,x,z){const [name,cls,weapon]=allyInfo[id];const p=this.sim.addPlayer(id,name,0,cls,weapon,'p19',true);Object.assign(p,{campaignRole:id,campaignZone:'wadi',grenades:0,invulnerableUntil:0,home:{x,z},hp:ALLY_HP});this.place(p,x,z);return p;}
   place(p,x,z,y){const spot=this.safeSpot(x,z,y);p.x=spot.x;p.z=spot.z;p.y=spot.y;p.tickX=p.x;p.tickZ=p.z;}
   safeSpot(x,z,y){
     for(let n=0;n<100;n++){const r=n===0?0:Math.sqrt(n)*.6,a=n*2.399,px=x+Math.cos(a)*r,pz=z+Math.sin(a)*r,py=y??this.sim.groundAt(px,pz);
@@ -464,9 +465,15 @@ export class CampaignDirector {
   command(command){
     if(command.type==='skip'&&this.cutscene)this.finishCutscene();
     if(command.type==='loadout'&&this.awaitingLoadout){
-      this.awaitingLoadout=false;this.options.loadout=command.loadout==='loud'?'loud':'silent';const p=this.player;p.suppressed=this.options.loadout!=='loud';
-      p.primaryWeaponId=this.options.loadout==='loud'?'ak12':'ar416';p.weaponId=p.primaryWeaponId;p.ammo=30;p.reserve=180;p.grenades=p.suppressed?2:5;this.startCutscene('landing');
+      const primary=Object.hasOwn(WEAPONS,command.primary)&&!WEAPONS[command.primary].sidearm?command.primary:'ar416';
+      const sidearm=SIDEARMS.includes(command.sidearm)?command.sidearm:'p19',main=WEAPONS[primary],secondary=WEAPONS[sidearm];
+      const suppressed=primary==='ar416'||primary==='vk45',p=this.player;
+      this.awaitingLoadout=false;this.options.loadout=suppressed?'silent':'loud';
+      Object.assign(p,{suppressed,primaryWeaponId:primary,sidearmId:sidearm,weaponId:primary,weaponSlot:1,
+        ammo:main.mag,reserve:main.reserve,stowedAmmo:{ammo:secondary.mag,reserve:secondary.reserve},grenades:suppressed?2:5,reloading:false,equipTime:0});
+      this.startCutscene('landing');
     }
+    if(command.type==='nightVision'&&!this.cutscene&&!this.awaitingLoadout&&!this.failed&&!this.complete)this.nightVision=!this.nightVision;
     if(command.type==='retry'&&this.failed)this.restore(this.latestSave??this.initialSave);
   }
   say(key,repeat=false){
@@ -510,7 +517,7 @@ export class CampaignDirector {
           if(target.kind==='charge'){this.chargeSites.find(s=>s.id===target.id).planted=true;this.say(this.chargeSites.every(s=>s.planted)?'m01.duran.chargeTwo':'m01.duran.chargeOne');if(this.chargeSites.every(s=>s.planted))this.fuseUntil=this.time+25;}
           if(target.kind==='documents'){this.flags.documents=true;this.say('m01.duran.documents');}
           if(target.kind==='kit'&&p.medkits<p.medkitCapacity){p.medkits++;this.pickups[target.id]=true;this.say('m01.lasko.medkit');}
-          if(target.kind==='ammo'){p.ammo=getWeapon(p.classId,p.weaponId).mag;p.reserve=180;p.rockets=Math.max(2,p.rockets);p.grenades=Math.max(p.grenades,3);this.pickups[target.id]=true;this.say('m01.duran.ammo');}
+          if(target.kind==='ammo'){const weapon=getWeapon(p.classId,p.weaponId);p.ammo=weapon.mag;p.reserve=weapon.reserve;p.rockets=Math.max(2,p.rockets);p.grenades=Math.max(p.grenades,3);this.pickups[target.id]=true;this.say('m01.duran.ammo');}
           this.progress=0;this.interaction=null;
         }
       }else{this.progress=0;this.cancelReviveBy('local');}
@@ -687,7 +694,7 @@ export class CampaignDirector {
   }
   serialize(){
     const players=[...this.sim.players.values()].map(p=>Object.fromEntries(persistentPlayerKeys.filter(k=>p[k]!==undefined).map(k=>[k,structuredClone(p[k])])));
-    const mission={runtime:this.runtime.state,pending:this.pending,spawned:this.spawned,alerts:this.alerts,spoken:[...this.spoken],light:this.light,order:this.order,route:this.route,chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,revives:this.revives,fuseUntil:this.fuseUntil??null,checkpoint:this.checkpoint,pickups:this.pickups,cutscene:this.cutscene,unitSerial:this.unitSerial??0};
+    const mission={runtime:this.runtime.state,pending:this.pending,spawned:this.spawned,alerts:this.alerts,spoken:[...this.spoken],light:this.light,order:this.order,route:this.route,chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,revives:this.revives,nightVision:this.nightVision,fuseUntil:this.fuseUntil??null,checkpoint:this.checkpoint,pickups:this.pickups,cutscene:this.cutscene,unitSerial:this.unitSerial??0};
     return structuredClone({version:CAMPAIGN_SAVE_VERSION,missionId:'m01',definitionVersion:this.definition.version,difficulty:this.sim.difficulty,loadout:this.options.loadout??'silent',time:this.time,rngState:this.sim.rngState,players,mission,vehicles:this.sim.vehicles.map(v=>({...v,runOverHits:undefined})),grenades:this.sim.grenades,rockets:this.sim.rockets,deployables:this.sim.deployables});
   }
   restore(save){
@@ -731,7 +738,7 @@ export class CampaignDirector {
     // Reconstructing players invokes ordinary spawn sampling. Resume the saved
     // random stream only after reconstruction has finished.
     this.sim.rngState=save.rngState;
-    this.dialogue={queue:[],active:null,remaining:0};this.failed=null;this.complete=false;this.awaitingLoadout=false;this.rawInput={};this.lastInput={};this.interaction=null;this.progress=0;this.senseAt=0;this.lastSenseAt=this.time;this.pendingCheckpoint=null;this.revives??=0;
+    this.dialogue={queue:[],active:null,remaining:0};this.failed=null;this.complete=false;this.awaitingLoadout=false;this.rawInput={};this.lastInput={};this.interaction=null;this.progress=0;this.senseAt=0;this.lastSenseAt=this.time;this.pendingCheckpoint=null;this.revives??=0;this.nightVision=m.nightVision===true;
     this.latestSave=structuredClone(save);this.epoch++;return true;
   }
   presentation(){
@@ -741,7 +748,7 @@ export class CampaignDirector {
     const levels=[0,.035,.14,.29,.46,.62,.79,1];
     const stage=Math.min(7,Math.max(0,s.stage));
     const sunriseTarget=clamp(levels[stage]+Math.min(.075,Math.max(0,this.time-s.stageAt)/120*.075),0,1);
-    return {missionId:'m01',title:this.definition.title,stage:s.stage,sunriseTarget,stats:{kills:p?.kills??0,elapsedSeconds:Math.max(0,Math.floor(this.time)),revives:this.revives},objective:objective?.text??null,objectives:s.objectives,flags:{...this.flags},target:positions[s.activeObjective]??null,alert:this.alertLevel,alerts:this.alerts,detection:this.detection??0,detectingEnemy:this.detectingEnemy,order:this.order,route:this.route,light:this.light,downed:down,
+    return {missionId:'m01',title:this.definition.title,stage:s.stage,sunriseTarget,stats:{kills:p?.kills??0,elapsedSeconds:Math.max(0,Math.floor(this.time)),revives:this.revives},objective:objective?.text??null,objectives:s.objectives,flags:{...this.flags},target:positions[s.activeObjective]??null,alert:this.alertLevel,alerts:this.alerts,detection:this.detection??0,detectingEnemy:this.detectingEnemy,nightVision:this.nightVision,order:this.order,route:this.route,light:this.light,downed:down,
       squadIds:['local',...this.definition.allies],prompt:this.prompt,progress:this.progress,interaction:this.interaction,subtitle:this.dialogue.active,subtitleRemaining:this.dialogue.remaining,cutscene:this.cutscene,awaitingLoadout:this.awaitingLoadout,failed:this.failed,complete:this.complete,checkpoint:this.checkpoint,saveRevision:this.saveRevision,epoch:this.epoch,
       chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,fuze:Math.max(0,(this.fuseUntil??0)-this.time),radioRemaining:s.stage>=6?Math.max(0,90-(this.time-(s.timers.defence??this.time))):90,reviveProgress:p?.reviveProgress??0};
   }
@@ -752,7 +759,7 @@ export function validCampaignSave(save,definition){
   const position=p=>record(p)&&[p.x,p.z].every(Number.isFinite)&&Math.abs(p.x)<=250&&Math.abs(p.z)<=190;
   if(!record(save)||save.version!==CAMPAIGN_SAVE_VERSION||save.missionId!==definition.id||save.definitionVersion!==definition.version||!Object.hasOwn(settings,save.difficulty)||!Number.isFinite(save.time)||save.time<0||save.time>=86400||!Number.isInteger(save.rngState)||save.rngState<0||save.rngState>0xffffffff)return false;
   if(!list(save.players,160)||!save.players.some(p=>p?.id==='local'&&p.team===0)||new Set(save.players.map(p=>p?.id)).size!==save.players.length)return false;
-  if(!save.players.every(p=>position(p)&&typeof p.id==='string'&&[0,1].includes(p.team)&&['assault','medic','support','recon'].includes(p.classId)&&[p.y,p.hp,p.yaw,p.pitch].every(Number.isFinite)&&p.hp>=0&&p.hp<=100&&typeof p.alive==='boolean'&&record(p.stowedAmmo)))return false;
+  if(!save.players.every(p=>position(p)&&typeof p.id==='string'&&[0,1].includes(p.team)&&['assault','medic','support','recon'].includes(p.classId)&&[p.y,p.hp,p.yaw,p.pitch].every(Number.isFinite)&&p.hp>=0&&p.hp<=(p.team===0&&p.id!=='local'?ALLY_HP:100)&&typeof p.alive==='boolean'&&record(p.stowedAmmo)))return false;
   const m=save.mission,r=m?.runtime;
   if(!record(m)||!record(r)||!Number.isInteger(r.stage)||r.stage<0||r.stage>7||!Number.isFinite(r.stageAt)||!record(r.flags)||!record(r.objectives)||!record(r.timers)||!list(r.fired,128)||!r.fired.every(id=>typeof id==='string')||!Object.values(r.timers).every(Number.isFinite))return false;
   if(!list(m.pending,160)||!m.pending.every(u=>position(u)&&typeof u.id==='string'&&typeof u.group==='string'&&Object.hasOwn(definition.zones,u.zone)&&Object.hasOwn({...roles,vehicle:true},u.role))||!record(m.spawned)||!list(m.spoken,512)||!m.spoken.every(k=>typeof k==='string')||!record(m.pickups))return false;

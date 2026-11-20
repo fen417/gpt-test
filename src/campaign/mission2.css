@@ -87,6 +87,7 @@
 .m02-minimap{position:absolute;right:22px;bottom:30px;width:180px;height:180px;border-radius:50%;border:1px solid #d6bd7c66}
 .m02-sniper-mode .m02-dispersion{border-style:solid}
 .m02-sniper-mode .m02-reticle{box-shadow:inset 0 0 110px 32px #0008}
+.hitmarker.ricochet{color:#aaa!important;filter:grayscale(1)}
 @media(max-width:700px){.m02-minimap{width:115px;height:115px;right:8px;bottom:10px}.m02-interact{bottom:145px;font-size:10px}.m02-weapon-panel{max-width:65vw}.m02-hp{font-size:9px}}
 @media(max-width:1000px){
   .m02-company{left:10px;bottom:58px;min-width:150px;padding:10px}

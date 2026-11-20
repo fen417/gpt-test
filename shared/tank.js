@@ -32,6 +32,14 @@ export function tankArmorZone(v,origin){
   return Math.abs(z)/3.5>Math.abs(x)/1.8?(z<0?'front':'rear'):'side';
 }
 export function tankMuzzle(v,out={}){const d=vehicleAimDirection(v,v.aimYaw,v.aimPitch??0,muzzleDirection),length=Math.hypot(d.x,d.y,d.z),yaw=Math.atan2(-d.x,-d.z);return vehiclePartPose(v,-Math.sin(yaw)*.9+d.x/length*TANK_MUZZLE_DISTANCE,gunHeight+d.y/length*TANK_MUZZLE_DISTANCE,-.4-Math.cos(yaw)*.9+d.z/length*TANK_MUZZLE_DISTANCE,out);}
+export function tankMachineGunMuzzle(v,out={}){
+  const d=vehicleAimDirection(v,v.gunAimYaw??v.yaw,v.gunAimPitch??0,muzzleDirection);
+  return vehiclePartPose(v,.45+d.x*1.28,TANK_TURRET_BASE_Y+1.25+d.y*1.28,-.4+d.z*1.28,out);
+}
+export function aimTankMachineGun(vehicle,input){
+  vehicle.gunAimYaw=input?.yaw??vehicle.yaw;
+  vehicle.gunAimPitch=clamp(input?.pitch??0,TANK_MG.minPitch,TANK_MG.maxPitch);
+}
 export function moveTank(sim,v,input,dt){
   const spec=VEHICLE_TYPES.tank,throttle=clamp(input?.forward??0,-1,1);let steer=clamp(input?.strafe??0,-1,1);
   const target=throttle*(throttle>=0?spec.maxSpeed:spec.reverseSpeed);
@@ -50,7 +58,7 @@ export function moveTank(sim,v,input,dt){
   if(grade>(v.controlScheme==='wot'?25*Math.PI/180:spec.maxSlope)||sim.vehicleCollides(v,x,z,yaw)){v.speed=0;return;}
   if(grade>0)v.speed*=Math.max(.96,1-grade*dt);Object.assign(v,{x,y:ground,z,yaw});
 }
-export function advanceTankSystems(sim,v,gunner,dt){
+export function advanceTankSystems(sim,v,gunner,dt,machineGunner=null){
   const oldYaw=v.aimYaw,oldPitch=v.aimPitch;
   v.wantedYaw=gunner?.input.yaw??v.yaw;v.wantedPitch=clamp(gunner?.input.pitch??0,-.15,.35);
   v.aimYaw=angle(v.aimYaw+clamp(angle(v.wantedYaw,v.aimYaw),-.9*dt,.9*dt),0);v.aimPitch+=clamp(v.wantedPitch-v.aimPitch,-.6*dt,.6*dt);
@@ -60,9 +68,11 @@ export function advanceTankSystems(sim,v,gunner,dt){
     if(v.cannonSeq>0&&sim.time>=(v.cannonReadyAt??0)&&v.loadedSeq!==v.cannonSeq){
       v.loadedSeq=v.cannonSeq;if(v.id==='sokol-7')sim.campaign?.say('crew.loaded',1.5,{priority:0});
     }
+    const requested=gunner?.input.weaponSlot===2?1:gunner?.input.weaponSlot===1?0:v.weapon;
+    if(requested!==v.weapon&&sim.time>=v.weaponReadyAt){v.weapon=requested;v.weaponReadyAt=sim.time+.35;}
+  }else{
+    aimTankMachineGun(v,machineGunner?.alive?machineGunner.input:null);
   }
-  const requested=gunner?.input.weaponSlot===2?1:gunner?.input.weaponSlot===1?0:v.weapon;
-  if(requested!==v.weapon&&sim.time>=v.weaponReadyAt){v.weapon=requested;v.weaponReadyAt=sim.time+.35;}
   if(v.controlScheme!=='wot'&&Math.abs(v.speed)<1&&sim.map.spawns.some((p,team)=>team===v.team&&Math.hypot(v.x-p.x,v.z-p.z)<35)&&sim.time>=(v.nextShellSupply??0)){
     v.cannonAmmo=Math.min(24,v.cannonAmmo+1);v.nextShellSupply=sim.time+5;
   }
@@ -70,13 +80,15 @@ export function advanceTankSystems(sim,v,gunner,dt){
 export function fireTank(sim,p,v,dt){
   if(!p.input.fire||sim.time<(v.weaponReadyAt??0))return;
   const campaign=v.controlScheme==='wot'&&v.campaignWeapons;
-  if(v.weapon===1){
+  const machineGun=v.controlScheme!=='wot'&&p.vehicleSeat===1;
+  if(machineGun||v.controlScheme==='wot'&&v.weapon===1){
     if(v.overheated||v.gunCooldown>0)return;
     const gun=campaign?{...TANK_MG,...campaign.mg,projectileSpeed:20000}:TANK_MG;
     v.gunCooldown=Math.max(-dt,v.gunCooldown)+gun.interval;
     v.heat=Math.min(1,v.heat+TANK_MG.heatPerShot);v.overheated=v.heat>=1;v.gunSeq++;
     const random=shotRandom(p.id,v.gunSeq,'tank-mg'),a=random()*Math.PI*2,r=Math.sqrt(random())*gun.spread;
-    sim.launchBullet(p,gun,tankMuzzle(v),v.aimYaw+Math.cos(a)*r,v.aimPitch+Math.sin(a)*r,v);
+    const yaw=machineGun?v.gunAimYaw:v.aimYaw,pitch=machineGun?v.gunAimPitch:v.aimPitch;
+    sim.launchBullet(p,gun,machineGun?tankMachineGunMuzzle(v):tankMuzzle(v),yaw+Math.cos(a)*r,pitch+Math.sin(a)*r,v);
     return;
   }
   const kind=campaign&&v.m02Shell==='he'?'he':'ap';

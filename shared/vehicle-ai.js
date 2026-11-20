@@ -1,7 +1,7 @@
 import { rayVehicleArmor } from './vehicle-combat.js';
 import { TURRET_WEAPON, VEHICLE_TYPES, canFirePassengerWeapon, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, preferredVehicleSeat } from './vehicles.js';
 import { aimBullet } from './ballistics.js';
-import {TANK_CANNON,TANK_MG} from './tank.js';
+import {TANK_CANNON,TANK_MG,tankMachineGunMuzzle,tankMuzzle} from './tank.js';
 import { getWeapon, EYE_HEIGHT } from './world.js';
 
 const routeGraphs = new WeakMap();
@@ -480,10 +480,11 @@ function crewSight(sim,origin,to){
   return !sim.vehicles.some(v=>(v.hp>0||v.wreckTime>0)&&rayVehicleArmor(origin,direction,v,length-.1)<length-.1);
 }
 export function aimCrew(sim,p,vehicle,dt){
-  const seat=getVehicleSeatPose(vehicle,p.vehicleSeat),spec=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
-  const gunner=spec.role==='gunner',tank=gunner&&vehicle.type==='tank',cannon=tank&&vehicle.cannonAmmo>0&&(p.botCrewTarget?.vehicleId||distance(p,p.botCrewTarget??vehicle)>65);
+  const spec=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
+  const tank=vehicle.type==='tank'&&p.vehicleSeat<2,cannon=tank&&p.vehicleSeat===0;
+  const gunner=tank||spec.role==='gunner';
+  const seat=tank?(cannon?tankMuzzle(vehicle):tankMachineGunMuzzle(vehicle)):getVehicleSeatPose(vehicle,p.vehicleSeat);
   const weapon=tank?(cannon?{projectileSpeed:TANK_CANNON.speed}:TANK_MG):gunner?TURRET_WEAPON:getWeapon(p.classId,p.weaponId);
-  if(tank)p.input.weaponSlot=cannon?1:2;
   if(sim.time>=(p.botCrewSenseAt??0)){
     p.botCrewSenseAt=sim.time+.18+(p.botSlot%3)*.01;
     let selected=null,best=sim.botSettings.awareness*(gunner?1.6:1);
@@ -517,7 +518,7 @@ export function aimCrew(sim,p,vehicle,dt){
   p.input.pitch=p.pitch+clamp(wantedPitch-p.pitch,-turn,turn);
   const heatLimit=target&&distance(p,target)<15?.94:.77;
   p.input.fire=Boolean(target)&&sim.time>=(p.botVehicleReactAt??Infinity)&&Math.abs(angleDifference(wantedYaw,p.input.yaw))<.08&&Math.abs(wantedPitch-p.input.pitch)<.08
-    &&(gunner?vehicle.heat<heatLimit:(phase%1.25)<.55)&& (gunner||canFirePassengerWeapon(vehicle,p.vehicleSeat,p.input.yaw,p.input.pitch));
+    &&(cannon?vehicle.cannonAmmo>0:gunner?vehicle.heat<heatLimit:(phase%1.25)<.55)&& (gunner||canFirePassengerWeapon(vehicle,p.vehicleSeat,p.input.yaw,p.input.pitch));
   if(tank&&cannon&&(Math.abs(angleDifference(wantedYaw,vehicle.aimYaw))>.06||Math.abs(wantedPitch-vehicle.aimPitch)>.04))p.input.fire=false;
   if(!gunner){p.input.aim=Boolean(target);p.input.reload=p.ammo===0||p.ammo<5&&!target;}
 }
@@ -594,6 +595,7 @@ export function thinkVehicleBot(sim, p, dt) {
     }
     p.botVehicleSince ??= sim.time;
     if (p.vehicleSeat === 0){
+      if(vehicle.type==='tank')aimCrew(sim,p,vehicle,dt);
       if(p.botDriverVehicleId!==vehicle.id){p.botDriverVehicleId=vehicle.id;p.botDriverWaitUntil=sim.time+BOT_DRIVER_WAIT_SECONDS;}
       if(sim.time<p.botDriverWaitUntil)return true;
       if(sim.map.vehicleRoutes)drive(sim, p, vehicle, dt);

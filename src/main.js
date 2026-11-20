@@ -855,7 +855,6 @@ document.addEventListener('mousemove',event=>{
   const player=local();
   const drivingVehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
   if(vehicleThirdPerson&&player?.vehicleSeat===0&&drivingVehicle?.type==='tank'){
-    if(!aim&&state?.campaign?.missionId!=='m02')return;
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
@@ -870,7 +869,6 @@ document.addEventListener('wheel',event=>{
      isActionHeld('tankZoom')&&event.deltaY){
     event.preventDefault();campaignTankZoom=campaignTankZoom===2.5?5:2.5;return;
   }
-  if(active&&player?.alive&&vehicle?.type==='tank'&&player.vehicleSeat===1&&event.deltaY){event.preventDefault();weaponSlot=weaponSlot===1?2:1;toolSlot=0;return;}
   if(!active||!aim||!local()?.alive||local()?.heldGadget||local()?.weaponId!=='sv98'||
     (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
   event.preventDefault();
@@ -885,7 +883,7 @@ document.addEventListener('keydown',event=>{
   if(active&&mode==='campaign'&&event.code==='Escape'&&!locked&&!unlocked){event.preventDefault();show('pause',$('pause').classList.contains('hidden'));clearControls();return;}
   if(active&&mode==='campaign'&&isBound('squad',event.code)){event.preventDefault();return;}
   if(active&&mode==='campaign'&&['KeyZ','KeyV','KeyH','KeyX'].includes(event.code)&&
-    !(event.code==='KeyX'&&state?.campaign?.missionId==='m04'&&!local()?.downed)){
+    !(event.code==='KeyX'&&['m01','m04'].includes(state?.campaign?.missionId)&&!local()?.downed)){
     if(locked||unlocked&&!unlockedPaused){event.preventDefault();keys.add(event.code);}return;
   }
   if(active&&!event.repeat&&isBound('vehicleCamera',event.code)){const p=local(),v=state?.vehicles.find(v=>v.id===p?.vehicleId);if(v?.type==='tank'&&p.vehicleSeat===0){event.preventDefault();vehicleThirdPerson=!vehicleThirdPerson;save('vehicle-camera',vehicleThirdPerson?'third':'first');return;}}
@@ -959,11 +957,11 @@ function input(){
   const missionBlocked=state?.campaign&&(state.campaign.cutscene||state.campaign.awaitingLoadout||state.campaign.failed||state.campaign.complete);
   const enabled=!!((locked||(unlocked&&!unlockedPaused))&&local()?.alive&&!finished&&!missionBlocked);
   const firing=enabled&&(fire||fireTap);
-  const player=local(),vehicle=state?.vehicles.find(v=>v.id===player?.vehicleId),angles=aimAngles();
+  const angles=aimAngles();
   return {
     forward:enabled?Number(isActionHeld('forward'))-Number(isActionHeld('back')):0,
     strafe:enabled?Number(isActionHeld('right'))-Number(isActionHeld('left')):0,
-    ...angles,yaw:vehicle?.type==='tank'&&player.vehicleSeat===0&&state?.campaign?.missionId!=='m02'?vehicle.yaw:angles.yaw,
+    ...angles,
     sprint:enabled&&isActionHeld('sprint')&&!aim&&!firing,
     crouch:enabled&&isActionHeld('crouch'),
     jump:enabled&&isActionHeld('jump'),
@@ -1406,7 +1404,8 @@ function updateVehicleHud(player){
   const canFire=canFirePassengerWeapon(vehicle,player.vehicleSeat,look.yaw,look.pitch);
   const controls=key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':'');
   const windowHint=seat.role==='passenger'&&!canFire?(vehicle.type==='tank'?'\nСТРЕЛЯЙТЕ НАРУЖУ СО СВОЕГО БОРТА':'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО'):'';
-  text('vehicle-prompt',controls+(seat.role==='driver'?'     '+formatKeyCode(keybinds.horn)+' · СИГНАЛ / ПОЗВАТЬ БОТОВ':'')+(seat.role==='driver'&&vehicle.type==='tank'?'     '+formatKeyCode(keybinds.vehicleCamera)+' · КАМЕРА':'')+windowHint);
+  const tankControls=vehicle.type==='tank'&&player.vehicleSeat<2?'     ПКМ · ПРИЦЕЛ     ЛКМ · ОГОНЬ':'';
+  text('vehicle-prompt',controls+(seat.role==='driver'?'     '+formatKeyCode(keybinds.horn)+' · СИГНАЛ / ПОЗВАТЬ БОТОВ':'')+(seat.role==='driver'&&vehicle.type==='tank'?'     '+formatKeyCode(keybinds.vehicleCamera)+' · КАМЕРА':'')+tankControls+windowHint);
   if(seat.role==='passenger')return {role:seat.role,canFire};
   text('weapon-name',VEHICLE_TYPES[vehicle.type].name.toUpperCase()+' · '+seat.name.toUpperCase());
   const hp=Math.ceil(vehicle.hp/vehicle.maxHp*100);
@@ -1639,14 +1638,10 @@ function frame(now){
   const renderPlayer=renderState?.players.find(p=>p.id===localId);
   const driven=renderPlayer?.vehicleSeat===0?renderState?.vehicles.find(v=>v.id===renderPlayer.vehicleId):null;
   if(vehicleThirdPerson&&driven?.type==='tank'){
-    const freeCampaignTank=state?.campaign?.missionId==='m02';
     if(vehicleLook.id!==driven.id){
-      vehicleLook.id=driven.id;vehicleLook.yaw=freeCampaignTank?driven.yaw:0;vehicleLook.pitch=-.12;
+      vehicleLook.id=driven.id;vehicleLook.yaw=driven.yaw;vehicleLook.pitch=-.12;
     }
-    if(!aim&&!freeCampaignTank){
-      const follow=1-Math.exp(-dt*9);vehicleLook.yaw*=1-follow;vehicleLook.pitch+=(-.12-vehicleLook.pitch)*follow;
-    }
-    yaw=freeCampaignTank?vehicleLook.yaw:driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
+    yaw=vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
   const fgAngles=aimAngles();
@@ -1679,7 +1674,8 @@ function frame(now){
     campaignActors.animate(renderer,renderState,campaignPresentation,paused);
     campaignActors.aim(renderer,renderState,renderPlayer,paused);
   }
-  if(['quarry','alhadra-desert'].includes(renderer.map?.id)&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
+  if(renderPlayer?.vehicleId&&renderState.vehicles.some(v=>v.id===renderPlayer.vehicleId&&v.type==='tank')&&
+     state?.campaign?.missionId!=='m02'&&!tankHudLoading)tankHudLoading=import('./tank-hud.js').then(({TankHud})=>tankHud=new TankHud($('hud'))).catch(error=>console.error('Tank HUD:',error));
   tankHud?.update(active&&state?.campaign?.missionId!=='m02'?renderState:null,renderPlayer,renderer,now,{zoom:aim});
   renderTimes.add(performance.now()-renderBegin);
   const scoped=active&&renderer.scoped;

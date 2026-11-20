@@ -134,6 +134,12 @@ function batchDistantTank(hull,hatch,tracks,turretMesh,barrel,gun){
 }
 function buildLevel(level,material){
   const group=new THREE.Group(),body=new THREE.Group(),turret=new THREE.Group(),gun=new THREE.Group();group.add(body);body.add(turret);turret.position.set(0,TANK_TURRET_BASE_Y,-.4);turret.add(gun);gun.position.set(0,.34,-.9);
+  // The roof gun is mounted to its own ring, rather than to the cannon
+  // turret, so multiplayer gunners can cover a different direction.
+  const machineGun=new THREE.Group(),machineGunBarrel=new THREE.Group();body.add(machineGun);machineGun.position.set(.45,TANK_TURRET_BASE_Y+1.13,-.4);machineGun.add(machineGunBarrel);
+  const machineGunBase=new THREE.Mesh(new THREE.CylinderGeometry(.16,.2,.16,level===2?6:10),material);machineGunBase.position.y=.02;machineGun.add(machineGunBase);
+  const machineGunBody=new THREE.Mesh(new THREE.BoxGeometry(.15,.13,.55),material);machineGunBody.position.set(0,.12,-.26);machineGunBarrel.add(machineGunBody);
+  const machineGunTube=new THREE.Mesh(new THREE.CylinderGeometry(.035,.045,1.05,level===2?6:8),material);machineGunTube.rotation.x=Math.PI/2;machineGunTube.position.set(0,.13,-.75);machineGunBarrel.add(machineGunTube);
   const hull=island(body,material,({box,cylinder,piece})=>{
     piece(slopedHull(),0,0,0,1,1,1);
     if(level<2){
@@ -187,7 +193,7 @@ function buildLevel(level,material){
     for(let i=0;i<count;i++){matrix.makeTranslation(i<count/2?-1.72:1.72,.42,-2.65+i%(count/2)*5.3/(count/2-1));wheels.setMatrixAt(i,matrix);wheels.setColorAt(i,color);}body.add(wheels);}
   if(level===1){const geometry=mergeGeometries([hull.geometry,hatch.geometry],false);hull.geometry.dispose();hatch.geometry.dispose();hull.geometry=geometry;hatch.removeFromParent();}
   const updateBarrel=level===2?batchDistantTank(hull,hatch,tracks,turretMesh,barrel,gun):null;
-  return {group,body,turret,gun,hull,turretMesh,hatch,tracks,wheels,updateBarrel};
+  return {group,body,turret,gun,machineGun,machineGunBarrel,hull,turretMesh,hatch,tracks,wheels,updateBarrel};
 }
 export function createTankRig(materialFactory=null){
   const travel={value:new THREE.Vector2()},group=new THREE.Group();
@@ -235,11 +241,14 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   rig.travel.value.x+=(v.speed+(v.steer??0)*1.8)*dt*.35;rig.travel.value.y+=(v.speed-(v.steer??0)*1.8)*dt*.35;
   const pose=rig.aimPose??={};pose.yaw=group.rotation.y;pose.modelScale=v.modelScale;pose.bodyPitch=rig.body.rotation.x;pose.bodyRoll=rig.body.rotation.z;
   const direction=vehicleAimDirection(pose,v.aimYaw??v.yaw,v.aimPitch??0,modelDirection),delta=Math.atan2(-direction.x,-direction.z),pitch=Math.atan2(direction.y,Math.hypot(direction.x,direction.z));
+  const machineGunDirection=vehicleAimDirection(pose,v.gunAimYaw??v.yaw,v.gunAimPitch??0,modelDirection),machineGunYaw=Math.atan2(-machineGunDirection.x,-machineGunDirection.z),machineGunPitch=Math.atan2(machineGunDirection.y,Math.hypot(machineGunDirection.x,machineGunDirection.z));
   if(reset){rig.cannonSeq=v.cannonSeq;rig.recoil=0;}
   rig.wreckAge=v.hp<=0?(rig.wreckAge??0)+dt:0;
   for(const [index,l] of rig.levels.entries()){
     l.group.visible=index===rig.level;l.body.rotation.copy(rig.body.rotation);
     l.turret.rotation.y=delta;l.gun.rotation.x=pitch;
+    l.machineGun.visible=v.controlScheme!=='wot';
+    l.machineGun.rotation.y=machineGunYaw;l.machineGunBarrel.rotation.x=machineGunPitch;
     l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,TANK_TURRET_BASE_Y+rig.wreckAge*8-rig.wreckAge**2*10):TANK_TURRET_BASE_Y,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
     if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;
     l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleId===v.id&&p.vehicleSeat===0&&!view.vehicleThirdPerson);

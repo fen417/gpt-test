@@ -553,10 +553,10 @@ export class Simulation {
         const passenger=this.players.get(id);
         if(passenger)this.syncVehicleSeat(passenger,vehicle);
       }
-      // Only local campaign tanks can combine steering and gunnery in one seat.
-      // Multiplayer still requires a dedicated gunner.
-      const gunner=vehicle.controlScheme==='wot'
-        ?driver:spec.seats[1].role==='gunner'?this.players.get(vehicle.seats[1]):null;
+      // Campaign tanks combine steering and gunnery in one seat. Multiplayer
+      // gives the driver the cannon and seat two an independent machine gun.
+      const gunner=vehicle.type==='tank'?driver:spec.seats[1].role==='gunner'?this.players.get(vehicle.seats[1]):null;
+      const machineGunner=vehicle.type==='tank'&&vehicle.controlScheme!=='wot'?this.players.get(vehicle.seats[1]):null;
       vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown-dt);
       vehicle.heat=Math.max(0,vehicle.heat-dt*(vehicle.overheated?.28:.26));
       if(vehicle.overheated&&vehicle.heat<=.3)vehicle.overheated=false;
@@ -566,7 +566,7 @@ export class Simulation {
         const sightHold=vehicle.controlScheme==='wot'&&gunner?.input?.turretHold;
         const aimingGunner=sightHold?{...gunner,input:{...gunner.input,
           yaw:vehicle.wantedYaw??vehicle.aimYaw,pitch:vehicle.wantedPitch??vehicle.aimPitch}}:gunner;
-        advanceTankSystems(this,vehicle,aimingGunner?.alive?aimingGunner:null,dt);continue;
+        advanceTankSystems(this,vehicle,aimingGunner?.alive?aimingGunner:null,dt,machineGunner);continue;
       }
       if(gunner?.alive){
         vehicle.aimYaw=gunner.input.yaw;
@@ -1075,8 +1075,11 @@ export class Simulation {
         p.slideTime=0;p.crouching=false;p.crouchHeld=i.crouch;p.wasSprinting=false;
         const vehicle=mounted;
         const seat=VEHICLE_TYPES[vehicle.type].seats[p.vehicleSeat];
-        if(seat.role==='gunner'){
+        if(seat.role==='driver'&&vehicle.type==='tank'&&vehicle.controlScheme!=='wot'){
           p.pitch=vehicle.aimPitch;
+          fireTank(this,p,vehicle,dt);
+        }else if(seat.role==='gunner'){
+          p.pitch=vehicle.type==='tank'?(vehicle.gunAimPitch??0):vehicle.aimPitch;
           if(vehicle.type==='tank')fireTank(this,p,vehicle,dt);else this.shootTurret(p,vehicle,dt);
         }else if(seat.role==='passenger'){
           this.updateReload(p,c,dt);

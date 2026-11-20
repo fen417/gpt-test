@@ -19,14 +19,14 @@ export const SCHEMAS={
     gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v jumpFatigue:s jumpCooldownAt:f32 bloom:s shotReadyAt:f32 lastShotAt:f32`),
   vehicles:specs(`type:r team:u8 x:x y:y z:z yaw:a motionAt:f32 bodyPitch:a bodyRoll:a scaleX:scale scaleY:scale scaleZ:scale
     rotationX:a rotationZ:a hp:u16 maxHp:u16 speed:v steer:signed heat:s overheated:u8 aimYaw:a aimPitch:a
-    gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32 wantedYaw:a wantedPitch:a weapon:u8 weaponReadyAt:f32 cannonAmmo:u8 cannonReadyAt:f32 cannonSeq:u16 burning:u8 gunReadyAt:f32`),
+    gunSeq:u16 glassBroken:u8 seats:refs respawnAt:f32 wreckAt:f32 wantedYaw:a wantedPitch:a gunAimYaw:a gunAimPitch:a weapon:u8 weaponReadyAt:f32 cannonAmmo:u8 cannonReadyAt:f32 cannonSeq:u16 burning:u8 gunReadyAt:f32`),
   deployables:specs('kind:r ownerId:r team:i8 squadId:u8 x:x y:y z:z yaw:a hp:u8 expires:f32'),
   grenades:specs('team:u8 ownerId:r x:f32 y:f32 z:f32 fuseAt:f32 yaw:a'),
   rockets:specs('ownerId:r team:u8 kind:u8 vehicleId:r x:f32 y:f32 z:f32 vx:v vy:v vz:v lifeAt:f32'),
   points:specs('name:r x:x z:z owner:i8 progress:signed contested:u8 spawnBlocked:u8'),
   weaponItems:specs('weaponId:r x:x y:y z:z yaw:a home:u8 ammo:u16 reserve:u16'),
 };
-const COLLECTIONS=Object.keys(SCHEMAS),MOVE=new Set(['x','y','z','yaw','pitch','bodyPitch','bodyRoll','speed','steer','aimYaw','aimPitch','vy','slideVx','slideVz','motionAt']);
+const COLLECTIONS=Object.keys(SCHEMAS),MOVE=new Set(['x','y','z','yaw','pitch','bodyPitch','bodyRoll','speed','steer','aimYaw','aimPitch','gunAimYaw','gunAimPitch','vy','slideVx','slideVz','motionAt']);
 const INDEX=Object.fromEntries(COLLECTIONS.map(kind=>[kind,Object.fromEntries(SCHEMAS[kind].map((field,index)=>[field.key,index]))]));
 const publicPlayers=new WeakMap();
 const equal=(a,b)=>Array.isArray(a)?Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>v===b[i]):a===b;

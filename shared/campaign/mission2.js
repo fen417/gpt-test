@@ -179,7 +179,7 @@ export class Mission2Simulation extends Simulation{
       else if(v.team===1&&wp===route.length-1&&target&&nearest>=180&&target.z<-95)
         goal={x:target.x+(v.m02Index%3-1)*18,z:target.z};
       if(this.time<(v.m02DetourUntil??0))goal=v.m02Detour;
-      else if(attack&&nearest<(v.m02Rear&&wp<2?105:180))goal={x:v.x,z:v.z};
+      else if(attack&&nearest<180&&(!v.m02Rear||wp>=2))goal={x:v.x,z:v.z};
     }
     const desired=bearing(v,goal),delta=angle(desired-v.yaw);
     const companySpeed=v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
@@ -244,7 +244,7 @@ export class Mission2Simulation extends Simulation{
     }
     super.step(dt);
     // A campaign commander handles driving and gunnery together. In normal
-    // multiplayer, only the separate gunner seat calls fireTank().
+    // multiplayer, the shared simulation handles both turret stations.
     for(const v of this.vehicles){
       if(v.hp<=0||v.type!=='tank'||v.controlScheme!=='wot')continue;
       const driver=this.players.get(v.seats[0]);

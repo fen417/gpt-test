@@ -1,50 +1,81 @@
-import * as THREE from 'three';
-import {tankDropAngle,TANK_CANNON,tankMuzzle} from '../shared/tank.js';
-import {getAssetColliders,rayCollider} from '../shared/asset-colliders.js';
+import {TANK_CANNON,tankMachineGunMuzzle,tankMuzzle} from '../shared/tank.js';
 import {campaignTankSight} from '../shared/campaign/tank-controls.js';
+import {tankReloadMarkup} from './tank-reticle.js';
+import './campaign/mission2.css';
 import './tank-hud.css';
-export class TankHud{
-  constructor(root){
-    this.root=root;this.element=document.createElement('div');this.element.className='tank-hud';this.element.hidden=true;
-    this.element.innerHTML=`<div class="tank-optic"><i class="tank-inner"></i><svg class="tank-reticle" viewBox="0 0 600 400"><path d="M150 200H275M325 200H450M300 65V175M300 225V345"/><g class="tank-range-marks"></g></svg><span class="tank-range">— М</span><span class="tank-optic-label">ОПТИЧЕСКИЙ КАНАЛ · ОФ</span><i class="tank-bore"></i></div><aside class="tank-condition"><header>БРОНЯ <strong class="tank-hp"></strong></header><svg viewBox="0 0 130 140"><rect class="tank-track-left" x="18" y="22" width="20" height="98" rx="6"/><rect class="tank-hull" x="42" y="13" width="46" height="112" rx="9"/><rect class="tank-track-right" x="92" y="22" width="20" height="98" rx="6"/><g class="tank-turret"><rect x="52" y="44" width="26" height="48" rx="7"/><path d="M65 44V4"/></g></svg><span class="tank-alert"></span><div class="tank-crew"></div></aside><aside class="tank-weapon"><small>СИСТЕМА ВООРУЖЕНИЯ</small><h3 class="tank-weapon-name"></h3><div class="tank-ammo-row"><strong class="tank-ammo"></strong><span class="tank-ready"></span><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16"/><circle class="tank-reload" cx="20" cy="20" r="16"/></svg></div><div class="tank-heat"><i></i></div><footer>1 ОРУДИЕ · 2 ПУЛЕМЁТ</footer></aside>`;
-    root.append(this.element);this.refs=Object.fromEntries(['range','hp','alert','crew','weapon-name','ammo','ready','reload','bore','optic-label','turret','track-left','track-right','hull'].map(name=>[name,this.element.querySelector('.tank-'+name)]));
-    const hint=document.createElement('div');hint.className='tank-driving-hint';this.element.append(hint);this.refs['driving-hint']=hint;
-    this.origin=new THREE.Vector3();this.direction=new THREE.Vector3();this.point=new THREE.Vector3();this.muzzle={x:0,y:0,z:0};this.last=new Map();
-    const g=this.element.querySelector('.tank-range-marks');for(const range of [100,200,300,400,500]){const line=document.createElementNS('http://www.w3.org/2000/svg','g');line.innerHTML=`<path d="M288 0H312"/><text x="321" y="4">${range}</text>`;g.append(line);}
-  }
-  text(name,value){if(this.last.get(name)!==value){this.refs[name].textContent=value;this.last.set(name,value);}}
-  update(state,player,renderer,now,{zoom=false}={}){
-    const v=player?.alive&&state?.vehicles.find(v=>v.id===player.vehicleId),active=v?.type==='tank';this.element.hidden=!active;this.root.classList.toggle('tank-active',active);this.root.classList.toggle('tank-gunner',active&&(player.vehicleSeat===1||v?.controlScheme==='wot'));if(!active)return;
-    const gunner=player.vehicleSeat===1||v.controlScheme==='wot';
-    this.element.classList.toggle('is-gunner',gunner);this.element.classList.toggle('is-zoom',gunner&&zoom);this.element.classList.toggle('is-mg',v.weapon===1);
 
-    this.refs['driving-hint'].hidden=player.vehicleSeat!==0||v.controlScheme==='wot';
-    this.text('driving-hint','W/S ХОД · A/D ПОВОРОТ · ПКМ ОБЗОР');
-    if(gunner){
-      const muzzle=tankMuzzle(v,this.muzzle),distance=this.range??200;this.point.set(muzzle.x-Math.sin(v.aimYaw)*Math.cos(v.aimPitch)*distance,muzzle.y+Math.sin(v.aimPitch)*distance,muzzle.z-Math.cos(v.aimYaw)*Math.cos(v.aimPitch)*distance).project(renderer.camera);
-      this.refs.bore.style.transform=`translate(${this.point.x*renderer.viewportWidth/2}px,${-this.point.y*renderer.viewportHeight/2}px)`;
+export class TankHud {
+  constructor(root) {
+    this.root=root;
+    this.element=document.createElement('div');
+    this.element.className='tank-hud';
+    this.element.hidden=true;
+    this.element.innerHTML=`
+      <div class="m02-reticle">
+        <span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span>
+        <span class="m02-range" hidden></span>${tankReloadMarkup}
+      </div>
+      <aside class="m02-weapon-panel">
+        <strong class="m02-weapon"></strong><span class="m02-ammo"></span><span class="m02-hp"></span>
+      </aside>`;
+    root.append(this.element);
+    const find=selector=>this.element.querySelector(selector);
+    this.reticle=find('.m02-reticle');
+    this.bore=find('.m02-bore-dot');
+    this.reload=find('.m02-reload');
+    this.reloadStatus=find('.m02-reload-status');
+    this.rangeLabel=find('.m02-range');
+    this.weapon=find('.m02-weapon');
+    this.ammo=find('.m02-ammo');
+    this.hp=find('.m02-hp');
+    this.muzzle={};
+    this.seconds=new Intl.NumberFormat('ru',{minimumFractionDigits:1,maximumFractionDigits:1});
+  }
+
+  update(state,player,renderer,now,{zoom=false}={}) {
+    const tank=player?.alive&&state?.vehicles.find(vehicle=>vehicle.id===player.vehicleId&&vehicle.type==='tank');
+    const crew=Boolean(tank&&player.vehicleSeat<2);
+    this.root.classList.toggle('tank-active',crew);
+    this.root.classList.toggle('tank-gunner',crew);
+    this.element.hidden=!tank;
+    if(!tank)return;
+
+    const machineGun=player.vehicleSeat===1;
+    this.reticle.hidden=!crew;
+    this.element.classList.toggle('m02-sniper-mode',crew&&zoom);
+    this.hp.textContent=`БРОНЯ ${Math.ceil(tank.hp)} / ${tank.maxHp} · ${Math.round(Math.abs(tank.speed)*3.6)} КМ/Ч`;
+    this.weapon.hidden=this.ammo.hidden=!crew;
+    if(!crew)return;
+
+    this.weapon.textContent=machineGun?'ПУЛЕМЁТ':'125 ММ · ОФ';
+    this.ammo.textContent=machineGun
+      ?tank.overheated?'ПУЛЕМЁТ ОСТЫВАЕТ':`НАГРЕВ ${Math.round(tank.heat*100)}%`
+      :`${tank.cannonAmmo} СНАРЯДОВ`;
+
+    const {camera}=renderer;
+    const yaw=machineGun?tank.gunAimYaw??tank.yaw:tank.aimYaw;
+    const pitch=machineGun?tank.gunAimPitch??0:tank.aimPitch;
+    const mouth=machineGun?tankMachineGunMuzzle(tank,this.muzzle):tankMuzzle(tank,this.muzzle);
+    const d=300,forward=d*Math.cos(pitch);
+    const bore=renderer.project(mouth.x-Math.sin(yaw)*forward,mouth.y+Math.sin(pitch)*d,mouth.z-Math.cos(yaw)*forward);
+    this.bore.hidden=!bore.visible;
+    if(bore.visible)this.bore.style.transform=`translate(${bore.x}px,${bore.y}px) translate(-50%,-50%)`;
+
+    this.rangeLabel.hidden=!zoom;
+    if(zoom&&(now>=(this.nextRangeAt??0)||this.rangeVehicle!==tank.id||this.rangeSeat!==player.vehicleSeat)){
+      const {range}=campaignTankSight(renderer.map,state.vehicles,camera.position,camera.rotation.y,camera.rotation.x,tank.id);
+      this.rangeLabel.textContent=`${Math.round(range)} М`;
+      this.nextRangeAt=now+100;
+      this.rangeVehicle=tank.id;
+      this.rangeSeat=player.vehicleSeat;
     }
-    if(now<(this.next??0))return;this.next=now+100;
-    renderer.camera.getWorldPosition(this.origin);renderer.camera.getWorldDirection(this.direction);
-    let range=renderer.map.terrain?.raycast(this.origin,this.direction,800)??800;for(const box of getAssetColliders(renderer.map))range=Math.min(range,rayCollider(this.origin,this.direction,box,range));
-    if(v.controlScheme==='wot')range=campaignTankSight(renderer.map,state.vehicles,this.origin,renderer.camera.rotation.y,renderer.camera.rotation.x,v.id).range;
-    this.range=Number.isFinite(range)?range:800;
-    this.text('range',this.range>=800?'ДАЛЕЕ 800 М':`${Math.round(this.range)} М`);
-    const focal=renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
-    const shellSpeed=v.controlScheme==='wot'?(v.weapon===1?20000:v.campaignWeapons?.[v.m02Shell]?.speed):undefined;
-    for(const [i,node] of [...this.element.querySelector('.tank-range-marks').children].entries())node.setAttribute('transform',`translate(0 ${200+Math.tan(tankDropAngle((i+1)*100,v.weapon,shellSpeed))*focal})`);
-    this.text('hp',`${Math.ceil(v.hp/v.maxHp*100)}%`);
-    const wot=v.controlScheme==='wot',shellLabel=wot&&v.m02Shell==='ap'?'ББ': 'ОФ';
-    this.element.querySelector('.tank-weapon footer').textContent=wot?'ББ / ОФ / ПУЛЕМЁТ · КЛАВИШИ В НАСТРОЙКАХ':'1 ОРУДИЕ · 2 ПУЛЕМЁТ';
-    this.text('weapon-name',v.weapon===1?'СПАРЕННЫЙ ПУЛЕМЁТ':`125 ММ · ${shellLabel}`);
-    this.text('optic-label',v.weapon===1?'ПУЛЕМЁТНЫЙ КАНАЛ':`ОПТИЧЕСКИЙ КАНАЛ · ${shellLabel}`);this.text('ammo',v.weapon===1?'∞':String(v.cannonAmmo));
-    const remaining=Math.max(0,v.cannonReadyAt-state.time),ready=state.time>=v.weaponReadyAt&&(v.weapon===1?!v.overheated:remaining===0&&v.cannonAmmo>0);
-    this.text('ready',ready?'ГОТОВ':state.time<v.weaponReadyAt?'СМЕНА':v.weapon===1?'ОХЛАЖДЕНИЕ':v.cannonAmmo?remaining.toFixed(1)+' С':'НЕТ СНАРЯДОВ');
-    this.refs.reload.style.strokeDashoffset=String(101*Math.min(1,
-      remaining/(v.controlScheme==='wot'?v.campaignWeapons?.ap.reload??4:TANK_CANNON.reload)));this.element.querySelector('.tank-heat i').style.transform=`scaleX(${v.heat})`;
-    this.text('alert',state.players.some(p=>p.gadgetAction==='repair'&&p.gadgetTargetId===v.id)?'ИНЖЕНЕР · ИДЁТ РЕМОНТ':v.burning?'ПОЖАР · НУЖЕН РЕМОНТ':'');
-    const damage=100-v.hp/v.maxHp*100;for(const key of ['track-left','track-right','hull'])this.refs[key].style.fill=damage>=80?'#e07456':damage>=40?'#d4b06a':'#b7cf99';
-    this.refs.turret.setAttribute('transform',`rotate(${-(v.aimYaw-v.yaw)*180/Math.PI} 65 68)`);
-    const crew=v.seats.map((id,i)=>`${i+1} · ${id?state.players.find(p=>p.id===id)?.name??'Боец':'Свободно'}`).join('\n');this.text('crew',v.controlScheme==='wot'?`КОМАНДИР: ${state.players.find(p=>p.id===v.seats[0])?.name??'Сокол'} · ЭКИПАЖ ВНУТРИ`:crew);
+
+    this.reload.hidden=machineGun;
+    if(machineGun)return;
+    const remaining=Math.max(0,tank.cannonReadyAt-state.time);
+    const ready=tank.cannonAmmo>0&&remaining===0;
+    this.reload.classList.toggle('ready',ready);
+    this.reload.style.setProperty('--reload-progress',tank.cannonAmmo>0?Math.max(0,1-remaining/TANK_CANNON.reload):0);
+    this.reloadStatus.textContent=ready?'ГОТОВ':tank.cannonAmmo===0?'НЕТ СНАРЯДОВ':`${this.seconds.format(Math.max(.1,remaining))} с`;
   }
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {TANK_CANNON,tankMuzzle,tankDropAngle} from '../../shared/tank.js';
+import {tankReloadMarkup} from '../tank-reticle.js';
 import {CampaignAudio} from './audio.js';
 import {TankMusic} from './tank-music.js';
 import {M02_BINDINGS,campaignTankSight} from '../../shared/campaign/tank-controls.js';
@@ -34,13 +35,7 @@ export class Mission2Presentation {
     <div class="m02-reticle">
       <span class="m02-aimdot">+</span><span class="m02-bore-dot">◇</span><i class="m02-dispersion"></i>
       <span class="m02-lead" hidden>⊕</span><span class="m02-range" hidden></span><span class="m02-callsign" hidden></span>
-      <div class="m02-reload" hidden>
-        <svg viewBox="0 0 66 66" aria-hidden="true">
-          <path class="m02-reload-track" d="M17 59 A30.53 30.53 0 0 1 17 7"/>
-          <path class="m02-reload-fill" d="M17 59 A30.53 30.53 0 0 1 17 7" pathLength="1"/>
-        </svg>
-        <span class="m02-reload-status"></span>
-      </div>
+      ${tankReloadMarkup}
     </div>
     <aside class="m02-weapon-panel"><strong class="m02-weapon"></strong><span class="m02-ammo"></span><span class="m02-hp"></span></aside>
     <aside class="m02-radio"><small>ЧАСТОТА «МАЯК»</small><b class="m02-radio-speaker"></b><span class="m02-radio-text"></span></aside>
