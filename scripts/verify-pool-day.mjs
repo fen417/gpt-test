@@ -32,7 +32,7 @@ try{
         });
         return model.userData.procedural&&geometry&&model.parent===r.worldRoot;
       });
-  },null,null,{timeout:30000});
+  },null,{timeout:30000});
   const floorGuns=await page.evaluate(()=>{
     const {renderer:r,snapshot}=window.__S09_POOL_REVIEW;
     const entities=[...r.poolWeaponModels.values()];
