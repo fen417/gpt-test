@@ -116,8 +116,12 @@ export class WebGpuFrameGeneration {
     if(!this.enabled)return;
     this.currentIndex=this.writeIndex;
     this.colorReady=Math.min(2,this.colorReady+1);
-    this.renderer.setRenderTarget(null);
-    this.renderer.render(this.blit[this.currentIndex].scene,this.camera);
+    const oldToneMapping=this.renderer.toneMapping;
+    this.renderer.toneMapping=THREE.NoToneMapping;
+    try {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.blit[this.currentIndex].scene,this.camera);
+    } finally {this.renderer.toneMapping=oldToneMapping;}
   }
   generate(now,meta=null){
     if(!this.enabled||this.colorReady<2)return false;
@@ -137,8 +141,12 @@ export class WebGpuFrameGeneration {
         dpitch/divisor-this.lastCameraMotion.y*alpha
       );
     }
-    this.renderer.setRenderTarget(null);
-    this.renderer.render(this.synthetic[this.currentIndex].scene,this.camera);
+    const oldToneMapping=this.renderer.toneMapping;
+    this.renderer.toneMapping=THREE.NoToneMapping;
+    try {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.synthetic[this.currentIndex].scene,this.camera);
+    } finally {this.renderer.toneMapping=oldToneMapping;}
     this.policy.noteGenerated(now);
     return true;
   }
