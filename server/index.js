@@ -70,7 +70,7 @@ export function createGameServer(options={}){
   function settings(data){
     if(Object.hasOwn(MAPS,data.mapId))room.mapId=data.mapId;
     if(['conquest','tdm'].includes(data.gameMode))room.mode=data.gameMode;
-    if(room.mapId==='fy_pool_day')room.mode='tdm';
+    if(getMap(room.mapId).tdmLoadout)room.mode='tdm';
     else if(room.mode==='tdm')room.mode='conquest';
     if(data.killLimit!==undefined)room.killLimit=Math.floor(bounded(data.killLimit,10,500,50));
     if(Object.hasOwn(DIFFICULTIES,data.difficulty))room.difficulty=data.difficulty;
