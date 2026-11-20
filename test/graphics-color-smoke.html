@@ -61,11 +61,14 @@ window.runColorSmoke=async(api='webgl2',fsr='off')=>{
         }
       }finally{loader.dispose();}
     }
+    // Restore a uniform reference frame after the texture upload validation,
+    // so luminance comparisons measure the color pipeline, not artwork.
+    post.begin('low');renderer.render(scene,camera);post.end(0,'low');
     await device?.queue?.onSubmittedWorkDone();
     return {ok:true,api,fsr,backend:renderer.backend?.constructor?.name??'WebGL2',textures};
   }finally{
-    post.dispose();plane.geometry.dispose();material.dispose();
-    renderer.dispose();device?.destroy();
+    // Keep the canvas alive for the test runner's screenshot. The test closes
+    // its isolated browser context immediately after capturing the pixels.
   }
 };
 </script></body></html>
