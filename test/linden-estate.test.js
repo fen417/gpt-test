@@ -17,7 +17,7 @@ test('Linden Estate GLB is committed with a valid binary glTF header',()=>{
 
 test('new TDM arena retains standard class loadouts, no conquest objects or weapon pickups',()=>{
   const map=getMap('linden_estate');
-  assert.equal(PROTOCOL_VERSION,30);
+  assert.equal(PROTOCOL_VERSION,31);
   assert.equal(map.id,'linden_estate');
   assert.equal(map.tdmLoadout,'class');
   assert.equal(map.theme,'linden-estate');
