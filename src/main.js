@@ -73,7 +73,7 @@ function flushDamage(now){
   for(const [target,item] of pendingDamage)if(now>=item.until){showScore(item,now);pendingDamage.delete(target);}
 }
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
-let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality',fsrSharpness:40},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
+let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality',fsrSharpness:40,frameGeneration:'off'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -780,6 +780,15 @@ function syncFsrSettings(){
   $('gfx-resolution').disabled=enabled; // FSR owns the internal render scale.
 }
 syncFsrSettings();
+const fgSelector=$('gfx-frame-generation');
+fgSelector.value=read('gfx-frame-generation','off');
+if(!['off','auto','1.5','2'].includes(fgSelector.value))fgSelector.value='off';
+gfx.frameGeneration=fgSelector.value;
+fgSelector.addEventListener('change',event=>{
+  gfx.frameGeneration=event.target.value;
+  save('gfx-frame-generation',gfx.frameGeneration);
+  if(renderer?.api!=='webgpu')toast('Для генерации кадров выбери WebGPU.');
+});
 const apiSelector=$('gfx-api');
 apiSelector.value=preferredGraphicsApi();
 apiSelector.addEventListener('change',()=>{
@@ -1648,14 +1657,33 @@ function frame(now){
     yaw=freeCampaignTank?vehicleLook.yaw:driven.yaw+vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
-   if(renderDue){lastWorldFrame=now;try{renderer.render(renderState,localId,dt,{mapId:inLobby?state?.mapId:$('map-select').value,...aimAngles(),campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
-    networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});}catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}}
+  const fgAngles=aimAngles();
+  const fgMeta={playerId:renderPlayer?.id??null,alive:Boolean(renderPlayer?.alive),
+    mapId:renderState?.mapId??null,weaponId:renderPlayer?.weaponId??null,
+    vehicleId:renderPlayer?.vehicleId??null,seat:renderPlayer?.vehicleSeat??null,
+    scoped:Boolean(renderer.scoped),aim,thirdPerson:vehicleThirdPerson,
+    yaw:fgAngles.yaw,pitch:fgAngles.pitch,
+    x:renderPlayer?.x,y:renderPlayer?.y,z:renderPlayer?.z};
+  let generated=false;
+  if(renderDue&&active&&!paused&&renderer.shouldGenerateFrame(now,fgMeta)){
+    generated=renderer.presentGeneratedFrame(now);
+  }
+  if(renderDue&&!generated){
+    const renderDelta=lastWorldFrame>0?Math.min(.08,Math.max(0,(now-lastWorldFrame)/1000)):dt;
+    lastWorldFrame=now;
+    try{
+      const realBegin=performance.now();
+      renderer.render(renderState,localId,renderDelta,{mapId:inLobby?state?.mapId:$('map-select').value,...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
+        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+      if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
+    }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
+  }
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);
     showCampaignOutcome(campaignPresentation.root,state);
     campaignActors??=new CampaignActors();
   }
-  if(campaignActors&&renderDue){
+  if(campaignActors&&renderDue&&!generated){
     campaignActors.animate(renderer,renderState,campaignPresentation,paused);
     campaignActors.aim(renderer,renderState,renderPlayer,paused);
   }
@@ -1696,19 +1724,23 @@ try{
     webgpuAttempted=true;
     const [
       {WebGpuPostPass},{makeWebGpuSky},
-      {WebGpuGroundShadows},{createWebGpuSmokeMaterial},{WebGpuTimer}
+      {WebGpuGroundShadows},{createWebGpuSmokeMaterial},{WebGpuTimer},{WebGpuFrameGeneration}
     ]=await Promise.all([
       import('./webgpu-post-pass.js'),import('./webgpu-sky.js'),
-      import('./webgpu-ground-shadows.js'),import('./webgpu-smoke.js'),import('./webgpu-timer.js')
+      import('./webgpu-ground-shadows.js'),import('./webgpu-smoke.js'),import('./webgpu-timer.js'),
+      import('./webgpu-frame-generation.js')
     ]);
     const instance=await createWebGpuRenderer(canvas,{
       antialias:read('gfx-aa','auto'),
       onDeviceLost:recoverWebGpu,
     });
     gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,
-      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer};
+      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer,
+      FrameGeneration:WebGpuFrameGeneration};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
+  fgSelector.disabled=renderer.api!=='webgpu';
+  fgSelector.title=renderer.api!=='webgpu'?'Для Frame Generation нужен аппаратный WebGPU':'';
   if(gpuOptions){
     // Reject incompatible shader pipelines before showing a black game canvas.
     const r=renderer.renderer,p=renderer.postPass;
