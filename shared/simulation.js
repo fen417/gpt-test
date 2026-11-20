@@ -944,6 +944,11 @@ export class Simulation {
       let followsGround=p.grounded&&p.y<=this.groundAt(p.x,p.z)+.025;
       const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
       let walkX=followsGround?this.groundAt(p.x+stepX,p.z):p.y;
+      // At the top of an estate ramp, do not snap 3 m down to the
+      // ground-floor terrain as soon as the player steps onto a gallery.
+      // Keep the elevated Y and let the existing floor-support query land on
+      // the real second-floor slab instead.
+      if(this.map.theme==='linden-estate'&&followsGround&&walkX<p.y-.42){walkX=p.y;followsGround=false;}
       const groundX=walkX;
       if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,this.playerRadius,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX,bodyHeight);
       if(!this.collides(p.x+stepX,p.z,walkX,this.playerRadius,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x+stepX,p.z,walkX))){
@@ -951,6 +956,7 @@ export class Simulation {
         if(walkX>groundX+.0001){p.y=walkX;followsGround=false;}
       }
       let walkZ=followsGround?this.groundAt(p.x,p.z+stepZ):p.y;
+      if(this.map.theme==='linden-estate'&&followsGround&&walkZ<p.y-.42){walkZ=p.y;followsGround=false;}
       const groundZ=walkZ;
       if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,this.playerRadius,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ,bodyHeight);
       if(!this.collides(p.x,p.z+stepZ,walkZ,this.playerRadius,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x,p.z+stepZ,walkZ))){
