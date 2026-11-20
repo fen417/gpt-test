@@ -73,7 +73,7 @@ function flushDamage(now){
   for(const [target,item] of pendingDamage)if(now>=item.until){showScore(item,now);pendingDamage.delete(target);}
 }
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
-let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
+let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality',fsrSharpness:40},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -761,9 +761,22 @@ for(const [id,key,fallback] of [['gfx-fsr','fsr','off'],['gfx-fsr-quality','fsrQ
     gfx[key]=event.target.value;save(id,gfx[key]);syncFsrSettings();
   });
 }
+const fsrSharpnessControl=$('gfx-fsr-sharpness');
+const savedFsrSharpness=Number(read('gfx-fsr-sharpness','40'));
+gfx.fsrSharpness=Number.isFinite(savedFsrSharpness)?Math.max(0,Math.min(100,savedFsrSharpness)):40;
+fsrSharpnessControl.value=String(gfx.fsrSharpness);
+const fsrSharpnessOutput=$('gfx-fsr-sharpness-value');
+function updateFsrSharpness(){
+  gfx.fsrSharpness=Number(fsrSharpnessControl.value);
+  fsrSharpnessOutput.textContent=gfx.fsrSharpness+'%';
+  save('gfx-fsr-sharpness',gfx.fsrSharpness);
+}
+fsrSharpnessControl.addEventListener('input',updateFsrSharpness);
+fsrSharpnessOutput.textContent=gfx.fsrSharpness+'%';
 function syncFsrSettings(){
   const enabled=gfx.fsr==='on';
   $('gfx-fsr-quality').disabled=!enabled;
+  fsrSharpnessControl.disabled=!enabled;
   $('gfx-resolution').disabled=enabled; // FSR owns the internal render scale.
 }
 syncFsrSettings();
