@@ -277,8 +277,12 @@ export class Simulation {
       const owner=this.players.get(beacon.ownerId);
       if(owner&&owner.id!==p.id&&owner.team===p.team)this.awardScore(owner,25,'ВЫСАДКА НА МАЯК',{kind:'beaconSpawn',allyId:p.id});
     }
+    if(this.gameMode==='tdm'&&this.map.tdmLoadout==='class'){
+      // Estate TDM has class kits and tactical gadgets, but no grenades.
+      p.grenades=0;
+    }
     if(this.gameMode==='tdm'&&this.map.tdmLoadout==='pickup'){
-      Object.assign(p,{weaponId:'',primaryWeaponId:'',sidearmId:'',weaponSlot:0,
+      Object.assign(p,{weaponId:'primaryWeaponId:'',sidearmId:'',weaponSlot:0,
         ammo:0,reserve:0,stowedAmmo:{ammo:0,reserve:0},grenades:0,rockets:0,heldGadget:null});
       p.tdmSpawn=null;
     }
@@ -1041,7 +1045,7 @@ export class Simulation {
       this.updateVehicles(dt);
     }
     for(const p of this.players.values()){
-      if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if((p.bot||this.gameMode==='tdm')&&p.respawnIn===0&&!this.campaign)this.respawn(p.id);continue;}
+      if(!p.alive){p.respawnIn=Math.max(0,p.respawnIn-dt);if((p.bot||(this.gameMode==='tdm'&&this.map.tdmLoadout==='pickup'))&&p.respawnIn===0&&!this.campaign)this.respawn(p.id);continue;}
       if(p.bot&&!this.vehicles.length)this.thinkBot(p,dt);
       const i=p.input;p.yaw=i.yaw;p.pitch=i.pitch;
       p.equipTime=Math.max(0,p.equipTime-dt);
