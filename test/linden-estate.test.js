@@ -54,12 +54,19 @@ test('authority grants normal class kit and cannot spawn/drop floor guns on Lind
   assert.ok(a.ammo>0&&a.reserve>0);
   assert.equal(b.weaponId,'sv98');
   assert.equal(b.sidearmId,'p19');
-  assert.equal(a.grenades,2);
+  assert.equal(a.grenades,0, 'All deathmatch maps keep grenades disabled');
   assert.equal(dropWeapon(sim,a),false,'G must not spawn weapons on class-TDM map');
   assert.equal(sim.weaponItems.length,0);
   assert.equal(weaponTarget(sim,a),null);
   sim.step(1/60);
   assert.equal(sim.weaponItems.length,0);
+  a.alive=false;a.respawnIn=0;
+  sim.step(1/60);
+  assert.equal(a.alive,false,'Class TDM requires player deployment to pick a new class');
+  assert.equal(sim.respawn(a.id,'medic','', 'mcx9', 'p19'),true);
+  assert.equal(a.alive,true);
+  assert.equal(a.classId,'medic');
+  assert.equal(a.weaponId,'mcx9');
 });
 
 test('older Laguna arena keeps empty inventory and floor-gun rules',()=>{
