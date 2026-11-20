@@ -27,6 +27,8 @@ jobs:
         run: node --test test/linden-estate.test.js
       - name: Linden Estate door, stairs and diagonal spawn tests
         run: node --test test/linden-estate-playability.test.js
+      - name: Linden Estate multiplayer TDM lobby test
+        run: node --test test/linden-estate-lobby.test.js
       - name: Graphics API and tank atlas regression tests
         run: node --test test/graphics-api.test.js
       - name: Frame generation scheduling tests
