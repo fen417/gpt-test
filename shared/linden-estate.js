@@ -180,7 +180,7 @@ export const LINDEN_ESTATE_MAP={
   districts:[{id:'manor',name:'Особняк',x:0,z:0},{id:'garden',name:'Сад',x:0,z:18}],
   points:[],vehicleSpawns:[],weaponSpawns:[],
   spawnPoints,spawns:[spawnPoints[0][0],spawnPoints[1][0]],
-  playerRadius:.30,navigationCell:.65,navigationSize:64,stepHeight:.42,
+  playerRadius:.30,navigationCell:.55,navigationClearance:.45,navigationSize:64,stepHeight:.42,
   // The neutral daytime palette needs less direct orange sunlight and more
   // neutral bounced light indoors, especially with roof shadows enabled.
   fogColor:0xa9bdc4,fogDensity:.0018,sunColor:0xfff4e4,
