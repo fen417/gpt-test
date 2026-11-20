@@ -121,7 +121,7 @@ vec3 source(ivec2 p) {
 }
 void main() {
   ivec2 p=ivec2(gl_FragCoord.xy);
-  if(sharpness<=0.0){outColor=vec4(source(p),1.0);return;}
+  if(sharpness<=0.0){outColor=linearToOutputTexel(vec4(source(p),1.0));return;}
   vec3 b=source(p+ivec2( 0,-1));
   vec3 d=source(p+ivec2(-1, 0));
   vec3 e=source(p);
