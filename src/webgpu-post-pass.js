@@ -9,7 +9,11 @@ import { easuNode, rcasNode } from './webgpu-fsr1.js';
 const fullScreenGeometry=()=>{
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));
-  g.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,2,0,0,2],2));
+  // WebGPU render-target textures use a top-left origin. The GLSL fullscreen
+  // triangle's bottom-left UVs vertically mirror both the world and FPV
+  // weapon when sampled by TSL. Match Three.js WebGPU QuadMesh's default
+  // orientation (top-left = 0,0; bottom-left = 0,1) for every post/FSR stage.
+  g.setAttribute('uv',new THREE.Float32BufferAttribute([0,1,2,1,0,-1],2));
   return g;
 };
 const stage=(geometry,fragmentNode)=>{
