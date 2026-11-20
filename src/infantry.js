@@ -673,7 +673,9 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   const action = !prone && rig.actionAge < .90 ? rig.action : null;
   const actionWeight = action ? smoothstep(rig.actionAge, 0, .10) * (1 - smoothstep(rig.actionAge, .69, .9)) : 0;
   const hit = !prone && rig.hitAge < .28 ? .55 * (1 - rig.hitAge / .28) : 0;
-  const shoot = !prone && rig.shotAge < .18 ? .47 * (1 - rig.shotAge / .18) : 0;
+  // Bots keep their aiming pose through a burst. Weapon recoil and hand IK
+  // still animate each shot without restarting the captured neck motion.
+  const shoot = !player.bot && !prone && rig.shotAge < .18 ? .47 * (1 - rig.shotAge / .18) : 0;
   const overlay = Math.max(actionWeight, reloadWeight, hit, shoot);
   rig.upperWeights ??= new Map();
   if (!rig.upperWeights.has(upper)) rig.upperWeights.set(upper, rig.upperWeights.size ? 0 : 1);
