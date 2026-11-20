@@ -676,7 +676,7 @@ for(const map of Object.values(MAPS))$('room-map').add(new Option(map.name,map.i
 $('room-map').value=$('map-select').value;
 configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
 function syncRoomMode(){
-  const pool=$('room-map').value==='fy_pool_day';
+  const pool=Boolean(getMap($('room-map').value).tdmLoadout);
   $('room-mode').value=pool?'tdm':'conquest';
   $('room-mode').disabled=!pool;
   $('room-kill-limit').disabled=!pool;
@@ -1126,11 +1126,11 @@ function initializeMapPickers(){
     const map=getMap($('map-select').value);
     text('menu-map-name',map.name.toUpperCase());
     text('menu-map-points',String(map.points.length).padStart(2,'0'));
-    text('menu-map-info',map.size+' × '+map.size+' м · '+map.points.length+' позиций'+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
+    text('menu-map-info',map.size+' × '+map.size+' м · '+(map.tdmLoadout?'Командный бой':map.points.length+' позиций')+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
     save('map',map.id);
   };
   const syncSoloMode=()=>{
-    const pool=$('map-select').value==='fy_pool_day';
+    const pool=Boolean(getMap($('map-select').value).tdmLoadout);
     $('solo-mode').value=pool?'tdm':'conquest';
     $('solo-mode').disabled=!pool;
     $('solo-kill-limit').disabled=!pool;
