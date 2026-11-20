@@ -126,7 +126,7 @@ export class Simulation {
   constructor({ bots=23, difficulty='regular', mapId, gameMode='conquest', killLimit=50, weaponRespawnSeconds=15, random=Math.random, debugBots=false, lagCompensation=false }={}) {
     this.debugBots=debugBots;this.poseHistory=lagCompensation?new PoseHistory():null;
     this.map=getMap(mapId);
-    this.gameMode=gameMode==='tdm'&&this.map.id==='fy_pool_day'?'tdm':'conquest';
+    this.gameMode=gameMode==='tdm'&&this.map.tdmLoadout?'tdm':'conquest';
     this.killLimit=clamp(Math.floor(finite(killLimit,50)),10,500);
     this.weaponRespawnSeconds=clamp(finite(weaponRespawnSeconds,15),3,120);
     this.navigationHouses = this.map.theme === 'desert-village'
@@ -161,6 +161,7 @@ export class Simulation {
         this.blocked[iz*this.gridSize+ix]=1;
     }
     for(const box of this.colliders){
+      if(box.kind==='village-stair'&&this.map.id==='linden_estate')continue;
       if(box.overhead&&!box.obb&&!box.parts&&box.kind!=='village-stair')continue;
       const minX=Math.max(0,Math.floor(gridIndex(box.minX-clearance))+1);
       const maxX=Math.min(this.gridSize,Math.ceil(gridIndex(box.maxX+clearance)));
@@ -276,7 +277,7 @@ export class Simulation {
       const owner=this.players.get(beacon.ownerId);
       if(owner&&owner.id!==p.id&&owner.team===p.team)this.awardScore(owner,25,'ВЫСАДКА НА МАЯК',{kind:'beaconSpawn',allyId:p.id});
     }
-    if(this.gameMode==='tdm'){
+    if(this.gameMode==='tdm'&&this.map.tdmLoadout==='pickup'){
       Object.assign(p,{weaponId:'',primaryWeaponId:'',sidearmId:'',weaponSlot:0,
         ammo:0,reserve:0,stowedAmmo:{ammo:0,reserve:0},grenades:0,rockets:0,heldGadget:null});
       p.tdmSpawn=null;
@@ -1029,7 +1030,7 @@ export class Simulation {
     // Spread route planning across ticks when many bots spawn together.
     this.botPathBudget=this.pathRequestsPerTick??2;
     beginNavigationTick(this);
-    if(this.gameMode!=='tdm')updateEquipment(this,dt);
+    if(this.gameMode!=='tdm'||this.map.tdmLoadout==='class')updateEquipment(this,dt);
     updateBotTeams(this);
     if(this.vehicles.length){
       for(const p of this.players.values()){
@@ -1055,7 +1056,7 @@ export class Simulation {
         const usedSupply=!p.bot&&isSupplyGadget(tool)&&gadgetCooldown(p,tool)>0;
         this.equipWeapon(p,usedSupply?1:i.weaponSlot||(backup?3-p.weaponSlot:0));
       }
-      if(this.gameMode!=='tdm'&&!p.bot)selectGadget(this,p,i.toolSlot);
+      if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&!p.bot)selectGadget(this,p,i.toolSlot);
       const c=getWeapon(p.classId,p.weaponId);
       const {pressed,firing}=advanceFireClock(p,c,i,dt,this.time);
       p.gadgetTime=Math.max(0,p.gadgetTime-dt);p.grenadeCooldown=Math.max(0,(p.grenadeCooldown||0)-dt);
@@ -1079,13 +1080,13 @@ export class Simulation {
         p.networkFrames=null;
       }else if(!p.networkControlled||p.networkIdle)this.movePlayer(p,i,dt);
       this.firePersonalWeapon(p,c,pressed,firing);
-      if(this.gameMode!=='tdm'&&p.heldGadget&&i.fire&&!i.sprint&&(pressed||p.heldGadget==='repair')){
+      if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.heldGadget&&i.fire&&!i.sprint&&(pressed||p.heldGadget==='repair')){
         activateGadget(this,p,p.heldGadget==='launcher'||p.heldGadget==='medkit');
       }
-      if(this.gameMode!=='tdm'&&p.bot&&i.gadget&&(!p.gadgetHeld||p.classId==='support'))this.gadget(p);
-      if(this.gameMode!=='tdm'&&p.bot&&i.secondaryGadget&&!p.secondaryGadgetHeld)activateGadget(this,p,true);
+      if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.bot&&i.gadget&&(!p.gadgetHeld||p.classId==='support'))this.gadget(p);
+      if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.bot&&i.secondaryGadget&&!p.secondaryGadgetHeld)activateGadget(this,p,true);
       p.gadgetHeld=i.gadget;p.secondaryGadgetHeld=i.secondaryGadget;
-      if(this.gameMode==='tdm'){
+      if(this.gameMode==='tdm'&&this.map.tdmLoadout==='pickup'){
         if(i.drop&&!p.dropHeld)dropWeapon(this,p);
         p.dropHeld=i.drop;
       }else if(i.grenade&&!p.grenadeHeld&&!(p.gadgetActionUntil>this.time))this.throwGrenade(p);
