@@ -1408,6 +1408,12 @@ export class GameRenderer {
         model.traverse(object=>{if(object.material)object.material=this.getQualityMaterial(object.material);});
         this.remoteTools.set(player.id,model);
       }
+      if(kind==='launcher'){
+        if(model.parent!==soldier.rifle)soldier.rifle.add(model);
+        model.position.fromArray(LAUNCHER_POSE.remoteModel);
+        soldier.weaponModel.visible=soldier.distantWeapon.visible=soldier.flash.visible=false;
+        continue;
+      }
       if(model.parent!==soldier.group)soldier.group.add(model);
       model.position.set(.10,(player.crouch?.86:1.22)-(kind==='medkit'?.08:0),-.30);
       model.rotation.set(player.pitch??0,0,0);

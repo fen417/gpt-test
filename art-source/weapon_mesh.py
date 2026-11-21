@@ -33,7 +33,7 @@ def sight_ring(mesh, y, z, inner, outer, depth, color):
     mesh.add(vertices, faces, color)
 
 
-def surface_mark(mesh, text, x, y, z, step, color):
+def surface_mark(mesh, text, x, y, z, step, color, fill=.40):
     glyphs = {
         'A': ('010','101','111','101','101'), 'K': ('101','101','110','101','101'),
         'C': ('011','100','100','100','011'), 'V': ('101','101','101','101','010'),
@@ -41,6 +41,7 @@ def surface_mark(mesh, text, x, y, z, step, color):
         'D': ('110','101','101','101','110'), 'S': ('011','100','010','001','110'),
         'X': ('101','101','010','101','101'),
         'M': ('101','111','111','101','101'), 'R': ('110','101','110','101','101'),
+        'T': ('111','010','010','010','010'),
         '0': ('111','101','101','101','111'), '1': ('010','110','010','010','111'),
         '2': ('110','001','010','100','111'), '4': ('101','101','111','001','001'),
         '6': ('111','100','111','101','111'), '-': ('000','000','111','000','000'),
@@ -55,7 +56,7 @@ def surface_mark(mesh, text, x, y, z, step, color):
                     continue
                 cy = y - row * step
                 cz = z - math.copysign(1, x) * (char * 4 + pixel) * step
-                d = step * .40
+                d = step * fill
                 vertices = [(x,cy-d,cz-d),(x,cy+d,cz-d),(x,cy+d,cz+d),(x,cy-d,cz+d)]
                 face = (0,1,2,3) if x > 0 else (3,2,1,0)
                 mesh.add(vertices, [face], color)

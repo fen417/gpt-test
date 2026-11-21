@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {placeCampaignMarker} from './markers.js';
+import {createGadgetModel} from '../gadget-models.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {SAFRA_GUN,SAFRA_MINES,SAFRA_SLABS,SAFRA_WATER} from '../../shared/campaign/safra.js';
 import './mission4.css';
@@ -114,9 +115,10 @@ export class Mission4Presentation{
     const gearY=renderer.map.terrain.heightAt(-332.9,38.7);
     this.box(this.art,[.51,.51,1.25],[-332.9,gearY+.25,38.7],metal);
     this.box(this.art,[.51,.39,.84],[-332.88,gearY+.205,37.49],metal);
-    const launcher=new THREE.Mesh(new THREE.CylinderGeometry(.082,.095,1.47,10),new THREE.MeshLambertMaterial({color:0x6d7656}));
-    launcher.rotation.x=Math.PI/2;launcher.rotation.z=.17;
-    launcher.position.set(-332.9,gearY+.59,38.53);this.art.add(launcher);
+    const launcher=createGadgetModel('launcher',renderer.equipmentPalette);
+    launcher.rotation.set(0,-.08,Math.PI/2);
+    launcher.position.set(-332.9,gearY+.61,38.83);this.art.add(launcher);
+    this.launcherProp=launcher;
     const crates=new THREE.MeshLambertMaterial({color:0x94794e});
     this.supplyProps=new Map();
     const cone=new THREE.MeshLambertMaterial({color:0x6d6d52});
@@ -305,6 +307,8 @@ export class Mission4Presentation{
     this.voice.dispose();this.score.dispose();this.root.remove();
     this.audio.campaignMusicOverride=false;
     this.art.removeFromParent();
+    // Equipment clones share their resources with the weapon rig.
+    this.launcherProp.removeFromParent();
     const materials=new Set();
     this.art.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});
     for(const m of materials)m.dispose();

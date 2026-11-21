@@ -6,7 +6,10 @@ export const LAUNCHER_POSE = {
   model: [.05,-.02,.05],
   rightOffset: [.05,0,.045+triggerShiftZ],
   leftContact: [.015,-.090,-.33],
-  hip: [.13,-.14,-.52], ads: [-.05,-.125,-.45],
+  hip: [.13,-.14,-.55], ads: [-.05,-.125,-.50],
+  remoteModel: [.024,.145,.160],
+  remoteSupport: [.001,.085,-.205],
+  remoteShoulder: [.024,.048,.235],
 };
 export const SUPPLY_POSE = {
   leftWrist: [-.150,-.052,.102], rightWrist: [.150,-.052,.102],

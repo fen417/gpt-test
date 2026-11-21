@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { weaponSwitchPose } from '../shared/world.js';
 import { cloneInfantry, findInfantryBones, gaitClips, legNames } from './infantry-assets.js';
 import { CREW_CONTROLS } from './vehicles.js';
+import { LAUNCHER_POSE } from './gadget-poses.js';
 
 const { clamp, damp, lerp, smoothstep } = THREE.MathUtils;
 const turn = (from, target) => Math.atan2(Math.sin(target - from), Math.cos(target - from));
@@ -102,6 +103,8 @@ function handBasis(forward, indexward, out) {
 }
 
 const primaryPalm = new THREE.Vector3(.024, .013, .015), supportPalm = new THREE.Vector3();
+const launcherSupport = new THREE.Vector3(...LAUNCHER_POSE.remoteSupport);
+const launcherShoulder = new THREE.Vector3(...LAUNCHER_POSE.remoteShoulder);
 const rightGrip = handBasis(new THREE.Vector3(-.29, -.13, -.95), flatNormal, new THREE.Quaternion());
 const leftGrip = handBasis(new THREE.Vector3(.58, .08, -.81), new THREE.Vector3(-.81, 0, -.58), new THREE.Quaternion());
 const foregripHold = handBasis(new THREE.Vector3(.12, .25, -.96), new THREE.Vector3(0, .90, -.42), new THREE.Quaternion());
@@ -141,7 +144,7 @@ function wristTarget(rifle, hand, grip, frame) {
   rifle.localToWorld(gripCenter.copy(grip)).sub(gripWrist);
 }
 
-function bringGripIntoReach(rig, grip, frame, weight) {
+function bringGripIntoReach(rig, grip, frame, weight, foregrip, stock) {
   const { rifle, group, leftHand, rightHand } = rig;
   if (weight > .005) {
     wristTarget(rifle, leftHand, grip, frame);
@@ -164,15 +167,15 @@ function bringGripIntoReach(rig, grip, frame, weight) {
   primaryWrist.subVectors(gripCenter, primaryShoulder);
   primaryWrist.x = Math.max(primaryWrist.x, -.18);
   primaryWrist.y = Math.min(primaryWrist.y, -.025);
-  primaryWrist.z = Math.min(primaryWrist.z, rig.foregrip ? -.085 : -.11);
+  primaryWrist.z = Math.min(primaryWrist.z, foregrip ? -.085 : -.11);
   const reachLimit = rightHand.upperLength + rightHand.forearmLength - .012;
   primaryWrist.clampLength(.16, reachLimit);
   rifle.position.add(primaryWrist.add(primaryShoulder).sub(gripCenter));
   rifle.updateWorldMatrix(true, false);
-  if (!rig.pistol) {
+  if (stock) {
     // The butt must stay in front of the shoulder even when the support arm
     // reaches its limit. A hand constraint must never pull it through the vest.
-    target.copy(rig.stock);
+    target.copy(stock);
     group.worldToLocal(rifle.localToWorld(target));
     const penetration = target.z - (primaryShoulder.z - .075);
     if (penetration > 0) rifle.position.z -= penetration;
@@ -503,6 +506,8 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
 
 function applyWeapon(rig, player, dt, reload, actionWeight) {
   const { bones, group, rifle } = rig;
+  const launcher = (player.heldGadget ?? player.gadgetAction) === 'launcher';
+  const pistol = rig.pistol && !launcher, foregrip = rig.foregrip && !launcher;
   const afterSwitch = weaponSwitchPose(player.equipTime).lowered;
   const bodyAim = clamp(turn(group.rotation.y, player.yaw ?? group.rotation.y), -.67, .67);
   const pitch = clamp(player.pitch ?? 0, -.9, .9);
@@ -512,17 +517,17 @@ function applyWeapon(rig, player, dt, reload, actionWeight) {
   const carrying = .10 * (1 - aimed);
   const aimWeight = (1 - actionWeight) * (1 - reload * .72);
   const reloadProgress = player.reloading ? player.reloadProgress ?? 0 : 0;
-  const magazineWeight = rig.magazineContact ?
+  const magazineWeight = !launcher && rig.magazineContact ?
     smoothstep(reloadProgress, .06, .20) * (1 - smoothstep(reloadProgress, .79, .94)) : 0;
   if (aimWeight > .01) {
     saveRotation(rig, bones.Spine1, bones.Spine2, bones.Head);
-    if (!rig.pistol) {
+    if (!pistol) {
       // Bring the support shoulder forward and leave space behind the stock.
       bones.Spine1.parent.getWorldQuaternion(q).invert();
       b.copy(flatNormal).applyQuaternion(q);
       const shoulderTurn = .28 + .04 * magazineWeight + .06 * sprint;
       bones.Spine1.quaternion.premultiply(q.setFromAxisAngle(b, -shoulderTurn * (1 - actionWeight)));
-      if (rig.foregrip && pitch < 0) {
+      if (foregrip && pitch < 0) {
         const yaw = group.rotation.y;
         b.set(Math.cos(yaw), 0, -Math.sin(yaw)).applyQuaternion(bones.Spine1.parent.getWorldQuaternion(q).invert());
         bones.Spine1.quaternion.premultiply(q.setFromAxisAngle(b, pitch * .44 * aimWeight));
@@ -534,9 +539,9 @@ function applyWeapon(rig, player, dt, reload, actionWeight) {
     bones.Spine1.updateWorldMatrix(false, true);
   }
   const shoulder = group.worldToLocal(rig.rightHand.upper.getWorldPosition(target));
-  const shoulderOffset = rig.pistol ? .10 : .057;
+  const shoulderOffset = pistol ? .10 : .057;
   const armExtension = .252 + Math.max(0, rig.rightHand.upperLength - .20) * .92;
-  const reachDepth = armExtension + (rig.pistol ? .060 : .018) + aimed * .040;
+  const reachDepth = armExtension + (pistol ? .060 : .018) + aimed * .040;
 
   rifle.position.set(
     clamp(shoulder.x - shoulderOffset, .045, .205) + reload * .025,
@@ -544,7 +549,7 @@ function applyWeapon(rig, player, dt, reload, actionWeight) {
     Math.min(-.15, shoulder.z - reachDepth) + rig.recoil * .015);
   rifle.quaternion.setFromEuler(rotation.set(
     lerp(pitch, -.42, lerp(carrying, .7, sprint)) - reload * .28 + magazineWeight * .35 - afterSwitch * .62 + rig.recoil * .06,
-    bodyAim + reload * .12 + magazineWeight * (rig.pistol ? .12 : .53) + afterSwitch * .15 + sprint * (rig.pistol ? 0 : .19),
+    bodyAim + reload * .12 + magazineWeight * (pistol ? .12 : .53) + afterSwitch * .15 + sprint * (pistol ? 0 : .19),
     reload * -.25 - afterSwitch * .19));
   rifle.visible = actionWeight < .9;
   rifle.updateWorldMatrix(true, true);
@@ -558,21 +563,22 @@ function applyWeapon(rig, player, dt, reload, actionWeight) {
   }
   if (rifle.visible) {
     const supportWeight = 1 - actionWeight;
-    supportPalm.copy(rig.support);
-    supportFrame.copy(rig.pistol ? pistolSupport : rig.foregrip ? foregripHold : leftGrip);
+    supportPalm.copy(launcher ? launcherSupport : rig.support);
+    supportFrame.copy(pistol ? pistolSupport : foregrip ? foregripHold : leftGrip);
     if (magazineWeight) {
       target.copy(rig.magazineContact);
       rig.magazine.localToWorld(target);
       supportPalm.lerp(rifle.worldToLocal(target), magazineWeight);
       supportFrame.slerp(magazineGrip, magazineWeight);
     }
-    bringGripIntoReach(rig, supportPalm, supportFrame, supportWeight);
+    bringGripIntoReach(rig, supportPalm, supportFrame, supportWeight, foregrip,
+      launcher ? launcherShoulder : pistol ? null : rig.stock);
     gripHand(rig, rig.rightHand, primaryPalm, rightGrip, 1, 1);
     gripHand(rig, rig.leftHand, supportPalm, supportFrame, -1, supportWeight);
     if (rig.lod < 2) {
       closeFingers(rig, rig.rightHand, 1);
       const transition = magazineWeight * (1 - magazineWeight);
-      closeFingers(rig, rig.leftHand, supportWeight * (1 - 1.5 * transition), rig.foregrip ? 1 - magazineWeight : 0);
+      closeFingers(rig, rig.leftHand, supportWeight * (1 - 1.5 * transition), foregrip ? 1 - magazineWeight : 0);
     }
   }
   rig.flash.visible = rifle.visible && rig.shotAge < .042 && rig.lod < 2;

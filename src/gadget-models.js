@@ -24,6 +24,7 @@ export function loadEquipmentModels() {
     defibrillator:new URL('./assets/equipment/defibrillator.glb',import.meta.url).href,
     repair:new URL('./assets/equipment/repair.glb',import.meta.url).href,
     beacon:new URL('./assets/equipment/beacon.glb',import.meta.url).href,
+    launcher:new URL('./assets/equipment/pt90.glb',import.meta.url).href,
   };
   const required={
     ammo:['Lid','Contents'],
@@ -31,6 +32,7 @@ export function loadEquipmentModels() {
       'MonitorCableLeft','MonitorCableRight','Waveform','ChargeIndicator'],
     repair:['FlameSocket'],
     beacon:['Antenna','Supports','StatusLamp','SignalDisplay'],
+    launcher:['SightEye','FrontPost'],
   };
   equipmentLoading=Promise.all(Object.entries(urls).map(async ([kind,url])=>{
     try{
