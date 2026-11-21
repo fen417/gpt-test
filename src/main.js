@@ -722,7 +722,8 @@ async function startCampaign(options){
     const presentation=second?import('./campaign/mission2-presentation.js'):
       third?import('./campaign/mission3-presentation.js'):
       fourth?import('./campaign/mission4-presentation.js'):null;
-    const [,presentations]=await Promise.all([map,presentation]);
+    const depot=presentation?null:CampaignPresentation.loadDepot();
+    const [,presentations,depotAsset]=await Promise.all([map,presentation,depot]);
     signal.throwIfAborted();
     const session=new CampaignSession({...options,...data},{onState:receive,
       onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});
@@ -741,7 +742,7 @@ async function startCampaign(options){
     }else if(fourth){
       campaignPresentation=new presentations.Mission4Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
-    }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,
+    }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,depotAsset,
       resume:()=>requestControl(true)});
     await prepareMatchFrame(ticket);
     closeMatchLoad();enter();text('room-badge',`КАМПАНИЯ · ${data.definition.title.toUpperCase()}`);

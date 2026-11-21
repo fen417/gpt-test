@@ -25,10 +25,10 @@ const map = getMap(mapId);
 owner.scene = new THREE.Group();
 const {root,groups} = buildMapScene(owner, map);
 if(mapId==='alhadra'){
-  // The masonry and collision boxes remain. In the Blender scene the house
-  // finishes are rebuilt around the original door and window dimensions.
+  const authoredProps=new Set(['truck','car','generator','fueltank']);
   for(const {key,kind,value} of mapItems(map))
-    if((kind==='structure'&&value.kind==='village-house')||(kind==='box'&&value.kind==='village-awning'))
+    if((kind==='structure'&&value.kind==='village-house')||
+       (kind==='box'&&(value.kind==='village-awning'||authoredProps.has(value.kind))))
       groups.get(key)?.removeFromParent();
 }
 root.updateMatrixWorld(true);
@@ -177,6 +177,7 @@ if(mapId==='alhadra'){
   for(let z=minZ;z<=maxZ;z+=spacing)
     for(let x=minX;x<=maxX;x+=spacing)elevations.push(map.terrain.heightAt(x,z));
   metadata.ground={minX,minZ,spacing,columns:1+(maxX-minX)/spacing,elevations};
+  metadata.depotProps=metadata.boxes.filter(box=>box.campaignDestructible);
   metadata.boxes=metadata.boxes.filter(box=>!box.campaignDestructible&&!box.missionDynamic);
 }
 for(const b of packed) for(const key of ['p','n','uv','c'])

@@ -13,10 +13,12 @@ from mathutils import Vector
 HERE=Path(__file__).resolve().parent
 REPO=HERE.parents[1]
 sys.dont_write_bytecode=True
+sys.path.insert(0,str(HERE))
 sys.path.insert(0,str(HERE.parent/"laguna"))
 sys.path.insert(0,str(HERE.parent/"village"))
 from build_laguna import LayeredMap, rgb, shade
 from build_village import material, new_mesh, source_mesh
+from depot_props import truck, truck_wreck, car, generator, reservoir, drum, Mesh
 
 PALE=rgb("c4aa86")
 LIME=rgb("c8b898")
@@ -29,7 +31,8 @@ TEAL=rgb("70877b")
 OLIVE=rgb("868363")
 CHALK=rgb("d7c7a6")
 PAINT=[rgb(t) for t in ("bda68b","b5a183","b19a7d","b6aa91","a9a28a")]
-TILING={"concrete":4.3,"village-stucco":4.0,"wood":1.85,"metal":2.1,"plain":3.1,"leaf":2.0,"canvas":.75}
+TILING={"concrete":4.3,"village-stucco":4.0,"wood":1.85,"metal":2.1,"plain":3.1,"leaf":2.0,
+        "canvas":.75,"vehicle-paint":1.9,"vehicle-glass":2.0}
 
 
 def authored_mesh(mesh,name,collection,surface,cast,editable):
@@ -215,7 +218,25 @@ def prop_detail(setup,boxes):
         kind=b["kind"]
         repair=(-13<x<3 and 42<z<52)
         school=(144<x<156 and 99<z<104)
-        if kind=="village-palm":
+        if kind in ("truck","car","generator","fueltank"):
+            def equipment(layer):
+                parts={}
+                def part(surface,detail=False,cast=True):
+                    return parts.setdefault((surface,detail,cast),Mesh())
+                paint=rgb(b["color"])
+                if kind=="truck":
+                    truck(part,paint)
+                elif kind=="car":
+                    car(part,paint)
+                elif kind=="generator":
+                    generator(part,w,d,h,paint)
+                else:
+                    reservoir(part,w,d,h,paint)
+                for key,mesh in parts.items():
+                    layer(*key).extend(mesh,(x,y,z),b.get("modelRotation",{}).get("y",0))
+            setup.place({"truck":"Parked utility truck","car":"Civilian saloon",
+                         "generator":"Enclosed generator","fueltank":"Workshop reservoir"}[kind],x,z,equipment)
+        elif kind=="village-palm":
             palm_crown(setup,b,index)
         elif kind=="village-awning":
             awning(setup,b,index)
@@ -241,6 +262,59 @@ def prop_detail(setup,boxes):
                     metal.box((px,y+h*.49,z+d/2+.013),(.062,h*.97,.023),IRON,.005)
                 layer("plain",True,False).box((x,y+h*.65,z+d/2+.025),(.29,.14,.017),shade(CHALK,.81),.004)
             setup.place("Supply crate bands",x,z,case)
+
+
+def export_depot_props(source,props):
+    collection=bpy.data.collections.new("05 · Mission trucks and fuel drums")
+    bpy.context.scene.collection.children.link(collection)
+    bpy.ops.object.select_all(action="DESELECT")
+    placed=[]
+    hidden=[]
+    for name,build,wreck,locations in (
+        ("DepotTruck",truck,truck_wreck,[p for p in props if p["kind"]=="truck"]),
+        ("FuelDrum",drum,None,[p for p in props if "campaignFuel" in p]),
+    ):
+        root=bpy.data.objects.new(name,None)
+        collection.objects.link(root)
+        root.select_set(True)
+        meshes=[]
+        for burned,make in ((False,build),(True,wreck)):
+            if make is None:
+                continue
+            parts={}
+            def part(surface,detail=False,cast=True):
+                return parts.setdefault((surface,detail,cast),Mesh())
+            make(part)
+            for (surface,detail,cast),mesh in parts.items():
+                label=f"{name} {'wreck' if burned else 'trim' if detail else 'body'} {surface}"
+                obj=authored_mesh(mesh,label,collection,surface,cast,True)
+                obj.parent=root
+                obj["depotDetail"]=detail
+                obj["depotWreck"]=burned
+                obj.select_set(True)
+                meshes.append(obj)
+                if burned:
+                    hidden.append(obj)
+        placed.append((root,meshes,locations))
+    bpy.ops.export_scene.gltf(filepath=str(source/"depot-props.glb"),export_format="GLB",use_selection=True,
+                              export_extras=True,export_materials="NONE",export_vertex_color="ACTIVE",
+                              export_meshopt_compression_enable=False)
+    for root,meshes,locations in placed:
+        if not locations:
+            continue
+        first,*others=locations
+        root.location=(first["x"],-first["z"],first["baseY"])
+        for point in others:
+            for obj in meshes:
+                if obj["depotWreck"]:
+                    continue
+                copy=obj.copy()
+                copy.parent=None
+                copy.location=(point["x"],-point["z"],point["baseY"])
+                collection.objects.link(copy)
+    for obj in hidden:
+        obj.hide_set(True)
+        obj.hide_render=True
 
 
 def ground_height(data,x,z):
@@ -308,8 +382,14 @@ def preview_materials(source,span):
             path=source/("rock.webp" if name=="rock" else "labels.webp")
         elif name=="canvas":
             path=REPO/"src"/"assets"/"estate"/"weave.webp"
+        elif name=="vehicle-paint":
+            path=REPO/"src"/"assets"/"port"/"paint.webp"
         else:
             path=REPO/"src"/"assets"/"surfaces"/(name+".webp")
+        if name.startswith("vehicle-"):
+            shader=mat.node_tree.nodes.get("Principled BSDF")
+            shader.inputs["Roughness"].default_value=.68 if name=="vehicle-paint" else .32
+            shader.inputs["Metallic"].default_value=.16
         if not path.is_file():
             continue
         graph=mat.node_tree
@@ -374,6 +454,7 @@ def main(source,runtime):
     terrain_detail(setup,data)
     for tier,name in enumerate(("base","detail")):
         setup.export(bool(tier),source/(name+".glb"),imported[tier].objects)
+    export_depot_props(source,data["depotProps"])
     runtime.mkdir(parents=True,exist_ok=True)
     for name in ("roads.webp","rock.webp","labels.webp"):
         shutil.copyfile(source/name,runtime/name)

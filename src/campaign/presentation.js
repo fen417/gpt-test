@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {CampaignAudio} from './audio.js';
 import {prepareViewModel} from '../viewmodel.js';
 import {cinematicCameraPose} from './camera.js';
-import {createCampaignTruck,groundCampaignTruck,burnCampaignTruck} from './props.js';
+import {CampaignDepotProps,groundCampaignTruck,loadDepotProps} from './props.js';
 import {createVehicleRig,updateVehicleRig,disposeVehicleRig,tankAssetsReady} from '../vehicles.js';
 import {vehicleBodyTilt} from '../../shared/vehicles.js';
 import {CampaignFire} from './fire.js';
@@ -11,7 +11,9 @@ import {SIDEARMS,WEAPONS} from '../../shared/world.js';
 
 const presets={night:{fog:'#101b30',sun:'#a8c9ef',hemi:'#a2b9d7',ground:'#45434a',sunPower:.8,hemiPower:.52,ambient:.16,environment:.09},alarm:{fog:'#202538',sun:'#a4bfdf',hemi:'#b0bed5',ground:'#67564a',sunPower:1,hemiPower:.72,ambient:.22,environment:.12},dawn:{fog:'#a58e7c',sun:'#ffd19d',hemi:'#b8c5dd',ground:'#8e7560',sunPower:2,hemiPower:1.3,ambient:.3,environment:.45}};
 export class CampaignPresentation {
-  constructor(session,{renderer,audio,leave,clearControls,resume}){
+  static loadDepot=loadDepotProps;
+
+  constructor(session,{renderer,audio,leave,clearControls,resume,depotAsset}){
     this.session=session;this.renderer=renderer;this.leave=leave;this.clearControls=clearControls;this.locale=session.locale;this.definition=session.definition;
     this.audio=new CampaignAudio(audio,new URL(`${import.meta.env.BASE_URL}campaign/m01/`,location.href),this.definition);
     this.root=document.createElement('section');this.root.className='campaign-ui';this.root.setAttribute('aria-label','Сюжетная миссия');
@@ -31,7 +33,8 @@ export class CampaignPresentation {
     const finale=this.definition.cutscenes.finale;
     this.convoyRevealAt=finale.lines.find(([,key])=>key===finale.convoy?.cue)?.[0]??Infinity;
     this.props=new THREE.Group();this.props.name='campaign-only-props';renderer.scene.add(this.props);
-    this.materials=[];this.geometries=[];this.textures=[];this.fuelMeshes=new Map();this.barrelMeshes=new Map();this.truckMeshes=new Map();this.charges=new Map();this.buildProps();
+    this.depot=new CampaignDepotProps(renderer,depotAsset,this.props);
+    this.materials=[];this.geometries=[];this.textures=[];this.barrelMeshes=new Map();this.truckMeshes=new Map();this.charges=new Map();this.buildProps();
     this.renderHook=(r,state,dt)=>this.render(r,state,dt);
   }
   mesh(geometry,material,x,y,z){this.geometries.push(geometry);const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);this.props.add(m);return m;}
@@ -43,8 +46,8 @@ export class CampaignPresentation {
     this.mesh(new THREE.CylinderGeometry(.035,.035,2.3,6),dark,-82,ground(-80,-30)+1.15,-31.5);
     this.mesh(new THREE.ConeGeometry(.24,.14,8),dark,-82,ground(-80,-30)+2.53,-31.5);
     for(const [x,z,y] of [[150,96.72,2.4],[146,96.72,2.4],[154,113.28,2.4]])this.mesh(new THREE.PlaneGeometry(1.1,.9),warm,x,y,z).rotation.y=z>105?Math.PI:0;
-    for(const fuel of this.session.state.campaign.fuel){const barrel=this.mesh(new THREE.CylinderGeometry(.55,.55,1.35,12),r.surfaces.metal.clone(),fuel.x,ground(fuel.x,fuel.z)+.675,fuel.z);barrel.material.color.set('#806247');this.materials.push(barrel.material);this.barrelMeshes.set(fuel.id,barrel);}
-    const truck=(x,z)=>createCampaignTruck(r,this.props,x,z,this.materials);
+    for(const fuel of this.session.state.campaign.fuel)this.barrelMeshes.set(fuel.id,this.depot.create('FuelDrum',fuel.x,fuel.z));
+    const truck=(x,z)=>this.depot.create('DepotTruck',x,z);
     for(const t of this.session.state.campaign.trucks)this.truckMeshes.set(t.id,truck(t.x,t.z));
     this.convoy=[truck(-217,-157),truck(-225,-166)];
     this.fire=new CampaignFire(r,this.props);
@@ -206,9 +209,14 @@ export class CampaignPresentation {
     this.horizon.visible=convoyShot&&tankAssetsReady();
     const convoyTarget=this.horizon.visible?this.drawFinalConvoy(m.cutscene.elapsed-this.convoyRevealAt,this.paused?0:dt,r.map.terrain):null;
     for(const site of m.chargeSites)this.charges.get(site.id).visible=site.planted;
-    for(const fuel of m.fuel){const barrel=this.barrelMeshes.get(fuel.id);barrel.material.color.set(fuel.destroyed?'#302b27':'#806247');barrel.rotation.z=fuel.destroyed?1.3:0;}
-    for(const t of m.trucks)burnCampaignTruck(this.truckMeshes.get(t.id),t.destroyed);
-    this.convoy.forEach((v,i)=>{v.visible=m.cutscene?.id==='landing';if(v.visible)groundCampaignTruck(v,r.map.terrain,-217-i*8-(m.cutscene.elapsed??0)*2.6,-157-i*9,Math.PI/2);});
+    for(const fuel of m.fuel)this.depot.update(this.barrelMeshes.get(fuel.id),fuel.destroyed);
+    for(const t of m.trucks)this.depot.update(this.truckMeshes.get(t.id),t.destroyed);
+    this.convoy.forEach((v,i)=>{
+      v.visible=m.cutscene?.id==='landing';
+      if(!v.visible)return;
+      this.depot.update(v);
+      groundCampaignTruck(v,r.map.terrain,-217-i*8-(m.cutscene.elapsed??0)*2.6,-157-i*9,-Math.PI/2);
+    });
     const p=state.players.find(p=>p.id==='local');
     if(p?.suppressed&&p.weaponSlot===1&&!p.heldGadget&&r.weaponRig.suppressor){r.weaponRig.suppressor.visible=true;r.weaponRig.suppressor.position.z=r.weaponRig.muzzle.position.z-.1;r.weaponRig.muzzle.visible=false;r.weaponRig.muzzleFlash.visible=false;r.weaponRig.flashLight.intensity=0;}
     const knifeEvent=state.events.filter(e=>e.type==='campaignKnife').at(-1);if(knifeEvent&&knifeEvent.id>this.lastKnife){this.lastKnife=knifeEvent.id;this.knifeUntil=knifeEvent.time+.35;}
@@ -251,6 +259,7 @@ export class CampaignPresentation {
   dispose(){
     this.audio.dispose();this.fire.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);
     for(const {rig} of this.finalConvoy??[])disposeVehicleRig(rig);
+    this.depot.dispose();
     for(const g of this.geometries)g.dispose();for(const m of this.materials)m.dispose();for(const t of this.textures)t.dispose();
     const r=this.renderer,o=this.original;r.scene.environment=o.environment;r.scene.environmentIntensity=o.environmentIntensity;r.sun.intensity=o.sun;r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.sun.color.copy(o.sunColor);r.hemiLight.color.copy(o.hemiColor);r.hemiLight.groundColor.copy(o.groundColor);r.sunOffset.copy(o.sunOffset);r.atmosphere.sky.visible=o.skyVisible;
     if(o.background)r.scene.background.copy(o.background);

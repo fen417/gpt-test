@@ -22,6 +22,7 @@ export const alhadraAssets={
   rock:new URL('./assets/alhadra/rock.webp',import.meta.url).href,
   labels:new URL('./assets/alhadra/labels.webp',import.meta.url).href,
   fabric:new URL('./assets/estate/weave.webp',import.meta.url).href,
+  paint:new URL('./assets/port/paint.webp',import.meta.url).href,
 };
 const sandTint = new THREE.Color(0xd6bd90), roadTint = new THREE.Color(0xbda17a);
 const roadMultiplier = [roadTint.r/sandTint.r,roadTint.g/sandTint.g,roadTint.b/sandTint.b];
@@ -89,6 +90,12 @@ export class VillageModel {
           this.canvasMap.colorSpace=THREE.SRGBColorSpace;
           this.textures.add(this.canvasMap);
         }
+        if(this.assets.paint){
+          this.paintMap=tex.load(this.assets.paint);
+          this.paintMap.wrapS=this.paintMap.wrapT=THREE.RepeatWrapping;
+          this.paintMap.colorSpace=THREE.SRGBColorSpace;
+          this.textures.add(this.paintMap);
+        }
       }
       ({scene} = await this.loader.loadAsync(url));
       if(this.disposed){
@@ -123,7 +130,7 @@ export class VillageModel {
     const owner=this.owner, surfaces=owner.surfaces;
     const sourceName=name==='road-sand'?'village-sand':name;
     const source=surfaces[sourceName];
-    const maps={rock:this.rockMap,sign:this.signMap,canvas:this.canvasMap};
+    const maps={rock:this.rockMap,sign:this.signMap,canvas:this.canvasMap,'vehicle-paint':this.paintMap};
     const map=maps[name]??surfaces.maps[sourceName]??null;
     const side=name==='leaf'||name==='canvas'?THREE.DoubleSide:THREE.FrontSide;
     const options={map,side,vertexColors:true};
@@ -134,7 +141,8 @@ export class VillageModel {
       const normalMap=source?.normalMap??(sourceName==='village-sand'?surfaces.villageNormals.sand:
         sourceName==='village-stucco'?surfaces.villageNormals.stucco:null);
       high=new THREE.MeshStandardMaterial({...options,normalMap,normalScale:new THREE.Vector2(.26,.26),
-        roughness:source?.roughness??.95,metalness:source?.metalness??0});
+        roughness:name==='vehicle-glass'?.32:name==='vehicle-paint'?.68:source?.roughness??.95,
+        metalness:name.startsWith('vehicle-')?.16:source?.metalness??0});
       low=new THREE.MeshLambertMaterial(options);
     }
     if(name==='road-sand'){
