@@ -252,7 +252,13 @@ function closeFingers(rig, hand, weight, wrap = 0) {
   }
 }
 
-export function createInfantry({ template, gun }, player) {
+const blueClassKit = {
+  medic: [['MedicHelmetBadge', 'Head'], ['MedicArmband', 'LeftForeArm']],
+  support: [['EngineerProtection', 'Head'], ['EngineerPack', 'Spine2']],
+  recon: [['ScoutBoonie', 'Head']],
+};
+
+export function createInfantry({ template, gun, kit }, player) {
   const group = new THREE.Group(), model = cloneInfantry(template);
   const bones = findInfantryBones(model);
   const parts = [];
@@ -260,6 +266,7 @@ export function createInfantry({ template, gun }, player) {
   for (const letter of String(player.id ?? "")) variant = (Math.imul(variant, 31) + letter.charCodeAt(0)) | 0;
   variant = (variant >>> 0) % 3;
   let optional = 0;
+  const boonie = kit && player.classId === 'recon';
   for (const [name, levels] of template.levels) {
     const base = model.getObjectByName(name);
     if (!base) throw new Error('Cannot bind infantry LOD for ' + name);
@@ -267,7 +274,7 @@ export function createInfantry({ template, gun }, player) {
     let index = 0;
     base.traverse(mesh => {
       if (!mesh.isMesh) return;
-      mesh.visible = visible;
+      mesh.visible = visible && !(boonie && mesh.material.name === 'helmet');
       mesh.frustumCulled = false; // the actor has a single conservative frustum test
       mesh.receiveShadow = true;
       const geometries = [mesh.geometry, ...levels.slice(1).map(level => level[index])];
@@ -275,6 +282,21 @@ export function createInfantry({ template, gun }, player) {
       parts.push({ mesh, geometries });
       index++;
     });
+  }
+  const details = [];
+  if (kit) {
+    model.updateMatrixWorld(true);
+    for (const [name, joint] of blueClassKit[player.classId] ?? []) {
+      const detail = kit.getObjectByName(name).clone(true);
+      // The equipment was fitted on the neutral pose in normalized model space.
+      bones[joint].attach(detail);
+      detail.traverse(mesh => {
+        if (!mesh.isMesh) return;
+        mesh.frustumCulled = false;
+        mesh.receiveShadow = true;
+        details.push(mesh);
+      });
+    }
   }
   const rifle = new THREE.Group();
   const flash = new THREE.Mesh(flashGeometry, new THREE.MeshBasicMaterial({ color: 0xffdb9c }));
@@ -290,7 +312,7 @@ export function createInfantry({ template, gun }, player) {
   bones.Head.add(head);
   head.userData.faceCovered = true;
   const rig = {
-    group, model, parts, bones, head, marker, rifle, flash, template,
+    group, model, parts, details, bones, head, marker, rifle, flash, template,
     mixer: new THREE.AnimationMixer(model), actions: new Map(), activeActions: new Set(),
     team: player.team, classId: player.classId, lod: 0, alive: true,
     motion: { phase: 0, speed: 0, vx: 0, vz: 0, x: 0, z: 0, moving: 0, gait: new Map() },
@@ -334,6 +356,7 @@ export function setInfantryLod(rig, level, shadows) {
     mesh.geometry = geometries[level];
     mesh.castShadow = shadows;
   }
+  for (const mesh of rig.details) mesh.castShadow = shadows;
 }
 
 export function disposeInfantry(rig) {

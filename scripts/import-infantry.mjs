@@ -9,6 +9,7 @@ import { ALL_EXTENSIONS, KHRTextureBasisu } from '@gltf-transform/extensions';
 import { dedup, join, joinPrimitives, meshopt, prune, simplify, weld } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import { Matrix4, Quaternion, Vector3 } from 'three';
+import { paintRegularUniform } from './infantry-camouflage.mjs';
 
 const revision = '130ac2a5c856401ec36e7d35afcfefe40c5801f4';
 const files = {
@@ -97,16 +98,17 @@ async function encodeTextures(document, operator = false) {
   const textures = root.listTextures();
   const uniforms = new Set(root.listMaterials().filter(material => material.getName() === 'uniform')
     .flatMap(material => [material.getBaseColorTexture(), material.getNormalTexture()]));
+  const uniformColor = operator && root.listMaterials().find(material => material.getName() === 'uniform')?.getBaseColorTexture();
   const palette = new Map();
   const rough = new Set();
   const clothing = {
-    uniform: [62, 61, 38], helmet: [65, 56, 32], pouch: [78, 61, 37],
+    uniform: null, helmet: [65, 56, 32], pouch: [78, 61, 37],
     boots: [31, 23, 13], gloves: [25, 20, 11],
   };
   if (operator) for (const material of root.listMaterials()) {
-    const tint = clothing[material.getName()];
-    if (!tint) continue;
-    palette.set(material.getBaseColorTexture(), tint);
+    const name = material.getName();
+    if (!Object.hasOwn(clothing, name)) continue;
+    if (clothing[name]) palette.set(material.getBaseColorTexture(), clothing[name]);
     rough.add(material.getMetallicRoughnessTexture());
   }
   if (!textures.length) return;
@@ -117,6 +119,7 @@ async function encodeTextures(document, operator = false) {
     const canvas = new Canvas(Math.round(image.width * scale), Math.round(image.height * scale));
     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
     const rgba = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    if (texture === uniformColor) paintRegularUniform(rgba, (r, g, b) => .2126 * r + .7152 * g + .0722 * b);
     const tint = palette.get(texture);
     for (let i = 0; i < rgba.data.length && (tint || rough.has(texture)); i += 4) {
       if (tint) {
@@ -150,11 +153,17 @@ function dressRegular(document) {
     if (!node.getSkin()) { node.dispose(); continue; }
     for (const prim of mesh.listPrimitives()) {
       const material = prim.getMaterial();
+      if (material.getName() === 'night_vis_goggles') {
+        mesh.removePrimitive(prim);
+        prim.dispose();
+        continue;
+      }
       const key = [material.getName(), node.getParentNode().getName(), node.getMatrix(),
         prim.listSemantics().sort()].join('|');
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push({ node, prim });
     }
+    if (!mesh.listPrimitives().length) node.dispose();
   }
   for (const list of grouped.values()) {
     if (list.length < 2) continue;

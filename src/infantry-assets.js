@@ -264,12 +264,19 @@ export class InfantryAssets {
 
   load(team, weaponId) {
     const name = team ? 'militia' : 'regular', weapon = weaponNames[weaponId] ?? 'm24';
-    return Promise.all([this.request(name, prepareBody), this.request(weapon, prepareWeapon)]);
+    const assets = [this.request(name, prepareBody), this.request(weapon, prepareWeapon)];
+    if (!team) assets.push(this.loadBlueKit());
+    return Promise.all(assets);
+  }
+
+  loadBlueKit() {
+    return this.request('blue-kit', ({ scene }) => ({ model: scene }));
   }
 
   warm() {
     return Promise.allSettled([
       this.request('regular', prepareBody), this.request('militia', prepareBody),
+      this.loadBlueKit(),
       ...Object.keys(weaponFit).map(name => this.request(name, prepareWeapon)),
     ]);
   }
@@ -277,11 +284,12 @@ export class InfantryAssets {
   get(team, weaponId) {
     const name = team ? 'militia' : 'regular', weapon = weaponNames[weaponId] ?? 'm24';
     const body = this.templates.get(name), gun = this.templates.get(weapon);
-    if (!body || !gun) {
+    const kit = team ? null : this.templates.get('blue-kit');
+    if (!body || !gun || (!team && !kit)) {
       this.load(team, weaponId).catch(() => {});
       return null;
     }
-    return { template: body, gun };
+    return { template: body, gun, kit: kit?.model };
   }
 
   disposeTemplate(template) {
