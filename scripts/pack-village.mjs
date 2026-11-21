@@ -11,8 +11,16 @@ const io=new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
 const input=resolve(process.argv[2]??'.perf-local/village-bake');
 for(const name of ['base','detail']){
   const model=await io.read(resolve(input,name+'.glb'));
-  // Keep positions intact. The terrain shares borders between chunks, and
-  // thin paint/metal surfaces sit millimetres apart elsewhere in the map.
+  // Use the same world-space grid for every chunk and layer. The maximum
+  // error per axis is 0.122 mm, so shared edges and thin surfaces stay distinct.
+  const primitives = model.getRoot().listMeshes().flatMap(mesh => mesh.listPrimitives());
+  for (const [semantic, grid] of [['POSITION', 4096], ['TEXCOORD_0', 8192]]) {
+    const attributes = new Set(primitives.map(primitive => primitive.getAttribute(semantic)));
+    for (const attribute of attributes) {
+      const values = attribute.getArray();
+      for (let i = 0; i < values.length; i++) values[i] = Math.round(values[i] * grid) / grid;
+    }
+  }
   await model.transform(
     reorder({encoder:MeshoptEncoder,target:'size'}),
     quantize({pattern:/^COLOR_0$/,quantizeColor:8}),

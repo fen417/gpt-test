@@ -408,9 +408,10 @@ def export(collection,path):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in collection.objects:
         obj.select_set(True)
+    # The packer compresses the finished map. Blender's Meshopt export
+    # rounds world coordinates and can collapse the gap between thin surfaces.
     bpy.ops.export_scene.gltf(filepath=str(path),export_format="GLB",use_selection=True,export_extras=True,
-                              export_vertex_color="ACTIVE",export_meshopt_compression_enable=True,
-                              export_meshopt_extension="EXT_meshopt_compression")
+                              export_vertex_color="ACTIVE",export_meshopt_compression_enable=False)
 
 
 def main(source):
