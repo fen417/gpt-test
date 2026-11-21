@@ -1,5 +1,9 @@
 # fy_pool_day / Team Deathmatch — implementation status
 
+This document records the original experimental build. In 0.26 the slot became a
+new Laguna aquatic centre with its own layout and Blender assets in
+`art-source/laguna/`. The match identifier was kept for saved selections.
+
 This branch is **experimental**. It is not a pixel-, brush- or BSP-exact port
 of the original Counter-Strike 1.6 map and must not be described as one.
 

@@ -16,6 +16,7 @@ import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
 import { hasVillageAsset, VillageModel } from './village-model.js';
 import { hasPortAsset, PortModel } from './port-model.js';
+import { hasLagunaAsset, LagunaModel } from './laguna-model.js';
 import { loadQuarryDetail, disposeQuarryDetail } from './quarry-model.js';
 import { addPortLabels, addPortWater } from './port-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -326,6 +327,7 @@ export class GameRenderer {
     this.worlds = new Map();
     this.villageModel = new VillageModel(this);
     this.portModel = new PortModel(this);
+    this.lagunaModel = new LagunaModel(this);
     this.setMap();
     this.scene.matrixAutoUpdate = false;
     this.buildWeapon();
@@ -560,7 +562,7 @@ export class GameRenderer {
       if(world.model&&!world.model.base)world.model.loadBase().then(base=>{
         if(world.model.disposed)return;
         if(base)this.installBakedBase(world,base);
-        else if(world.model===this.portModel)this.installPortFallback(world,map);
+        else if(world.model===this.portModel||world.model===this.lagunaModel)this.installMapFallback(world,map);
       });
     }
     this.clearVehicles();
@@ -585,7 +587,7 @@ export class GameRenderer {
     this.groundShadows.setMap(map);
     const shadowMaterials=new Map();
     this.staticRoot.traverse(mesh=>{
-      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material)||mesh.userData.villageSurface||mesh.userData.portSurface)return;
+      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material)||mesh.userData.villageSurface||mesh.userData.portSurface||mesh.userData.lagunaSurface)return;
       const source=mesh.material._highMaterial??mesh.material;
       if(source.userData.groundShadowPatched)return;
       if(!shadowMaterials.has(source)){
@@ -619,6 +621,7 @@ export class GameRenderer {
   bakedMapModel(map) {
     if(hasPortAsset(map))return this.portModel;
     if(hasVillageAsset(map))return this.villageModel;
+    if(hasLagunaAsset(map))return this.lagunaModel;
   }
 
   installBakedLayer(world,layer) {
@@ -662,7 +665,7 @@ export class GameRenderer {
     }
   }
 
-  installPortFallback(world,map) {
+  installMapFallback(world,map) {
     const fallback=new THREE.Group();
     const live={scene:this.scene,map:this.map,flags:this.flags,random:this.random};
     try{
@@ -670,7 +673,7 @@ export class GameRenderer {
       buildMapScene(this,map,{skipObjectives:true,skipPortWater:true});
       this.mergeStaticWorld(new Set());
     }finally{Object.assign(this,live);}
-    world.portLabels.removeFromParent();
+    world.portLabels?.removeFromParent();
     this.installBakedLayer(world,fallback);
   }
 
@@ -1805,7 +1808,11 @@ export class GameRenderer {
       this.cameraPlayerId = null;
       if (this.vehicleRigs.size) this.clearVehicles();
       const angle = this.clock * 0.012, radius = this.map.terrain ? this.map.size * .29 : 130;
-      if (this.map.shoreX !== undefined) {
+      const menuView=this.map.menuView;
+      if(menuView){
+        this.camera.position.fromArray(menuView.eye);
+        this.camera.lookAt(...menuView.target);
+      }else if (this.map.shoreX !== undefined) {
         this.camera.position.set(-136 + Math.sin(angle - .6) * 86, 68 + Math.sin(this.clock * .025) * 7, 26 + Math.cos(angle - .6) * 122);
         this.camera.lookAt(-73, 4, 4);
       } else {
@@ -1815,9 +1822,10 @@ export class GameRenderer {
       this.weapon.visible = false;
       this.viewWeaponTarget = null;
       this.atmosphere.sky.position.copy(this.camera.position);
-      if (this.camera.fov !== 70 || this.camera.near !== 2) {
-        this.camera.fov = 70;
-        this.camera.near = 2;
+      const fov=menuView?.fov??70,near=menuView?.near??(menuView ? .12 : 2);
+      if (this.camera.fov !== fov || this.camera.near !== near) {
+        this.camera.fov = fov;
+        this.camera.near = near;
         this.camera.updateProjectionMatrix();
       }
       this.updateSunShadow(0, 0);
@@ -2167,6 +2175,7 @@ export class GameRenderer {
     this.disposed=true;
     this.villageModel.dispose();
     this.portModel.dispose();
+    this.lagunaModel.dispose();
     for(const world of this.worlds.values())disposeQuarryDetail(world.quarryDetail);
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();

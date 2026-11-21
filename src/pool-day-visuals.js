@@ -1,54 +1,44 @@
 import * as THREE from 'three';
+import {pairMaterials} from './visuals.js';
 
-// Explicitly marked work-in-progress reconstruction; all solids come from
-// shared/pool-day.js and therefore match authoritative collisions.
+// Lightweight fallback and editor geometry from the same volumes and floor profile.
 export function buildPoolDay(owner,map,root){
-  const neutral=new THREE.MeshStandardMaterial({color:0xe3e4dd,roughness:.86});
-  const tile=new THREE.MeshStandardMaterial({color:0xc7d8d8,roughness:.72});
-  const red=new THREE.MeshStandardMaterial({color:0x955a5b,roughness:.83});
-  const blue=new THREE.MeshStandardMaterial({color:0x5b7798,roughness:.83});
-  const edge=new THREE.MeshStandardMaterial({color:0xe8e3d7,roughness:.82});
-  const underwater=new THREE.MeshStandardMaterial({color:0x60b8c7,roughness:.72});
-  const water=new THREE.MeshPhysicalMaterial({color:0x53b9cc,roughness:.19,metalness:0,
-    transparent:true,opacity:.66,side:THREE.DoubleSide,depthWrite:false});
-  const pickMat=box=>box.kind==='pool-red'?red:box.kind==='pool-blue'?blue:tile;
-  const solid=(x,y,z,w,h,d,mat)=>{
-    const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
-    mesh.position.set(x,y,z);mesh.receiveShadow=true;root.add(mesh);return mesh;
+  const materials=new Map();
+  const material=(color,water=false)=>{
+    if(!materials.has(color)){
+      const style={color,...(water?{transparent:true,depthWrite:false,opacity:.46}:{})};
+      materials.set(color,pairMaterials(new THREE.MeshStandardMaterial({...style,roughness:water?.22:.85}),
+        new THREE.MeshLambertMaterial(style)));
+    }
+    return materials.get(color);
   };
-  // Tiles are actual floors, not an invisible plane across water.
-  // A uniform 1m mesh is split only around pool apertures, merged through
-  // instancing to keep draw calls bounded on HD 610.
-  const n=50,inst=new THREE.InstancedMesh(new THREE.BoxGeometry(1,.18,1),neutral,n*n);
-  const pose=new THREE.Object3D();let count=0;
-  for(let iz=0;iz<n;iz++)for(let ix=0;ix<n;ix++){
-    const x=ix-n/2+.5,z=iz-n/2+.5;
-    if(map.pools.some(p=>Math.abs(x-p.x)<p.w/2+.35&&Math.abs(z-p.z)<p.d/2+.35))continue;
-    pose.position.set(x,-.12,z);pose.updateMatrix();inst.setMatrixAt(count++,pose.matrix);
+  const add=(geometry,style,cast=true)=>{
+    geometry.userData.owned=true;
+    const mesh=new THREE.Mesh(geometry,style);
+    mesh.receiveShadow=mesh.castShadow=cast;
+    root.add(mesh);
+    return mesh;
+  };
+  const floor=(x0,x1,z0,z1,y0,y1,style)=>{
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.Float32BufferAttribute([x0,y0,z0,x0,y1,z1,x1,y1,z1,x1,y0,z0],3));
+    geometry.setIndex([0,1,2,0,2,3]);
+    geometry.computeVertexNormals();
+    const mesh=add(geometry,style,false);
+    mesh.receiveShadow=!style.transparent;
+    return mesh;
+  };
+  const limit=25.22;
+  const xs=[-limit,...new Set(map.pools.flatMap(p=>[p.x-p.w/2,p.x+p.w/2])),limit].sort((a,b)=>a-b);
+  const zs=[-limit,...new Set(map.pools.flatMap(p=>[p.z-p.d/2,p.z+p.d/2])),limit].sort((a,b)=>a-b);
+  for(let x=1;x<xs.length;x++)for(let z=1;z<zs.length;z++){
+    if(map.terrain.heightAt((xs[x-1]+xs[x])/2,(zs[z-1]+zs[z])/2)<0)continue;
+    floor(xs[x-1],xs[x],zs[z-1],zs[z],0,0,material(0x828477));
   }
-  inst.count=count;inst.instanceMatrix.needsUpdate=true;inst.receiveShadow=true;root.add(inst);
-  for(const b of map.boxes)solid(b.x,(b.baseY??0)+b.h/2,b.z,b.w,b.h,b.d,pickMat(b));
-  for(const p of map.pools){
-    solid(p.x,-p.depth-.10,p.z,p.w,.19,p.d,underwater);
-    // Floor-to-coping inner faces use four narrow vertical pieces.
-    for(const s of [-1,1]){
-      solid(p.x+s*(p.w/2+.06),-p.depth/2,p.z,.13,p.depth,p.d+.26,tile);
-      solid(p.x,-p.depth/2,p.z+s*(p.d/2+.06),p.w+.26,p.depth,.13,tile);
-      solid(p.x+s*(p.w/2+.29),.04,p.z,.45,.17,p.d+.65,edge);
-      solid(p.x,.04,p.z+s*(p.d/2+.29),p.w+.65,.17,.45,edge);
-    }
-    const surface=new THREE.Mesh(new THREE.PlaneGeometry(p.w,p.d),water);
-    surface.rotation.x=-Math.PI/2;surface.position.set(p.x,p.waterY,p.z);
-    surface.renderOrder=1;root.add(surface);
-    for(const s of [-1,1]){
-      // Simple light-metal pool ladders with genuinely dimensional railings.
-      const mx=p.x+s*(p.w/2-.6),mz=p.z+p.d/2-.9;
-      const steel=new THREE.MeshStandardMaterial({color:0xb8c6cb,metalness:.58,roughness:.38});
-      for(const dx of [-.26,.26])solid(mx+dx,-.38,mz,.055,1.15,.055,steel);
-      for(let k=0;k<4;k++)solid(mx,-.85+k*.3,mz,.65,.035,.075,steel);
-    }
-  }
-  // No costly screen-space reflections. Water colour, transparent geometry
-  // and tile/specular roughness scale automatically with existing render size.
-  root.userData.poolMaterials=[neutral,tile,red,blue,edge,underwater,water];
+  for(const section of map.floorSections)
+    floor(section.minX,section.maxX,section.minZ,section.maxZ,section.y0,section.y1,material(0x507d80));
+  for(const p of map.pools)
+    floor(p.x-p.w/2,p.x+p.w/2,p.z-p.d/2,p.z+p.d/2,p.waterY,p.waterY,material(0x41858c,true)).renderOrder=1;
+  for(const b of map.boxes)
+    add(new THREE.BoxGeometry(b.w,b.h,b.d),material(b.color)).position.set(b.x,(b.baseY??0)+b.h/2,b.z);
 }

@@ -1,70 +1,101 @@
-// Work-in-progress survey of the CS 1.6 fy_pool_day overview.
-// NOT a BSP extraction. See docs/pool-day-accuracy.md before calling it a 1:1 port.
-// Units: Sector 09 metres. One GoldSrc unit is approximately 0.0254 m.
-// The same solids feed server collisions, navigation and WebGL presentation.
+// Laguna's floor and solids are shared by the simulation and the Blender export.
 const size=64;
 const boxes=[];
-const wall=(x,z,w,d,h=3.7,kind='pool-wall',baseY=0)=>boxes.push({
-  id:'pool-solid-'+boxes.length,kind,x,z,w,d,h,baseY,
-  color:kind==='pool-red'?'#915c61':kind==='pool-blue'?'#596d93':'#d8dddd',
+const palette={
+  shell:'#788180',gallery:'#637274',red:'#8b645d',blue:'#597580',
+  service:'#626e63',bench:'#7a7265',column:'#4c6264',roof:'#4d5a59',lining:'#43696c',
+};
+const solid=(id,x,z,w,d,h,surface='gallery',baseY=0)=>boxes.push({
+  id:'laguna-'+id,kind:'laguna-'+surface,x,z,w,d,h,baseY,color:palette[surface],overhead:baseY>2.5,
 });
-// Outer envelope, open to the light above.
-for(const z of [-25.5,25.5])wall(0,z,50,0.7,5);
-for(const x of [-25.5,25.5])wall(x,0,.7,51,5);
-// Dividing walls around the central hall; original layout is broadly bilateral.
-for(const side of [-1,1]){
-  // Segmented wall at the edge of the red / blue areas.
-  for(const [z,d]of [[-21.5,7],[-2.3,9.5],[19.5,10]]){
-    wall(side*12.25,z,.65,d,4);
-  }
-  // Changing/shower screens and long internal cover as seen in the overview.
-  wall(side*19.6,-18.4,.55,7.6,3.35,side<0?'pool-red':'pool-blue');
-  wall(side*17.4,-6.2,7.5,.6,2.85,side<0?'pool-red':'pool-blue');
-  wall(side*17.4,-4.0,.6,6.2,2.85,side<0?'pool-red':'pool-blue');
-  wall(side*17.3,4.8,8.4,.6,2.9,side<0?'pool-red':'pool-blue');
-  wall(side*19.3,9.7,.6,7.4,2.9,side<0?'pool-red':'pool-blue');
-  wall(side*18.6,19.0,7.6,.55,2.4,side<0?'pool-red':'pool-blue');
-  wall(side*14.0,15.8,1.0,4.5,3);
+for(const sign of [-1,1]){
+  solid('end-'+sign,0,sign*24.9,49.25,.55,5.2,'shell');
+  solid('side-'+sign,sign*24.9,0,.55,50.35,4.5,'shell');
+  const wing=sign<0?'red':'blue';
+  // A broken perimeter arcade, with entrances staggered across both banks.
+  for(const [i,z,d] of [[0,-20.35,9.1],[1,-6,7.4],[2,6.05,3.9],[3,19.05,11.65]])
+    solid('arcade-'+sign+'-'+i,sign*12.8,sign*z,.62,d,4.0,wing);
+  for(const [i,z,d] of [[0,-13.3,5],[1,.85,5],[2,10.6,5]])
+    solid('lintel-'+sign+'-'+i,sign*12.8,sign*z,.68,d,.64,'column',3.34);
+  for(const [i,z,d] of [[0,-18.3,12.7],[1,18.3,12.7]])
+    solid('canopy-'+sign+'-'+i,sign*18.85,sign*z,11.5,d,.24,'roof',3.92);
+  solid('partition-a-'+sign,sign*19.4,sign*-12.4,6.2,.46,2.38,wing);
+  solid('partition-b-'+sign,sign*20.35,sign*11.5,6.3,.48,2.55,wing);
+  solid('lockers-'+sign,sign*23.8,sign*15.9,.8,5.4,2.42,wing);
+  solid('counter-'+sign,sign*18.6,sign*1.8,2.0,4.65,1.06,'bench');
+  solid('screen-'+sign,sign*4.9,sign*17.9,8.0,.58,1.22,'gallery');
+  solid('pump-'+sign,sign*9.2,sign*-19.7,4.35,3.3,2.25,'service');
+  solid('deck-seat-a-'+sign,sign*8.9,sign*-7.4,1.15,4.3,.86,'bench');
+  solid('deck-seat-b-'+sign,sign*8.6,sign*6.4,1.25,3.1,1.08,'bench');
+  for(const z of [-15.0,-3.1,3.1,15.0])
+    solid('column-'+sign+'-'+z,sign*10.35,z,.54,.54,5.07,'column');
 }
-// A transverse shower screen between two pool sections.
-wall(-8,-10.7,8,.6,2.5);
-wall(8,-10.7,8,.6,2.5);
-// Outer doorway lintels; collidable at head height, traversable underneath.
-for(const side of [-1,1])for(const z of [-11.0,12.5]){
-  wall(side*12.25,z,.65,5.0,.8,'pool-wall',2.9);
-}
-const pools=[
-  {id:'main',x:0,z:5.5,w:11.6,d:17.5,depth:1.75,waterY:-.35},
-  {id:'small',x:-1.9,z:-19.1,w:5.8,d:5.6,depth:1.18,waterY:-.27},
-];
-const poolAt=(x,z)=>pools.find(p=>Math.abs(x-p.x)<p.w/2&&Math.abs(z-p.z)<p.d/2);
-const terrain={cell:1,heightAt(x,z){return -(poolAt(x,z)?.depth??0);},
-  raycast(o,d,max){if(d.y>=0)return Infinity;const ground=this.heightAt(o.x,o.z);const t=(ground-o.y)/d.y;return t>=0&&t<=max?t:Infinity;}};
-// Authored placements rather than random equipment drops; each side gets each available firearm.
+for(const z of [-15,-3.1,3.1,15])solid('beam-'+z,0,z,21.1,.58,.32,'column',4.94);
+
+const pools=[-1,1].map(sign=>({
+  id:sign<0?'north':'south',x:0,z:sign*8.45,w:11.4,d:12.3,depth:1.28,ramp:2.55,waterY:-.24,
+}));
+for(const pool of pools)for(const side of [-1,1])
+  solid('lining-'+pool.id+'-'+side,pool.x+side*(pool.w/2+.08),pool.z,.16,pool.d,pool.depth,'lining',-pool.depth);
+const floorSections=pools.flatMap(pool=>{
+  const {x,z,w,d,depth,ramp}=pool,back=z-d/2,front=z+d/2;
+  const minX=x-w/2,maxX=x+w/2;
+  return [
+    {minX,maxX,minZ:back,maxZ:back+ramp,y0:0,y1:-depth},
+    {minX,maxX,minZ:back+ramp,maxZ:front-ramp,y0:-depth,y1:-depth},
+    {minX,maxX,minZ:front-ramp,maxZ:front,y0:-depth,y1:0},
+  ].map(section=>({...section,pool:pool.id}));
+});
+const profiles=floorSections.map(p=>{
+  const slope=(p.y1-p.y0)/(p.maxZ-p.minZ);
+  return {...p,slope,intercept:p.y0-slope*p.minZ};
+});
+const sectionAt=(x,z)=>profiles.find(p=>x>p.minX&&x<p.maxX&&z>=p.minZ&&z<=p.maxZ);
+const terrain={
+  cell:1,
+  heightAt(x,z){const p=sectionAt(x,z);return p?p.intercept+p.slope*z:0;},
+  raycast(o,d,max){
+    let nearest=Infinity;
+    if(d.y<0){
+      const t=-o.y/d.y;
+      if(t>=0&&t<=max&&!sectionAt(o.x+d.x*t,o.z+d.z*t))nearest=t;
+    }
+    for(const p of profiles){
+      const cross=d.y-p.slope*d.z;
+      if(cross>=-1e-8)continue;
+      const t=(p.intercept+p.slope*o.z-o.y)/cross;
+      if(t<0||t>max||t>=nearest)continue;
+      const x=o.x+d.x*t,z=o.z+d.z*t;
+      if(x>=p.minX&&x<=p.maxX&&z>=p.minZ&&z<=p.maxZ)nearest=t;
+    }
+    return nearest;
+  },
+};
+// Every side has the full pool of pickups on clear deck surfaces.
 const armory=['p19','m50','ar416','ak12','mcx9','vk45','mg36','pkp','dmr12','sv98'];
+const spawns=[{x:-21.6,z:8.3},{x:21.6,z:-8.3}];
 const weaponSpawns=[];
 for(const side of [-1,1])for(const [i,weaponId] of armory.entries()){
-  const column=i%2,row=Math.floor(i/2);
-  weaponSpawns.push({id:`rack-${side<0?'red':'blue'}-${weaponId}`,weaponId,
-    x:side*(15.0+column*6),z:-15.3+row*7.1,y:0,yaw:side<0?-Math.PI/2:Math.PI/2});
+  weaponSpawns.push({id:'rack-'+(side<0?'red':'blue')+'-'+weaponId,weaponId,
+    x:side*(16.1+i%2*5.65),z:side*(-18.4+Math.floor(i/2)*9.25),y:0,yaw:side<0?-Math.PI/2:Math.PI/2});
 }
-const spawns=[{x:-21.6,z:11.7},{x:21.6,z:11.7}];
-// Valid object coordinates for authoritative TDM spawns. The original
-// [x,z] tuples were read as {x,z} and collapsed every participant at (0,0).
-// A dense, symmetric set gives 30+ fighters separate places in their own rooms.
-// Collision and proximity filtering happens in Simulation.respawn().
-const spawnXs=[14.4,16.6,18.8,21.0,23.2];
-const spawnZs=[-22.7,-19.8,-16.9,-13.9,-11.1,-8.4,-3.5,-.6,2.6,7.0,10.2,13.3,16.5,20.5,23.0];
-const spawnPoints=[-1,1].map(side=>spawnZs.flatMap(z=>
-  spawnXs.map(x=>({x:side*x,z}))));
+const open=(x,z)=>!boxes.some(b=>b.baseY<1.7&&Math.abs(b.x-x)<b.w/2+.62&&Math.abs(b.z-z)<b.d/2+.62);
+const spawnPoints=[-1,1].map(side=>[-22.7,-19.8,-16.9,-13.9,-11.1,-8.4,-3.5,-.6,2.6,7.0,10.2,13.3,16.5,20.5,23.0]
+  .flatMap(z=>[14.6,16.7,18.8,20.9,23.0].map(x=>({x:side*x,z:side*z}))).filter(p=>open(p.x,p.z)));
 export const POOL_DAY_MAP={
-  id:'fy_pool_day',name:'Комплекс «Лагуна»',tdmLoadout:'pickup',theme:'pool-day',size,playArea:{minX:-24.5,maxX:24.5,minZ:-24.5,maxZ:24.5},
+  // The stable match identifier keeps existing clients' map selection compatible.
+  id:'fy_pool_day',name:'Комплекс «Лагуна»',tdmLoadout:'pickup',theme:'pool-day',size,layoutVersion:2,
+  playArea:{minX:-24.5,maxX:24.5,minZ:-24.5,maxZ:24.5},
+  sunColor:0xffecda,sunIntensity:2.49,hemisphereLightIntensity:1.72,ambientLightIntensity:.30,
+  fogDensity:.0031,fogColor:0x92a2a4,
+  menuView:{eye:[7.15,2.16,16.5],target:[-2.7,1.28,-5.5],fov:66},
   terrain,boxes,structures:[],landforms:[],landmarks:[
-    {id:'main-pool',name:'Большой бассейн',x:0,z:5.5},
-    {id:'small-pool',name:'Малый бассейн',x:-1.9,z:-19.1},
-    {id:'red-room',name:'Красная сторона',x:-18,z:0},
-    {id:'blue-room',name:'Синяя сторона',x:18,z:0}],
-  pools,weaponSpawns,spawnPoints,spawns,points:[],vehicleSpawns:[],
-  districts:[{id:'main',name:'Большой бассейн',x:0,z:5.5},{id:'red',name:'Красная сторона',x:-18,z:0},{id:'blue',name:'Синяя сторона',x:18,z:0}],
+    {id:'north-pool',name:'Северная чаша',x:0,z:-8.45},
+    {id:'south-pool',name:'Южная чаша',x:0,z:8.45},
+    {id:'red-room',name:'Красное крыло',x:-18,z:0},
+    {id:'blue-room',name:'Синее крыло',x:18,z:0},
+  ],
+  pools,floorSections,weaponSpawns,spawnPoints,spawns,points:[],vehicleSpawns:[],
+  districts:[{id:'pool',name:'Бассейны',x:0,z:0},{id:'red',name:'Красное крыло',x:-18,z:0},{id:'blue',name:'Синее крыло',x:18,z:0}],
   navigationCell:1.25,navigationSize:size,stepHeight:.32,
 };
