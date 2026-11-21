@@ -190,7 +190,8 @@ export class CampaignPresentation {
       const glare=THREE.MathUtils.smoothstep(dawn,.45,.82);
       r.scene.background.setRGB(.025+glare*.51,.115+glare*.76,.045+glare*.5);
       r.scene.fog.color.copy(r.scene.background);
-      r.scene.fog.density=.081;
+      // Keep the same fog cutoff at 35 m instead of 25 m.
+      r.scene.fog.density=2.025/35;
       r.sun.intensity=.22+glare*2.6;r.sun.color.setRGB(.22+glare*.55,.72+glare*.28,.31+glare*.53);
       r.hemiLight.intensity=1.25+glare;r.hemiLight.color.setRGB(.3+glare*.48,1,.45+glare*.34);
       r.hemiLight.groundColor.setRGB(.04+glare*.6,.22+glare*.57,.08+glare*.54);
