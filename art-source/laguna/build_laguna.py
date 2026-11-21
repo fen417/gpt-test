@@ -95,9 +95,10 @@ def mesh_object(mesh,name,collection,surface,cast,editable):
 
 
 class LayeredMap:
-    def __init__(self,titles,make_object):
+    def __init__(self,titles,make_object,grids=(30,18)):
         self.source=[]
         self.make_object=make_object
+        self.grids=grids
         for title in titles:
             collection=bpy.data.collections.new(title)
             bpy.context.scene.collection.children.link(collection)
@@ -113,14 +114,16 @@ class LayeredMap:
             if not mesh.faces:
                 continue
             self.make_object(mesh,name+" · "+surface,self.source[detail],surface,cast,True)
-            grid=30 if not detail else 18
+            grid=self.grids[detail]
             sector=(detail,surface,cast,math.floor((x+10)/grid),math.floor((z+10)/grid))
             self.batches.setdefault(sector,Mesh()).extend(mesh,(0,0,0),0)
 
-    def export(self,tier,path):
+    def export(self,tier,path,extra=()):
         collection=bpy.data.collections.new("Runtime geometry")
         bpy.context.scene.collection.children.link(collection)
         bpy.ops.object.select_all(action="DESELECT")
+        for obj in extra:
+            obj.select_set(True)
         for (detail,surface,cast,x,z),mesh in self.batches.items():
             if detail==tier:
                 self.make_object(mesh,f"{surface}-{x}-{z}-{int(cast)}",collection,surface,cast,False).select_set(True)

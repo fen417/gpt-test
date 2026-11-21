@@ -638,6 +638,10 @@ async function startCampaign(options){
     if(second)await import('../shared/campaign/alhadra-desert.js');
     if(third)await import('../shared/campaign/tel-mazin.js');
     if(fourth)await import('../shared/campaign/safra.js');
+    if((options.missionId??'m01')==='m01'){
+      await renderer.preloadMapVisuals('alhadra');
+      if(!busy||mode!=='campaign')return;
+    }
     session=new CampaignSession(options,{onState:receive,
       onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});
     simulation=session;

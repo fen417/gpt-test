@@ -3,26 +3,35 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { pairMaterials } from './visuals.js';
 import { villageLayoutKey } from './village-layout-key.js';
-import manifest from './assets/village/manifest.json' with {type:'json'};
+import dryWindManifest from './assets/village/manifest.json' with {type:'json'};
+import alhadraManifest from './assets/alhadra/manifest.json' with {type:'json'};
 
-const baseUrl = new URL('./assets/village/base.glb', import.meta.url).href;
-const detailUrl = new URL('./assets/village/detail.glb', import.meta.url).href;
-const roadUrl = new URL('./assets/village/roads.webp', import.meta.url).href;
-const rockUrl = new URL('./assets/village/rock.webp', import.meta.url).href;
+export const dryWindAssets={
+  id:'village',name:'Dry Wind',manifest:dryWindManifest,replaceLeaves:true,
+  base:new URL('./assets/village/base.glb',import.meta.url).href,
+  detail:new URL('./assets/village/detail.glb',import.meta.url).href,
+  roads:new URL('./assets/village/roads.webp',import.meta.url).href,
+  rock:new URL('./assets/village/rock.webp',import.meta.url).href,
+};
+export const alhadraAssets={
+  id:'alhadra',name:'Al-Hadra',manifest:alhadraManifest,replaceLeaves:true,
+  base:new URL('./assets/alhadra/base.glb',import.meta.url).href,
+  detail:new URL('./assets/alhadra/detail.glb',import.meta.url).href,
+  roads:new URL('./assets/alhadra/roads.webp',import.meta.url).href,
+  rock:new URL('./assets/alhadra/rock.webp',import.meta.url).href,
+  labels:new URL('./assets/alhadra/labels.webp',import.meta.url).href,
+  fabric:new URL('./assets/estate/weave.webp',import.meta.url).href,
+};
 const sandTint = new THREE.Color(0xd6bd90), roadTint = new THREE.Color(0xbda17a);
 const roadMultiplier = [roadTint.r/sandTint.r,roadTint.g/sandTint.g,roadTint.b/sandTint.b];
 
-export function hasVillageAsset(map) {
-  return map.id === 'village' && villageLayoutKey(map) === manifest.layout;
-}
-
-function roadSurface(material, mask) {
+function roadSurface(material, mask, span) {
   material.roadMask = mask;
-  material.userData.villageRoadSpan = manifest.span;
+  material.userData.villageRoadSpan = span;
   material.userData.roadMultiplier = roadMultiplier;
   material.onBeforeCompile = shader => {
     shader.uniforms.villageRoadMask = {value:mask};
-    shader.uniforms.villageRoadSpan = {value:manifest.span};
+    shader.uniforms.villageRoadSpan = {value:span};
     shader.uniforms.villageRoadTint = {value:roadMultiplier};
     shader.vertexShader = 'uniform float villageRoadSpan;varying vec2 villageRoadUv;\n'+
       shader.vertexShader.replace('#include <project_vertex>',
@@ -31,24 +40,29 @@ function roadSurface(material, mask) {
       shader.fragmentShader.replace('#include <color_fragment>',
         '#include <color_fragment>\ndiffuseColor.rgb*=mix(vec3(1.),villageRoadTint,texture2D(villageRoadMask,villageRoadUv).g);');
   };
-  material.customProgramCacheKey = () => 'dry-wind-road-'+material.type;
+  material.customProgramCacheKey = () => 'village-road-'+material.type;
 }
 
 export class VillageModel {
-  constructor(owner) {
+  constructor(owner,assets) {
     this.owner = owner;
+    this.assets = assets;
     this.loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     this.materials = new Map();
     this.textures = new Set();
   }
 
+  matches(map){
+    return map.id===this.assets.id&&villageLayoutKey(map)===this.assets.manifest.layout;
+  }
+
   loadBase() {
-    if(!this.baseLoad) this.baseLoad = this.load(baseUrl,true).then(scene=>this.base=scene);
+    if(!this.baseLoad) this.baseLoad = this.load(this.assets.base,true).then(scene=>this.base=scene);
     return this.baseLoad;
   }
 
   loadDetail() {
-    if(!this.detailLoad) this.detailLoad = this.load(detailUrl,false).then(scene=>this.detail=scene);
+    if(!this.detailLoad) this.detailLoad = this.load(this.assets.detail,false).then(scene=>this.detail=scene);
     return this.detailLoad;
   }
 
@@ -57,11 +71,22 @@ export class VillageModel {
     try {
       if(base){
         const tex = new THREE.TextureLoader();
-        this.roadMask=tex.load(roadUrl);
-        this.rockMap=tex.load(rockUrl);
+        this.roadMask=tex.load(this.assets.roads);
+        this.rockMap=tex.load(this.assets.rock);
         this.rockMap.wrapS=this.rockMap.wrapT=THREE.RepeatWrapping;
         this.rockMap.colorSpace=THREE.SRGBColorSpace;
         this.textures.add(this.roadMask).add(this.rockMap);
+        if(this.assets.labels){
+          this.signMap=tex.load(this.assets.labels);
+          this.signMap.colorSpace=THREE.SRGBColorSpace;
+          this.textures.add(this.signMap);
+        }
+        if(this.assets.fabric){
+          this.canvasMap=tex.load(this.assets.fabric);
+          this.canvasMap.wrapS=this.canvasMap.wrapT=THREE.RepeatWrapping;
+          this.canvasMap.colorSpace=THREE.SRGBColorSpace;
+          this.textures.add(this.canvasMap);
+        }
       }
       ({scene} = await this.loader.loadAsync(url));
       if(this.disposed){
@@ -82,11 +107,11 @@ export class VillageModel {
         mesh.geometry.computeBoundingSphere();
       });
       originals.forEach(material=>material.dispose());
-      scene.name=base?'dry-wind-base':'dry-wind-detail';
+      scene.name=this.assets.id+(base?'-base':'-detail');
       return scene;
     }catch(error){
       if(scene)this.disposeRaw(scene);
-      console.warn('Dry Wind geometry',error);
+      console.warn(this.assets.name+' geometry',error);
       return null;
     }
   }
@@ -96,8 +121,9 @@ export class VillageModel {
     const owner=this.owner, surfaces=owner.surfaces;
     const sourceName=name==='road-sand'?'village-sand':name;
     const source=surfaces[sourceName];
-    const map=name==='rock'?this.rockMap:surfaces.maps[sourceName]??null;
-    const side=name==='leaf'?THREE.DoubleSide:THREE.FrontSide;
+    const maps={rock:this.rockMap,sign:this.signMap,canvas:this.canvasMap};
+    const map=maps[name]??surfaces.maps[sourceName]??null;
+    const side=name==='leaf'||name==='canvas'?THREE.DoubleSide:THREE.FrontSide;
     const options={map,side,vertexColors:true};
     let high,low;
     if(name==='unlit'){
@@ -110,7 +136,8 @@ export class VillageModel {
       low=new THREE.MeshLambertMaterial(options);
     }
     if(name==='road-sand'){
-      roadSurface(high,this.roadMask);roadSurface(low,this.roadMask);
+      const span=this.assets.manifest.span;
+      roadSurface(high,this.roadMask,span);roadSurface(low,this.roadMask,span);
       high=owner.groundShadows.apply(high)??high;low=owner.groundShadows.apply(low)??low;
     }
     if(high!==low)pairMaterials(high,low);

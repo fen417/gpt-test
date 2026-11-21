@@ -335,8 +335,13 @@ function addDesertHorizon(parent, material, span, apron) {
   }
 }
 
+export function villageTerrainSpan(map){
+  const margin=map.id==='alhadra'?Math.ceil(110/map.terrain.cell)*map.terrain.cell:110;
+  return map.size+2*margin;
+}
+
 export function addVillageGround(owner, map, assets = true) {
-  const m = palette(owner), span = map.size + 220, terrain = map.terrain.baseSurface ?? map.terrain;
+  const m = palette(owner), span = villageTerrainSpan(map), terrain = map.terrain.baseSurface ?? map.terrain;
   const segments=Math.ceil(span/map.terrain.cell);
   const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
   const vertices = geometry.attributes.position;

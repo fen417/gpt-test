@@ -14,7 +14,7 @@ import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-mode
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
-import { hasVillageAsset, VillageModel } from './village-model.js';
+import { VillageModel, dryWindAssets, alhadraAssets } from './village-model.js';
 import { hasPortAsset, PortModel } from './port-model.js';
 import { ArchitecturalMapModel, lagunaAssets, estateAssets } from './architectural-map-model.js';
 import { loadQuarryDetail, disposeQuarryDetail } from './quarry-model.js';
@@ -325,7 +325,8 @@ export class GameRenderer {
     this.worldRoot.add(this.atmosphere.sky);
     this.scene.add(this.worldRoot);
     this.worlds = new Map();
-    this.villageModel = new VillageModel(this);
+    this.villageModel = new VillageModel(this,dryWindAssets);
+    this.alhadraModel = new VillageModel(this,alhadraAssets);
     this.portModel = new PortModel(this);
     this.lagunaModel = new ArchitecturalMapModel(this,lagunaAssets);
     this.estateModel = new ArchitecturalMapModel(this,estateAssets);
@@ -537,7 +538,7 @@ export class GameRenderer {
             addPortLabels(this,map);
           }
           if(model.base)root.add(model.base);
-          else if(model===this.villageModel){
+          else if(model===this.villageModel||model===this.alhadraModel){
             fallback=new THREE.Group();
             root.add(fallback);this.scene=fallback;
             buildMapScene(this,map,{skipObjectives:true});
@@ -621,7 +622,8 @@ export class GameRenderer {
 
   bakedMapModel(map) {
     if(hasPortAsset(map))return this.portModel;
-    if(hasVillageAsset(map))return this.villageModel;
+    if(this.villageModel.matches(map))return this.villageModel;
+    if(this.alhadraModel.matches(map))return this.alhadraModel;
     if(map===lagunaAssets.map)return this.lagunaModel;
     if(map===estateAssets.map)return this.estateModel;
   }
@@ -712,7 +714,7 @@ export class GameRenderer {
       detail?.traverse(object=>object.geometry?.dispose());
       this.invalidateBakedVisibility();
     }
-    if(world.model===this.villageModel)base.traverse(object=>{
+    if(world.model.assets?.replaceLeaves)base.traverse(object=>{
       if(object.userData.villageSurface==='leaf')object.visible=!wanted;
     });
   }
@@ -2176,6 +2178,7 @@ export class GameRenderer {
   dispose() {
     this.disposed=true;
     this.villageModel.dispose();
+    this.alhadraModel.dispose();
     this.portModel.dispose();
     this.lagunaModel.dispose();
     this.estateModel.dispose();
