@@ -1361,7 +1361,7 @@ export class GameRenderer {
         active.add(item.id);let model=cache.get(item.id);
         if(!model){
           model=createGadgetModel(kindOf(item),this.equipmentPalette,{deployed:true});
-          if(item.kind==='beacon'){
+          if(item.kind==='beacon'&&!model.getObjectByName('equipment-status')){
             const led=new THREE.Mesh(this.geo.sphere,this.getQualityMaterial(item.team===1?this.gadgetAssets.team1:this.gadgetAssets.team0));
             led.name='equipment-status';led.position.set(.06,.34,-.14);led.scale.setScalar(.022);model.add(led);
           }

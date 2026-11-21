@@ -9,6 +9,8 @@ import { createEquipmentCable } from './equipment-cable.js';
 const boxGeometry=new RoundedBoxGeometry(1,1,1,2,.055);
 const cylinderGeometry=new THREE.CylinderGeometry(1,1,1,12);
 const sphereGeometry=new THREE.SphereGeometry(1,12,8);
+const flameHull=new THREE.ConeGeometry(.026,.25,12).rotateX(-Math.PI/2);
+const flameCore=new THREE.ConeGeometry(.013,.16,10).rotateX(-Math.PI/2);
 const templates=new WeakMap();
 const equipmentTemplates=new Map();
 let equipmentLoading;
@@ -20,11 +22,15 @@ export function loadEquipmentModels() {
     ammo:new URL('./assets/equipment/ammo.glb',import.meta.url).href,
     medkit:new URL('./assets/equipment/medkit.glb',import.meta.url).href,
     defibrillator:new URL('./assets/equipment/defibrillator.glb',import.meta.url).href,
+    repair:new URL('./assets/equipment/repair.glb',import.meta.url).href,
+    beacon:new URL('./assets/equipment/beacon.glb',import.meta.url).href,
   };
   const required={
     ammo:['Lid','Contents'],
     defibrillator:['Monitor','LeftPaddle','RightPaddle','LeftCable','RightCable',
       'MonitorCableLeft','MonitorCableRight','Waveform','ChargeIndicator'],
+    repair:['FlameSocket'],
+    beacon:['Antenna','Supports','StatusLamp','SignalDisplay'],
   };
   equipmentLoading=Promise.all(Object.entries(urls).map(async ([kind,url])=>{
     try{
@@ -44,6 +50,11 @@ export function loadEquipmentModels() {
         }
         scene.getObjectByName('ChargeIndicator').visible=false;
       }
+      if(kind==='beacon'){
+        const display=scene.getObjectByName('SignalDisplay');
+        display.material=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false});
+        display.castShadow=false;
+      }
       equipmentTemplates.set(kind,scene);
     }catch(error){console.warn('Equipment model:',kind,error);}
   }));
@@ -59,6 +70,15 @@ export function gadgetPalette(create) {
     red:create('equipment-indicator',0xc1694a,.6,.05),cloth:create('equipment-webbing',0x6e6b53,.95,0),
     flame:create('equipment-flame',0x79ccff,.3,.05,{emissive:0x48aaff,emissiveIntensity:2}),
   };
+}
+
+function addRepairFlame(root,palette,position) {
+  const flame=new THREE.Group();flame.name='tool-flame';
+  if(position)flame.position.copy(position);
+  flame.visible=false;
+  const hull=new THREE.Mesh(flameHull,palette.flame),core=new THREE.Mesh(flameCore,palette.white);
+  hull.position.z=-.115;core.position.z=-.07;
+  flame.add(hull,core);root.add(flame);
 }
 
 function build(kind,m) {
@@ -166,11 +186,7 @@ function build(kind,m) {
     box(0,-.015,.103,.056,.11,.025,m.dark);
     for(let i=0;i<5;i++)box(0,-.055+i*.02,.119,.06,.006,.007,m.metal);
     box(0,-.055,.008,.05,.09,.016,m.white);
-    const flame=new THREE.Group();flame.name='tool-flame';flame.position.set(0,.11,-.25);root.add(flame);
-    const cone=new THREE.ConeGeometry(.026,.25,12);cone.userData.owned=true;
-    const mesh=add(flame,cone,m.flame,0,0,-.115,1,1,1);mesh.rotation.x=-Math.PI/2;
-    const core=new THREE.ConeGeometry(.013,.16,10);core.userData.owned=true;
-    const inner=add(flame,core,m.white,0,0,-.07,1,1,1);inner.rotation.x=-Math.PI/2;
+    addRepairFlame(root,m,new THREE.Vector3(0,.11,-.25));
   }else if(kind==='launcher'){
     const triggerAssembly=new THREE.Group();root.add(triggerAssembly);
     triggerAssembly.position.z=LAUNCHER_POSE.triggerShiftZ;
@@ -298,6 +314,14 @@ export function createGadgetModel(kind,palette,{deployed=false,side='left'}={}) 
     if(kind==='ammo'){
       model.getObjectByName('Lid').rotation.x=deployed?.62:0;
       model.getObjectByName('Contents').visible=deployed;
+    }else if(kind==='beacon'){
+      model.getObjectByName('Antenna').visible=deployed;
+      model.getObjectByName('Supports').visible=deployed;
+      const lamp=model.getObjectByName('StatusLamp');
+      if(deployed)lamp.name='equipment-status';
+      lamp.castShadow=false;
+    }else if(kind==='repair'){
+      addRepairFlame(model.getObjectByName('FlameSocket'),palette);
     }
     return model;
   }
