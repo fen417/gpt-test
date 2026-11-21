@@ -182,7 +182,7 @@ def engineer_pack():
     return mesh
 
 
-def export():
+def export(kit_name, parts):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     collection = bpy.context.scene.collection
     cloth_material = bpy.data.materials.new("Field kit")
@@ -192,10 +192,7 @@ def export():
     colors = cloth_material.node_tree.nodes.new("ShaderNodeVertexColor")
     colors.layer_name = "Paint"
     cloth_material.node_tree.links.new(colors.outputs["Color"], shader.inputs["Base Color"])
-    for name, build in [
-        ("ScoutBoonie", boonie), ("MedicHelmetBadge", medic_helmet), ("MedicArmband", medic_sleeve),
-        ("EngineerProtection", engineer_head), ("EngineerPack", engineer_pack),
-    ]:
+    for name, build in parts:
         obj = build().object(name, collection)
         obj.data.materials.append(cloth_material)
         obj.data.uv_layers.remove(obj.data.uv_layers.active)
@@ -206,12 +203,15 @@ def export():
                 view.shading.color_type = "VERTEX"
                 view.region_3d.view_location = (0, 0, 1.48)
                 view.region_3d.view_distance = 1.04
-    output = HERE.parent.parent / "src" / "assets" / "infantry" / "blue-kit.glb"
+    output = HERE.parent.parent / "src" / "assets" / "infantry" / f"{kit_name}.glb"
     bpy.ops.export_scene.gltf(filepath=str(output), export_format="GLB", export_vertex_color="ACTIVE",
                              export_meshopt_compression_enable=True, export_meshopt_extension="EXT_meshopt_compression")
     bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=str(HERE / "blue-kit.blend"), compress=True)
+    bpy.ops.wm.save_as_mainfile(filepath=str(HERE / f"{kit_name}.blend"), compress=True)
 
 
 if __name__ == "__main__":
-    export()
+    export("blue-kit", [
+        ("ScoutBoonie", boonie), ("MedicHelmetBadge", medic_helmet), ("MedicArmband", medic_sleeve),
+        ("EngineerProtection", engineer_head), ("EngineerPack", engineer_pack),
+    ])

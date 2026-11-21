@@ -233,6 +233,9 @@ function prepareWeapon(gltf, name) {
   };
 }
 
+const kitNames = { regular: 'blue-kit', militia: 'field-kit' };
+const prepareKit = ({ scene }) => ({ model: scene });
+
 export class InfantryAssets {
   constructor(renderer) {
     this.loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -264,19 +267,16 @@ export class InfantryAssets {
 
   load(team, weaponId) {
     const name = team ? 'militia' : 'regular', weapon = weaponNames[weaponId] ?? 'm24';
-    const assets = [this.request(name, prepareBody), this.request(weapon, prepareWeapon)];
-    if (!team) assets.push(this.loadBlueKit());
-    return Promise.all(assets);
-  }
-
-  loadBlueKit() {
-    return this.request('blue-kit', ({ scene }) => ({ model: scene }));
+    return Promise.all([
+      this.request(name, prepareBody), this.request(weapon, prepareWeapon),
+      this.request(kitNames[name], prepareKit),
+    ]);
   }
 
   warm() {
     return Promise.allSettled([
       this.request('regular', prepareBody), this.request('militia', prepareBody),
-      this.loadBlueKit(),
+      ...Object.values(kitNames).map(name => this.request(name, prepareKit)),
       ...Object.keys(weaponFit).map(name => this.request(name, prepareWeapon)),
     ]);
   }
@@ -284,12 +284,12 @@ export class InfantryAssets {
   get(team, weaponId) {
     const name = team ? 'militia' : 'regular', weapon = weaponNames[weaponId] ?? 'm24';
     const body = this.templates.get(name), gun = this.templates.get(weapon);
-    const kit = team ? null : this.templates.get('blue-kit');
-    if (!body || !gun || (!team && !kit)) {
+    const kit = this.templates.get(kitNames[name]);
+    if (!body || !gun || !kit) {
       this.load(team, weaponId).catch(() => {});
       return null;
     }
-    return { template: body, gun, kit: kit?.model };
+    return { template: body, gun, kit: kit.model };
   }
 
   disposeTemplate(template) {

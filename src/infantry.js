@@ -252,7 +252,7 @@ function closeFingers(rig, hand, weight, wrap = 0) {
   }
 }
 
-const blueClassKit = {
+const classKit = {
   medic: [['MedicHelmetBadge', 'Head'], ['MedicArmband', 'LeftForeArm']],
   support: [['EngineerProtection', 'Head'], ['EngineerPack', 'Spine2']],
   recon: [['ScoutBoonie', 'Head']],
@@ -266,7 +266,8 @@ export function createInfantry({ template, gun, kit }, player) {
   for (const letter of String(player.id ?? "")) variant = (Math.imul(variant, 31) + letter.charCodeAt(0)) | 0;
   variant = (variant >>> 0) % 3;
   let optional = 0;
-  const boonie = kit && player.classId === 'recon';
+  const replacedHeadgear = kit && player.classId === 'recon'
+    ? (player.team ? 'GreenCap' : 'helmet') : null;
   for (const [name, levels] of template.levels) {
     const base = model.getObjectByName(name);
     if (!base) throw new Error('Cannot bind infantry LOD for ' + name);
@@ -274,7 +275,7 @@ export function createInfantry({ template, gun, kit }, player) {
     let index = 0;
     base.traverse(mesh => {
       if (!mesh.isMesh) return;
-      mesh.visible = visible && !(boonie && mesh.material.name === 'helmet');
+      mesh.visible = visible && mesh.material.name !== replacedHeadgear;
       mesh.frustumCulled = false; // the actor has a single conservative frustum test
       mesh.receiveShadow = true;
       const geometries = [mesh.geometry, ...levels.slice(1).map(level => level[index])];
@@ -286,7 +287,7 @@ export function createInfantry({ template, gun, kit }, player) {
   const details = [];
   if (kit) {
     model.updateMatrixWorld(true);
-    for (const [name, joint] of blueClassKit[player.classId] ?? []) {
+    for (const [name, joint] of classKit[player.classId] ?? []) {
       const detail = kit.getObjectByName(name).clone(true);
       // The equipment was fitted on the neutral pose in normalized model space.
       bones[joint].attach(detail);
