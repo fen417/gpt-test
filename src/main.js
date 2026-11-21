@@ -29,6 +29,7 @@ import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSea
 import {M02_BINDINGS} from '../shared/campaign/tank-controls.js';
 import {CampaignActors} from './campaign/actors.js';
 import {showCampaignOutcome} from './campaign/outcome.js';
+import {matchLoadingInfo,mountMatchLoading} from './match-loading.js';
 
 const $=id=>document.getElementById(id);
 mountChangelog();
@@ -38,6 +39,8 @@ const audio=new CombatAudio();
 const canvas=$('game');
 const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),reset:()=>{for(const samples of [frameTimes,cpuTimes,renderTimes,simulationTimes])samples.reset();renderer?.gpuTimer.samples.reset();}});
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
+let matchLoad=null,enteredNetworkEpoch=null;
+const loadingScreen=mountMatchLoading(()=>leave());
 let campaignPresentation=null;
 let campaignActors,columnHeading=null;
 let squadUI,weaponPreview,lobbyWeaponPreview;
@@ -452,22 +455,22 @@ function enterLobby(){
   updateLobby();
 }
 function receive(next){
-  setBattleMap(next.mapId);
-  if(next.campaign&&next.campaign.epoch!==state?.campaign?.epoch){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;lastHp=100;wasAlive=false;}
   if(next.lobby){
+    closeMatchLoad();
+    setBattleMap(next.mapId);
+    void renderer.preloadMapVisuals(next.mapId,{quality,gfx});
     state=next;
     if(!inLobby)enterLobby();
     else updateLobby();
     return;
   }
-  if(inLobby&&!next.lobby){
-    inLobby=false;
-    show('lobby',false);
-    state=next;
-    enter();
-    toast('Сервер запустил операцию. В бой!');
+  if(mode==='server'&&enteredNetworkEpoch!==multiplayer.epoch){
+    receiveNetworkStart(next);
     return;
   }
+  if(matchLoad){state=next;return;}
+  setBattleMap(next.mapId);
+  if(next.campaign&&next.campaign.epoch!==state?.campaign?.epoch){seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;lastHp=100;wasAlive=false;}
   if(state&&next.time<state.time-1){pendingDamage.clear();seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast(next.campaign?'Контрольная точка восстановлена':'Новая операция началась');}
   const previousPlayer=local();
   const previousVehicle=state?.vehicles?.find(v=>v.id===previousPlayer?.vehicleId);
@@ -575,7 +578,7 @@ const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>mu
 function prepare(which){
   campaignPresentation?.dispose();campaignPresentation=null;
   reviveAwaitingControl=false;show('revive-control-hint',false);
-  pendingDamage.clear();
+  pendingDamage.clear();enteredNetworkEpoch=null;
   clearControls();simulation?.close();simulation=null;state=null;localId=null;mode=which;room='';inLobby=false;seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;accumulator=0;unlocked=false;unlockedPaused=false;
   const name=$('callsign').value.trim()||'Rookie';save('name',name);unlockAudio();audio.click();return {name,classId:selectedClass,weaponId:currentWeaponId(selectedClass),sidearmId:selectedSidearm,bots:Number($('population').value),difficulty:$('difficulty').value,mapId:$('map-select').value,gameMode:which==='solo'?$('solo-mode').value:$('room-mode').value,killLimit:Number(which==='solo'?$('solo-kill-limit').value:$('room-kill-limit').value)};
 }
@@ -605,6 +608,7 @@ async function requestControl(allowPendingSpawn=false){
 }
 function leave(resetStatus=true){
   const completedCampaign=mode==='campaign'&&Boolean(state?.campaign?.complete);
+  closeMatchLoad();enteredNetworkEpoch=null;
   campaignPresentation?.dispose();campaignPresentation=null;
   if(mode==='campaign')vehicleThirdPerson=read('vehicle-camera','third')!=='first';
   reviveAwaitingControl=false;show('revive-control-hint',false);
@@ -613,67 +617,136 @@ function leave(resetStatus=true){
   show('scoreboard',false);if(resetStatus)status('Сектор готов к высадке.');
   if(completedCampaign)queueMicrotask(showCampaignMenu);
 }
-async function solo(){
-  if(busy)return;multiplayer.close();const opts=prepare('solo');localId='local';setBusy(true);status('Подготовка операции…');
-  let session;
+function beginMatchLoad(which,mapId,missionId){
+  closeMatchLoad();active=false;setBusy(true);
+  document.exitPointerLock?.();
+  const ticket={controller:new AbortController(),view:{quality,gfx,fov,brightness,shake:cameraShake}};
+  matchLoad=ticket;
+  ticket.painted=loadingScreen.show(matchLoadingInfo(which,mapId&&getMap(mapId),missionId));
+  return ticket;
+}
+function closeMatchLoad(){
+  if(!matchLoad)return;
+  matchLoad.controller.abort();
+  matchLoad=null;
+  loadingScreen.close();
+}
+async function prepareMatchMap(ticket,mapId){
+  const {signal}=ticket.controller;
+  await ticket.painted;
+  signal.throwIfAborted();
+  loadingScreen.update(1,'Загрузка карты и текстур');
+  setBattleMap(mapId);
+  await renderer.prepareMatchMap(mapId,ticket.view,signal);
+  signal.throwIfAborted();
+}
+async function prepareMatchFrame(ticket){
+  const {signal}=ticket.controller;
+  loadingScreen.update(2,'Загрузка бойцов и техники');
+  await renderer.preloadMatchActors(state);
+  signal.throwIfAborted();
+  loadingScreen.update(3,'Подготовка первого кадра');
   try{
-    await renderer.preloadMapVisuals(opts.mapId);
-    if(!busy||mode!=='solo')return;
-    session=new SoloSession({...opts,debugBots:new URLSearchParams(location.search).has('aiDebug')},{onState:receive,onLocalShot:presentLocalShot});simulation=session;await session.ready;if(simulation!==session)return;state=session.snapshot();enter();
+    await renderer.warmMatchFrame(state,localId,{
+      ...ticket.view,vehicleThirdPerson,campaignTankZoom,campaignRender:campaignPresentation?.renderHook,
+    },signal);
+  }catch(error){
+    if(!signal.aborted&&renderer.api==='webgpu')recoverWebGpu(error);
+    throw error;
   }
-  catch(error){if(!session||simulation===session){session?.close();simulation=null;setBusy(false);status(error.message,true);}}
+  signal.throwIfAborted();
+}
+function receiveNetworkStart(next){
+  const epoch=multiplayer.epoch;
+  let ticket=matchLoad;
+  if(!ticket||(ticket.epoch!==undefined&&ticket.epoch!==epoch))ticket=beginMatchLoad('server',next.mapId);
+  state=next;
+  if(ticket.epoch===undefined){
+    ticket.epoch=epoch;
+    loadingScreen.describe(matchLoadingInfo('server',getMap(next.mapId)));
+    clearControls();seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;
+    pendingDamage.clear();feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;lastDeathPos=null;
+    prepareMatchMap(ticket,next.mapId).then(()=>prepareMatchFrame(ticket)).then(()=>{
+      ticket.prepared=true;
+      finishNetworkStart(ticket);
+    }).catch(error=>{
+      if(matchLoad!==ticket)return;
+      leave(false);status(error.message,true);toast(error.message);
+    });
+  }else finishNetworkStart(ticket);
+}
+function finishNetworkStart(ticket){
+  if(matchLoad!==ticket||!ticket.prepared)return;
+  if(multiplayer.waitingForMatch){
+    loadingScreen.update(4,'Ожидание готовности игроков');
+    if(ticket.readyInit!==multiplayer.matchInit&&multiplayer.readyForMatch())ticket.readyInit=multiplayer.matchInit;
+    return;
+  }
+  enteredNetworkEpoch=ticket.epoch;
+  closeMatchLoad();
+  enter();
+}
+async function solo(){
+  if(busy)return;
+  multiplayer.close();const opts=prepare('solo');localId='local';
+  const ticket=beginMatchLoad('solo',opts.mapId);
+  try{
+    await prepareMatchMap(ticket,opts.mapId);
+    const session=new SoloSession({...opts,debugBots:new URLSearchParams(location.search).has('aiDebug')},{onState:receive,onLocalShot:presentLocalShot});
+    simulation=session;
+    await session.ready;
+    ticket.controller.signal.throwIfAborted();
+    state=session.snapshot();
+    await prepareMatchFrame(ticket);
+    closeMatchLoad();enter();
+  }
+  catch(error){if(matchLoad===ticket){leave(false);status(error.message,true);toast(error.message);}}
 }
 $('solo').addEventListener('click',solo);
 async function startCampaign(options){
   if(busy)return;
-  multiplayer.close();prepare('campaign');localId='local';setBusy(true);
+  multiplayer.close();prepare('campaign');localId='local';
+  const ticket=beginMatchLoad('campaign',null,options.missionId);
+  const {signal}=ticket.controller;
   const second=options.missionId==='m02';
   const third=options.missionId==='m03';
   const fourth=options.missionId==='m04';
-  status(second?'Подготовка танковой операции…':'Подготовка кампании…');
-  let session;
   try{
-    const {CampaignSession,CampaignPresentation}=await import('./campaign/menu.js');
+    const {CampaignSession,CampaignPresentation,campaignData}=await import('./campaign/menu.js');
+    await ticket.painted;
+    const data=await campaignData(options.missionId);
     // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
-    if(second)await import('../shared/campaign/alhadra-desert.js');
-    if(third)await import('../shared/campaign/tel-mazin.js');
-    if(fourth)await import('../shared/campaign/safra.js');
-    if((options.missionId??'m01')==='m01'){
-      await renderer.preloadMapVisuals('alhadra');
-      if(!busy||mode!=='campaign')return;
-    }
-    session=new CampaignSession(options,{onState:receive,
+    const map=second?import('../shared/campaign/alhadra-desert.js'):
+      third?import('../shared/campaign/tel-mazin.js'):
+      fourth?import('../shared/campaign/safra.js'):null;
+    const presentation=second?import('./campaign/mission2-presentation.js'):
+      third?import('./campaign/mission3-presentation.js'):
+      fourth?import('./campaign/mission4-presentation.js'):null;
+    const [,presentations]=await Promise.all([map,presentation]);
+    signal.throwIfAborted();
+    const session=new CampaignSession({...options,...data},{onState:receive,
       onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});
     simulation=session;
-    await session.ready;if(simulation!==session)return;
-    state=session.snapshot();setBattleMap(state.mapId);renderer.setMap(state.mapId);
+    await session.ready;
+    signal.throwIfAborted();
+    state=session.snapshot();
+    await prepareMatchMap(ticket,state.mapId);
     if(second){
-      const [{Mission2Presentation}]=await Promise.all([import('./campaign/mission2-presentation.js'),renderer.tankWarmup]);
-      if(simulation!==session)return;
-      renderer.setMap(state.mapId);
-      campaignPresentation=new Mission2Presentation(session,{renderer,audio,leave,clearControls,
+      campaignPresentation=new presentations.Mission2Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
       vehicleThirdPerson=true;campaignTankZoom=2.5;vehicleLook.id=null;
     }else if(third){
-      await renderer.tankWarmup;
-      const {Mission3Presentation}=await import('./campaign/mission3-presentation.js');
-      if(simulation!==session)return;
-      // The menu keeps rendering its own map while mission assets load.
-      renderer.setMap(state.mapId);
-      campaignPresentation=new Mission3Presentation(session,{renderer,audio,leave,clearControls,
+      campaignPresentation=new presentations.Mission3Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
     }else if(fourth){
-      const [{Mission4Presentation}]=await Promise.all([import('./campaign/mission4-presentation.js'),renderer.tankWarmup]);
-      if(simulation!==session)return;
-      renderer.setMap(state.mapId);
-      campaignPresentation=new Mission4Presentation(session,{renderer,audio,leave,clearControls,
+      campaignPresentation=new presentations.Mission4Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
     }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,
       resume:()=>requestControl(true)});
-    enter();text('room-badge',`КАМПАНИЯ · ${options.definition.title.toUpperCase()}`);
-  }catch(error){console.error('Campaign:',error);if(!session||simulation===session){
-    session?.close();simulation=null;campaignPresentation?.dispose();campaignPresentation=null;
-    setBusy(false);throw error;
+    await prepareMatchFrame(ticket);
+    closeMatchLoad();enter();text('room-badge',`КАМПАНИЯ · ${data.definition.title.toUpperCase()}`);
+  }catch(error){if(matchLoad===ticket){
+    console.error('Campaign:',error);leave(false);throw error;
   }}
 }
 // Campaign is always visible as the first main menu entry.
@@ -709,10 +782,16 @@ function renderRooms(rooms){
   if(inLobby&&state?.lobby)updateLobby();
 }
 async function joinRoom(item){
-  if(busy)return;const opts=prepare('server');setBusy(true);
-  renderer.preloadMapVisuals(item.mapId);
-  try{room=await multiplayer.join({...opts,roomId:item.id,url:await serverAddress()});if(multiplayer.phase==='lobby')enterLobby();else enter();}
-  catch(error){status(error.message,true);setBusy(false);}
+  if(busy)return;
+  const opts=prepare('server');
+  const ticket=beginMatchLoad('server',item.mapId);
+  try{
+    await ticket.painted;
+    const url=await serverAddress();
+    ticket.controller.signal.throwIfAborted();
+    void renderer.preloadMapVisuals(item.mapId,ticket.view);
+    room=await multiplayer.join({...opts,roomId:item.id,url});
+  }catch(error){if(matchLoad===ticket){leave(false);status(error.message,true);}}
 }
 async function refreshRooms(){
   text('rooms-note','Обновляем список…');
@@ -726,7 +805,7 @@ syncRoomMode();
 $('create-room').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const opts=prepare('server');setBusy(true);
   const mapId=$('room-map').value;
-  renderer.preloadMapVisuals(mapId);
+  void renderer.preloadMapVisuals(mapId,{quality,gfx});
   try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId,gameMode:$('room-mode').value,killLimit:Number($('room-kill-limit').value),maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
   catch(error){status(error.message,true);setBusy(false);if(multiplayer.rooms.length){show('room-browser');renderRooms(multiplayer.rooms);}}
 });
@@ -776,7 +855,7 @@ for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('c
   if(id!=='result-leave'&&performance.now()-lastFireClick<600)return;
   leave();
 });
-$('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(state?.ownerId===localId){multiplayer.startMatch();enter();}else{leave();toast('Создай новую комнату для следующей операции.');}});
+$('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(state?.ownerId===localId)multiplayer.startMatch();else{leave();toast('Создай новую комнату для следующей операции.');}});
 async function triggerRespawn(){
   const p=local();if(!p||p.alive||p.respawnIn>0)return;
   const targetPoint=selectedSpawn;
@@ -1640,7 +1719,9 @@ function markers(){
 }
 function frame(now){
   const cpuBegin=performance.now();
-  requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;frames++;fpsClock+=elapsed;
+  requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;
+  if(matchLoad)return;
+  frames++;fpsClock+=elapsed;
   if(active)frameTimes.add(elapsed*1000);
   if(fpsClock>=1){
     const network=(simulation?.client??(mode==='server'?multiplayer:null))?.diagnostics()??null;

@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { pairMaterials } from './visuals.js';
 import { villageLayoutKey } from './village-layout-key.js';
+import {MapTextures} from './map-textures.js';
 import dryWindManifest from './assets/village/manifest.json' with {type:'json'};
 import alhadraManifest from './assets/alhadra/manifest.json' with {type:'json'};
 
@@ -50,6 +51,7 @@ export class VillageModel {
     this.loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     this.materials = new Map();
     this.textures = new Set();
+    this.textureLoader = new MapTextures();
   }
 
   matches(map){
@@ -70,7 +72,7 @@ export class VillageModel {
     let scene;
     try {
       if(base){
-        const tex = new THREE.TextureLoader();
+        const tex = this.textureLoader;
         this.roadMask=tex.load(this.assets.roads);
         this.rockMap=tex.load(this.assets.rock);
         this.rockMap.wrapS=this.rockMap.wrapT=THREE.RepeatWrapping;

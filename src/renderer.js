@@ -616,8 +616,61 @@ export class GameRenderer {
     this.cameraPlayerId = null;
   }
 
-  preloadMapVisuals(mapId) {
-    return this.bakedMapModel(getMap(mapId))?.loadBase();
+  async preloadMapVisuals(mapId,{quality='high',gfx}={}) {
+    const model=this.bakedMapModel(getMap(mapId));
+    if(!model)return;
+    const base=await model.loadBase();
+    if(base&&quality==='high'&&['auto','high'].includes(gfx?.detail??'auto'))await model.loadDetail();
+    await model.textureLoader.ready();
+  }
+
+  async prepareMatchMap(mapId,view,signal) {
+    await this.preloadMapVisuals(mapId,view);
+    signal.throwIfAborted();
+    this.setMap(mapId);
+    const world=this.worlds.get(this.map.id);
+    const detail=view.quality==='high'&&['auto','high'].includes(view.gfx.detail);
+    if(world.model)this.updateBakedDetail(world,detail);
+    if(this.map.id==='quarry')this.updateQuarryDetail(world,this.map,detail);
+    await Promise.allSettled([this.surfaces.ready,this.groundShadows.textureLoader.ready(),world.quarryLoad,this.tankWarmup]);
+  }
+
+  async preloadMatchActors(state) {
+    this.infantry??=new InfantryAssets(this.renderer);
+    const units=new Map();
+    for(const player of state.players){
+      const weapon=player.weaponId||defaultWeaponId(player.classId);
+      units.set(player.team+'/'+weapon,[player.team,weapon]);
+    }
+    const vehicleTypes=new Set([...(state.vehicles??[]),...(this.map.vehicleSpawns??[])].map(vehicle=>vehicle.type));
+    await Promise.allSettled([
+      ...Array.from(units.values(),([team,weapon])=>this.infantry.load(team,weapon)),
+      ...Array.from(vehicleTypes,type=>lightVehicleModels[type]?.load()),
+    ]);
+  }
+
+  async warmMatchFrame(state,localId,view,signal) {
+    const local=state.players.find(player=>player.id===localId);
+    this.render({...state,events:[]},localId,1/60,{
+      ...view,yaw:local?.yaw??0,pitch:local?.pitch??0,vehicleCameraYaw:local?.yaw??0,paused:true,warming:true,
+    });
+    await this.renderer.compileAsync?.(this.scene,this.camera);
+    signal.throwIfAborted();
+    if(this.api==='webgpu'){
+      await this.renderer.backend.device.queue.onSubmittedWorkDone();
+    }else{
+      const gl=this.renderer.getContext();
+      const fence=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
+      if(!fence)return;
+      gl.flush();
+      const deadline=performance.now()+750;
+      try{
+        while(performance.now()<deadline&&gl.clientWaitSync(fence,0,0)===gl.TIMEOUT_EXPIRED){
+          signal.throwIfAborted();
+          await new Promise(resolve=>requestAnimationFrame(resolve));
+        }
+      }finally{gl.deleteSync(fence);}
+    }
   }
 
   bakedMapModel(map) {
@@ -1712,7 +1765,7 @@ export class GameRenderer {
     }
   }
 
-  drawScene(menu = false) {
+  drawScene(menu = false, warming = false) {
     this.frameCount++;
     if (menu) {
       if (!this.staticMenuShadows && this.renderer.shadowMap.enabled) {
@@ -1727,14 +1780,14 @@ export class GameRenderer {
         this.renderer.shadowMap.needsUpdate = true;
       }
     }
-    if(!menu)this.interiorVisibility.apply(this);
+    if(!menu&&!warming)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
     try{
       const generator=this.frameGeneration;
       try{
         // No simulated gameplay frames exist in menu. Keep the ordinary
         // WebGPU renderer there; enable temporal history only in a match.
-        generator?.setMode(menu?'off':this.gfx.frameGeneration??'off');
+        generator?.setMode(menu||warming?'off':this.gfx.frameGeneration??'off');
         this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
         this.postPass.begin(this.quality);
         try {
@@ -2127,7 +2180,15 @@ export class GameRenderer {
     }
     this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updatePoolWeapons(state); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
     this.atmosphere.sky.position.copy(this.camera.position);
-    this.drawScene();
+    if(view.warming){
+      // Upload visible map layers even when the starting camera faces away.
+      const meshes=[];
+      this.staticRoot.traverseVisible(object=>{
+        if(object.isMesh&&object.frustumCulled){meshes.push(object);object.frustumCulled=false;}
+      });
+      try{this.drawScene(false,true);}
+      finally{for(const mesh of meshes)mesh.frustumCulled=true;}
+    }else this.drawScene();
   }
 
   countVisibleObjects() {

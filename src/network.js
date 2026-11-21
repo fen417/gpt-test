@@ -147,6 +147,10 @@ export class Multiplayer{
           }
           if(data.type==='lobby'){this._phase='lobby';this.state=data.state;this.ownerId=data.state.ownerId;this.onState(data.state);}
           if(data.type==='init')this.initialize(data);
+          if(data.type==='match-ready'&&data.epoch===this.epoch){
+            this.waitingForMatch=false;
+            this.publish();
+          }
           if(data.type==='stats'){this.serverStats=data.stats;if(data.stats.snapshotHz)this.snapshotHz=data.stats.snapshotHz;}
           const pending=this.requests.get(data.requestId);if(pending){clearTimeout(pending.timer);this.requests.delete(data.requestId);pending.resolve(data);}
         }catch(error){clearTimeout(timeout);if(!ready){reject(error);ws.close();}else{this.onStatus('Синхронизация восстанавливается…');this.send(new Uint8Array([MESSAGE.RESYNC]));}}
@@ -167,7 +171,7 @@ export class Multiplayer{
     while(!this.manual&&generation===this.generation&&performance.now()-started<28000){
       await new Promise(resolve=>setTimeout(resolve,1000));
       if(this.manual||generation!==this.generation)break;
-      try{await this.connectSocket(generation);await this.request('resume',{token:this.token});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{if(!this.manual&&generation===this.generation)this.ws?.close();}
+      try{await this.connectSocket(generation);await this.request('resume',{token:this.token,loadingReady:true});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{if(!this.manual&&generation===this.generation)this.ws?.close();}
     }
     this.reconnecting=false;if(!this.manual&&generation===this.generation){this.token=null;safeStorage.set('sector-resume:'+this.url,null);this.onError('Время переподключения истекло. Войдите в комнату заново.');}
   }
@@ -183,20 +187,23 @@ export class Multiplayer{
   }
   control(type,data={}){const sent=this.send({type,...data,protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION});if(!sent)this.onStatus('Команда не отправлена: соединение восстанавливается.');return sent;}
   send(data){if(this.ws?.readyState!==WebSocket.OPEN)return false;if(this.ws.bufferedAmount>16384)return false;this.ws.send(data instanceof Uint8Array?data:encodeControl(data));return true;}
-  async host(options={}){await this.open(options.url);await this.request('create',options);return this.roomName;}
+  async host(options={}){await this.open(options.url);await this.request('create',{...options,loadingReady:true});return this.roomName;}
   async join(options={}){
     await this.open(options.url);const saved=safeStorage.get('sector-resume:'+this.url);
-    if(saved){try{await this.request('resume',{token:saved});return this.roomName;}catch{safeStorage.set('sector-resume:'+this.url,null);}}
-    await this.request('join',options);return this.roomName;
+    if(saved){try{await this.request('resume',{token:saved,loadingReady:true});return this.roomName;}catch{safeStorage.set('sector-resume:'+this.url,null);}}
+    await this.request('join',{...options,loadingReady:true});return this.roomName;
   }
   setLobbyLoadout(data){this.control('loadout',data);}
   chooseLobbyTeam(team){return this.request('loadout',{team});}
   changeSquad(squadId){return this.request('squad',{squadId});}
   updateLobbySettings(data){this.control('settings',data);}
   startMatch(data={}){this.control('start',data);}
+  readyForMatch(){return this.control('ready',{epoch:this.epoch});}
   respawn(classId,pointId,weaponId,sidearmId){return this.control('respawn',{classId,pointId,weaponId,sidearmId});}
   initialize(data){
     this.awaitingResync=false;
+    this.waitingForMatch=data.waitingForMatch===true;
+    this.matchInit=(this.matchInit??0)+1;
     this.context={mapId:data.mapId,gameMode:data.gameMode??'conquest',killLimit:data.killLimit??50,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
     this.equipmentPresentation=new EquipmentPresentation();this.equipmentRequestKey=null;this.equipmentRequestSequence=0;this.latestInputAck=0;
     this.decoder=new SnapshotDecoder(this.context);this.localEvents=[];this.prediction=new Prediction(data.mapId,event=>{this.localEvents.push(event);this.onLocalShot(event);},{predictShots:this.predictShots});this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.playbackRecoveries=0;this.interpolationMs=Math.max(40,1000/(data.snapshotHz??20)+10);this.renderTime=null;this.targetInterpolationMs=this.interpolationMs;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');

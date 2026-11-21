@@ -187,9 +187,8 @@ export async function openCampaignMenu(onStart,{unlockAll=false}={}){
     }:undefined;
     launching=true;
     try{
-      const data=await campaignData(missionId);
       dialog.close();
-      await onStart({...data,difficulty:resume?save.difficulty:selector.value,save,missionId,campaignProgress:progress,loadout});
+      await onStart({difficulty:resume?save.difficulty:selector.value,save,missionId,campaignProgress:progress,loadout});
     }catch(error){
       dialog.querySelector('.campaign-menu-error').textContent=error?.message??String(error);
       if(!dialog.open)dialog.showModal();

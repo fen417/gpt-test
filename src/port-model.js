@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { pairMaterials } from './visuals.js';
 import { portLayoutKey } from './port-layout-key.js';
+import {MapTextures} from './map-textures.js';
 import manifest from './assets/port/manifest.json' with { type: 'json' };
 
 const baseUrl = new URL('./assets/port/base.glb', import.meta.url).href;
@@ -18,6 +19,7 @@ export class PortModel {
     this.owner = owner;
     this.loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     this.materials = new Map();
+    this.textureLoader = new MapTextures();
   }
 
   loadBase() {
@@ -61,7 +63,7 @@ export class PortModel {
     const source = this.owner.surfaces[name === 'deck' ? 'concrete' : name];
     let map = source?.map ?? null;
     if (name === 'painted') {
-      map = this.paint = new THREE.TextureLoader().load(paintUrl);
+      map = this.paint = this.textureLoader.load(paintUrl);
       map.colorSpace = THREE.SRGBColorSpace;
       map.wrapS = map.wrapT = THREE.RepeatWrapping;
     }

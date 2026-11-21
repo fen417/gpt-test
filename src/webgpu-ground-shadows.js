@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MeshStandardNodeMaterial, MeshLambertNodeMaterial, MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uniform, materialColor, positionWorld, vec2, vec3, mix,
   float, clamp, step } from 'three/tsl';
+import {MapTextures} from './map-textures.js';
 
 const urls={port:new URL('./assets/shadows/port.png',import.meta.url),
   quarry:new URL('./assets/shadows/quarry.png',import.meta.url),
@@ -10,6 +11,7 @@ const urls={port:new URL('./assets/shadows/port.png',import.meta.url),
 export class WebGpuGroundShadows {
   constructor(){
     this.textures=new Map();
+    this.textureLoader=new MapTextures();
     this.white=new THREE.DataTexture(new Uint8Array([255,255,255,255]),1,1);
     this.white.needsUpdate=true;
     this.sample=texture(this.white);
@@ -26,7 +28,7 @@ export class WebGpuGroundShadows {
     let tex=this.textures.get(map.id);
     if(!tex){
       const imageUrl=urls[map.id]?.href;
-      tex=imageUrl?new THREE.TextureLoader().load(imageUrl):this.white;
+      tex=imageUrl?this.textureLoader.load(imageUrl):this.white;
       tex.flipY=false;tex.minFilter=THREE.LinearFilter;tex.generateMipmaps=false;
       this.textures.set(map.id,tex);
     }

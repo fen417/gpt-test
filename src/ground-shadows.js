@@ -1,13 +1,14 @@
 import * as THREE from 'three';
+import {MapTextures} from './map-textures.js';
 const urls={port:new URL('./assets/shadows/port.png',import.meta.url),quarry:new URL('./assets/shadows/quarry.png',import.meta.url),village:new URL('./assets/shadows/village.png',import.meta.url)};
 
 export class GroundShadows {
-  constructor(){this.textures=new Map();this.uniforms={groundShadow:{value:null},groundSpan:{value:384},groundShadowStrength:{value:0}};}
+  constructor(){this.textures=new Map();this.textureLoader=new MapTextures();this.uniforms={groundShadow:{value:null},groundSpan:{value:384},groundShadowStrength:{value:0}};}
   setMap(map){
     let texture=this.textures.get(map.id);
     if(!texture){
       const imageUrl=urls[map.id]?.href;
-      texture=imageUrl?new THREE.TextureLoader().load(imageUrl):new THREE.DataTexture(new Uint8Array([255,255,255,255]),1,1);
+      texture=imageUrl?this.textureLoader.load(imageUrl):new THREE.DataTexture(new Uint8Array([255,255,255,255]),1,1);
       // TextureLoader marks the texture ready after the image loads. Calling
       // needsUpdate here before the image exists triggers a WebGL warning.
       if(!imageUrl)texture.needsUpdate=true;

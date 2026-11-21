@@ -1,0 +1,96 @@
+.match-loading {
+  --menu-accent: #d6ec9b;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: #111914;
+  color: #f0f1e9;
+}
+
+.match-loading::backdrop { background: #111914; }
+
+.match-loading-image,
+.match-loading-content {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.match-loading-image {
+  object-fit: cover;
+  object-position: center;
+}
+
+.match-loading-content {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(24px, 5vw, 78px);
+  background: linear-gradient(180deg, #0b110edd, transparent 26%, transparent 44%, #0b110ee8 94%);
+}
+
+.match-loading-header,
+.match-loading-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.match-loading-header {
+  font: 600 clamp(10px, 1.05vw, 14px) 'IBM Plex Sans', Arial, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: .15em;
+}
+
+.match-loading-brand { font-size: clamp(16px, 1.8vw, 23px); }
+.match-loading-brand b { color: var(--menu-accent); }
+
+.match-loading-footer { width: min(740px, 100%); }
+.match-loading-footer h1 {
+  margin: 0 0 clamp(12px, 2.5vw, 24px);
+  font: 700 clamp(42px, 8vw, 106px)/.94 'Barlow Condensed', Impact, sans-serif;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.match-loading-status {
+  min-height: 42px;
+  color: #e1e8d7;
+  font: 500 clamp(12px, 1.2vw, 15px) 'IBM Plex Sans', Arial, sans-serif;
+}
+
+.match-loading-status button {
+  min-height: 38px;
+  padding: 8px 14px;
+  flex-shrink: 0;
+}
+
+.match-loading progress {
+  display: block;
+  width: 100%;
+  height: 5px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #dde9c72e;
+  color: var(--menu-accent);
+}
+
+.match-loading progress::-webkit-progress-bar { background: #dde9c72e; }
+.match-loading progress::-webkit-progress-value { background: var(--menu-accent); }
+.match-loading progress::-moz-progress-bar { background: var(--menu-accent); }
+
+@media (max-width: 480px) {
+  .match-loading-image { object-position: 57% center; }
+  .match-loading-footer h1 { font-size: clamp(38px, 11vw, 60px); }
+}

@@ -4,6 +4,7 @@ import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {POOL_DAY_MAP} from '../shared/pool-day.js';
 import {LINDEN_ESTATE_MAP} from '../shared/linden-estate.js';
 import {pairMaterials} from './visuals.js';
+import {MapTextures} from './map-textures.js';
 
 const tileUrl=new URL('./assets/laguna/ceramic.webp',import.meta.url).href;
 const rippleUrl=new URL('./assets/laguna/ripples.webp',import.meta.url).href;
@@ -30,6 +31,7 @@ export class ArchitecturalMapModel {
     this.loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     this.materials=new Map();
     this.textures=[];
+    this.textureLoader=new MapTextures();
   }
 
   loadBase(){
@@ -76,7 +78,7 @@ export class ArchitecturalMapModel {
     let map=source?.map??null;
     const url=architectureTextures[name];
     if(url){
-      map=new THREE.TextureLoader().load(url);
+      map=this.textureLoader.load(url);
       this.textures.push(map);
       map.colorSpace=THREE.SRGBColorSpace;
       map.wrapS=map.wrapT=THREE.RepeatWrapping;

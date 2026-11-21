@@ -20,6 +20,23 @@
 </head>
 <body>
   <canvas id="game" aria-label="Трёхмерное поле боя"></canvas>
+  <dialog id="match-loading" class="match-loading" aria-labelledby="match-loading-title">
+    <img id="match-loading-image" class="match-loading-image" alt="" />
+    <div class="match-loading-content">
+      <header class="match-loading-header">
+        <span class="match-loading-brand">SECTOR <b>09</b></span>
+        <span id="match-loading-mode"></span>
+      </header>
+      <div class="match-loading-footer">
+        <h1 id="match-loading-title"></h1>
+        <div class="match-loading-status">
+          <span id="match-loading-status" role="status" aria-live="polite"></span>
+          <button id="match-loading-cancel" class="panel-secondary" type="button">Отмена</button>
+        </div>
+        <progress id="match-loading-progress" max="4" value="0" aria-label="Подготовка игры"></progress>
+      </div>
+    </div>
+  </dialog>
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu menu-home">

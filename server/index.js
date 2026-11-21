@@ -14,6 +14,7 @@ const bounded=(value,min,max,fallback)=>Number.isFinite(Number(value))?Math.max(
 const clean=(s,fallback,max=40)=>String(s??fallback).replace(/[<>\x00-\x1f\x7f]/g,'').trim().slice(0,max)||fallback;
 const pulses=['fire','interact','switchSeat','horn','order','grenade','drop','reload','gadget','secondaryGadget'];
 const token=()=>randomBytes(24).toString('base64url');
+const MATCH_LOADING_MS=20000;
 const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 
 // One process, one in-memory room. Importing this module never opens a port.
@@ -82,7 +83,7 @@ export function createGameServer(options={}){
   function initialize(s){
     const sim=room.sim;s.encoder=new SnapshotEncoder(sim.map.size);s.eventAck=sim.eventId;s.eventSent=sim.eventId;s.eventLastSent=0;s.inputQueue=[];s.inputReceived=0;s.inputAck=0;s.credit=0;s.heldInput=null;s.finishedSequence=0;s.lastInput=Date.now();
     const p=sim.players.get(s.id);if(p){p.networkControlled=true;p.networkFrames=[];p.networkIdle=true;p.inputAck=0;sim.setInput(s.id,{yaw:p.yaw,pitch:p.pitch});}
-    send(s.client,{type:'init',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,mapId:sim.map.id,size:sim.map.size,difficulty:room.difficulty,gameMode:sim.gameMode,killLimit:sim.killLimit,roomName:room.name,ownerId:room.ownerId,epoch:room.epoch,eventAck:sim.eventId,inputHz:60,snapshotHz:effectiveSnapshotHz});
+    send(s.client,{type:'init',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,mapId:sim.map.id,size:sim.map.size,difficulty:room.difficulty,gameMode:sim.gameMode,killLimit:sim.killLimit,roomName:room.name,ownerId:room.ownerId,epoch:room.epoch,eventAck:sim.eventId,inputHz:60,snapshotHz:effectiveSnapshotHz,waitingForMatch:Boolean(room.loading)});
     snapshot(s,preparedSnapshot(),true);
   }
   function join(c,data,requestId,resume=false){
@@ -96,7 +97,9 @@ export function createGameServer(options={}){
       if(!room.ownerId)room.ownerId=s.id;
       if(room.sim)room.sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
     }
-    s.client=c;s.detachedAt=0;c.session=s;room.emptyAt=0;identity(c,requestId);
+    s.client=c;s.detachedAt=0;c.session=s;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
+    if(s.loadingReady)room.loading?.pending.add(s.id);
+    identity(c,requestId);
     if(room.phase==='match'){initialize(s);startLoop();}lobbyChanged();
   }
   function remove(s){
@@ -107,13 +110,36 @@ export function createGameServer(options={}){
     const s=c.session;if(!s)return;c.session=null;s.client=null;s.detachedAt=Date.now();s.inputQueue=[];
     if(room?.sim){const p=room.sim.players.get(s.id);if(p){p.networkIdle=true;p.networkFrames=null;room.sim.setInput(s.id,{yaw:p.yaw,pitch:p.pitch});}}
     if(explicit)remove(s);
+    matchPlayerReady(s.id);
     if(room){if(room.ownerId===s.id)room.ownerId=connected()[0]?.id??s.id;if(!connected().length){room.emptyAt=Date.now();stopLoop();}lobbyChanged();}
   }
+  function clearMatchLoading(){
+    if(!room?.loading)return;
+    clearTimeout(room.loading.timer);
+    room.loading=null;
+  }
+  function releaseMatch(loading){
+    if(room?.loading!==loading)return;
+    clearMatchLoading();
+    for(const s of connected())if(s.loadingReady)send(s.client,{type:'match-ready',epoch:room.epoch});
+    startLoop();
+  }
+  function matchPlayerReady(id){
+    const loading=room?.loading;
+    if(!loading)return;
+    loading.pending.delete(id);
+    if(!loading.pending.size)releaseMatch(loading);
+  }
   function startMatch(){
-    stopLoop();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId,gameMode:room.mode,killLimit:room.killLimit,lagCompensation:env.LAG_COMPENSATION!=='0'});
+    stopLoop();clearMatchLoading();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId,gameMode:room.mode,killLimit:room.killLimit,lagCompensation:env.LAG_COMPENSATION!=='0'});
     sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.0;
     room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;
     for(const s of sessions.values())sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
+    const pending=new Set(connected().filter(s=>s.loadingReady).map(s=>s.id));
+    if(pending.size){
+      const loading={pending,timer:setTimeout(()=>releaseMatch(loading),MATCH_LOADING_MS)};
+      room.loading=loading;
+    }
     for(const s of connected())initialize(s);roomsChanged();startLoop();
   }
   function acknowledge(s,snapshotAck,eventAck,dictAck){s.encoder?.confirm(snapshotAck,dictAck);s.eventAck=Math.max(s.eventAck??0,Math.min(eventAck,s.eventSent??0));}
@@ -205,7 +231,7 @@ export function createGameServer(options={}){
       const dropped=Math.floor(accumulator/step)*step;totals.droppedSeconds+=dropped;accumulator-=dropped;}
     timer=setTimeout(pump,Math.max(1,(step-accumulator)*1000));
   }
-  function startLoop(){if(timer||!room?.sim||!connected().length)return;previous=performance.now();accumulator=0;snapshotClock=0;timer=setTimeout(pump,1000/config.tickHz);}
+  function startLoop(){if(timer||!room?.sim||room.loading||!connected().length)return;previous=performance.now();accumulator=0;snapshotClock=0;timer=setTimeout(pump,1000/config.tickHz);}
   function stopLoop(){clearTimeout(timer);timer=null;accumulator=0;}
   wss.on('connection',ws=>{
     const c={ws,session:null,lastSeen:Date.now(),messages:0,window:Date.now(),alive:true};clients.add(c);
@@ -240,6 +266,7 @@ export function createGameServer(options={}){
             send(c,{type:'squad',requestId,squadId:room.sim.players.get(s.id).squadId});break;
           case 'settings':if(!s||s.id!==room.ownerId||room.phase!=='lobby')throw Error('Настройки доступны создателю в лобби.');settings(data);lobbyChanged();break;
           case 'start':if(!s||s.id!==room.ownerId)throw Error('Матч запускает создатель комнаты.');if(room.phase==='match'&&room.sim.winner===null)throw Error('Матч уже идёт.');settings(data);room.ended=false;startMatch();break;
+          case 'ready':if(s&&data.epoch===room.epoch)matchPlayerReady(s.id);break;
           case 'respawn':if(s&&room.sim){const point=sanitizeSpawnPoint(room.sim.map,data.pointId);room.sim.respawn(s.id,data.classId,point,data.weaponId,data.sidearmId);const p=room.sim.players.get(s.id);s.classId=p.classId;s.weaponId=p.primaryWeaponId;s.sidearmId=p.sidearmId;}break;
           case 'stats':if(s&&now-(c.statsAt??0)>2000){c.statsAt=now;send(c,{type:'stats',stats:stats()});}break;
           default:throw Error('Неизвестная команда.');
@@ -254,7 +281,7 @@ export function createGameServer(options={}){
     for(const c of clients)if(now-c.lastSeen>30000){if(!c.alive){c.ws.terminate();continue;}c.alive=false;c.ws.ping();totals.bytes+=2;totals.messages++;intervalBytes+=2;intervalMessages++;if(c.session){c.session.bytes+=2;c.session.intervalBytes+=2;}}
     if(room?.ended)for(const s of connected()){events(s,now);if(!s.finishedSequence||s.encoder.ack<s.finishedSequence)snapshot(s,room.prepared);}
     let expired=false;for(const s of sessions.values())if(!s.client&&now-s.detachedAt>config.reconnectMs){remove(s);expired=true;}if(expired)lobbyChanged();
-    if(room&&connected().length===0&&room.emptyAt&&now-room.emptyAt>config.emptyMs){stopLoop();sessions.clear();room=null;roomsChanged();}
+    if(room&&connected().length===0&&room.emptyAt&&now-room.emptyAt>config.emptyMs){stopLoop();clearMatchLoading();sessions.clear();room=null;roomsChanged();}
     if(performance.now()-intervalStart>=5000){
       const elapsed=(performance.now()-intervalStart)/1000,cpu=process.cpuUsage(lastCpu);lastCpu=process.cpuUsage();
       lastMetrics={bytesPerSecond:Math.round(intervalBytes/elapsed),messagesPerSecond:+(intervalMessages/elapsed).toFixed(1),tickAverageMs:intervalTicks?+(intervalTickMs/intervalTicks).toFixed(3):0,tickMaximumMs:+intervalMax.toFixed(3),cpuCorePercent:+((cpu.user+cpu.system)/1e6/elapsed*100).toFixed(1),rssBytes:process.memoryUsage().rss};
@@ -266,7 +293,7 @@ export function createGameServer(options={}){
   },1000);maintenance.unref();
   return {server,config,stats,get room(){return room;},
     listen:()=>new Promise(resolve=>server.listen(config.port,'0.0.0.0',()=>resolve(server.address()))),
-    close:async()=>{stopping=true;stopLoop();clearInterval(maintenance);for(const c of clients)c.ws.terminate();await new Promise(resolve=>wss.close(resolve));if(server.listening)await new Promise(resolve=>server.close(resolve));}
+    close:async()=>{stopping=true;stopLoop();clearMatchLoading();clearInterval(maintenance);for(const c of clients)c.ws.terminate();await new Promise(resolve=>wss.close(resolve));if(server.listening)await new Promise(resolve=>server.close(resolve));}
   };
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
