@@ -20,7 +20,7 @@ export function usesCampaignRadio(missionId,speaker,key){
   if(missionId==='m02')return speaker!=='crew'&&speaker!=='vos';
   if(['orlov','dargo'].includes(speaker))return true;
   if(missionId==='m03')return ['timo.road','timo.roofs','timo.window',
-    'vos.village','vos.trapped','harranti.hold','harranti.truck'].includes(key);
+    'vos.meet','vos.village','vos.trapped','harranti.hold','harranti.truck'].includes(key);
   return missionId==='m04'&&['vos.move','taver.work','taver.loss'].includes(key);
 }
 
@@ -64,7 +64,9 @@ export class CampaignAudio {
     this.worldVoice.refDistance=3;
     this.worldVoice.rolloffFactor=.62;
     this.worldVoice.maxDistance=80;
-    this.worldVoice.connect(this.voiceBus);
+    this.worldVoiceGain=c.createGain();
+    this.worldVoiceGain.gain.value=.54;
+    this.worldVoice.connect(this.worldVoiceGain).connect(this.voiceBus);
     this.radioInput=c.createBiquadFilter();this.radioInput.type='highpass';this.radioInput.frequency.value=480;
     const radioHigh=c.createBiquadFilter();radioHigh.type='lowpass';radioHigh.frequency.value=2950;
     const presence=c.createBiquadFilter();presence.type='peaking';presence.frequency.value=1580;presence.Q.value=1.25;presence.gain.value=6;
@@ -132,6 +134,10 @@ export class CampaignAudio {
     }
     if(actor?.id==='local'&&renderer?.camera.position.distanceToSquared(voicePosition)<1)return false;
     const panner=this.worldVoice,now=this.combat.ctx.currentTime;
+    const distance=renderer?.camera.position.distanceTo(voicePosition)??0;
+    const gain=.54+.46*Math.min(1,Math.max(0,(distance-2)/12));
+    if(this.voicePositionReady)this.worldVoiceGain.gain.setTargetAtTime(gain,now,.06);
+    else this.worldVoiceGain.gain.setValueAtTime(gain,now);
     if(panner.positionX){
       const values=[voicePosition.x,voicePosition.y,voicePosition.z];
       for(let i=0;i<3;i++){
@@ -228,5 +234,5 @@ export class CampaignAudio {
   dispose(){this.closed=true;this.stopVoice();this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}
     try{this.radioDefence?.source.stop();}catch{}
     this.radioDefence?.source.disconnect();this.radioDefence?.gain.disconnect();
-    this.worldVoice?.disconnect();this.bus?.disconnect();this.cache.clear();}
+    this.worldVoice?.disconnect();this.worldVoiceGain?.disconnect();this.bus?.disconnect();this.cache.clear();}
 }
