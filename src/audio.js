@@ -708,7 +708,7 @@ export class CombatAudio {
     // be evicted and replayed on the next animation frame during a busy battle.
     while(this.seen.size>8192)this.seen.delete(this.seen.keys().next().value);
   }
-  update(dt,{state,local,engineListener,moving=0,sprinting=false,crouching=false,aim=false,locked=false,inMenu=false,paused=false,quality='high'}={}){
+  update(dt,{state,local,engineListener,camera,moving=0,sprinting=false,crouching=false,aim=false,locked=false,inMenu=false,paused=false,quality='high'}={}){
     if(this._disposed)return;this.setMode(inMenu?'menu':'battle');
     if(this.ctx){const connected=quality!=='low';if(connected!==this._reverbConnected){for(const send of Object.values(this._reverbs)){send.disconnect();if(connected)send.connect(this._convolver);}this._convolver.disconnect();if(connected)this._convolver.connect(this._reverbWet);this._reverbConnected=connected;}}
     if(paused!==this._paused){this._paused=paused;this._mix();}
@@ -734,7 +734,8 @@ export class CombatAudio {
     if(critical&&!paused&&now>=this._heartbeat){this._tone(59,.16,.1,{end:38});this._tone(52,.13,.065,{time:now+.19,end:34});this._heartbeat=now+.9;}
     const briefing=state?.campaign?.missionId==='m02'&&state.campaign.cutscene?.id==='briefing';
     this._updateEngine(state,local,inMenu||paused||(briefing&&!engineListener),briefing?engineListener:null);
-    this._updateRocketAudio(state,local,inMenu||paused);
+    if(camera&&local)this._updateSpatialListener(local,camera);
+    this._updateRocketAudio(state,local,inMenu||paused,Boolean(camera));
     const sliding=Boolean(canMove&&local.sliding&&!local.vehicleId);
     if(sliding&&now>=(this._slideSoundAt??0)){
       this._noise(this._sliding?.24:.32,this._sliding?.035:.085,{priority:1,color:'pink',filter:'bandpass',cutoff:1350,attack:.025,pan:-.12});
@@ -825,7 +826,26 @@ export class CombatAudio {
       const now=this.ctx.currentTime;channel.gain.gain.cancelScheduledValues(now);channel.gain.gain.setTargetAtTime(0,now,.015);channel.source.stop(now+.08);
     }this._rocketChannels.clear();this._rocketTracks.clear();this._rocketStateTime=null;
   }
-  _updateRocketAudio(state,local,silent){
+  _updateSpatialListener(local,camera){
+    const listener=this.ctx.listener,yaw=local.yaw??0,pitch=local.pitch??0;
+    const matrix=camera?.matrixWorld.elements;
+    const position=matrix?[matrix[12],matrix[13],matrix[14]]:[local.x,(local.y??0)+(local.crouch?1.05:1.58),local.z];
+    const forward=matrix?[-matrix[8],-matrix[9],-matrix[10]]:
+      [-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch)];
+    const up=matrix?[matrix[4],matrix[5],matrix[6]]:[Math.sin(yaw)*Math.sin(pitch),Math.cos(pitch),Math.cos(yaw)*Math.sin(pitch)];
+    if(listener.positionX){
+      for(let i=0;i<3;i++){
+        const axis='XYZ'[i];
+        this._target(listener['position'+axis],position[i],.015);
+        this._target(listener['forward'+axis],forward[i],.015);
+        this._target(listener['up'+axis],up[i],.015);
+      }
+    }else{
+      listener.setPosition(...position);
+      listener.setOrientation(...forward,...up);
+    }
+  }
+  _updateRocketAudio(state,local,silent,listenerUsesCamera){
     const buffer=this._foley.get('rocket-flight'),now=this.ctx.currentTime;
     if(silent||!local||!buffer){this._stopRocketAudio();return;}
     if(state.time<(this._rocketStateTime??0)-1)this._stopRocketAudio();
@@ -837,13 +857,8 @@ export class CombatAudio {
       this._rocketTracks.set(e.rocketId,{...e,id:e.rocketId,at:e.time,expires:e.time+4});
     for(const r of state.rockets??[])if(r.kind!==1)this._rocketTracks.set(r.id,{...r,at:state.time,expires:r.lifeAt??state.time+r.life});
     for(const e of state.events??[])if(e.type==='explosion'&&e.rocketId)this._rocketTracks.delete(e.rocketId);
-    const listener=this.ctx.listener,yaw=local.yaw??0,pitch=local.pitch??0,eye=(local.y??0)+(local.crouch?1.05:1.58);
-    const forward=[-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch)];
-    const up=[Math.sin(yaw)*Math.sin(pitch),Math.cos(pitch),Math.cos(yaw)*Math.sin(pitch)];
-    if(listener.positionX){
-      for(const [axis,value] of [['X',local.x],['Y',eye],['Z',local.z]])this._target(listener['position'+axis],value,.015);
-      for(let i=0;i<3;i++){const axis='XYZ'[i];this._target(listener['forward'+axis],forward[i],.015);this._target(listener['up'+axis],up[i],.015);}
-    }else{listener.setPosition(local.x,eye,local.z);listener.setOrientation(...forward,...up);}
+    if(!listenerUsesCamera)this._updateSpatialListener(local);
+    const eye=(local.y??0)+(local.crouch?1.05:1.58);
     for(const [id,r] of this._rocketTracks){
       if(time>=r.expires){this._rocketTracks.delete(id);continue;}
       let channel=this._rocketChannels.get(id);

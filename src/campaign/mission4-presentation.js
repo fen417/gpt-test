@@ -234,7 +234,7 @@ export class Mission4Presentation{
     this.audio.campaignMusicOverride=m.cutscene?.id==='finale'||this.score.voices.size>0;
     if(end&&!this.ended){this.clearControls();document.exitPointerLock?.();}
     this.ended=end;
-    this.voice.update(state,this.locale,paused||end);
+    this.voice.update(state,this.locale,paused||end,this.renderer);
   }
   render(r,state,dt,view){
     const m=state.campaign;

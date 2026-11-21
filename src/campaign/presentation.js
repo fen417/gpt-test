@@ -54,6 +54,7 @@ export class CampaignPresentation {
     for(const site of this.session.state.campaign.chargeSites){const m=this.mesh(new THREE.BoxGeometry(.38,.16,.28),dark,site.x,ground(site.x,site.z)+.15,site.z);this.charges.set(site.id,m);}
     // A map table and lamp for the briefing, on the actual ridge plateau.
     this.table=this.mesh(new THREE.BoxGeometry(4,.15,3),this.material('#a78e60'),-80,ground(-80,-30)+1.1,-30);
+    this.briefingSpeaker=new THREE.Vector3(-80,ground(-80,-31.9)+1.65,-31.9);
     this.tableLegs=[];for(const x of [-81.7,-78.3])for(const z of [-31.2,-28.8])this.tableLegs.push(this.mesh(new THREE.BoxGeometry(.12,1.05,.12),dark,x,ground(-80,-30)+.53,z));
     const canvas=document.createElement('canvas');canvas.width=768;canvas.height=512;const ctx=canvas.getContext('2d');
     ctx.fillStyle='#c7ba91';ctx.fillRect(0,0,768,512);ctx.strokeStyle='#6e755234';ctx.lineWidth=1;
@@ -164,7 +165,7 @@ export class CampaignPresentation {
       if(m.awaitingLoadout)this.$('[data-primary]').focus();
     }
     this.blocking=blocking;
-    this.audio.update(state,this.locale,paused||m.awaitingLoadout);
+    this.audio.update(state,this.locale,paused||m.awaitingLoadout,this.renderer,this.briefingSpeaker);
   }
   render(r,state,dt){
     const m=state.campaign;if(!m)return;

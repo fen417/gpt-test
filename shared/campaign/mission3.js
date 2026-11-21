@@ -9,6 +9,11 @@ import {getSidearm,getWeapon,WEAPONS} from '../world.js';
 import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels} from './tel-mazin.js';
 
 const SAVE_VERSION=1,MAX_ENEMIES=14;
+const ambushTiming={
+  recruit:{fireDelay:1.7,protection:4},
+  regular:{fireDelay:1.2,protection:2.8},
+  veteran:{fireDelay:.7,protection:1.7},
+};
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const angle=n=>Math.atan2(Math.sin(n),Math.cos(n));
 const yawTo=(a,b)=>Math.atan2(a.x-b.x,a.z-b.z);
@@ -26,7 +31,7 @@ const MEDIC_TREATMENT_SECONDS=4, MEDIC_RANGE=42;
 const doorsById=new Map(TEL_MAZIN.interactives.filter(item=>item.type==='door').map(item=>[item.id,item]));
 const supplySites=[{id:'tea-kit',x:-155,z:12,kind:'aid'},{id:'cross-smoke',x:-46,z:13,kind:'smoke'},
   {id:'market-rpg',x:36,z:-24,kind:'rockets'},{id:'craft-ammo',x:-96,z:48,kind:'ammo'},
-  {id:'vos-cache',x:-184,z:6,kind:'crew'}];
+  {id:'vos-cache',x:-147,z:5,kind:'crew'}];
 
 export class Mission3Simulation extends Simulation{
   constructor(definition,options={}){
@@ -70,7 +75,8 @@ export class Mission3Simulation extends Simulation{
     super.movePlayer(p,input,dt);
   }
   thinkBot(p,dt){
-    if(p.team===1&&this.campaign.rideTime<this.campaign.definition.convoy.ambushAt){
+    const c=this.campaign;
+    if(p.team===1&&(c.inTransit||c.stage===0&&this.time<c.stageAt+ambushTiming[this.difficulty].fireDelay)){
       p.input=sanitizeInput({yaw:p.yaw});return;
     }
     if(this.campaign.thinkBot(p,dt))return;
@@ -83,7 +89,7 @@ export class Mission3Simulation extends Simulation{
     const c=this.campaign;
     if(!p?.alive||c.inTransit||c.finale||this.time<p.invulnerableUntil||attacker?.team===p.team&&attacker!==p)return;
     if(p.team===0){
-      if(p.storyCrew&&!p.columnCrew)return;
+      if(p.id==='vos'||p.storyCrew&&!p.columnCrew||c.stage===0&&this.time<c.stageAt+ambushTiming[this.difficulty].protection)return;
       amount*=this.difficulty==='recruit'?.7:this.difficulty==='veteran'?1.25:1;
       if(p.downed){
         if(this.time-p.downedAt>5&&!c.reviveInProgress(p))p.downedTimer-=amount*(p.id==='local'&&c.playerMedic?.alive ? .025 : .08);
@@ -163,6 +169,7 @@ class ColumnDirector{
     };
     const hull=sim.vehicles[3],next=sim.vehicles[4];
     mount(p,hull,4);mount(sim.players.get('timo'),hull,0);mount(sim.players.get('vos'),hull,1);mount(sim.players.get('rafa'),next,1);
+    sim.players.get('vos').invulnerableUntil=1e8;
     for(const [i,id] of Object.keys(allies).entries())mount(sim.players.get(id)??sim.players.get(`stand-in-${id}`),i<2?hull:next,i%2+2);
     this.refreshGeometry();this.updateRide();this.initialSave=this.serialize();
   }
@@ -288,24 +295,37 @@ class ColumnDirector{
     this.sim.event('m03AmbushHit',{...target,vehicleId:v.id,rocketId,missionTime:this.rideTime});
   }
   dismount(animate=true){
-    for(const p of this.sim.players.values())if(p.vehicleId&&p.team===0){
+    for(const p of this.sim.players.values())if(p.vehicleId&&p.team===0&&p.id!=='vos'){
       const v=this.sim.vehicles.find(v=>v.id===p.vehicleId),seat=p.vehicleSeat;
       if(v?.convoyIndex===undefined)continue;
       this.sim.dismountVehicle(p,true);
-      const spot=this.safeSpot({x:v.x+(seat-2)*1.12,z:seat%2?3.4:-3.4},p);
+      const spot=this.safeSpot(p,p);
       Object.assign(p,spot);
       if(animate){
-        const dropHeight=p.id==='local'?1.46:.95;
-        Object.assign(p,{y:spot.y+dropHeight,dropHeight,dropAt:this.time,dropDuration:p.id==='local'?1.5:.3+(seat%4)*.16,
-          grounded:false,invulnerableUntil:this.time+3.2});
+        const dropHeight=p.id==='local'?.95:.72;
+        Object.assign(p,{y:spot.y+dropHeight,dropHeight,dropAt:this.time,dropDuration:p.id==='local'?.46:.31+(seat%3)*.05,
+          grounded:false,invulnerableUntil:this.time+1});
       }else{
         delete p.dropAt;
         p.grounded=true;
       }
       if(p.columnCrew){p.home=spot;p.squadMember=true;}
     }
-    if(animate)this.player.invulnerableUntil=this.time+3.5;
+    this.seatVos();
     this.choices=null;
+  }
+  seatVos(){
+    const p=this.sim.players.get('vos'),tank=this.sim.vehicles.find(v=>v.id==='sokol-7');
+    if(!p||!tank?.hp)return;
+    for(const vehicle of this.sim.vehicles){
+      const seat=vehicle.seats.indexOf(p.id);
+      if(seat!==-1)vehicle.seats[seat]=null;
+    }
+    tank.seats[0]=p.id;
+    Object.assign(p,{vehicleId:tank.id,vehicleSeat:0,alive:true,hp:100,downed:false,downedTimer:0,prone:false,
+      respawnIn:0,reviver:null,squadMember:false,invulnerableUntil:1e8,input:sanitizeInput({yaw:tank.yaw})});
+    delete p.dropAt;
+    this.sim.syncVehicleSeat(p,tank);
   }
   command(command){
     if(command?.type==='retry'){this.restore(this.latestSave??this.initialSave);return;}
@@ -371,8 +391,10 @@ class ColumnDirector{
       const truck=role.startsWith('truck-'),mounted=this.sim.vehicles.find(v=>v.id==='m03-truck');
       const lead=this.safeSpot(where),lockedPosition=typeof entry[0]==='string';
       const alternatives=lockedPosition?[]:[-1,1].flatMap(side=>[12,20].map(offset=>({x:where.x+5,z:where.z+side*offset})));
-      const spot=truck?(mounted??this.truckApproach()):this.stage<0?lead:[lead,...alternatives.map(a=>this.safeSpot(a))].find(a=>
-        !this.spawnVisible(a)&&!this.sim.collides(a.x,a.z,a.y+.02)&&!this.sim.vehicleAt(a.x,a.z,a.y));
+      const ambush=this.stage<=0;
+      const spot=truck?(mounted??this.truckApproach()):[lead,...alternatives.map(a=>this.safeSpot(a))].find(a=>
+        (!ambush||this.clearOfDismount(a))&&(this.stage<0||!this.spawnVisible(a))&&
+        !this.sim.collides(a.x,a.z,a.y+.02)&&!this.sim.vehicleAt(a.x,a.z,a.y));
       if(!spot){held.push(entry);continue;}
       capacity--;
       const id=`m03-enemy-${++this.enemySerial}`;
@@ -386,6 +408,10 @@ class ColumnDirector{
       if(truck)this.mountTruck(bot,role,spot);
     }
     this.pending.push(...held);
+  }
+  clearOfDismount(spot){
+    const at=this.definition.convoy.ambushAt;
+    return distance(spot,m03ConvoyPose(this.definition,3,at))>=20&&distance(spot,m03ConvoyPose(this.definition,4,at))>=20;
   }
   spawnVisible(spot){
     const p=this.player,range=distance(p,spot),height=spot.y+1.15-p.y-1.55;
@@ -426,7 +452,7 @@ class ColumnDirector{
     return threats.some(e=>e.ai?.contact?.id==='local')||this.time-this.player.lastShotAt<5?3:1;
   }
   canSee(from,to,checkWalls=true){
-    if(to.storyCrew&&!to.columnCrew)return false;
+    if(to.id==='vos'||to.storyCrew&&!to.columnCrew)return false;
     const a=eye(from),b=eye(to,to.downed?.43:1.2);
     for(const s of this.smoke){
       const dx=b.x-a.x,dz=b.z-a.z,u=Math.max(0,Math.min(1,((s.x-a.x)*dx+(s.z-a.z)*dz)/Math.max(.01,dx*dx+dz*dz)));
@@ -451,7 +477,7 @@ class ColumnDirector{
   }
   thinkBot(p,dt){
     const sim=this.sim,player=this.player;
-    if(this.inTransit&&p.team===0||this.finale||p.storyCrew&&!p.columnCrew||p.rescue||p.downed){
+    if(this.inTransit&&p.team===0||this.finale||p.id==='vos'||p.storyCrew&&!p.columnCrew||p.rescue||p.downed){
       const talking=this.radio?.key.startsWith(`${p.id}.`),looksAtPlayer=p.squadMember&&p.vehicleId===player.vehicleId&&p.vehicleId&&talking;
       p.input=sanitizeInput({yaw:looksAtPlayer?yawTo(p,player):p.yaw,pitch:looksAtPlayer?.07:p.pitch});return true;
     }
@@ -793,7 +819,11 @@ class ColumnDirector{
     const vos=this.sim.players.get('vos');
     this.setPanel('hq-gate','open');this.queue=[];this.radio=null;
     this.say('harranti.final');
-    if(vos?.alive&&!vos.downed&&['timo','rafa'].every(id=>this.sim.players.get(id)?.alive))this.say('vos.final');
+    if(vos?.alive&&['timo','rafa'].every(id=>this.sim.players.get(id)?.alive)){
+      this.sim.dismountVehicle(vos,true);
+      Object.assign(vos,this.safeSpot({x:173.65,z:-12.6},vos),{yaw:-.3,grounded:true});
+      this.say('vos.final');
+    }
     this.say('dargo.final');
   }
   defenceThreats(){return this.pending.length+this.enemies.filter(e=>e.defenceWave).length;}

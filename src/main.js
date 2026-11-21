@@ -1734,6 +1734,7 @@ function frame(now){
   if(renderState)audio.events(renderState,renderPlayer);
   audio.update?.(dt,{quality,state:renderState??state,local:renderPlayer??local(),
     engineListener:active?campaignPresentation?.engineListener:null,
+    camera:active&&campaignPresentation?renderer.camera:null,
     moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
   if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
   if(active){renderer.lastCpuMs=performance.now()-cpuBegin;cpuTimes.add(renderer.lastCpuMs);}

@@ -1,3 +1,6 @@
+import { Vector3 } from 'three';
+import { vehiclePartPose } from '../../shared/vehicles.js';
+
 // Voice recordings and five synchronized music stems are optional external
 // mission assets. Missing files keep subtitles and procedural ambience working.
 
@@ -12,15 +15,36 @@ export function campaignMusicMix({volume,defence,outro=false,subtitle,radioReady
   };
 }
 export function usesCampaignRadio(missionId,speaker,key){
-  if(missionId==='m02')return true;
-  if(['orlov','officer','dargo'].includes(speaker))return true;
-  if(missionId==='m03')return ['timo','rafa'].includes(speaker)||speaker==='vos'&&key!=='vos.final'||
-    ['marten.night','marten.choiceHome','marten.choiceRoad'].includes(key);
+  if(missionId==='m01')return speaker==='orlov'&&!key.startsWith('m01.orlov.brief')||
+    ['m01.officer.mid01','m01.officer.call','m01.bruno.sokol'].includes(key);
+  if(missionId==='m02')return speaker!=='crew'&&speaker!=='vos';
+  if(['orlov','dargo'].includes(speaker))return true;
+  if(missionId==='m03')return ['timo.road','timo.roofs','timo.window',
+    'vos.village','vos.trapped','harranti.hold','harranti.truck'].includes(key);
   return missionId==='m04'&&['vos.move','taver.work','taver.loss'].includes(key);
 }
+
+function dialogueActor(state,speaker){
+  const {players,campaign:{missionId}}=state;
+  if(missionId==='m01'&&['sentry','officer'].includes(speaker)){
+    const local=players.find(p=>p.id==='local');
+    if(!local)return null;
+    let best=Infinity,actor;
+    for(const p of players){
+      if(!p.alive||p.team===local.team||p.role!=='sentry'&&p.role!=='officer')continue;
+      const distance=(p.x-local.x)**2+(p.z-local.z)**2;
+      if(distance<best){best=distance;actor=p;}
+    }
+    return actor;
+  }
+  const id=speaker==='marten'?'local':missionId==='m02'?`m02-${speaker}`:speaker;
+  return players.find(p=>p.id===id)??players.find(p=>p.id===`stand-in-${id}`);
+}
+
 export class CampaignAudio {
   constructor(combat,root,definition){
     this.combat=combat;this.root=root;this.definition=definition;this.cache=new Map();this.missing=new Set();this.sources=[];this.stems=[];this.stemLoading=false;this.generation=0;this.key=null;this.epoch=-1;
+    this.voicePosition=new Vector3();
   }
   async buffer(path){
     if(this.missing.has(path))return null;
@@ -34,6 +58,13 @@ export class CampaignAudio {
     this.voiceMeter=c.createAnalyser();this.voiceMeter.fftSize=256;
     this.voiceSamples=new Float32Array(this.voiceMeter.fftSize);
     this.voiceBus.connect(this.voiceMeter);this.voiceMeter.connect(this.bus);
+    this.worldVoice=c.createPanner();
+    this.worldVoice.panningModel='HRTF';
+    this.worldVoice.distanceModel='inverse';
+    this.worldVoice.refDistance=3;
+    this.worldVoice.rolloffFactor=.62;
+    this.worldVoice.maxDistance=80;
+    this.worldVoice.connect(this.voiceBus);
     this.radioInput=c.createBiquadFilter();this.radioInput.type='highpass';this.radioInput.frequency.value=480;
     const radioHigh=c.createBiquadFilter();radioHigh.type='lowpass';radioHigh.frequency.value=2950;
     const presence=c.createBiquadFilter();presence.type='peaking';presence.frequency.value=1580;presence.Q.value=1.25;presence.gain.value=6;
@@ -67,9 +98,8 @@ export class CampaignAudio {
     source.connect(output);this.sources.push(source);source.start(at,offset);
     source.onended=()=>{source.disconnect();this.sources=this.sources.filter(s=>s!==source);};
   }
-  async voice(line,remaining,missionId,key){
+  async voice(line,remaining,radio,spatial){
     this.finishVoice();const generation=this.generation;
-    const radio=usesCampaignRadio(missionId,line.speaker,key);
     const [buffer,[opening,closing]]=await Promise.all([this.buffer(line.audio),radio?this.radioSwitches:[]]);
     if(!buffer||generation!==this.generation||this.closed||this.paused)return;
     const late=(line.duration??4)-remaining;
@@ -77,11 +107,55 @@ export class CampaignAudio {
     if(offset>=buffer.duration)return;
     const now=Math.max(this.combat.ctx.currentTime,this.radioEnd??0),start=now+(opening&&offset===0?opening.duration:0);
     if(opening&&offset===0)this.playVoiceBuffer(opening,this.voiceBus,now);
-    this.playVoiceBuffer(buffer,radio?this.radioInput:this.voiceBus,start,offset);
+    this.playVoiceBuffer(buffer,radio?this.radioInput:spatial?this.worldVoice:this.voiceBus,start,offset);
     if(closing){
       const close=start+buffer.duration-offset;
       this.playVoiceBuffer(closing,this.voiceBus,close);
       this.radioEnd=close+closing.duration;
+    }
+  }
+  positionVoice(state,renderer,speaker,briefingPosition){
+    const mission=state.campaign;
+    this.speakingActorId??=dialogueActor(state,speaker)?.id;
+    const actor=state.players.find(p=>p.id===this.speakingActorId);
+    const {voicePosition}=this;
+    const rig=renderer?.soldiers.get(actor?.id);
+    if(actor&&rig?.group.parent&&rig.group.visible)rig.head.getWorldPosition(voicePosition);
+    else if(actor)voicePosition.set(actor.x,actor.y+(actor.downed||actor.prone?.43:actor.crouch?1.02:1.56),actor.z);
+    else if(briefingPosition&&mission.cutscene?.id==='briefing'&&speaker==='orlov')voicePosition.copy(briefingPosition);
+    else{
+      const tankId=mission.missionId==='m02'&&['crew','vos'].includes(speaker)?'sokol-7':
+        mission.missionId==='m04'&&speaker==='vos'?'sokol-crossing-1':null;
+      const tank=tankId&&state.vehicles.find(v=>v.id===tankId);
+      if(!tank)return false;
+      vehiclePartPose(tank,-.35,1.95,.2,voicePosition);
+    }
+    if(actor?.id==='local'&&renderer?.camera.position.distanceToSquared(voicePosition)<1)return false;
+    const panner=this.worldVoice,now=this.combat.ctx.currentTime;
+    if(panner.positionX){
+      const values=[voicePosition.x,voicePosition.y,voicePosition.z];
+      for(let i=0;i<3;i++){
+        const param=panner['position'+'XYZ'[i]];
+        if(this.voicePositionReady)param.setTargetAtTime(values[i],now,.025);
+        else param.setValueAtTime(values[i],now);
+      }
+    }else panner.setPosition(voicePosition.x,voicePosition.y,voicePosition.z);
+    this.voicePositionReady=true;
+    return true;
+  }
+  updateDialogue(state,locale,cue,remaining,renderer,briefingPosition){
+    const key=cue?.serial??null,changed=key!==this.key,line=locale.lines[cue?.key];
+    if(changed){
+      this.speakingActorId=cue?.speakerId;
+      this.voicePositionReady=false;
+      this.dialogueRadio=Boolean(line&&usesCampaignRadio(state.campaign.missionId,line.speaker,cue.key));
+    }
+    const radio=this.dialogueRadio;
+    const spatial=line&&!radio&&this.positionVoice(state,renderer,line.speaker,briefingPosition);
+    if(changed){
+      this.key=key;
+      if(line?.audio)this.voice(line,remaining??line.duration,radio,spatial);
+      else this.finishVoice();
     }
   }
   mouthOpening(){
@@ -116,7 +190,7 @@ export class CampaignAudio {
     const osc=c.createOscillator(),gain=c.createGain(),now=c.currentTime;osc.type='sine';osc.frequency.setValueAtTime(kind===3?640:kind===2?440:280,now);osc.frequency.linearRampToValueAtTime(kind===3?980:340,now+.5);
     gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(.045,now+.03);gain.gain.linearRampToValueAtTime(0,now+.65);osc.connect(gain);gain.connect(this.voiceBus);osc.start();osc.stop(now+.7);osc.onended=()=>{osc.disconnect();gain.disconnect();};
   }
-  update(state,locale,paused){
+  update(state,locale,paused,renderer,briefingPosition){
     this.ensureGraph();if(!this.bus)return;
     const c=this.combat.ctx,mission=state.campaign;
     if(['m02','m03','m04'].includes(mission.missionId)){
@@ -126,9 +200,7 @@ export class CampaignAudio {
       if(!this.prefetched){this.prefetched=true;for(const line of Object.values(locale.lines))if(line.audio)this.buffer(line.audio);}
       if(this.epoch!==mission.epoch){this.epoch=mission.epoch;this.stopVoice();this.key=null;}
       if(paused){if(this.sources.length)this.stopVoice();this.key=null;return;}
-      const key=mission.radio?.serial??null;
-      if(key!==this.key){this.key=key;const lineKey=mission.radio?.key,line=locale.lines[lineKey];
-        if(line?.audio)this.voice(line,mission.radioRemaining??line.duration,mission.missionId,lineKey);else this.finishVoice();}
+      this.updateDialogue(state,locale,mission.radio,mission.radioRemaining,renderer,briefingPosition);
       return;
     }
     const outro=mission.cutscene?.id==='finale'||mission.complete;
@@ -151,12 +223,10 @@ export class CampaignAudio {
       this.heartbeatAt=c.currentTime+1;
       for(const offset of [0,.18]){const osc=c.createOscillator(),gain=c.createGain(),at=c.currentTime+offset;osc.frequency.value=58;gain.gain.setValueAtTime(.045,at);gain.gain.exponentialRampToValueAtTime(.001,at+.12);osc.connect(gain);gain.connect(this.voiceBus);osc.start(at);osc.stop(at+.14);osc.onended=()=>{osc.disconnect();gain.disconnect();};}
     }
-    const key=mission.subtitle?.serial??null;
-    if(key!==this.key){this.key=key;if(mission.subtitle){const line=locale.lines[mission.subtitle.key];
-      if(line)this.voice(line,mission.subtitleRemaining??line.duration,mission.missionId,mission.subtitle.key);}else this.finishVoice();}
+    this.updateDialogue(state,locale,mission.subtitle,mission.subtitleRemaining,renderer,briefingPosition);
   }
   dispose(){this.closed=true;this.stopVoice();this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}
     try{this.radioDefence?.source.stop();}catch{}
     this.radioDefence?.source.disconnect();this.radioDefence?.gain.disconnect();
-    this.bus?.disconnect();this.cache.clear();}
+    this.worldVoice?.disconnect();this.bus?.disconnect();this.cache.clear();}
 }

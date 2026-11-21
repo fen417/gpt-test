@@ -3,7 +3,7 @@
   "id": "m03",
   "title": "Колонна",
   "map": "tel-mazin",
-  "convoy": {"speed": 6, "firstX": -810, "interval": 15, "villageAt": 100, "ambushAt": 118, "dismountAt": 120, "combatAt": 122},
+  "convoy": {"speed": 6, "firstX": -810, "interval": 15, "villageAt": 100, "ambushAt": 118, "dismountAt": 119, "combatAt": 120},
   "ride": [
     [0, "orlov.road"], [8, "vos.meet"], [13, "timo.road"],
     [17, "duran.night", "marten.night"], [26, "lasko.wound", "marten.wound"],
@@ -16,7 +16,7 @@
     {"question":"vos.askHome","answers":["marten.choiceHome","vos.choiceHome","marten.choiceRoad","vos.choiceRoad"]}
   ],
   "stages": [
-    {"id":"ambush", "target":[-159,11], "radius":7, "first":[[-190,-8,"at"],[-115,9,"at"],[-130,17,"rifle"],[-175,-18,"rifle"],[-122,3,"rifle"],[-133,-8,"assault"],[-160,17,"assault"],[-146,-6,"rpg"]], "second":[[-103,4,"rifle"],[-108,-5,"rifle"],[-119,9,"rifle"],[-183,8,"rifle"],[-197,-7,"assault"],[-203,5,"rpg"]]},
+    {"id":"ambush", "target":[-159,11], "radius":7, "first":[[-191,-15,"at"],[-115,15,"at"],[-121,24,"rifle"],[-181,-18,"rifle"],[-107,3,"rifle"],[-126,-19,"assault"],[-174,26,"assault"],[-126,31,"rpg"]], "second":[[-103,4,"rifle"],[-108,-5,"rifle"],[-119,9,"rifle"],[-183,12,"rifle"],[-197,-7,"assault"],[-203,5,"rpg"]]},
     {"id":"clear", "target":[-92,39], "radius":8, "first":[["workshop","rifle"],["workshop","assault"],["forge","rifle"],["forge","rifle"],["craft-north","rifle"],["craft-roof","assault"],["craft-south","assault"],["craft-east","rifle"],["craft-east","assault"],["craft-yard","rifle"],[-76,53,"rifle"],[-105,50,"assault"]]},
     {"id":"crossroads", "target":[-19,0], "radius":12, "first":[["mg-north","mg"],["mg-south","mg"],["cross-west","rifle"],["cross-east","assault"],["cross-east","rifle"],["cross-yard","rifle"],[-43,-7,"rifle"],[-9,-17,"assault"],[2,4,"rifle"]]},
     {"id":"market", "target":[50,-30], "radius":17, "first":[["tower","sniper"],["market-west","rifle"],["market-east","rpg"],["market-south","rifle"],["market-north","rifle"],["market-roof","rpg"],["market-court","rifle"],[69,-36,"assault"]]},

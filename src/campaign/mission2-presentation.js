@@ -43,7 +43,7 @@ export class Mission2Presentation {
     <canvas class="m02-minimap" width="220" height="220" aria-label="Общая разведка роты"></canvas>
     <div class="m02-briefing">
       <div class="m02-briefing-caption">АЛЬ-ХАДРА · 05:12</div>
-      <div class="m02-briefing-subtitle"></div>
+      <div class="m02-briefing-subtitle" role="status" aria-live="polite"><b></b><span></span></div>
       <button type="button" class="m02-skip">ПРОПУСТИТЬ БРИФИНГ · ПРОБЕЛ ↗</button>
     </div>
     <div class="m02-finale" hidden>
@@ -169,7 +169,8 @@ export class Mission2Presentation {
     this.$('.m02-radio-speaker').textContent=line?this.locale.speakers[line.speaker]??'':'';
     this.$('.m02-radio-text').textContent=line?.text??'';
     const briefing=Boolean(m.cutscene);this.$('.m02-briefing').hidden=!briefing;
-    this.$('.m02-briefing-subtitle').textContent=briefing?line?.text??'':'';
+    this.$('.m02-briefing-subtitle b').textContent=briefing&&line?this.locale.speakers[line.speaker]??'':'';
+    this.$('.m02-briefing-subtitle span').textContent=briefing?line?.text??'':'';
     const end=Boolean(m.failed||m.complete),finale=this.$('.m02-finale');finale.hidden=!end;
     if(end){
       this.$('.m02-finale-kicker').textContent=m.complete?'ОПЕРАЦИЯ ЗАВЕРШЕНА':'МИССИЯ НЕ ЗАВЕРШЕНА';
@@ -179,7 +180,7 @@ export class Mission2Presentation {
       this.$('.m02-restart').hidden=m.complete;
     }
     if(end&&!this.blocking){this.clearControls();document.exitPointerLock?.();}this.blocking=end;
-    this.voiceAudio.update(state,this.locale,paused||end);
+    this.voiceAudio.update(state,this.locale,paused||end,this.renderer);
     if(paused||end||m.cutscene){this.stopMusic();if(m.cutscene)this.loadMusic(m);}
     else this.loadMusic(m);
     if(this.music){

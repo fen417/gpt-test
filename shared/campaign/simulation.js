@@ -77,7 +77,7 @@ export class CampaignSimulation extends Simulation {
       c.down(victim);victim.lastHurt=this.time;this.event('damage',{playerId:victim.id,attackerId:attacker?.id,amount:amount,x:attacker?.x??victim.x,z:attacker?.z??victim.z});return;
     }
     super.damage(victim,amount,attacker,meta);
-    if(victim.alive&&victim.team===1&&attacker?.team===0&&!meta.silent)c.raise(victim.campaignZone,3,attacker);
+    if(victim.alive&&victim.team===1&&attacker?.team===0&&!meta.silent)c.raise(victim.campaignZone,3,attacker,victim.id);
     if(!victim.alive){
       victim.respawnIn=1e8;victim.deathAt=this.time;
       if(victim.campaignRole==='officer'&&!victim.called)c.say('m01.bruno.officerStopped');
@@ -243,11 +243,11 @@ export class CampaignDirector {
       count++;
     }
   }
-  raise(zone,level,source){
+  raise(zone,level,source,speakerId){
     const z=this.alerts[zone];if(!z)return;
     const previous=z.level;z.level=Math.max(z.level,level);z.last=this.time;z.source=source?{x:source.x,y:source.y??0,z:source.z}:z.source;
     if(z.level>previous){
-      this.say(z.level===3?'m01.officer.alarm':z.level===2?'m01.sentry.search':'m01.sentry.suspicion',true);
+      this.say(z.level===3?'m01.officer.alarm':z.level===2?'m01.sentry.search':'m01.sentry.suspicion',true,speakerId);
       if(z.level===3){
         this.dialogue.queue=this.dialogue.queue.filter(line=>!quietLines.has(line.key));
         if(quietLines.has(this.dialogue.active?.key)){this.dialogue.active=null;this.dialogue.remaining=0;}
@@ -271,23 +271,23 @@ export class CampaignDirector {
     for(const e of this.sim.players.values()){
       if(!this.activeEnemy(e))continue;
       const z=this.alerts[e.campaignZone],d=distance(e,p);
-      if(e.sleeping){if(p.moveSpeed>1&&d<8){e.sleeping=false;this.raise(e.campaignZone,1,p);}else continue;}
+      if(e.sleeping){if(p.moveSpeed>1&&d<8){e.sleeping=false;this.raise(e.campaignZone,1,p,e.id);}else continue;}
       const lit=this.inZone('depot')||this.inZone('station'),range=(lit?80:45)*(p.prone?.35:p.input.crouch?.6:p.input.sprint?1.4:1);
       const sees=d<range&&Math.abs(angle(bearing(e,p)-e.yaw))<Math.PI/4&&this.sim.lineClear(eye(e),eye(p));
       if(sees&&!p.downed){
         const tutorialGrace=this.stage===1&&this.time-this.runtime.state.stageAt<18&&d>15;
         e.detection=clamp((e.detection??0)+elapsed/((1.2+1.8*clamp((d-15)/(range-15),0,1))*this.tuning.detection),0,tutorialGrace?.7:1);
-        if(e.detection>=1)this.raise(e.campaignZone,3,p);
-        else if(e.detection>.15)this.raise(e.campaignZone,1,p);
+        if(e.detection>=1)this.raise(e.campaignZone,3,p,e.id);
+        else if(e.detection>.15)this.raise(e.campaignZone,1,p,e.id);
       }else e.detection=Math.max(0,(e.detection??0)-elapsed*.3);
       if(e.detection>this.detection){this.detection=e.detection;this.detectingEnemy={x:e.x,z:e.z};}
-      if(z.level<2)for(const body of this.sim.players.values())if(!body.alive&&body.team===1&&body.campaignZone===e.campaignZone&&!body.withdrawn&&distance(e,body)<18&&this.sim.lineClear(eye(e),{x:body.x,y:body.y+.25,z:body.z})){this.raise(e.campaignZone,2,body);break;}
+      if(z.level<2)for(const body of this.sim.players.values())if(!body.alive&&body.team===1&&body.campaignZone===e.campaignZone&&!body.withdrawn&&distance(e,body)<18&&this.sim.lineClear(eye(e),{x:body.x,y:body.y+.25,z:body.z})){this.raise(e.campaignZone,2,body,e.id);break;}
       if(e.campaignRole==='officer'&&z.level===3&&!e.called){
         e.officerCallAt??=this.time+10;
         if(this.time>=e.officerCallAt){e.called=true;this.say('m01.officer.call');this.reinforce(e.campaignZone);}
       }
       const moving=p.moveSpeed>1,hearing=p.prone?2:p.input.crouch?3:p.input.sprint?15:8;
-      if(moving&&d<hearing)this.raise(e.campaignZone,1,p);
+      if(moving&&d<hearing)this.raise(e.campaignZone,1,p,e.id);
     }
     for(const [id,z] of Object.entries(this.alerts)){
       const quiet=this.time-z.last;
@@ -476,12 +476,12 @@ export class CampaignDirector {
     if(command.type==='nightVision'&&!this.cutscene&&!this.awaitingLoadout&&!this.failed&&!this.complete)this.nightVision=!this.nightVision;
     if(command.type==='retry'&&this.failed)this.restore(this.latestSave??this.initialSave);
   }
-  say(key,repeat=false){
+  say(key,repeat=false,speakerId){
     if(quietLines.has(key)&&this.alertLevel===3)return;
     if(!this.options.lines?.[key]||!repeat&&this.spoken.has(key))return;
     if(this.dialogue.active?.key===key||this.dialogue.queue.some(line=>line.key===key))return;
     this.spoken.add(key);const line=this.options.lines[key];
-    this.dialogue.queue.push({key,priority:line.priority??2,serial:++this.radioSerial});
+    this.dialogue.queue.push({key,priority:line.priority??2,serial:++this.radioSerial,speakerId});
     this.dialogue.queue.sort((a,b)=>b.priority-a.priority||a.serial-b.serial);
   }
   updateDialogue(dt){
@@ -526,7 +526,7 @@ export class CampaignDirector {
     if(i.knife&&!this.lastInput.knife&&this.time>=(this.knifeAt??0)){
       this.knifeAt=this.time+.75;
       const victim=[...this.sim.players.values()].find(e=>e.team===1&&e.alive&&distance(p,e)<2.5&&Math.abs(angle(bearing(p,e)-p.yaw))<.8&&this.sim.lineClear(eye(p),eye(e)));
-      if(victim){const behind=Math.abs(angle(bearing(victim,p)-victim.yaw))>Math.PI*.55,quiet=behind&&victim.detection<1;this.sim.damage(victim,quiet?200:45,p,{weapon:'НОЖ',silent:quiet});if(!quiet)this.raise(victim.campaignZone,3,p);}
+      if(victim){const behind=Math.abs(angle(bearing(victim,p)-victim.yaw))>Math.PI*.55,quiet=behind&&victim.detection<1;this.sim.damage(victim,quiet?200:45,p,{weapon:'НОЖ',silent:quiet});if(!quiet)this.raise(victim.campaignZone,3,p,victim.id);}
       this.sim.event('campaignKnife',{playerId:p.id,x:p.x,z:p.z});
     }
   }
@@ -632,7 +632,7 @@ export class CampaignDirector {
       }
     }
   }
-  noise(source,radius,level){for(const e of this.sim.players.values())if(e.alive&&e.team===1&&distance(e,source)<radius){if(e.sleeping){if(radius<150&&distance(e,source)>=8)continue;e.sleeping=false;}this.raise(e.campaignZone,level,source);}}
+  noise(source,radius,level){for(const e of this.sim.players.values())if(e.alive&&e.team===1&&distance(e,source)<radius){if(e.sleeping){if(radius<150&&distance(e,source)>=8)continue;e.sleeping=false;}this.raise(e.campaignZone,level,source,e.id);}}
   depotExplosion(site){
     const origin={x:site.x,y:this.sim.groundAt(site.x,site.z)+1,z:site.z};
     // Eight metre chain blast with ordinary authoritative damage and events.

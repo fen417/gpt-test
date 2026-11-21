@@ -137,7 +137,7 @@ export class Mission3Presentation{
       this.$('.campaign-retry').hidden=!m.failed;
     }
     if(end&&!this.ended){this.clearControls();document.exitPointerLock?.();}this.ended=end;
-    this.voice.update(state,this.locale,paused||end);this.score.update(state,paused);
+    this.voice.update(state,this.locale,paused||end,this.renderer);this.score.update(state,paused);
   }
   drawMap(state,p){
     const ctx=this.mapCanvas.getContext('2d'),size=168,scale=1.55,half=size/2;

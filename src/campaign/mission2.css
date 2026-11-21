@@ -58,7 +58,8 @@
 .m02-briefing-caption{position:absolute;top:11vh;left:9vw;
   font:800 clamp(18px,3vw,38px) Impact,"Arial Narrow",sans-serif;letter-spacing:.16em}
 .m02-briefing-subtitle{position:absolute;bottom:8vh;left:50%;transform:translateX(-50%);
-  max-width:780px;text-align:center;font:18px/1.5 Arial,sans-serif}
+  width:min(780px,84vw);text-align:center;font:clamp(14px,2vw,18px)/1.5 Arial,sans-serif}
+.m02-briefing-subtitle b:not(:empty){display:block;margin-bottom:4px;color:#e8c98d;font-size:14px}
 .m02-skip{position:absolute;bottom:-7vh;right:3vw;pointer-events:auto;
   background:none;border:none;color:#e8d9b4;font:700 12px monospace;cursor:pointer}
 .m02-finale{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
