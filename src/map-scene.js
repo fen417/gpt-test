@@ -28,7 +28,7 @@ function fences(owner, map) {
   }
 }
 
-export function buildMapScene(owner, map, { editable = false, skipObjectives = false } = {}) {
+export function buildMapScene(owner, map, { editable = false, skipObjectives = false, skipPortWater = false } = {}) {
   const parent = owner.scene, previousMap = owner.map;
   const root = new THREE.Group(), background = new THREE.Group(), groups = new Map();
   let roadSurface;
@@ -48,7 +48,7 @@ export function buildMapScene(owner, map, { editable = false, skipObjectives = f
       return {root,groups,owner,roadSurface};
     }
     if (map.shoreX !== undefined) {
-      addPortGround(owner, map, false);
+      addPortGround(owner, map, false, !skipPortWater);
       if (map.vehicleRoutes) createPortModelBuilder(owner)({ roads: map.roads });
     }
     else if (map.theme === 'desert-village') roadSurface = addVillageGround(owner, map, false);

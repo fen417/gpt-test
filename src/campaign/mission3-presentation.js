@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {CampaignFire} from './fire.js';
-import {emitTrackDust} from './track-dust.js';
+import {convoyTrackDust,emitTrackDust} from './track-dust.js';
 import {placeCampaignMarker} from './markers.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {m03ConvoyPose,panelState} from '../../shared/campaign/tel-mazin.js';
@@ -200,7 +200,8 @@ export class Mission3Presentation{
     if(m.ride){
       const transport=state.vehicles.find(v=>v.id==='sokol-7');
       if(transport&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
-        this.nextTrackDustAt=r.clock+.19;emitTrackDust(r,state.vehicles,transport);
+        this.nextTrackDustAt=r.clock+(view.quality==='low'?.43:.29);
+        emitTrackDust(r,state.vehicles,transport,convoyTrackDust);
       }
       if(transport&&state.players.some(p=>p.id==='local'&&p.vehicleId===transport.id)){
         const heading=transport.yaw+Math.PI;

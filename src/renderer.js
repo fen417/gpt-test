@@ -15,6 +15,8 @@ import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
 import { hasVillageAsset, VillageModel } from './village-model.js';
+import { hasPortAsset, PortModel } from './port-model.js';
+import { addPortLabels, addPortWater } from './port-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS, EYE_HEIGHT, CROUCH_EYE_HEIGHT } from '../shared/world.js';
@@ -322,6 +324,7 @@ export class GameRenderer {
     this.scene.add(this.worldRoot);
     this.worlds = new Map();
     this.villageModel = new VillageModel(this);
+    this.portModel = new PortModel(this);
     this.setMap();
     this.scene.matrixAutoUpdate = false;
     this.buildWeapon();
@@ -518,12 +521,19 @@ export class GameRenderer {
       // child-diff or reparenting heuristic can leave geometry from another map.
       this.scene = root;
       try {
-        const village=hasVillageAsset(map);
-        let fallback;
-        if(village){
+        const model = this.bakedMapModel(map);
+        let fallback, portLabels;
+        if(model){
           for(const point of map.points)this.makeFlag(point);
-          if(this.villageModel.base)root.add(this.villageModel.base);
-          else{
+          if(model===this.portModel){
+            addPortWater(this,map);
+            portLabels=new THREE.Group();
+            root.add(portLabels);
+            this.scene=portLabels;
+            addPortLabels(this,map);
+          }
+          if(model.base)root.add(model.base);
+          else if(model===this.villageModel){
             fallback=new THREE.Group();
             root.add(fallback);this.scene=fallback;
             buildMapScene(this,map,{skipObjectives:true});
@@ -535,7 +545,7 @@ export class GameRenderer {
         }
         const details=[];
         root.traverse(object=>{if(object.userData.detailLevel&&(object.isMesh||object.children.length))details.push(object);});
-        world = { root, flags: this.flags, water: this.portWater, details, village, fallback };
+        world = { root, flags: this.flags, water: this.portWater, details, model, fallback, portLabels };
       } finally {
         Object.assign(this, live);
       }
@@ -546,7 +556,11 @@ export class GameRenderer {
         object.matrixWorldAutoUpdate = false;
       });
       this.worlds.set(map.id, world);
-      if(world.village&&world.fallback)this.villageModel.loadBase().then(base=>this.installVillageBase(world,base));
+      if(world.model&&!world.model.base)world.model.loadBase().then(base=>{
+        if(world.model.disposed)return;
+        if(base)this.installBakedBase(world,base);
+        else if(world.model===this.portModel)this.installPortFallback(world,map);
+      });
     }
     this.clearVehicles();
     this.clearMapDynamics();
@@ -570,7 +584,7 @@ export class GameRenderer {
     this.groundShadows.setMap(map);
     const shadowMaterials=new Map();
     this.staticRoot.traverse(mesh=>{
-      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material)||mesh.userData.villageSurface)return;
+      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material)||mesh.userData.villageSurface||mesh.userData.portSurface)return;
       const source=mesh.material._highMaterial??mesh.material;
       if(source.userData.groundShadowPatched)return;
       if(!shadowMaterials.has(source)){
@@ -598,10 +612,15 @@ export class GameRenderer {
   }
 
   preloadMapVisuals(mapId) {
-    if(hasVillageAsset(getMap(mapId)))return this.villageModel.loadBase();
+    return this.bakedMapModel(getMap(mapId))?.loadBase();
   }
 
-  installVillageLayer(world,layer) {
+  bakedMapModel(map) {
+    if(hasPortAsset(map))return this.portModel;
+    if(hasVillageAsset(map))return this.villageModel;
+  }
+
+  installBakedLayer(world,layer) {
     world.root.add(layer);
     layer.updateMatrixWorld(true);
     layer.traverse(object=>{
@@ -611,50 +630,63 @@ export class GameRenderer {
       object.matrixWorldAutoUpdate=false;
     });
     this.updateTextureFiltering();
-    this.invalidateVillageVisibility();
+    this.invalidateBakedVisibility();
   }
 
-  invalidateVillageVisibility() {
+  invalidateBakedVisibility() {
     this.interiorVisibility.root=null;
-    this.cachedShadows.invalidate();
+    this.cachedShadows.invalidate(true);
     this.sun.shadow.needsUpdate=true;
     this.renderer.shadowMap.needsUpdate=true;
     this.staticMenuShadows=false;
   }
 
-  installVillageBase(world,base) {
-    if(!base||this.villageModel.disposed||!world.fallback)return;
-    const geometries=new Set();
-    world.fallback.traverse(object=>{
-      if(object.geometry?.userData.owned)geometries.add(object.geometry);
-    });
-    world.fallback.removeFromParent();
-    world.fallback=null;
-    world.details.length=0;
-    geometries.forEach(geometry=>geometry.dispose());
-    this.installVillageLayer(world,base);
-    this.updateVillageDetail(world,world.wantsDetail);
+  installPortFallback(world,map) {
+    const fallback=new THREE.Group();
+    const live={scene:this.scene,map:this.map,flags:this.flags,random:this.random};
+    try{
+      Object.assign(this,{scene:fallback,map,flags:world.flags,random:seeded()});
+      buildMapScene(this,map,{skipObjectives:true,skipPortWater:true});
+      this.mergeStaticWorld(new Set());
+    }finally{Object.assign(this,live);}
+    world.portLabels.removeFromParent();
+    this.installBakedLayer(world,fallback);
   }
 
-  updateVillageDetail(world,wanted) {
+  installBakedBase(world,base) {
+    if(world.fallback){
+      const geometries=new Set();
+      world.fallback.traverse(object=>{
+        if(object.geometry?.userData.owned)geometries.add(object.geometry);
+      });
+      world.fallback.removeFromParent();
+      world.fallback=null;
+      world.details.length=0;
+      geometries.forEach(geometry=>geometry.dispose());
+    }
+    this.installBakedLayer(world,base);
+    this.updateBakedDetail(world,world.wantsDetail);
+  }
+
+  updateBakedDetail(world,wanted) {
     world.wantsDetail=wanted;
-    const {base,detail}=this.villageModel;
+    const {base,detail}=world.model;
     if(!base||world.fallback)return;
     if(wanted&&!detail){
-      this.villageModel.loadDetail().then(layer=>{
-        if(layer&&!this.villageModel.disposed)this.updateVillageDetail(world,world.wantsDetail);
+      world.model.loadDetail().then(layer=>{
+        if(layer&&!world.model.disposed)this.updateBakedDetail(world,world.wantsDetail);
       });
       return;
     }
     const visible=detail?.parent===world.root;
     if(visible===Boolean(wanted))return;
-    if(wanted)this.installVillageLayer(world,detail);
+    if(wanted)this.installBakedLayer(world,detail);
     else {
       detail?.removeFromParent();
       detail?.traverse(object=>object.geometry?.dispose());
-      this.invalidateVillageVisibility();
+      this.invalidateBakedVisibility();
     }
-    base.traverse(object=>{
+    if(world.model===this.villageModel)base.traverse(object=>{
       if(object.userData.villageSurface==='leaf')object.visible=!wanted;
     });
   }
@@ -1728,7 +1760,7 @@ export class GameRenderer {
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
       const world=this.worlds.get(this.map.id);
-      if(world?.village)this.updateVillageDetail(world,this.quality==='high'&&detailLevel===2);
+      if(world?.model)this.updateBakedDetail(world,this.quality==='high'&&detailLevel===2);
     }
     if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness || gfx.frameGeneration !== this.gfx.frameGeneration)) {
       const shadowChanged=gfx.shadows!==this.gfx.shadows;
@@ -2107,6 +2139,7 @@ export class GameRenderer {
 
   dispose() {
     this.villageModel.dispose();
+    this.portModel.dispose();
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
     this.infantry?.dispose();

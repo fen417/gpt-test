@@ -73,7 +73,7 @@ function warehouseInterior(owner, m, s) {
   }
 }
 
-function sea(owner, map) {
+export function addPortWater(owner, map) {
   const size = 192, canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d'), pixels = ctx.createImageData(size, size);
@@ -191,7 +191,7 @@ function portBackdrop(owner, m) {
   owner.box(scene, 231, 12.35, 0, .85, .20, 94, m.steel, false);
 }
 
-export function addPortGround(owner, map, assets = true) {
+export function addPortGround(owner, map, assets = true, water = true) {
   const { scene } = owner, m = portMaterials(owner);
   const dryEdge = map.size / 2 + 142, width = dryEdge - map.shoreX;
   const geometry = new THREE.PlaneGeometry(width, map.size + 280,
@@ -209,7 +209,7 @@ export function addPortGround(owner, map, assets = true) {
   land.position.x = map.shoreX + width / 2;
   land.receiveShadow = true;
   scene.add(land);
-  sea(owner, map);
+  if (water) addPortWater(owner, map);
   owner.box(scene, map.shoreX + .6, -.99, 0, 1.25, 1.98, map.size + 265, m.quay);
   owner.box(scene, map.shoreX + .34, .045, 0, .69, .09, map.size + 265, m.edge);
   owner.box(scene, map.shoreX + 1.35, .028, 0, .15, .016, map.size + 120, m.marking, false);
@@ -268,5 +268,17 @@ function addPortSigns(owner, signs = []) {
     berth.rotation.y = Math.PI / 2;
     scene.add(berth);
     for (const dz of [-1.55, 1.55]) owner.cylinder(scene, site.x, 1.0, site.z + dz, .074, 2, steel);
+  }
+}
+
+export function addPortLabels(owner, map) {
+  addPortSigns(owner, map.signs);
+  for (const warehouse of map.structures) for (const side of [-1, 1]) {
+    const sign = makeSign(warehouse.name,
+      warehouse.stock === 'reefer' ? 'ХОЛОДИЛЬНЫЙ ТЕРМИНАЛ' : 'ГРУЗОВОЙ ТЕРМИНАЛ',
+      Math.min(warehouse.w * .18, 9));
+    sign.position.set(warehouse.x, warehouse.h - 2.08, warehouse.z + side * (warehouse.d / 2 + .705));
+    sign.rotation.y = side > 0 ? 0 : Math.PI;
+    owner.scene.add(sign);
   }
 }

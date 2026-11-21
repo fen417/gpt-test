@@ -13,7 +13,7 @@ export class CachedShadows {
       fragmentShader:'#include <packing>\nuniform sampler2D staticDepth; uniform sampler2D dynamicDepth; varying vec2 vUv; void main(){vec4 a=texture2D(staticDepth,vUv),b=texture2D(dynamicDepth,vUv);gl_FragColor=unpackRGBAToDepth(a)<unpackRGBAToDepth(b)?a:b;}' });
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),this.material);this.quadScene.add(this.quad);
   }
-  invalidate(){this.key=null;}
+  invalidate(rebuildCasters=false){this.key=null;if(rebuildCasters)this.root=null;}
   install(owner){
     if(this.installed===owner.renderer.shadowMap)return;
     this.uninstall();this.installed=owner.renderer.shadowMap;
