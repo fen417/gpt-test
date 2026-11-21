@@ -29,6 +29,7 @@ import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
 import { tankMachineGunMuzzle, tankMuzzle, TANK_MG } from '../shared/tank.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
+import { loadHumveeAssets, humveeAssetsReady } from './humvee-model.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
   createInfantry, setInfantryWeapon, disposeInfantry, setInfantryLod, updateInfantry,
@@ -503,6 +504,7 @@ export class GameRenderer {
     if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
+    if (map.vehicleSpawns?.some(vehicle => vehicle.type === 'humvee')) this.humveeLoading ??= loadHumveeAssets();
     let world = this.worlds.get(map.id);
     if (!world) {
       const live = { scene: this.scene, map: this.map, flags: this.flags, portWater: this.portWater, random: this.random };
@@ -935,6 +937,7 @@ export class GameRenderer {
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
       if(vehicle.type==='tank'&&!tankAssetsReady())continue;
+      if (vehicle.type === 'humvee') this.humveeLoading ??= loadHumveeAssets();
       active.add(vehicle.id);
       let rig = this.vehicleRigs.get(vehicle.id);
       const local = player?.vehicleId === vehicle.id && player.alive !== false;
@@ -947,8 +950,26 @@ export class GameRenderer {
         }
         continue;
       }
-      if (!rig) {
+      if (!rig || (vehicle.type === 'humvee' && !rig.detail && humveeAssetsReady())) {
+        const previous = rig;
         rig = createVehicleRig(vehicle.type, material, TEAM_COLORS);
+        if (previous) {
+          rig.group.position.copy(previous.group.position);
+          rig.group.rotation.copy(previous.group.rotation);
+          rig.body.rotation.copy(previous.body.rotation);
+          rig.controls.rotation.copy(previous.controls.rotation);
+          rig.turret.gun.rotation.copy(previous.turret.gun.rotation);
+          rig.wheels.forEach(({ carrier, tire }, i) => {
+            carrier.rotation.copy(previous.wheels[i].carrier.rotation);
+            tire.rotation.copy(previous.wheels[i].tire.rotation);
+          });
+          rig.initialized = previous.initialized;
+          rig.turretYaw = previous.turretYaw;
+          rig.gunSeq = previous.gunSeq;
+          rig.flashTime = previous.flashTime;
+          rig.nextSmoke = previous.nextSmoke;
+          disposeVehicleRig(previous);
+        }
         rig.group.traverse(object => {
           optimizeLighting(object);
           if (object.material) object.material = this.getQualityMaterial(object.material);

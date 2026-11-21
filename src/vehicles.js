@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getVehicleDimensions, vehicleAimDirection, HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { humveeAssetsReady, humveeFinish, humveeGeometry, humveePart } from './humvee-model.js';
 
 const upAxis = new THREE.Vector3(0, 1, 0);
 const turretHeading = new THREE.Quaternion();
@@ -315,12 +316,54 @@ function buildTurret(body, materials) {
     tube('rubber',.027,-.11,-.048,.07,-.11,.023,.07);
     tube('rubber',.027,.11,-.048,.07,.11,.023,.07);
   });
+  return {turret,gun,flash:turretFlash(gun)};
+}
+
+function turretFlash(gun) {
   const flash = new THREE.Mesh(sphereGeometry,new THREE.MeshBasicMaterial({color:0xffbd5d}));
   flash.position.set(0,.058,-1.56);
   flash.scale.set(.09,.08,.23);
   flash.visible = false;
   gun.add(flash);
-  return {turret,gun,flash};
+  return flash;
+}
+
+function buildAuthoredHumvee(body, materials) {
+  const finish = materials.humveeFinish = humveeFinish();
+  materials.humveeWreck = humveeFinish(0x59534a);
+  humveePart(body, 'BodyPaint', finish).name = 'paint';
+  humveePart(body, 'Chassis', finish);
+  humveePart(body, 'Cabin', finish, false);
+  const exterior = humveePart(body, 'ExteriorDetail', finish);
+  const cabin = humveePart(body, 'CabinDetail', finish, false);
+  const speedNeedle = humveePart(body, 'SpeedNeedle', finish, false);
+  speedNeedle.position.set(-.565, 1.316, -.831);
+  speedNeedle.rotation.z = Math.PI * .75;
+  humveePart(body, 'Markings', materials.badge, false);
+  for (let i = 0; i < 7; i++) humveePart(body, 'glass' + i, materials.glass, false);
+
+  const controls = new THREE.Group();
+  controls.position.fromArray(CREW_CONTROLS.driver.origin);
+  body.add(controls);
+  humveePart(controls, 'Steering', finish, false);
+  const wheels = [];
+  for (const side of [-1, 1]) for (const direction of [-1, 1]) {
+    const carrier = new THREE.Group(), tire = new THREE.Group(), radius = .49;
+    carrier.position.set(side * .89, radius, direction * 1.55);
+    carrier.add(tire);
+    body.add(carrier);
+    const mesh = humveePart(tire, 'Wheel', finish);
+    if (side < 0) mesh.rotation.y = Math.PI;
+    wheels.push({ carrier, tire, front: direction < 0, radius, mesh });
+  }
+
+  const turret = new THREE.Group(), gun = new THREE.Group();
+  turret.position.fromArray(CREW_CONTROLS.gunner.origin);
+  body.add(turret);
+  turret.add(gun);
+  humveePart(turret, 'Turret', finish);
+  humveePart(gun, 'GunVisual', finish);
+  return { controls, wheels, turret: { turret, gun, flash: turretFlash(gun) }, detail: { exterior, cabin, speedNeedle } };
 }
 
 function addGloves(parent, materials, atv, gunner=false) {
@@ -396,19 +439,25 @@ export function createVehicleRig(type, material, teamColors) {
     badge: material(teamColors[0],.84,.1), wreck: material(0x333735,1,.1),
   };
   for(let i=0;i<7;i++)materials['glass'+i]=materials.glass;
-  const controls=atv?buildAtv(body,materials):buildHumvee(body,materials);
-  const wheels = [];
-  for(const side of [-1,1])for(const direction of [-1,1]){
-    wheels.push(wheel(body,materials,side*(atv?.54:.89),direction*(atv?.73:1.55),atv?.31:.49,atv?.28:.39,direction<0));
+  let controls, wheels, turret, detail;
+  if (!atv && humveeAssetsReady()) {
+    ({ controls, wheels, turret, detail } = buildAuthoredHumvee(body, materials));
+  } else {
+    controls = atv ? buildAtv(body, materials) : buildHumvee(body, materials);
+    wheels = [];
+    for (const side of [-1, 1]) for (const direction of [-1, 1]) {
+      wheels.push(wheel(body, materials, side * (atv ? .54 : .89), direction * (atv ? .73 : 1.55),
+        atv ? .31 : .49, atv ? .28 : .39, direction < 0));
+    }
+    turret = atv ? null : buildTurret(body, materials);
   }
-  const turret = atv?null:buildTurret(body,materials);
   const driverGloves=addGloves(controls,materials,atv);
   const gunnerGloves=turret?addGloves(turret.gun,materials,false,true):null;
   const riders=VEHICLE_TYPES[type].seats.map((seat,index)=>rider(body,materials,seat,index,type));
   const paintMeshes=body.children.filter(node=>node.name==='paint');
   const materialsToDispose=new Set(Object.values(materials).flatMap(mat=>[mat,mat._lowMaterial]).filter(Boolean));
   if(turret)materialsToDispose.add(turret.flash.material);
-  return {group,body,wheels,controls,turret,riders,paintMeshes,driverGloves,gunnerGloves,materials,materialsToDispose,teamColors};
+  return {group,body,wheels,controls,turret,riders,detail,paintMeshes,driverGloves,gunnerGloves,materials,materialsToDispose,teamColors};
 }
 
 // The simplified rider remains visible until the full soldier model is
@@ -458,6 +507,18 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
   }
   for(const mesh of body.children)if(/^glass\d$/.test(mesh.name))mesh.visible=!((vehicle.glassBroken??0)&(1<<Number(mesh.name.slice(5))));
   const localSeat=player?.vehicleId===vehicle.id?player.vehicleSeat:null;
+  if (rig.detail) {
+    const distance = player ? Math.hypot(player.x - vehicle.x, player.z - vehicle.z) : 0;
+    const { exterior, cabin, speedNeedle } = rig.detail;
+    const nearby = localSeat != null || distance < (quality ? 28 : 65);
+    exterior.visible = nearby;
+    cabin.visible = localSeat != null || distance < (quality ? 12 : 24);
+    speedNeedle.visible = cabin.visible;
+    speedNeedle.rotation.z = Math.PI * (.75 - 1.5 * THREE.MathUtils.clamp(
+      (wrecked ? 0 : Math.abs(vehicle.speed) * 3.6) / 60, 0, 1));
+    const tireGeometry = humveeGeometry(nearby && (!quality || localSeat != null) ? 'Wheel' : 'WheelLow');
+    for (const { mesh } of wheels) mesh.geometry = tireGeometry;
+  }
   rig.driverGloves.visible=!wrecked&&localSeat===0;
   if(turret){
     const localGunner=localSeat===1;
@@ -489,7 +550,9 @@ export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality,
     rig.team=vehicle.team;
   }
   if(rig.wrecked!==wrecked||rig.low!==quality){
-    const paint=wrecked?materials.wreck:materials.paint;
+    const paint = rig.detail
+      ? (wrecked ? materials.humveeWreck : materials.humveeFinish)
+      : (wrecked ? materials.wreck : materials.paint);
     for(const mesh of paintMeshes)mesh.material=quality?(paint._lowMaterial??paint):paint;
     rig.wrecked=wrecked;rig.low=quality;
   }
@@ -502,7 +565,8 @@ export function disposeVehicleRig(rig) {
   rig.group.removeFromParent();
   if(rig.tank&&tankPool.length<2){rig.initialized=false;tankPool.push(rig);return;}
   rig.group.traverse(node=>{
-    if(node.geometry&&node.geometry!==sphereGeometry&&!node.geometry.userData.sharedTankGeometry)node.geometry.dispose();
+    if (node.geometry && node.geometry !== sphereGeometry &&
+      !node.geometry.userData.sharedTankGeometry && !node.geometry.userData.sharedHumveeGeometry) node.geometry.dispose();
   });
   for(const material of rig.materialsToDispose)material.dispose();
 }

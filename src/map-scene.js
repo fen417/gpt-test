@@ -158,13 +158,15 @@ export function disposeMapScene(level, surfaces) {
   function collectMaterial(material) {
     if (!material || sharedMaterials.has(material) || materials.has(material)) return;
     materials.add(material);
-    for (const value of Object.values(material)) if (value?.isTexture && !sharedTextures.has(value)) textures.add(value);
+    for (const value of Object.values(material)) {
+      if (value?.isTexture && !sharedTextures.has(value) && !value.userData.sharedHumveeTexture) textures.add(value);
+    }
     collectMaterial(material._lowMaterial);
     collectMaterial(material._highMaterial);
   }
   level.root.traverse(object => {
     if (object.isInstancedMesh) object.dispose();
-    if (object.geometry) geometries.add(object.geometry);
+    if (object.geometry && !object.geometry.userData.sharedHumveeGeometry) geometries.add(object.geometry);
     for (const material of Array.isArray(object.material) ? object.material : [object.material]) collectMaterial(material);
   });
   for (const material of Object.values(level.owner.materials)) collectMaterial(material);

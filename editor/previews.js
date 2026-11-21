@@ -4,6 +4,7 @@ import { createPortModelBuilder } from '../src/port-visuals.js';
 import { addQuarryAsset, addQuarrySigns } from '../src/quarry-visuals.js';
 import { createVillageModelBuilder, villageRoadMaterial } from '../src/village-visuals.js';
 import { createVehicleRig, disposeVehicleRig } from '../src/vehicles.js';
+import { loadHumveeAssets } from '../src/humvee-model.js';
 import { addWarehouseDetails, makeSign } from '../src/visuals.js';
 import { makeTerrain } from '../shared/terrain.js';
 
@@ -140,7 +141,11 @@ export function createAssetPreviews(surfaces) {
   return (map, item) => {
     const key = map.id + '/' + item.key;
     if (!previews.has(key)) {
-      const job = queue.then(() => new Promise(resolve => requestAnimationFrame(resolve))).then(() => render(map, item));
+      const job = queue.then(async () => {
+        if (item.kind === 'vehicle' && item.value.type === 'humvee') await loadHumveeAssets();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        return render(map, item);
+      });
       previews.set(key, job);
       queue = job.catch(() => {});
     }
