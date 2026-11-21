@@ -1,7 +1,6 @@
 const wallKinds = new Set(['village-barricade', 'wall', 'barrier', 'sandbags']);
 
-export function groundAsset(value, terrain) {
-  if (!terrain || value.editorParent || value.groundFit || !wallKinds.has(value.kind)) return value;
+function terrainRange(value, terrain) {
   let low = Infinity, high = -Infinity;
   const nx = Math.max(1, Math.ceil(value.w / (terrain.cell ?? 2)));
   const nz = Math.max(1, Math.ceil(value.d / (terrain.cell ?? 2)));
@@ -10,8 +9,22 @@ export function groundAsset(value, terrain) {
     low = Math.min(low, y);
     high = Math.max(high, y);
   }
+  return { low, high };
+}
+
+export function groundAsset(value, terrain) {
+  if (!terrain || value.editorParent || value.groundFit || !wallKinds.has(value.kind)) return value;
+  const {low,high}=terrainRange(value,terrain);
   const bodyHeight = value.bodyHeight ?? value.h;
   return { ...value, bodyHeight, baseY: low - .08, h: bodyHeight + high - low + .08 };
+}
+
+export function groundQuarryProp(value,terrain) {
+  const {low}=terrainRange(value,terrain);
+  const ground=terrain.heightAt(value.x,value.z);
+  const quarryFooting=ground-low>.06?ground-low+.06:0;
+  const bodyHeight=value.bodyHeight??value.h;
+  return {...value,bodyHeight,quarryFooting,baseY:ground-quarryFooting,h:bodyHeight+quarryFooting};
 }
 
 export function shipTerrainPad(ship, terrain) {

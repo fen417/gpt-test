@@ -1,6 +1,6 @@
 import { makeTerrain } from './terrain.js';
 import { scaleAsset, UNIT_SCALE } from './asset-scale.js';
-import { fitLowProp, groundAsset, shipTerrainPad } from './asset-grounding.js';
+import { fitLowProp, groundAsset, groundQuarryProp, shipTerrainPad } from './asset-grounding.js';
 import { rotateMapAssets } from './geometry.js';
 
 export const emptyMapEdits = () => ({ version: 1, moves: {}, added: {}, removed: [] });
@@ -184,6 +184,7 @@ export function applyMapEdits(base, edits, sources) {
   }
   const elevation = (original, moved, sourceMap = base) => {
     if(moved.authoredY!==undefined)return {...moved,baseY:moved.authoredY};
+    if(moved.quarryFoundation&&map.terrain&&!moved.editorParent)return groundQuarryProp(moved,map.terrain);
     if(moved.groundFit&&map.terrain&&!moved.editorParent)return fitLowProp(moved,map.terrain);
     if (moved.terrainPad && moved.beached && map.terrain) return { ...moved, baseY:
       map.terrain.heightAt(moved.x, moved.z) + 2 * (moved.modelScale?.y ?? 1) };

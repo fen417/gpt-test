@@ -748,10 +748,12 @@ export class GameRenderer {
     const dummy = new THREE.Object3D();
     for (const b of boxes) {
       if (b.kind === 'rock' || b.kind === 'pump-manifold' || b.kind.startsWith('port-') || b.kind.startsWith('village-')) continue;
-      const elevation = b.baseY ?? 0;
+      const footing=b.quarryFooting??0;
+      const elevation = (b.baseY ?? 0)+footing;
       const parent = elevation ? new THREE.Group() : this.scene;
       if (elevation) { parent.position.y = elevation; this.scene.add(parent); }
-      const h = b.h ?? 3, w = b.w ?? 4, d = b.d ?? 4;
+      const h = (b.h ?? 3)-footing, w = b.w ?? 4, d = b.d ?? 4;
+      if(footing)this.box(parent,b.x,-footing/2,b.z,w,footing,d,this.surfaces.concrete);
       if (b.kind === 'roof') {
         this.box(parent, b.x, h / 2, b.z, w, h, d, this.surfaces.metal);
         continue;

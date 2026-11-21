@@ -1,7 +1,7 @@
 import {makeTerrain} from './terrain.js';
 import {routeRoads} from './map-edits.js';
 import {QUARRY_KITS,quarryKitPlan} from './quarry-sites.js';
-import {groundAsset} from './asset-grounding.js';
+import {groundAsset,groundQuarryProp} from './asset-grounding.js';
 
 const size=896,boxes=[],structures=[],navigationNodes=[],pads=[];
 const points=[{id:'A',name:'СТАРЫЙ СКЛАД',x:-155,z:-97},{id:'B',name:'РЕТРАНСЛЯТОР',x:111,z:-79},{id:'C',name:'ВЫРАБОТКА',x:0,z:0},{id:'D',name:'ДРОБИЛКА',x:-111,z:79},{id:'E',name:'АНГАР',x:155,z:97}];
@@ -78,6 +78,7 @@ for(const [id,x,z] of [['west',-185,-72],['east',137,-59],['pit',-24,-27]]){
   pillbox(-x,-z,Math.PI,`quarry-dot-${id}--1`);
 }
 const coverColors={wall:'#8d8e7a',barrier:'#96927e',container:'#6b7565',rock:'#857a65',sandbags:'#a59c84','pump-manifold':'#8a7a60'};
+const foundationKinds=new Set(['container','pump-manifold']);
 const yards=[
   // North industrial approach and its south counterpart.
   [-32,-292,15,2,2.45,'wall'],[34,-279,9,3,2.6,'container'],
@@ -100,7 +101,7 @@ const yards=[
   [-45,36,8,3,1.3,'pump-manifold'],[-25,21,8,2,2.5,'wall'],
   [-14,0,4.8,2,1.35,'barrier'],[-30,41,8,2,1.35,'barrier'],
   [-60,55,17,2.5,2.65,'wall'],[-90,32,11,3,2.6,'container'],
-  [58,-55,12,2.5,2.8,'wall'],[78,-40,10,3,2.6,'container'],
+  [78,-40,10,3,2.6,'container'],
   [96,-24,10,8,4.2,'rock'],[132,-20,15,2,2.55,'wall'],
   // The far side of the haul road stays useful to infantry.
   [-232,-158,14,2,2.5,'wall'],[-254,-146,10,3,2.6,'container'],
@@ -115,7 +116,8 @@ const yards=[
 ];
 for(const [x,z,w,d,h,kind] of yards){
   if(!roadClear(x,z,w,d,1.5))continue;
-  pair(x,z,w,d,h,kind,coverColors[kind],kind==='wall'?{quarrySurface:'concrete'}:{});
+  const options=kind==='wall'?{quarrySurface:'concrete'}:{quarryFoundation:foundationKinds.has(kind)};
+  pair(x,z,w,d,h,kind,coverColors[kind],options);
 }
 for(const sign of [-1,1]){add(0,sign*377,65,2,4);for(const x of [-42,42])add(x,sign*350,15,26,7,'warehouse','#8c806b');}
 for(let i=0;i<28;i++){
@@ -139,7 +141,7 @@ for(const s of structures){
 }
 for(const b of boxes){
   b.baseY=(b.baseY??0)+(anchors.get(b.editorParent)??terrain.heightAt(b.x,b.z));
-  Object.assign(b,groundAsset(b,terrain));
+  Object.assign(b,b.quarryFoundation?groundQuarryProp(b,terrain):groundAsset(b,terrain));
 }
 for(const p of points)p.y=terrain.heightAt(p.x,p.z);
 for(const n of navigationNodes)n.y=terrain.heightAt(n.x,n.z);

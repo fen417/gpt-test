@@ -142,9 +142,10 @@ export function addQuarryAsset(owner, box, map) {
 }
 
 function addPumpManifold(owner, box) {
-  const { x, z, w, d, baseY } = box;
+  const { x, z, w, d, quarryFooting=0 } = box;
+  const baseY=box.baseY+quarryFooting;
   const { scene, materials } = owner;
-  owner.box(scene, x, baseY + .3, z, w, .6, d, materials.concrete);
+  owner.box(scene, x, baseY + (.6-quarryFooting)/2, z, w, .6+quarryFooting, d, materials.concrete);
   for (const side of [-1, 1]) {
     const end = x + side * (w / 2 - .25);
     owner.box(scene, end, baseY + .91, z, .42, .66, d - .12, materials.darkConcrete);
