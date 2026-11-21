@@ -61,7 +61,7 @@ def surface_mark(mesh, text, x, y, z, step, color):
                 mesh.add(vertices, [face], color)
 
 
-def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, view_distance=2.1, finish_rows=None):
+def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, view_distance=2.1, finish_rows=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     collection = bpy.context.scene.collection
     material = bpy.data.materials.new('Blued steel and molded polymer')
@@ -96,6 +96,13 @@ def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, view_distance=
         mount.empty_display_type = 'ARROWS'
         mount.empty_display_size = .018
         collection.objects.link(mount)
+    for name, (position, children) in (groups or {}).items():
+        x,y,z = position
+        group = bpy.data.objects.new(name, None)
+        group.location = (x,-z,y)
+        collection.objects.link(group)
+        for child in children:
+            collection.objects[child].parent = group
     bpy.ops.export_scene.gltf(filepath=str(glb.resolve()), export_format='GLB', export_vertex_color='ACTIVE',
                               export_meshopt_compression_enable=True, export_meshopt_extension='EXT_meshopt_compression')
     for screen in bpy.data.screens:

@@ -4,34 +4,50 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { LAUNCHER_POSE } from './gadget-poses.js';
+import { createEquipmentCable } from './equipment-cable.js';
 
 const boxGeometry=new RoundedBoxGeometry(1,1,1,2,.055);
 const cylinderGeometry=new THREE.CylinderGeometry(1,1,1,12);
 const sphereGeometry=new THREE.SphereGeometry(1,12,8);
 const templates=new WeakMap();
-const supplyTemplates=new Map();
-let supplyLoading;
+const equipmentTemplates=new Map();
+let equipmentLoading;
 
-export function loadSupplyModels() {
-  if(supplyLoading)return supplyLoading;
+export function loadEquipmentModels() {
+  if(equipmentLoading)return equipmentLoading;
   const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const urls={
     ammo:new URL('./assets/equipment/ammo.glb',import.meta.url).href,
     medkit:new URL('./assets/equipment/medkit.glb',import.meta.url).href,
+    defibrillator:new URL('./assets/equipment/defibrillator.glb',import.meta.url).href,
   };
-  supplyLoading=Promise.all(Object.entries(urls).map(async ([kind,url])=>{
+  const required={
+    ammo:['Lid','Contents'],
+    defibrillator:['Monitor','LeftPaddle','RightPaddle','LeftCable','RightCable',
+      'MonitorCableLeft','MonitorCableRight','Waveform','ChargeIndicator'],
+  };
+  equipmentLoading=Promise.all(Object.entries(urls).map(async ([kind,url])=>{
     try{
       const {scene}=await loader.loadAsync(url);
-      if(kind==='ammo'&&(!scene.getObjectByName('Lid')||!scene.getObjectByName('Contents')))
-        throw new Error('Missing crate lid or contents');
+      if(required[kind]?.some(name=>!scene.getObjectByName(name)))
+        throw new Error('Missing equipment parts');
       scene.name='equipment-'+kind;
       scene.traverse(object=>{
         if(object.isMesh)object.castShadow=object.receiveShadow=true;
       });
-      supplyTemplates.set(kind,scene);
-    }catch(error){console.warn('Supply model:',kind,error);}
+      if(kind==='defibrillator'){
+        const glow=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false});
+        for(const name of ['Waveform','ChargeIndicator']){
+          const indicator=scene.getObjectByName(name);
+          indicator.material=glow;
+          indicator.castShadow=false;
+        }
+        scene.getObjectByName('ChargeIndicator').visible=false;
+      }
+      equipmentTemplates.set(kind,scene);
+    }catch(error){console.warn('Equipment model:',kind,error);}
   }));
-  return supplyLoading;
+  return equipmentLoading;
 }
 
 export function gadgetPalette(create) {
@@ -253,10 +269,32 @@ function build(kind,m) {
   return root;
 }
 
-export function createGadgetModel(kind,palette,{deployed=false}={}) {
-  const supply=supplyTemplates.get(kind);
-  if(supply){
-    const model=supply.clone(true);
+function assembledDefibrillator(template,palette) {
+  const model=template.clone(true);
+  model.updateMatrixWorld(true);
+  const start=new THREE.Vector3(),end=new THREE.Vector3();
+  for(const side of ['Left','Right']){
+    const cable=createEquipmentCable(palette.dark);
+    cable.geometry.userData.owned=true;
+    model.getObjectByName(side+'Cable').getWorldPosition(start);
+    model.getObjectByName('MonitorCable'+side).getWorldPosition(end);
+    cable.update(start,end);
+    model.add(cable.mesh);
+  }
+  return model;
+}
+
+export function createGadgetModel(kind,palette,{deployed=false,side='left'}={}) {
+  const defib=equipmentTemplates.get('defibrillator');
+  if(defib&&(kind==='defibrillator-paddle'||kind==='defibrillator-unit')){
+    const name=kind==='defibrillator-unit'?'Monitor':side==='right'?'RightPaddle':'LeftPaddle';
+    const model=defib.getObjectByName(name).clone(true);
+    model.position.set(0,0,0);
+    return model;
+  }
+  const authored=equipmentTemplates.get(kind);
+  if(authored&&kind!=='defibrillator'){
+    const model=authored.clone(true);
     if(kind==='ammo'){
       model.getObjectByName('Lid').rotation.x=deployed?.62:0;
       model.getObjectByName('Contents').visible=deployed;
@@ -265,7 +303,7 @@ export function createGadgetModel(kind,palette,{deployed=false}={}) {
   }
   if(!templates.has(palette))templates.set(palette,new Map());
   const models=templates.get(palette);
-  if(!models.has(kind))models.set(kind,build(kind,palette));
+  if(!models.has(kind))models.set(kind,kind==='defibrillator'&&defib?assembledDefibrillator(defib,palette):build(kind,palette));
   return models.get(kind).clone(true);
 }
 

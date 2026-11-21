@@ -634,12 +634,16 @@ export function createWeaponRig(owner = {}) {
   const defibLeft=createFPSHand('defibLeft',importedGloveMat),defibRight=createFPSHand('defibRight',importedGloveMat);
   ownedGeometries.add(defibLeft.geometry);ownedGeometries.add(defibRight.geometry);
   leftHand.add(defibLeft);rightHand.add(defibRight);defibLeft.visible=defibRight.visible=false;
-  const heldDefibLeft=createGadgetModel('defibrillator-paddle',equipmentPalette),heldDefibRight=createGadgetModel('defibrillator-paddle',equipmentPalette);
+  const heldDefibLeft=createGadgetModel('defibrillator-paddle',equipmentPalette);
+  const heldDefibRight=createGadgetModel('defibrillator-paddle',equipmentPalette,{side:'right'});
   leftHand.add(heldDefibLeft);rightHand.add(heldDefibRight);heldDefibLeft.visible=heldDefibRight.visible=false;
   const defibUnit=createGadgetModel('defibrillator-unit',equipmentPalette);weapon.add(defibUnit);defibUnit.position.fromArray(DEFIB_POSE.unit);defibUnit.visible=false;
   const defibCables=[createEquipmentCable(equipmentPalette.dark),createEquipmentCable(equipmentPalette.dark)];
   for(const cable of defibCables){weapon.add(cable.mesh);ownedGeometries.add(cable.geometry);cable.mesh.visible=false;}
   const defibStart=new THREE.Vector3(),defibEnd=new THREE.Vector3();
+  const paddleCableAnchors=[heldDefibLeft.getObjectByName('LeftCable')?.position,heldDefibRight.getObjectByName('RightCable')?.position];
+  const monitorCableAnchors=['MonitorCableLeft','MonitorCableRight'].map(name=>defibUnit.getObjectByName(name)?.position);
+  const chargeIndicator=defibUnit.getObjectByName('ChargeIndicator');
   const pistolFrame=mat('pistol-polymer-frame',0x3b4039,.88,.035,{bumpMap:polymerGrain,bumpScale:.00024});
   const pistolSlide=mat('pistol-blued-slide',0x303e49,.43,.72,{bumpMap:metalGrain,bumpScale:.00013});
   const pistolChamfer=mat('pistol-machined-chamfers',0x65737b,.38,.74,{bumpMap:metalGrain,bumpScale:.00009});
@@ -1161,6 +1165,7 @@ export function createWeaponRig(owner = {}) {
     leftHand.visible=leftArm.visible=!pistol||leftAction;
     heldLauncher.visible=usingTool&&gadgetKind==='launcher';
     defibLeft.visible=defibRight.visible=heldDefibLeft.visible=heldDefibRight.visible=defibUnit.visible=usingDefib;
+    if(chargeIndicator)chargeIndicator.visible=Boolean(usingDefib&&discharge>.05);
     for(const cable of defibCables)cable.mesh.visible=usingDefib;
     const showRifle=!pistol&&!usingTool&&!unarmed;
     const nextRifle=showRifle?rifle:null;
@@ -1192,8 +1197,12 @@ export function createWeaponRig(owner = {}) {
       fitLeftSleeve(defibLeftWrist,.017,.92);
       for(let i=0;i<2;i++){
         const hand=i===0?leftHand:rightHand;
-        defibStart.set(0,.026,.087).applyQuaternion(hand.quaternion).add(hand.position);
-        defibEnd.set(i===0?-.065:.065,.015,-.085).add(defibUnit.position);
+        if(paddleCableAnchors[i])defibStart.copy(paddleCableAnchors[i]);
+        else defibStart.set(0,.026,.087);
+        defibStart.applyQuaternion(hand.quaternion).add(hand.position);
+        if(monitorCableAnchors[i])defibEnd.copy(monitorCableAnchors[i]);
+        else defibEnd.set(i===0?-.065:.065,.015,-.085);
+        defibEnd.add(defibUnit.position);
         defibCables[i].update(defibStart,defibEnd);
       }
     }

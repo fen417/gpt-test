@@ -18,6 +18,6 @@ export const SUPPLY_POSE = {
 export const DEFIB_POSE = {
   leftWrist:[-.032,.086,.089], rightWrist:[.032,.086,.089],
   left:[-.17,0,-.22], right:[.17,0,-.22],
-  unit:[0,-.10,.10],
+  unit:[0,-.092,.015],
   hip:[0,-.22,-.50], ads:[0,-.19,-.53],
 };
