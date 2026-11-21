@@ -1,6 +1,8 @@
 // Menu soundtrack, sound effects, ambience and local firearm recordings.
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
-import { getMap } from '../shared/world.js';
+import { getMap, getWeapon } from '../shared/world.js';
+import { TANK_CANNON } from '../shared/tank.js';
+import RELOAD_CUES from './assets/audio/reload/cues.json' with {type:'json'};
 export const MENU_MUSIC_TITLE = 'Quiet Resolve';
 const MENU_MUSIC_URL=new URL('./assets/audio/music/quiet-resolve.m4a',import.meta.url);
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
@@ -76,15 +78,12 @@ const FOLEY_SAMPLES = {
   'rocket-flight': new URL('./assets/audio/foley/rocket-flight.ogg', import.meta.url),
   'explosion-heavy': new URL('./assets/audio/foley/explosion-heavy.ogg', import.meta.url),
   'explosion-grenade': new URL('./assets/audio/foley/explosion-grenade.ogg', import.meta.url),
+  reloads: recording(new URL('./assets/audio/reload/reloads.ogg',import.meta.url),new URL('./assets/audio/reload/reloads.m4a',import.meta.url)),
 };
 const HANDLING = {
-  release: [.033, 3400, 510], pull: [.105, 1250, 188], pouch: [.16, 790, 0],
-  seat: [.058, 1850, 205], tap: [.044, 2640, 300], bolt: [.075, 3600, 338],
-  lock: [.034, 4700, 480], cover: [.13, 1420, 165], feed: [.15, 2530, 0],
+  seat: [.058, 1850, 205], tap: [.044, 2640, 300], lock: [.034, 4700, 480],
   dry: [.022, 5600, 710], aim: [.070, 1750, 0], lower: [.096, 1050, 0],
 };
-const MAG_RELOAD = [[.27,'release'],[.42,'pull'],[.92,'pouch'],[1.6,'seat'],[1.68,'tap'],[1.75,'bolt'],[1.88,'lock']];
-const BELT_RELOAD = [[.34,'cover'],[.61,'pull'],[1.46,'pouch'],[2.18,'feed'],[2.51,'seat'],[2.78,'cover'],[2.89,'bolt'],[3.03,'lock']];
 const IMPACTS = {
   metal: [5000, .13, 1040], wood: [1870, .075, 290], concrete: [3100, .086, 0],
   ground: [1060, .072, 0], shield: [3800, .14, 1430],
@@ -111,6 +110,7 @@ export class CombatAudio {
     this._engineChannels = new Map();this._rocketChannels=new Map();this._rocketTracks=new Map();
     this._remoteSteps = new Map();
     this._stepCounts = new Map();
+    this._reloads = new Map();
   }
   get volume(){return this._volume;}
   set volume(v){this._volume=clamp(v);this._mix();}
@@ -122,7 +122,7 @@ export class CombatAudio {
   set enabled(v){this.setEnabled(v);}
   setMusicVolume(v){this._musicVolume=clamp(v);this._mix();}
   setEffectsVolume(v){this._effectsVolume=clamp(v);this._mix();}
-  setEnabled(v){this._enabled=Boolean(v);if(!this._enabled){this._stopRocketAudio();this._pending=[];for(const voice of this._voices)this._releaseVoice(voice,true);}this._mix();}
+  setEnabled(v){this._enabled=Boolean(v);if(!this._enabled){this._stopRocketAudio();this._pending=[];this._reloads.clear();for(const voice of this._voices)this._releaseVoice(voice,true);}this._mix();}
 
   async unlock(){
     if(this._disposed)return false;
@@ -214,6 +214,7 @@ export class CombatAudio {
     const next=mode==='battle'?'battle':'menu';if(next===this._mode)return;
     this._stopRocketAudio();this._mode=next;this._lastPosition=null;this._stride=0;this._falling=false;this._suppressedUntil=0;
     this._pending=[];
+    this._reloads.clear();
     // Kill any residual queued/generated music on either transition.
     for(const voice of [...this._voices]){
       if(voice.bus==='music')this._releaseVoice(voice,true);
@@ -534,7 +535,9 @@ export class CombatAudio {
     const buffer=this._foley.get(name);
     if(!buffer||!this._admit(options))return false;
     const source=this.ctx.createBufferSource();source.buffer=buffer;source.playbackRate.value=options.rate??1;
-    this._voice(source,Math.min(options.duration??10,buffer.duration/source.playbackRate.value),gain,{sample:true,attack:.0003,tail:.035,...options});
+    const remaining=(buffer.duration-(options.offset??0))/source.playbackRate.value;
+    if(remaining<=0)return false;
+    this._voice(source,Math.min(options.duration??10,remaining),gain,{sample:true,attack:.0003,tail:.035,...options});
     return true;
   }
   _explosion(event,local){
@@ -564,24 +567,63 @@ export class CombatAudio {
       time,pan,cutoff:3100,filter:'highpass',attack:.0005,decay:.014,decayGain:.13,
     });
   }
-  _reload(event,local,player){
-    if(!player)return;
-    const own=player.id===local?.id;
-    const p=this._position({...event,x:event.x??player.x,z:event.z??player.z},local);
-    if(!own&&(p.distance>12||this._voices.size>55))return;
-    const elapsed=Number.isFinite(event.time)?Math.max(0,this._lastStateTime-event.time):0;
-    const start=this.ctx.currentTime-elapsed;
-    const gain=(own?.16:.068)*p.gain;
-    const pistol=event.weaponId==='p19'||event.weaponId==='m50';
-    const belt=!pistol&&(event.classId||player.classId)==='support';
-    const expected=belt?3.1:2;
-    const scale=Number.isFinite(event.duration)?clamp(event.duration/expected,.6,1.35):1;
-    for(const [mark,kind] of belt?BELT_RELOAD:MAG_RELOAD){
-      const offset=mark*scale;
-      if(!own&&kind!=='seat'&&kind!=='lock')continue;
-      if(own&&!belt&&event.empty===false&&(kind==='bolt'||kind==='lock'))continue;
-      if(offset<elapsed-.06)continue;
-      this._mechanic(kind,Math.max(this.ctx.currentTime,start+offset),own?.24:p.pan,gain*(kind==='seat'?1.14:.8));
+  _queueReload(event,state,profile,duration,kind='handheld'){
+    const id=kind==='cannon'?event.vehicleId:event.playerId;
+    const cues=RELOAD_CUES[profile];
+    if(!id||!cues||!Number.isFinite(duration)||duration<=0)return;
+    const age=Math.max(0,(state.time??0)-(event.time??state.time??0));
+    if(age>=duration)return;
+    const key=kind==='cannon'?'tank:'+id:'player:'+id;
+    this._reloads.set(key,{id,profile,kind,cues,duration,startedAt:this.ctx.currentTime-age,next:0,
+      empty:event.empty!==false,sequence:event.shotSeq});
+  }
+  _updateReloadSounds(state,local,paused){
+    if(paused||!this._reloads.size||!this._foley.has('reloads'))return;
+    const now=this.ctx.currentTime;
+    for(const [key,job] of this._reloads){
+      const {id,kind,cues,duration}=job,cannon=kind==='cannon';
+      const subject=cannon?state?.vehicles?.find(v=>v.id===id)
+        :local?.id===id?local:state?.players?.find(p=>p.id===id);
+      const own=cannon?local?.vehicleId===id:local?.id===id;
+      const age=now-job.startedAt;
+      let progress=null, active=Boolean(subject);
+      if(subject&&cannon){
+        active=subject.hp>0&&subject.cannonSeq===job.sequence;
+        if(Number.isFinite(subject.cannonReadyAt))progress=1-(subject.cannonReadyAt-state.time)/duration;
+      }else if(subject&&kind==='launcher'){
+        active=subject.alive!==false&&!subject.downed&&subject.rockets>0&&subject.heldGadget==='launcher';
+        if(Number.isFinite(subject.secondaryCooldown))progress=1-subject.secondaryCooldown/duration;
+      }else if(subject&&kind==='emplacement'){
+        const campaign=state?.campaign;
+        active=campaign?.mg?.action==='reload'&&campaign.mg.occupant===id;
+        if(active)progress=1-(campaign.mg.readyAt-campaign.time)/duration;
+      }else if(subject){
+        active=subject.alive!==false&&!subject.downed&&!subject.heldGadget&&!subject.vehicleId&&subject.reloading
+          &&getWeapon(subject.classId,subject.weaponId).id===job.profile;
+        if(Number.isFinite(subject.reloadProgress))progress=subject.reloadProgress;
+      }
+      if(!active){
+        // A locally acknowledged event may arrive ahead of the displayed snapshot.
+        if(job.next>0||age>.30)this._reloads.delete(key);
+        continue;
+      }
+      const elapsed=Number.isFinite(progress)?clamp(progress)*duration:age;
+      const spatial=own?{distance:0,pan:0,gain:1}:this._position(subject,local);
+      if(spatial.distance>(cannon?24:16)||elapsed>=duration+.1){
+        this._reloads.delete(key);continue;
+      }
+      while(job.next<cues.length){
+        const [phase,offset,length,emptyOnly]=cues[job.next];
+        const late=elapsed-phase*duration;
+        if(late<0)break;
+        job.next++;
+        if((emptyOnly&&!job.empty)||late>.17)continue;
+        this._sample('reloads',(own?.27:.11)*spatial.gain,{
+          offset,duration:length,pan:own?.12:spatial.pan,bus:own?'localWeapon':'weapons',
+          cutoff:own?0:10000/(1+spatial.distance*.035),priority:own?3:1,tail:.012,send:own?.015:.06,
+        });
+      }
+      if(job.next===cues.length)this._reloads.delete(key);
     }
   }
   _step(strength,sprinting,crouching,subject,spatial=null){
@@ -616,7 +658,7 @@ export class CombatAudio {
     // Immediate local events use authority time; rendered events use the
     // interpolation clock. Comparing those clocks can falsely reset deduplication.
     if(!immediate){
-      if(state.time<this._lastStateTime-1){this.seen.clear();this._lastPosition=null;this._lastMovementTime=-1;this._pending=[];for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);}
+      if(state.time<this._lastStateTime-1){this.seen.clear();this._lastPosition=null;this._lastMovementTime=-1;this._pending=[];this._reloads.clear();for(const voice of this._voices)if(voice.bus!=='music')this._releaseVoice(voice,true);}
       this._lastStateTime=state.time;
     }
     // Only one attack per remote shooter when a delayed frame receives a burst.
@@ -674,6 +716,11 @@ export class CombatAudio {
         this._mechanic('lock',this.ctx.currentTime+.23,.20,.09);
       }else if(e.type==='explosion')this._explosion(e,local);
       else if(e.type==='cannonShot'&&!e.confirmedCosmetic){
+        const tank=state.vehicles?.find(v=>v.id===e.vehicleId);
+        const remaining=tank?.cannonReadyAt-e.time;
+        if(!tank||tank.cannonAmmo>0||Object.values(tank.shellAmmo??{}).some(ammo=>ammo>0)){
+          this._queueReload(e,state,'tank-cannon',remaining>0?remaining:TANK_CANNON.reload,'cannon');
+        }
         if(state.campaign?.missionId==='m02'&&e.shellType)this._campaignCannon(e,local);
         else this._explosion({...e,kind:'rocket'},local);
       }
@@ -682,10 +729,19 @@ export class CombatAudio {
         const p=this._position(e,local);
         if(p.distance<180&&state.time-e.time<.3)this._sample('rocket-launch-'+(e.id%2+1),(own?.85:.55)*p.gain,{
           pan:p.pan,rate:.98+Math.random()*.04,cutoff:own?0:10000/(1+p.distance*.018),bus:own?'localWeapon':'weapons',send:.04});
+        const shooter=own?local:state.players?.find(player=>player.id===e.playerId);
+        const remaining=shooter?.secondaryCooldown;
+        if(remaining>0)this._queueReload(e,state,'launcher',remaining+Math.max(0,state.time-e.time),'launcher');
       }else if(e.type==='revive'&&(own||e.medicId===local?.id)){
         this._tone(1120,.06,.06,{end:1760});this._noise(.022,.06,{filter:'highpass',cutoff:4000});
       }
-      else if(e.type==='reload')this._reload(e,local,own?local:state.players?.find(player=>player.id===e.playerId));
+      else if(e.type==='reload'){
+        if(e.weaponId==='safra-machine-gun')this._queueReload(e,state,'pkp',e.duration,'emplacement');
+        else{
+          const weapon=getWeapon(e.classId,e.weaponId);
+          this._queueReload(e,state,weapon.id,e.duration??weapon.reload);
+        }
+      }
       else if(e.type==='safraWarning'){
         const {distance,pan}=this._position(e,local);
         const duration=Math.max(.2,Math.min(2,e.impactAt-state.time));
@@ -736,6 +792,7 @@ export class CombatAudio {
     this._updateEngine(state,local,inMenu||paused||(briefing&&!engineListener),briefing?engineListener:null);
     if(camera&&local)this._updateSpatialListener(local,camera);
     this._updateRocketAudio(state,local,inMenu||paused,Boolean(camera));
+    this._updateReloadSounds(state,local,inMenu||paused);
     const sliding=Boolean(canMove&&local.sliding&&!local.vehicleId);
     if(sliding&&now>=(this._slideSoundAt??0)){
       this._noise(this._sliding?.24:.32,this._sliding?.035:.085,{priority:1,color:'pink',filter:'bandpass',cutoff:1350,attack:.025,pan:-.12});
@@ -950,7 +1007,7 @@ export class CombatAudio {
     this._pending=[];
     for(const voice of [...this._voices,...this._fadingVoices])this._releaseVoice(voice,true);
     this._stopRocketAudio();
-    this._shotBuffers.clear();this._foley.clear();
+    this._shotBuffers.clear();this._foley.clear();this._reloads.clear();
     for(const channel of this._engineChannels.values()){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();channel.trackSource?.stop();channel.trackSource?.disconnect();channel.trackFilter?.disconnect();channel.trackGain?.disconnect();}
     this._engineChannels.clear();this._remoteSteps.clear();this._stepCounts.clear();
     for(const {source,nodes}of this._ambientSources){try{source.stop();source.disconnect();}catch{}for(const node of nodes){try{node.disconnect();}catch{}}}

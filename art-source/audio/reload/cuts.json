@@ -1,0 +1,64 @@
+{
+  "p19": [
+    {"phase": 0.23, "file": "p19", "from": 0.055, "to": 0.29},
+    {"phase": 0.76, "file": "p19", "from": 0.79, "to": 1.02},
+    {"phase": 0.86, "file": "p19", "from": 1.49, "to": 1.75, "empty": true}
+  ],
+  "m50": [
+    {"phase": 0.22, "file": "m50", "from": 2.19, "to": 2.45},
+    {"phase": 0.76, "file": "m50", "from": 3.13, "to": 3.27},
+    {"phase": 0.86, "file": "m50", "from": 3.29, "to": 3.56, "empty": true}
+  ],
+  "ar416": [
+    {"phase": 0.26, "file": "ar15", "from": 0.19, "to": 0.40},
+    {"phase": 0.79, "file": "ar15", "from": 2.83, "to": 3.05},
+    {"phase": 0.85, "file": "ar15", "from": 3.44, "to": 3.81, "empty": true}
+  ],
+  "ak12": [
+    {"phase": 0.24, "file": "ak12", "from": 0.17, "to": 0.38},
+    {"phase": 0.80, "file": "ak12", "from": 0.81, "to": 1.00},
+    {"phase": 0.86, "file": "ak12", "from": 1.055, "to": 1.31, "empty": true}
+  ],
+  "mcx9": [
+    {"phase": 0.25, "file": "mcx9", "from": 1.85, "to": 2.11},
+    {"phase": 0.79, "file": "mcx9", "from": 3.29, "to": 3.49},
+    {"phase": 0.85, "file": "mcx9", "from": 13.48, "to": 13.83, "empty": true}
+  ],
+  "vk45": [
+    {"phase": 0.24, "file": "vk45", "from": 0.07, "to": 0.28},
+    {"phase": 0.79, "file": "vk45", "from": 0.66, "to": 0.85},
+    {"phase": 0.86, "file": "vk45", "from": 1.10, "to": 1.42, "empty": true}
+  ],
+  "mg36": [
+    {"phase": 0.25, "file": "mg36", "from": 0.025, "to": 0.28},
+    {"phase": 0.79, "file": "mg36", "from": 0.61, "to": 0.86},
+    {"phase": 0.91, "file": "mg36", "from": 1.38, "to": 1.55},
+    {"phase": 0.95, "file": "mg36", "from": 1.67, "to": 1.855}
+  ],
+  "pkp": [
+    {"phase": 0.14, "file": "pkp", "from": 0.028, "to": 0.25},
+    {"phase": 0.29, "file": "pkp", "from": 0.82, "to": 1.08},
+    {"phase": 0.70, "file": "pkp", "from": 1.40, "to": 1.70},
+    {"phase": 0.87, "file": "pkp", "from": 1.69, "to": 1.91},
+    {"phase": 0.94, "file": "mg36", "from": 1.67, "to": 1.855}
+  ],
+  "dmr12": [
+    {"phase": 0.25, "file": "dmr12", "from": 0.07, "to": 0.26},
+    {"phase": 0.79, "file": "dmr12", "from": 3.28, "to": 3.55},
+    {"phase": 0.85, "file": "dmr12", "from": 4.88, "to": 5.17, "empty": true}
+  ],
+  "sv98": [
+    {"phase": 0.26, "file": "ar416", "from": 0.36, "to": 0.61},
+    {"phase": 0.79, "file": "ar416", "from": 2.40, "to": 2.71},
+    {"phase": 0.85, "file": "sv98-bolt", "from": 0.38, "to": 0.62, "empty": true},
+    {"phase": 0.94, "file": "sv98-bolt", "from": 0.83, "to": 1.06, "empty": true}
+  ],
+  "launcher": [
+    {"phase": 0.67, "file": "launcher", "from": 3.60, "to": 3.99},
+    {"phase": 0.85, "file": "launcher", "from": 4.15, "to": 4.45}
+  ],
+  "tank-cannon": [
+    {"phase": 0.28, "file": "tank", "from": 3.15, "to": 3.90},
+    {"phase": 0.79, "file": "tank-lock", "from": 0.029, "to": 0.56}
+  ]
+}

@@ -749,6 +749,8 @@ class BridgeDirector{
     const g=this.mg,s=this.definition.machineGun;
     if(g.action||action==='reload'&&(!g.belts||g.rounds===s.capacity)||action==='barrel'&&!g.barrels)return;
     g.action=action;g.readyAt=this.time+(action==='reload'?s.reload:s.barrelChange);
+    if(action==='reload')this.sim.event('reload',{playerId:g.occupant,weaponId:'safra-machine-gun',
+      duration:s.reload,empty:g.rounds===0,x:SAFRA_GUN.x,z:SAFRA_GUN.z});
   }
   updateGun(dt){
     const g=this.mg,s=this.definition.machineGun;
