@@ -235,6 +235,27 @@ function objectiveGoal(sim,p){
   return {...spot,y:sim.groundAt(spot.x,spot.z)};
 }
 
+function patrolGoal(sim,p){
+  const routes=sim.gameMode==='tdm'?sim.map.botPatrols?.[p.team]:null;
+  if(!routes?.length)return null;
+  const route=routes[Math.floor((p.botSlot??0)/2)%routes.length];
+  const patrol=p.ai.patrol??={entry:0,room:0,leaveAt:null};
+  while(patrol.entry<route.entry.length){
+    const goal=route.entry[patrol.entry];
+    if(distance(p,goal)>.72||Math.abs(p.y-goal.y)>.34)return {goal,entering:true};
+    patrol.entry++;
+  }
+  const room=route.rooms[patrol.room];
+  if(distance(p,room)<.85&&Math.abs(p.y-room.y)<.40){
+    patrol.leaveAt??=sim.time+2.6+(p.botSlot%3)*.6;
+    if(sim.time>=patrol.leaveAt){
+      patrol.room=(patrol.room+1)%route.rooms.length;
+      patrol.leaveAt=null;
+    }
+  }else patrol.leaveAt=null;
+  return {goal:route.rooms[patrol.room],entering:false};
+}
+
 function decide(sim,p){
   const ai=p.ai,target=ai.contact,threat=target??ai.memory;
   ai.decideAt=sim.time+(sim.difficulty==='recruit'?.38:sim.difficulty==='veteran'?.18:.25)+(p.botSlot%4)*.025;
@@ -244,6 +265,12 @@ function decide(sim,p){
     p.botGoal=ai.goal;return;
   }
   if(ai.cover&&sim.time>(ai.coverUntil??0)){ai.lastCover=ai.cover;ai.cover=null;ai.peekSide*=-1;}
+  const patrol=patrolGoal(sim,p);
+  if(patrol?.entering&&p.hp>45&&ai.pressure<.78&&(!target||distance(p,target)>10)){
+    // A nearby opponent or heavy fire can interrupt the approach. Distant
+    // contacts alone should not draw every incoming patrol into the courtyard.
+    ai.cover=null;ai.mode='patrol';ai.goal=p.botGoal=patrol.goal;return;
+  }
   if(threat&&(p.hp<45*ai.caution||ai.pressure>.5/ai.caution||target&&distance(p,target)>18)&&!ai.cover&&sim.time>=(ai.coverSearchAt??0)){
     ai.coverSearchAt=sim.time+1.4/ai.caution;
     ai.cover=findCover(sim,p,threat,{retreat:p.hp<45,fire:p.hp>=45});ai.coverUntil=sim.time+5+sim.random()*4;
@@ -263,6 +290,9 @@ function decide(sim,p){
       const a=Math.atan2(p.z-target.z,p.x-target.x);ai.goal={x:p.x+Math.cos(a)*8,z:p.z+Math.sin(a)*8};
     }else ai.goal=null;
     return;
+  }
+  if(patrol&&(!ai.memory||sim.time-ai.memory.at>2||distance(p,ai.memory)>8||Math.abs(p.y-ai.memory.y)>1.3)){
+    ai.mode='patrol';ai.goal=p.botGoal=patrol.goal;return;
   }
   if(ai.memory&&sim.time-ai.memory.at<5&&ai.aggression>.8&&(!p.botObjective||distance(p,p.botObjective)<40)){
     ai.mode='search';ai.goal={x:ai.memory.x,y:ai.memory.y,z:ai.memory.z};return;
@@ -330,6 +360,11 @@ export function thinkInfantryBot(sim,p,dt){
   if(equipment(sim,p,dt))return;
   if(!ai.squad?.order&&!ai.contact&&ai.pressure<.25&&thinkVehicleBot(sim,p,dt)){ai.mode='board';return;}
   const target=ai.contact;
+  if(ai.mode==='patrol'){
+    moveBot(sim,p,ai.goal,dt,{followSteps:true});
+    if(p.ammo===0||!target&&p.ammo<getWeapon(p.classId,p.weaponId).mag*.45)p.input.reload=true;
+    return;
+  }
   if(target){
     aim(sim,p,target,dt);
     if(ai.cover){

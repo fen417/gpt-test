@@ -47,13 +47,14 @@ function unpackWalls(){
 }
 // Unlike rendering, physics uses server-owned simplified solids. Openings
 // (doors) are subtracted from the wall volumes, never blocked by their jambs.
-// Both floors share the same 2D door layout.
+// Interior doors align across floors. The upper exterior door has its own landing.
 const DOORS=[
   ...[-2.9,2.3].flatMap(z=>[-8.4,-2.9,5.5,9.4].map(x=>({axis:'z',x,z,width:1.50}))),
   ...[-5.5,8].flatMap(x=>[-4.85,4.55].map(z=>({axis:'x',x,z,width:1.46}))),
   {axis:'z',x:0,z:7,width:2.18},
   {axis:'z',x:-1,z:-7,width:1.62},
   {axis:'x',x:12,z:1.85,width:1.60},
+  {axis:'x',x:12,z:-5,width:1.46,y:3.3},
 ];
 const rect=(x0,x1,y0,y1,z0,z1,source)=>({
   ...source,x:(x0+x1)/2,z:(z0+z1)/2,
@@ -79,7 +80,7 @@ function subtractOpening(piece,opening){
     rect(ix0,ix1,iy0,iy1,iz1,az1,piece),
   ].filter(b=>b.w>.025&&b.d>.025&&b.h>.025);
 }
-const doorOpenings=DOORS.flatMap((door,i)=>(i<12?[.2,3.3]:[.2]).map(y0=>(
+const doorOpenings=DOORS.flatMap((door,i)=>(i<12?[.2,3.3]:[door.y??.2]).map(y0=>(
   door.axis==='z'?{
     x0:door.x-door.width/2,x1:door.x+door.width/2,
     z0:door.z-.34,z1:door.z+.34,y0:y0-.02,y1:y0+2.26,
@@ -89,6 +90,9 @@ const doorOpenings=DOORS.flatMap((door,i)=>(i<12?[.2,3.3]:[.2]).map(y0=>(
     y0:y0-.02,y1:y0+2.26,
   }
 )));
+// The side entrance opens against this partition. A continuous opening to the
+// pantry clears the full approach and joins the two circulation routes.
+doorOpenings.push({x0:8.68,x1:11.94,z0:2.10,z1:2.49,y0:.18,y1:2.48});
 const wallBoxes=unpackWalls().flatMap(wall=>{
   let pieces=[wall];
   for(const opening of doorOpenings)
@@ -126,10 +130,12 @@ const gallerySlabs=[
 ].map(([x,z,w,d],i)=>({id:'estate-gallery-'+i,kind:'village-floor',
   x,z,w,d,baseY:3.06,h:.24,overhead:true}));
 const eastLanding={id:'estate-east-landing',kind:'village-floor',
-  x:12.9,z:-5.06,w:2,d:.82,baseY:3.1,h:.2,overhead:true};
+  x:12.9,z:-5.06,w:2,d:.82,baseY:3.1,h:3.3-3.1,overhead:true};
+const pantryLintel={id:'estate-pantry-lintel',kind:'wall',
+  x:10.25,z:2.30,w:3.10,d:.22,baseY:2.48,h:.57,overhead:true};
 const widen=value=>({...value,x:value.x*ESTATE_WIDTH_SCALE,w:value.w*ESTATE_WIDTH_SCALE});
 const retainedShell=wallBoxes.filter(b=>Math.abs(b.x)<14.8&&b.z>-8&&b.z<10.5);
-const architecture=[...retainedShell,...stairBoxes,...gallerySlabs,eastLanding].map(widen);
+const architecture=[...retainedShell,...stairBoxes,...gallerySlabs,eastLanding,pantryLintel].map(widen);
 const fitted=[];
 const furnishings=[];
 const paint={oak:'#6f5239',leather:'#5a4837',linen:'#89847a',sage:'#666b54',
@@ -143,11 +149,11 @@ function fitting(id,type,x,z,w,d,y=0,options={}){
   });
   const shade=options.finish??'oak';
   if(type==='table'||type==='chair'||type==='bench'){
-    const top=type==='table'?.83:type==='bench'?.51:.48,foot=type==='table'?.125:.092;
+    const top=options.top??(type==='table'?.81:type==='bench'?.51:.48),foot=type==='table'?.125:.092;
     for(const side of [-1,1])for(const end of [-1,1])
       part('leg-'+side+'-'+end,side*(w*.5-foot*.84),end*(d*.5-foot*.84),foot,foot,0,top-.075,shade);
     part('top',0,0,w,d,top-.09,.09,shade);
-    if(type==='chair')part('back',0,d/2-.065,w,.13,top-.025,.49,shade);
+    if(type==='chair')part('back',0,(options.facing??1)*(d/2-.065),w,.13,top-.025,.49,shade);
     if(type==='bench')part('back',0,d/2-.075,w,.13,top-.025,.40,shade);
   }else if(type==='sofa'){
     const facing=options.facing??1;
@@ -158,6 +164,11 @@ function fitting(id,type,x,z,w,d,y=0,options={}){
     part('frame',0,0,w,d,0,.29,'oak');
     part('mattress',0,0,w-.045,d-.06,.29,.36,shade);
     part('head',0,d/2-.065,w,.13,.44,.63,'oak');
+  }else if(type==='shelf'){
+    const front=options.facing??1,h=options.h;
+    part('back',-front*(w/2-.045),0,.09,d,0,h);
+    for(const end of [-1,1])part('side-'+end,0,end*(d/2-.055),w,.11,0,h);
+    for(let row=0;row<6;row++)part('board-'+row,0,0,w,d-.2,row*(h-.085)/5,.085);
   }else if(type==='lamp'){
     part('base',0,0,w,d,0,.27,'metal');
     part('post',0,0,.105,.105,.27,1.84,'metal');
@@ -170,28 +181,32 @@ function fitting(id,type,x,z,w,d,y=0,options={}){
   furnishings.push({...widen(prop),parts:worldParts});
 }
 
-// Collidable cover is built out of the same pieces as the furniture.
-fitting('library-wall','shelf',-11.23,-4.92,.75,2.85,.2,{h:2.34});
-fitting('library-console','case',-8.1,-6.39,1.65,.62,.2,{h:1.02});
-fitting('library-reading','chair',-7.2,-4.02,.67,.7,.2,{finish:'leather'});
-fitting('west-hall-bench','bench',-10.91,-1.68,1.58,.60,.2);
-fitting('lounge-west','sofa',-9.28,6.28,2.23,.84,.2,{finish:'leather'});
-fitting('lounge-east','sofa',-3.35,5.96,1.75,.79,.2,{finish:'sage'});
-fitting('lounge-table','table',-9.06,4.93,1.62,.72,.2);
-fitting('hall-counter','case',-3.45,.62,2.05,.70,.2,{h:1.08});
-fitting('hall-bench','bench',5.94,-1.26,1.54,.55,.2);
-fitting('dining-table','table',5.56,4.70,2.56,1.16,.2);
-for(const side of [-1,1])fitting('dining-chair-'+side,'chair',5.56+side*.64,5.65,.58,.57,.2);
-fitting('dining-sideboard','case',10.28,6.37,2.38,.60,.2,{h:1.10});
-fitting('kitchen','case',9.91,-6.30,3.05,.72,.2,{h:1.03});
-fitting('kitchen-island','case',10.22,-4.76,1.22,.70,.2,{h:.96});
-fitting('study-shelf','shelf',-11.28,-4.94,.72,2.55,3.3,{h:2.24});
-fitting('study-desk','table',-8.95,-5.12,1.67,.79,3.3);
-fitting('guest-bed-west','bed',-9.18,5.61,1.76,2.18,3.3,{finish:'linen'});
-fitting('guest-bed-east','bed',10.17,5.50,1.77,2.14,3.3,{finish:'sage'});
-fitting('guest-east-wardrobe','case',11.39,-5.55,.68,2.35,3.3,{h:2.21});
-fitting('upper-couch','sofa',5.14,.59,2.12,.84,3.3,{finish:'sage',facing:-1});
-fitting('upper-console','case',-3.58,5.93,1.25,.57,3.3,{h:.92});
+// Library and study share the west end. Drawers and seats face into the rooms.
+fitting('library-wall','shelf',-11.23,-4.92,.58,2.58,.2,{h:2.20});
+fitting('library-console','case',-9.4,-6.47,1.42,.46,.2,{h:.86,facing:1});
+fitting('library-reading','chair',-6.72,-6.05,.72,.68,.2,{finish:'leather',facing:-1});
+fitting('lounge-sofa','sofa',-9.28,6.40,2.23,.78,.2,{finish:'leather'});
+fitting('lounge-coffee-table','table',-9.28,5.34,1.29,.66,.2,{top:.46});
+fitting('lounge-chair','chair',-10.35,4.10,.72,.70,.2,{finish:'sage',facing:-1});
+fitting('entry-console','case',-4.45,6.48,1.25,.44,.2,{h:.88,facing:-1});
+fitting('hall-console','case',-4.70,1.86,1.14,.43,.2,{h:.89,facing:-1});
+
+fitting('dining-table','table',5.25,5.11,1.96,.90,.2);
+for(const side of [-1,1])for(const end of [-1,1])
+  fitting('dining-chair-'+side+'-'+end,'chair',5.25+side*.51,5.11+end*.84,.48,.56,.2,{facing:end});
+fitting('pantry-sideboard','case',10.24,6.47,2.15,.52,.2,{h:1.02,facing:-1});
+fitting('kitchen-counter','case',10.06,-6.43,2.70,.56,.2,{h:.94,facing:1,sink:true});
+
+fitting('study-shelf','shelf',-11.22,-4.82,.55,2.08,3.3,{h:2.08});
+fitting('study-desk','table',-8.95,-5.93,1.55,.66,3.3,{top:.75});
+fitting('study-chair','chair',-8.95,-4.95,.60,.60,3.3,{finish:'sage',facing:1});
+fitting('guest-bed-west','bed',-9.72,5.80,1.62,1.98,3.3,{finish:'linen'});
+fitting('guest-west-nightstand','case',-7.90,6.50,.57,.47,3.3,{h:.52,facing:-1});
+fitting('guest-bed-east','bed',10.51,5.91,1.55,1.78,3.3,{finish:'sage'});
+fitting('guest-east-nightstand','case',11.52,6.47,.47,.46,3.3,{h:.52,facing:-1});
+fitting('upper-wardrobe','case',10.10,-6.41,2.10,.57,3.3,{h:1.97,facing:1,wardrobe:true});
+fitting('gallery-sofa','sofa',4.06,1.69,1.48,.72,3.3,{finish:'sage'});
+fitting('gallery-console','case',-3.62,6.47,1.16,.45,3.3,{h:.85,facing:-1});
 for(const side of [-1,1]){
   fitting('terrace-bench-'+side,'bench',side*5.6,9.0,2.12,.61);
   fitting('forecourt-planter-'+side,'planter',side*7.4,11.67,5.12,1.45,0,{finish:'limestone',h:.84});
@@ -290,8 +305,44 @@ for(let team=0;team<2;team++){
     spawnPoints[team].push({x,z});
   }
 }
+
+const position=(x,z,y=.2)=>({x:x*ESTATE_WIDTH_SCALE,y,z});
+const navigationNodes=DOORS.flatMap(({x,z,axis,y},i)=>
+  (i<12?[.2,3.3]:[y??.2]).flatMap(floor=>[-.62,0,.62].map(offset=>{
+    const px=x+(axis==='x'?offset:0),pz=z+(axis==='z'?offset:0);
+    return position(px,pz,floor===.2?groundY(px*ESTATE_WIDTH_SCALE,pz):floor);
+  })));
+for(const stair of STAIRS){
+  for(let i=0;i<=13;i++){
+    const t=i/13;
+    navigationNodes.push(position(stair.x,stair.zBottom+(stair.zTop-stair.zBottom)*t,stair.base+(stair.top-stair.base)*t));
+  }
+}
+
+const frontHall=position(-.65,5.80),rearHall=position(-1.1,-5.58),sideHall=position(10.65,1.70);
+const mainLanding=position(2,-3.65,3.3);
+const terrace=[position(13.4,1.2,0),position(13.4,-5.06,3.3),position(11,-5,3.3)];
+const botPatrols=[
+  [
+    {entry:[frontHall,mainLanding],rooms:[position(-7.1,-4.9,3.3),position(-7.25,.6,3.3),position(-7.5,4.65,3.3)]},
+    {entry:[frontHall],rooms:[position(-7.2,4.70),position(-8.4,.40),position(-9.1,-4.70)]},
+    {entry:[frontHall],rooms:[position(3.72,4.5),position(6.6,-.40),position(6.98,-4.80)]},
+    {entry:[frontHall,mainLanding],rooms:[position(5.85,4.65,3.3),position(9.42,3.66,3.3),position(9.26,.50,3.3)]},
+    {entry:[sideHall],rooms:[position(10.6,-4.78),position(8.92,-.34),position(10.48,4.66)]},
+    {entry:[],rooms:[position(-14.7,9.5,0),position(-16.7,-.45,0),position(-11.6,-10.5,0)]},
+  ],
+  [
+    {entry:[...terrace],rooms:[position(9.26,.41,3.3),position(9.42,3.66,3.3),position(5.48,-4.55,3.3)]},
+    {entry:[rearHall],rooms:[position(5.24,-4.65),position(6.44,-.51),position(3.6,4.55)]},
+    {entry:[rearHall],rooms:[position(-9.1,-4.25),position(-8.15,.45),position(-7.1,4.77)]},
+    {entry:[rearHall,mainLanding],rooms:[position(-3.15,-4.55,3.3),position(-8.27,.71,3.3),position(-7.26,4.72,3.3)]},
+    {entry:[sideHall],rooms:[position(10.48,4.63),position(9.08,.78),position(10.64,-4.84)]},
+    {entry:[],rooms:[position(15.7,6.9,0),position(15.1,11.85,0),position(11.4,19.1,0)]},
+  ],
+];
+
 export const LINDEN_ESTATE_MAP={
-  id:'linden_estate',name:'Linden Estate',theme:'linden-estate',size:72,layoutVersion:2,playArea,
+  id:'linden_estate',name:'Linden Estate',theme:'linden-estate',size:72,layoutVersion:3,playArea,
   menuView:{eye:[12.8,2.95,25.8],target:[-1.4,2.65,2.6],fov:64},
   terrain:{cell:1,heightAt:groundY,raycast:raycastGround},
   boxes,furnishings,pool,structures:[],landforms:[],landmarks:[
@@ -302,7 +353,8 @@ export const LINDEN_ESTATE_MAP={
   districts:[{id:'manor',name:'Особняк',x:0,z:0},{id:'garden',name:'Сад',x:0,z:18}],
   points:[],vehicleSpawns:[],weaponSpawns:[],
   spawnPoints,spawns:[spawnPoints[0][0],spawnPoints[1][0]],
-  playerRadius:.30,navigationCell:.63,navigationClearance:.45,navigationSize:72,stepHeight:.42,
+  playerRadius:.30,navigationCell:.63,navigationClearance:.45,navigationWaypointRadius:.36,
+  navigationSize:72,stepHeight:.42,navigationNodes,botPatrols,
   // The neutral daytime palette needs less direct orange sunlight and more
   // neutral bounced light indoors, especially with roof shadows enabled.
   fogColor:0xa9bdc4,fogDensity:.0018,sunColor:0xfff4e4,

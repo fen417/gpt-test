@@ -116,7 +116,8 @@ def estate_object(mesh,name,collection,surface,cast,editable):
     return obj
 
 
-def original_shell(estate,scale):
+def original_shell(estate,data):
+    scale=data["widthScale"]
     bpy.ops.import_scene.gltf(filepath=str(HERE/"original-shell.glb"))
     imported=list(bpy.context.selected_objects)
     for obj in imported:
@@ -127,7 +128,15 @@ def original_shell(estate,scale):
         for face in obj.data.polygons:
             original=obj.material_slots[face.material_index].material.name.split(".")[0]
             surface,color=MASONRY[original]
-            vertices=[(world[i].x*scale,world[i].z,-world[i].y) for i in face.vertices]
+            points=[world[i] for i in face.vertices]
+            if obj.name=="Room partitions" and all(abs(p.y+2.30)<.18 and p.z<=3.06 for p in points):
+                west,east=min(p.x for p in points),max(p.x for p in points)
+                if original=="ivory" and west>=10.01 and east<=11.81:
+                    continue
+                if original=="trim" and ((west>=9.97 and east<=10.09) or
+                                          (west>=8.69 and east<=10.11 and min(p.z for p in points)>2.38)):
+                    continue
+            vertices=[(p.x*scale,p.z,-p.y) for p in points]
             x,y,z=[sum(v[i] for v in vertices)/len(vertices) for i in range(3)]
             # The lower rooms use separate finishes to keep the interior legible.
             if obj.name.startswith("Room partitions") and surface=="concrete":
@@ -142,6 +151,12 @@ def original_shell(estate,scale):
                          layer(s,d,s not in ("glass","wood") or "stair" in obj.name.lower()).extend(m,(0,0,0),0))
     for obj in imported:
         bpy.data.objects.remove(obj,do_unlink=True)
+    lintel=next(b for b in data["boxes"] if b["id"]=="estate-pantry-lintel")
+    x,z,w,d,y,h=(lintel[key] for key in ("x","z","w","d","baseY","h"))
+    def pantry_opening(layer):
+        layer("concrete").box((x,y+h/2,z),(w,h,d),PLASTER)
+        layer("stone").box((x,y+.021,z),(w,.076,d+.10),TRIM,.012)
+    estate.place("Pantry opening",x,z,pantry_opening)
 
 
 def ellipsoid(mesh,x,y,z,rx,ry,rz,color,sides=10,rows=5):
@@ -182,12 +197,12 @@ def floor_and_garden(estate,data):
                 check.floor(-2.24+(i-7.5)*w/16,.212,(j-15.5)*.422,w/16,.422,
                             rgb("8d806e") if (i+j)%2 else rgb("5b5c51"))
         high=layer("fabric",True,False)
-        for x,z,w,d in [(-9.1,4.95,3.38,2.35),(5.65,4.65,3.3,2.26),(-8.9,-4.5,2.65,2.4)]:
+        for x,z,w,d in [(-10.78,5.33,3.06,2.20),(6.09,5.12,3.08,2.66),(-9.92,-5.18,2.55,2.23)]:
             high.floor(x,.224,z,w,d,RUG)
             high.floor(x,.227,z,w-.21,d-.23,shade(RUG,.78))
             for dz in [-d/2+.16,d/2-.16]:
                 high.floor(x,.231,z+dz,w-.18,.045,BRASS)
-        for x,z in [(-8.6,4.6),(5.3,4.9),(-9,-4.3)]:
+        for x,z in [(-10.90,4.34),(11.95,4.48),(-10.48,-4.47)]:
             high.floor(x,3.316,z,2.32,1.92,RUG)
     estate.place("Stone vestibule and rugs",0,0,vestibule)
     def foundation(layer):
@@ -247,35 +262,51 @@ def furniture(estate,prop):
                 fabric.box((x+side*w*.23,y+.718,z+d*.27),(w*.385,.165,.36),CUSHION,.052)
             wood.box((x,y+.91,z+d/2-.144),(w-.12,.18,.035),WALNUT,.026)
         elif role=="shelf":
-            face=x+(.5 if x<0 else -.5)*w
-            sign=-1 if x>0 else 1
+            sign=prop.get("facing",1)
+            face=x+sign*w*.34
+            h=prop["h"]
             palette=[rgb("636b58"),rgb("a98c62"),rgb("645350"),rgb("83554a"),rgb("a59883")]
             for j in range(5):
-                row=y+.27+j*.37
-                wood.box((face+sign*.039,row,z),(.081,.043,d-.14),WALNUT,.006)
-                for i in range(12):
-                    pz=z-d*.39+i*d*.07
-                    h=.18+((i*9+j*3)%8)*.015
-                    fabric.box((face+sign*.034,row+.023+h/2,pz),(.068,h,.090+i%3*.012),palette[(i+j)%5],.003)
+                row=y+.085+j*(h-.085)/5
+                for i in range(11):
+                    if (i+j*3)%7==0:
+                        continue
+                    pz=z-d*.39+i*d*.077
+                    height=.19+((i*9+j*3)%8)*.018
+                    fabric.box((face-sign*(i%3)*.028,row+height/2,pz),
+                               (.16,height,.081+i%3*.016),palette[(i+j)%5],.005)
         elif role=="case":
             h=prop["h"]
-            front=z+(-1 if z>2 else 1)*d/2
-            sign=1 if front>z else -1
+            sign=prop.get("facing",-1 if z>2 else 1)
+            front=z+sign*d/2
             for i in [-1,1]:
                 column=x+i*w*.25
+                if prop.get("wardrobe"):
+                    wood.box((column,y+h*.53,front+sign*.025),(w*.45,h*.85,.052),WALNUT,.025)
+                    metal.box((x+i*.11,y+h*.49,front+sign*.068),(.046,.164,.06),BRASS,.012)
+                    continue
                 for j in range(2):
                     yy=y+h*.33+j*h*.32
                     wood.box((column,yy,front+sign*.02),(w*.46,h*.28,.057),WALNUT,.016)
                     metal.box((column,yy+.036,front+sign*.054),(.19,.045,.054),BRASS,.010)
-            top=layer("stone",True,False)
-            top.box((x,y+h+.026,z),(w+.094,.063,d+.085),TRIM,.025)
+            if prop.get("sink"):
+                top=layer("stone")
+                sink_x=x+w*.21
+                for px,span in [(x-w*.17,w*.64),(x+w*.423,w*.147)]:
+                    top.box((px,y+h+.028,z),(span,.067,d+.081),TRIM,.023)
+                layer("metal").box((sink_x,y+h+.01,z),(.65,.031,d-.06),SOOT,.039)
+                metal.box((sink_x,y+h+.028,z),(.48,.026,d-.17),IRON,.012)
+                metal.cylinder((sink_x,y+h+.18,z-d*.39),.024,.30,"y",IRON,10)
+                metal.beam((sink_x,y+h+.32,z-d*.39),(sink_x,y+h+.32,z-.07),.041,IRON)
+            elif not prop.get("wardrobe"):
+                layer("stone",True,False).box((x,y+h+.026,z),(w+.094,.063,d+.085),TRIM,.025)
         elif role in ("table","bench","chair"):
-            top={"table":.83,"bench":.51,"chair":.48}[role]
+            top=prop.get("top",{"table":.81,"bench":.51,"chair":.48}[role])
             if role=="bench":
                 for i in range(4):
                     wood.box((x,y+top+.021,z+(i-1.5)*d*.227),(w-.058,.051,d*.184),WALNUT,.016)
             elif role=="chair":
-                fabric.box((x,y+top+.04,z-.056),(w-.086,.088,d-.213),RUG,.027)
+                fabric.box((x,y+top+.04,z-prop.get("facing",1)*.056),(w-.086,.088,d-.213),RUG,.027)
             else:
                 wood.box((x,y+top-.1,z),(w-.085,.094,d-.088),shade(WALNUT,.71),.014)
         elif role=="planter":
@@ -410,7 +441,7 @@ def main(source,output):
     scene=bpy.context.scene
     scene.unit_settings.system="METRIC"
     estate=LayeredMap(("01 · Manor, gardens and playable furniture","02 · Trim, upholstery, planting and lights"),estate_object)
-    original_shell(estate,data["widthScale"])
+    original_shell(estate,data)
     floor_and_garden(estate,data)
     for prop in data["furnishings"]:
         furniture(estate,prop)

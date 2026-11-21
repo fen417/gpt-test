@@ -7,11 +7,12 @@ const down={x:0,y:-1,z:0};
 function navigation(sim){
   if(caches.has(sim))return caches.get(sim);
   const size=sim.gridSize,cell=sim.gridCell,origin=sim.gridOrigin;
+  const radius=sim.playerRadius??PLAYER_RADIUS;
   const ground=new Map(),layers=new Map(),cover=[],nodes=[],byId=[];
   const key=(x,z)=>Math.floor((z-origin)/cell)*size+Math.floor((x-origin)/cell);
   const insert=(x,y,z)=>{
-    const crouch=sim.collides(x,z,y+.025,PLAYER_RADIUS+.04,EYE_HEIGHT);
-    if(crouch&&sim.collides(x,z,y+.025,PLAYER_RADIUS+.04,1.1))return;
+    const crouch=sim.collides(x,z,y+.025,radius+.04,EYE_HEIGHT);
+    if(crouch&&sim.collides(x,z,y+.025,radius+.04,1.1))return;
     const k=key(x,z),list=layers.get(k)??[];
     if(list.some(n=>distance(n,{x,z})<.25&&Math.abs(n.y-y)<.15))return;
     const node={id:size*size+nodes.length,x,y,z,ground:false,crouch};nodes.push(node);byId[node.id]=node;list.push(node);layers.set(k,list);
@@ -32,7 +33,7 @@ function navigation(sim){
       for(const point of [{x:cx+side*(b.w/2+.72),z:cz+t*b.d/2,nx:side,nz:0},
         {x:cx+t*b.w/2,z:cz+side*(b.d/2+.72),nx:0,nz:side}]){
         point.y=sim.groundAt(point.x,point.z);
-        if(!sim.collides(point.x,point.z,point.y+.02,PLAYER_RADIUS+.12,EYE_HEIGHT))cover.push(point);
+        if(!sim.collides(point.x,point.z,point.y+.02,radius+.12,EYE_HEIGHT))cover.push(point);
       }
     }
   }
@@ -43,8 +44,8 @@ function navigation(sim){
     if(ix<0||iz<0||ix>=size||iz>=size)return null;
     const id=iz*size+ix;if(ground.has(id))return ground.get(id);
     const x=origin+(ix+.5)*cell,z=origin+(iz+.5)*cell,y=sim.groundAt(x,z);
-    const crouch=sim.collides(x,z,y+.025,PLAYER_RADIUS+.05,EYE_HEIGHT);
-    const node=crouch&&sim.collides(x,z,y+.025,PLAYER_RADIUS+.05,1.1)?null:{id,x,y,z,ground:true,crouch};
+    const crouch=sim.collides(x,z,y+.025,radius+.05,EYE_HEIGHT);
+    const node=crouch&&sim.collides(x,z,y+.025,radius+.05,1.1)?null:{id,x,y,z,ground:true,crouch};
     ground.set(id,node);if(node)byId[id]=node;return node;
   };
   const nearby=(point,radius=1)=>{
@@ -65,10 +66,11 @@ export function walkableSegment(sim,a,b,dynamic=true){
   if(rise>Math.max(.34,length*.63)||rise< -Math.max(.65,length*.8))return false;
   const steps=Math.max(1,Math.ceil(length/.45));
   const bodyHeight=a.crouch||a.crouching||b.crouch?1.1:EYE_HEIGHT,stepHeight=sim.stepHeight??0;
+  const radius=(sim.playerRadius??PLAYER_RADIUS)+.035;
   for(let i=1;i<=steps;i++){
     const t=i/steps,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;
     const y=startY+rise*t;
-    if(sim.collides(x,z,y+stepHeight+.025,PLAYER_RADIUS+.035,bodyHeight-stepHeight)||dynamic&&sim.vehicleAt(x,z,y))return false;
+    if(sim.collides(x,z,y+stepHeight+.025,radius,bodyHeight-stepHeight)||dynamic&&sim.vehicleAt(x,z,y))return false;
     const floor=sim.groundAt(x,z);
     if(floor>y+.36)return false;
     if(y-floor>.4){
@@ -178,7 +180,8 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false,foll
     if(result){p.botPath=result;ai.pathGoal={...goal};ai.pathUntil=sim.time+3;ai.repathAt=sim.time+.5;}
   }
   const waypointHeightTolerance=followSteps ? .18 : .65;
-  while(p.botPath.length&&distance(p,p.botPath[0])<.65&&Math.abs(p.y-p.botPath[0].y)<waypointHeightTolerance)p.botPath.shift();
+  const waypointRadius=sim.map.navigationWaypointRadius??.65;
+  while(p.botPath.length&&distance(p,p.botPath[0])<waypointRadius&&Math.abs(p.y-p.botPath[0].y)<waypointHeightTolerance)p.botPath.shift();
   let next=p.botPath[0];
   if(!next&&distance(p,goal)<8&&walkableSegment(sim,p,goal))next=goal;
   if(!next){
@@ -206,12 +209,13 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false,foll
   if(look)p.input.yaw=p.yaw+Math.max(-turn,Math.min(turn,Math.atan2(Math.sin(yaw-p.yaw),Math.cos(yaw-p.yaw))));
   const sin=Math.sin(p.input.yaw),cos=Math.cos(p.input.yaw),scale=cautious?.5:1;
   p.input.forward=(-sin*dx-cos*dz)*scale;p.input.strafe=(cos*dx-sin*dz)*scale;
-  const probeY=p.y+(next.y-p.y)*Math.min(1,.7/Math.max(.1,distance(p,next)));
+  const probe=sim.map.navigationWaypointRadius?Math.min(.7,distance(p,next)):.7;
+  const probeY=p.y+(next.y-p.y)*Math.min(1,probe/Math.max(.1,distance(p,next)));
   if(next.crouch)p.input.crouch=true;
   const step=Math.abs(next.y-p.y);
   // On stair waypoints, movePlayer resolves the actual step against collision geometry.
   const movingClear=followSteps&&step>waypointHeightTolerance&&step<=(sim.stepHeight??0)+.02||
-    walkableSegment(sim,p,{x:p.x+dx*.7,y:probeY,z:p.z+dz*.7,crouch:next.crouch});
+    walkableSegment(sim,p,{x:p.x+dx*probe,y:probeY,z:p.z+dz*probe,crouch:next.crouch});
   if(!movingClear){p.input.forward=p.input.strafe=0;ai.repathAt=0;ai.pathUntil=0;}
   p.input.sprint=sprint&&movingClear&&!p.input.crouch&&distance(p,goal)>8&&Math.abs(p.input.strafe)<.35&&!p.input.aim&&Math.abs(next.y-p.y)<.3;
   ai.probe??={x:p.x,z:p.z,at:sim.time};
