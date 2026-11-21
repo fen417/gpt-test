@@ -52,6 +52,24 @@ function gravelRoads(owner, map) {
   }
   const segments = map.size / map.terrain.cell;
   const geometry = new THREE.PlaneGeometry(map.size, map.size, segments, segments);
+  // Keep the terrain grid's diagonal, but draw only the cells the mask can reach.
+  const cell=map.terrain.cell, halfCell=cell/2, stride=segments+1;
+  const roadBounds=map.roads.map(road=>{
+    const c=Math.cos(road.yaw),s=Math.sin(road.yaw);
+    const padding=(Math.abs(c)+Math.abs(s))*halfCell;
+    return {...road,c,s,halfWidth:road.w/2+padding,halfLength:road.d/2+padding};
+  });
+  const indices=[];
+  for(let row=0;row<segments;row++)for(let column=0;column<segments;column++){
+    const x=(column+.5)*cell-map.size/2,z=(row+.5)*cell-map.size/2;
+    if(!roadBounds.some(road=>{
+      const dx=x-road.x,dz=z-road.z;
+      return Math.abs(dx*road.c-dz*road.s)<=road.halfWidth&&Math.abs(dx*road.s+dz*road.c)<=road.halfLength;
+    }))continue;
+    const a=row*stride+column;
+    indices.push(a,a+stride,a+1,a+stride,a+stride+1,a+1);
+  }
+  geometry.setIndex(indices);
   shapeQuarrySurface(geometry, map, .045);
   const uv = geometry.attributes.uv;
   geometry.setAttribute('uv1', uv.clone());

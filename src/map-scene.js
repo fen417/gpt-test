@@ -127,7 +127,7 @@ export function buildMapScene(owner, map, { editable = false, skipObjectives = f
             try{villageModels([{...part,x:0,z:0,baseY:0}],[],[],terrain);}finally{owner.scene=group;}
           }
         } else {
-          if (kind === 'structure'&&value.kind!=='pillbox') addWarehouseDetails(owner, [local]);
+          if (kind === 'structure'&&value.kind!=='pillbox'&&!value.quarryKit) addWarehouseDetails(owner, [local]);
           const terrain = { heightAt: (x, z) =>
             ((map.terrain?.heightAt(x * scale.x + anchor.x, z * scale.z + anchor.z) ?? 0) - anchor.baseY) / scale.y };
           if (kind === 'sign') addQuarrySigns(owner, { terrain, signs: [local] });

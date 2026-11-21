@@ -5,7 +5,8 @@ import { rayCollider } from '../shared/asset-colliders.js';
 
 await mkdir('src/assets/shadows',{recursive:true});
 const length=Math.hypot(-90,75,65),direction={x:-90/length,y:75/length,z:65/length},size=256;
-for(const mapId of ['port','quarry','village']){
+const maps=process.argv.slice(2);
+for(const mapId of maps.length?maps:['port','quarry','village']){
   const sim=new Simulation({bots:0,mapId}),canvas=createCanvas(size,size),ctx=canvas.getContext('2d'),pixels=ctx.createImageData(size,size);
   const start=performance.now();
   for(let z=0;z<size;z++)for(let x=0;x<size;x++){

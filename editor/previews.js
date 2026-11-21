@@ -117,7 +117,7 @@ export function createAssetPreviews(surfaces) {
         } else if (map.theme === 'desert-village') {
           addVillageModels(boxes, kind === 'structure' ? [value] : [], kind === 'road' ? [value] : [], map.terrain);
         } else {
-          if (kind === 'structure') addWarehouseDetails(owner, [value]);
+          if (kind === 'structure'&&value.kind!=='pillbox'&&!value.quarryKit) addWarehouseDetails(owner, [value]);
           if (kind === 'sign') addQuarrySigns(owner, { terrain: map.terrain, signs: [value] });
           for (const box of boxes) addQuarryAsset(owner, box, map);
         }

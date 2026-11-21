@@ -5,12 +5,12 @@ import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extension
 import { quantize, reorder } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 
-export async function packMap(input, output) {
+export async function packMap(input, output, layers = ['base', 'detail']) {
   await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready]);
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
     'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder,
   });
-  for (const name of ['base', 'detail']) {
+  for (const name of layers) {
     const model = await io.read(resolve(input, name + '.glb'));
     // A common world-space grid makes neighbouring chunks agree. At most
     // 0.122 mm of position error keeps close surfaces distinct across LODs.
@@ -35,5 +35,6 @@ export async function packMap(input, output) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   if (!process.argv[2] || !process.argv[3]) throw new Error('Expected input and output directories');
-  await packMap(process.argv[2], process.argv[3]);
+  const layers = process.argv.slice(4);
+  await packMap(process.argv[2], process.argv[3], layers.length ? layers : undefined);
 }

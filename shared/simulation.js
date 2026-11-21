@@ -104,7 +104,7 @@ function impactMaterial(kind) {
   if (kind === 'village-barrels') return 'metal';
   if (kind.startsWith('port-')) return kind==='port-wall'?'concrete':'metal';
   if (kind === 'crate' || kind === 'tree' || kind === 'tent') return 'wood';
-  if (kind === 'roof' || kind === 'container' || kind === 'pillar' || kind === 'warehouse' || kind === 'truck' || kind === 'car' || kind === 'fueltank' || kind === 'generator' || kind === 'kiosk') return 'metal';
+  if (kind === 'quarry-metal' || kind === 'roof' || kind === 'container' || kind === 'pillar' || kind === 'warehouse' || kind === 'truck' || kind === 'car' || kind === 'fueltank' || kind === 'generator' || kind === 'kiosk') return 'metal';
   return 'concrete';
 }
 

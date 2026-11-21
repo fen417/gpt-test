@@ -177,6 +177,7 @@ export function applyMapEdits(base, edits, sources) {
       x: structure.x, z: structure.z, w: structure.w + 8, d: structure.d + 8,
       height: relief.heightAt(structure.x, structure.z), blend: base.terrainPadBlend??4,
       ...(base.id==='village'?{protectedW:structure.w+4,protectedD:structure.d+4}:{}),
+      ...(base.id==='quarry'?{protectedW:structure.w+8,protectedD:structure.d+8}:{}),
     }));
     for (const ship of [map.ship, ...map.extraShips].filter(ship => ship?.terrainPad)) map.terrainPads.push(shipTerrainPad(ship, relief));
     map.terrain = makeTerrain(base.size, map.landforms ?? [], map.terrain.cell, map.terrainPads);

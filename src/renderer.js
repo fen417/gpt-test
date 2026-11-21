@@ -16,6 +16,7 @@ import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
 import { hasVillageAsset, VillageModel } from './village-model.js';
 import { hasPortAsset, PortModel } from './port-model.js';
+import { loadQuarryDetail, disposeQuarryDetail } from './quarry-model.js';
 import { addPortLabels, addPortWater } from './port-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -641,6 +642,26 @@ export class GameRenderer {
     this.staticMenuShadows=false;
   }
 
+  updateQuarryDetail(world,map,wanted) {
+    world.wantsQuarryDetail=wanted;
+    if(world.quarryDetail){
+      if(world.quarryDetail.visible!==wanted){
+        world.quarryDetail.visible=wanted;
+        this.invalidateBakedVisibility();
+      }
+    }else if(wanted){
+      world.quarryLoad??=loadQuarryDetail(map,this.surfaces.metal).then(layer=>{
+        if(this.disposed){
+          disposeQuarryDetail(layer);
+          return;
+        }
+        world.quarryDetail=layer;
+        layer.visible=world.wantsQuarryDetail;
+        this.installBakedLayer(world,layer);
+      }).catch(error=>console.warn('Quarry detail',error));
+    }
+  }
+
   installPortFallback(world,map) {
     const fallback=new THREE.Group();
     const live={scene:this.scene,map:this.map,flags:this.flags,random:this.random};
@@ -738,14 +759,14 @@ export class GameRenderer {
       const specialProp = SPECIAL_PROP_KINDS.has(b.kind);
       const building = h > 5 && !['wall', 'pillar'].includes(b.kind) && !specialProp;
       const container = String(b.kind || '').includes('container');
-      const surface = b.kind === 'crate' ? this.surfaces.wood : b.kind === 'tent' ? this.surfaces.cloth : container || b.kind === 'warehouse' || b.kind === 'truck' || b.kind === 'car' || b.kind === 'fueltank' || b.kind === 'generator' || b.kind === 'kiosk' ? this.surfaces.metal : b.kind === 'factory' || b.kind === 'wall' ? this.surfaces.brick : this.surfaces.concrete;
+      const surface = this.surfaces[b.quarrySurface] ?? (b.kind === 'crate' ? this.surfaces.wood : b.kind === 'tent' ? this.surfaces.cloth : container || b.kind === 'warehouse' || b.kind === 'truck' || b.kind === 'car' || b.kind === 'fueltank' || b.kind === 'generator' || b.kind === 'kiosk' ? this.surfaces.metal : b.kind === 'factory' || b.kind === 'wall' ? this.surfaces.brick : this.surfaces.concrete);
       const color = b.color || '#969b92', cacheKey = `${surface.uuid}:${color}`;
       if (!this.surfaceCache.has(cacheKey)) { this.surfaceCache.set(cacheKey, clonePairedMaterial(surface, color)); }
       const mat = b.kind === 'pillar' ? this.materials.steel : this.surfaceCache.get(cacheKey);
       if (buildSpecialProp.call(this, parent, b, mat)) continue;
       this.box(parent, b.x, h / 2, b.z, w, h, d, mat);
       // Structural bunker pieces already define the exact shooting openings and floor.
-      if(b.kind==='bunker-concrete')continue;
+      if(b.kind==='bunker-concrete'||b.kind==='quarry-structure'||b.kind==='quarry-metal')continue;
       if (b.kind === 'wall') {
         this.box(parent, b.x, h + 0.05, b.z, w + .08, .16, d + .08, this.materials.edge);
       } else if (b.kind === 'pillar') {
@@ -1760,7 +1781,9 @@ export class GameRenderer {
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
       const world=this.worlds.get(this.map.id);
-      if(world?.model)this.updateBakedDetail(world,this.quality==='high'&&detailLevel===2);
+      const highDetail=this.quality==='high'&&detailLevel===2;
+      if(world?.model)this.updateBakedDetail(world,highDetail);
+      if(world&&this.map.id==='quarry')this.updateQuarryDetail(world,this.map,highDetail);
     }
     if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness || gfx.frameGeneration !== this.gfx.frameGeneration)) {
       const shadowChanged=gfx.shadows!==this.gfx.shadows;
@@ -2138,8 +2161,10 @@ export class GameRenderer {
   }
 
   dispose() {
+    this.disposed=true;
     this.villageModel.dispose();
     this.portModel.dispose();
+    for(const world of this.worlds.values())disposeQuarryDetail(world.quarryDetail);
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
     this.infantry?.dispose();
