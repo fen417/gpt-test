@@ -4,6 +4,7 @@ import { applyMapEdits, assetCatalog, canCloneItem, canRemoveItem, canResizeItem
 import { ZERO_ROTATION, hasRotation, inverseMatrix, multiplyMatrix, rotationMatrix, transformVector } from '../shared/geometry.js';
 import { MapViewport } from './viewport.js';
 import { loadMap, publishMap } from './github.js';
+import { atvModel } from '../src/light-vehicle-models.js';
 
 const $ = id => document.getElementById(id);
 const option = (value, text) => new Option(text, value);
@@ -104,12 +105,19 @@ function select(item) {
     $('remove').disabled ? 'Элемент игровой схемы. Доступен перенос.' : '';
 }
 
+let watchingAtvModel=false;
 function rebuild(key = selection?.key) {
   currentMap = applyMapEdits(base(), session().edits, BASE_MAPS);
   items = new Map(mapItems(currentMap).map(item => [item.key, item]));
   viewport.display(currentMap, [...items.values()]);
   select(items.get(key) ?? viewport.segments.find(segment => segment.key === key));
   updateButtons();
+  if(!watchingAtvModel&&!atvModel.ready()&&currentMap.vehicleSpawns?.some(vehicle=>vehicle.type==='atv')){
+    watchingAtvModel=true;
+    atvModel.load().then(()=>{
+      if(atvModel.ready()&&!drag&&currentMap.vehicleSpawns?.some(vehicle=>vehicle.type==='atv'))rebuild();
+    });
+  }
 }
 
 function changeEdits(next, key) {

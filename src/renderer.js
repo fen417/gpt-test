@@ -32,7 +32,7 @@ import { drawFlagBanner } from './logos.js';
 import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
 import { tankMachineGunMuzzle, tankMuzzle, TANK_MG } from '../shared/tank.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
-import { loadHumveeAssets, humveeAssetsReady } from './humvee-model.js';
+import { lightVehicleModels } from './light-vehicle-models.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
   createInfantry, setInfantryWeapon, disposeInfantry, setInfantryLod, updateInfantry,
@@ -508,7 +508,7 @@ export class GameRenderer {
     if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
-    if (map.vehicleSpawns?.some(vehicle => vehicle.type === 'humvee')) this.humveeLoading ??= loadHumveeAssets();
+    for(const type of new Set(map.vehicleSpawns?.map(vehicle=>vehicle.type)))lightVehicleModels[type]?.load();
     let world = this.worlds.get(map.id);
     if (!world) {
       const live = { scene: this.scene, map: this.map, flags: this.flags, portWater: this.portWater, random: this.random };
@@ -992,7 +992,8 @@ export class GameRenderer {
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
       if(vehicle.type==='tank'&&!tankAssetsReady())continue;
-      if (vehicle.type === 'humvee') this.humveeLoading ??= loadHumveeAssets();
+      const model=lightVehicleModels[vehicle.type];
+      if(model&&!model.ready())model.load();
       active.add(vehicle.id);
       let rig = this.vehicleRigs.get(vehicle.id);
       const local = player?.vehicleId === vehicle.id && player.alive !== false;
@@ -1005,7 +1006,7 @@ export class GameRenderer {
         }
         continue;
       }
-      if (!rig || (vehicle.type === 'humvee' && !rig.detail && humveeAssetsReady())) {
+      if (!rig || (model?.ready() && !rig.assetReady)) {
         const previous = rig;
         rig = createVehicleRig(vehicle.type, material, TEAM_COLORS);
         if (previous) {
@@ -1013,7 +1014,7 @@ export class GameRenderer {
           rig.group.rotation.copy(previous.group.rotation);
           rig.body.rotation.copy(previous.body.rotation);
           rig.controls.rotation.copy(previous.controls.rotation);
-          rig.turret.gun.rotation.copy(previous.turret.gun.rotation);
+          if(rig.turret&&previous.turret)rig.turret.gun.rotation.copy(previous.turret.gun.rotation);
           rig.wheels.forEach(({ carrier, tire }, i) => {
             carrier.rotation.copy(previous.wheels[i].carrier.rotation);
             tire.rotation.copy(previous.wheels[i].tire.rotation);

@@ -22,10 +22,10 @@ def finish_image(name, pixels):
     return image
 
 
-def shader_finish(material, shader, row_count):
+def shader_finish(material, shader, row_count, finishes=(*FINISHES,FABRIC)):
     rng = random.Random(416)
     normal, orm = [], []
-    for row, (roughness, metalness, strength) in enumerate((*FINISHES,FABRIC)[:row_count]):
+    for row, (roughness, metalness, strength) in enumerate(finishes[:row_count]):
         grain = [rng.uniform(-1, 1) for _ in range(SIZE * SIZE)]
         for y in range(SIZE):
             machining = .42 * math.sin(y * math.tau / 8)
