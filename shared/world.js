@@ -66,7 +66,7 @@ export const DEFAULT_MAP_ID=PORT_MAP.id;
 export const BASE_MAPS = { port: PORT_MAP, quarry: QUARRY_MAP, village: VILLAGE_MAP, fy_pool_day: POOL_DAY_MAP, linden_estate: LINDEN_ESTATE_MAP };
 export const MAP_EDITS = { port: portEdits, quarry: quarryEdits, village: villageEdits, fy_pool_day: {version:1,moves:{},added:{},removed:[]}, linden_estate: {version:1,moves:{},added:{},removed:[]} };
 function mapLayoutRevision() {
-  const revision = 'linden-estate-035';
+  const revision = 'linden-estate-036';
   const hasChanges = Object.values(MAP_EDITS).some(({ moves, added, removed }) =>
     Object.keys(moves).length || Object.keys(added).length || removed.length);
   if (!hasChanges) return revision;

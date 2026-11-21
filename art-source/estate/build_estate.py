@@ -277,14 +277,16 @@ def furniture(estate,prop):
                                (.16,height,.081+i%3*.016),palette[(i+j)%5],.005)
         elif role=="case":
             h=prop["h"]
+            if prop.get("wardrobe"):
+                face=x+w/2
+                for i in [-1,1]:
+                    wood.box((face+.025,y+h*.53,z+i*d*.25),(.052,h*.85,d*.45),WALNUT,.025)
+                    metal.box((face+.068,y+h*.49,z+i*.09),(.060,.164,.046),BRASS,.012)
+                return
             sign=prop.get("facing",-1 if z>2 else 1)
             front=z+sign*d/2
             for i in [-1,1]:
                 column=x+i*w*.25
-                if prop.get("wardrobe"):
-                    wood.box((column,y+h*.53,front+sign*.025),(w*.45,h*.85,.052),WALNUT,.025)
-                    metal.box((x+i*.11,y+h*.49,front+sign*.068),(.046,.164,.06),BRASS,.012)
-                    continue
                 for j in range(2):
                     yy=y+h*.33+j*h*.32
                     wood.box((column,yy,front+sign*.02),(w*.46,h*.28,.057),WALNUT,.016)
@@ -298,7 +300,7 @@ def furniture(estate,prop):
                 metal.box((sink_x,y+h+.028,z),(.48,.026,d-.17),IRON,.012)
                 metal.cylinder((sink_x,y+h+.18,z-d*.39),.024,.30,"y",IRON,10)
                 metal.beam((sink_x,y+h+.32,z-d*.39),(sink_x,y+h+.32,z-.07),.041,IRON)
-            elif not prop.get("wardrobe"):
+            else:
                 layer("stone",True,False).box((x,y+h+.026,z),(w+.094,.063,d+.085),TRIM,.025)
         elif role in ("table","bench","chair"):
             top=prop.get("top",{"table":.81,"bench":.51,"chair":.48}[role])

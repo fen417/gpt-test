@@ -182,7 +182,7 @@ function fitting(id,type,x,z,w,d,y=0,options={}){
 }
 
 // Library and study share the west end. Drawers and seats face into the rooms.
-fitting('library-wall','shelf',-11.23,-4.92,.58,2.58,.2,{h:2.20});
+fitting('library-wall','shelf',-11.23,-5.69,.58,1.80,.2,{h:2.20});
 fitting('library-console','case',-9.4,-6.47,1.42,.46,.2,{h:.86,facing:1});
 fitting('library-reading','chair',-6.72,-6.05,.72,.68,.2,{finish:'leather',facing:-1});
 fitting('lounge-sofa','sofa',-9.28,6.40,2.23,.78,.2,{finish:'leather'});
@@ -197,14 +197,14 @@ for(const side of [-1,1])for(const end of [-1,1])
 fitting('pantry-sideboard','case',10.24,6.47,2.15,.52,.2,{h:1.02,facing:-1});
 fitting('kitchen-counter','case',10.06,-6.43,2.70,.56,.2,{h:.94,facing:1,sink:true});
 
-fitting('study-shelf','shelf',-11.22,-4.82,.55,2.08,3.3,{h:2.08});
+fitting('study-shelf','shelf',-11.22,-5.72,.55,1.74,3.3,{h:2.08});
 fitting('study-desk','table',-8.95,-5.93,1.55,.66,3.3,{top:.75});
 fitting('study-chair','chair',-8.95,-4.95,.60,.60,3.3,{finish:'sage',facing:1});
 fitting('guest-bed-west','bed',-9.72,5.80,1.62,1.98,3.3,{finish:'linen'});
 fitting('guest-west-nightstand','case',-7.90,6.50,.57,.47,3.3,{h:.52,facing:-1});
 fitting('guest-bed-east','bed',10.51,5.91,1.55,1.78,3.3,{finish:'sage'});
 fitting('guest-east-nightstand','case',11.52,6.47,.47,.46,3.3,{h:.52,facing:-1});
-fitting('upper-wardrobe','case',10.10,-6.41,2.10,.57,3.3,{h:1.97,facing:1,wardrobe:true});
+fitting('upper-wardrobe','case',8.39,-6.10,.53,1.14,3.3,{h:1.97,wardrobe:true});
 fitting('gallery-sofa','sofa',4.06,1.69,1.48,.72,3.3,{finish:'sage'});
 fitting('gallery-console','case',-3.62,6.47,1.16,.45,3.3,{h:.85,facing:-1});
 for(const side of [-1,1]){
@@ -342,7 +342,7 @@ const botPatrols=[
 ];
 
 export const LINDEN_ESTATE_MAP={
-  id:'linden_estate',name:'Linden Estate',theme:'linden-estate',size:72,layoutVersion:3,playArea,
+  id:'linden_estate',name:'Linden Estate',theme:'linden-estate',size:72,layoutVersion:4,playArea,
   menuView:{eye:[12.8,2.95,25.8],target:[-1.4,2.65,2.6],fov:64},
   terrain:{cell:1,heightAt:groundY,raycast:raycastGround},
   boxes,furnishings,pool,structures:[],landforms:[],landmarks:[
