@@ -100,7 +100,7 @@ function rayCapsule(origin, direction, x, z, bottom, top, radius) {
 }
 
 function impactMaterial(kind) {
-  if (kind === 'village-wood' || kind === 'village-awning' || kind === 'village-palm') return 'wood';
+  if (kind === 'estate-wood' || kind === 'village-wood' || kind === 'village-awning' || kind === 'village-palm') return 'wood';
   if (kind === 'village-barrels') return 'metal';
   if (kind.startsWith('port-')) return kind==='port-wall'?'concrete':'metal';
   if (kind === 'crate' || kind === 'tree' || kind === 'tent') return 'wood';

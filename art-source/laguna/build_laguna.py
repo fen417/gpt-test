@@ -94,10 +94,11 @@ def mesh_object(mesh,name,collection,surface,cast,editable):
     return obj
 
 
-class Laguna:
-    def __init__(self):
+class LayeredMap:
+    def __init__(self,titles,make_object):
         self.source=[]
-        for title in ("01 · Decks, pools and structures","02 · Lighting, lockers and mechanical detail"):
+        self.make_object=make_object
+        for title in titles:
             collection=bpy.data.collections.new(title)
             bpy.context.scene.collection.children.link(collection)
             self.source.append(collection)
@@ -111,7 +112,7 @@ class Laguna:
         for (detail,surface,cast),mesh in parts.items():
             if not mesh.faces:
                 continue
-            mesh_object(mesh,name+" · "+surface,self.source[detail],surface,cast,True)
+            self.make_object(mesh,name+" · "+surface,self.source[detail],surface,cast,True)
             grid=30 if not detail else 18
             sector=(detail,surface,cast,math.floor((x+10)/grid),math.floor((z+10)/grid))
             self.batches.setdefault(sector,Mesh()).extend(mesh,(0,0,0),0)
@@ -122,7 +123,7 @@ class Laguna:
         bpy.ops.object.select_all(action="DESELECT")
         for (detail,surface,cast,x,z),mesh in self.batches.items():
             if detail==tier:
-                mesh_object(mesh,f"{surface}-{x}-{z}-{int(cast)}",collection,surface,cast,False).select_set(True)
+                self.make_object(mesh,f"{surface}-{x}-{z}-{int(cast)}",collection,surface,cast,False).select_set(True)
         bpy.ops.export_scene.gltf(filepath=str(path),export_format="GLB",use_selection=True,
                                   export_extras=True,export_materials="NONE",export_vertex_color="ACTIVE",
                                   export_meshopt_compression_enable=False)
@@ -346,7 +347,7 @@ def main(source,output):
     bpy.context.preferences.filepaths.save_version=0
     scene=bpy.context.scene
     scene.unit_settings.system="METRIC"
-    laguna=Laguna()
+    laguna=LayeredMap(("01 · Decks, pools and structures","02 · Lighting, lockers and mechanical detail"),mesh_object)
     for box in data["boxes"]:
         block(laguna,box)
     deck(laguna,data)

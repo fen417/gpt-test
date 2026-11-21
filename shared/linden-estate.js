@@ -1,7 +1,6 @@
-// Linden Estate: gameplay geometry was derived from the user's Blender GLB,
-// not approximated by a single bounding box. All positions use metres,
-// +Y up, and the same coordinates as GLTFLoader/Three.js.
-// The GLB remains the authoritative visual asset and is loaded separately.
+// The original manor shell and stairs supply the structural collision. The
+// Blender export uses the same widening and the authored furniture volumes.
+export const ESTATE_WIDTH_SCALE=1.16;
 const PACKED_WALLS=(
 `av82BoQDEQB7/wEAqP3RBhEANgF7/wEALAHRBhEANgF7/wEAav9sB4QDEQB7/wEAAADA+cASMAAAAA4BlPj6AJYADAAAAHwAbAf6AJYADAAAAHwAoPa8AjAA
 +BEAAA4BYAm8AjAA+BEAAA4BSfggAwwATAQAAHwA3/ggAwwATAQAAHwAIQcgAwwATAQAAHwAtwcgAwwATAQAAHwA4PwQBFgCDAAAAHwAhAMQBFgCDAAAAHwA
@@ -128,17 +127,147 @@ const gallerySlabs=[
   x,z,w,d,baseY:3.06,h:.24,overhead:true}));
 const eastLanding={id:'estate-east-landing',kind:'village-floor',
   x:12.9,z:-5.06,w:2,d:.82,baseY:3.1,h:.2,overhead:true};
-const boxes=[...wallBoxes,...stairBoxes,...gallerySlabs,eastLanding];
-const groundY=(x,z)=>{
+const widen=value=>({...value,x:value.x*ESTATE_WIDTH_SCALE,w:value.w*ESTATE_WIDTH_SCALE});
+const retainedShell=wallBoxes.filter(b=>Math.abs(b.x)<14.8&&b.z>-8&&b.z<10.5);
+const architecture=[...retainedShell,...stairBoxes,...gallerySlabs,eastLanding].map(widen);
+const fitted=[];
+const furnishings=[];
+const paint={oak:'#6f5239',leather:'#5a4837',linen:'#89847a',sage:'#666b54',
+  plaster:'#a09a85',limestone:'#817e70',hedge:'#546149',metal:'#465152',brick:'#786356'};
+function fitting(id,type,x,z,w,d,y=0,options={}){
+  const prop={id,type,x,z,w,d,y,...options};
+  const pieces=[];
+  const part=(key,dx,dz,w,d,base,h,surface='oak')=>pieces.push({
+    id:'estate-'+id+'-'+key,kind:surface==='oak'||surface==='leather'||surface==='linen'?'estate-wood':'estate-prop',
+    x:x+dx,z:z+dz,w,d,baseY:y+base,h,overhead:base>0||y>2,color:paint[surface],surface,
+  });
+  const shade=options.finish??'oak';
+  if(type==='table'||type==='chair'||type==='bench'){
+    const top=type==='table'?.83:type==='bench'?.51:.48,foot=type==='table'?.125:.092;
+    for(const side of [-1,1])for(const end of [-1,1])
+      part('leg-'+side+'-'+end,side*(w*.5-foot*.84),end*(d*.5-foot*.84),foot,foot,0,top-.075,shade);
+    part('top',0,0,w,d,top-.09,.09,shade);
+    if(type==='chair')part('back',0,d/2-.065,w,.13,top-.025,.49,shade);
+    if(type==='bench')part('back',0,d/2-.075,w,.13,top-.025,.40,shade);
+  }else if(type==='sofa'){
+    const facing=options.facing??1;
+    part('seat',0,0,w,d,.09,.40,shade);
+    part('back',0,facing*(d/2-.13),w,.26,.39,.50,shade);
+    for(const side of [-1,1])part('arm-'+side,side*(w/2-.13),-.038*facing,.26,d-.14,.41,.22,shade);
+  }else if(type==='bed'){
+    part('frame',0,0,w,d,0,.29,'oak');
+    part('mattress',0,0,w-.045,d-.06,.29,.36,shade);
+    part('head',0,d/2-.065,w,.13,.44,.63,'oak');
+  }else if(type==='lamp'){
+    part('base',0,0,w,d,0,.27,'metal');
+    part('post',0,0,.105,.105,.27,1.84,'metal');
+    part('light',0,0,.22,.22,2.11,.27,'metal');
+  }else{
+    part('body',0,0,w,d,0,options.h,shade);
+  }
+  const worldParts=pieces.map(widen);
+  fitted.push(...worldParts);
+  furnishings.push({...widen(prop),parts:worldParts});
+}
+
+// Collidable cover is built out of the same pieces as the furniture.
+fitting('library-wall','shelf',-11.23,-4.92,.75,2.85,.2,{h:2.34});
+fitting('library-console','case',-8.1,-6.39,1.65,.62,.2,{h:1.02});
+fitting('library-reading','chair',-7.2,-4.02,.67,.7,.2,{finish:'leather'});
+fitting('west-hall-bench','bench',-10.91,-1.68,1.58,.60,.2);
+fitting('lounge-west','sofa',-9.28,6.28,2.23,.84,.2,{finish:'leather'});
+fitting('lounge-east','sofa',-3.35,5.96,1.75,.79,.2,{finish:'sage'});
+fitting('lounge-table','table',-9.06,4.93,1.62,.72,.2);
+fitting('hall-counter','case',-3.45,.62,2.05,.70,.2,{h:1.08});
+fitting('hall-bench','bench',5.94,-1.26,1.54,.55,.2);
+fitting('dining-table','table',5.56,4.70,2.56,1.16,.2);
+for(const side of [-1,1])fitting('dining-chair-'+side,'chair',5.56+side*.64,5.65,.58,.57,.2);
+fitting('dining-sideboard','case',10.28,6.37,2.38,.60,.2,{h:1.10});
+fitting('kitchen','case',9.91,-6.30,3.05,.72,.2,{h:1.03});
+fitting('kitchen-island','case',10.22,-4.76,1.22,.70,.2,{h:.96});
+fitting('study-shelf','shelf',-11.28,-4.94,.72,2.55,3.3,{h:2.24});
+fitting('study-desk','table',-8.95,-5.12,1.67,.79,3.3);
+fitting('guest-bed-west','bed',-9.18,5.61,1.76,2.18,3.3,{finish:'linen'});
+fitting('guest-bed-east','bed',10.17,5.50,1.77,2.14,3.3,{finish:'sage'});
+fitting('guest-east-wardrobe','case',11.39,-5.55,.68,2.35,3.3,{h:2.21});
+fitting('upper-couch','sofa',5.14,.59,2.12,.84,3.3,{finish:'sage',facing:-1});
+fitting('upper-console','case',-3.58,5.93,1.25,.57,3.3,{h:.92});
+for(const side of [-1,1]){
+  fitting('terrace-bench-'+side,'bench',side*5.6,9.0,2.12,.61);
+  fitting('forecourt-planter-'+side,'planter',side*7.4,11.67,5.12,1.45,0,{finish:'limestone',h:.84});
+  fitting('pool-planter-'+side,'planter',side*8.2,19.83,4.50,1.40,0,{finish:'limestone',h:.76});
+  fitting('lane-hedge-'+side,'hedge',side*18.7,4.7,1.34,7.2,0,{finish:'hedge',h:1.23});
+  fitting('garden-bench-'+side,'bench',side*14.80,14.58,2.3,.7);
+  fitting('garden-plinth-'+side,'planter',side*18.3,-5.0,2.68,1.33,0,{finish:'limestone',h:.9});
+}
+fitting('pool-deck-box','case',5.25,17.17,1.70,.68,0,{finish:'oak',h:.82});
+fitting('front-sculpture','planter',1.1,12.74,2.14,1.30,0,{finish:'limestone',h:.99});
+
+for(const [i,x,z] of [[0,-20.5,-10],[1,17.8,-13],[2,-20.7,13.7],[3,20.8,11.0],[4,14.2,24.9],[5,-13.6,28.2]])
+  fitting('tree-'+i,'tree',x,z,.45,.45,0,{finish:'oak',h:3.55});
+for(const [i,x,z] of [[0,-11.0,12.8],[1,11.0,12.8],[2,-18.54,-8],[3,18.54,-8],
+                       [4,-10.6,23.7],[5,14.1,21.8]])
+  fitting('lantern-'+i,'lamp',x,z,.32,.34);
+
+function gardenWall(id,x,z,w,d,h=2.65){
+  fitted.push(widen({id:'estate-yard-'+id,kind:'estate-prop',x,z,w,d,h,baseY:0,
+    color:paint.brick,surface:'brick'}));
+}
+gardenWall('north',0,-18.6,49.56,.44);
+gardenWall('south',0,32.15,49.56,.44);
+gardenWall('west',-24.56,6.78,.44,51.55);
+gardenWall('east',24.56,6.78,.44,51.55);
+// L-shaped screens protect each team from the yard while keeping two exits.
+gardenWall('west-spawn-side',-16.45,25.45,.52,9.35,2.72);
+gardenWall('west-spawn-front',-19.04,19.87,4.7,.52,2.72);
+gardenWall('east-spawn-side',16.45,-11.95,.52,9.15,2.72);
+gardenWall('east-spawn-front',19.04,-6.45,4.7,.52,2.72);
+
+const pool={x:-1.5*ESTATE_WIDTH_SCALE,z:17.45,w:8.8*ESTATE_WIDTH_SCALE,d:3,depth:1.33};
+pool.ramp=2.65;
+for(const sign of [-1,1]){
+  fitted.push({id:'estate-pool-side-'+sign,kind:'estate-prop',x:pool.x,z:pool.z+sign*(pool.d/2+.09),
+    w:pool.w,d:.18,h:pool.depth,baseY:-pool.depth,color:'#557a71',surface:'plaster'});
+}
+const boxes=[...architecture,...fitted];
+const groundY=(worldX,z)=>{
+  const x=worldX/ESTATE_WIDTH_SCALE;
   const ramp=stairSurface(x,z);
   if(ramp!==null)return ramp;
   // Ease onto the exterior stairs from their little bottom step.
   if(x>12.67&&x<14.13&&z>.60&&z<1.10)return .2*(1.10-z)/.50;
-  if(x>-5.9&&x<2.9&&z>15.9&&z<18.9)return -1.33;
+  if(Math.abs(z-pool.z)<pool.d/2){
+    const edge=pool.w/2-Math.abs(worldX-pool.x);
+    if(edge>0)return -pool.depth*Math.min(1,edge/pool.ramp);
+  }
   if(Math.abs(x)<11.95&&Math.abs(z)<6.95)return .2;
   return 0;
 };
-const playable=(x,z)=>x>-23.3&&x<23.3&&z>-15.2&&z<29.2;
+const poolSlope=pool.depth/pool.ramp;
+const groundPlanes=[
+  [0,0,0],[.2,0,0],[-pool.depth,0,0],
+  [poolSlope*(pool.x-pool.w/2),-poolSlope,0],
+  [-poolSlope*(pool.x+pool.w/2),poolSlope,0],
+  [.44,0,-.4],
+  ...STAIRS.map(stair=>{
+    const slope=(stair.base-stair.top)/(stair.zBottom-stair.zTop);
+    return [stair.base-slope*stair.zBottom,0,slope];
+  }),
+];
+function raycastGround(origin,direction,max){
+  let nearest=Infinity;
+  for(const [height,slopeX,slopeZ] of groundPlanes){
+    const crossing=direction.y-slopeX*direction.x-slopeZ*direction.z;
+    if(crossing>=-1e-8)continue;
+    const t=(height+slopeX*origin.x+slopeZ*origin.z-origin.y)/crossing;
+    if(t<0||t>max||t>=nearest)continue;
+    const x=origin.x+direction.x*t,z=origin.z+direction.z*t;
+    if(Math.abs(groundY(x,z)-origin.y-direction.y*t)<1e-4)nearest=t;
+  }
+  return nearest;
+}
+const playArea={minX:-28.03,maxX:28.03,minZ:-18.14,maxZ:31.71};
+const playable=(x,z)=>x>playArea.minX&&x<playArea.maxX&&z>playArea.minZ&&z<playArea.maxZ;
 function safe(x,z){
   if(!playable(x,z))return false;
   const y=groundY(x,z);
@@ -149,42 +278,35 @@ function safe(x,z){
 // spawns, no instantaneous cross-team sightlines on the first frames.
 const spawnPoints=[[],[]];
 const corners=[
-  {xs:[-22.1,-19.6,-17.1,-14.6],zs:[27.1,24.5,21.9,19.3,16.7]},
-  {xs:[22.1,19.6,17.1,14.6],zs:[-13.4,-10.8,-8.2,-5.6,-3.0]},
+  {xs:[-23.15,-21.15,-19.15,-17.15],zs:[30.55,28.2,25.85,23.5,21.15]},
+  {xs:[23.15,21.15,19.15,17.15],zs:[-17.02,-14.67,-12.32,-9.97,-7.62]},
 ];
 for(let team=0;team<2;team++){
   const {xs,zs}=corners[team];
-  for(const z of zs)for(const x of xs){
+  for(const z of zs)for(const oldX of xs){
+    const x=oldX*ESTATE_WIDTH_SCALE;
     if(!safe(x,z))continue;
     if(spawnPoints[team].some(p=>Math.hypot(x-p.x,z-p.z)<2.3))continue;
     spawnPoints[team].push({x,z});
   }
 }
 export const LINDEN_ESTATE_MAP={
-  id:'linden_estate',name:'Linden Estate',theme:'linden-estate',size:64,
-  playArea:{minX:-23.5,maxX:23.5,minZ:-15.4,maxZ:29.4},
-  terrain:{cell:1,heightAt:groundY,
-    raycast(origin,direction,max){
-      if(direction.y>=0)return Infinity;
-      // Preserve the exterior/pool ground. Complex geometry (walls, overhead
-      // floors and stair rails) is handled by authoritative solid colliders.
-      const sampleY=groundY(origin.x,origin.z);
-      const t=(sampleY-origin.y)/direction.y;
-      return t>=0&&t<=max?t:Infinity;
-    }},
-  boxes,structures:[],landforms:[],landmarks:[
+  id:'linden_estate',name:'Linden Estate',theme:'linden-estate',size:72,layoutVersion:2,playArea,
+  menuView:{eye:[12.8,2.95,25.8],target:[-1.4,2.65,2.6],fov:64},
+  terrain:{cell:1,heightAt:groundY,raycast:raycastGround},
+  boxes,furnishings,pool,structures:[],landforms:[],landmarks:[
     {id:'manor',name:'Особняк',x:0,z:0},
     {id:'courtyard',name:'Двор',x:0,z:13},
-    {id:'pool',name:'Бассейн',x:-1.5,z:17.45},
+    {id:'pool',name:'Бассейн',x:pool.x,z:pool.z},
   ],
   districts:[{id:'manor',name:'Особняк',x:0,z:0},{id:'garden',name:'Сад',x:0,z:18}],
   points:[],vehicleSpawns:[],weaponSpawns:[],
   spawnPoints,spawns:[spawnPoints[0][0],spawnPoints[1][0]],
-  playerRadius:.30,navigationCell:.55,navigationClearance:.45,navigationSize:64,stepHeight:.42,
+  playerRadius:.30,navigationCell:.63,navigationClearance:.45,navigationSize:72,stepHeight:.42,
   // The neutral daytime palette needs less direct orange sunlight and more
   // neutral bounced light indoors, especially with roof shadows enabled.
   fogColor:0xa9bdc4,fogDensity:.0018,sunColor:0xfff4e4,
-  sunIntensity:1.7,hemisphereLightIntensity:1.55,
-  ambientLightIntensity:.78,toneMappingExposure:.94,
+  sunIntensity:2.23,hemisphereLightIntensity:1.81,
+  ambientLightIntensity:.82,toneMappingExposure:1.06,
   tdmLoadout:'class',tdmNoWeaponDrops:true,
 };

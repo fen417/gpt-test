@@ -16,7 +16,7 @@ import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
 import { hasVillageAsset, VillageModel } from './village-model.js';
 import { hasPortAsset, PortModel } from './port-model.js';
-import { hasLagunaAsset, LagunaModel } from './laguna-model.js';
+import { ArchitecturalMapModel, lagunaAssets, estateAssets } from './architectural-map-model.js';
 import { loadQuarryDetail, disposeQuarryDetail } from './quarry-model.js';
 import { addPortLabels, addPortWater } from './port-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -327,7 +327,8 @@ export class GameRenderer {
     this.worlds = new Map();
     this.villageModel = new VillageModel(this);
     this.portModel = new PortModel(this);
-    this.lagunaModel = new LagunaModel(this);
+    this.lagunaModel = new ArchitecturalMapModel(this,lagunaAssets);
+    this.estateModel = new ArchitecturalMapModel(this,estateAssets);
     this.setMap();
     this.scene.matrixAutoUpdate = false;
     this.buildWeapon();
@@ -562,7 +563,7 @@ export class GameRenderer {
       if(world.model&&!world.model.base)world.model.loadBase().then(base=>{
         if(world.model.disposed)return;
         if(base)this.installBakedBase(world,base);
-        else if(world.model===this.portModel||world.model===this.lagunaModel)this.installMapFallback(world,map);
+        else if(world.model===this.portModel||world.model===this.lagunaModel||world.model===this.estateModel)this.installMapFallback(world,map);
       });
     }
     this.clearVehicles();
@@ -587,7 +588,7 @@ export class GameRenderer {
     this.groundShadows.setMap(map);
     const shadowMaterials=new Map();
     this.staticRoot.traverse(mesh=>{
-      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material)||mesh.userData.villageSurface||mesh.userData.portSurface||mesh.userData.lagunaSurface)return;
+      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material)||mesh.userData.villageSurface||mesh.userData.portSurface||mesh.userData.architecturalSurface)return;
       const source=mesh.material._highMaterial??mesh.material;
       if(source.userData.groundShadowPatched)return;
       if(!shadowMaterials.has(source)){
@@ -621,7 +622,8 @@ export class GameRenderer {
   bakedMapModel(map) {
     if(hasPortAsset(map))return this.portModel;
     if(hasVillageAsset(map))return this.villageModel;
-    if(hasLagunaAsset(map))return this.lagunaModel;
+    if(map===lagunaAssets.map)return this.lagunaModel;
+    if(map===estateAssets.map)return this.estateModel;
   }
 
   installBakedLayer(world,layer) {
@@ -1657,8 +1659,8 @@ export class GameRenderer {
     this.adaptiveScale = 1;
     this.applyShadows();
     this.scene.environment = low ? null : this.atmosphere.envTexture;
-    this.hemiLight.intensity = low ? 2.35 : 2.0;
-    this.ambientLight.intensity = low ? 0.38 : 0.2;
+    this.hemiLight.intensity = this.map?.hemisphereLightIntensity ?? (low ? 2.35 : 2.0);
+    this.ambientLight.intensity = this.map?.ambientLightIntensity ?? (low ? .38 : .2);
     const swap = object => {
       const m = object.material;
       if (!m || Array.isArray(m)) return;
@@ -2176,6 +2178,7 @@ export class GameRenderer {
     this.villageModel.dispose();
     this.portModel.dispose();
     this.lagunaModel.dispose();
+    this.estateModel.dispose();
     for(const world of this.worlds.values())disposeQuarryDetail(world.quarryDetail);
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();

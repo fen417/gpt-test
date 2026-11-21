@@ -2,28 +2,42 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {POOL_DAY_MAP} from '../shared/pool-day.js';
+import {LINDEN_ESTATE_MAP} from '../shared/linden-estate.js';
 import {pairMaterials} from './visuals.js';
 
-const baseUrl=new URL('./assets/laguna/base.glb',import.meta.url).href;
-const detailUrl=new URL('./assets/laguna/detail.glb',import.meta.url).href;
 const tileUrl=new URL('./assets/laguna/ceramic.webp',import.meta.url).href;
 const rippleUrl=new URL('./assets/laguna/ripples.webp',import.meta.url).href;
+const weaveUrl=new URL('./assets/estate/weave.webp',import.meta.url).href;
+const architectureTextures={ceramic:tileUrl,water:rippleUrl,fabric:weaveUrl};
 
-export const hasLagunaAsset=map=>map===POOL_DAY_MAP;
+export const lagunaAssets={
+  map:POOL_DAY_MAP,key:'laguna',
+  base:new URL('./assets/laguna/base.glb',import.meta.url).href,
+  detail:new URL('./assets/laguna/detail.glb',import.meta.url).href,
+};
+export const estateAssets={
+  map:LINDEN_ESTATE_MAP,key:'estate',
+  base:new URL('./assets/estate/base.glb',import.meta.url).href,
+  detail:new URL('./assets/estate/detail.glb',import.meta.url).href,
+};
 
-export class LagunaModel {
-  constructor(owner){
+const texturedSurfaces={ceramic:'concrete',stone:'concrete',garden:'ground',roof:'metal'};
+
+export class ArchitecturalMapModel {
+  constructor(owner,assets){
     this.owner=owner;
+    this.assets=assets;
     this.loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     this.materials=new Map();
+    this.textures=[];
   }
 
   loadBase(){
-    return this.baseLoad??=this.load(baseUrl,'laguna-base').then(scene=>this.base=scene);
+    return this.baseLoad??=this.load(this.assets.base,this.assets.key+'-base').then(scene=>this.base=scene);
   }
 
   loadDetail(){
-    return this.detailLoad??=this.load(detailUrl,'laguna-detail').then(scene=>this.detail=scene);
+    return this.detailLoad??=this.load(this.assets.detail,this.assets.key+'-detail').then(scene=>this.detail=scene);
   }
 
   async load(url,name){
@@ -39,10 +53,11 @@ export class LagunaModel {
         }
         const uv=mesh.geometry.attributes.uv;
         for(let i=0;i<uv.count;i++)uv.setY(i,1-uv.getY(i));
-        const surface=mesh.userData.lagunaSurface;
+        const surface=mesh.userData[this.assets.key+'Surface'];
+        mesh.userData.architecturalSurface=surface;
         mesh.material=this.surface(surface);
-        mesh.castShadow=mesh.userData.lagunaCaster===true;
-        mesh.receiveShadow=surface!=='water'&&surface!=='lamp'&&surface!=='skylight';
+        mesh.castShadow=mesh.userData[this.assets.key+'Caster']===true;
+        mesh.receiveShadow=!['water','lamp','skylight','glass'].includes(surface);
         if(surface==='water')mesh.renderOrder=1;
       });
       originals.forEach(material=>material.dispose());
@@ -50,27 +65,26 @@ export class LagunaModel {
       scene.name=name;
       return scene;
     }catch(error){
-      console.warn('Laguna geometry',error);
+      console.warn(name,error);
       return null;
     }
   }
 
   surface(name){
     if(this.materials.has(name))return this.materials.get(name);
-    const source=this.owner.surfaces[name==='ceramic'?'concrete':name];
+    const source=this.owner.surfaces[texturedSurfaces[name]??name];
     let map=source?.map??null;
-    if(name==='ceramic'||name==='water'){
-      const url=name==='ceramic'?tileUrl:rippleUrl;
+    const url=architectureTextures[name];
+    if(url){
       map=new THREE.TextureLoader().load(url);
-      if(name==='ceramic')this.tile=map;
-      else this.ripples=map;
+      this.textures.push(map);
       map.colorSpace=THREE.SRGBColorSpace;
       map.wrapS=map.wrapT=THREE.RepeatWrapping;
     }
-    const water=name==='water',lamp=name==='lamp',skylight=name==='skylight';
+    const water=name==='water',lamp=name==='lamp',glazing=name==='skylight'||name==='glass';
     const options={
       vertexColors:true,map,
-      ...(water||skylight?{transparent:true,depthWrite:false,opacity:water?.48:.34,side:skylight?THREE.DoubleSide:THREE.FrontSide}:{}),
+      ...(water||glazing?{transparent:true,depthWrite:false,opacity:water?.48:name==='glass'?.52:.34,side:glazing?THREE.DoubleSide:THREE.FrontSide}:{}),
       ...(lamp?{emissive:0xc49d6e,emissiveIntensity:.16}:{}),
     };
     const high=new THREE.MeshStandardMaterial({
@@ -92,7 +106,6 @@ export class LagunaModel {
       material._lowMaterial.dispose();
       material.dispose();
     }
-    this.tile?.dispose();
-    this.ripples?.dispose();
+    this.textures.forEach(texture=>texture.dispose());
   }
 }

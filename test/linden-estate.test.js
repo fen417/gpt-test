@@ -1,18 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { MAPS, getMap, PROTOCOL_VERSION } from '../shared/world.js';
 import { Simulation } from '../shared/simulation.js';
 import { dropWeapon, weaponTarget } from '../shared/tdm.js';
 
-test('Linden Estate GLB is committed with a valid binary glTF header',()=>{
-  const path=new URL('../public/assets/maps/linden-estate.glb',import.meta.url);
-  const bytes=readFileSync(path);
-  assert.equal(bytes.toString('ascii',0,4),'glTF');
-  assert.equal(bytes.readUInt32LE(4),2);
-  assert.equal(bytes.readUInt32LE(8),bytes.length);
-  assert.equal(bytes.length,1_038_000);
-  assert.equal(statSync(path).size,bytes.length);
+test('Linden Estate has valid GLBs for the base and detail layers',()=>{
+  for(const layer of ['base','detail']){
+    const bytes=readFileSync(new URL(`../src/assets/estate/${layer}.glb`,import.meta.url));
+    assert.equal(bytes.toString('ascii',0,4),'glTF');
+    assert.equal(bytes.readUInt32LE(4),2);
+    assert.equal(bytes.readUInt32LE(8),bytes.length);
+  }
 });
 
 test('new TDM arena retains standard class loadouts, no conquest objects or weapon pickups',()=>{

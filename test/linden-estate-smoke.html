@@ -4,36 +4,35 @@
 <script type="module">
 import * as THREE from 'three';
 import { getMap } from '../shared/world.js';
-import { buildMapScene } from '../src/map-scene.js';
+import { GameRenderer } from '../src/renderer.js';
+import { loadFPSHands } from '../src/fps-hands.js';
 
 window.runLindenSmoke=async()=>{
  const map=getMap('linden_estate');
  const canvas=document.querySelector('#scene');
- const renderer=new THREE.WebGLRenderer({canvas,antialias:false});
- renderer.setSize(640,400,false);
- renderer.outputColorSpace=THREE.SRGBColorSpace;
- const scene=new THREE.Scene();
- scene.background=new THREE.Color(0x9fc8e0);
- const owner={scene,map};
- const level=buildMapScene(owner,map);
- let estate;
- for(let count=0;count<140;count++){
-   estate=level.root.getObjectByName('Linden Estate · imported GLB');
-   if(estate)break;
-   await new Promise(resolve=>setTimeout(resolve,50));
- }
- if(!estate)throw new Error('Linden Estate GLB did not load (timeout)');
+ await loadFPSHands();
+ const game=new GameRenderer(canvas,{antialias:'off'});
+ await Promise.all([game.surfaces.ready,game.preloadMapVisuals(map.id)]);
+ game.setMap(map.id);
+ const world=game.worlds.get(map.id);
+ game.updateBakedDetail(world,true);
+ await world.model.detailLoad;
+ const estate=world.root;
+ if(world.model.base?.parent!==estate||world.model.detail?.parent!==estate)
+   throw new Error('Linden Estate layers did not load');
  const meshes=[],materials=new Set();
  estate.traverse(o=>{if(o.isMesh){meshes.push(o);(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));}});
  if(meshes.length<42)throw new Error('GLB meshes missing: '+meshes.length);
  const bounds=new THREE.Box3().setFromObject(estate);
  const size=bounds.getSize(new THREE.Vector3());
- if(size.x<45||size.z<44||size.y<10)throw new Error('GLB bounds incorrect '+size.toArray().join(','));
- const camera=new THREE.PerspectiveCamera(60,640/400,.1,200);
- camera.position.set(37,31,46);camera.lookAt(0,3,6);
- scene.add(new THREE.HemisphereLight(0xd9f1ff,0x7d633f,2));
- const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(-20,34,19);scene.add(light);
- renderer.render(scene,camera);
+ if(size.x<55||size.z<49||size.y<8)throw new Error('GLB bounds incorrect '+size.toArray().join(','));
+ game.camera.position.fromArray(map.menuView.eye);
+ game.camera.fov=map.menuView.fov;
+ game.camera.lookAt(...map.menuView.target);
+ game.camera.updateProjectionMatrix();
+ game.weapon.visible=false;
+ game.atmosphere.sky.position.copy(game.camera.position);
+ game.drawScene(true);
  return {ok:true,meshes:meshes.length,materials:materials.size,
    width:+size.x.toFixed(2),height:+size.y.toFixed(2),depth:+size.z.toFixed(2),
    objectName:estate.name};
