@@ -14,6 +14,7 @@ import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-mode
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
+import { hasVillageAsset, VillageModel } from './village-model.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS, EYE_HEIGHT, CROUCH_EYE_HEIGHT } from '../shared/world.js';
@@ -319,6 +320,7 @@ export class GameRenderer {
     this.worldRoot.add(this.atmosphere.sky);
     this.scene.add(this.worldRoot);
     this.worlds = new Map();
+    this.villageModel = new VillageModel(this);
     this.setMap();
     this.scene.matrixAutoUpdate = false;
     this.buildWeapon();
@@ -514,11 +516,24 @@ export class GameRenderer {
       // child-diff or reparenting heuristic can leave geometry from another map.
       this.scene = root;
       try {
-        this.buildWorld();
-        if(this.map.theme!=='pool-day')this.mergeStaticWorld(new Set());
+        const village=hasVillageAsset(map);
+        let fallback;
+        if(village){
+          for(const point of map.points)this.makeFlag(point);
+          if(this.villageModel.base)root.add(this.villageModel.base);
+          else{
+            fallback=new THREE.Group();
+            root.add(fallback);this.scene=fallback;
+            buildMapScene(this,map,{skipObjectives:true});
+            this.mergeStaticWorld(new Set());
+          }
+        }else{
+          this.buildWorld();
+          if(map.theme!=='pool-day')this.mergeStaticWorld(new Set());
+        }
         const details=[];
         root.traverse(object=>{if(object.userData.detailLevel&&(object.isMesh||object.children.length))details.push(object);});
-        world = { root, flags: this.flags, water: this.portWater, details };
+        world = { root, flags: this.flags, water: this.portWater, details, village, fallback };
       } finally {
         Object.assign(this, live);
       }
@@ -529,6 +544,7 @@ export class GameRenderer {
         object.matrixWorldAutoUpdate = false;
       });
       this.worlds.set(map.id, world);
+      if(world.village&&world.fallback)this.villageModel.loadBase().then(base=>this.installVillageBase(world,base));
     }
     this.clearVehicles();
     this.clearMapDynamics();
@@ -552,7 +568,7 @@ export class GameRenderer {
     this.groundShadows.setMap(map);
     const shadowMaterials=new Map();
     this.staticRoot.traverse(mesh=>{
-      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material))return;
+      if(!mesh.receiveShadow||mesh.castShadow||!mesh.material||Array.isArray(mesh.material)||mesh.userData.villageSurface)return;
       const source=mesh.material._highMaterial??mesh.material;
       if(source.userData.groundShadowPatched)return;
       if(!shadowMaterials.has(source)){
@@ -577,6 +593,68 @@ export class GameRenderer {
     });
     this.staticMenuShadows = false;
     this.cameraPlayerId = null;
+  }
+
+  preloadMapVisuals(mapId) {
+    if(hasVillageAsset(getMap(mapId)))return this.villageModel.loadBase();
+  }
+
+  installVillageLayer(world,layer) {
+    world.root.add(layer);
+    layer.updateMatrixWorld(true);
+    layer.traverse(object=>{
+      optimizeLighting(object);
+      if(this.lowQuality&&object.material?._lowMaterial)object.material=object.material._lowMaterial;
+      object.matrixAutoUpdate=false;
+      object.matrixWorldAutoUpdate=false;
+    });
+    this.updateTextureFiltering();
+    this.invalidateVillageVisibility();
+  }
+
+  invalidateVillageVisibility() {
+    this.interiorVisibility.root=null;
+    this.cachedShadows.invalidate();
+    this.sun.shadow.needsUpdate=true;
+    this.renderer.shadowMap.needsUpdate=true;
+    this.staticMenuShadows=false;
+  }
+
+  installVillageBase(world,base) {
+    if(!base||this.villageModel.disposed||!world.fallback)return;
+    const geometries=new Set();
+    world.fallback.traverse(object=>{
+      if(object.geometry?.userData.owned)geometries.add(object.geometry);
+    });
+    world.fallback.removeFromParent();
+    world.fallback=null;
+    world.details.length=0;
+    geometries.forEach(geometry=>geometry.dispose());
+    this.installVillageLayer(world,base);
+    this.updateVillageDetail(world,world.wantsDetail);
+  }
+
+  updateVillageDetail(world,wanted) {
+    world.wantsDetail=wanted;
+    const {base,detail}=this.villageModel;
+    if(!base||world.fallback)return;
+    if(wanted&&!detail){
+      this.villageModel.loadDetail().then(layer=>{
+        if(layer&&!this.villageModel.disposed)this.updateVillageDetail(world,world.wantsDetail);
+      });
+      return;
+    }
+    const visible=detail?.parent===world.root;
+    if(visible===Boolean(wanted))return;
+    if(wanted)this.installVillageLayer(world,detail);
+    else {
+      detail?.removeFromParent();
+      detail?.traverse(object=>object.geometry?.dispose());
+      this.invalidateVillageVisibility();
+    }
+    base.traverse(object=>{
+      if(object.userData.villageSurface==='leaf')object.visible=!wanted;
+    });
   }
 
   clearMapDynamics() {
@@ -1625,9 +1703,11 @@ export class GameRenderer {
     const gfx = view.gfx;
     const detail=(gfx?.detail??'auto')==='auto'?this.quality:gfx.detail;
     const detailLevel=detail==='high'?2:detail==='medium'?1:0;
-    if(this.detailLevel!==detailLevel){
+    if(this.detailLevel!==detailLevel||previousQuality!==this.quality){
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
+      const world=this.worlds.get(this.map.id);
+      if(world?.village)this.updateVillageDetail(world,this.quality==='high'&&detailLevel===2);
     }
     if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness || gfx.frameGeneration !== this.gfx.frameGeneration)) {
       const shadowChanged=gfx.shadows!==this.gfx.shadows;
@@ -2005,6 +2085,7 @@ export class GameRenderer {
   }
 
   dispose() {
+    this.villageModel.dispose();
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
     this.infantry?.dispose();

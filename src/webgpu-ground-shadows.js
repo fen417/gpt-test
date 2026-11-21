@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial, MeshLambertNodeMaterial, MeshBasicNodeMaterial } from 'three/webgpu';
-import { texture, uniform, materialColor, positionWorld, vec2,
+import { texture, uniform, materialColor, positionWorld, vec2, vec3, mix,
   float, clamp, step } from 'three/tsl';
 
 const urls={port:new URL('./assets/shadows/port.png',import.meta.url),
@@ -59,6 +59,11 @@ export class WebGpuGroundShadows {
     const lightMask=this.sample.sample(clamp(uv,0,1)).r;
     const darkening=float(1).sub(this.strength.mul(float(1).sub(lightMask)).mul(inside));
     nodeMaterial.colorNode=materialColor.mul(darkening);
+    if(material.userData.villageRoadSpan){
+      const roadUv=positionWorld.xz.mul(vec2(1,-1)).div(material.userData.villageRoadSpan).add(.5);
+      const road=texture(material.roadMask).sample(roadUv).g;
+      nodeMaterial.colorNode=nodeMaterial.colorNode.mul(mix(vec3(1),vec3(...material.userData.roadMultiplier),road));
+    }
     return nodeMaterial;
   }
   dispose(){for(const tex of new Set(this.textures.values()))if(tex!==this.white)tex.dispose();this.white.dispose();}

@@ -28,7 +28,7 @@ function fences(owner, map) {
   }
 }
 
-export function buildMapScene(owner, map, { editable = false } = {}) {
+export function buildMapScene(owner, map, { editable = false, skipObjectives = false } = {}) {
   const parent = owner.scene, previousMap = owner.map;
   const root = new THREE.Group(), background = new THREE.Group(), groups = new Map();
   let roadSurface;
@@ -69,6 +69,7 @@ export function buildMapScene(owner, map, { editable = false } = {}) {
     const villageModels = createVillageModelBuilder(owner);
     for (const item of items) {
       const { key, kind, value } = item, geometryValue=item.geometryValue??value;
+      if(skipObjectives&&kind==='objective')continue;
       if(!editable&&(value.missionDynamic||map.missionId!=='m02'&&map.campaign&&value.campaignDestructible))continue;
       const assetMapId = value.assetMapId ?? map.id;
       if (['landform', 'landmark', 'spawn', 'route'].includes(kind) || (kind === 'vehicle' && !editable)) continue;

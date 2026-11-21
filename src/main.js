@@ -616,7 +616,11 @@ function leave(resetStatus=true){
 async function solo(){
   if(busy)return;multiplayer.close();const opts=prepare('solo');localId='local';setBusy(true);status('Подготовка операции…');
   let session;
-  try{session=new SoloSession({...opts,debugBots:new URLSearchParams(location.search).has('aiDebug')},{onState:receive,onLocalShot:presentLocalShot});simulation=session;await session.ready;if(simulation!==session)return;state=session.snapshot();enter();}
+  try{
+    await renderer.preloadMapVisuals(opts.mapId);
+    if(!busy||mode!=='solo')return;
+    session=new SoloSession({...opts,debugBots:new URLSearchParams(location.search).has('aiDebug')},{onState:receive,onLocalShot:presentLocalShot});simulation=session;await session.ready;if(simulation!==session)return;state=session.snapshot();enter();
+  }
   catch(error){if(!session||simulation===session){session?.close();simulation=null;setBusy(false);status(error.message,true);}}
 }
 $('solo').addEventListener('click',solo);
@@ -702,6 +706,7 @@ function renderRooms(rooms){
 }
 async function joinRoom(item){
   if(busy)return;const opts=prepare('server');setBusy(true);
+  renderer.preloadMapVisuals(item.mapId);
   try{room=await multiplayer.join({...opts,roomId:item.id,url:await serverAddress()});if(multiplayer.phase==='lobby')enterLobby();else enter();}
   catch(error){status(error.message,true);setBusy(false);}
 }
@@ -716,7 +721,9 @@ $('room-mode').addEventListener('change',syncRoomMode);
 syncRoomMode();
 $('create-room').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const opts=prepare('server');setBusy(true);
-  try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId:$('room-map').value,gameMode:$('room-mode').value,killLimit:Number($('room-kill-limit').value),maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
+  const mapId=$('room-map').value;
+  renderer.preloadMapVisuals(mapId);
+  try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId,gameMode:$('room-mode').value,killLimit:Number($('room-kill-limit').value),maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
   catch(error){status(error.message,true);setBusy(false);if(multiplayer.rooms.length){show('room-browser');renderRooms(multiplayer.rooms);}}
 });
 $('join-toggle').addEventListener('click',refreshRooms);
