@@ -396,7 +396,11 @@ export class Multiplayer{
       }
     }
     // Derive every seated body from the very same interpolated/predicted vehicle.
-    for(const p of render.players)if(p.vehicleId){const vehicle=render.vehicles.find(v=>v.id===p.vehicleId);if(vehicle){const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);p.x=pose.x;p.y=pose.y-EYE_HEIGHT;p.z=pose.z;}}
+    for(const p of render.players)if(p.vehicleId){
+      const vehicle=render.vehicles.find(v=>v.id===p.vehicleId);
+      const pose=vehicle&&getVehicleSeatPose(vehicle,p.vehicleSeat);
+      if(pose){p.x=pose.x;p.y=pose.y-EYE_HEIGHT;p.z=pose.z;}
+    }
     const ownIndex=render.players.findIndex(p=>p.id===this.id);
     if(ownIndex>=0)render.players[ownIndex]=this.equipmentPresentation.update(render.players[ownIndex],this.input,dt,this.equipmentRequestSequence,this.latestInputAck);
     return render;

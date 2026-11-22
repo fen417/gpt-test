@@ -1623,7 +1623,7 @@ function renderResultScreen(player){
   $('result-rows-enemy').replaceChildren(...enemies.map(p=>buildScoreRow(p,player.team)));
   renderWeaponResults($('result-weapon-progress'),observedKills,profile.weaponXp);
 }
-function updateVehicleHud(player){
+function updateVehicleHud(player,renderState){
   const vehicles=state.vehicles??[];
   const vehicle=vehicles.find(v=>v.id===player.vehicleId);
   if(state.campaign?.missionId==='m02'){
@@ -1636,9 +1636,10 @@ function updateVehicleHud(player){
   show('vehicle-prompt',!!(nearby||seat));
   if(nearby)text('vehicle-prompt',key+' · СЕСТЬ В ТЕХНИКУ — '+VEHICLE_TYPES[nearby.vehicle.type].name.toUpperCase());
   if(!seat)return null;
-  const swap=vehicle.seats.includes(null)&&Math.abs(vehicle.speed)<(vehicle.type==='tank'?3:4.5);
+  const displayed=renderState?.vehicles.find(v=>v.id===vehicle.id)??vehicle;
+  const swap=vehicle.seats.includes(null)&&Math.abs(displayed.speed)<(vehicle.type==='tank'?3:4.5);
   const look=aimAngles();
-  const canFire=canFirePassengerWeapon(vehicle,player.vehicleSeat,look.yaw,look.pitch);
+  const canFire=canFirePassengerWeapon(displayed,player.vehicleSeat,look.yaw,look.pitch);
   const controls=key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':'');
   const windowHint=seat.role==='passenger'&&!canFire?(vehicle.type==='tank'?'\nСТРЕЛЯЙТЕ НАРУЖУ СО СВОЕГО БОРТА':'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО'):'';
   const tankControls=vehicle.type==='tank'&&player.vehicleSeat<2?'     ПКМ · ПРИЦЕЛ     ЛКМ · ОГОНЬ':'';
@@ -1646,18 +1647,18 @@ function updateVehicleHud(player){
   if(seat.role==='passenger')return {role:seat.role,canFire};
   text('weapon-name',VEHICLE_TYPES[vehicle.type].name.toUpperCase()+' · '+seat.name.toUpperCase());
   const hp=Math.ceil(vehicle.hp/vehicle.maxHp*100);
-  text('ammo',seat.role==='gunner'?Math.round(vehicle.heat*100)+'%':Math.round(Math.abs(vehicle.speed)*3.6));
+  text('ammo',seat.role==='gunner'?Math.round(displayed.heat*100)+'%':Math.round(Math.abs(displayed.speed)*3.6));
   text('reserve',seat.role==='gunner'?'НАГРЕВ':'КМ/Ч');
   text('ammo-status',vehicle.overheated&&seat.role==='gunner'?'ПЕРЕГРЕВ · КОРПУС '+hp+'%':'КОРПУС '+hp+'% · ЭКИПАЖ '+vehicle.seats.filter(Boolean).length+'/'+vehicle.seats.length);
   return seat;
 }
-function hud(now){
+function hud(now,renderState){
   if(state?.campaign)show('scoreboard',false);
   squadUI?.update(state,localId);
   drawBotDebug(state);
   const player=local();if(!player)return;
   const weapon=equippedPersonalWeapon(player.classId,player.weaponId);
-  const mounted=updateVehicleHud(player);
+  const mounted=updateVehicleHud(player,renderState);
   const personalWeapon=!mounted||mounted.role==='passenger';
   const heading=(((state.campaign?180+yaw*180/Math.PI:-yaw*180/Math.PI)%360)+360)%360;const cardinal=['N','NE','E','SE','S','SW','W','NW'][Math.round(heading/45)%8];text('compass-direction',cardinal);text('compass-degrees',`${String(Math.round(heading)).padStart(3,'0')}°`);
   const districts=currentMap.landmarks?currentMap.districts:currentMap.points;
@@ -1673,7 +1674,8 @@ function hud(now){
   if(personalWeapon){
     const tool=state.gameMode==='tdm'&&currentMap.tdmLoadout==='pickup'?null:player.heldGadget;
     text('ammo',tool?(tool==='launcher'?player.rockets:'—'):((simulation?.client??multiplayer).prediction?.player?.weaponId===player.weaponId?(simulation?.client??multiplayer).prediction.player.ammo:player.ammo));text('reserve',tool?(tool==='launcher'?'РАКЕТЫ':'СНАРЯЖЕНИЕ'):player.reserve);
-    text('weapon-name',!player.weaponId?'БЕЗ ОРУЖИЯ':tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`);
+    const label=!player.weaponId?'БЕЗ ОРУЖИЯ':tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`;
+    text('weapon-name',mounted?.role==='passenger'?`ПАССАЖИР · ${label}`:label);
     if(state.gameMode==='tdm'&&!player.weaponId){text('ammo','—');text('reserve','—');}
     const cooldown=tool==='launcher'||tool==='medkit'?player.secondaryCooldown:player.gadgetCooldown;
     text('ammo-status',state.gameMode==='tdm'&&!player.weaponId?'ПОДБЕРИ ОРУЖИЕ С ПОЛА':player.equipTime>0?'СМЕНА СНАРЯЖЕНИЯ…':tool?(cooldown>0?`ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(cooldown)}с`:tool==='repair'?'УДЕРЖИВАЙ ЛКМ · РЕМОНТ':tool==='launcher'&&player.rockets===0?'НЕТ РАКЕТ · НУЖЕН ЯЩИК ПАТРОНОВ':tool==='launcher'?'ПКМ · ПРИЦЕЛ · ЛКМ · ВЫСТРЕЛ':'ЛКМ · ПРИМЕНИТЬ · 1 / 2 · ОРУЖИЕ'):player.reloading?'ПЕРЕЗАРЯДКА…':
@@ -1690,15 +1692,15 @@ function hud(now){
     if(vehicle)toolHint=` · ${Math.round(vehicle.hp/VEHICLE_TYPES[vehicle.type].maxHp*100)}% · УДЕРЖИВАЙ ЛКМ`;
   }
   text('gadget-label',`${formatKeyCode(keybinds.gadget)} · ${gadgetNames[player.classId]}${toolHint}${player.gadgetCooldown>0?' '+Math.ceil(player.gadgetCooldown)+'с':''}`);
-  show('gadget-label',state.gameMode!=='tdm'||currentMap.tdmLoadout==='class');
-  show('grenade-label',state.gameMode!=='tdm'||currentMap.tdmLoadout==='pickup');
+  show('gadget-label',personalWeapon&&(state.gameMode!=='tdm'||currentMap.tdmLoadout==='class'));
+  show('grenade-label',personalWeapon&&(state.gameMode!=='tdm'||currentMap.tdmLoadout==='pickup'));
   text('grenade-label',state.gameMode==='tdm'?`${formatKeyCode(keybinds.drop)} · ВЫБРОСИТЬ ОРУЖИЕ`:`${formatKeyCode(keybinds.grenade)} · ГРАНАТА`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
   const secondary=player.classId==='assault'?`ПТ-90 · ${player.rockets??0}`:player.classId==='medic'?'АПТЕЧКА':'';
-  show('secondary-gadget-label',(state.gameMode!=='tdm'||currentMap.tdmLoadout==='class')&&Boolean(secondary));
+  show('secondary-gadget-label',personalWeapon&&(state.gameMode!=='tdm'||currentMap.tdmLoadout==='class')&&Boolean(secondary));
   text('secondary-gadget-label',`${formatKeyCode(keybinds.secondaryGadget)} · ${secondary}${player.secondaryCooldown>0?' · '+Math.ceil(player.secondaryCooldown)+'с':''}`);
   const nearby=state.gameMode==='tdm'?null:state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
-  if(state.gameMode==='tdm'){
+  if(state.gameMode==='tdm'&&!mounted){
     const item=(state.weaponItems??[]).filter(w=>Math.hypot(w.x-player.x,w.z-player.z)<2.1).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0];
     show('vehicle-prompt',!!item&&player.alive);
     if(item){const occupied=WEAPONS[item.weaponId]?.sidearm?player.sidearmId:player.primaryWeaponId;
@@ -1944,7 +1946,7 @@ function frame(now){
     engineListener:active?campaignPresentation?.engineListener:null,
     camera:active&&campaignPresentation?renderer.camera:null,
     moving:Math.min(1,Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0)),sprinting:lastInput.sprint,crouching:lastInput.crouch,aim:active&&aim&&(renderer.weapon.visible||renderer.scoped),locked:locked||(unlocked&&!unlockedPaused),inMenu:!active,paused:!$('pause').classList.contains('hidden')});
-  if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now);}markers();}
+  if(active&&state){hudClock+=dt;if(hudClock>.08){hudClock=0;hud(now,renderState);}markers();}
   if(active){renderer.lastCpuMs=performance.now()-cpuBegin;cpuTimes.add(renderer.lastCpuMs);}
 }
 let webgpuAttempted=false;

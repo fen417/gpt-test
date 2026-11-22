@@ -619,7 +619,7 @@ export function createWeaponRig(owner = {}) {
     const bolt=model.getObjectByName('Bolt');
     const ejection=new THREE.Object3D();
     ejection.position.fromArray(fit.ejection);
-    bolt.add(ejection);
+    model.add(ejection);
     model.visible=false;
     weapon.add(model);
     const muzzle=model.getObjectByName('Muzzle_Exit')?.position;

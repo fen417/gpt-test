@@ -1310,20 +1310,19 @@ export class GameRenderer {
       }
       if(event.type==='cannonShot'&&!event.confirmedCosmetic){this.smoke(event.x,event.y,event.z,.6,.4,0xc1bba5);for(let i=0;i<4;i++)this.spark(event.x,event.y,event.z,3);}
       if (event.type === 'shot') {
-        const player = state.players.find(p => p.id === event.playerId);
         const own = event.playerId === localId;
         const age = Math.max(0, state.time - event.time);
         if (this.effects.length >= 120) continue;
         if (age < event.life) this.tracer(event, age);
         if (age > .27) continue;
         if (own && this.weapon.visible && !event.mounted) {
-          const yaw = player?.yaw || 0;
           const effect = this.effectPools.shell.pop() ?? { mesh: new THREE.Mesh(this.geo.shell, this.shellMaterial), type: 'shell' };
           const shell = effect.mesh;
           this.weaponRig.ejection.getWorldPosition(shell.position);
           shell.scale.setScalar(getWeapon(event.classId,event.weaponId).sidearm ? .57 : 1);
           shell.rotation.set(0, 0, Math.PI / 2);
-          Object.assign(effect, { age: 0, life: 1.1, vx: Math.cos(yaw) * 2.9, vy: .85 + this.random() * .7, vz: -Math.sin(yaw) * 2.9, spin: 8 + this.random() * 8 });
+          const right = this.scratchPosition.setFromMatrixColumn(this.camera.matrixWorld, 0);
+          Object.assign(effect, { age: 0, life: 1.1, vx: right.x * 2.9, vy: .85 + this.random() * .7, vz: right.z * 2.9, spin: 8 + this.random() * 8 });
           this.effects.push(effect);
           if (!this.lowQuality && !this.integratedGpu && this.wallStow < .3 && (event.shotSeq ?? event.id) % 2 === 0) {
             const muzzle = this.weaponRig.muzzleFlash.getWorldPosition(this.scratchPosition);
@@ -1461,7 +1460,9 @@ export class GameRenderer {
       } else if (effect.type === 'spark' || effect.type === 'shell') {
         effect.vy -= dt * 9.8; effect.mesh.position.x += effect.vx * dt; effect.mesh.position.y += effect.vy * dt; effect.mesh.position.z += effect.vz * dt;
         effect.mesh.rotation.x += dt * (effect.spin || 9); effect.mesh.rotation.z += dt * (effect.spin || 6);
-        if (effect.mesh.position.y < .03) { effect.mesh.position.y = .03; effect.vy = Math.abs(effect.vy) * .25; effect.vx *= .72; effect.vz *= .72; }
+        const position = effect.mesh.position;
+        const ground = effect.type === 'shell' ? this.map.terrain?.heightAt(position.x, position.z) ?? 0 : 0;
+        if (position.y < ground + .03) { position.y = ground + .03; effect.vy = Math.abs(effect.vy) * .25; effect.vx *= .72; effect.vz *= .72; }
         if (effect.type === 'spark') effect.mesh.scale.setScalar(.025 * alpha);
       } else if (effect.type === 'light') effect.mesh.intensity = alpha * 18;
       const batch = this.effectBatches[effect.type];
@@ -1951,7 +1952,7 @@ export class GameRenderer {
         this.camera.updateProjectionMatrix();
       }
       this.updateSunShadow(focusX, focusZ);
-    } else if (mounted && !passenger) {
+    } else if (seat && !passenger) {
       const vehicle=mounted.vehicle;
       const tank=vehicle.type==='tank',fieldTank=tank&&state.campaign?.missionId!=='m02';
       const machineGunner=fieldTank&&seat.role==='gunner';

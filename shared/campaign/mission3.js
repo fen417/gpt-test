@@ -391,17 +391,21 @@ class ColumnDirector{
     while(capacity>0&&this.pending.length){
       const entry=this.pending.shift(),role=entry.at(-1),where=this.spawnPosition(entry),p=this.player;
       const truck=role.startsWith('truck-'),mounted=this.sim.vehicles.find(v=>v.id==='m03-truck');
+      const reinforcement=this.stage>=5||this.stage===4&&this.section.second.some(spawn=>
+        spawn[0]===entry[0]&&spawn[1]===entry[1]&&spawn.at(-1)===role);
       const lead=this.safeSpot(where),lockedPosition=typeof entry[0]==='string';
-      const alternatives=lockedPosition?[]:[-1,1].flatMap(side=>[12,20].map(offset=>({x:where.x+5,z:where.z+side*offset})));
+      const alternatives=lockedPosition&&!reinforcement?[]:[-1,1].flatMap(side=>[12,22,34].map(offset=>({x:where.x+5,z:where.z+side*offset})));
       const ambush=this.stage<=0;
       const spot=truck?(mounted??this.truckApproach()):[lead,...alternatives.map(a=>this.safeSpot(a))].find(a=>
-        (!ambush||this.clearOfDismount(a))&&(this.stage<0||!this.spawnVisible(a))&&
+        (!ambush||this.clearOfDismount(a))&&(!reinforcement||distance(p,a)>=30)&&
+        (this.stage<0||!this.spawnVisible(a))&&
         !this.sim.collides(a.x,a.z,a.y+.02)&&!this.sim.vehicleAt(a.x,a.z,a.y));
       if(!spot){held.push(entry);continue;}
       capacity--;
       const id=`m03-enemy-${++this.enemySerial}`;
       const bot=this.add(id,'Восточный корпус',1,soldierTypes[role],spot,role);
-      bot.homeId=typeof entry[0]==='string'?entry[0]:null;
+      if(reinforcement&&this.stage===4)bot.pursuing=true;
+      bot.homeId=lockedPosition&&spot===lead?entry[0]:null;
       if(this.stage===5)bot.defenceWave=this.defenceWave;
       bot.invulnerableUntil=this.time+.15;bot.rockets=['at','rpg'].includes(role)?2:0;
       bot.yaw=yawTo(bot,p);bot.input=sanitizeInput({yaw:bot.yaw});
@@ -425,7 +429,7 @@ class ColumnDirector{
     const sim=this.sim;
     for(const [x,z] of [[220,0],[220,-7],[220,7],[218,-12],[218,12]]){
       const spawn={x,y:sim.groundAt(x,z),z,yaw:Math.atan2(x-206,z)};
-      if(!this.spawnVisible(spawn)&&!sim.vehicleCollides({type:'humvee'},x,z,spawn.yaw))return spawn;
+      if(distance(spawn,this.player)>=30&&!this.spawnVisible(spawn)&&!sim.vehicleCollides({type:'humvee'},x,z,spawn.yaw))return spawn;
     }
     return null;
   }

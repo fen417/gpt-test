@@ -240,7 +240,7 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
     l.machineGun.rotation.y=machineGunYaw;l.machineGunBarrel.rotation.x=machineGunPitch;
     l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,TANK_TURRET_BASE_Y+rig.wreckAge*8-rig.wreckAge**2*10):TANK_TURRET_BASE_Y,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
     if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;
-    l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleId===v.id&&p.vehicleSeat===0&&!view.vehicleThirdPerson);
+    l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleSeat===0&&p.vehicleId===v.id&&!view.vehicleThirdPerson);
     if(l.group.visible)l.updateBarrel?.();
     l.hull.castShadow=l.turretMesh.castShadow=index===1&&distance<48;
     if(l.wheels){const half=l.wheels.count/2;for(let i=0;i<l.wheels.count;i++){quaternion.setFromAxisAngle(wheelAxis,(i<half?rig.travel.value.x:rig.travel.value.y)*5);matrix.compose(position.set(i<half?-1.67:1.67,.414,-2.65+i%half*5.3/(half-1)),quaternion,scale.set(1,1,1));l.wheels.setMatrixAt(i,matrix);}l.wheels.instanceMatrix.needsUpdate=true;}

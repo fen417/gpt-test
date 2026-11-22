@@ -45,6 +45,7 @@ export class CampaignAudio {
   constructor(combat,root,definition){
     this.combat=combat;this.root=root;this.definition=definition;this.cache=new Map();this.missing=new Set();this.sources=[];this.stems=[];this.stemLoading=false;this.generation=0;this.key=null;this.epoch=-1;
     this.voicePosition=new Vector3();
+    this.reactionVoice={sources:[],generation:0,key:null,voicePosition:new Vector3()};
   }
   async buffer(path){
     if(this.missing.has(path))return null;
@@ -58,15 +59,17 @@ export class CampaignAudio {
     this.voiceMeter=c.createAnalyser();this.voiceMeter.fftSize=256;
     this.voiceSamples=new Float32Array(this.voiceMeter.fftSize);
     this.voiceBus.connect(this.voiceMeter);this.voiceMeter.connect(this.bus);
-    this.worldVoice=c.createPanner();
-    this.worldVoice.panningModel='HRTF';
-    this.worldVoice.distanceModel='inverse';
-    this.worldVoice.refDistance=3;
-    this.worldVoice.rolloffFactor=.62;
-    this.worldVoice.maxDistance=80;
-    this.worldVoiceGain=c.createGain();
-    this.worldVoiceGain.gain.value=.54;
-    this.worldVoice.connect(this.worldVoiceGain).connect(this.voiceBus);
+    for(const channel of [this,this.reactionVoice]){
+      const panner=channel.worldVoice=c.createPanner();
+      panner.panningModel='HRTF';
+      panner.distanceModel='inverse';
+      panner.refDistance=3;
+      panner.rolloffFactor=.62;
+      panner.maxDistance=80;
+      channel.worldVoiceGain=c.createGain();
+      channel.worldVoiceGain.gain.value=.54;
+      panner.connect(channel.worldVoiceGain).connect(this.voiceBus);
+    }
     this.radioInput=c.createBiquadFilter();this.radioInput.type='highpass';this.radioInput.frequency.value=480;
     const radioHigh=c.createBiquadFilter();radioHigh.type='lowpass';radioHigh.frequency.value=2950;
     const presence=c.createBiquadFilter();presence.type='peaking';presence.frequency.value=1580;presence.Q.value=1.25;presence.gain.value=6;
@@ -85,42 +88,42 @@ export class CampaignAudio {
     this.wind=c.createBufferSource();this.wind.buffer=buffer;this.wind.loop=true;
     const filter=c.createBiquadFilter();filter.type='lowpass';filter.frequency.value=700;this.wind.connect(filter);filter.connect(this.musicBus);this.wind.start();
   }
-  stopVoice(){
-    this.generation++;this.radioEnd=0;
-    const playing=this.sources;this.sources=[];
+  stopVoice(channel=this){
+    channel.generation++;channel.radioEnd=0;
+    const playing=channel.sources;channel.sources=[];
     for(const s of playing){s.onended=null;try{s.stop();}catch{}s.disconnect();}
   }
-  finishVoice(){
-    const remaining=(this.radioEnd??0)-this.combat.ctx.currentTime;
-    if(remaining>0&&remaining<=.35)this.generation++;
-    else this.stopVoice();
+  finishVoice(channel){
+    const remaining=(channel.radioEnd??0)-this.combat.ctx.currentTime;
+    if(remaining>0&&remaining<=.35)channel.generation++;
+    else this.stopVoice(channel);
   }
-  playVoiceBuffer(buffer,output,at,offset=0){
+  playVoiceBuffer(channel,buffer,output,at,offset=0){
     const source=this.combat.ctx.createBufferSource();source.buffer=buffer;
-    source.connect(output);this.sources.push(source);source.start(at,offset);
-    source.onended=()=>{source.disconnect();this.sources=this.sources.filter(s=>s!==source);};
+    source.connect(output);channel.sources.push(source);source.start(at,offset);
+    source.onended=()=>{source.disconnect();channel.sources=channel.sources.filter(s=>s!==source);};
   }
-  async voice(line,remaining,radio,spatial){
-    this.finishVoice();const generation=this.generation;
+  async voice(channel,line,remaining,radio,spatial){
+    this.finishVoice(channel);const generation=channel.generation;
     const [buffer,[opening,closing]]=await Promise.all([this.buffer(line.audio),radio?this.radioSwitches:[]]);
-    if(!buffer||generation!==this.generation||this.closed||this.paused)return;
+    if(!buffer||generation!==channel.generation||this.closed||this.paused)return;
     const late=(line.duration??4)-remaining;
     const offset=late>.22?late:0;
     if(offset>=buffer.duration)return;
-    const now=Math.max(this.combat.ctx.currentTime,this.radioEnd??0),start=now+(opening&&offset===0?opening.duration:0);
-    if(opening&&offset===0)this.playVoiceBuffer(opening,this.voiceBus,now);
-    this.playVoiceBuffer(buffer,radio?this.radioInput:spatial?this.worldVoice:this.voiceBus,start,offset);
+    const now=Math.max(this.combat.ctx.currentTime,channel.radioEnd??0),start=now+(opening&&offset===0?opening.duration:0);
+    if(opening&&offset===0)this.playVoiceBuffer(channel,opening,this.voiceBus,now);
+    this.playVoiceBuffer(channel,buffer,radio?this.radioInput:spatial?channel.worldVoice:this.voiceBus,start,offset);
     if(closing){
       const close=start+buffer.duration-offset;
-      this.playVoiceBuffer(closing,this.voiceBus,close);
-      this.radioEnd=close+closing.duration;
+      this.playVoiceBuffer(channel,closing,this.voiceBus,close);
+      channel.radioEnd=close+closing.duration;
     }
   }
-  positionVoice(state,renderer,speaker,briefingPosition){
+  positionVoice(channel,state,renderer,speaker,briefingPosition){
     const mission=state.campaign;
-    this.speakingActorId??=dialogueActor(state,speaker)?.id;
-    const actor=state.players.find(p=>p.id===this.speakingActorId);
-    const {voicePosition}=this;
+    channel.speakingActorId??=dialogueActor(state,speaker)?.id;
+    const actor=state.players.find(p=>p.id===channel.speakingActorId);
+    const {voicePosition}=channel;
     const rig=renderer?.soldiers.get(actor?.id);
     if(actor&&rig?.group.parent&&rig.group.visible)rig.head.getWorldPosition(voicePosition);
     else if(actor)voicePosition.set(actor.x,actor.y+(actor.downed||actor.prone?.43:actor.crouch?1.02:1.56),actor.z);
@@ -133,35 +136,35 @@ export class CampaignAudio {
       vehiclePartPose(tank,-.35,1.95,.2,voicePosition);
     }
     if(actor?.id==='local'&&renderer?.camera.position.distanceToSquared(voicePosition)<1)return false;
-    const panner=this.worldVoice,now=this.combat.ctx.currentTime;
+    const panner=channel.worldVoice,now=this.combat.ctx.currentTime;
     const distance=renderer?.camera.position.distanceTo(voicePosition)??0;
     const gain=.54+.46*Math.min(1,Math.max(0,(distance-2)/12));
-    if(this.voicePositionReady)this.worldVoiceGain.gain.setTargetAtTime(gain,now,.06);
-    else this.worldVoiceGain.gain.setValueAtTime(gain,now);
+    if(channel.voicePositionReady)channel.worldVoiceGain.gain.setTargetAtTime(gain,now,.06);
+    else channel.worldVoiceGain.gain.setValueAtTime(gain,now);
     if(panner.positionX){
       const values=[voicePosition.x,voicePosition.y,voicePosition.z];
       for(let i=0;i<3;i++){
         const param=panner['position'+'XYZ'[i]];
-        if(this.voicePositionReady)param.setTargetAtTime(values[i],now,.025);
+        if(channel.voicePositionReady)param.setTargetAtTime(values[i],now,.025);
         else param.setValueAtTime(values[i],now);
       }
     }else panner.setPosition(voicePosition.x,voicePosition.y,voicePosition.z);
-    this.voicePositionReady=true;
+    channel.voicePositionReady=true;
     return true;
   }
-  updateDialogue(state,locale,cue,remaining,renderer,briefingPosition){
-    const key=cue?.serial??null,changed=key!==this.key,line=locale.lines[cue?.key];
+  updateDialogue(state,locale,cue,remaining,renderer,briefingPosition,channel=this){
+    const key=cue?.serial??null,changed=key!==channel.key,line=locale.lines[cue?.key];
     if(changed){
-      this.speakingActorId=cue?.speakerId;
-      this.voicePositionReady=false;
-      this.dialogueRadio=Boolean(line&&usesCampaignRadio(state.campaign.missionId,line.speaker,cue.key));
+      channel.speakingActorId=cue?.speakerId;
+      channel.voicePositionReady=false;
+      channel.dialogueRadio=Boolean(line&&usesCampaignRadio(state.campaign.missionId,line.speaker,cue.key));
     }
-    const radio=this.dialogueRadio;
-    const spatial=line&&!radio&&this.positionVoice(state,renderer,line.speaker,briefingPosition);
+    const radio=channel.dialogueRadio;
+    const spatial=line&&!radio&&this.positionVoice(channel,state,renderer,line.speaker,briefingPosition);
     if(changed){
-      this.key=key;
-      if(line?.audio)this.voice(line,remaining??line.duration,radio,spatial);
-      else this.finishVoice();
+      channel.key=key;
+      if(line?.audio)this.voice(channel,line,remaining??line.duration,radio,spatial);
+      else this.finishVoice(channel);
     }
   }
   mouthOpening(){
@@ -210,10 +213,17 @@ export class CampaignAudio {
       return;
     }
     const outro=mission.cutscene?.id==='finale'||mission.complete;
+    if(!this.prefetched){
+      this.prefetched=true;
+      for(const key of ['m01.lasko.reviving','m01.lasko.playerUp']){
+        const path=locale.lines[key]?.audio;
+        if(path)this.buffer(path);
+      }
+    }
     this.paused=paused;this.bus.gain.setTargetAtTime((!paused||outro)&&this.combat.enabled?this.combat.volume*.82:0,c.currentTime,.04);
     this.voiceBus.gain.setTargetAtTime(this.combat.effectsVolume,c.currentTime,.05);
     const defence=mission.stage===6&&!mission.cutscene&&!mission.complete&&!mission.failed;
-    const musicMix=campaignMusicMix({volume:this.combat.musicVolume,defence,outro,subtitle:!paused&&Boolean(mission.subtitle?.key),radioReady:Boolean(this.radioDefence)});
+    const musicMix=campaignMusicMix({volume:this.combat.musicVolume,defence,outro,subtitle:!paused&&Boolean(mission.subtitle||mission.reaction),radioReady:Boolean(this.radioDefence)});
     this.musicBus.gain.setTargetAtTime(musicMix.bus,c.currentTime,.2);
     if(!this.stemLoading)this.music();
     if((defence||outro)&&!this.radioDefenceLoading)this.startRadioDefence();
@@ -221,8 +231,15 @@ export class CampaignAudio {
     this.radioDefence?.gain.gain.setTargetAtTime(musicMix.radio,c.currentTime,(defence||outro)?.45:1.3);
     const weights=mission.stage===6||outro?[.65,.65,1,.9,.85]:mission.stage===5?[.4,.15,.45,.15,0]:[.5,.35,mission.alert>0?.6:0,mission.alert===3?.7:0,0];
     this.stems.forEach((s,i)=>s?.gain.gain.setTargetAtTime(weights[i]*musicMix.stems,c.currentTime,.7));
-    if(this.epoch!==mission.epoch){this.epoch=mission.epoch;this.stopVoice();this.key=null;this.lastAlert=mission.alert;}
-    if(paused){if(this.sources.length)this.stopVoice();this.key=null;return;}
+    const reaction=this.reactionVoice;
+    if(this.epoch!==mission.epoch){
+      this.epoch=mission.epoch;this.stopVoice();this.key=null;this.stopVoice(reaction);reaction.key=null;this.lastAlert=mission.alert;
+    }
+    if(paused){
+      if(this.key!==null)this.stopVoice();
+      if(reaction.key!==null)this.stopVoice(reaction);
+      this.key=reaction.key=null;return;
+    }
     if(this.lastAlert!==mission.alert){if(mission.alert>this.lastAlert)this.signal(mission.alert);this.lastAlert=mission.alert;}
     const player=state.players.find(p=>p.id==='local');
     if(player?.downed&&!mission.cutscene&&!mission.complete&&c.currentTime>=(this.heartbeatAt??0)){
@@ -230,9 +247,11 @@ export class CampaignAudio {
       for(const offset of [0,.18]){const osc=c.createOscillator(),gain=c.createGain(),at=c.currentTime+offset;osc.frequency.value=58;gain.gain.setValueAtTime(.045,at);gain.gain.exponentialRampToValueAtTime(.001,at+.12);osc.connect(gain);gain.connect(this.voiceBus);osc.start(at);osc.stop(at+.14);osc.onended=()=>{osc.disconnect();gain.disconnect();};}
     }
     this.updateDialogue(state,locale,mission.subtitle,mission.subtitleRemaining,renderer,briefingPosition);
+    this.updateDialogue(state,locale,mission.reaction,mission.reaction?.remaining,renderer,null,reaction);
   }
-  dispose(){this.closed=true;this.stopVoice();this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}
+  dispose(){this.closed=true;this.stopVoice();this.stopVoice(this.reactionVoice);this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}
     try{this.radioDefence?.source.stop();}catch{}
     this.radioDefence?.source.disconnect();this.radioDefence?.gain.disconnect();
-    this.worldVoice?.disconnect();this.worldVoiceGain?.disconnect();this.bus?.disconnect();this.cache.clear();}
+    for(const channel of [this,this.reactionVoice]){channel.worldVoice?.disconnect();channel.worldVoiceGain?.disconnect();}
+    this.bus?.disconnect();this.cache.clear();}
 }

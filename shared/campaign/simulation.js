@@ -15,6 +15,8 @@ const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const eye=p=>({x:p.x,y:p.y+((p.prone||p.downed)? .48:p.input.crouch?1.05:1.65),z:p.z});
 const settings={recruit:{damage:.7,detection:1.4,bleed:35,syringes:3,medkits:4,cap:10,accuracy:.6},regular:{damage:1,detection:1,bleed:25,syringes:2,medkits:3,cap:14,accuracy:1},veteran:{damage:1.3,detection:.8,bleed:18,syringes:1,medkits:2,cap:14,accuracy:1.25}};
 const ALLY_HP=115;
+const MG_APPROACH={x:167,z:28,yaw:Math.PI};
+const MG_FIRE_LINE=78;
 const roles={mg:['support','mg36'],sniper:['recon','dmr12'],assault:['medic','mcx9'],grenadier:['assault','ar416'],officer:['assault','ar416'],sentry:['assault','ar416'],patrol:['assault','ar416']};
 const allyInfo={duran:['Гари Дюран','assault','ar416'],lasko:['Тео Ласко','medic','mcx9'],bruno:['Бруно Валь','assault','ar416'],kane:['Рядовой Кейн','support','mg36'],courier:['Связной','assault','ar416']};
 const quietLines=new Set(['m01.bruno.patrol','m01.duran.crouch','m01.duran.prone','m01.duran.knife']);
@@ -106,6 +108,23 @@ export class CampaignSimulation extends Simulation {
     if(c.cutscene?.id==='briefing')for(const actor of c.definition.cutscenes.briefing.actors??[]){
       const p=state.players.find(p=>p.id===actor.id);if(!p)continue;
       Object.assign(p,{x:actor.x,z:actor.z,y:this.groundAt(actor.x,actor.z),yaw:Math.atan2(actor.x+80,actor.z+30),pitch:-.55,crouch:false,prone:false,downed:false,aim:false,moveSpeed:0,velocityX:0,velocityZ:0});
+    }
+    if(c.cutscene?.id==='finale'){
+      const finale=c.definition.cutscenes.finale,convoy=finale.convoy;
+      const reveal=finale.lines.find(([,key])=>key===convoy?.cue)?.[0]??Infinity;
+      if(c.cutscene.elapsed>=reveal){
+        const [[startX,startZ],[endX,endZ]]=convoy.route;
+        const progress=clamp((c.cutscene.elapsed-reveal)/convoy.duration,0,1);
+        const dx=endX-startX,dz=endZ-startZ,length=Math.hypot(dx,dz),ux=dx/length,uz=dz/length;
+        const speed=length/convoy.duration;
+        for(let i=0;i<8;i++){
+          const row=2+(i%4)*4.3,lane=(i<4?-1:1)*(5.95+(i%2)*.35);
+          const x=startX+progress*dx-row*ux-lane*uz,z=startZ+progress*dz-row*uz+lane*ux;
+          state.players.push({id:'finale-infantry-'+i,team:1,classId:'assault',weaponId:'ak12',
+            x,y:this.groundAt(x,z),z,yaw:Math.atan2(-ux,-uz),pitch:0,alive:true,grounded:true,
+            shotSeq:0,moveSpeed:speed,velocityX:ux*speed,velocityZ:uz*speed});
+        }
+      }
     }
     state.campaign=c.presentation();return state;
   }
@@ -344,7 +363,12 @@ export class CampaignDirector {
       }
       return true;
     }
-    if(p.campaignRole==='vehicle'&&p.vehicleId){const v=this.sim.vehicles.find(v=>v.id===p.vehicleId);this.idle(p);if(v?.hp>0)aimCrew(this.sim,p,v,dt);return true;}
+    if(p.campaignRole==='vehicle'&&p.vehicleId){
+      const v=this.sim.vehicles.find(v=>v.id===p.vehicleId);
+      this.idle(p);
+      if(v?.hp>0&&(v.campaignRoute?.kind!=='mg-approach'||v.z>=MG_FIRE_LINE))aimCrew(this.sim,p,v,dt);
+      return true;
+    }
     if(p.team===1){
       if(!this.activeEnemy(p)||p.sleeping){this.idle(p);return true;}
       const alert=this.alerts[p.campaignZone];
@@ -414,6 +438,7 @@ export class CampaignDirector {
   }
   cancelReviveBy(id){
     for(const a of this.sim.players.values())if(a.reviver===id){
+      if(a.id==='local'&&id==='lasko'&&this.reaction?.key==='m01.lasko.reviving')this.reaction=null;
       a.reviver=null;a.reviveAt=null;a.reviveProgress=0;
     }
   }
@@ -435,15 +460,19 @@ export class CampaignDirector {
     if(!scripted)this.say(p.id==='local'?'m01.lasko.playerDown':'m01.bruno.allyDown',true);
   }
   revive(p){
+    const reviver=p.reviver;
     if(p.id!=='local'&&p.reviver==='local')this.revives++;
     p.downed=false;p.downedTimer=0;p.hp=40;p.prone=false;p.reviveProgress=0;p.reviver=null;p.reviveAt=null;p.invulnerableUntil=this.time+2;p.reviveSeq=(p.reviveSeq??0)+1;p.lastHurt=this.time;
     if(p.id==='kane'){this.flags.kaneSaved=true;this.say('m01.kane.revived');}
     if(p.id==='courier'){this.flags.courierRevived=true;p.invulnerableUntil=0;this.say('m01.courier.saved');}
-    if(p.id==='local')this.say('m01.lasko.playerUp',true);
+    if(p.id==='local'){
+      if(this.reaction?.key==='m01.lasko.reviving')this.reaction=null;
+      if(reviver==='lasko')this.say('m01.lasko.playerUp',true,'lasko');
+    }
     p.scriptedWound=false;
     this.sim.event('revive',{playerId:p.id,x:p.x,z:p.z});
   }
-  startCutscene(id){if(this.cutscene?.id===id)return;this.cutscene={id,elapsed:0,line:0};this.dialogue={queue:[],active:null,remaining:0};}
+  startCutscene(id){if(this.cutscene?.id===id)return;this.cutscene={id,elapsed:0,line:0};this.dialogue={queue:[],active:null,remaining:0};this.reaction=null;}
   advanceCutscene(dt){
     const c=this.cutscene,def=this.definition.cutscenes[c.id];c.elapsed+=dt;
     if(c.id==='midpoint'&&this.flags.depotCinematicArmed&&!this.flags.depotDestroyed&&c.elapsed>=(def.detonateAt??2.2)){
@@ -481,6 +510,10 @@ export class CampaignDirector {
     if(!this.options.lines?.[key]||!repeat&&this.spoken.has(key))return;
     if(this.dialogue.active?.key===key||this.dialogue.queue.some(line=>line.key===key))return;
     this.spoken.add(key);const line=this.options.lines[key];
+    if(key==='m01.lasko.reviving'||key==='m01.lasko.playerUp'){
+      this.reaction={key,serial:++this.radioSerial,speakerId:'lasko',until:this.time+(line.duration??4)};
+      return;
+    }
     this.dialogue.queue.push({key,priority:line.priority??2,serial:++this.radioSerial,speakerId});
     this.dialogue.queue.sort((a,b)=>b.priority-a.priority||a.serial-b.serial);
   }
@@ -491,7 +524,7 @@ export class CampaignDirector {
   interactions(dt){
     const p=this.player,i=this.rawInput;this.prompt=null;
     if(p.downed){
-      if(i.selfRevive&&p.syringes>0){this.progress+=dt/4;this.interaction='self';p.input.fire=false;if(this.progress>=1){p.syringes--;this.revive(p);this.progress=0;}}
+      if(i.selfRevive&&p.syringes>0){this.progress+=dt/4;this.interaction='self';p.input.fire=false;if(this.progress>=1){p.syringes--;p.reviver=null;this.revive(p);this.progress=0;}}
       else{this.progress=0;this.interaction=null;}
       return;
     }
@@ -668,22 +701,16 @@ export class CampaignDirector {
   }
   spawnVehicle(){
     if(this.sim.vehicles.some(v=>v.id==='campaign-mg-car'))return;
-    // Approach from the far east road instead of appearing near the radio.
-    // Enter from the north on the existing village road, not from the
-    // impassable rocks along the east map boundary.
-    const v=this.sim.createMapVehicle({id:'campaign-mg-car',type:'humvee',team:1,x:167,z:171,yaw:0});
-    for(const z of [171,168,164,161,158]){
-      if(!this.sim.vehicleCollides(v,167,z,0)&&!this.sim.vehicleCollides(v,167,z-3,0)){
-        v.z=z;v.y=this.sim.groundAt(167,z);break;
-      }
-    }
+    const v=this.sim.createMapVehicle({id:'campaign-mg-car',type:'humvee',team:1,...MG_APPROACH});
     v.campaignArmor=true;v.hp=560;v.respawnIn=1e8;
-    v.campaignRoute={points:[{x:167,z:154},{x:167,z:139}],index:0,speed:.82};
+    v.campaignRoute={points:[{x:167,z:92}],index:0,speed:.65,kind:'mg-approach'};
     this.sim.vehicles.push(v);
     const driver=this.sim.addPlayer('car-driver','Водитель противника',1,'assault','ak12','p19',true);
     Object.assign(driver,{campaignRole:'vehicleDriver',campaignGroup:'wave3',campaignZone:'village',vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0});
     v.seats[0]=driver.id;this.sim.syncVehicleSeat(driver,v);
-    this.pending.unshift({id:'car-gunner',role:'vehicle',x:v.x,z:v.z,group:'wave3',zone:'village'});
+    const gunner=this.sim.addPlayer('car-gunner','Пулемётчик противника',1,'support','mg36','p19',true);
+    Object.assign(gunner,{campaignRole:'vehicle',campaignGroup:'wave3',campaignZone:'village',vehicleId:v.id,vehicleSeat:1,invulnerableUntil:0});
+    v.seats[1]=gunner.id;this.sim.syncVehicleSeat(gunner,v);
   }
   fail(reason){if(this.failed)return;this.failed=reason;this.progress=0;this.interaction=null;this.player.reviveProgress=0;if(reason.includes('Радист')){this.dialogue={queue:[],active:null,remaining:0};this.say('m01.bruno.failure',true);this.updateDialogue(0);}}
   save(number){
@@ -738,7 +765,7 @@ export class CampaignDirector {
     // Reconstructing players invokes ordinary spawn sampling. Resume the saved
     // random stream only after reconstruction has finished.
     this.sim.rngState=save.rngState;
-    this.dialogue={queue:[],active:null,remaining:0};this.failed=null;this.complete=false;this.awaitingLoadout=false;this.rawInput={};this.lastInput={};this.interaction=null;this.progress=0;this.senseAt=0;this.lastSenseAt=this.time;this.pendingCheckpoint=null;this.revives??=0;this.nightVision=m.nightVision===true;
+    this.dialogue={queue:[],active:null,remaining:0};this.reaction=null;this.failed=null;this.complete=false;this.awaitingLoadout=false;this.rawInput={};this.lastInput={};this.interaction=null;this.progress=0;this.senseAt=0;this.lastSenseAt=this.time;this.pendingCheckpoint=null;this.revives??=0;this.nightVision=m.nightVision===true;
     this.latestSave=structuredClone(save);this.epoch++;return true;
   }
   presentation(){
@@ -750,6 +777,7 @@ export class CampaignDirector {
     const sunriseTarget=clamp(levels[stage]+Math.min(.075,Math.max(0,this.time-s.stageAt)/120*.075),0,1);
     return {missionId:'m01',title:this.definition.title,stage:s.stage,sunriseTarget,stats:{kills:p?.kills??0,elapsedSeconds:Math.max(0,Math.floor(this.time)),revives:this.revives},objective:objective?.text??null,objectives:s.objectives,flags:{...this.flags},target:positions[s.activeObjective]??null,alert:this.alertLevel,alerts:this.alerts,detection:this.detection??0,detectingEnemy:this.detectingEnemy,nightVision:this.nightVision,order:this.order,route:this.route,light:this.light,downed:down,
       squadIds:['local',...this.definition.allies],prompt:this.prompt,progress:this.progress,interaction:this.interaction,subtitle:this.dialogue.active,subtitleRemaining:this.dialogue.remaining,cutscene:this.cutscene,awaitingLoadout:this.awaitingLoadout,failed:this.failed,complete:this.complete,checkpoint:this.checkpoint,saveRevision:this.saveRevision,epoch:this.epoch,
+      reaction:!this.failed&&this.reaction?.until>this.time?{...this.reaction,remaining:this.reaction.until-this.time}:null,
       chargeSites:this.chargeSites,fuel:this.fuel,trucks:this.trucks,fuze:Math.max(0,(this.fuseUntil??0)-this.time),radioRemaining:s.stage>=6?Math.max(0,90-(this.time-(s.timers.defence??this.time))):90,reviveProgress:p?.reviveProgress??0};
   }
 }

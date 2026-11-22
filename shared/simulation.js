@@ -11,6 +11,7 @@ import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import {shotTrajectory,shotRandom,advanceFireClock,weaponSpread} from './fire-control.js';
 import {LONG_BARREL_ID,WEAPON_SLOTS,getWeaponModule,resolveWeaponModules} from './weapon-modules.js';
 import {PoseHistory} from './pose-history.js';
+import {rayInfantry} from './infantry-hitboxes.js';
 import {moveTank,advanceTankSystems,fireTank,tankArmorZone} from './tank.js';
 import { slideVelocity } from './movement.js';
 import { boxBounds, overlapsAffine, uprightBox } from './geometry.js';
@@ -831,8 +832,8 @@ export class Simulation {
       if(hit<closest){closest=hit;equipment=item;vehicle=null;impact='metal';}
     }
     const endX=origin.x+dx,endZ=origin.z+dz;
-    const minX=Math.min(origin.x,endX)-.24,maxX=Math.max(origin.x,endX)+.24;
-    const minZ=Math.min(origin.z,endZ)-.24,maxZ=Math.max(origin.z,endZ)+.24;
+    const minX=Math.min(origin.x,endX),maxX=Math.max(origin.x,endX);
+    const minZ=Math.min(origin.z,endZ),maxZ=Math.max(origin.z,endZ);
     for(const other of this.players.values()){
       if(other.id===playerId||!other.alive||other.team===team)continue;
       suppressBot(this,other,bullet,origin,direction,Math.min(length,closest));
@@ -846,13 +847,10 @@ export class Simulation {
         if(hit.distance<closest){closest=hit.distance;target=other;headshot=hit.headshot;vehicle=null;equipment=null;}
         continue;
       }
-      if(pose.x<minX||pose.x>maxX||pose.z<minZ||pose.z>maxZ)continue;
-      const prone=this.campaign&&(other.prone||other.downed);
-      const crouch=crouching(pose),headY=pose.y+(prone?.48:crouch?1.06:EYE_HEIGHT);
-      const head=raySphere(origin,direction,{x:pose.x,y:headY,z:pose.z},.15);
-      const body=rayCapsule(origin,direction,pose.x,pose.z,pose.y+.26,pose.y+(prone?.3:crouch?.79:1.25),.24);
-      const hit=Math.min(head,body);
-      if(hit<closest){closest=hit;target=other;headshot=head<body;vehicle=null;equipment=null;}
+      const margin=pose.prone||pose.downed||pose.slideTime>0?1.2:.5;
+      if(pose.x<minX-margin||pose.x>maxX+margin||pose.z<minZ-margin||pose.z>maxZ+margin)continue;
+      const hit=rayInfantry(origin,direction,pose,crouching(pose));
+      if(hit.distance<closest){closest=hit.distance;target=other;headshot=hit.headshot;vehicle=null;equipment=null;}
     }
     for(const hit of glassHits)if(hit.distance<=closest&&!((hit.vehicle.glassBroken??0)&(1<<hit.id))){
       hit.vehicle.glassBroken=(hit.vehicle.glassBroken??0)|(1<<hit.id);

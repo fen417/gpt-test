@@ -4,8 +4,8 @@ export class PoseHistory {
     const frame=this.frames[this.cursor];this.cursor=(this.cursor+1)%this.frames.length;this.count=Math.min(this.count+1,this.frames.length);frame.time=time;
     for(const [kind,entities] of [['players',players.values()],['vehicles',vehicles]]){
       const active=new Set();for(const entity of entities){active.add(entity.id);const pose=frame[kind].get(entity.id)??{};
-        for(const key of ['x','y','z','yaw','pitch','vehicleId','vehicleSeat','reviveSeq','hp','alive','team','bodyPitch','bodyRoll','aimYaw','aimPitch'])pose[key]=entity[key];
-        pose.crouching=Boolean(entity.crouching||entity.crouch||entity.slideTime>0||entity.input?.crouch);pose.slideTime=0;pose.input={crouch:pose.crouching};frame[kind].set(entity.id,pose);
+        for(const key of ['x','y','z','yaw','pitch','vehicleId','vehicleSeat','reviveSeq','hp','alive','team','bodyPitch','bodyRoll','aimYaw','aimPitch','prone','downed','slideTime','slideVx','slideVz'])pose[key]=entity[key];
+        pose.crouching=Boolean(entity.crouching||entity.crouch||entity.input?.crouch);pose.input={crouch:pose.crouching};frame[kind].set(entity.id,pose);
       }for(const id of frame[kind].keys())if(!active.has(id))frame[kind].delete(id);
     }
   }

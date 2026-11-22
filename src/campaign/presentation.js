@@ -19,6 +19,13 @@ export class CampaignPresentation {
     this.root=document.createElement('section');this.root.className='campaign-ui';this.root.setAttribute('aria-label','Сюжетная миссия');
     this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>Выберите вооружение</h2><p>Основное и дополнительное оружие доступны без ограничений класса.</p><div class="campaign-loadout-selects"><label>ОСНОВНОЕ <select data-primary></select></label><label>ДОПОЛНИТЕЛЬНОЕ <select data-sidearm></select></label></div><button data-loadout="custom">Начать операцию</button><p>ПТ-90 и ящик патронов выдаются обязательно. N в миссии — ПНВ.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
     document.body.append(this.root);this.$=selector=>this.root.querySelector(selector);
+    this.storySubtitle=this.$('.campaign-subtitle');
+    this.reactionSubtitle=this.storySubtitle.cloneNode(true);
+    this.reactionSubtitle.classList.add('hidden');
+    const subtitles=document.createElement('div');
+    subtitles.className='campaign-subtitles';
+    this.storySubtitle.before(subtitles);
+    subtitles.append(this.reactionSubtitle,this.storySubtitle);
     this.fade=document.createElement('div');this.fade.className='campaign-camera-fade';this.root.append(this.fade);
     this.$('.campaign-cutscene button').onclick=()=>this.session.command({type:'skip'});
     const primary=this.$('[data-primary]'),sidearm=this.$('[data-sidearm]');
@@ -111,7 +118,7 @@ export class CampaignPresentation {
       const row=Math.floor(index/2)*8.5,lane=(index%2-.5)*7;
       const x=startX+progress*dx-row*ux-lane*uz;
       const z=startZ+progress*dz-row*uz+lane*ux;
-      const y=terrain.heightAt(x,z),vehicle={type:'tank',team:1,camo:'desert',controlScheme:'wot',x,y,z,yaw,
+      const y=terrain.heightAt(x,z),vehicle={id:'finale-tank-'+index,type:'tank',team:1,camo:'desert',controlScheme:'wot',x,y,z,yaw,
         speed:travel/duration,steer:0,hp:100,maxHp:100,aimYaw:yaw,aimPitch:0,gunSeq:0};
       Object.assign(vehicle,vehicleBodyTilt(vehicle,terrain));
       updateVehicleRig(rig,vehicle,null,dt,1,{},false,terrain);
@@ -148,8 +155,13 @@ export class CampaignPresentation {
     const objectiveHeading=target?((Math.atan2(target.x-p.x,target.z-p.z)*180/Math.PI+360)%360):0,objectiveDirection=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'][Math.round(objectiveHeading/45)%8];
     this.$('.campaign-objective > span').textContent=`${m.stage===6?'ПЕРЕДАЧА · '+Math.ceil(m.radioRemaining)+' с · ':''}КП ${m.checkpoint}/4 · ${m.order==='hold'?'ВЗВОД ДЕРЖИТ ПОЗИЦИЮ':'ВЗВОД СЛЕДУЕТ'}${d?' · '+objectiveDirection+' '+d+' м':''}`;
     this.$('.campaign-optional').textContent=m.stage>=4?`${m.flags.documents?'✓':'◇'} Документы офицера · ${m.flags.courierSaved?'✓':m.flags.courierRevived?'→':'◇'} Связной${m.flags.courierRevived&&!m.flags.courierSaved?' → восточная дорога':''}`:'';
-    const line=this.locale.lines[m.subtitle?.key];this.$('.campaign-subtitle').classList.toggle('hidden',!line);
-    this.$('.campaign-subtitle b').textContent=line?this.locale.speakers[line.speaker]:'';this.$('.campaign-subtitle > span').textContent=line?.text??'';
+    const line=this.locale.lines[m.subtitle?.key];this.storySubtitle.classList.toggle('hidden',!line);
+    this.storySubtitle.querySelector('b').textContent=line?this.locale.speakers[line.speaker]:'';
+    this.storySubtitle.querySelector('span').textContent=line?.text??'';
+    const reaction=this.locale.lines[m.reaction?.key];
+    this.reactionSubtitle.classList.toggle('hidden',!reaction);
+    this.reactionSubtitle.querySelector('b').textContent=reaction?this.locale.speakers[reaction.speaker]:'';
+    this.reactionSubtitle.querySelector('span').textContent=reaction?.text??'';
     this.$('.campaign-prompt').textContent=m.prompt??(p.downed?'X удерживать · шприц / санитар идёт на помощь':'Z · лечь   V · нож   E · взаимодействие   H · аптечка   Q · приказ   N · ПНВ');
     const progress=Math.max(m.progress,m.reviveProgress);this.$('.campaign-progress').classList.toggle('hidden',progress<=0);this.$('.campaign-progress-fill').style.strokeDashoffset=String(276.46*(1-Math.min(1,progress)));this.$('.campaign-progress > span').textContent=`${Math.round(progress*100)}%`;
     this.$('.campaign-injury').classList.toggle('hidden',!p.downed);this.$('.campaign-injury strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;this.$('.campaign-injury > span').textContent=p.syringes?`X удерживать 4 с · шприцы: ${p.syringes}`:'Шприцов нет · дождись помощи союзника';
