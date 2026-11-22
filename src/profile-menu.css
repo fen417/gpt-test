@@ -45,6 +45,7 @@
 .profile-preview-stage { position: relative; }
 .profile-weapon-mounts { position: absolute; inset: 0; pointer-events: none; }
 .profile-weapon-mount { position: absolute; display: grid; place-items: center; width: 26px; height: 26px; transform: translate(-50%,-50%); border: 1px solid #c5d49c; border-radius: 50%; background: #171e19e6; color: #eef4da; pointer-events: auto; font-size: 16px; }
+.profile-weapon-mount:active { transform: translate(-50%,-50%); }
 .profile-weapon-mount:hover,.profile-weapon-mount.selected { z-index: 1; background: var(--menu-accent,#d4e997); color: #111813; }
 #profile-preview { display: block; width: 100%; height: clamp(200px,42dvh,370px); touch-action: none; cursor: grab; }
 #profile-preview:active { cursor: grabbing; }
