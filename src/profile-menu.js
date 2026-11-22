@@ -2,7 +2,7 @@ import {BASE_MAPS,CLASSES,WEAPONS} from '../shared/world.js';
 import {readCampaignProgress} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
 import {PROFILE_MISSIONS,favorite,localCampaignSummary} from './profile-data.js';
-import {LONG_BARREL_ID,WEAPON_SLOTS,XP_PER_WEAPON_LEVEL,weaponLevel} from '../shared/weapon-modules.js';
+import {LONG_BARREL_ID,WEAPON_SLOTS,weaponLevelProgress} from '../shared/weapon-modules.js';
 import {collimatorTestEnabled,equipCollimator,hasCollimator,loadCollimatorModel} from './collimator.js';
 import {createWeaponProgress,weaponDevice} from './weapon-progress.js';
 import {setupAttachmentPicker} from './weapon-attachment-ui.js';
@@ -136,9 +136,10 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
   }
   function describeAttachments(){
     const weaponId=attachmentWeapon.value,xp=progress.xpOf(weaponId);
-    set('profile-weapon-level',`Уровень ${weaponLevel(xp)} · ${xp % XP_PER_WEAPON_LEVEL} / ${XP_PER_WEAPON_LEVEL} очк.`);
-    $('profile-weapon-xp').max=XP_PER_WEAPON_LEVEL;
-    $('profile-weapon-xp').value=xp % XP_PER_WEAPON_LEVEL;
+    const {level,earned,required}=weaponLevelProgress(xp);
+    set('profile-weapon-level',`Уровень ${level} · ${earned} / ${required} очк.`);
+    $('profile-weapon-xp').max=required;
+    $('profile-weapon-xp').value=earned;
     renderPicker({weaponId,slot:attachmentSlot,xp,selected:currentAttachment(weaponId,attachmentSlot),canTest:collimatorTestEnabled(),showLocked:true});
     for(const button of mounts.children)button.classList.toggle('selected',button.dataset.weaponMount===attachmentSlot);
   }

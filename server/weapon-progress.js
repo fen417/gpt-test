@@ -1,7 +1,7 @@
-import {LONG_BARREL_ID, WEAPON_MODULES, XP_PER_WEAPON_LEVEL} from '../shared/weapon-modules.js';
+import {LONG_BARREL_ID, WEAPON_MODULES, weaponXpForLevel} from '../shared/weapon-modules.js';
 
 const barrel = WEAPON_MODULES[LONG_BARREL_ID];
-export const networkWeaponXpCap = (barrel.level-1)*XP_PER_WEAPON_LEVEL;
+export const networkWeaponXpCap = weaponXpForLevel(barrel.level);
 const receiptAge = 7*24*60*60*1000;
 
 // The browser's profile XP is writable by its owner. Multiplayer uses XP

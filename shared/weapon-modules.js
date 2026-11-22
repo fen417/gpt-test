@@ -6,8 +6,28 @@ export const WEAPON_SLOTS = Object.freeze({
 });
 
 export const XP_PER_WEAPON_KILL = 100;
-export const XP_PER_WEAPON_LEVEL = 500;
-export const weaponLevel = (xp = 0) => 1 + Math.floor(xp / XP_PER_WEAPON_LEVEL);
+const LEVEL_TWO_XP = 25 * XP_PER_WEAPON_KILL;
+const LEVEL_THREE_XP = 100 * XP_PER_WEAPON_KILL;
+const XP_PER_LATER_LEVEL = 500;
+
+export function weaponXpForLevel(level) {
+  if (level <= 1) return 0;
+  if (level === 2) return LEVEL_TWO_XP;
+  return LEVEL_THREE_XP + (level - 3) * XP_PER_LATER_LEVEL;
+}
+
+export function weaponLevel(xp = 0) {
+  if (xp < LEVEL_TWO_XP) return 1;
+  if (xp < LEVEL_THREE_XP) return 2;
+  return 3 + Math.floor((xp - LEVEL_THREE_XP) / XP_PER_LATER_LEVEL);
+}
+
+export function weaponLevelProgress(xp = 0) {
+  const level = weaponLevel(xp);
+  const start = weaponXpForLevel(level);
+  return {level, earned: xp - start, required: weaponXpForLevel(level + 1) - start};
+}
+
 export const LONG_BARREL_ID = 'long-barrel';
 
 export const WEAPON_MODULES = Object.freeze({

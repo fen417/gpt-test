@@ -1,4 +1,4 @@
-import {LONG_BARREL_ID,WEAPON_SLOTS,XP_PER_WEAPON_LEVEL,weaponLevel,weaponModules} from '../shared/weapon-modules.js';
+import {LONG_BARREL_ID,WEAPON_SLOTS,XP_PER_WEAPON_KILL,weaponXpForLevel,weaponModules} from '../shared/weapon-modules.js';
 import {WEAPONS} from '../shared/world.js';
 import {SCOPE_ZOOMS} from './scope-optics.js';
 
@@ -31,12 +31,16 @@ export function setupAttachmentPicker(root,{onSlot,onSelect}){
     const items=[buttonFor('stock',name)];
     for(const [id,part] of weaponModules(weaponId,slot)){
       const requiresNetworkXp=id===LONG_BARREL_ID&&networkXp!==undefined;
-      const unlocked=weaponLevel(requiresNetworkXp?networkXp??0:xp)>=part.level;
+      const threshold=weaponXpForLevel(part.level);
+      const progress=requiresNetworkXp?networkXp??0:xp;
+      const unlocked=progress>=threshold;
       const trial=canTest&&id==='collimator-15';
       if(!unlocked&&!trial&&!showLocked&&!requiresNetworkXp&&id!==LONG_BARREL_ID)continue;
-      let suffix=unlocked?'':trial?' · тестовый доступ':` · уровень ${part.level}`;
-      if(!unlocked&&requiresNetworkXp)
-        suffix=networkXp===null?' · требуется обновление сервера':` · сетевой уровень ${part.level} (${networkXp} / ${(part.level-1)*XP_PER_WEAPON_LEVEL})`;
+      const kills=Math.floor(progress/XP_PER_WEAPON_KILL), required=threshold/XP_PER_WEAPON_KILL;
+      const level=requiresNetworkXp?'сетевой уровень':'уровень';
+      const suffix=unlocked?'':trial?' · тестовый доступ':
+        networkXp===null&&requiresNetworkXp?' · требуется обновление сервера':
+        ` · ${level} ${part.level} (${kills} / ${required} устр.)`;
       items.push(buttonFor(id,part.name+suffix,!unlocked&&!trial));
     }
     list.replaceChildren(...items);

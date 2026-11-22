@@ -1,7 +1,7 @@
 import {WEAPONS} from '../shared/world.js';
 import {
-  WEAPON_SLOTS, WEAPON_MODULES, XP_PER_WEAPON_KILL, XP_PER_WEAPON_LEVEL,
-  getWeaponModule, weaponLevel,
+  WEAPON_SLOTS, WEAPON_MODULES, XP_PER_WEAPON_KILL,
+  getWeaponModule, weaponLevel, weaponLevelProgress,
 } from '../shared/weapon-modules.js';
 
 const read = key => {
@@ -103,10 +103,11 @@ export function renderWeaponResults(container, kills, xpOf) {
   for (const [id, count] of Object.entries(kills).sort(([,a],[,b])=>b-a)) {
     if (!count || !Object.hasOwn(WEAPONS,id)) continue;
     const earned = count*XP_PER_WEAPON_KILL, after = xpOf(id);
-    const beforeLevel = weaponLevel(Math.max(0,after-earned)), afterLevel = weaponLevel(after);
+    const beforeLevel = weaponLevel(Math.max(0,after-earned));
+    const {level:afterLevel, earned:levelXp, required} = weaponLevelProgress(after);
     const bar = node('progress');
-    bar.max = XP_PER_WEAPON_LEVEL;
-    bar.value = after % XP_PER_WEAPON_LEVEL;
+    bar.max = required;
+    bar.value = levelXp;
     bar.setAttribute('aria-label','Прогресс до следующего уровня '+WEAPONS[id].name);
     const unlocks = Object.values(WEAPON_MODULES)
       .filter(part=>part.weapons.includes(id)&&part.level>beforeLevel&&part.level<=afterLevel)
