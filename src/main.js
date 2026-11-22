@@ -12,7 +12,7 @@ import {GameRenderer} from './renderer.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
-import {Multiplayer,configuredServerUrl,normalizeServerUrl} from './network.js';
+import {Multiplayer,configuredServerUrl,defaultServerUrl,normalizeServerUrl} from './network.js';
 import {CombatAudio} from './audio.js';
 import {mountChangelog} from './changelog.js';
 import './menu.css';
@@ -30,6 +30,7 @@ import {M02_BINDINGS} from '../shared/campaign/tank-controls.js';
 import {CampaignActors} from './campaign/actors.js';
 import {showCampaignOutcome} from './campaign/outcome.js';
 import {matchLoadingInfo,mountMatchLoading} from './match-loading.js';
+import {mountPlayerProfile} from './profile-menu.js';
 
 const $=id=>document.getElementById(id);
 mountChangelog();
@@ -572,7 +573,8 @@ function presentLocalShot(event){
   audio.events({time:event.time,events:[event],players:state.players},player,{immediate:true});
   text('ammo',(simulation?.client??multiplayer).prediction.player.ammo);
 }
-const multiplayer=new Multiplayer({predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
+const profile=mountPlayerProfile({onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl});
+const multiplayer=new Multiplayer({getProfileToken:profile.tokenForServer,predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
 function prepare(which){

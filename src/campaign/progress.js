@@ -1,6 +1,7 @@
 import catalog from '../../shared/campaign/catalog.json' with {type:'json'};
 
 export const CAMPAIGN_PROGRESS_KEY='campaign.v1';
+export const CAMPAIGN_PROFILE_EVENT='sector09:campaign-achievement';
 const legacyProgressKey='sector09-campaign-progress-v1';
 const initial=()=>({version:1,completed:[],best:{},outcomes:{},checkpoints:{},difficulty:'regular',carry:{}});
 let transient=null,lastError=false;
@@ -39,6 +40,7 @@ export function recordCampaignCheckpoint(missionId,save,when=Date.now()){
   if(!catalog.missions.some(m=>m.id===missionId)||!save)return;
   progress.checkpoints[missionId]={number:save.mission?.checkpoint??save.checkpoint??0,when};
   saveCampaignProgress(progress);
+  globalThis.dispatchEvent?.(new CustomEvent(CAMPAIGN_PROFILE_EVENT,{detail:{missionId,checkpoint:progress.checkpoints[missionId].number}}));
 }
 export function markCampaignComplete(missionId,results={},flags={}){
   if(!catalog.missions.some(m=>m.id===missionId))return false;
@@ -53,7 +55,9 @@ export function markCampaignComplete(missionId,results={},flags={}){
   const allowed=new Set(['kane_alive','lasko_alive','bruno_alive','duran_alive','tanks_alive','enemy_order',
     'marten_wounded','m3_done','harranti_alive','brigade_saved','m3_documents','m4_done','m4_radio_code','m4_tanks_killed','sappers_alive']);
   for(const [key,value] of Object.entries(flags))if(allowed.has(key))progress.carry[key]=value;
-  saveCampaignProgress(progress);return true;
+  saveCampaignProgress(progress);
+  globalThis.dispatchEvent?.(new CustomEvent(CAMPAIGN_PROFILE_EVENT,{detail:{missionId,completed:true,bestSeconds:elapsed}}));
+  return true;
 }
 export function campaignMissionStatus(missionId,progress=readCampaignProgress(),unlockAll=false){
   const number=catalog.missions.findIndex(m=>m.id===missionId);

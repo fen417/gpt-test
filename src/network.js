@@ -20,11 +20,15 @@ export function normalizeServerUrl(value){
   if(globalThis.location?.protocol==='https:'&&url.protocol!=='wss:')throw Error('Для GitHub Pages нужен защищённый адрес wss://.');
   if(!url.pathname||url.pathname==='/')url.pathname='/ws';url.hash='';return url.href;
 }
-export async function configuredServerUrl(){
+export async function defaultServerUrl(){
   let value=import.meta.env?.VITE_SERVER_URL??'';
   if(!value){try{const response=await fetch(new URL((import.meta.env?.BASE_URL??'./')+'network-config.json',globalThis.location?.href??import.meta.url));if(response.ok)value=(await response.json()).serverUrl??'';}catch{}}
-  try{value=localStorage.getItem('sector09-server-url')||value;}catch{}
   return value?normalizeServerUrl(value):'';
+}
+export async function configuredServerUrl(){
+  let custom;
+  try{custom=localStorage.getItem('sector09-server-url');}catch{}
+  return custom?normalizeServerUrl(custom):defaultServerUrl();
 }
 
 export class Prediction{
@@ -110,8 +114,8 @@ export class Prediction{
 
 // The room creator uses exactly the same connection and prediction as every guest.
 export class Multiplayer{
-  constructor({onState=noop,onIdentity=noop,onStatus=noop,onError=noop,onRooms=noop,onLocalShot=noop,predictShots=true}={}){
-    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms,onLocalShot,predictShots});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;this.recoveries=0;this.lastRecovery=null;
+  constructor({onState=noop,onIdentity=noop,onStatus=noop,onError=noop,onRooms=noop,onLocalShot=noop,getProfileToken=noop,predictShots=true}={}){
+    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms,onLocalShot,getProfileToken,predictShots});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;this.recoveries=0;this.lastRecovery=null;
   }
   get mode(){return this._mode;}get phase(){return this._phase;}get canResume(){return !!(this.token||safeStorage.get('sector-resume:'+this.url));}get roomNameLabel(){return this.roomName??'';}
   async browse(url){await this.open(url);await this.request('list');return this.rooms;}
@@ -171,7 +175,7 @@ export class Multiplayer{
     while(!this.manual&&generation===this.generation&&performance.now()-started<28000){
       await new Promise(resolve=>setTimeout(resolve,1000));
       if(this.manual||generation!==this.generation)break;
-      try{await this.connectSocket(generation);await this.request('resume',{token:this.token,loadingReady:true});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{if(!this.manual&&generation===this.generation)this.ws?.close();}
+      try{await this.connectSocket(generation);await this.authenticateProfile();await this.request('resume',{token:this.token,loadingReady:true});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{if(!this.manual&&generation===this.generation)this.ws?.close();}
     }
     this.reconnecting=false;if(!this.manual&&generation===this.generation){this.token=null;safeStorage.set('sector-resume:'+this.url,null);this.onError('Время переподключения истекло. Войдите в комнату заново.');}
   }
@@ -187,9 +191,27 @@ export class Multiplayer{
   }
   control(type,data={}){const sent=this.send({type,...data,protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION});if(!sent)this.onStatus('Команда не отправлена: соединение восстанавливается.');return sent;}
   send(data){if(this.ws?.readyState!==WebSocket.OPEN)return false;if(this.ws.bufferedAmount>16384)return false;this.ws.send(data instanceof Uint8Array?data:encodeControl(data));return true;}
-  async host(options={}){await this.open(options.url);await this.request('create',{...options,loadingReady:true});return this.roomName;}
+  async authenticateProfile(){
+    if(!this.hello?.profileStats)return;
+    const ws=this.ws;let timeout;
+    try{
+      const token=await Promise.race([
+        this.getProfileToken(this.url),
+        new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Профиль не отвечает.')),5000);}),
+      ]);
+      if(ws!==this.ws)throw Error('Подключение отменено.');
+      if(token||this.profileSocket===ws){
+        this.profileSocket=token?ws:null;
+        await this.request('profile',{token:token??null});
+      }
+    }catch(error){
+      if(ws!==this.ws)throw error;
+      this.onStatus('Профиль не подтверждён. Статистика этого матча не сохранится.');
+    }finally{clearTimeout(timeout);}
+  }
+  async host(options={}){await this.open(options.url);await this.authenticateProfile();await this.request('create',{...options,loadingReady:true});return this.roomName;}
   async join(options={}){
-    await this.open(options.url);const saved=safeStorage.get('sector-resume:'+this.url);
+    await this.open(options.url);await this.authenticateProfile();const saved=safeStorage.get('sector-resume:'+this.url);
     if(saved){try{await this.request('resume',{token:saved,loadingReady:true});return this.roomName;}catch{safeStorage.set('sector-resume:'+this.url,null);}}
     await this.request('join',{...options,loadingReady:true});return this.roomName;
   }

@@ -57,6 +57,7 @@ jobs:
       - run: npm run build
         env:
           VITE_SERVER_URL: ${{ vars.SECTOR_SERVER_URL }}
+          VITE_FIREBASE_CONFIG: ${{ vars.SECTOR_FIREBASE_WEB_CONFIG }}
       - name: Upload bundle size report
         if: always()
         uses: actions/upload-artifact@v4

@@ -40,15 +40,72 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu menu-home">
-    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.26</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
+    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.29</span></span><div class="audio-controls"><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
     <div class="home-content">
       <section class="home-hero" aria-labelledby="home-title"><div class="home-kicker"><i></i> ПЕХОТА. ТЕХНИКА. ЗАХВАТ ТЕРРИТОРИИ.</div><h1 id="home-title">КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1><p>Свой отряд. Свой маршрут. Твой следующий бой.</p>
-        <nav class="home-nav" aria-label="Главное меню"><button id="open-campaign" class="home-play" type="button" aria-haspopup="dialog"><span class="nav-index">01</span><span><b>Кампания «Песок и сталь»</b><small>В разработке · 4 из 8 миссий реализованы</small></span><span class="nav-arrow">↗</span></button><button id="open-solo" class="home-play" aria-haspopup="dialog"><span class="nav-index">02</span><span><b>Одиночная игра</b><small>Твой сектор. Твои правила.</small></span><span class="nav-arrow">↗</span></button><button id="join-toggle" class="home-play" aria-haspopup="dialog"><span class="nav-index">03</span><span><b>Сетевая игра</b><small>Найти бой или собрать друзей</small></span><span class="nav-arrow">↗</span></button><button id="menu-settings" class="home-play" aria-haspopup="dialog"><span class="nav-index">04</span><span><b>Настройки</b><small>Изображение, звук и управление</small></span><span class="nav-arrow">↗</span></button></nav>
+        <nav class="home-nav" aria-label="Главное меню"><button id="open-campaign" class="home-play" type="button" aria-haspopup="dialog"><span class="nav-index">01</span><span><b>Кампания «Песок и сталь»</b><small>В разработке · 4 из 8 миссий реализованы</small></span><span class="nav-arrow">↗</span></button><button id="open-solo" class="home-play" aria-haspopup="dialog"><span class="nav-index">02</span><span><b>Одиночная игра</b><small>Твой сектор. Твои правила.</small></span><span class="nav-arrow">↗</span></button><button id="join-toggle" class="home-play" aria-haspopup="dialog"><span class="nav-index">03</span><span><b>Сетевая игра</b><small>Найти бой или собрать друзей</small></span><span class="nav-arrow">↗</span></button><button id="open-profile" class="home-play" type="button" aria-haspopup="dialog"><span><b>Профиль игрока</b><small>Статистика, кампания и снаряжение</small></span><span class="nav-arrow">↗</span></button><button id="menu-settings" class="home-play" aria-haspopup="dialog"><span class="nav-index">05</span><span><b>Настройки</b><small>Изображение, звук и управление</small></span><span class="nav-arrow">↗</span></button></nav>
       </section>
       <aside class="home-location"><span class="scene-label">В ОБЪЕКТИВЕ</span><div class="map-caption"><span class="cross-icon">⌖</span><div><strong id="menu-map-name"></strong><small id="menu-map-info"></small></div></div><span class="scene-rule"></span><span class="scene-label">ЖИВОЙ СЕКТОР / SECTOR 09</span></aside>
     </div>
     <footer class="menu-footer"><div><p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p><div class="now-playing"><span class="track-line"></span><span id="track-label">♫ QUIET RESOLVE</span></div></div><div class="menu-footer-actions"><button id="menu-changelog" class="small-button" aria-haspopup="dialog">Что нового ↗</button><a class="small-button" href="./credits.html" target="_blank" rel="noopener">Авторы ↗</a></div></footer>
   </main>
+  <dialog id="profile-panel" class="menu-dialog player-profile" aria-labelledby="profile-title">
+    <header class="menu-panel-header">
+      <div><h2 id="profile-title">Профиль игрока</h2></div>
+      <button class="panel-close" data-close-dialog="profile-panel" aria-label="Закрыть профиль">✕</button>
+    </header>
+    <div class="player-profile-body">
+      <section class="profile-account" aria-label="Аккаунт">
+        <div id="profile-signed-in" class="profile-account-user" hidden>
+          <div><strong id="profile-name"></strong><span id="profile-account-email"></span></div>
+          <div class="profile-account-actions">
+            <button id="profile-link-google" class="panel-secondary" type="button" hidden>Привязать Google</button>
+            <button id="profile-sign-out" class="panel-secondary" type="button">Выйти</button>
+          </div>
+        </div>
+        <form id="profile-auth" hidden>
+          <label>ПОЧТА<input id="profile-email" type="email" autocomplete="email" required /></label>
+          <label>ПАРОЛЬ<input id="profile-password" type="password" autocomplete="current-password" required minlength="6" /></label>
+          <div class="profile-account-actions">
+            <button id="profile-submit" class="panel-primary" type="submit">Войти</button>
+            <button id="profile-register" class="panel-secondary" type="button">Создать аккаунт</button>
+          </div>
+          <button id="profile-google" class="panel-secondary" type="button">Войти через Google</button>
+          <button id="profile-reset" class="profile-text-button" type="button">Сбросить пароль</button>
+        </form>
+        <p id="profile-status" role="status" aria-live="polite"></p>
+      </section>
+      <section aria-labelledby="profile-pvp">
+        <h3 id="profile-pvp">Сетевые бои</h3>
+        <dl class="profile-stats">
+          <div><dt>K/D</dt><dd id="profile-kd">—</dd></div>
+          <div><dt>Убийства игроков</dt><dd id="profile-kills">—</dd></div>
+          <div><dt>Смерти от игроков</dt><dd id="profile-deaths">—</dd></div>
+        </dl>
+        <dl class="profile-favorites">
+          <div><dt>Любимый класс</dt><dd id="profile-class">—</dd></div>
+          <div><dt>Любимая сетевая карта</dt><dd id="profile-map">—</dd></div>
+        </dl>
+        <p class="profile-caption">Статистика учитывается в боях на официальном сервере. Любимый класс и карта определяются по игровому времени.</p>
+      </section>
+      <section aria-labelledby="profile-campaign-title">
+        <div class="profile-section-header">
+          <h3 id="profile-campaign-title">Кампания</h3>
+          <button id="profile-import" class="panel-secondary" type="button" hidden>Перенести прогресс из браузера</button>
+        </div>
+        <ol id="profile-campaign" class="profile-campaign"></ol>
+      </section>
+      <section aria-labelledby="profile-customization-title">
+        <h3 id="profile-customization-title">Кастомизация</h3>
+        <dl class="profile-favorites">
+          <div><dt>Скин бойца</dt><dd id="profile-soldier-skin">Стандартный</dd></div>
+          <div><dt>Скины оружия</dt><dd id="profile-weapon-skins">Стандартные</dd></div>
+          <div><dt>Обвесы оружия</dt><dd id="profile-attachments">Штатная комплектация</dd></div>
+        </dl>
+        <p class="profile-caption">Выбор скинов и обвесов появится в будущих обновлениях.</p>
+      </section>
+    </div>
+  </dialog>
   <dialog id="single-player-panel" class="menu-dialog" aria-labelledby="single-title">
     <header class="menu-panel-header"><div><span class="section-kicker">ИГРАТЬ / 01</span><h2 id="single-title">Одиночная игра</h2><p>Подготовь снаряжение. Выбери поле боя.</p></div><button class="panel-close" data-close-dialog="single-player-panel" aria-label="Закрыть одиночную игру">×</button></header>
     <div class="solo-layout"><section class="solo-operation"><h3><span>01</span> Операция</h3>        <label class="field-label" for="callsign">ПОЗЫВНОЙ</label><input id="callsign" maxlength="20" value="Rookie" autocomplete="nickname" spellcheck="false" />

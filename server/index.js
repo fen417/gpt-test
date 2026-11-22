@@ -3,6 +3,7 @@ import { PerformanceSamples } from '../shared/performance-samples.js';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import {canReadMetrics} from './metrics-access.js';
+import {createProfileStats} from './profile-stats.js';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput, sanitizeSpawnPoint } from '../shared/simulation.js';
@@ -20,6 +21,9 @@ const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 // One process, one in-memory room. Importing this module never opens a port.
 export function createGameServer(options={}){
   const env={...process.env,...options};
+  const profiles=createProfileStats(env);
+  const profileFlush=profiles&&setInterval(()=>void profiles.flush(),15000);
+  profileFlush?.unref();
   const config={port:bounded(env.PORT,0,65535,8080),tickHz:bounded(env.TICK_HZ,30,60,60),snapshotHz:bounded(env.SNAPSHOT_HZ,10,30,30),
     maxPlayers:Math.floor(bounded(env.MAX_PLAYERS,2,7,7)),maxBots:Math.floor(bounded(env.MAX_BOTS,0,30,30)),defaultBots:Math.floor(bounded(env.BOTS,0,30,8)),
     reconnectMs:bounded(env.RECONNECT_SECONDS,5,120,30)*1000,emptyMs:bounded(env.EMPTY_ROOM_SECONDS,10,300,60)*1000};
@@ -88,16 +92,17 @@ export function createGameServer(options={}){
   }
   function join(c,data,requestId,resume=false){
     if(c.session)throw Error('Вы уже в комнате.');if(!room)throw Error('Комната уже закрыта. Создайте новую.');
-    let s;if(resume){s=[...sessions.values()].find(x=>x.token===data.token);if(!s)throw Error('Время переподключения истекло. Войдите в комнату заново.');if(s.client)throw Error('Этот игрок уже подключён.');}
+    let s;if(resume){s=[...sessions.values()].find(x=>x.token===data.token);if(!s)throw Error('Время переподключения истекло. Войдите в комнату заново.');if(s.client)throw Error('Этот игрок уже подключён.');if(s.profileUid&&s.profileUid!==c.profileUid)throw Error('Для восстановления матча войдите в тот же профиль.');}
     else{
       if(data.roomId&&data.roomId!==room.id)throw Error('Комната уже закрыта.');
       if(sessions.size>=room.maxPlayers)throw Error('Комната заполнена. Место отключившегося игрока временно зарезервировано.');
+      if(c.profileUid&&[...sessions.values()].some(session=>session.profileUid===c.profileUid))throw Error('Этот профиль уже в комнате.');
       const counts=[0,0];for(const q of sessions.values())counts[q.team]++;
-      s={id:'p'+(++nextPlayer),token:token(),name:clean(data.name,'Боец',20),team:counts[0]<=counts[1]?0:1,bytes:0,intervalBytes:0,snapshotBytes:0,snapshotCount:0,inputQueue:[]};loadout(s,data);sessions.set(s.id,s);
+      s={id:'p'+(++nextPlayer),token:token(),profileUid:c.profileUid??null,name:clean(data.name,'Боец',20),team:counts[0]<=counts[1]?0:1,bytes:0,intervalBytes:0,snapshotBytes:0,snapshotCount:0,inputQueue:[]};loadout(s,data);sessions.set(s.id,s);
       if(!room.ownerId)room.ownerId=s.id;
       if(room.sim)room.sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
     }
-    s.client=c;s.detachedAt=0;c.session=s;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
+    s.client=c;s.detachedAt=0;c.session=s;c.profileUid=null;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
     if(s.loadingReady)room.loading?.pending.add(s.id);
     identity(c,requestId);
     if(room.phase==='match'){initialize(s);startLoop();}lobbyChanged();
@@ -133,7 +138,7 @@ export function createGameServer(options={}){
   function startMatch(){
     stopLoop();clearMatchLoading();const sim=new Simulation({bots:room.bots,difficulty:room.difficulty,mapId:room.mapId,gameMode:room.mode,killLimit:room.killLimit,lagCompensation:env.LAG_COMPENSATION!=='0'});
     sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.0;
-    room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;
+    room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;room.profileSeconds=0;
     for(const s of sessions.values())sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
     const pending=new Set(connected().filter(s=>s.loadingReady).map(s=>s.id));
     if(pending.size){
@@ -214,11 +219,24 @@ export function createGameServer(options={}){
     const simStarted=performance.now();
     sim.step(dt);simulationSamples.add(performance.now()-simStarted);
     tick++;snapshotClock+=dt;
-    for(const e of sim.events)if(e.id>room.lastEvent){room.events.push(e);room.lastEvent=e.id;}
+    for(const e of sim.events)if(e.id>room.lastEvent){
+      room.events.push(e);room.lastEvent=e.id;
+      if(e.type==='kill')profiles?.kill(e,sim.players,sessions);
+    }
+    if(profiles){
+      room.profileSeconds+=dt;
+      if(room.profileSeconds>=1){
+        room.profileSeconds-=1;
+        for(const s of sessions.values()){
+          const p=sim.players.get(s.id);
+          if(s.profileUid&&s.client&&p?.alive&&!p.networkIdle)profiles.play(s.profileUid,sim.map.id,p.classId);
+        }
+      }
+    }
     while(room.events.length>4096||(room.events.length&&sim.time-room.events[0].time>12))room.eventFloor=room.events.shift().id;
     for(const s of connected())events(s,now);
     if(snapshotClock>=1/effectiveSnapshotHz){snapshotClock%=1/effectiveSnapshotHz;const prepared=preparedSnapshot();for(const s of connected())snapshot(s,prepared);}
-    if(sim.winner!==null&&!room.ended){room.ended=true;const final=preparedSnapshot();for(const s of connected())snapshot(s,final);roomsChanged();}
+    if(sim.winner!==null&&!room.ended){room.ended=true;const final=preparedSnapshot();for(const s of connected())snapshot(s,final);roomsChanged();void profiles?.flush();}
     const elapsed=performance.now()-begin;tickSamples.add(elapsed);totals.ticks++;totals.tickMs+=elapsed;totals.tickMaxMs=Math.max(totals.tickMaxMs,elapsed);intervalTicks++;intervalTickMs+=elapsed;intervalMax=Math.max(intervalMax,elapsed);
   }
   function pump(){
@@ -235,7 +253,7 @@ export function createGameServer(options={}){
   function stopLoop(){clearTimeout(timer);timer=null;accumulator=0;}
   wss.on('connection',ws=>{
     const c={ws,session:null,lastSeen:Date.now(),messages:0,window:Date.now(),alive:true};clients.add(c);
-    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
+    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
     ws.on('pong',()=>{c.alive=true;c.lastSeen=Date.now();});
     ws.on('message',(raw,isBinary)=>{
       const now=Date.now();c.lastSeen=now;if(now-c.window>1000){c.window=now;c.messages=0;}if(++c.messages>160){ws.close(1008,'Rate limit');return;}
@@ -244,8 +262,21 @@ export function createGameServer(options={}){
         const data=decodeControl(raw.toString());requestId=data.requestId;if(!data||typeof data!=='object')return;
         if(data.protocol!==PROTOCOL_VERSION||data.layout!==MAP_LAYOUT_REVISION){error(c,'Версии клиента, сервера или карт различаются. Обновите игру.',requestId,'version');return;}
         const s=c.session;
+        if(c.profilePending&&['create','join','resume'].includes(data.type))throw Error('Подождите, пока проверяется профиль.');
         switch(data.type){
           case 'list':send(c,{type:'rooms',requestId,rooms:listing()});break;
+          case 'profile':
+            if(!profiles||s||c.profilePending)throw Error('Профиль недоступен для этого подключения.');
+            c.profileUid=null;
+            if(data.token===null){send(c,{type:'profile',requestId});break;}
+            if(typeof data.token!=='string'||data.token.length>5000)throw Error('Недействительный токен профиля.');
+            c.profilePending=true;
+            profiles.identify(data.token).then(uid=>{
+              if(c.session||ws.readyState!==WebSocket.OPEN)return;
+              c.profileUid=uid;
+              send(c,{type:'profile',requestId});
+            }).catch(()=>error(c,'Войдите в профиль заново.',requestId,'profile_auth')).finally(()=>{c.profilePending=false;});
+            break;
           case 'create':
             if(data.gameMode&&!['conquest','tdm'].includes(data.gameMode))throw Error('Неизвестный режим.');
             if(data.gameMode==='tdm'&&!getMap(data.mapId).tdmLoadout)throw Error('Командный бой насмерть недоступен на выбранной карте.');
@@ -293,7 +324,11 @@ export function createGameServer(options={}){
   },1000);maintenance.unref();
   return {server,config,stats,get room(){return room;},
     listen:()=>new Promise(resolve=>server.listen(config.port,'0.0.0.0',()=>resolve(server.address()))),
-    close:async()=>{stopping=true;stopLoop();clearMatchLoading();clearInterval(maintenance);for(const c of clients)c.ws.terminate();await new Promise(resolve=>wss.close(resolve));if(server.listening)await new Promise(resolve=>server.close(resolve));}
+    close:async()=>{stopping=true;stopLoop();clearMatchLoading();clearInterval(maintenance);clearInterval(profileFlush);
+      for(const c of clients)c.ws.terminate();
+      await Promise.all([new Promise(resolve=>wss.close(resolve)),profiles?.close()]);
+      if(server.listening)await new Promise(resolve=>server.close(resolve));
+    }
   };
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){

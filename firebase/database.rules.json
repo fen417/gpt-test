@@ -1,0 +1,55 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "profiles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid && auth.uid !== 'sector09-pvp-writer'",
+        "campaign": {
+          ".write": "auth != null && auth.uid === $uid && auth.uid !== 'sector09-pvp-writer' && newData.exists()",
+          "$mission": {
+            ".validate": "$mission.matches(/^m0[1-8]$/) && newData.hasChildren(['completed', 'checkpoint', 'bestSeconds'])",
+            "completed": {
+              ".validate": "newData.isBoolean()"
+            },
+            "checkpoint": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 9999"
+            },
+            "bestSeconds": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 604800"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "customization": {
+          ".write": "auth != null && auth.uid === $uid && auth.uid !== 'sector09-pvp-writer' && newData.exists()",
+          ".validate": "newData.hasChildren(['soldierSkin'])",
+          "soldierSkin": {
+            ".validate": "newData.isString() && newData.val().length <= 64"
+          },
+          "weaponSkins": {
+            "$weapon": {
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            }
+          },
+          "attachments": {
+            "$weapon": {
+              "$slot": {
+                ".validate": "newData.isString() && newData.val().length <= 64"
+              }
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "pvp": {
+          ".read": "auth != null && auth.uid === 'sector09-pvp-writer'",
+          ".write": "auth != null && auth.uid === 'sector09-pvp-writer'"
+        }
+      }
+    }
+  }
+}
