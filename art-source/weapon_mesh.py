@@ -33,6 +33,42 @@ def sight_ring(mesh, y, z, inner, outer, depth, color):
     mesh.add(vertices, faces, color)
 
 
+def optic_shell(mesh, y, outer, bore, color, sides=28, aspect=1, phase=0):
+    angles = [phase + step * math.tau / sides for step in range(sides)]
+    profile = [*outer, *reversed(bore)]
+    vertices = [(radius * aspect * math.cos(angle), y + radius * math.sin(angle), z)
+                for z, radius in profile for angle in angles]
+    faces = []
+    for row in range(len(profile)):
+        current, following = row * sides, ((row + 1) % len(profile)) * sides
+        for step in range(sides):
+            next_step = (step + 1) % sides
+            faces.append((current + step, current + next_step, following + next_step, following + step))
+    mesh.add(vertices, faces, color)
+
+
+def optic_lens(y, z, radius, sides=28, aspect=1, phase=0):
+    lens = Assembly()
+    angles = [phase + step * math.tau / sides for step in range(sides)]
+    vertices = [(radius * aspect * math.cos(angle), y + radius * math.sin(angle), z) for angle in angles]
+    lens.add(vertices, [tuple(range(sides))], (1, 1, 1))
+    return lens
+
+
+def optic_coating(name, color):
+    coating = bpy.data.materials.new(name)
+    coating.use_nodes = True
+    coating.diffuse_color = color
+    coating.surface_render_method = 'BLENDED'
+    lens = coating.node_tree.nodes.get('Principled BSDF')
+    lens.inputs['Base Color'].default_value = color
+    lens.inputs['Alpha'].default_value = color[3]
+    lens.inputs['Metallic'].default_value = .06
+    lens.inputs['Roughness'].default_value = .16
+    lens.inputs['Coat Weight'].default_value = .8
+    return coating
+
+
 def surface_mark(mesh, text, x, y, z, step, color, fill=.40):
     glyphs = {
         'A': ('010','101','111','101','101'), 'K': ('101','101','110','101','101'),
@@ -121,17 +157,7 @@ def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, p
         child.parent = parent
         child.matrix_world = world
     for name, color in (glass or {}).items():
-        coating = bpy.data.materials.new(name + ' coating')
-        coating.use_nodes = True
-        coating.diffuse_color = color
-        coating.surface_render_method = 'BLENDED'
-        lens = next(node for node in coating.node_tree.nodes if node.type == 'BSDF_PRINCIPLED')
-        lens.inputs['Base Color'].default_value = color
-        lens.inputs['Alpha'].default_value = color[3]
-        lens.inputs['Metallic'].default_value = .06
-        lens.inputs['Roughness'].default_value = .16
-        lens.inputs['Coat Weight'].default_value = .8
-        collection.objects[name].data.materials[0] = coating
+        collection.objects[name].data.materials[0] = optic_coating(name + ' coating', color)
     bpy.ops.export_scene.gltf(filepath=str(glb.resolve()), export_format='GLB', export_vertex_color='ACTIVE',
                               export_meshopt_compression_enable=True, export_meshopt_extension='EXT_meshopt_compression')
     for screen in bpy.data.screens:

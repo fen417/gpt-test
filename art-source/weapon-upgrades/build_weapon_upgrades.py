@@ -1,4 +1,6 @@
-"""Author the three modular upgrade families in the existing weapon socket space."""
+"""Author modular upgrades in the existing weapon socket space."""
+from collections import Counter
+from math import cos, pi, sin, tau
 from pathlib import Path
 import sys
 
@@ -9,7 +11,8 @@ from mathutils import Quaternion, Vector
 ART = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ART))
-from weapon_mesh import Assembly, side_profile, sight_ring
+from weapon_finish import finish_uv, shader_finish
+from weapon_mesh import Assembly, optic_coating, optic_lens, optic_shell, side_profile, sight_ring
 
 SOURCES = {
     "ar416": "ar416/ar416.blend", "ak12": "ak12m/ak12m.blend",
@@ -19,11 +22,30 @@ SOURCES = {
     "p19": "pistols/p19.blend", "m50": "pistols/m50.blend",
 }
 INTEGRAL_MUZZLE = {"ar416": .799, "ak12": .762}
-STEEL = (.15, .16, .16)
-EDGE = (.22, .23, .225)
-POLYMER = (.105, .115, .108)
-PAD = (.065, .070, .066)
-RECESS = (.038, .042, .040)
+STEEL = (.058, .067, .068)
+EDGE = (.102, .114, .114)
+POLYMER = (.046, .051, .050)
+PAD = (.024, .027, .026)
+RECESS = (.014, .016, .016)
+MARK = (.34, .35, .32)
+
+
+def dominant_finish(original, select_face):
+    paint = original.data.color_attributes['Paint'].data
+    weights = Counter()
+    for face in original.data.polygons:
+        if select_face(face):
+            color = tuple(round(channel, 4) for channel in paint[face.loop_start].color[:3])
+            weights[color] += face.area
+    return weights.most_common(1)[0][0]
+
+
+def machined_part(mesh, name, group, finish_rows):
+    part = mesh.object(group.name + name, scene.collection)
+    part.parent = group
+    finish_uv(part.data, mesh.colors, finish_rows, 3)
+    part.data.materials.append(surface_material)
+    return part
 
 
 def group_for(module, weapon):
@@ -62,58 +84,79 @@ def magazine_variant(weapon, stock, compact=False):
         return point
 
     mesh_copy(body, socket, group.name + "_MagazineBody", group, deepen)
-    if compact:
-        heel = [p for p in points if p.z<=floor+(top-floor)*.12]
-        back, front = min(p.y for p in heel), max(p.y for p in heel)
-        width = max(p.x for p in heel) - min(p.x for p in heel)
-        base = Assembly()
-        base.box((0,floor-extension+.003,-(back+front)/2),
-                 (max(.012,width*.86),.014,max(.017,(front-back)*.74)), EDGE, .004)
-        pad = base.object(group.name+"_PullTab", scene.collection)
-        pad.parent = group
-        pad.data.materials.append(polymer_material)
     return group
 
 
 def stock_variant(weapon, stock, stable=False):
     group = group_for("stable-stock" if stable else "light-stock", weapon)
     socket, original = stock["Mount_Stock"], stock["Stock"]
-    points = [original.matrix_basis @ v.co - socket.location for v in original.data.vertices]
-    reach = max(.24, -min(v.y for v in points))
-    heel = min(v.z for v in points) + .014
-    comb = min(.038, max(v.z for v in points) - .008)
-    fit_y = -(.018 if weapon in {"mg36", "pkp"} else .010)
-    narrow = .044 if weapon in {"mcx9", "vk45"} else .054
+    relative = socket.matrix_basis.inverted() @ original.matrix_basis
+    points = [relative @ vertex.co for vertex in original.data.vertices]
+    reach = -min(point.y for point in points)
+    shank = [point for point in points if point.y > -reach * .18]
+    fit_top = max(point.z for point in shank)
+    fit_bottom = min(point.z for point in shank)
+    fit_y = (fit_top + fit_bottom) / 2
+    fit_width = max(abs(point.x) for point in shank) * 2
+    heel = min(point.z for point in points) + .011
+    comb = max(point.z for point in points if point.y < -reach * .43) - .007
+    width = max(fit_width * .93, max(abs(point.x) for point in points) * (1.76 if stable else 1.42))
+    paint = dominant_finish(original, lambda face: abs(face.normal.x) > .65
+                            and -.82 * reach < (relative @ face.center).y < -.13 * reach)
+    trim = tuple(channel * .74 for channel in paint)
+    rail = tuple(channel * .88 for channel in paint)
+    start = -max(point.y for point in points) - .008
+    adapter_end = reach * .24
     mesh = Assembly()
-    mesh.box((0, fit_y, reach*.105), (narrow, .048, reach*.24), STEEL, .005)
-    side_profile(mesh, [(reach*.18,fit_y+.023),(reach*.84,comb+.012),
-                        (reach*.95,comb+.008),(reach*.90,comb-.018),(reach*.20,fit_y-.02)],
-                 narrow, POLYMER)
-    side_profile(mesh, [(reach*.17,fit_y-.015),(reach*.78,heel+.018),(reach*.92,heel+.018),
-                        (reach*.92,heel-.009),(reach*.74,heel-.009),(reach*.13,fit_y-.038)],
-                 narrow*.73, POLYMER)
-    cheek = .032 if weapon in {"dmr12", "sv98"} else .018
-    mesh.box((0, comb+cheek*.4, reach*.66), (narrow+.009, cheek, reach*.37), EDGE, .004)
+    side_profile(mesh, [(start,fit_bottom+.004),(start,fit_top-.003),
+                        (reach*.16,fit_top),(adapter_end,fit_top-.003),
+                        (adapter_end,fit_bottom+.007),(reach*.11,fit_bottom)], fit_width, rail)
+    outline = [(reach*.18,fit_top-.005),(reach*.34,comb),(.84*reach,comb),
+               (.94*reach,comb-.016),(.92*reach,heel+.008),(.80*reach,heel),
+               (.65*reach,heel+.012),(.18*reach,fit_bottom)]
     if stable:
-        side_profile(mesh, [(reach*.24,comb+.019),(reach*.89,comb+.026),
-                            (reach*.91,heel+.01),(reach*.68,heel+.028),(reach*.29,fit_y-.043)],
-                     narrow*1.24, POLYMER)
-        mesh.box((0,comb+.027,reach*.64),(narrow+.017,.029,reach*.48),PAD,.006)
-        for x in [-narrow*.64,narrow*.64]:
-            for index in range(3):
-                mesh.box((x,comb-.036,reach*(.61+.09*index)),(.004,.040,.017),RECESS,.0015)
-    side_profile(mesh, [(reach*.88,comb+.026),(reach,comb+.036),
-                        (reach+.007,heel-.004),(reach*.92,heel-.016)],
-                 narrow+.014, PAD)
-    for i in range(6):
-        y = heel+.009+i*(comb-heel+.017)/6
-        mesh.box((0,y,reach+.001), (narrow+.008,.006,.011), POLYMER, .001)
-    for x in [-narrow*.48, narrow*.48]:
-        for z, y in [(reach*.18,fit_y),(reach*.87,comb-.003)]:
-            mesh.cylinder((x,y,z), .006, .006, "x", STEEL, 12)
-    part = mesh.object(group.name + "_Frame", scene.collection)
-    part.parent = group
-    part.data.materials.append(polymer_material)
+        side_profile(mesh, outline, width, paint)
+        cheek_height = .023 if weapon in {"dmr12", "sv98"} else .015
+        for z in (reach*.47, reach*.76):
+            mesh.cylinder((0,comb+.002,z), .011, cheek_height*1.2, 'y', STEEL, 14)
+        side_profile(mesh, [(reach*.32,comb+.006),(reach*.41,comb+cheek_height),
+                           (reach*.80,comb+cheek_height),(reach*.87,comb+.006),
+                           (reach*.80,comb+.003),(reach*.40,comb+.003)], width*1.15, trim)
+        for x in (-width*.5,width*.5):
+            side_profile(mesh, [(reach*.48,comb-.034),(reach*.80,comb-.031),(reach*.79,comb-.054),
+                                (reach*.60,comb-.052)], .003, trim, x)
+            mesh.cylinder((x,comb-.045,reach*.77), .013, .007, 'x', PAD, 18)
+            mesh.cylinder((x*1.13,comb-.045,reach*.77), .005, .003, 'x', STEEL, 12)
+    else:
+        # Sweep a chamfered outer edge around the open web of the stock.
+        center = (reach*.65, (comb + heel) / 2 + .015)
+        opening = [(center[0]+(z-center[0])*.65,center[1]+(y-center[1])*.63) for z,y in outline]
+        inset = [(z*.995+center[0]*.005, y*.95+center[1]*.05) for z,y in outline]
+        sections = [(-width*.50,inset),(-width*.38,outline),(width*.38,outline),
+                    (width*.50,inset),(width*.38,opening),(-width*.38,opening)]
+        count = len(outline)
+        vertices = [(x,y,z) for x,profile in sections for z,y in profile]
+        faces = []
+        for row in range(len(sections)):
+            current, following = row*count, ((row+1)%len(sections))*count
+            for i in range(count):
+                j = (i+1)%count
+                faces.append((current+i,current+j,following+j,following+i))
+        mesh.add(vertices, faces, paint)
+        mesh.colors[-2*count:-count] = [trim] * count
+    pad_width = width * (1.10 if stable else 1.02)
+    pad_depth = .021 if stable else .013
+    side_profile(mesh, [(reach*.91,comb-.004),(reach-pad_depth*.35,comb-.014),
+                        (reach,comb-.032),(reach-.005,heel+.016),
+                        (reach-pad_depth*.64,heel+.004),(.89*reach,heel+.013)], pad_width, PAD)
+    for index in range(6):
+        t = (index + 1) / 8
+        mesh.box((0,heel+.018 + (comb-heel-.052)*t,reach-.005+.004*t),
+                 (pad_width*.86,.005,.006), RECESS, .001)
+    for x in (-width*.47,width*.47):
+        mesh.cylinder((x,fit_y,reach*.23), .006, .008, 'x', STEEL, 14)
+        mesh.cylinder((x*1.12,fit_y,reach*.23), .0031, .003, 'x', RECESS, 6)
+    machined_part(mesh, '_Frame', group, {paint:1, trim:1, rail:1, PAD:1, RECESS:1, STEEL:2})
     return group
 
 
@@ -122,40 +165,54 @@ def scope(module, reach, rear, front, kind):
     axis=.053 if kind==0 else .061
     back=reach*.42
     nose=-reach*.58
-    waist=min(rear,front)*.75
+    waist=min(rear,front)*.77
     mesh=Assembly()
-    shell=[(nose,front),(nose+.011,front),(nose+.031,waist),
-           (back-.044,waist),(back-.023,rear),(back,rear)]
-    # Build through-bore geometry so the lenses read from the side and rear.
-    rings=shell+[(back,rear*.77),(back-.012,rear*.77),(nose+.012,front*.70),(nose,front*.73)]
-    sides=8 if kind==0 else 24
-    from math import cos, sin, tau
-    verts=[(r*cos(i*tau/sides),axis+r*sin(i*tau/sides),z) for z,r in rings for i in range(sides)]
-    faces=[(row*sides+i,row*sides+(i+1)%sides,((row+1)%len(rings))*sides+(i+1)%sides,
-            ((row+1)%len(rings))*sides+i) for row in range(len(rings)) for i in range(sides)]
-    mesh.add(verts,faces,STEEL)
-    mesh.box((0,.010,0),(.071,.020,min(reach*.84,.22)),POLYMER,.004)
-    for z in [-reach*.22,reach*.23]:
-        mesh.box((0,.025,z),(.057,.037,.026),POLYMER,.004)
-        for x in [-.037,.037]:
-            mesh.cylinder((x,.012,z),.006,.010,"x",EDGE,12)
-    mesh.cylinder((0,axis+waist+.008,-.013),.013,.017,"y",EDGE,16)
+    sides, aspect, phase = (8,1.17,pi/8) if kind==0 else (28,1,0)
+    front_bore, rear_bore = front*.76, rear*.80
+    outer = [(nose,front*.97),(nose+.006,front),(nose+.025,front),
+             (nose+.045,waist+.001),(back-.048,waist),(back-.034,rear*.92),
+             (back-.009,rear),(back,rear*.97)]
+    bore = [(nose,front_bore),(nose+.016,front_bore),(nose+.045,waist*.80),
+            (back-.041,waist*.80),(back-.016,rear_bore),(back,rear_bore)]
+    optic_shell(mesh,axis,outer,bore,STEEL,sides,aspect,phase)
+    mount_length = min(reach*.71,.145)
+    mesh.box((0,.006,0),(.069,.024,mount_length),STEEL,.004)
+    mesh.box((0,.022,0),(.046,.020,mount_length*.87),POLYMER,.004)
+    for z in (-mount_length*.31,mount_length*.31):
+        for x in (-.035,.035):
+            mesh.cylinder((x,.010,z),.0056,.007,'x',EDGE,14)
+            mesh.cylinder((x*1.12,.010,z),.0028,.0014,'x',RECESS,6)
+    mesh.cylinder((0,axis+waist+.005,-.011),.012,.013,'y',POLYMER,20)
+    for step in range(12):
+        angle = step * tau / 12
+        mesh.box((.011*cos(angle),axis+waist+.007,-.011+.011*sin(angle)),
+                 (.004,.007,.004),EDGE,.0006)
+    if kind==0:
+        for x in (-.026,.026):
+            side_profile(mesh, [(nose+.006,axis-.017),(nose+.017,axis+.016),
+                                (back-.024,axis+.011),(back-.019,axis-.015)], .019,POLYMER,x)
+            mesh.box((x*1.37,axis+.006,nose+.035),(.002,.002,.018),MARK,.0003)
     if kind==1:
-        mesh.cylinder((0,axis,back-.029),rear+.004,.019,"z",POLYMER,24)
-        mesh.box((.009,axis+rear+.009,back-.028),(.014,.018,.019),EDGE,.002)
+        dial = back-.020
+        sight_ring(mesh,axis,dial,rear*.83,rear+.002,.019,POLYMER)
+        for step in range(16):
+            angle = step * tau / 16
+            mesh.cylinder(((rear+.002)*cos(angle),axis+(rear+.002)*sin(angle),dial),
+                          .0021,.015,'z',EDGE,8)
+        mesh.box((.014,axis+rear+.006,dial),(.012,.017,.014),POLYMER,.002)
+        mesh.box((.017,axis+rear+.014,dial),(.003,.001,.009),MARK,.0002)
     if kind==2:
-        mesh.cylinder((.037,axis,-.017),.013,.021,"x",EDGE,16)
-        for z in [nose+.005,back-.007]:
-            sight_ring(mesh,axis,z,waist*.82,(rear if z>0 else front)+.002,.010,EDGE)
-    part=mesh.object(group.name+"_Housing",scene.collection)
-    part.parent=group
-    part.data.materials.append(steel_material)
-    lens=Assembly()
-    lens.cylinder((0,axis,nose+.013),front*.70,.003,"z",(.075,.271,.231),24)
-    lens.cylinder((0,axis,back-.010),rear*.76,.003,"z",(.092,.234,.205),24)
-    glass=lens.object(group.name+"_Lenses",scene.collection)
-    glass.parent=group
-    glass.data.materials.append(lens_material)
+        mesh.cylinder((.027,axis,-.011),.013,.020,'x',EDGE,20)
+        mesh.cylinder((.039,axis,-.011),.011,.007,'x',POLYMER,20)
+        mesh.box((.042,axis,-.011),(.0016,.002,.014),MARK,.0002)
+        sight_ring(mesh,axis,nose+.009,front*.95,front+.004,.011,EDGE)
+        sight_ring(mesh,axis,back-.006,rear*.92,rear+.002,.010,POLYMER)
+    machined_part(mesh,'_Housing',group,{POLYMER:1,RECESS:1,EDGE:2,MARK:1})
+    for name,z,radius,coating in [('_FrontLens',nose+.012,front_bore,front_coating),
+                                  ('_RearLens',back-.008,rear_bore,rear_coating)]:
+        glass = optic_lens(axis,z,radius,sides,aspect,phase).object(group.name+name,scene.collection)
+        glass.parent = group
+        glass.data.materials.append(coating)
     eye=bpy.data.objects.new(group.name+"_Eye",None)
     scene.collection.objects.link(eye)
     eye.parent=group
@@ -179,25 +236,24 @@ def compensator(weapon, stock):
         barrel.data.update()
     else:
         collar = max(v.co.y for v in barrel.data.vertices) - .017
+    paint = dominant_finish(stock['Barrel'], lambda face: abs(face.normal.y) < .65)
     radius = .033 if weapon in {"pkp", "sv98", "dmr12"} else .027
     length = .098 if radius > .03 else .081
     # Beveled end rings and narrow ribs frame the open slots in the sidewalls.
     mesh = Assembly()
     mesh.tube((0,0,0), [(-collar-.019,radius*.90),(-collar+.004,radius*.86),
-                        (-collar+.015,radius*.66)], "z", STEEL, 16)
+                        (-collar+.015,radius*.66)], "z", paint, 16)
     nose = -collar - length
     sight_ring(mesh, 0, nose+.004, radius*.37, radius*.93, .010, EDGE)
     mesh.cylinder((0,0,nose+.013), radius*.43, .002, "z", RECESS, 16)
     for sign in [-1, 1]:
         for y in [-radius*.65, radius*.65]:
             mesh.box((sign*radius*.68,y,nose+length*.48),
-                     (radius*.58,radius*.49,length*.87), STEEL, .003)
+                     (radius*.58,radius*.49,length*.87), paint, .003)
         for offset in [.27,.52,.76]:
             mesh.box((sign*radius*.69,0,nose+length*offset),
                      (radius*.56,radius*1.37,.007), EDGE, .0015)
-    part = mesh.object(group.name + "_Ports", scene.collection)
-    part.parent = group
-    part.data.materials.append(steel_material)
+    machined_part(mesh, '_Ports', group, {EDGE:2, RECESS:1})
     tip = bpy.data.objects.new(group.name + "_Muzzle", None)
     scene.collection.objects.link(tip)
     tip.parent = group
@@ -205,23 +261,22 @@ def compensator(weapon, stock):
     return group
 
 
-def finish(name, metallic, roughness):
+def surface_finish(name):
     material = bpy.data.materials.new(name)
     material.use_nodes = True
     shader = material.node_tree.nodes.get("Principled BSDF")
-    shader.inputs["Metallic"].default_value = metallic
-    shader.inputs["Roughness"].default_value = roughness
     color = material.node_tree.nodes.new("ShaderNodeVertexColor")
     color.layer_name = "Paint"
     material.node_tree.links.new(color.outputs["Color"], shader.inputs["Base Color"])
+    shader_finish(material, shader, 3)
     return material
 
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
-steel_material = finish("Parkérisé gris", .58, .44)
-polymer_material = finish("Polymère armé", .10, .62)
-lens_material = finish("Verre optique traité", .30, .16)
+surface_material = surface_finish("Coated alloy and molded polymer")
+front_coating = optic_coating('Front lens coating', (.29,.48,.40,.17))
+rear_coating = optic_coating('Rear lens coating', (.43,.55,.58,.09))
 gallery = []
 for index, (weapon, source) in enumerate(SOURCES.items()):
     with bpy.data.libraries.load(str(ART / source)) as (available, loaded):
@@ -249,7 +304,7 @@ output = ART.parent / "src/assets/infantry/weapon-upgrades.glb"
 source_finishes = []
 for group, _, _ in gallery:
     for part in group.children:
-        if part.type == "MESH" and tuple(part.data.materials) not in {(steel_material,), (polymer_material,), (lens_material,)}:
+        if part.type == "MESH" and tuple(part.data.materials) not in {(surface_material,), (front_coating,), (rear_coating,)}:
             source_finishes.append((part, list(part.data.materials)))
             part.data.materials.clear()
 bpy.ops.export_scene.gltf(filepath=str(output), export_format="GLB", export_vertex_color="ACTIVE",

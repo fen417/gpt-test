@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from weapon_mesh import Assembly, export_weapon, side_profile, sight_ring, surface_mark
+from weapon_mesh import Assembly, export_weapon, optic_lens, optic_shell, side_profile, sight_ring, surface_mark
 
 
 FDE = (.175,.125,.070)
@@ -16,7 +16,6 @@ EDGE = (.122,.148,.156)
 POLYMER = (.044,.049,.046)
 PAD = (.019,.021,.020)
 RECESS = (.010,.014,.017)
-GLASS = (.029,.101,.110)
 ENGRAVING = (.33,.34,.28)
 RED = (.37,.049,.031)
 
@@ -188,13 +187,12 @@ def scope(sv, eye_y):
     rear,front=(.061,-.437) if sv else (.066,-.300)
     housing=.024 if sv else .022
     lens=.036 if sv else .029
-    optic.tube((0,eye_y,0),[(front,lens-.004),(front+.006,lens),(front+.056,lens),
-                            (front+.103,housing),(rear-.101,housing),
-                            (rear-.071,housing+.010),(rear-.012,housing+.010),(rear,housing+.007)],
-               'z',POLYMER,32)
-    for z,r in [(front-.002,lens-.005),(rear+.001,housing+.003)]:
-        sight_ring(optic,eye_y,z,r-.005,r+.004,.008,EDGE)
-        optic.cylinder((0,eye_y,z),r-.0055,.0015,'z',GLASS,28)
+    front_bore, rear_bore = lens-.009, housing-.002
+    outer = [(front,lens-.004),(front+.006,lens),(front+.056,lens),(front+.103,housing),
+             (rear-.101,housing),(rear-.071,housing+.010),(rear-.012,housing+.010),(rear,housing+.007)]
+    bore = [(front,front_bore),(front+.038,front_bore),(front+.108,housing-.006),
+            (rear-.092,housing-.006),(rear-.041,rear_bore),(rear,rear_bore)]
+    optic_shell(optic,eye_y,outer,bore,POLYMER)
     clamp_y=.098 if sv else .094
     ring_centers=(-.221,-.054) if sv else (-.192,-.073)
     for z in ring_centers:
@@ -222,7 +220,8 @@ def scope(sv, eye_y):
     if sv:
         sight_ring(optic,eye_y,rear-.066,.032,.037,.014,EDGE)
         optic.box((.031,eye_y+.019,rear-.066),(.021,.014,.020),POLYMER,.003)
-    return optic
+    return [('Optic',optic),('OpticFrontLens',optic_lens(eye_y,front+.012,front_bore)),
+            ('OpticRearLens',optic_lens(eye_y,rear-.008,rear_bore))]
 
 
 def barrel(sv,bore,nose):
@@ -244,7 +243,7 @@ def build(sv):
     bore,nose,eye_y=(.026,-1.057,.166) if sv else (.016,-.920,.167)
     tube,brake=barrel(sv,bore,nose)
     receiver=sv_receiver() if sv else dmr_receiver()
-    parts=[('Receiver',receiver),('ForeEnd',forend(sv)),('Stock',stock(sv)),('Optic',scope(sv,eye_y)),
+    parts=[('Receiver',receiver),('ForeEnd',forend(sv)),('Stock',stock(sv)),*scope(sv,eye_y),
            ('Barrel',tube),('MuzzleDevice',brake),('Magazine',magazine(sv)),('Bolt',bolt_parts(sv))]
     mounts={
         'Mount_Optic':(0,.089,-.128),'Scope_Eye':(0,eye_y,.065),
@@ -262,6 +261,8 @@ def build(sv):
 if __name__ == '__main__':
     name,glb,blend=sys.argv[sys.argv.index('--')+1:]
     parts,pivots,mounts=build(name=='sv98')
-    finishes={POLYMER:1,PAD:1,RECESS:1,GLASS:1,ENGRAVING:1,RED:1,EDGE:2}
+    finishes={POLYMER:1,PAD:1,RECESS:1,ENGRAVING:1,RED:1,EDGE:2}
     export_weapon(parts,Path(glb),Path(blend),pivots=pivots,mounts=mounts,
+                  parents={'OpticFrontLens':'Optic','OpticRearLens':'Optic'},
+                  glass={'OpticFrontLens':(.29,.48,.40,.17),'OpticRearLens':(.43,.55,.58,.09)},
                   modular=True,view_distance=2.25,finish_rows=finishes)

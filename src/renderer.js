@@ -2023,9 +2023,9 @@ export class GameRenderer {
       const optic=getWeaponModule(player.weaponId,'optic',opticId);
       const scopedWeapon = !gadgetKind && Boolean(optic?.zooms??SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
       const equippedCollimator = !gadgetKind && Boolean(view.hasCollimator?.(this.presentedWeaponId));
-      const opticZoom = scopedWeapon ? scopeMagnification(player.weaponId,view.scopeZoom,opticId) :
-        equippedCollimator && !this.weaponSwitch ? COLLIMATOR_ZOOM : 1;
       this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
+      const opticZoom = this.scoped ? scopeMagnification(player.weaponId,view.scopeZoom,opticId) :
+        equippedCollimator && !this.weaponSwitch ? COLLIMATOR_ZOOM : 1;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       // Local visual time must not be restarted by every authoritative snapshot.
       // Correct small clock differences gradually, never jumping hands backward.
@@ -2083,7 +2083,8 @@ export class GameRenderer {
       const aimFov = scopedWeapon||opticZoom>1
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / opticZoom))
         : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
-      const fov = lerp(baseFov + this.sprintBlend * 6 + this.slideBlend*3, aimFov, this.aimAmount);
+      const hipFov = baseFov + this.sprintBlend * 6 + this.slideBlend*3;
+      const fov = scopedWeapon ? (this.scoped ? aimFov : hipFov) : lerp(hipFov, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
         this.camera.near = .045;

@@ -1103,8 +1103,9 @@ document.addEventListener('mousemove',event=>{
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
-  const opticZoom=player?.heldGadget?1:hasCollimator(player?.weaponId)?COLLIMATOR_ZOOM:
-    scopeMagnification(player?.weaponId,weaponScopeZoom(player?.weaponId),equippedAttachments(player?.weaponId)?.optic);
+  const weaponId=player?.weaponId,opticId=equippedAttachments(weaponId)?.optic;
+  const opticZoom=player?.heldGadget?1:hasCollimator(weaponId)?COLLIMATOR_ZOOM:
+    renderer?.scoped?scopeMagnification(weaponId,weaponScopeZoom(weaponId,opticId),opticId):1;
   const aimScale = aim ? (opticZoom>1 ? .70/opticZoom : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
