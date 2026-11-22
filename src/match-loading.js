@@ -8,6 +8,7 @@ const panoramas={
   fy_pool_day:new URL('./assets/panoramas/fy_pool_day.webp',import.meta.url).href,
   linden_estate:new URL('./assets/panoramas/linden_estate.webp',import.meta.url).href,
 };
+const fullSizeArt=import.meta.glob('./assets/loading/*.webp',{eager:true,import:'default',query:'?url'});
 const modes={solo:'Одиночная игра',server:'Сетевая игра',campaign:'Кампания «Песок и сталь»'};
 
 export function matchLoadingInfo(mode,map,missionId){
@@ -15,7 +16,9 @@ export function matchLoadingInfo(mode,map,missionId){
   const image=mission?.previewImage
     ?new URL(import.meta.env.BASE_URL+'campaign/'+mission.previewImage,location.href).href
     :panoramas[map?.id];
-  return {mode:modes[mode],title:mission?.title??map?.name??'Подготовка операции',image};
+  const fullSize=fullSizeArt[`./assets/loading/${mission?.id??map?.id}.webp`];
+  const srcset=image&&fullSize?`${image} ${mission?.previewImage?960:1280}w, ${fullSize} 2560w`:'';
+  return {mode:modes[mode],title:mission?.title??map?.name??'Подготовка операции',image,srcset};
 }
 
 export function mountMatchLoading(cancel){
@@ -26,6 +29,7 @@ export function mountMatchLoading(cancel){
   const describe=info=>{
     get('-mode').textContent=info.mode;
     get('-title').textContent=info.title;
+    image.srcset=info.srcset;
     if(info.image)image.src=info.image;
     else image.removeAttribute('src');
     image.hidden=!info.image;
