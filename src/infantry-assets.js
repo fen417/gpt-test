@@ -5,7 +5,8 @@ import { SafeWebGpuKtx2Loader } from './webgpu-ktx2.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { showLongBarrel, weaponModelUrls } from './weapon-models.js';
+import { showWeaponUpgrades, weaponModelUrls } from './weapon-models.js';
+import { weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
 
 const weaponNames = {
   ar416: 'ar416', ak12: 'ak12m', mcx9: 'mcx9', vk45: 'vk45',
@@ -232,14 +233,17 @@ function prepareWeapon(gltf, name) {
       magazine.worldToLocal(magazineContact);
     }
   }
-  let distantLongBarrel;
+  const distantUpgrades = new Map();
   return {
     model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol), foregrip: Boolean(fit.foregrip),
-    getDistantLongBarrel(weaponId) {
-      if (distantLongBarrel) return distantLongBarrel;
-      const extended = model.clone(true);
-      if (showLongBarrel(extended, weaponId, true)) distantLongBarrel = batchDistantWeapon(extended);
-      return distantLongBarrel;
+    distantUpgrades,
+    getDistantUpgrade(weaponId, flags) {
+      if (!distantUpgrades.has(flags)) {
+        const upgraded = model.clone(true);
+        if (!showWeaponUpgrades(upgraded, weaponId, weaponAttachmentsFromFlags(flags))) return this.distantWeapon;
+        distantUpgrades.set(flags, batchDistantWeapon(upgraded));
+      }
+      return distantUpgrades.get(flags);
     },
     stock: new THREE.Vector3(0, .07, weaponBounds.max.z),
     support: from(fit.support).sub(primary).multiplyScalar(scale),
@@ -316,6 +320,7 @@ export class InfantryAssets {
     };
     (template.anchor ?? template.model).traverse(collect);
     if (template.distantWeapon) collect(template.distantWeapon);
+    for (const variant of template.distantUpgrades?.values() ?? []) collect(variant);
     for (const values of template.levels?.values() ?? []) for (const level of values) for (const value of level ?? []) geometry.add(value);
     for (const material of materials) {
       for (const item of Object.values(material)) if (item?.isTexture) textures.add(item);

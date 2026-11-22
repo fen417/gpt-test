@@ -22,7 +22,7 @@ import { addPortLabels, addPortWater } from './port-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS, EYE_HEIGHT, CROUCH_EYE_HEIGHT } from '../shared/world.js';
-import { resolveWeaponModules } from '../shared/weapon-modules.js';
+import { getWeaponModule, resolveWeaponModules } from '../shared/weapon-modules.js';
 import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
@@ -2014,11 +2014,16 @@ export class GameRenderer {
       );
       const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
-      this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
-      const weapon = resolveWeaponModules(getWeapon(player.classId,player.weaponId),player.weaponModules?.[player.weaponId]);
-      const scopedWeapon = !gadgetKind && Boolean(SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
+      const weapon = resolveWeaponModules(getWeapon(player.classId,player.weaponId),view.equippedAttachments?.(player.weaponId)??player.weaponModules?.[player.weaponId]);
+      const enteringAim = view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 &&
+        (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2;
+      const aimTime = enteringAim && !gadgetKind ? weapon.aimTime ?? 1 : 1;
+      this.aimAmount = lerp(this.aimAmount, Number(Boolean(enteringAim)), 1 - Math.exp(-dt * 15 / aimTime));
+      const opticId=view.equippedAttachments?.(player.weaponId)?.optic;
+      const optic=getWeaponModule(player.weaponId,'optic',opticId);
+      const scopedWeapon = !gadgetKind && Boolean(optic?.zooms??SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
       const equippedCollimator = !gadgetKind && Boolean(view.hasCollimator?.(this.presentedWeaponId));
-      const opticZoom = scopedWeapon ? scopeMagnification(player.weaponId,view.scopeZoom) :
+      const opticZoom = scopedWeapon ? scopeMagnification(player.weaponId,view.scopeZoom,opticId) :
         equippedCollimator && !this.weaponSwitch ? COLLIMATOR_ZOOM : 1;
       this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
@@ -2075,7 +2080,7 @@ export class GameRenderer {
       // Large iron-sighted machine guns need more visible surroundings than
       // rifles with close optics; don't narrow their ADS FOV as aggressively.
       const supportIron=!pistol&&!gadgetKind&&player.classId==='support';
-      const aimFov = opticZoom>1
+      const aimFov = scopedWeapon||opticZoom>1
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / opticZoom))
         : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
       const fov = lerp(baseFov + this.sprintBlend * 6 + this.slideBlend*3, aimFov, this.aimAmount);
@@ -2094,7 +2099,7 @@ export class GameRenderer {
         team: player.team,
         weaponId: this.presentedWeaponId,
         collimator:equippedCollimator,
-        longBarrel:view.hasLongBarrel?.(this.presentedWeaponId),
+        attachments:view.equippedAttachments?.(this.presentedWeaponId),
         unarmed: state.gameMode==='tdm'&&!player.weaponId,
         aim: this.aimAmount,
         reloadMotion,

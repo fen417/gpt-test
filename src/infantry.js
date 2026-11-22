@@ -3,7 +3,8 @@ import { weaponSwitchPose } from '../shared/world.js';
 import { cloneInfantry, findInfantryBones, gaitClips, legNames } from './infantry-assets.js';
 import { CREW_CONTROLS } from './vehicles.js';
 import { LAUNCHER_POSE } from './gadget-poses.js';
-import { longBarrelMuzzle, showLongBarrel } from './weapon-models.js';
+import { upgradeMuzzle, showWeaponUpgrades } from './weapon-models.js';
+import { weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
 
 const { clamp, damp, lerp, smoothstep } = THREE.MathUtils;
 const turn = (from, target) => Math.atan2(Math.sin(target - from), Math.cos(target - from));
@@ -337,7 +338,7 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.weaponModel = template.model.clone(true);
   rig.distantWeapon = template.distantWeapon.clone();
   rig.weaponTemplate = template;
-  rig.longBarrel = false;
+  rig.attachmentFlags = 0;
   rig.weaponId = weaponId;
   rig.pistol = template.pistol;
   rig.support.copy(template.support);
@@ -355,18 +356,16 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.feedCover = rig.weaponModel.getObjectByName('FeedCover');
 }
 
-function updateInfantryBarrel(rig, equipped) {
-  if (equipped === rig.longBarrel) return;
+function updateInfantryUpgrades(rig, flags) {
+  if (flags === rig.attachmentFlags) return;
   const model = rig.weaponModel;
-  if (!showLongBarrel(model, rig.weaponId, equipped)) return;
-  rig.longBarrel = equipped;
+  showWeaponUpgrades(model, rig.weaponId, weaponAttachmentsFromFlags(flags));
+  rig.attachmentFlags = flags;
   const template = rig.weaponTemplate;
-  const distant = equipped ? template.getDistantLongBarrel(rig.weaponId) : template.distantWeapon;
-  if (distant) {
-    rig.distantWeapon.geometry = distant.geometry;
-    rig.distantWeapon.material = distant.material;
-  }
-  if (equipped && longBarrelMuzzle(model, rig.weaponId, rig.flash.position))
+  const distant = flags ? template.getDistantUpgrade(rig.weaponId, flags) : template.distantWeapon;
+  rig.distantWeapon.geometry = distant.geometry;
+  rig.distantWeapon.material = distant.material;
+  if (upgradeMuzzle(model, rig.flash.position))
     rig.flash.position.applyMatrix4(model.matrix);
   else rig.flash.position.copy(template.muzzle);
   rig.flash.position.z -= .052;
@@ -612,7 +611,7 @@ export function infantryTurnTolerance(rig, aiming, sliding) {
 
 export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   const { group, motion } = rig;
-  updateInfantryBarrel(rig, Boolean(player.longBarrel) && player.weaponId === rig.weaponId);
+  if (player.weaponId === rig.weaponId) updateInfantryUpgrades(rig, player.attachmentFlags ?? 0);
   rig.deathPose = null;
   dt = Math.max(dt, .001);
   if (reset) {

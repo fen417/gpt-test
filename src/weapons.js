@@ -8,7 +8,7 @@ import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS, pistolGripSectionAt } from 
 import { createFPSHand, fpsHandTextures } from './fps-hands.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
-import { cloneWeaponModel, longBarrelMuzzle, showLongBarrel } from './weapon-models.js';
+import { cloneWeaponModel, upgradeMuzzle, upgradeOpticEye, showWeaponUpgrades } from './weapon-models.js';
 import { mountCollimator } from './collimator.js';
 
 const rifleFits = {
@@ -1075,7 +1075,9 @@ export function createWeaponRig(owner = {}) {
   let visibleRifle = null;
   const installedOptics=new Map();
   let activeOptic;
-  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,longBarrel=false}={}){
+  const scopeEye = new THREE.Vector3();
+  let upgradeSight;
+  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,attachments}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1114,7 +1116,7 @@ export function createWeaponRig(owner = {}) {
       barrelSleeve.position.set(0,.015,-.225-loadout.guard+.015);
       muzzle.position.set(0,.015,end);
       suppressor.position.set(0,.015,end-.035);
-      muzzle.visible = !recon && !isVk;
+      muzzle.visible = !recon;
       supportAttachment.visible = support;
       for(const [id,group] of Object.entries(variantDetails))group.visible=id===key;
       akVariant.visible = isAk;
@@ -1132,19 +1134,15 @@ export function createWeaponRig(owner = {}) {
       ironSights.visible = support || classId === 'assault';
       for (const [name, stamp] of Object.entries(weaponLabels)) stamp.visible = name === key;
       frontSight.position.z = -.225-loadout.guard+.035;
-      weapon.userData.muzzleZ = end-(recon||isVk?.215:.084);
+      weapon.userData.muzzleZ = end-(recon?.215:.084);
       for (const feed of [magazine,beltBox]) { feed.position.set(0,0,0);feed.rotation.set(0,0,0); }
     }
     rifleAssembly.visible=!pistol&&!unarmed;
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!unarmed;
     scope.visible = recon && aim < .92;
-    suppressor.visible = recon || isVk;
+    suppressor.visible = recon;
     if(rifle?.muzzle)muzzleFlash.position.copy(rifle.muzzle);
     else muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : rifle?.fit.muzzleZ??weapon.userData.muzzleZ);
-    if(rifle){
-      showLongBarrel(rifle.model,key,longBarrel);
-      if(longBarrel)longBarrelMuzzle(rifle.model,key,muzzleFlash.position);
-    }
     flashLight.position.copy(muzzleFlash.position);
     const hasPhase = Number.isFinite(reloadPhase);
     const phase = hasPhase ? THREE.MathUtils.clamp(reloadPhase,0,1) : reloadMotion > 0 ? .64 : 1;
@@ -1177,6 +1175,11 @@ export function createWeaponRig(owner = {}) {
       activeOptic?.show(true);
     }
     activeOptic?.aim(aim>.75);
+    const weaponRoot=rifle?.model??pistol?.root;
+    const slots=collimator?{...attachments,optic:'collimator-15'}:attachments;
+    showWeaponUpgrades(weaponRoot,key,slots);
+    if(rifle&&slots?.barrel&&upgradeMuzzle(rifle.model,muzzleFlash.position))flashLight.position.copy(muzzleFlash.position);
+    upgradeSight=rifle&&upgradeOpticEye(rifle.model,scopeEye)?{height:scopeEye.y,depth:-.25-scopeEye.z}:null;
     const usingSupply=usingTool&&(gadgetKind==='ammo'||gadgetKind==='medkit');
     const usingDefib=usingTool&&gadgetKind==='defibrillator';
     const throwing=throwPhase>0&&throwPhase<1;
@@ -1275,7 +1278,7 @@ export function createWeaponRig(owner = {}) {
   }
   return {weapon,handguard,bolt,get ejection(){return visibleRifle?.ejection??visiblePistol?.ejection??bolt;},
     get collimatorSight(){return activeOptic;},
-    get rifleSight(){return visibleRifle?.sight;},
+    get rifleSight(){return upgradeSight??visibleRifle?.sight;},
     get sightType(){return visibleRifle?.scoped?'scope':visiblePistol||visibleRifle?'iron':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};

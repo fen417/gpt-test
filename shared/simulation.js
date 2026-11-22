@@ -9,7 +9,7 @@ import { findBotPath, prepareNavigation, beginNavigationTick, moveBot } from './
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT, WEAPONS } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
 import {shotTrajectory,shotRandom,advanceFireClock,weaponSpread} from './fire-control.js';
-import {LONG_BARREL_ID,WEAPON_SLOTS,getWeaponModule,resolveWeaponModules} from './weapon-modules.js';
+import {WEAPON_SLOTS,getWeaponModule,resolveWeaponModules,weaponAttachmentFlags} from './weapon-modules.js';
 import {PoseHistory} from './pose-history.js';
 import {rayInfantry} from './infantry-hitboxes.js';
 import {moveTank,advanceTankSystems,fireTank,tankArmorZone} from './tank.js';
@@ -1284,7 +1284,7 @@ export class Simulation {
         vehicleId:p.vehicleId,vehicleSeat:p.vehicleSeat,
         networkActive:p.alive&&(!p.grounded||this.time-(p.lastShotAt??-10)<.5),vy:p.vy,jumpFatigue:p.jumpFatigue??0,jumpCooldown:p.jumpCooldown??0,velocityX:p.velocityX,velocityZ:p.velocityZ,moveSpeed:p.moveSpeed,
         slideTime:p.slideTime,slideCooldown:p.slideCooldown,slideVx:p.slideVx,slideVz:p.slideVz,
-        longBarrel:p.weaponModules?.[p.weaponId]?.barrel===LONG_BARREL_ID,
+        attachmentFlags:weaponAttachmentFlags(p.weaponModules?.[p.weaponId]),
         controlFlags:(p.jumpHeld?1:0)|(p.crouchHeld?2:0)|(p.wasSprinting?4:0)|(p.fireHeld?8:0),
       };
     });

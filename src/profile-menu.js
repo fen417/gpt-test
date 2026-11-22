@@ -2,7 +2,7 @@ import {BASE_MAPS,CLASSES,WEAPONS} from '../shared/world.js';
 import {readCampaignProgress} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
 import {PROFILE_MISSIONS,favorite,localCampaignSummary} from './profile-data.js';
-import {LONG_BARREL_ID,WEAPON_SLOTS,weaponLevelProgress} from '../shared/weapon-modules.js';
+import {WEAPON_SLOTS,weaponLevelProgress} from '../shared/weapon-modules.js';
 import {collimatorTestEnabled,equipCollimator,hasCollimator,loadCollimatorModel} from './collimator.js';
 import {createWeaponProgress,weaponDevice} from './weapon-progress.js';
 import {setupAttachmentPicker} from './weapon-attachment-ui.js';
@@ -140,7 +140,9 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     set('profile-weapon-level',`Уровень ${level} · ${earned} / ${required} очк.`);
     $('profile-weapon-xp').max=required;
     $('profile-weapon-xp').value=earned;
-    renderPicker({weaponId,slot:attachmentSlot,xp,selected:currentAttachment(weaponId,attachmentSlot),canTest:collimatorTestEnabled(),showLocked:true});
+    const optic=currentAttachment(weaponId,'optic');
+    renderPicker({weaponId,slot:attachmentSlot,xp,selected:currentAttachment(weaponId,attachmentSlot),
+      attachments:{...loadout[weaponId],optic},canTest:collimatorTestEnabled(),showLocked:true});
     for(const button of mounts.children)button.classList.toggle('selected',button.dataset.weaponMount===attachmentSlot);
   }
 
@@ -149,7 +151,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     if(tab==='overview')return null;
     const weaponId=tab==='weapon'?skinWeapon.value:attachmentWeapon.value;
     return {weaponId,collimator:currentAttachment(weaponId,'optic')==='collimator-15',
-      longBarrel:currentAttachment(weaponId,'barrel')===LONG_BARREL_ID,hotspots:tab==='attachments'};
+      attachments:loadout[weaponId],hotspots:tab==='attachments'};
   }
 
   function refreshPreview(){

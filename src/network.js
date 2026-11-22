@@ -6,6 +6,7 @@ import { EquipmentPresentation } from './equipment-presentation.js';
 import { sanitizeInput, createPredictionWorld } from '../shared/simulation.js';
 import { EYE_HEIGHT, getWeapon } from '../shared/world.js';
 import { getVehicleSeatPose } from '../shared/vehicles.js';
+import { resolveWeaponModules } from '../shared/weapon-modules.js';
 import { PROTOCOL_VERSION, MAP_LAYOUT_REVISION } from '../shared/world.js';
 import { MESSAGE, INPUT_STEP, SnapshotDecoder, decodeEvents, encodeInput, quantizedInput, encodeAck, encodeControl, decodeControl } from '../shared/snapshot-codec.js';
 import { Reader, Writer } from '../shared/binary.js';
@@ -102,7 +103,7 @@ export class Prediction{
     // The snapshot's reloadProgress belongs to the acknowledged state.
     // Recompute it from replayed local reloadTime to avoid stale frame jumps.
     if(out.reloading&&!out.vehicleId){
-      const duration=getWeapon(out.classId,out.weaponId).reload;
+      const duration=resolveWeaponModules(getWeapon(out.classId,out.weaponId),out.weaponModules?.[out.weaponId]).reload;
       out.reloadProgress=clamp(1-(out.reloadTime??duration)/duration,0,1);
     }else out.reloadProgress=0;
     return out;
@@ -411,7 +412,7 @@ export class Multiplayer{
     const target=renderTime;
     let a=samples[0],b=last;for(let i=1;i<samples.length;i++){if(samples[i].time>=target){a=samples[i-1];b=samples[i];break;}a=samples[i];}
     const discrete=target>=b.time?b.pose:a.pose,out={...current},span=b.time-a.time;
-    for(const key of kind==='players'?['alive','vehicleId','vehicleSeat','reviveSeq','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','team']:['seats','hp','wreckTime'])if(key in discrete)out[key]=discrete[key];
+    for(const key of kind==='players'?['alive','vehicleId','vehicleSeat','reviveSeq','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','team','attachmentFlags']:['seats','hp','wreckTime'])if(key in discrete)out[key]=discrete[key];
     if(a.pose.alive!==b.pose.alive||a.pose.vehicleId!==b.pose.vehicleId||a.pose.reviveSeq!==b.pose.reviveSeq||Math.hypot(a.pose.x-b.pose.x,a.pose.z-b.pose.z)>8){for(const key of ['x','y','z','yaw','pitch','bodyPitch','bodyRoll'])if(Number.isFinite(discrete[key]))out[key]=discrete[key];return out;}
     const alpha=span>0?clamp((target-a.time)/span,0,1):1;
     for(const key of ['x','y','z'])out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;

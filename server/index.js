@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import {canReadMetrics} from './metrics-access.js';
 import {createProfileStats} from './profile-stats.js';
 import {networkWeaponXpCap} from './weapon-progress.js';
-import {LONG_BARREL_ID,WEAPON_MODULES,XP_PER_WEAPON_KILL,weaponLevel} from '../shared/weapon-modules.js';
+import {XP_PER_WEAPON_KILL,weaponLevel} from '../shared/weapon-modules.js';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput, sanitizeSpawnPoint } from '../shared/simulation.js';
@@ -233,8 +233,8 @@ export function createGameServer(options={}){
     for(const s of sessions.values()){
       const counts=sim.weaponKills.get(s.id);
       if(!counts)continue;
-      for(const id of WEAPON_MODULES[LONG_BARREL_ID].weapons){
-        const count=counts[id]??0, delta=count-(s.weaponKillsCredited[id]??0);
+      for(const [id,count] of Object.entries(counts)){
+        const delta=count-(s.weaponKillsCredited[id]??0);
         if(delta<=0)continue;
         s.weaponKillsCredited[id]=count;
         const xp=delta*XP_PER_WEAPON_KILL;
@@ -342,7 +342,7 @@ export function createGameServer(options={}){
           case 'weapon-attachments': {
             if(!s||!room?.sim||room.ended)throw Error('Сменить обвес можно в активном бою.');
             const attachments=room.sim.setWeaponAttachments(s.id,data.attachments,(part,id,weaponId)=>
-              part.slot==='optic'&&!part.modifiers || id===LONG_BARREL_ID&&weaponLevel(s.weaponXp[weaponId])>=part.level);
+              !part.modifiers || weaponLevel(s.weaponXp[weaponId])>=part.level);
             send(c,{type:'weapon-attachments',requestId,attachments});
             break;
           }

@@ -1,5 +1,6 @@
 import { Reader, Writer } from './binary.js';
 import { getWeapon } from './world.js';
+import { resolveWeaponModules, weaponAttachmentsFromFlags } from './weapon-modules.js';
 
 export const MESSAGE=Object.freeze({SNAPSHOT:1,EVENTS:2,INPUT:3,ACK:4,PING:5,PONG:6,RESYNC:7});
 export const CONTROL=Object.freeze(Object.fromEntries(['hello','rooms','list','create','join','resume','welcome','lobby','settings','loadout','start','init','respawn','leave','left','error','stats','squad','ready','match-ready','profile','profile-reset','weapon-attachments'].map((name,i)=>[name,16+i])));
@@ -14,7 +15,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),finite=v=>Number.isFinite(Number(
 const specs=rows=>rows.trim().split(/\s+/).map(row=>{const [key,type]=row.split(':');return {key,type};});
 export const SCHEMAS={
   players:specs(`name:r team:u8 squadId:u8 squadLeader:u8 orderKind:r orderPointId:r reviveSeq:u16 classId:r weaponId:r primaryWeaponId:r sidearmId:r weaponSlot:u8 equipAt:f32
-    x:x y:y z:z yaw:a pitch:a motionAt:f32 hp:u8 ammo:u8 reserve:u16 kills:u16 deaths:u16 assists:u16 score:u32 respawnAt:f32
+    x:x y:y z:z yaw:a pitch:a motionAt:f32 hp:u8 ammo:u8 reserve:u16 kills:u16 deaths:u16 assists:u16 score:u32 respawnAt:f32 attachmentFlags:u16
     reloadAt:f32 shotSeq:u16 spread:s slideYaw:a gadgetAt:f32 secondaryAt:f32 rockets:u8 heldGadget:r gadgetAction:r
     gadgetTargetId:r actionAt:f32 grenades:u8 vehicleId:r vehicleSeat:seat flags:u16 vy:v slideVx:v slideVz:v slideAt:f32 slideCooldownAt:f32 controlFlags:u8 velocityX:v velocityZ:v moveSpeed:v jumpFatigue:s jumpCooldownAt:f32 bloom:s shotReadyAt:f32 lastShotAt:f32`),
   vehicles:specs(`type:r team:u8 x:x y:y z:z yaw:a motionAt:f32 bodyPitch:a bodyRoll:a scaleX:scale scaleY:scale scaleZ:scale
@@ -77,9 +78,8 @@ export function prepareSnapshot(state,size,previous){
   for(const kind of COLLECTIONS){const map=new Map();result.rows[kind]=map;
     for(const source of state[kind]??[]){let item=source;
       if(kind==='players')item={...source,motionAt:Math.fround(state.time),flags:BOOLS.reduce((bits,key,i)=>bits|(source[key]?1<<i:0),0),
-        controlFlags:(source.controlFlags??0)|(source.longBarrel?16:0),
         shotReadyAt:clock(state.time,source.cooldown),equipAt:clock(state.time,source.equipTime),respawnAt:clock(state.time,source.respawnIn),
-        reloadAt:source.reloading?clock(state.time,(1-source.reloadProgress)*getWeapon(source.classId,source.weaponId).reload):0,
+        reloadAt:source.reloading?clock(state.time,(1-source.reloadProgress)*resolveWeaponModules(getWeapon(source.classId,source.weaponId),weaponAttachmentsFromFlags(source.attachmentFlags)).reload):0,
         gadgetAt:clock(state.time,source.gadgetCooldown),secondaryAt:clock(state.time,source.secondaryCooldown),actionAt:clock(state.time,source.gadgetActionRemaining),
         slideAt:clock(state.time,source.slideTime),slideCooldownAt:clock(state.time,source.slideCooldown),jumpCooldownAt:clock(state.time,source.jumpCooldown)};
       else if(kind==='vehicles')item={...source,motionAt:Math.fround(state.time),scaleX:source.modelScale?.x??1,scaleY:source.modelScale?.y??1,scaleZ:source.modelScale?.z??1,
@@ -102,9 +102,13 @@ export function materializeSnapshot(frame,context,time=frame.time){
     if(kind==='players'){
       BOOLS.forEach((key,i)=>p[key]=Boolean(p.flags&(1<<i)));
       p.equipTime=Math.max(0,p.equipAt-time);p.respawnIn=Math.max(0,p.respawnAt-time);p.gadgetCooldown=Math.max(0,p.gadgetAt-time);p.secondaryCooldown=Math.max(0,p.secondaryAt-time);p.gadgetActionRemaining=Math.max(0,p.actionAt-time);
-      p.reloadProgress=p.reloading?clamp(1-(p.reloadAt-time)/getWeapon(p.classId,p.weaponId).reload,0,1):0;p.slideTime=Math.max(0,p.slideAt-time);p.slideCooldown=Math.max(0,p.slideCooldownAt-time);p.jumpCooldown=Math.max(0,p.jumpCooldownAt-time);p.cooldown=Math.max(0,p.shotReadyAt-time);
+      p.reloadProgress=0;
+      if(p.reloading){
+        const weapon=resolveWeaponModules(getWeapon(p.classId,p.weaponId),weaponAttachmentsFromFlags(p.attachmentFlags));
+        p.reloadProgress=clamp(1-(p.reloadAt-time)/weapon.reload,0,1);
+      }
+      p.slideTime=Math.max(0,p.slideAt-time);p.slideCooldown=Math.max(0,p.slideCooldownAt-time);p.jumpCooldown=Math.max(0,p.jumpCooldownAt-time);p.cooldown=Math.max(0,p.shotReadyAt-time);
       p.jumpHeld=Boolean(p.controlFlags&1);p.crouchHeld=Boolean(p.controlFlags&2);p.wasSprinting=Boolean(p.controlFlags&4);p.crouching=p.crouch;p.fireHeld=Boolean(p.controlFlags&8);
-      p.longBarrel=Boolean(p.controlFlags&16);
     }else if(kind==='vehicles'){
       p.modelScale={x:p.scaleX,y:p.scaleY,z:p.scaleZ};p.modelRotation={x:p.rotationX,y:0,z:p.rotationZ};p.respawnIn=Math.max(0,p.respawnAt-time);p.wreckTime=Math.max(0,p.wreckAt-time);
     }else if(kind==='grenades')p.fuse=Math.max(0,p.fuseAt-time);else if(kind==='rockets')p.life=Math.max(0,p.lifeAt-time);

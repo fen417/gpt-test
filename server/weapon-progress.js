@@ -1,7 +1,6 @@
-import {LONG_BARREL_ID, WEAPON_MODULES, weaponXpForLevel} from '../shared/weapon-modules.js';
+import {WEAPONS} from '../shared/world.js';
 
-const barrel = WEAPON_MODULES[LONG_BARREL_ID];
-export const networkWeaponXpCap = weaponXpForLevel(barrel.level);
+export const networkWeaponXpCap = 1000000000;
 const receiptAge = 7*24*60*60*1000;
 
 // The browser's profile XP is writable by its owner. Multiplayer uses XP
@@ -15,14 +14,14 @@ export function createNetworkWeaponProgress(db, writer) {
     const snapshot = await progressRef(uid).get();
     if (!accounts.has(uid)) {
       const stored = snapshot.val()?.xp;
-      const xp = Object.fromEntries(barrel.weapons.map(id => [id, stored?.[id] ?? 0]));
+      const xp = Object.fromEntries(Object.keys(WEAPONS).map(id => [id, stored?.[id] ?? 0]));
       accounts.set(uid, {xp, pending:{}});
     }
     return accounts.get(uid).xp;
   }
   function credit(uid, id, delta) {
     const account = accounts.get(uid);
-    if (!account || !barrel.weapons.includes(id)) return;
+    if (!account || !Object.hasOwn(WEAPONS,id)) return;
     const earned = Math.min(delta, networkWeaponXpCap-account.xp[id]);
     if (earned <= 0) return;
     account.xp[id] += earned;

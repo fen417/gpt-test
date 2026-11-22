@@ -1,9 +1,9 @@
 import {loadFPSHands} from './fps-hands.js';
 import {loadWeaponModels} from './weapon-models.js';
 import {loadEquipmentModels} from './gadget-models.js';
-import {SCOPE_ZOOMS,scopeMagnification} from './scope-optics.js';
+import {opticZooms,scopeMagnification} from './scope-optics.js';
 import {COLLIMATOR_ZOOM,collimatorTestEnabled,enableCollimatorTest,restoreCollimatorTest} from './collimator.js';
-import {LONG_BARREL_ID,resolveWeaponModules} from '../shared/weapon-modules.js';
+import {getWeaponModule,resolveWeaponModules} from '../shared/weapon-modules.js';
 import {renderWeaponResults,weaponProgressId} from './weapon-progress.js';
 import {setupAttachmentPicker} from './weapon-attachment-ui.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
@@ -55,7 +55,7 @@ let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let lobbyTeamRequest=null,lobbyTeamMessage='';
 let fireTap=false, recoilPitch=0, recoilYaw=0;
-let scopeZoom;
+const scopeMagnifications=new Map();
 let weaponSlot=1;
 let toolSlot=0;
 let lastWorldFrame=0;
@@ -595,11 +595,14 @@ function presentLocalShot(event){
 const profile=mountPlayerProfile({
   onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,
 });
-const hasCollimator=weaponId=>profile.currentAttachment(weaponId,'optic')==='collimator-15';
 const weaponIdByKillLabel=new Map(Object.values(WEAPONS).map(weapon=>[weapon.weapon,weapon.id]));
 const activeWeaponModules=()=>mode==='campaign'?local()?.weaponModules:(simulation?.client??multiplayer).weaponModules;
 const equippedPersonalWeapon=(classId,weaponId)=>resolveWeaponModules(getWeapon(classId,weaponId),activeWeaponModules()?.[weaponId]);
-const hasLongBarrel=weaponId=>activeWeaponModules()?.[weaponId]?.barrel===LONG_BARREL_ID;
+const equippedAttachments=weaponId=>activeWeaponModules()?.[weaponId];
+const hasCollimator=weaponId=>(equippedAttachments(weaponId)?.optic??profile.currentAttachment(weaponId,'optic'))==='collimator-15';
+const scopeKey=(weaponId,opticId)=>weaponId+'/'+(opticId??'stock');
+const weaponScopeZoom=(weaponId,opticId=equippedAttachments(weaponId)?.optic)=>
+  scopeMagnifications.get(scopeKey(weaponId,opticId));
 const quickAttachments=$('quick-attachments');
 let quickWeapon='',quickSlot='optic',quickChanging=false;
 let localRoundId='',observedRound='',observedKills={},weaponResultRevision=0;
@@ -609,9 +612,10 @@ const renderQuickPicker=setupAttachmentPicker(quickAttachments,{
 });
 function updateQuickPicker(){
   const networkXp=mode==='server'?(multiplayer.networkWeaponXp?multiplayer.networkWeaponXp[quickWeapon]??0:null):undefined;
-  const selected=quickSlot==='barrel'?(activeWeaponModules()?.[quickWeapon]?.barrel??'stock'):profile.currentAttachment(quickWeapon,quickSlot);
+  const selected=quickSlot==='optic'&&hasCollimator(quickWeapon)?'collimator-15':equippedAttachments(quickWeapon)?.[quickSlot]??'stock';
   renderQuickPicker({weaponId:quickWeapon,slot:quickSlot,xp:profile.weaponXp(quickWeapon),
-    selected,networkXp,canTest:collimatorTestEnabled()});
+    selected,attachments:{...equippedAttachments(quickWeapon),optic:hasCollimator(quickWeapon)?'collimator-15':equippedAttachments(quickWeapon)?.optic},
+    networkXp,canTest:collimatorTestEnabled()});
 }
 function toggleQuickAttachments(){
   if(quickAttachments.open){quickAttachments.close();void requestControl();return;}
@@ -635,7 +639,7 @@ async function changeQuickAttachment(id){
   if(quickChanging||finished||!quickAttachments.open||!local()?.alive||local()?.weaponId!==quickWeapon)return;
   quickChanging=true;
   try{
-    const verifiedXp=mode==='server'&&id===LONG_BARREL_ID?multiplayer.networkWeaponXp?.[quickWeapon]:undefined;
+    const verifiedXp=mode==='server'&&getWeaponModule(quickWeapon,quickSlot,id)?.modifiers?multiplayer.networkWeaponXp?.[quickWeapon]:undefined;
     if(await profile.chooseAttachment(quickWeapon,quickSlot,id,verifiedXp))await applyWeaponAttachments();
     if(quickAttachments.open)updateQuickPicker();
   }catch{toast('Не удалось применить обвес.');}
@@ -1090,7 +1094,8 @@ document.addEventListener('mousemove',event=>{
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
-  const opticZoom=player?.heldGadget?1:hasCollimator(player?.weaponId)?COLLIMATOR_ZOOM:scopeMagnification(player?.weaponId,scopeZoom);
+  const opticZoom=player?.heldGadget?1:hasCollimator(player?.weaponId)?COLLIMATOR_ZOOM:
+    scopeMagnification(player?.weaponId,weaponScopeZoom(player?.weaponId),equippedAttachments(player?.weaponId)?.optic);
   const aimScale = aim ? (opticZoom>1 ? .70/opticZoom : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
@@ -1102,11 +1107,12 @@ document.addEventListener('wheel',event=>{
      isActionHeld('tankZoom')&&event.deltaY){
     event.preventDefault();campaignTankZoom=campaignTankZoom===2.5?5:2.5;return;
   }
-  const zooms=SCOPE_ZOOMS[player?.weaponId];
+  const weaponId=player?.weaponId,opticId=equippedAttachments(weaponId)?.optic;
+  const zooms=opticZooms(weaponId,opticId);
   if(!active||!aim||!player?.alive||player.heldGadget||!zooms||zooms.length<2||
     (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
   event.preventDefault();
-  scopeZoom=event.deltaY<0?zooms.at(-1):zooms[0];
+  scopeMagnifications.set(scopeKey(weaponId,opticId),event.deltaY<0?zooms.at(-1):zooms[0]);
 },{passive:false});
 document.addEventListener('mousedown',event=>{if(quickAttachments.open||!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){lastFireClick=performance.now();fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
@@ -1755,7 +1761,7 @@ function hud(now,renderState){
   const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
   const gap=`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`;
   if(crosshair.dataset.gap!==gap){crosshair.dataset.gap=gap;crosshair.style.setProperty('--spread-gap',gap);}
-  const showCrosshair=player.alive&&(mounted?.role==='gunner'||(personalWeapon&&Boolean(player.weaponId)&&!player.reloading&&!renderer.collimatorAiming&&(!mounted||mounted.canFire)));
+  const showCrosshair=player.alive&&(mounted?.role==='gunner'||(personalWeapon&&Boolean(player.weaponId)&&!player.reloading&&!renderer.collimatorAiming&&!renderer.scoped&&(!mounted||mounted.canFire)));
   crosshair.classList.toggle('aim',aim&&personalWeapon);
   crosshair.style.opacity=showCrosshair?'':'0';
   $('hitmarker').style.opacity=now<hitUntil?'1':'0';
@@ -1902,7 +1908,7 @@ function frame(now){
     try{
       const realBegin=performance.now();
       renderer.render(renderState,localId,renderDelta,{mapId:inLobby?state?.mapId:$('map-select').value,...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
-        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,hasCollimator,hasLongBarrel,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom:weaponScopeZoom(renderPlayer?.weaponId),hasCollimator,equippedAttachments,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
       if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
     }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
   }
@@ -1937,9 +1943,16 @@ function frame(now){
   show('scope-overlay',scoped);
   const scopeId=renderPlayer?.weaponId;
   const scopedWeapon=WEAPONS[scopeId];
-  const magnification=scopeMagnification(scopeId,scopeZoom);
-  const zoomHint=SCOPE_ZOOMS[scopeId]?.length>1?' · КОЛЕСО — ЗУМ':'';
-  text('scope-zoom',scoped&&scopedWeapon?.zeroRange?`${magnification}× · ПРИСТРЕЛКА ${scopedWeapon.zeroRange} М${zoomHint}`:'');
+  const equippedOptic=equippedAttachments(scopeId)?.optic;
+  const magnification=scopeMagnification(scopeId,weaponScopeZoom(scopeId,equippedOptic),equippedOptic);
+  const zoomHint=opticZooms(scopeId,equippedOptic)?.length>1?' · КОЛЕСО — ЗУМ':'';
+  const scopeOverlay=$('scope-overlay');
+  if(scoped){
+    scopeOverlay.dataset.reticle=getWeaponModule(scopeId,'optic',equippedOptic)?.reticle??'cross';
+    scopeOverlay.classList.toggle('wide-lens',magnification===1);
+  }
+  const zero=scopedWeapon?.zeroRange?` · ПРИСТРЕЛКА ${scopedWeapon.zeroRange} М`:'';
+  text('scope-zoom',scoped?`${magnification}×${zero}${zoomHint}`:'');
   document.body.classList.toggle('scoped',scoped);
   if(renderState)audio.events(renderState,renderPlayer);
   audio.update?.(dt,{quality,state:renderState??state,local:renderPlayer??local(),

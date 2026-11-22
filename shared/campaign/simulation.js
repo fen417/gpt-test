@@ -6,6 +6,7 @@ import {aimCrew} from '../vehicle-ai.js';
 import {vehicleBoardingRange} from '../vehicles.js';
 import {ALHADRA,COURIER_SERVICE_ROAD,ROUTES} from './alhadra.js';
 import {MissionRuntime} from './mission-runtime.js';
+import {resolveWeaponModules} from '../weapon-modules.js';
 
 export const CAMPAIGN_SAVE_VERSION=1;
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
@@ -495,8 +496,10 @@ export class CampaignDirector {
     if(command.type==='skip'&&this.cutscene)this.finishCutscene();
     if(command.type==='loadout'&&this.awaitingLoadout){
       const primary=Object.hasOwn(WEAPONS,command.primary)&&!WEAPONS[command.primary].sidearm?command.primary:'ar416';
-      const sidearm=SIDEARMS.includes(command.sidearm)?command.sidearm:'p19',main=WEAPONS[primary],secondary=WEAPONS[sidearm];
-      const suppressed=primary==='ar416'||primary==='vk45',p=this.player;
+      const sidearm=SIDEARMS.includes(command.sidearm)?command.sidearm:'p19';
+      const suppressed=primary==='ar416',p=this.player;
+      const main=resolveWeaponModules(WEAPONS[primary],p.weaponModules?.[primary]);
+      const secondary=resolveWeaponModules(WEAPONS[sidearm],p.weaponModules?.[sidearm]);
       this.awaitingLoadout=false;this.options.loadout=suppressed?'silent':'loud';
       Object.assign(p,{suppressed,primaryWeaponId:primary,sidearmId:sidearm,weaponId:primary,weaponSlot:1,
         ammo:main.mag,reserve:main.reserve,stowedAmmo:{ammo:secondary.mag,reserve:secondary.reserve},grenades:suppressed?2:5,reloading:false,equipTime:0});
@@ -730,6 +733,7 @@ export class CampaignDirector {
     for(const stored of save.players){
       const p=this.sim.addPlayer(stored.id,stored.name,stored.team,stored.classId,stored.primaryWeaponId,stored.sidearmId,stored.bot);
       Object.assign(p,structuredClone(stored),{input:sanitizeInput({yaw:stored.yaw,pitch:stored.pitch}),ai:null,botPath:[],damagers:new Map(),reloading:false,cooldown:0,equipTime:0,reviver:null,reviveProgress:0,respawnIn:stored.alive?0:1e8,lastShotAt:Number.isFinite(stored.lastShotAt)?stored.lastShotAt:-100});
+      if(p.primaryWeaponId==='vk45')p.suppressed=false;
     }
     const m=structuredClone(save.mission);this.runtime.restore(m.runtime);delete m.runtime;this.spoken=new Set(m.spoken);delete m.spoken;Object.assign(this,m);
     this.options.loadout=save.loadout;this.sim.difficulty=save.difficulty;this.tuning=settings[save.difficulty];this.sim.botSettings={...DIFFICULTIES[save.difficulty],aimError:DIFFICULTIES[save.difficulty].aimError/this.tuning.accuracy};

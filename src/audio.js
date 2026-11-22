@@ -13,7 +13,8 @@ const WEAPONS = {
   ar416: { sample: 'rifle-light', rate: 1, gain: .92, cutoff: 17000 },
   ak12: { sample: 'rifle-heavy', rate: 1, gain: .94, cutoff: 16000 },
   mcx9: { sample: 'smg', rate: 1.12, gain: .82, cutoff: 16500 },
-  vk45: { sample: 'smg-suppressed', rate: 1, gain: .80, cutoff: 14000 },
+  vk45: { sample: 'smg', rate: 1.13, gain: .84, cutoff: 14000 },
+  suppressed: { sample: 'smg-suppressed', rate: 1, gain: .80, cutoff: 14000 },
   mg36: { sample: 'lmg', rate: 1.03, gain: 1, cutoff: 16000 },
   pkp: { sample: 'lmg', rate: .92, gain: 1.05, cutoff: 15500 },
   dmr12: { sample: 'marksman', rate: 1.02, gain: .98, cutoff: 17000 },
@@ -684,7 +685,7 @@ export class CombatAudio {
           const shooter=urban||!e.classId?state.players?.find(player=>player.id===e.playerId):null;
           const classId=e.classId||shooter?.classId;
           const age=Number.isFinite(e.time)?Math.max(0,state.time-e.time):0;
-          const profile=e.mounted?'turret':state.campaign&&e.suppressed?'vk45':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
+          const profile=e.mounted?'turret':state.campaign&&e.suppressed?'suppressed':Object.hasOwn(WEAPONS,e.weaponId)?e.weaponId:classId;
           const room=urban?{echo:Boolean(shooter?.interior),muffled:!own&&(shooter?.interior??null)!==(local?.interior??null)}:null;
           this.shot(p.distance,profile,p.pan,Boolean(own),age,e.playerId,room);
         }else this._shotStats.distant++;

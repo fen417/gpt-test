@@ -34,8 +34,8 @@ const moduleSlots = {
 };
 const templates = new Map();
 const mountedParts = new WeakMap();
-const barrelTemplates = new Map();
-const barrelInstances = new WeakMap();
+const upgradeTemplates = new Map();
+const upgradeInstances = new WeakMap();
 let pending;
 
 export function loadWeaponModels() {
@@ -57,16 +57,21 @@ export function loadWeaponModels() {
       console.warn('Weapon model:', id, error);
     }
   });
-  const barrels = loader.loadAsync(new URL('./assets/infantry/long-barrels.glb', import.meta.url).href)
-    .then(({scene}) => {
-      for (const id of WEAPON_MODULES[LONG_BARREL_ID].weapons) {
-        const model = scene.getObjectByName(id);
-        const muzzle = model?.getObjectByName(id + '_Muzzle');
-        if (muzzle) barrelTemplates.set(id, {model, muzzle});
-        else console.warn('Missing long barrel:', id);
+  const loadUpgrades = (url, entries, prefix) => loader.loadAsync(url).then(({scene}) => {
+    for (const [id, part] of entries) {
+      for (const weaponId of part.weapons) {
+        const name = prefix ? id + '_' + weaponId : weaponId;
+        const model = scene.getObjectByName(name) ?? scene.getObjectByName(id + '_Shared');
+        if (model) upgradeTemplates.set(id + '/' + weaponId, model);
+        else console.warn('Missing weapon upgrade:', id, weaponId);
       }
-    }).catch(error => console.warn('Long barrel models:', error));
-  pending = Promise.all([...baseModels, barrels]);
+    }
+  }).catch(error => console.warn('Weapon upgrades:', error));
+  const barrels = loadUpgrades(new URL('./assets/infantry/long-barrels.glb', import.meta.url).href,
+    [[LONG_BARREL_ID, WEAPON_MODULES[LONG_BARREL_ID]]], false);
+  const upgrades = loadUpgrades(new URL('./assets/infantry/weapon-upgrades.glb', import.meta.url).href,
+    Object.entries(WEAPON_MODULES).filter(([id, part]) => id !== LONG_BARREL_ID && part.modifiers), true);
+  pending = Promise.all([...baseModels, barrels, upgrades]);
   return pending;
 }
 
@@ -79,31 +84,52 @@ export function weaponModuleMount(root,slot) {
   return root.getObjectByName(moduleSlots[slot].mount)??null;
 }
 
-export function showLongBarrel(root, weaponId, equipped) {
-  const socket = weaponModuleMount(root, 'barrel');
-  const template = barrelTemplates.get(weaponId);
-  if (!socket || !template) return false;
-  let part = barrelInstances.get(socket);
-  if (equipped && !part) {
-    part = template.model.clone(true);
-    for (const name of moduleSlots.barrel.stock) {
-      const replacement = part.getObjectByName(weaponId + '_' + name);
-      const stock = root.getObjectByName(name);
-      if (replacement?.isMesh && stock?.isMesh) replacement.material = stock.material;
+export function showWeaponUpgrades(root, weaponId, slots) {
+  if (!root) return false;
+  let changed = false;
+  for (const slot of ['barrel', 'magazine', 'stock', 'optic']) {
+    const socket = weaponModuleMount(root, slot);
+    if (!socket) continue;
+    const id = slots?.[slot], template = upgradeTemplates.get(id + '/' + weaponId);
+    if (slot === 'optic' && id === 'collimator-15') continue;
+    if ((mountedParts.get(socket)?.part?.name ?? null) === (template?.name ?? null)) continue;
+    let part = null;
+    if (template) {
+      let instances = upgradeInstances.get(socket);
+      if (!instances) upgradeInstances.set(socket, instances = new Map());
+      part = instances.get(id);
+      if (!part) {
+        part = template.clone(true);
+        for (const name of moduleSlots[slot].stock) {
+          const replacement = part.getObjectByName(template.name + '_' + name);
+          const stock = root.getObjectByName(name);
+          if (replacement?.isMesh && stock?.isMesh) replacement.material = stock.material;
+        }
+        instances.set(id, part);
+      }
     }
-    barrelInstances.set(socket, part);
+    if (setWeaponModule(root, slot, part)) changed = true;
   }
-  const next = equipped ? part : null;
-  if ((mountedParts.get(socket)?.part ?? null) === next) return false;
-  return setWeaponModule(root, 'barrel', next);
+  return changed;
 }
 
-export function longBarrelMuzzle(root, weaponId, target) {
+export function upgradeMuzzle(root, target) {
   const socket = weaponModuleMount(root, 'barrel');
-  const template = barrelTemplates.get(weaponId);
-  if (!template || !mountedParts.has(socket)) return false;
+  const part = socket && mountedParts.get(socket)?.part;
+  const muzzle = part?.getObjectByName(part.name + '_Muzzle');
+  if (!muzzle) return false;
   socket.updateMatrix();
-  target.copy(template.muzzle.position).applyMatrix4(socket.matrix);
+  target.copy(muzzle.position).applyMatrix4(socket.matrix);
+  return true;
+}
+
+export function upgradeOpticEye(root, target) {
+  const socket = weaponModuleMount(root, 'optic');
+  const part = socket && mountedParts.get(socket)?.part;
+  const eye = part?.getObjectByName(part.name + '_Eye');
+  if (!eye) return false;
+  socket.updateMatrix();
+  target.copy(eye.position).applyMatrix4(socket.matrix);
   return true;
 }
 
