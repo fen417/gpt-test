@@ -4,6 +4,8 @@ import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import {canReadMetrics} from './metrics-access.js';
 import {createProfileStats} from './profile-stats.js';
+import {networkWeaponXpCap} from './weapon-progress.js';
+import {LONG_BARREL_ID,WEAPON_MODULES,XP_PER_WEAPON_KILL,weaponLevel} from '../shared/weapon-modules.js';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput, sanitizeSpawnPoint } from '../shared/simulation.js';
@@ -22,7 +24,8 @@ const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 export function createGameServer(options={}){
   const env={...process.env,...options};
   const profiles=createProfileStats(env);
-  const profileFlush=profiles&&setInterval(()=>void profiles.flush(),15000);
+  const flushProfiles=()=>void Promise.all([profiles?.flush(),profiles?.weapons.flush()]);
+  const profileFlush=profiles&&setInterval(flushProfiles,15000);
   profileFlush?.unref();
   const config={port:bounded(env.PORT,0,65535,8080),tickHz:bounded(env.TICK_HZ,30,60,60),snapshotHz:bounded(env.SNAPSHOT_HZ,10,30,30),
     maxPlayers:Math.floor(bounded(env.MAX_PLAYERS,2,7,7)),maxBots:Math.floor(bounded(env.MAX_BOTS,0,30,30)),defaultBots:Math.floor(bounded(env.BOTS,0,30,8)),
@@ -89,7 +92,8 @@ export function createGameServer(options={}){
     const p=sim.players.get(s.id);if(p){p.networkControlled=true;p.networkFrames=[];p.networkIdle=true;p.inputAck=0;sim.setInput(s.id,{yaw:p.yaw,pitch:p.pitch});}
     s.weaponKillsSent=p?.kills??0;
     send(s.client,{type:'init',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,mapId:sim.map.id,size:sim.map.size,difficulty:room.difficulty,gameMode:sim.gameMode,killLimit:sim.killLimit,roomName:room.name,ownerId:room.ownerId,epoch:room.epoch,eventAck:sim.eventId,inputHz:60,snapshotHz:effectiveSnapshotHz,waitingForMatch:Boolean(room.loading),
-      weaponRoundId:room.weaponRoundId+'/'+s.id,weaponKills:sim.weaponKills.get(s.id)??{},weaponModules:true,attachments:p?.weaponModules});
+      weaponRoundId:room.weaponRoundId+'/'+s.id,weaponKills:sim.weaponKills.get(s.id)??{},weaponModules:true,attachments:p?.weaponModules,
+      networkWeaponXp:s.weaponXp});
     snapshot(s,preparedSnapshot(),true);
   }
   function join(c,data,requestId,resume=false){
@@ -100,11 +104,12 @@ export function createGameServer(options={}){
       if(sessions.size>=room.maxPlayers)throw Error('Комната заполнена. Место отключившегося игрока временно зарезервировано.');
       if(c.profileUid&&[...sessions.values()].some(session=>session.profileUid===c.profileUid))throw Error('Этот профиль уже в комнате.');
       const counts=[0,0];for(const q of sessions.values())counts[q.team]++;
-      s={id:'p'+(++nextPlayer),token:token(),profileUid:c.profileUid??null,name:clean(data.name,'Боец',20),team:counts[0]<=counts[1]?0:1,bytes:0,intervalBytes:0,snapshotBytes:0,snapshotCount:0,inputQueue:[]};loadout(s,data);sessions.set(s.id,s);
+      s={id:'p'+(++nextPlayer),token:token(),profileUid:c.profileUid??null,name:clean(data.name,'Боец',20),team:counts[0]<=counts[1]?0:1,bytes:0,intervalBytes:0,snapshotBytes:0,snapshotCount:0,inputQueue:[],
+        weaponXp:c.profileWeaponXp??{},persistWeaponXp:Boolean(c.profileWeaponXp),weaponKillsCredited:{}};loadout(s,data);sessions.set(s.id,s);
       if(!room.ownerId)room.ownerId=s.id;
       if(room.sim)room.sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
     }
-    s.client=c;s.detachedAt=0;c.session=s;c.profileUid=null;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
+    s.client=c;s.detachedAt=0;c.session=s;c.profileUid=null;c.profileWeaponXp=null;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
     if(s.loadingReady)room.loading?.pending.add(s.id);
     identity(c,requestId);
     if(room.phase==='match'){initialize(s);startLoop();}lobbyChanged();
@@ -142,7 +147,10 @@ export function createGameServer(options={}){
     sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.0;
     room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;room.profileSeconds=0;
     room.weaponRoundId=token();
-    for(const s of sessions.values())sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
+    for(const s of sessions.values()){
+      s.weaponKillsCredited={};
+      sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
+    }
     const pending=new Set(connected().filter(s=>s.loadingReady).map(s=>s.id));
     if(pending.size){
       const loading={pending,timer:setTimeout(()=>releaseMatch(loading),MATCH_LOADING_MS)};
@@ -222,6 +230,18 @@ export function createGameServer(options={}){
     const simStarted=performance.now();
     sim.step(dt);simulationSamples.add(performance.now()-simStarted);
     tick++;snapshotClock+=dt;
+    for(const s of sessions.values()){
+      const counts=sim.weaponKills.get(s.id);
+      if(!counts)continue;
+      for(const id of WEAPON_MODULES[LONG_BARREL_ID].weapons){
+        const count=counts[id]??0, delta=count-(s.weaponKillsCredited[id]??0);
+        if(delta<=0)continue;
+        s.weaponKillsCredited[id]=count;
+        const xp=delta*XP_PER_WEAPON_KILL;
+        if(s.persistWeaponXp)profiles.weapons.credit(s.profileUid,id,xp);
+        else s.weaponXp[id]=Math.min(networkWeaponXpCap,(s.weaponXp[id]??0)+xp);
+      }
+    }
     for(const e of sim.events)if(e.id>room.lastEvent){
       room.events.push(e);room.lastEvent=e.id;
       if(e.type==='kill')profiles?.kill(e,sim.players,sessions);
@@ -240,11 +260,11 @@ export function createGameServer(options={}){
     for(const s of connected()){
       events(s,now);
       const kills=sim.players.get(s.id)?.kills??0;
-      if(kills!==s.weaponKillsSent&&send(s.client,{type:'stats',stats:{},weaponKills:sim.weaponKills.get(s.id)??{}}))
+      if(kills!==s.weaponKillsSent&&send(s.client,{type:'stats',stats:{},weaponKills:sim.weaponKills.get(s.id)??{},networkWeaponXp:s.weaponXp}))
         s.weaponKillsSent=kills;
     }
     if(snapshotClock>=1/effectiveSnapshotHz){snapshotClock%=1/effectiveSnapshotHz;const prepared=preparedSnapshot();for(const s of connected())snapshot(s,prepared);}
-    if(sim.winner!==null&&!room.ended){room.ended=true;const final=preparedSnapshot();for(const s of connected())snapshot(s,final);roomsChanged();void profiles?.flush();}
+    if(sim.winner!==null&&!room.ended){room.ended=true;const final=preparedSnapshot();for(const s of connected())snapshot(s,final);roomsChanged();flushProfiles();}
     const elapsed=performance.now()-begin;tickSamples.add(elapsed);totals.ticks++;totals.tickMs+=elapsed;totals.tickMaxMs=Math.max(totals.tickMaxMs,elapsed);intervalTicks++;intervalTickMs+=elapsed;intervalMax=Math.max(intervalMax,elapsed);
   }
   function pump(){
@@ -285,12 +305,15 @@ export function createGameServer(options={}){
           case 'profile':
             if(!profiles||s||c.profilePending)throw Error('Профиль недоступен для этого подключения.');
             c.profileUid=null;
+            c.profileWeaponXp=null;
             if(data.token===null){send(c,{type:'profile',requestId});break;}
             if(typeof data.token!=='string'||data.token.length>5000)throw Error('Недействительный токен профиля.');
             c.profilePending=true;
-            profiles.identify(data.token).then(uid=>{
+            profiles.identify(data.token).then(async uid=>{
+              const xp=await profiles.weapons.load(uid).catch(()=>null);
               if(c.session||ws.readyState!==WebSocket.OPEN)return;
               c.profileUid=uid;
+              c.profileWeaponXp=xp;
               send(c,{type:'profile',requestId});
             }).catch(()=>error(c,'Войдите в профиль заново.',requestId,'profile_auth')).finally(()=>{c.profilePending=false;});
             break;
@@ -318,8 +341,8 @@ export function createGameServer(options={}){
           case 'respawn':if(s&&room.sim){const point=sanitizeSpawnPoint(room.sim.map,data.pointId);room.sim.respawn(s.id,data.classId,point,data.weaponId,data.sidearmId);const p=room.sim.players.get(s.id);s.classId=p.classId;s.weaponId=p.primaryWeaponId;s.sidearmId=p.sidearmId;}break;
           case 'weapon-attachments': {
             if(!s||!room?.sim||room.ended)throw Error('Сменить обвес можно в активном бою.');
-            // Stat-changing parts require server-verified entitlement before going live.
-            const attachments=room.sim.setWeaponAttachments(s.id,data.attachments,part=>part.slot==='optic'&&!part.modifiers);
+            const attachments=room.sim.setWeaponAttachments(s.id,data.attachments,(part,id,weaponId)=>
+              part.slot==='optic'&&!part.modifiers || id===LONG_BARREL_ID&&weaponLevel(s.weaponXp[weaponId])>=part.level);
             send(c,{type:'weapon-attachments',requestId,attachments});
             break;
           }

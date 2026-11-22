@@ -2,6 +2,7 @@ import {randomBytes} from 'node:crypto';
 import {applicationDefault,cert,deleteApp,initializeApp} from 'firebase-admin/app';
 import {getAuth} from 'firebase-admin/auth';
 import {getDatabase} from 'firebase-admin/database';
+import {createNetworkWeaponProgress} from './weapon-progress.js';
 
 const WRITER_UID='sector09-pvp-writer';
 const RECEIPT_AGE=7*24*60*60*1000;
@@ -34,6 +35,7 @@ export function createProfileStats(env){
   }
 
   const pending=new Map(),retry=new Map(),resets=new Map();
+  const weapons=createNetworkWeaponProgress(db,writer);
   let sequence=0,saving;
   const statsRef=uid=>db.ref('profiles').child(uid).child('pvp');
   function forPlayer(uid){
@@ -72,6 +74,7 @@ export function createProfileStats(env){
     return saving;
   }
   return {
+    weapons,
     async identify(token){
       const {uid}=await auth.verifyIdToken(token);
       if(uid===WRITER_UID)throw Error('Invalid player identity');
@@ -114,7 +117,10 @@ export function createProfileStats(env){
       let deadline;
       try{
         await Promise.race([
-          (async()=>{await flush();await flush();})(),
+          (async()=>{
+            await Promise.all([flush(),weapons.flush()]);
+            await Promise.all([flush(),weapons.flush()]);
+          })(),
           new Promise(resolve=>{deadline=setTimeout(resolve,2000);}),
         ]);
       }finally{

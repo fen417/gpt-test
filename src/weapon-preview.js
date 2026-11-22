@@ -27,6 +27,10 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,afterDraw,getGpuDe
   const weaponAngle=[-.10,Math.PI/2-.22,-.05];
   let angle=weaponAngle;
   const reset=()=>{pivot.rotation.set(...angle);fit();invalidate();};
+  function centerModel(measurePose=false){
+    const center=visibleBounds(pivot,measurePose).getCenter(new THREE.Vector3());
+    model.position.sub(pivot.worldToLocal(center));
+  }
   function fit(){
     if(!model)return;size.copy(visibleBounds(pivot).getSize(new THREE.Vector3()));
     const fov=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
@@ -83,7 +87,10 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,afterDraw,getGpuDe
     if(!item)return;
     currentItem=item;
     if(key===item.key){
-      if(modelKey===item.key&&item.update?.(model))fit();
+      if(modelKey===item.key&&item.update?.(model)){
+        const rotation=pivot.rotation.clone();
+        pivot.rotation.set(0,0,0);centerModel();pivot.rotation.copy(rotation);fit();
+      }
       invalidate();return;
     }
     key=item.key;title.textContent=item.name;hint.textContent='Загрузка модели…';
@@ -95,9 +102,8 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,afterDraw,getGpuDe
       model?.removeFromParent();disposeModel?.();
       model=next.model;modelKey=item.key;disposeModel=next.dispose;angle=next.angle??weaponAngle;
       pivot.rotation.set(0,0,0);pivot.add(model);
-      const center=visibleBounds(pivot,true).getCenter(new THREE.Vector3());
-      model.position.sub(pivot.worldToLocal(center));
       currentItem.update?.(model);
+      centerModel(true);
       hint.textContent='Потяни, чтобы повернуть';
       canvas.setAttribute('aria-label','3D-модель '+title.textContent);loadingUntil=performance.now()+800;reset();resize();
     }catch(error){
@@ -111,9 +117,9 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,afterDraw,getGpuDe
     update();
   });
   canvas.addEventListener('pointerdown',event=>{if(event.button!==0)return;drag={x:event.clientX,y:event.clientY};canvas.setPointerCapture(event.pointerId);});
-  canvas.addEventListener('pointermove',event=>{if(!drag)return;pivot.rotation.y+=(event.clientX-drag.x)*.008;pivot.rotation.x=THREE.MathUtils.clamp(pivot.rotation.x+(event.clientY-drag.y)*.006,-.7,.7);drag={x:event.clientX,y:event.clientY};invalidate();});
+  canvas.addEventListener('pointermove',event=>{if(!drag)return;pivot.rotation.y+=(event.clientX-drag.x)*.008;pivot.rotation.x=THREE.MathUtils.clamp(pivot.rotation.x+(event.clientY-drag.y)*.006,-.7,.7);drag={x:event.clientX,y:event.clientY};fit();invalidate();});
   for(const type of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(type,()=>{drag=null;});
-  canvas.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key))return;event.preventDefault();if(event.key==='Home'){reset();return;}pivot.rotation.y+=event.key==='ArrowLeft'?-.12:event.key==='ArrowRight'?.12:0;pivot.rotation.x=THREE.MathUtils.clamp(pivot.rotation.x+(event.key==='ArrowUp'?-.08:event.key==='ArrowDown'?.08:0),-.7,.7);invalidate();});
+  canvas.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key))return;event.preventDefault();if(event.key==='Home'){reset();return;}pivot.rotation.y+=event.key==='ArrowLeft'?-.12:event.key==='ArrowRight'?.12:0;pivot.rotation.x=THREE.MathUtils.clamp(pivot.rotation.x+(event.key==='ArrowUp'?-.08:event.key==='ArrowDown'?.08:0),-.7,.7);fit();invalidate();});
   document.getElementById(prefix+'-reset').addEventListener('click',reset);
   new ResizeObserver(resize).observe(canvas);
   new MutationObserver(()=>{if(isOpen()){update();resize();}else{cancelAnimationFrame(raf);raf=0;drag=null;}}).observe(panel,{attributes:true,attributeFilter:['open','class']});

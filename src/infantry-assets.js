@@ -5,7 +5,7 @@ import { SafeWebGpuKtx2Loader } from './webgpu-ktx2.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { weaponModelUrls } from './weapon-models.js';
+import { showLongBarrel, weaponModelUrls } from './weapon-models.js';
 
 const weaponNames = {
   ar416: 'ar416', ak12: 'ak12m', mcx9: 'mcx9', vk45: 'vk45',
@@ -181,7 +181,7 @@ function prepareBody({ scene, animations }) {
 function batchDistantWeapon(model) {
   model.updateMatrixWorld(true);
   const pieces = [], vector = new THREE.Vector3();
-  model.traverse(mesh => {
+  model.traverseVisible(mesh => {
     if (!mesh.isMesh) return;
     const geometry = new THREE.BufferGeometry();
     const { position, normal, color: vertexColor } = mesh.geometry.attributes;
@@ -232,8 +232,15 @@ function prepareWeapon(gltf, name) {
       magazine.worldToLocal(magazineContact);
     }
   }
+  let distantLongBarrel;
   return {
     model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol), foregrip: Boolean(fit.foregrip),
+    getDistantLongBarrel(weaponId) {
+      if (distantLongBarrel) return distantLongBarrel;
+      const extended = model.clone(true);
+      if (showLongBarrel(extended, weaponId, true)) distantLongBarrel = batchDistantWeapon(extended);
+      return distantLongBarrel;
+    },
     stock: new THREE.Vector3(0, .07, weaponBounds.max.z),
     support: from(fit.support).sub(primary).multiplyScalar(scale),
     muzzle: muzzle.sub(primary).multiplyScalar(scale),

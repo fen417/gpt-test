@@ -8,11 +8,17 @@ export const WEAPON_SLOTS = Object.freeze({
 export const XP_PER_WEAPON_KILL = 100;
 export const XP_PER_WEAPON_LEVEL = 500;
 export const weaponLevel = (xp = 0) => 1 + Math.floor(xp / XP_PER_WEAPON_LEVEL);
+export const LONG_BARREL_ID = 'long-barrel';
 
 export const WEAPON_MODULES = Object.freeze({
   'collimator-15': {
     slot: 'optic', name: 'Коллиматор 1,5×', level: 2, zoom: 1.5,
     weapons: ['ar416', 'ak12', 'mcx9', 'vk45', 'mg36', 'pkp', 'p19', 'm50'],
+  },
+  [LONG_BARREL_ID]: {
+    slot: 'barrel', name: 'Удлинённый ствол', level: 3,
+    weapons: ['ar416', 'ak12', 'mcx9', 'vk45', 'mg36', 'pkp', 'dmr12', 'sv98'],
+    modifiers: {hipSpreadScale: .90, adsSpreadScale: .85},
   },
 });
 

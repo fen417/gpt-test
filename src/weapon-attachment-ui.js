@@ -1,4 +1,4 @@
-import {WEAPON_SLOTS,weaponLevel,weaponModules} from '../shared/weapon-modules.js';
+import {LONG_BARREL_ID,WEAPON_SLOTS,XP_PER_WEAPON_LEVEL,weaponLevel,weaponModules} from '../shared/weapon-modules.js';
 import {WEAPONS} from '../shared/world.js';
 import {SCOPE_ZOOMS} from './scope-optics.js';
 
@@ -13,7 +13,7 @@ export function setupAttachmentPicker(root,{onSlot,onSelect}){
     button.addEventListener('click',()=>onSlot(slot));
     tabs.append(button);
   }
-  return ({weaponId,slot,xp,selected,canTest=false,showLocked=false})=>{
+  return ({weaponId,slot,xp,selected,canTest=false,showLocked=false,networkXp})=>{
     const focused=list.contains(document.activeElement)?document.activeElement.dataset.module:null;
     tabs.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.attachmentSlot===slot)));
     const zooms=SCOPE_ZOOMS[weaponId];
@@ -30,10 +30,13 @@ export function setupAttachmentPicker(root,{onSlot,onSelect}){
     };
     const items=[buttonFor('stock',name)];
     for(const [id,part] of weaponModules(weaponId,slot)){
-      const unlocked=weaponLevel(xp)>=part.level;
+      const requiresNetworkXp=id===LONG_BARREL_ID&&networkXp!==undefined;
+      const unlocked=weaponLevel(requiresNetworkXp?networkXp??0:xp)>=part.level;
       const trial=canTest&&id==='collimator-15';
-      if(!unlocked&&!trial&&!showLocked)continue;
-      const suffix=unlocked?'':trial?' · тестовый доступ':` · уровень ${part.level}`;
+      if(!unlocked&&!trial&&!showLocked&&!requiresNetworkXp&&id!==LONG_BARREL_ID)continue;
+      let suffix=unlocked?'':trial?' · тестовый доступ':` · уровень ${part.level}`;
+      if(!unlocked&&requiresNetworkXp)
+        suffix=networkXp===null?' · требуется обновление сервера':` · сетевой уровень ${part.level} (${networkXp} / ${(part.level-1)*XP_PER_WEAPON_LEVEL})`;
       items.push(buttonFor(id,part.name+suffix,!unlocked&&!trial));
     }
     list.replaceChildren(...items);

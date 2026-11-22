@@ -77,6 +77,7 @@ export function prepareSnapshot(state,size,previous){
   for(const kind of COLLECTIONS){const map=new Map();result.rows[kind]=map;
     for(const source of state[kind]??[]){let item=source;
       if(kind==='players')item={...source,motionAt:Math.fround(state.time),flags:BOOLS.reduce((bits,key,i)=>bits|(source[key]?1<<i:0),0),
+        controlFlags:(source.controlFlags??0)|(source.longBarrel?16:0),
         shotReadyAt:clock(state.time,source.cooldown),equipAt:clock(state.time,source.equipTime),respawnAt:clock(state.time,source.respawnIn),
         reloadAt:source.reloading?clock(state.time,(1-source.reloadProgress)*getWeapon(source.classId,source.weaponId).reload):0,
         gadgetAt:clock(state.time,source.gadgetCooldown),secondaryAt:clock(state.time,source.secondaryCooldown),actionAt:clock(state.time,source.gadgetActionRemaining),
@@ -103,6 +104,7 @@ export function materializeSnapshot(frame,context,time=frame.time){
       p.equipTime=Math.max(0,p.equipAt-time);p.respawnIn=Math.max(0,p.respawnAt-time);p.gadgetCooldown=Math.max(0,p.gadgetAt-time);p.secondaryCooldown=Math.max(0,p.secondaryAt-time);p.gadgetActionRemaining=Math.max(0,p.actionAt-time);
       p.reloadProgress=p.reloading?clamp(1-(p.reloadAt-time)/getWeapon(p.classId,p.weaponId).reload,0,1):0;p.slideTime=Math.max(0,p.slideAt-time);p.slideCooldown=Math.max(0,p.slideCooldownAt-time);p.jumpCooldown=Math.max(0,p.jumpCooldownAt-time);p.cooldown=Math.max(0,p.shotReadyAt-time);
       p.jumpHeld=Boolean(p.controlFlags&1);p.crouchHeld=Boolean(p.controlFlags&2);p.wasSprinting=Boolean(p.controlFlags&4);p.crouching=p.crouch;p.fireHeld=Boolean(p.controlFlags&8);
+      p.longBarrel=Boolean(p.controlFlags&16);
     }else if(kind==='vehicles'){
       p.modelScale={x:p.scaleX,y:p.scaleY,z:p.scaleZ};p.modelRotation={x:p.rotationX,y:0,z:p.rotationZ};p.respawnIn=Math.max(0,p.respawnAt-time);p.wreckTime=Math.max(0,p.wreckAt-time);
     }else if(kind==='grenades')p.fuse=Math.max(0,p.fuseAt-time);else if(kind==='rockets')p.life=Math.max(0,p.lifeAt-time);

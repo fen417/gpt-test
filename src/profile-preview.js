@@ -4,7 +4,7 @@ import {InfantryAssets} from './infantry-assets.js';
 import {createInfantry,disposeInfantry,updateInfantry} from './infantry.js';
 import {mountWeaponPreview} from './weapon-preview.js';
 import {mountCollimator} from './collimator.js';
-import {weaponModuleMount} from './weapon-models.js';
+import {showLongBarrel,weaponModuleMount} from './weapon-models.js';
 
 export function mountProfilePreview({getRenderer,getSelection}){
   const optics=new WeakMap();
@@ -16,7 +16,7 @@ export function mountProfilePreview({getRenderer,getSelection}){
     getItem(){
       const renderer=getRenderer(),selection=getSelection();
       if(!renderer||!selection)return null;
-      const {classId,team,weaponId,collimator}=selection;
+      const {classId,team,weaponId,collimator,longBarrel}=selection;
       if(classId)return {
         key:'soldier:'+classId+':'+team,name:CLASSES[classId].name,
         async load(){
@@ -41,7 +41,9 @@ export function mountProfilePreview({getRenderer,getSelection}){
             const optic=mountCollimator(weaponId,model);
             if(optic)optics.set(model,optic);
           }
-          return optics.get(model)?.show(Boolean(collimator));
+          const opticChanged=optics.get(model)?.show(Boolean(collimator));
+          const barrelChanged=showLongBarrel(model,weaponId,longBarrel);
+          return opticChanged||barrelChanged;
         },
       };
     },

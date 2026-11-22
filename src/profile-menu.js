@@ -2,7 +2,7 @@ import {BASE_MAPS,CLASSES,WEAPONS} from '../shared/world.js';
 import {readCampaignProgress} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
 import {PROFILE_MISSIONS,favorite,localCampaignSummary} from './profile-data.js';
-import {WEAPON_SLOTS,XP_PER_WEAPON_LEVEL,weaponLevel} from '../shared/weapon-modules.js';
+import {LONG_BARREL_ID,WEAPON_SLOTS,XP_PER_WEAPON_LEVEL,weaponLevel} from '../shared/weapon-modules.js';
 import {collimatorTestEnabled,equipCollimator,hasCollimator,loadCollimatorModel} from './collimator.js';
 import {createWeaponProgress,weaponDevice} from './weapon-progress.js';
 import {setupAttachmentPicker} from './weapon-attachment-ui.js';
@@ -119,9 +119,9 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
       void loadCollimatorModel().then(refreshPreview).catch(()=>{});
   }
   function syncWeapons(){cloud?.syncWeapons(weaponDevice,progress.dataForSync());}
-  async function chooseAttachment(weaponId,slot,id){
+  async function chooseAttachment(weaponId,slot,id,verifiedXp){
     if(id==='collimator-15')await loadCollimatorModel();
-    if(progress.select(weaponId,slot,id)){
+    if(progress.select(weaponId,slot,id,verifiedXp)){
       if(slot==='optic')equipCollimator(weaponId,false);
       refreshLoadout();syncWeapons();
     }else if(slot==='optic'&&id==='collimator-15'&&collimatorTestEnabled()){
@@ -147,7 +147,8 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     if(tab==='soldier')return {classId:soldierClass.value,team:Number(soldierTeam.value)};
     if(tab==='overview')return null;
     const weaponId=tab==='weapon'?skinWeapon.value:attachmentWeapon.value;
-    return {weaponId,collimator:currentAttachment(weaponId,'optic')==='collimator-15',hotspots:tab==='attachments'};
+    return {weaponId,collimator:currentAttachment(weaponId,'optic')==='collimator-15',
+      longBarrel:currentAttachment(weaponId,'barrel')===LONG_BARREL_ID,hotspots:tab==='attachments'};
   }
 
   function refreshPreview(){
@@ -180,8 +181,8 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     connecting=import('./profile-firebase.js').then(({createPlayerProfile})=>{
       cloud=createPlayerProfile();
       cloud.subscribe(()=>{
-        const {user,loading,weaponProgress}=cloud.state;
-        progress.updateAccount(user?.uid??null,weaponProgress);
+        const {user,loading,weaponProgress,networkWeaponXp}=cloud.state;
+        progress.updateAccount(user?.uid??null,weaponProgress,networkWeaponXp);
         refreshLoadout();
         if(user&&!loading)syncWeapons();
         writeLocal(knownAccount,user?'1':null);
@@ -288,6 +289,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     weaponXp:progress.xpOf,
     chooseAttachment,
     currentAttachment,
+    networkLoadout:progress.loadout,
     get loadout(){return loadout;},
     async tokenForServer(url){
       if(!firebaseWebConfig||!url.startsWith('wss://')||url!==await defaultServerUrl())return null;

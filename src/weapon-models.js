@@ -1,5 +1,6 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { LONG_BARREL_ID, WEAPON_MODULES } from '../shared/weapon-modules.js';
 
 export const weaponModelUrls = {
   ak12: new URL('./assets/infantry/ak12m.glb', import.meta.url).href,
@@ -33,12 +34,14 @@ const moduleSlots = {
 };
 const templates = new Map();
 const mountedParts = new WeakMap();
+const barrelTemplates = new Map();
+const barrelInstances = new WeakMap();
 let pending;
 
 export function loadWeaponModels() {
   if (pending) return pending;
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-  pending = Promise.all(Object.entries(weaponModelUrls).map(async ([id, url]) => {
+  const baseModels = Object.entries(weaponModelUrls).map(async ([id, url]) => {
     try {
       const {scene} = await loader.loadAsync(url);
       if (!animatedParts[id].every(part => scene.getObjectByName(part))) {
@@ -53,7 +56,17 @@ export function loadWeaponModels() {
     } catch (error) {
       console.warn('Weapon model:', id, error);
     }
-  }));
+  });
+  const barrels = loader.loadAsync(new URL('./assets/infantry/long-barrels.glb', import.meta.url).href)
+    .then(({scene}) => {
+      for (const id of WEAPON_MODULES[LONG_BARREL_ID].weapons) {
+        const model = scene.getObjectByName(id);
+        const muzzle = model?.getObjectByName(id + '_Muzzle');
+        if (muzzle) barrelTemplates.set(id, {model, muzzle});
+        else console.warn('Missing long barrel:', id);
+      }
+    }).catch(error => console.warn('Long barrel models:', error));
+  pending = Promise.all([...baseModels, barrels]);
   return pending;
 }
 
@@ -64,6 +77,34 @@ export function cloneWeaponModel(id) {
 export function weaponModuleMount(root,slot) {
   if(!root||!Object.hasOwn(moduleSlots,slot))return null;
   return root.getObjectByName(moduleSlots[slot].mount)??null;
+}
+
+export function showLongBarrel(root, weaponId, equipped) {
+  const socket = weaponModuleMount(root, 'barrel');
+  const template = barrelTemplates.get(weaponId);
+  if (!socket || !template) return false;
+  let part = barrelInstances.get(socket);
+  if (equipped && !part) {
+    part = template.model.clone(true);
+    for (const name of moduleSlots.barrel.stock) {
+      const replacement = part.getObjectByName(weaponId + '_' + name);
+      const stock = root.getObjectByName(name);
+      if (replacement?.isMesh && stock?.isMesh) replacement.material = stock.material;
+    }
+    barrelInstances.set(socket, part);
+  }
+  const next = equipped ? part : null;
+  if ((mountedParts.get(socket)?.part ?? null) === next) return false;
+  return setWeaponModule(root, 'barrel', next);
+}
+
+export function longBarrelMuzzle(root, weaponId, target) {
+  const socket = weaponModuleMount(root, 'barrel');
+  const template = barrelTemplates.get(weaponId);
+  if (!template || !mountedParts.has(socket)) return false;
+  socket.updateMatrix();
+  target.copy(template.muzzle.position).applyMatrix4(socket.matrix);
+  return true;
 }
 
 // A module is authored in the coordinate system of its socket. Magazine

@@ -8,7 +8,7 @@ import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS, pistolGripSectionAt } from 
 import { createFPSHand, fpsHandTextures } from './fps-hands.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
-import { cloneWeaponModel } from './weapon-models.js';
+import { cloneWeaponModel, longBarrelMuzzle, showLongBarrel } from './weapon-models.js';
 import { mountCollimator } from './collimator.js';
 
 const rifleFits = {
@@ -1075,7 +1075,7 @@ export function createWeaponRig(owner = {}) {
   let visibleRifle = null;
   const installedOptics=new Map();
   let activeOptic;
-  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false}={}){
+  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,longBarrel=false}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1141,6 +1141,10 @@ export function createWeaponRig(owner = {}) {
     suppressor.visible = recon || isVk;
     if(rifle?.muzzle)muzzleFlash.position.copy(rifle.muzzle);
     else muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : rifle?.fit.muzzleZ??weapon.userData.muzzleZ);
+    if(rifle){
+      showLongBarrel(rifle.model,key,longBarrel);
+      if(longBarrel)longBarrelMuzzle(rifle.model,key,muzzleFlash.position);
+    }
     flashLight.position.copy(muzzleFlash.position);
     const hasPhase = Number.isFinite(reloadPhase);
     const phase = hasPhase ? THREE.MathUtils.clamp(reloadPhase,0,1) : reloadMotion > 0 ? .64 : 1;

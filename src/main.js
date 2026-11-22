@@ -3,7 +3,7 @@ import {loadWeaponModels} from './weapon-models.js';
 import {loadEquipmentModels} from './gadget-models.js';
 import {SCOPE_ZOOMS,scopeMagnification} from './scope-optics.js';
 import {COLLIMATOR_ZOOM,collimatorTestEnabled,enableCollimatorTest,restoreCollimatorTest} from './collimator.js';
-import {resolveWeaponModules} from '../shared/weapon-modules.js';
+import {LONG_BARREL_ID,resolveWeaponModules} from '../shared/weapon-modules.js';
 import {renderWeaponResults,weaponProgressId} from './weapon-progress.js';
 import {setupAttachmentPicker} from './weapon-attachment-ui.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
@@ -539,7 +539,7 @@ function receive(next){
       }
     }
     if(event.type==='shot'&&event.playerId===localId&&!event.confirmedCosmetic){
-      const weapon=personalWeapon(event.classId||player.classId,event.weaponId||player.weaponId);
+      const weapon=equippedPersonalWeapon(event.classId||player.classId,event.weaponId||player.weaponId);
       const impulse=(event.mounted ? .008 : weapon.recoil)*(aim?.76:1)*(lastInput.crouch?.87:1);
       if(player.alive){
         recoilPitch=Math.min(.12,recoilPitch+impulse);
@@ -587,7 +587,7 @@ function receive(next){
   }
 }
 function presentLocalShot(event){
-  const player=local();if(!player?.alive)return;const weapon=personalWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
+  const player=local();if(!player?.alive)return;const weapon=equippedPersonalWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
   recoilPitch=Math.min(.12,recoilPitch+impulse);recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin(event.shotSeq*2.1)*impulse*.31));
   audio.events({time:event.time,events:[event],players:state.players},player,{immediate:true});
   text('ammo',(simulation?.client??multiplayer).prediction.player.ammo);
@@ -597,7 +597,9 @@ const profile=mountPlayerProfile({
 });
 const hasCollimator=weaponId=>profile.currentAttachment(weaponId,'optic')==='collimator-15';
 const weaponIdByKillLabel=new Map(Object.values(WEAPONS).map(weapon=>[weapon.weapon,weapon.id]));
-const personalWeapon=(classId,weaponId)=>resolveWeaponModules(getWeapon(classId,weaponId),profile.loadout[weaponId]);
+const activeWeaponModules=()=>mode==='campaign'?local()?.weaponModules:(simulation?.client??multiplayer).weaponModules;
+const equippedPersonalWeapon=(classId,weaponId)=>resolveWeaponModules(getWeapon(classId,weaponId),activeWeaponModules()?.[weaponId]);
+const hasLongBarrel=weaponId=>activeWeaponModules()?.[weaponId]?.barrel===LONG_BARREL_ID;
 const quickAttachments=$('quick-attachments');
 let quickWeapon='',quickSlot='optic',quickChanging=false;
 let localRoundId='',observedRound='',observedKills={},weaponResultRevision=0;
@@ -606,8 +608,10 @@ const renderQuickPicker=setupAttachmentPicker(quickAttachments,{
   onSelect:id=>void changeQuickAttachment(id),
 });
 function updateQuickPicker(){
+  const networkXp=mode==='server'?(multiplayer.networkWeaponXp?multiplayer.networkWeaponXp[quickWeapon]??0:null):undefined;
+  const selected=quickSlot==='barrel'?(activeWeaponModules()?.[quickWeapon]?.barrel??'stock'):profile.currentAttachment(quickWeapon,quickSlot);
   renderQuickPicker({weaponId:quickWeapon,slot:quickSlot,xp:profile.weaponXp(quickWeapon),
-    selected:profile.currentAttachment(quickWeapon,quickSlot),canTest:collimatorTestEnabled()});
+    selected,networkXp,canTest:collimatorTestEnabled()});
 }
 function toggleQuickAttachments(){
   if(quickAttachments.open){quickAttachments.close();void requestControl();return;}
@@ -623,7 +627,7 @@ function toggleQuickAttachments(){
   document.exitPointerLock?.();
 }
 async function applyWeaponAttachments(){
-  const attachments=profile.loadout;
+  const attachments=mode==='server'?profile.networkLoadout(multiplayer.networkWeaponXp):profile.loadout;
   if(mode==='campaign')simulation?.setWeaponAttachments(attachments);
   else await (simulation?.client??multiplayer).setWeaponAttachments(attachments);
 }
@@ -631,7 +635,8 @@ async function changeQuickAttachment(id){
   if(quickChanging||finished||!quickAttachments.open||!local()?.alive||local()?.weaponId!==quickWeapon)return;
   quickChanging=true;
   try{
-    if(await profile.chooseAttachment(quickWeapon,quickSlot,id))await applyWeaponAttachments();
+    const verifiedXp=mode==='server'&&id===LONG_BARREL_ID?multiplayer.networkWeaponXp?.[quickWeapon]:undefined;
+    if(await profile.chooseAttachment(quickWeapon,quickSlot,id,verifiedXp))await applyWeaponAttachments();
     if(quickAttachments.open)updateQuickPicker();
   }catch{toast('Не удалось применить обвес.');}
   finally{quickChanging=false;}
@@ -669,7 +674,7 @@ function enter(){
   document.body.classList.add('in-battle');audio.setMode?.('battle');
   text('pause-title','Бой продолжается');text('pause-description','Вернись в сектор. Твой отряд ждёт.');$('resume').firstChild.textContent='ПРОДОЛЖИТЬ ';show('unlocked');show('leave');
   if(state)receive(state);
-  if(Object.keys(profile.loadout).length&&!finished)void applyWeaponAttachments().catch(()=>{});
+  if(!finished&&(mode==='server'||Object.keys(profile.loadout).length))void applyWeaponAttachments().catch(()=>{});
   text('room-badge',mode==='solo'?`БОЙ С БОТАМИ · ${state?.players?.filter(p=>p.bot).length??0} · ${difficultyNames[state?.difficulty]??difficultyNames[$('difficulty').value]}`:`КОМНАТА · ${state?.roomName||room||'СЕРВЕР'}`);
   if(mode==='campaign'&&state?.campaign?.cutscene)show('pause',false);
   else requestControl(true);
@@ -1651,7 +1656,7 @@ function hud(now){
   squadUI?.update(state,localId);
   drawBotDebug(state);
   const player=local();if(!player)return;
-  const weapon=personalWeapon(player.classId,player.weaponId);
+  const weapon=equippedPersonalWeapon(player.classId,player.weaponId);
   const mounted=updateVehicleHud(player);
   const personalWeapon=!mounted||mounted.role==='passenger';
   const heading=(((state.campaign?180+yaw*180/Math.PI:-yaw*180/Math.PI)%360)+360)%360;const cardinal=['N','NE','E','SE','S','SW','W','NW'][Math.round(heading/45)%8];text('compass-direction',cardinal);text('compass-degrees',`${String(Math.round(heading)).padStart(3,'0')}°`);
@@ -1895,7 +1900,7 @@ function frame(now){
     try{
       const realBegin=performance.now();
       renderer.render(renderState,localId,renderDelta,{mapId:inLobby?state?.mapId:$('map-select').value,...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
-        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,hasCollimator,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,hasCollimator,hasLongBarrel,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
       if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
     }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
   }

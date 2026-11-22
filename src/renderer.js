@@ -2093,6 +2093,7 @@ export class GameRenderer {
         team: player.team,
         weaponId: this.presentedWeaponId,
         collimator:equippedCollimator,
+        longBarrel:view.hasLongBarrel?.(this.presentedWeaponId),
         unarmed: state.gameMode==='tdm'&&!player.weaponId,
         aim: this.aimAmount,
         reloadMotion,

@@ -71,6 +71,10 @@
         "pvp": {
           ".read": "auth != null && auth.uid === 'sector09-pvp-writer'",
           ".write": "auth != null && auth.uid === 'sector09-pvp-writer'"
+        },
+        "weaponNetworkProgress": {
+          ".read": "auth != null && auth.uid === 'sector09-pvp-writer'",
+          ".write": "auth != null && auth.uid === 'sector09-pvp-writer'"
         }
       }
     }

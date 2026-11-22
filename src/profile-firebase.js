@@ -114,7 +114,8 @@ export function createPlayerProfile(){
     get state(){
       const campaign={...profile?.campaign};
       for(const [id,data] of Object.entries(queue))campaign[id]=mergeCampaignResult(campaign[id],data);
-      return {user,loading,problem,weaponSyncFailed,syncing:Object.keys(queue).length>0,pvp:profile?.pvp,campaign,weaponProgress:profile?.weaponProgress};
+      return {user,loading,problem,weaponSyncFailed,syncing:Object.keys(queue).length>0,pvp:profile?.pvp,campaign,
+        weaponProgress:profile?.weaponProgress,networkWeaponXp:profile?.weaponNetworkProgress?.xp};
     },
     subscribe(listener){listeners.add(listener);return ()=>listeners.delete(listener);},
     async idToken(){await auth.authStateReady();return auth.currentUser?.getIdToken()??null;},

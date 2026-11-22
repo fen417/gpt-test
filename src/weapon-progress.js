@@ -23,38 +23,40 @@ const number = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 const readProgress = uid => ({xp:{}, round:{}, loadout:{}, ...read(storageKey(uid))});
 
 export function createWeaponProgress() {
-  let uid = null, remote = null, local = readProgress(uid);
+  let uid = null, remote = null, networkXp = null, local = readProgress(uid);
   const store = () => write(storageKey(uid), local);
   function xpOf(id) {
     let total = Math.max(number(local.xp[id]), number(remote?.devices?.[weaponDevice]?.[id]));
     for (const [device, xp] of Object.entries(remote?.devices ?? {})) {
       if (device !== weaponDevice) total += number(xp[id]);
     }
-    return total;
+    return Math.max(total,number(networkXp?.[id]));
   }
   return {
-    updateAccount(account, cloudData) {
+    updateAccount(account, cloudData, verifiedXp) {
       if (uid !== account) local = readProgress(account);
       uid = account;
       remote = cloudData;
+      networkXp = verifiedXp;
     },
     xpOf,
-    loadout() {
+    loadout(verifiedXp) {
       const selection = {};
       for (const weaponId of Object.keys(WEAPONS)) {
         for (const slot of Object.keys(WEAPON_SLOTS)) {
           const cur = local.loadout[weaponId]?.[slot], synced = remote?.loadout?.[weaponId]?.[slot];
           const id = (number(cur?.at) >= number(synced?.at) ? cur : synced)?.id;
           const part = getWeaponModule(weaponId, slot, id);
-          if (part && weaponLevel(xpOf(weaponId)) >= part.level) (selection[weaponId] ??= {})[slot] = id;
+          const availableXp = Math.max(xpOf(weaponId),number(verifiedXp?.[weaponId]));
+          if (part && weaponLevel(availableXp) >= part.level) (selection[weaponId] ??= {})[slot] = id;
         }
       }
       return selection;
     },
-    select(weaponId, slot, id) {
+    select(weaponId, slot, id, verifiedXp = 0) {
       if (!Object.hasOwn(WEAPONS, weaponId) || !Object.hasOwn(WEAPON_SLOTS, slot)) return false;
       const part = getWeaponModule(weaponId, slot, id);
-      if (id !== 'stock' && (!part || weaponLevel(xpOf(weaponId)) < part.level)) return false;
+      if (id !== 'stock' && (!part || weaponLevel(Math.max(xpOf(weaponId),verifiedXp)) < part.level)) return false;
       local = read(storageKey(uid)) ?? local;
       const previous = Math.max(number(local.loadout[weaponId]?.[slot]?.at), number(remote?.loadout?.[weaponId]?.[slot]?.at));
       (local.loadout[weaponId] ??= {})[slot] = {id, at:Math.max(Date.now(), previous+1)};

@@ -240,6 +240,7 @@ export class Multiplayer{
     this.context={mapId:data.mapId,gameMode:data.gameMode??'conquest',killLimit:data.killLimit??50,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
     this.equipmentPresentation=new EquipmentPresentation();this.equipmentRequestKey=null;this.equipmentRequestSequence=0;this.latestInputAck=0;
     this.weaponKills=data.weaponKills;this.weaponRoundId=data.weaponRoundId;this.supportsWeaponModules=Boolean(data.weaponModules);this.weaponModules=data.attachments;
+    this.networkWeaponXp=data.networkWeaponXp;
     this.decoder=new SnapshotDecoder(this.context);this.localEvents=[];this.prediction=new Prediction(data.mapId,event=>{this.localEvents.push(event);this.onLocalShot(event);},{predictShots:this.predictShots});this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.playbackRecoveries=0;this.interpolationMs=Math.max(40,1000/(data.snapshotHz??20)+10);this.renderTime=null;this.targetInterpolationMs=this.interpolationMs;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
   }
   acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0,viewTime:this.renderTime??(this.state?.time??0)-this.interpolationMs/1000,interpolationMs:this.interpolationMs};}
@@ -248,7 +249,10 @@ export class Multiplayer{
       this.serverStats=data.stats;
       if(data.stats.snapshotHz)this.snapshotHz=data.stats.snapshotHz;
     }
-    if(data.weaponKills){this.weaponKills=data.weaponKills;this.publish();}
+    if(data.weaponKills){
+      this.networkWeaponXp=data.networkWeaponXp;
+      this.weaponKills=data.weaponKills;this.publish();
+    }
   }
   async setWeaponAttachments(attachments){
     if(!this.supportsWeaponModules)return;
