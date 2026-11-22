@@ -1,13 +1,11 @@
 import {BASE_MAPS,CLASSES,WEAPONS} from '../shared/world.js';
 import {readCampaignProgress} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
-import {
-  DEFAULT_CUSTOMIZATION,PROFILE_MISSIONS,SOLDIER_FINISHES,WEAPON_FINISHES,
-  attachmentSlots,favorite,localCampaignSummary,withCustomization,
-} from './profile-data.js';
+import {PROFILE_MISSIONS,favorite,localCampaignSummary} from './profile-data.js';
+import {SCOPE_ZOOMS} from './scope-optics.js';
 import './profile-menu.css';
 
-const knownAccount='sector09-profile-session',guestProfile='sector09-guest-customization';
+const knownAccount='sector09-profile-session';
 const readLocal=key=>{try{return localStorage.getItem(key);}catch{return null;}};
 const writeLocal=(key,value)=>{try{value===null?localStorage.removeItem(key):localStorage.setItem(key,value);}catch{}};
 
@@ -29,26 +27,19 @@ const authErrors={
 
 const formatTime=seconds=>Math.floor(seconds/60)+' мин '+String(Math.floor(seconds%60)).padStart(2,'0')+' с';
 
-function readGuest(){
-  try{return JSON.parse(readLocal(guestProfile))??DEFAULT_CUSTOMIZATION;}
-  catch{return DEFAULT_CUSTOMIZATION;}
-}
-
 export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRenderer}){
   const $=id=>document.getElementById(id);
   const dialog=$('profile-panel'),authDialog=$('account-panel'),confirm=$('profile-confirm-reset');
   const form=$('profile-auth'),email=$('profile-email'),password=$('profile-password');
   const tabs=[...dialog.querySelectorAll('[data-profile-tab]')];
   let cloud,connecting,authBusy=false,profileBusy=false,registering=false,guest=false;
-  let authMessage='',message='',tab='overview',localCustomization=readGuest(),preview,previewLoading;
+  let authMessage='',message='',tab='overview',preview,previewLoading;
   const set=(id,value)=>{$(id).textContent=value;};
   const fill=(select,options)=>select.replaceChildren(...options.map(([value,name])=>new Option(name,value)));
-  const customization=()=>cloud?.state.user?cloud.state.customization:localCustomization;
   const weaponOptions=Object.values(WEAPONS).sort((a,b)=>Number(Boolean(a.sidearm))-Number(Boolean(b.sidearm)))
     .map(weapon=>[weapon.id,weapon.name]);
   const soldierClass=$('profile-soldier-class'),soldierTeam=$('profile-soldier-team');
   const skinWeapon=$('profile-skin-weapon'),attachmentWeapon=$('profile-attachment-weapon');
-  const attachmentOptions=$('profile-attachment-options');
   fill(soldierClass,Object.entries(CLASSES).map(([id,info])=>[id,info.name]));
   for(const select of [skinWeapon,attachmentWeapon]){fill(select,weaponOptions);select.value='ar416';}
 
@@ -97,41 +88,20 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     }));
     set('profile-status',message||state?.problem||(user&&state.loading?'Загружаем профиль…':
       state?.syncing?'Синхронизируем сюжетные достижения…':''));
-    renderCustomization();
-  }
-
-  function renderCustomization(){
-    const value=customization();
-    setPressed('profile-soldier-finishes',value.soldierSkin??'standard');
-    setPressed('profile-weapon-finishes',value.weaponSkins?.[skinWeapon.value]??'standard');
-    const loadout=value.attachments?.[attachmentWeapon.value]??{};
-    for(const select of attachmentOptions.querySelectorAll('select')){
-      select.value=loadout[select.dataset.slot]??'standard';
-      if(!select.value)select.value='standard';
-    }
-    $('profile-clear-attachments').disabled=!Object.keys(loadout).length;
-    $('profile-customization-note').hidden=tab==='overview';
-    set('profile-customization-note',tab==='attachments'?
-      'В 3D показана штатная комплектация. Сохранённый обвес можно будет применять после обновления экипировки.':
-      'Расцветка сохраняется для профиля и 3D-просмотра.');
     refreshPreview();
   }
 
-  function setPressed(id,value){
-    const buttons=[...$(id).querySelectorAll('button')];
-    if(!buttons.some(button=>button.value===value))value='standard';
-    for(const button of buttons)button.setAttribute('aria-pressed',String(button.value===value));
+  function describeAttachments(){
+    const weaponId=attachmentWeapon.value,zooms=SCOPE_ZOOMS[weaponId];
+    const text=zooms?'Штатный прицел '+zooms.join('–')+'×':
+      weaponId==='vk45'?'Штатный глушитель':'Штатная комплектация';
+    set('profile-equipped-attachment',text);
   }
 
   function selection(){
-    const value=customization();
-    if(tab==='soldier')return {
-      classId:soldierClass.value,team:Number(soldierTeam.value),
-      color:SOLDIER_FINISHES[value.soldierSkin]?.color??null,
-    };
+    if(tab==='soldier')return {classId:soldierClass.value,team:Number(soldierTeam.value)};
     if(tab==='overview')return null;
-    const weaponId=tab==='weapon'?skinWeapon.value:attachmentWeapon.value;
-    return {weaponId,color:WEAPON_FINISHES[value.weaponSkins?.[weaponId]]?.color??null};
+    return {weaponId:tab==='weapon'?skinWeapon.value:attachmentWeapon.value};
   }
 
   function refreshPreview(){
@@ -152,43 +122,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     }
     $('profile-preview-frame').hidden=tab==='overview';
     if(focus)next.focus();
-    renderCustomization();
-  }
-
-  async function saveCustomization(change){
-    message='';
-    if(!cloud?.state.user){
-      localCustomization=withCustomization(localCustomization,change);
-      writeLocal(guestProfile,JSON.stringify(localCustomization));
-      renderCustomization();
-      return;
-    }
-    try{await cloud.saveCustomization(change);}
-    catch{message='Не удалось сохранить снаряжение.';renderProfile();}
-  }
-
-  function mountFinishes(id,finishes,change){
-    $(id).replaceChildren(...Object.entries(finishes).map(([value,finish])=>{
-      const button=document.createElement('button'),swatch=document.createElement('span');
-      button.type='button';button.value=value;button.setAttribute('aria-pressed','false');
-      swatch.className='profile-swatch';swatch.setAttribute('aria-hidden','true');
-      if(finish.color)swatch.style.setProperty('--finish-color',finish.color);
-      button.append(swatch,finish.name);
-      button.addEventListener('click',()=>void saveCustomization({...change(),value}));
-      return button;
-    }));
-  }
-
-  function rebuildAttachments(){
-    const weaponId=attachmentWeapon.value;
-    attachmentOptions.replaceChildren(...attachmentSlots(weaponId,WEAPONS[weaponId].sidearm).map(slot=>{
-      const label=document.createElement('label'),select=document.createElement('select');
-      select.dataset.slot=slot.id;
-      fill(select,slot.choices);
-      select.addEventListener('change',()=>void saveCustomization({section:'attachments',weaponId,slot:slot.id,value:select.value}));
-      label.append(slot.name,select);
-      return label;
-    }));
+    refreshPreview();
   }
 
   function connect(){
@@ -282,12 +216,9 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
       event.preventDefault();selectTab(tabs[next],true);
     });
   }
-  mountFinishes('profile-soldier-finishes',SOLDIER_FINISHES,()=>({section:'soldierSkin'}));
-  mountFinishes('profile-weapon-finishes',WEAPON_FINISHES,()=>({section:'weaponSkins',weaponId:skinWeapon.value}));
-  for(const select of [soldierTeam,soldierClass,skinWeapon])select.addEventListener('change',renderCustomization);
-  attachmentWeapon.addEventListener('change',()=>{rebuildAttachments();renderCustomization();});
-  $('profile-clear-attachments').addEventListener('click',()=>void saveCustomization({section:'attachments',weaponId:attachmentWeapon.value}));
-  rebuildAttachments();
+  for(const select of [soldierTeam,soldierClass,skinWeapon])select.addEventListener('change',refreshPreview);
+  attachmentWeapon.addEventListener('change',()=>{describeAttachments();refreshPreview();});
+  describeAttachments();
 
   if(firebaseWebConfig){
     if(readLocal(knownAccount)==='1')void connect();

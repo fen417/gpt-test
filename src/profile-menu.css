@@ -51,13 +51,8 @@
 .profile-option-panel { display: grid; align-content: start; gap: 13px; }
 .profile-option-panel label { display: grid; gap: 5px; font-size: 12px; color: var(--menu-muted); }
 .profile-option-panel select { width: 100%; min-width: 0; }
-.profile-option-panel fieldset { min-width: 0; border: 0; margin: 0; padding: 0; }
-.profile-option-panel legend { padding: 0; margin-bottom: 8px; font-size: 13px; }
-.profile-selects, #profile-attachment-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
-.profile-finishes { display: grid; gap: 6px; }
-.profile-finishes button { display: flex; align-items: center; gap: 9px; padding: 8px; min-height: 36px; border: 1px solid var(--menu-line); border-radius: 5px; background: #151e17; font-size: 12px; text-align: left; }
-.profile-finishes button[aria-pressed=true] { color: var(--menu-accent); border-color: var(--menu-accent); }
-.profile-swatch { flex: 0 0 28px; height: 19px; border: 1px solid #ffffff3c; border-radius: 3px; background: var(--finish-color,#414844); }
+.profile-selects { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.profile-configuration { margin: 0; padding: 10px 0 0; border-top: 1px solid var(--menu-line); font-size: 13px; color: var(--menu-muted); }
 @media (max-width: 690px) {
   .profile-overview,.profile-customization { grid-template-columns: 1fr; }
   .profile-tabs,.profile-content,.account-body { padding-inline: 14px; }

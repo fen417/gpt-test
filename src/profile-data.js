@@ -1,53 +1,6 @@
 import {campaignCatalog} from './campaign/progress.js';
 
 export const PROFILE_MISSIONS=campaignCatalog.missions.filter(mission=>mission.implemented);
-export const DEFAULT_CUSTOMIZATION=Object.freeze({
-  soldierSkin:'standard',weaponSkins:{},attachments:{},
-});
-
-export const SOLDIER_FINISHES={
-  standard:{name:'Штатная расцветка',color:null},
-  sand:{name:'Песчаная',color:'#b59c73'},
-  forest:{name:'Лесная',color:'#64724c'},
-  slate:{name:'Сланцевая',color:'#515e65'},
-};
-
-export const WEAPON_FINISHES={
-  standard:{name:'Заводская',color:null},
-  olive:{name:'Олива',color:'#696d4e'},
-  sand:{name:'Песочный',color:'#ad9070'},
-  graphite:{name:'Графит',color:'#3e4348'},
-};
-
-export function attachmentSlots(weaponId,sidearm){
-  const standard=['standard','Штатный'];
-  const slots=[
-    {id:'optic',name:'Прицел',choices:[
-      ['standard',weaponId==='sv98'?'Штатный 2–4×':weaponId==='dmr12'?'Штатный 2×':'Штатный'],
-      ['reflex','Коллиматор'],...(!sidearm?[['scope-2x','Оптика 2×'],['scope-4x','Оптика 4×']]:[]),
-    ]},
-    {id:'muzzle',name:'Дульное устройство',choices:[
-      ['standard',weaponId==='vk45'?'Штатный глушитель':'Штатное'],['suppressor','Глушитель'],['compensator','Компенсатор'],
-    ]},
-  ];
-  if(!sidearm)slots.push({id:'grip',name:'Цевьё',choices:[
-    standard,['vertical','Вертикальная рукоять'],['angled','Угловая рукоять'],
-  ]});
-  return slots;
-}
-
-export function withCustomization(current,{section,weaponId,slot,value}){
-  const customization={...DEFAULT_CUSTOMIZATION,...current};
-  if(section==='soldierSkin')return {...customization,soldierSkin:value};
-  if(section==='weaponSkins')return {...customization,weaponSkins:{...customization.weaponSkins,[weaponId]:value}};
-  const attachments={...customization.attachments};
-  const weapon={...attachments[weaponId]};
-  if(slot&&value!=='standard')weapon[slot]=value;
-  else if(slot)delete weapon[slot];
-  if(slot&&Object.keys(weapon).length)attachments[weaponId]=weapon;
-  else delete attachments[weaponId];
-  return {...customization,attachments};
-}
 
 export function mergeCampaignResult(previous,next){
   const time=value=>Number.isFinite(value)&&value>0&&value<=604800?value:0;

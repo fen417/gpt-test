@@ -6,7 +6,7 @@ import {
 import {getDatabase,onValue,ref,runTransaction} from 'firebase/database';
 import {CAMPAIGN_PROFILE_EVENT} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
-import {DEFAULT_CUSTOMIZATION,PROFILE_MISSIONS,mergeCampaignResult,withCustomization} from './profile-data.js';
+import {PROFILE_MISSIONS,mergeCampaignResult} from './profile-data.js';
 
 const missions=new Set(PROFILE_MISSIONS.map(mission=>mission.id));
 const key=uid=>'sector09-profile-campaign:'+uid;
@@ -82,7 +82,7 @@ export function createPlayerProfile(){
     get state(){
       const campaign={...profile?.campaign};
       for(const [id,data] of Object.entries(queue))campaign[id]=mergeCampaignResult(campaign[id],data);
-      return {user,loading,problem,syncing:Object.keys(queue).length>0,pvp:profile?.pvp,campaign,customization:profile?.customization??DEFAULT_CUSTOMIZATION};
+      return {user,loading,problem,syncing:Object.keys(queue).length>0,pvp:profile?.pvp,campaign};
     },
     subscribe(listener){listeners.add(listener);return ()=>listeners.delete(listener);},
     async idToken(){await auth.authStateReady();return auth.currentUser?.getIdToken()??null;},
@@ -110,10 +110,6 @@ export function createPlayerProfile(){
       }
     },
     signOut(){pendingGoogle=null;return signOut(auth);},
-    saveCustomization(change){
-      if(!user)throw Error('Войдите, чтобы сохранить настройки.');
-      return runTransaction(profileRef(user.uid,'customization'),current=>withCustomization(current,change));
-    },
     importCampaign:addCampaign,
   };
 }

@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 import {WEAPONS} from '../shared/world.js';
 
-function visibleBounds(root){
+function visibleBounds(root,measurePose=false){
   root.updateMatrixWorld(true);const bounds=new THREE.Box3();
+  const part=new THREE.Box3();
   root.traverseVisible(object=>{
-    if(!object.isMesh)return;object.geometry.computeBoundingBox();
-    bounds.union(object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld));
+    if(!object.isMesh)return;
+    // A skinned mesh's geometry bounds describe its bind pose. Measure its
+    // posed bounds on load, then reuse them as the preview rotates or resizes.
+    const source=object.isSkinnedMesh?object:object.geometry;
+    if(!source.boundingBox||measurePose&&object.isSkinnedMesh)source.computeBoundingBox();
+    bounds.union(part.copy(source.boundingBox).applyMatrix4(object.matrixWorld));
   });return bounds;
 }
 
@@ -84,7 +89,8 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,getGpuDevice=()=>n
       model?.removeFromParent();disposeModel?.();
       model=next.model;disposeModel=next.dispose;angle=next.angle??weaponAngle;
       pivot.rotation.set(0,0,0);pivot.add(model);
-      const center=visibleBounds(model).getCenter(new THREE.Vector3());model.position.sub(center);
+      const center=visibleBounds(pivot,true).getCenter(new THREE.Vector3());
+      model.position.sub(pivot.worldToLocal(center));
       hint.textContent='Потяни, чтобы повернуть';
       canvas.setAttribute('aria-label','3D-модель '+title.textContent);loadingUntil=performance.now()+800;reset();resize();
     }catch(error){

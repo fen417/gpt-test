@@ -125,19 +125,17 @@
             <label>Команда<select id="profile-soldier-team"><option value="0">Синяя</option><option value="1">Красная</option></select></label>
             <label>Класс<select id="profile-soldier-class"></select></label>
           </div>
-          <fieldset><legend>Расцветка бойца</legend><div id="profile-soldier-finishes" class="profile-finishes"></div></fieldset>
+          <p class="profile-configuration">Штатная расцветка команды</p>
         </section>
         <section id="profile-view-weapon" class="profile-option-panel profile-card" role="tabpanel" aria-labelledby="profile-nav-weapon" hidden>
           <label>Оружие<select id="profile-skin-weapon"></select></label>
-          <fieldset><legend>Расцветка оружия</legend><div id="profile-weapon-finishes" class="profile-finishes"></div></fieldset>
+          <p class="profile-configuration">Заводская расцветка</p>
         </section>
         <section id="profile-view-attachments" class="profile-option-panel profile-card" role="tabpanel" aria-labelledby="profile-nav-attachments" hidden>
           <label>Оружие<select id="profile-attachment-weapon"></select></label>
-          <div id="profile-attachment-options"></div>
-          <button id="profile-clear-attachments" type="button" class="profile-text-button">Вернуть штатный комплект</button>
+          <p id="profile-equipped-attachment" class="profile-configuration"></p>
         </section>
       </div>
-      <p id="profile-customization-note" class="profile-status" hidden></p>
       <p id="profile-status" class="profile-status" role="status" aria-live="polite"></p>
     </div>
   </dialog>
