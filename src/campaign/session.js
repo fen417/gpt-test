@@ -69,6 +69,7 @@ export class CampaignSession {
   setPaused(value){if(value===this.paused)return;this.paused=value;this.resetPlayback();this.worker.postMessage({type:'paused',value});}
   advance(input){this.worker.postMessage({type:'input',input});}
   command(command){this.worker.postMessage({type:'command',command});}
+  setWeaponAttachments(attachments){this.worker.postMessage({type:'weapon-attachments',attachments});}
   snapshot(){return this.state;}
   sample(now){
     if(this.frames.length<2||this.state.campaign.cutscene||this.paused)return this.state;

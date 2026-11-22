@@ -2,8 +2,10 @@ import {BASE_MAPS,CLASSES,WEAPONS} from '../shared/world.js';
 import {readCampaignProgress} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
 import {PROFILE_MISSIONS,favorite,localCampaignSummary} from './profile-data.js';
-import {SCOPE_ZOOMS} from './scope-optics.js';
-import {collimatorTestEnabled,equipCollimator,hasCollimator,supportsCollimator} from './collimator.js';
+import {WEAPON_SLOTS,XP_PER_WEAPON_LEVEL,weaponLevel} from '../shared/weapon-modules.js';
+import {collimatorTestEnabled,equipCollimator,hasCollimator,loadCollimatorModel} from './collimator.js';
+import {createWeaponProgress,weaponDevice} from './weapon-progress.js';
+import {setupAttachmentPicker} from './weapon-attachment-ui.js';
 import './profile-menu.css';
 
 const knownAccount='sector09-profile-session';
@@ -41,7 +43,20 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     .map(weapon=>[weapon.id,weapon.name]);
   const soldierClass=$('profile-soldier-class'),soldierTeam=$('profile-soldier-team');
   const skinWeapon=$('profile-skin-weapon'),attachmentWeapon=$('profile-attachment-weapon');
-  const opticButton=$('profile-collimator');
+  const progress=createWeaponProgress();
+  let attachmentSlot='optic',loadout=progress.loadout();
+  const mounts=$('profile-weapon-mounts');
+  for(const [slot,label] of Object.entries(WEAPON_SLOTS)){
+    const button=document.createElement('button');
+    button.type='button';button.tabIndex=-1;button.className='profile-weapon-mount';
+    button.dataset.weaponMount=slot;button.textContent='+';button.title=label;button.hidden=true;
+    button.addEventListener('click',()=>selectSlot(slot,true));
+    mounts.append(button);
+  }
+  const renderPicker=setupAttachmentPicker($('profile-view-attachments'),{
+    onSlot:selectSlot,
+    onSelect:id=>void chooseAttachment(attachmentWeapon.value,attachmentSlot,id).catch(()=>set('profile-status','Не удалось загрузить модель обвеса.')),
+  });
   fill(soldierClass,Object.entries(CLASSES).map(([id,info])=>[id,info.name]));
   for(const select of [skinWeapon,attachmentWeapon]){fill(select,weaponOptions);select.value='ar416';}
 
@@ -88,27 +103,51 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
         progress?.checkpoint?'Контрольная точка '+progress.checkpoint:'—';
       item.append(title,record);return item;
     }));
-    set('profile-status',message||state?.problem||(user&&state.loading?'Загружаем профиль…':
+    set('profile-status',message||state?.problem||(state?.weaponSyncFailed&&tab==='attachments'?'Прогресс оружия сохранён в этом браузере. Синхронизация недоступна.':'')||(user&&state.loading?'Загружаем профиль…':
       state?.syncing?'Синхронизируем сюжетные достижения…':''));
+    if(tab==='attachments')describeAttachments();
     refreshPreview();
   }
 
+  function currentAttachment(weaponId,slot){
+    if(slot==='optic'&&hasCollimator(weaponId))return 'collimator-15';
+    return loadout[weaponId]?.[slot]??'stock';
+  }
+  function refreshLoadout(){
+    loadout=progress.loadout();
+    if(Object.values(loadout).some(slots=>slots.optic==='collimator-15'))
+      void loadCollimatorModel().then(refreshPreview).catch(()=>{});
+  }
+  function syncWeapons(){cloud?.syncWeapons(weaponDevice,progress.dataForSync());}
+  async function chooseAttachment(weaponId,slot,id){
+    if(id==='collimator-15')await loadCollimatorModel();
+    if(progress.select(weaponId,slot,id)){
+      if(slot==='optic')equipCollimator(weaponId,false);
+      refreshLoadout();syncWeapons();
+    }else if(slot==='optic'&&id==='collimator-15'&&collimatorTestEnabled()){
+      equipCollimator(weaponId,true);
+    }else return false;
+    describeAttachments();refreshPreview();
+    return true;
+  }
+  function selectSlot(slot,focus=false){
+    attachmentSlot=slot;describeAttachments();
+    if(focus)$('profile-view-attachments').querySelector(`[data-attachment-slot="${slot}"]`)?.focus();
+  }
   function describeAttachments(){
-    const weaponId=attachmentWeapon.value,zooms=SCOPE_ZOOMS[weaponId];
-    const equipped=hasCollimator(weaponId);
-    const stock=zooms?'Штатный прицел '+zooms.join('–')+'×':
-      weaponId==='vk45'?'Штатный глушитель':'Штатная комплектация';
-    set('profile-equipped-attachment',equipped?(weaponId==='vk45'?'Коллиматор 1,5× · Штатный глушитель':'Коллиматор 1,5×'):stock);
-    opticButton.hidden=!collimatorTestEnabled()||!supportsCollimator(weaponId);
-    opticButton.setAttribute('aria-pressed',String(equipped));
-    opticButton.textContent=equipped?'Снять коллиматор 1,5×':'Установить коллиматор 1,5×';
+    const weaponId=attachmentWeapon.value,xp=progress.xpOf(weaponId);
+    set('profile-weapon-level',`Уровень ${weaponLevel(xp)} · ${xp % XP_PER_WEAPON_LEVEL} / ${XP_PER_WEAPON_LEVEL} очк.`);
+    $('profile-weapon-xp').max=XP_PER_WEAPON_LEVEL;
+    $('profile-weapon-xp').value=xp % XP_PER_WEAPON_LEVEL;
+    renderPicker({weaponId,slot:attachmentSlot,xp,selected:currentAttachment(weaponId,attachmentSlot),canTest:collimatorTestEnabled(),showLocked:true});
+    for(const button of mounts.children)button.classList.toggle('selected',button.dataset.weaponMount===attachmentSlot);
   }
 
   function selection(){
     if(tab==='soldier')return {classId:soldierClass.value,team:Number(soldierTeam.value)};
     if(tab==='overview')return null;
     const weaponId=tab==='weapon'?skinWeapon.value:attachmentWeapon.value;
-    return {weaponId,collimator:hasCollimator(weaponId)};
+    return {weaponId,collimator:currentAttachment(weaponId,'optic')==='collimator-15',hotspots:tab==='attachments'};
   }
 
   function refreshPreview(){
@@ -128,6 +167,8 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
       $(button.getAttribute('aria-controls')).hidden=!selected;
     }
     $('profile-preview-frame').hidden=tab==='overview';
+    mounts.hidden=tab!=='attachments';
+    if(tab==='attachments')describeAttachments();
     if(focus)next.focus();
     refreshPreview();
   }
@@ -139,7 +180,10 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     connecting=import('./profile-firebase.js').then(({createPlayerProfile})=>{
       cloud=createPlayerProfile();
       cloud.subscribe(()=>{
-        const {user,loading}=cloud.state;
+        const {user,loading,weaponProgress}=cloud.state;
+        progress.updateAccount(user?.uid??null,weaponProgress);
+        refreshLoadout();
+        if(user&&!loading)syncWeapons();
         writeLocal(knownAccount,user?'1':null);
         if(user&&authDialog.open&&!authBusy)authDialog.close();
         if(!user&&!loading&&!guest&&!$('menu').classList.contains('hidden'))openAuth();
@@ -225,11 +269,8 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
   }
   for(const select of [soldierTeam,soldierClass,skinWeapon])select.addEventListener('change',refreshPreview);
   attachmentWeapon.addEventListener('change',()=>{describeAttachments();refreshPreview();});
-  opticButton.addEventListener('click',()=>{
-    const weaponId=attachmentWeapon.value;
-    equipCollimator(weaponId,!hasCollimator(weaponId));
-    describeAttachments();refreshPreview();
-  });
+  addEventListener('online',syncWeapons);
+  refreshLoadout();
   describeAttachments();
 
   if(firebaseWebConfig){
@@ -239,6 +280,15 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
   return {
     refreshPreview,
     refreshAttachments(){describeAttachments();refreshPreview();},
+    creditWeaponKills(round,kills){
+      if(!progress.credit(round,kills))return false;
+      refreshLoadout();syncWeapons();
+      return true;
+    },
+    weaponXp:progress.xpOf,
+    chooseAttachment,
+    currentAttachment,
+    get loadout(){return loadout;},
     async tokenForServer(url){
       if(!firebaseWebConfig||!url.startsWith('wss://')||url!==await defaultServerUrl())return null;
       return (await connect())?.idToken()??null;

@@ -22,6 +22,7 @@ import { addPortLabels, addPortWater } from './port-visuals.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMap, CLASSES, CLASS_WEAPONS, SIDEARMS, weaponSwitchPose, getWeapon, defaultWeaponId, CAPTURE_RADIUS, EYE_HEIGHT, CROUCH_EYE_HEIGHT } from '../shared/world.js';
+import { resolveWeaponModules } from '../shared/weapon-modules.js';
 import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
@@ -2013,7 +2014,7 @@ export class GameRenderer {
       const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
       this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
-      const weapon = getWeapon(player.classId, player.weaponId);
+      const weapon = resolveWeaponModules(getWeapon(player.classId,player.weaponId),player.weaponModules?.[player.weaponId]);
       const scopedWeapon = !gadgetKind && Boolean(SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
       const equippedCollimator = !gadgetKind && Boolean(view.hasCollimator?.(this.presentedWeaponId));
       const opticZoom = scopedWeapon ? scopeMagnification(player.weaponId,view.scopeZoom) :

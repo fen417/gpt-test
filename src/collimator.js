@@ -2,18 +2,20 @@ import {CircleGeometry,Mesh,MeshBasicMaterial} from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {setWeaponModule,weaponModuleMount} from './weapon-models.js';
+import {getWeaponModule,WEAPON_MODULES} from '../shared/weapon-modules.js';
 
-export const COLLIMATOR_ZOOM=1.5;
-const scales={ar416:1,ak12:1,mcx9:1,vk45:1,mg36:1,pkp:.93,p19:.63,m50:.69};
-export const supportsCollimator=id=>Object.hasOwn(scales,id);
+const collimatorId='collimator-15';
+export const COLLIMATOR_ZOOM=WEAPON_MODULES[collimatorId].zoom;
+const scales={pkp:.93,p19:.63,m50:.69};
+const supportsCollimator=id=>Boolean(getWeaponModule(id,'optic',collimatorId));
 
 const sessionKey='sector09-collimator-test';
 let session;
 try{session=JSON.parse(sessionStorage.getItem(sessionKey));}catch{}
 const selected=new Set(Array.isArray(session)?session.filter(supportsCollimator):[]);
-let template,pending;
+let template,pending,testEnabled=false;
 
-export function collimatorTestEnabled(){return Boolean(template);}
+export function collimatorTestEnabled(){return testEnabled;}
 export function hasCollimator(id){return collimatorTestEnabled()&&selected.has(id);}
 export function equipCollimator(id,equip){
   if(!collimatorTestEnabled()||!supportsCollimator(id))return;
@@ -25,7 +27,7 @@ function saveSession(){
   try{sessionStorage.setItem(sessionKey,JSON.stringify([...selected]));}catch{}
 }
 
-export function enableCollimatorTest(){
+export function loadCollimatorModel(){
   if(template)return Promise.resolve();
   if(!pending)pending=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
     .loadAsync(new URL('./assets/infantry/collimator.glb',import.meta.url).href)
@@ -33,9 +35,14 @@ export function enableCollimatorTest(){
       if(!scene.getObjectByName('Collimator')||!scene.getObjectByName('SightEye'))
         throw Error('Incomplete collimator model');
       template=scene;
-      saveSession();
     }).catch(error=>{pending=null;throw error;});
   return pending;
+}
+
+export async function enableCollimatorTest(){
+  await loadCollimatorModel();
+  testEnabled=true;
+  saveSession();
 }
 
 export function restoreCollimatorTest(){
@@ -49,7 +56,7 @@ export function mountCollimator(weaponId,root,pistolMatrix){
   const socket=weaponModuleMount(root,'optic');
   if(!template||!supportsCollimator(weaponId)||!socket)return null;
   const optic=template.getObjectByName('Collimator').clone(true);
-  const scale=scales[weaponId];
+  const scale=scales[weaponId]??1;
   optic.scale.setScalar(scale);
   const eye=template.getObjectByName('SightEye').position;
   const sightPoint=root.worldToLocal(socket.localToWorld(eye.clone().multiplyScalar(scale)));

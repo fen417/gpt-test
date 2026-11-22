@@ -24,9 +24,41 @@ export function createPlayerProfile(){
   const app=initializeApp(firebaseWebConfig,'sector09-profile');
   const auth=getAuth(app),db=getDatabase(app),listeners=new Set();
   const pendingWrites=new Map();
-  let user=null,profile=null,loading=true,problem='',pendingGoogle=null,unwatch,queue={};
+  const weaponWrites=new Map();
+  let user=null,profile=null,loading=true,problem='',weaponSyncFailed=false,pendingGoogle=null,unwatch,queue={};
   const notify=()=>{for(const listener of listeners)listener();};
   const profileRef=(uid,path='')=>ref(db,'profiles/'+uid+(path?'/'+path:''));
+  function syncWeapons(device, progress){
+    const active=user?.uid;
+    if(!active||(!Object.keys(progress.xp).length&&!Object.keys(progress.loadout).length))return;
+    const previous=weaponWrites.get(active);
+    if(previous){previous.next=progress;return;}
+    const job={next:null};weaponWrites.set(active,job);
+    const path='weaponProgress/';
+    const operations=[];
+    const currentXp=profile?.weaponProgress?.devices?.[device]??{};
+    if(Object.entries(progress.xp).some(([id,xp])=>xp>(currentXp[id]??0))){
+      operations.push(runTransaction(profileRef(active,path+'devices/'+device),current=>{
+        const result={...current};
+        for(const [id,xp] of Object.entries(progress.xp))result[id]=Math.max(xp,result[id]??0);
+        return result;
+      },{applyLocally:false}));
+    }
+    for(const [weapon,slots] of Object.entries(progress.loadout)){
+      for(const [slot,value] of Object.entries(slots)){
+        if(value.at<=(profile?.weaponProgress?.loadout?.[weapon]?.[slot]?.at??0))continue;
+        operations.push(runTransaction(profileRef(active,path+'loadout/'+weapon+'/'+slot),
+          current=>value.at>(current?.at??0)?value:undefined,{applyLocally:false}));
+      }
+    }
+    void Promise.allSettled(operations).then(results=>{
+      weaponWrites.delete(active);
+      if(user?.uid===active&&job.next)syncWeapons(device,job.next);
+      if(user?.uid!==active||!results.length)return;
+      const failed=results.some(result=>result.status==='rejected');
+      if(failed!==weaponSyncFailed){weaponSyncFailed=failed;notify();}
+    });
+  }
   function flush(){
     if(!user||!Object.keys(queue).length)return Promise.resolve();
     const active=user.uid,batch=queue;
@@ -65,7 +97,7 @@ export function createPlayerProfile(){
   });
   addEventListener('online',()=>void flush());
   onAuthStateChanged(auth,account=>{
-    unwatch?.();user=account;profile=null;problem='';loading=Boolean(user);
+    unwatch?.();user=account;profile=null;problem='';weaponSyncFailed=false;loading=Boolean(user);
     queue=user?Object.fromEntries(Object.entries(read(user.uid)??{}).filter(([id])=>missions.has(id))):{};
     notify();
     if(!user)return;
@@ -82,7 +114,7 @@ export function createPlayerProfile(){
     get state(){
       const campaign={...profile?.campaign};
       for(const [id,data] of Object.entries(queue))campaign[id]=mergeCampaignResult(campaign[id],data);
-      return {user,loading,problem,syncing:Object.keys(queue).length>0,pvp:profile?.pvp,campaign};
+      return {user,loading,problem,weaponSyncFailed,syncing:Object.keys(queue).length>0,pvp:profile?.pvp,campaign,weaponProgress:profile?.weaponProgress};
     },
     subscribe(listener){listeners.add(listener);return ()=>listeners.delete(listener);},
     async idToken(){await auth.authStateReady();return auth.currentUser?.getIdToken()??null;},
@@ -111,5 +143,6 @@ export function createPlayerProfile(){
     },
     signOut(){pendingGoogle=null;return signOut(auth);},
     importCampaign:addCampaign,
+    syncWeapons,
   };
 }

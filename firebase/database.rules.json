@@ -45,6 +45,29 @@
             ".validate": false
           }
         },
+        "weaponProgress": {
+          ".write": "auth != null && auth.uid === $uid && auth.uid !== 'sector09-pvp-writer' && newData.exists()",
+          "devices": {
+            "$device": {
+              ".validate": "$device.matches(/^[a-f0-9-]{36}$/)",
+              "$weapon": {
+                ".validate": "$weapon.matches(/^(ar416|ak12|mcx9|vk45|mg36|pkp|dmr12|sv98|p19|m50)$/) && newData.isNumber() && newData.val() % 100 === 0 && newData.val() >= 0 && newData.val() <= 1000000000 && (!data.exists() || newData.val() >= data.val())"
+              }
+            }
+          },
+          "loadout": {
+            "$weapon": {
+              ".validate": "$weapon.matches(/^(ar416|ak12|mcx9|vk45|mg36|pkp|dmr12|sv98|p19|m50)$/)",
+              "$slot": {
+                ".validate": "$slot.matches(/^(optic|barrel|magazine|stock)$/) && newData.hasChildren(['id', 'at'])",
+                "id": { ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9-]{1,48}$/)" },
+                "at": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= now + 86400000" },
+                "$other": { ".validate": false }
+              }
+            }
+          },
+          "$other": { ".validate": false }
+        },
         "pvp": {
           ".read": "auth != null && auth.uid === 'sector09-pvp-writer'",
           ".write": "auth != null && auth.uid === 'sector09-pvp-writer'"

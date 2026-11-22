@@ -1161,7 +1161,10 @@ export function createWeaponRig(owner = {}) {
     const usingTool=Boolean(gadgetKind&&gadgetPhase>0&&gadgetPhase<1);
     let nextOptic;
     if(collimator&&!unarmed&&!usingTool){
-      if(!installedOptics.has(key))installedOptics.set(key,mountCollimator(key,pistol?.root??rifle?.model,pistol?.modelMatrix));
+      if(!installedOptics.has(key)){
+        const optic=mountCollimator(key,pistol?.root??rifle?.model,pistol?.modelMatrix);
+        if(optic)installedOptics.set(key,optic);
+      }
       nextOptic=installedOptics.get(key);
     }
     if(nextOptic!==activeOptic){

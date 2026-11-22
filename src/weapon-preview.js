@@ -14,7 +14,7 @@ function visibleBounds(root,measurePose=false){
   });return bounds;
 }
 
-export function mountWeaponPreview({getRig,getLoadout,getItem,getGpuDevice=()=>null,panelId='single-player-panel',prefix='weapon-preview'}){
+export function mountWeaponPreview({getRig,getLoadout,getItem,afterDraw,getGpuDevice=()=>null,panelId='single-player-panel',prefix='weapon-preview'}){
   const canvas=document.getElementById(prefix),panel=document.getElementById(panelId);
   const title=document.getElementById(prefix+'-name'),hint=document.getElementById(prefix+'-hint');
   const isOpen=()=>canvas.getClientRects().length>0;
@@ -41,6 +41,7 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,getGpuDevice=()=>n
   function draw(){
     raf=0;if(!isOpen()||document.hidden||!renderer)return;
     renderer.render(scene,camera);
+    afterDraw?.(modelKey===key?model:null,camera);
     // Texture images may still be decoding on first open. Settle briefly,
     // then draw only after a selection, drag or resize instead of idling.
     if(performance.now()<loadingUntil)raf=requestAnimationFrame(draw);
@@ -86,6 +87,7 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,getGpuDevice=()=>n
       invalidate();return;
     }
     key=item.key;title.textContent=item.name;hint.textContent='Загрузка модели…';
+    afterDraw?.(null,camera);
     try{
       if(!await ensureRenderer()||closed||key!==item.key)return;
       const next=await item.load();

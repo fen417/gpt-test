@@ -16,7 +16,7 @@ export class SoloSession {
       if(typeof data!=='string'){this.client.binary(data);return;}
       const message=decodeControl(data);
       if(message.type==='init'){this.client.initialize(message);this.client.startTimers();}
-      if(message.type==='stats'){this.client.serverStats=message.stats;if(message.botDebug){this.client.context.botDebug=message.botDebug;if(this.client.state)this.client.state.botDebug=message.botDebug;}}
+      if(message.type==='stats'){this.client.updateStats(message);if(message.botDebug){this.client.context.botDebug=message.botDebug;if(this.client.state)this.client.state.botDebug=message.botDebug;}}
       const pending=this.client.requests.get(message.requestId);
       if(pending){clearTimeout(pending.timer);this.client.requests.delete(message.requestId);if(message.type==='error')pending.reject(Error(message.message));else pending.resolve(message);}
       else if(message.type==='error')this.rejectReady(Error(message.message));

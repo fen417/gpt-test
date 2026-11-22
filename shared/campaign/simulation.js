@@ -1,7 +1,7 @@
 import {Simulation,sanitizeInput} from '../simulation.js';
 import {thinkInfantryBot,ensureBotState} from '../bot-ai.js';
 import {moveBot,prepareNavigation} from '../bot-navigation.js';
-import {getWeapon,DIFFICULTIES,SIDEARMS,WEAPONS} from '../world.js';
+import {DIFFICULTIES,SIDEARMS,WEAPONS} from '../world.js';
 import {aimCrew} from '../vehicle-ai.js';
 import {vehicleBoardingRange} from '../vehicles.js';
 import {ALHADRA,COURIER_SERVICE_ROAD,ROUTES} from './alhadra.js';
@@ -517,7 +517,7 @@ export class CampaignDirector {
           if(target.kind==='charge'){this.chargeSites.find(s=>s.id===target.id).planted=true;this.say(this.chargeSites.every(s=>s.planted)?'m01.duran.chargeTwo':'m01.duran.chargeOne');if(this.chargeSites.every(s=>s.planted))this.fuseUntil=this.time+25;}
           if(target.kind==='documents'){this.flags.documents=true;this.say('m01.duran.documents');}
           if(target.kind==='kit'&&p.medkits<p.medkitCapacity){p.medkits++;this.pickups[target.id]=true;this.say('m01.lasko.medkit');}
-          if(target.kind==='ammo'){const weapon=getWeapon(p.classId,p.weaponId);p.ammo=weapon.mag;p.reserve=weapon.reserve;p.rockets=Math.max(2,p.rockets);p.grenades=Math.max(p.grenades,3);this.pickups[target.id]=true;this.say('m01.duran.ammo');}
+          if(target.kind==='ammo'){const weapon=this.sim.playerWeapon(p);p.ammo=weapon.mag;p.reserve=weapon.reserve;p.rockets=Math.max(2,p.rockets);p.grenades=Math.max(p.grenades,3);this.pickups[target.id]=true;this.say('m01.duran.ammo');}
           this.progress=0;this.interaction=null;
         }
       }else{this.progress=0;this.cancelReviveBy('local');}

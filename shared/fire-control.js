@@ -1,18 +1,20 @@
 import { getWeapon,EYE_HEIGHT,CROUCH_EYE_HEIGHT } from './world.js';
 import { zeroedBulletPitch } from './ballistics.js';
+import { resolveWeaponModules } from './weapon-modules.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function shotRandom(id,sequence,salt=''){
   let seed=2166136261;for(const ch of `${id}/${sequence}/${salt}`)seed=Math.imul(seed^ch.charCodeAt(0),16777619);
   return ()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
 }
-export function weaponSpread(player){
-  const weapon=getWeapon(player.classId,player.weaponId),input=player.input??{};
+const weaponFor=player=>resolveWeaponModules(getWeapon(player.classId,player.weaponId),player.weaponModules?.[player.weaponId]);
+export function weaponSpread(player,weapon=weaponFor(player)){
+  const input=player.input??{};
   const movement=clamp((player.moveSpeed??0)/weapon.speed,0,1),crouch=player.crouching||player.crouch||player.slideTime>0||input.crouch;
-  return weapon.spread*(input.aim?.24:.66)*(crouch?.81:1)*(1+movement*(input.aim?.85:1.3))*(player.slideTime>0?1.45:1)*(player.grounded?1:2)*(1+(player.bloom??0))*(player.bot?1.45:1);
+  return weapon.spread*(input.aim?.24*(weapon.adsSpreadScale??1):.66*(weapon.hipSpreadScale??1))*(crouch?.81:1)*(1+movement*(input.aim?.85:1.3))*(player.slideTime>0?1.45:1)*(player.grounded?1:2)*(1+(player.bloom??0))*(player.bot?1.45:1);
 }
 export function shotTrajectory(player){
-  const weapon=getWeapon(player.classId,player.weaponId),input=player.input??{},random=shotRandom(player.id,player.shotSeq,weapon.id);
-  const angle=random()*Math.PI*2,radius=Math.sqrt(random())*weaponSpread(player),scoped=Boolean(weapon.zeroRange&&input.aim&&!player.bot);
+  const weapon=weaponFor(player),input=player.input??{},random=shotRandom(player.id,player.shotSeq,weapon.id);
+  const angle=random()*Math.PI*2,radius=Math.sqrt(random())*weaponSpread(player,weapon),scoped=Boolean(weapon.zeroRange&&input.aim&&!player.bot);
   const yaw=player.yaw+Math.cos(angle)*radius,pitch=(scoped?zeroedBulletPitch(player.pitch,weapon.zeroRange,weapon.projectileSpeed):player.pitch)+Math.sin(angle)*radius;
   return {yaw,pitch,scoped};
 }
@@ -25,9 +27,9 @@ export function advanceFireClock(player,weapon,input,dt,time){
   return {pressed,firing};
 }
 export function predictPersonalFire(player,input,dt,time){
-  const weapon=getWeapon(player.classId,player.weaponId);player.equipTime=Math.max(0,(player.equipTime??0)-dt);
+  const weapon=weaponFor(player);player.equipTime=Math.max(0,(player.equipTime??0)-dt);
   const {pressed,firing}=advanceFireClock(player,weapon,input,dt,time);
-  if(player.reloading){player.reloadTime-=dt;if(player.reloadTime<=0){const count=Math.min(weapon.mag-player.ammo,player.reserve);player.ammo+=count;player.reserve-=count;player.reloading=false;}}
+  if(player.reloading){player.reloadTime-=dt;if(player.reloadTime<=0){const count=Math.max(0,Math.min(weapon.mag-player.ammo,player.reserve));player.ammo+=count;player.reserve-=count;player.reloading=false;}}
   if((input.reload||player.ammo===0)&&!player.reloading&&player.reserve>0&&player.ammo<weapon.mag){player.reloading=true;player.reloadTime=weapon.reload;}
   if(!firing||player.reloading||player.cooldown>0||player.ammo<=0||weapon.semiAuto&&!pressed||input.toolSlot||input.weaponSlot&&input.weaponSlot!==player.weaponSlot)return null;
   player.ammo--;player.shotSeq++;player.cooldown+=weapon.interval;

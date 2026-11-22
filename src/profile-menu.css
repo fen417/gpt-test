@@ -42,6 +42,10 @@
 .profile-campaign li[data-complete] small { color: var(--menu-accent); }
 .profile-customization { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(260px,1fr); gap: 14px; }
 .profile-preview-frame { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--menu-line); border-radius: 8px; background: radial-gradient(ellipse at 50% 48%,#313e33,#131b17 71%); overflow: hidden; }
+.profile-preview-stage { position: relative; }
+.profile-weapon-mounts { position: absolute; inset: 0; pointer-events: none; }
+.profile-weapon-mount { position: absolute; display: grid; place-items: center; width: 26px; height: 26px; transform: translate(-50%,-50%); border: 1px solid #c5d49c; border-radius: 50%; background: #171e19e6; color: #eef4da; pointer-events: auto; font-size: 16px; }
+.profile-weapon-mount:hover,.profile-weapon-mount.selected { z-index: 1; background: var(--menu-accent,#d4e997); color: #111813; }
 #profile-preview { display: block; width: 100%; height: clamp(200px,42dvh,370px); touch-action: none; cursor: grab; }
 #profile-preview:active { cursor: grabbing; }
 .profile-preview-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 14px; border-top: 1px solid var(--menu-line); }
@@ -53,6 +57,25 @@
 .profile-option-panel select { width: 100%; min-width: 0; }
 .profile-selects { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .profile-configuration { margin: 0; padding: 10px 0 0; border-top: 1px solid var(--menu-line); font-size: 13px; color: var(--menu-muted); }
+.attachment-slot-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.attachment-slot-list button { border: 1px solid var(--menu-line); padding: 9px 8px; border-radius: 5px; background: #202b23; color: #e0e6da; }
+.attachment-option-list { display: grid; gap: 6px; }
+.attachment-option-list button { justify-content: flex-start; text-align: left; }
+.attachment-option-list button:disabled { opacity: .58; cursor: default; }
+.attachment-slot-list button[aria-pressed=true], .attachment-option-list button[aria-pressed=true] { border-color: var(--menu-accent,#d4e997); color: var(--menu-accent,#d4e997); }
+#profile-weapon-xp,.weapon-xp-summary progress { display: block; width: 100%; height: 7px; accent-color: var(--menu-accent,#d4e997); }
+.quick-attachments { width: min(430px,calc(100vw - 24px)); }
+.quick-attachments > :is(.attachment-slot-list,.attachment-option-list,.panel-primary,.weapon-xp-summary) { margin: 14px 24px; }
+.weapon-xp-summary { border-top: 1px solid #c6d0bd38; padding: 10px 0 0; min-width: 0; color: #e2e7d9; }
+.weapon-xp-summary h3 { margin: 0 0 7px; font-size: 14px; }
+.weapon-xp-summary p { margin: 0; font-size: 12px; color: #bec9b9; }
+.weapon-xp-summary ul { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,170px),1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.weapon-xp-summary li { display: grid; gap: 5px; background: #121b1699; border: 1px solid #c6d0bd30; border-radius: 5px; padding: 8px; }
+.weapon-xp-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; }
+.weapon-xp-summary li small { font-size: 11px; color: #bec9b9; letter-spacing: normal; }
+.weapon-xp-unlock { font-size: 12px; color: #d4e997; }
+.campaign-ending,.m02-finale { max-height: calc(100dvh - 28px); overflow-y: auto; }
+.campaign-ending .weapon-xp-summary,.m02-finale .weapon-xp-summary { margin-block: 12px; }
 @media (max-width: 690px) {
   .profile-overview,.profile-customization { grid-template-columns: 1fr; }
   .profile-tabs,.profile-content,.account-body { padding-inline: 14px; }

@@ -2,7 +2,7 @@ import { Reader, Writer } from './binary.js';
 import { getWeapon } from './world.js';
 
 export const MESSAGE=Object.freeze({SNAPSHOT:1,EVENTS:2,INPUT:3,ACK:4,PING:5,PONG:6,RESYNC:7});
-export const CONTROL=Object.freeze(Object.fromEntries(['hello','rooms','list','create','join','resume','welcome','lobby','settings','loadout','start','init','respawn','leave','left','error','stats','squad','ready','match-ready','profile','profile-reset'].map((name,i)=>[name,16+i])));
+export const CONTROL=Object.freeze(Object.fromEntries(['hello','rooms','list','create','join','resume','welcome','lobby','settings','loadout','start','init','respawn','leave','left','error','stats','squad','ready','match-ready','profile','profile-reset','weapon-attachments'].map((name,i)=>[name,16+i])));
 const CONTROL_NAMES=Object.fromEntries(Object.entries(CONTROL).map(([name,id])=>[id,name]));
 export function encodeControl(message){const type=CONTROL[message.type];if(type===undefined)throw Error('Unknown control message');return JSON.stringify({...message,type});}
 export function decodeControl(value){const data=JSON.parse(value);if(!data||typeof data!=='object'||!Object.hasOwn(CONTROL_NAMES,data.type))throw Error('Некорректное сообщение. Обновите игру.');return {...data,type:CONTROL_NAMES[data.type]};}

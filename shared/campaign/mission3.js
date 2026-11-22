@@ -5,7 +5,7 @@ import {blast} from '../gadgets.js';
 import {overlapsCollider,rayCollider} from '../asset-colliders.js';
 import {uprightBox} from '../geometry.js';
 import {vehicleBodyTilt} from '../vehicles.js';
-import {getSidearm,getWeapon,WEAPONS} from '../world.js';
+import {getSidearm,WEAPONS} from '../world.js';
 import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels,telMazinFloor} from './tel-mazin.js';
 
 const SAVE_VERSION=1,MAX_ENEMIES=14;
@@ -673,7 +673,7 @@ class ColumnDirector{
     if(item.kind==='smoke')p.smokeGrenades=(p.smokeGrenades??0)+2;
     if(item.kind==='rockets')p.rockets=Math.max(3,p.rockets);
     if(item.kind==='crew'||item.kind==='ammo'){
-      const weapon=getWeapon(p.classId,p.weaponId);p.ammo=weapon.mag;p.reserve=weapon.reserve;p.grenades=Math.max(p.grenades,3);
+      const weapon=this.sim.playerWeapon(p);p.ammo=weapon.mag;p.reserve=weapon.reserve;p.grenades=Math.max(p.grenades,3);
       if(item.kind==='crew'){p.medkits=Math.max(p.medkits,2);this.limp=false;}
     }
   }

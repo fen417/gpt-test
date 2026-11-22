@@ -52,7 +52,8 @@ export function takeWeapon(sim,p,item){
   }
   p.weaponSlot=slot;p.weaponId=item.weaponId;
   if(slot===1)p.primaryWeaponId=item.weaponId;else p.sidearmId=item.weaponId;
-  p.ammo=item.ammo;p.reserve=item.reserve;
+  p.ammo=Math.min(item.ammo,sim.playerWeapon(p).mag);
+  p.reserve=item.reserve+item.ammo-p.ammo;
   p.reloading=false;p.reloadTime=0;p.cooldown=.18;p.equipTime=.18;
   return true;
 }

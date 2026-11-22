@@ -10,7 +10,7 @@ export function mountMenuPanels(click){
   get('host').addEventListener('click',()=>open('create-room-panel'));
   for(const button of document.querySelectorAll('[data-close-dialog]'))button.addEventListener('click',()=>get(button.dataset.closeDialog).close());
   for(const dialog of document.querySelectorAll('dialog.menu-dialog'))dialog.addEventListener('click',event=>{
-    if(event.target!==dialog)return;
+    if(event.target!==dialog||dialog.hasAttribute('data-static-backdrop'))return;
     const rect=dialog.getBoundingClientRect();
     if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close();
   });

@@ -9,7 +9,11 @@ const missions={m01:[CampaignSimulation,validCampaignSave],m02:[Mission2Simulati
 let sim,paused=true,last=0,accumulator=0,tick=0,input={},lastSaveRevision=-1;
 function send(){
   if(!sim)return;
-  const state=sim.snapshot();self.postMessage({type:'state',state});
+  const state=sim.snapshot();
+  state.weaponKills=sim.weaponKills.get('local')??{};
+  const player=state.players.find(p=>p.id==='local');
+  if(player)player.weaponModules=sim.weaponAttachments.get('local');
+  self.postMessage({type:'state',state});
   if(sim.campaign.saveRevision!==lastSaveRevision){
     lastSaveRevision=sim.campaign.saveRevision;
     if(sim.campaign.latestSave)self.postMessage({type:'save',save:sim.campaign.latestSave,complete:sim.campaign.complete,flags:state.campaign.flags});
@@ -30,6 +34,7 @@ self.onmessage=event=>{
     if(!sim)return;
     if(m.type==='paused'){paused=Boolean(m.value);last=performance.now();accumulator=0;if(paused){input={};sim.setInput('local',{});}return;}
     if(m.type==='input'){input=m.input;return;}
+    if(m.type==='weapon-attachments'){sim.setWeaponAttachments('local',m.attachments);send();return;}
     if(m.type==='command'){
       // Weapon/order/camera commands must not wipe the current 60Hz driving
       // or aiming controls. In particular, target lock needs the last yaw.
@@ -39,7 +44,9 @@ self.onmessage=event=>{
         id==='m03'&&['order','smoke','talk','answer'].includes(m.command?.type)||
         id==='m04'&&['order','barrel'].includes(m.command?.type);
       if(!liveCommand){input={};sim.setInput('local',{});}
-      sim.campaign.command(m.command);send();
+      sim.campaign.command(m.command);
+      if(sim.weaponAttachments.has('local'))sim.setWeaponAttachments('local',sim.weaponAttachments.get('local'));
+      send();
     }
   }catch(error){self.postMessage({type:'error',message:error.message});}
 };

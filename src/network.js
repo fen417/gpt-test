@@ -166,7 +166,7 @@ export class Multiplayer{
             this.waitingForMatch=false;
             this.publish();
           }
-          if(data.type==='stats'){this.serverStats=data.stats;if(data.stats.snapshotHz)this.snapshotHz=data.stats.snapshotHz;}
+          if(data.type==='stats')this.updateStats(data);
           const pending=this.requests.get(data.requestId);if(pending){clearTimeout(pending.timer);this.requests.delete(data.requestId);pending.resolve(data);}
         }catch(error){clearTimeout(timeout);if(!ready){reject(error);ws.close();}else{this.onStatus('Синхронизация восстанавливается…');this.send(new Uint8Array([MESSAGE.RESYNC]));}}
       };
@@ -239,9 +239,24 @@ export class Multiplayer{
     this.matchInit=(this.matchInit??0)+1;
     this.context={mapId:data.mapId,gameMode:data.gameMode??'conquest',killLimit:data.killLimit??50,size:data.size,difficulty:data.difficulty,roomName:data.roomName,ownerId:data.ownerId,lobby:false};
     this.equipmentPresentation=new EquipmentPresentation();this.equipmentRequestKey=null;this.equipmentRequestSequence=0;this.latestInputAck=0;
+    this.weaponKills=data.weaponKills;this.weaponRoundId=data.weaponRoundId;this.supportsWeaponModules=Boolean(data.weaponModules);this.weaponModules=data.attachments;
     this.decoder=new SnapshotDecoder(this.context);this.localEvents=[];this.prediction=new Prediction(data.mapId,event=>{this.localEvents.push(event);this.onLocalShot(event);},{predictShots:this.predictShots});this.frames=[];this.events=[];this.state=null;this.sequence=0;this.snapshotHz=data.snapshotHz;this.sentSequence=0;this.snapshotAck=0;this.eventAck=data.eventAck;this._phase='match';this.epoch=data.epoch;this.accumulator=0;this.motion=new Map();this.input={};this.pendingPulses={};this.pendingFire=false;this.lastArrival=0;this.jitter=0;this.playbackRecoveries=0;this.interpolationMs=Math.max(40,1000/(data.snapshotHz??20)+10);this.renderTime=null;this.targetInterpolationMs=this.interpolationMs;this.underrun=false;this.pendingAuthority=null;this.correctionMs=0;this.correctionDistance=0;this.bufferUnderruns=0;this.serverStats=null;this.lastSample=performance.now();this.onStatus('Подключено к серверному матчу');
   }
   acks(){return {epoch:this.epoch??0,snapshotAck:this.snapshotAck??0,eventAck:this.eventAck??0,dictAck:this.decoder?this.decoder.dict.strings.length-1:0,viewTime:this.renderTime??(this.state?.time??0)-this.interpolationMs/1000,interpolationMs:this.interpolationMs};}
+  updateStats(data){
+    if(data.stats&&Object.keys(data.stats).length){
+      this.serverStats=data.stats;
+      if(data.stats.snapshotHz)this.snapshotHz=data.stats.snapshotHz;
+    }
+    if(data.weaponKills){this.weaponKills=data.weaponKills;this.publish();}
+  }
+  async setWeaponAttachments(attachments){
+    if(!this.supportsWeaponModules)return;
+    const reply=await this.request('weapon-attachments',{attachments});
+    this.weaponModules=reply.attachments;
+    if(this.pendingAuthority)this.pendingAuthority.own.weaponModules=this.weaponModules;
+    if(this.prediction?.player)this.prediction.player.weaponModules=this.weaponModules;
+  }
   binary(value){
     const bytes=new Uint8Array(value),now=performance.now();
     if(bytes[0]===MESSAGE.PONG){const r=new Reader(value);r.u8();const sample=now-r.f64();if(sample>=0&&sample<30000)this.rtt=this.rtt?this.rtt*.8+sample*.2:sample;return;}
@@ -263,14 +278,14 @@ export class Multiplayer{
       const aliveKeys=new Set([...state.players.map(p=>'players/'+p.id),...state.vehicles.map(v=>'vehicles/'+v.id)]);for(const key of this.motion.keys())if(!aliveKeys.has(key))this.motion.delete(key);
       this.frames.push({frame,state,arrival:now});while(this.frames.length>40)this.frames.shift();
       if(state.winner!=null)this.prediction.pending=[];
-      const own=state.players.find(p=>p.id===this.id);if(own)this.pendingAuthority={own,inputAck,vehicles:state.vehicles,time:state.time};
+      const own=state.players.find(p=>p.id===this.id);if(own){own.weaponModules=this.weaponModules;this.pendingAuthority={own,inputAck,vehicles:state.vehicles,time:state.time};}
       this.state=state;this.publish();this.ackSoon();
     }else if(bytes[0]===MESSAGE.EVENTS){
       const decoded=decodeEvents(value,this.decoder.dict);for(const event of decoded.events)if(event.id>this.eventAck)this.events.push(event);
       this.eventAck=Math.max(this.eventAck,decoded.through);this.publish();this.ackSoon();
     }
   }
-  publish(){if(!this.state)return;this.events=this.events.filter(e=>e.time>this.state.time-1.3);this.state.events=this.events.map(event=>['shot','cannonShot'].includes(event.type)&&event.playerId===this.id&&this.prediction?.hasPlayed(event)?{...event,confirmedCosmetic:true}:event);this.onState(this.state);}
+  publish(){if(!this.state)return;this.state.weaponKills=this.weaponKills;this.state.weaponRoundId=this.weaponRoundId;this.events=this.events.filter(e=>e.time>this.state.time-1.3);this.state.events=this.events.map(event=>['shot','cannonShot'].includes(event.type)&&event.playerId===this.id&&this.prediction?.hasPlayed(event)?{...event,confirmedCosmetic:true}:event);this.onState(this.state);}
   ackSoon(){this.ackDirty=true;}
   sendInput(input,dt=INPUT_STEP){this.advance(input,dt);}
   reconcileLatest(){

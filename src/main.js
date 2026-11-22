@@ -2,7 +2,10 @@ import {loadFPSHands} from './fps-hands.js';
 import {loadWeaponModels} from './weapon-models.js';
 import {loadEquipmentModels} from './gadget-models.js';
 import {SCOPE_ZOOMS,scopeMagnification} from './scope-optics.js';
-import {COLLIMATOR_ZOOM,enableCollimatorTest,hasCollimator,restoreCollimatorTest} from './collimator.js';
+import {COLLIMATOR_ZOOM,collimatorTestEnabled,enableCollimatorTest,restoreCollimatorTest} from './collimator.js';
+import {resolveWeaponModules} from '../shared/weapon-modules.js';
+import {renderWeaponResults,weaponProgressId} from './weapon-progress.js';
+import {setupAttachmentPicker} from './weapon-attachment-ui.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import {mountPerfPanel} from './perf-panel.js';
 const frameTimes=new PerformanceSamples(),cpuTimes=new PerformanceSamples(),renderTimes=new PerformanceSamples(),simulationTimes=new PerformanceSamples();
@@ -84,7 +87,7 @@ const DEFAULT_BINDS={
   jump:'Space',
   sprint:'ShiftLeft',
   crouch:'KeyC',
-  reload:'KeyR',
+  reload:'KeyR',attachments:'KeyY',
   gadget:'Digit3',
   secondaryGadget:'KeyX',
   grenade:'KeyG',drop:'KeyG',
@@ -103,6 +106,7 @@ const BIND_LABELS=[
   ['sprint','Бег (спринт)'],
   ['crouch','Присесть'],
   ['reload','Перезарядка'],
+  ['attachments','Обвесы оружия'],
   ['secondaryGadget','Достать гранатомёт / аптечку'],
   ['grenade','Граната'],['drop','Выбросить оружие (TDM)'],
   ['score','Таблица счёта'],
@@ -141,6 +145,8 @@ try{
 }catch{}
 vehicleThirdPerson=read('vehicle-camera','third')!=='first';
 for(const action of ['switchSeat','vehicleCamera'])if(Object.keys(keybinds).some(key=>key!==action&&keybinds[key]===keybinds[action]))keybinds[action]=['KeyF','KeyV','KeyJ','KeyB','KeyN'].find(code=>!Object.values(keybinds).includes(code))??keybinds[action];
+if(Object.keys(keybinds).some(key=>key!=='attachments'&&!key.startsWith('tank')&&keybinds[key]===keybinds.attachments))
+  keybinds.attachments=['KeyJ','KeyB','KeyN'].find(code=>!Object.values(keybinds).includes(code))??keybinds.attachments;
 function formatKeyCode(code){
   if(!code)return '—';
   if(code.startsWith('Key'))return code.slice(3).toUpperCase();
@@ -477,6 +483,8 @@ function receive(next){
   const previousPlayer=local();
   const previousVehicle=state?.vehicles?.find(v=>v.id===previousPlayer?.vehicleId);
   state=next;const player=local();
+  const legacyRound=mode==='server'&&!next.weaponKills?localRoundId+'/'+multiplayer.epoch:null;
+  if(active&&player)trackWeaponProgress(legacyRound?{weaponRoundId:legacyRound,weaponKills:{}}:next);
   const vehicle=next.vehicles?.find(v=>v.id===player?.vehicleId);
   if(vehicle&&player?.alive){
     const role=VEHICLE_TYPES[vehicle.type]?.seats[player.vehicleSeat]?.role;
@@ -513,16 +521,25 @@ function receive(next){
       const owned=state.points.filter(p=>canSpawnAtPoint(p,player.team)).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z));
       selectSpawnPoint(owned[0]?.id||'');
     }else selectSpawnPoint(selectedSpawn);
-    clearControls();document.exitPointerLock?.();show('pause',false);show('death');
+    quickAttachments.close();clearControls();document.exitPointerLock?.();show('pause',false);show('death');
     updateDeployScreen(player,performance.now());
   }
   if(player.hp<lastHp){damageUntil=performance.now()+350;}
   lastHp=player.hp;wasAlive=player.alive;
   const nowPerf=performance.now();
+  let legacyKills;
   for(const event of state.events??[]){
     if(seen.has(event.id))continue;seen.add(event.id);
+    if(legacyRound&&event.type==='kill'&&event.killerId===localId&&event.victimId!==localId&&
+      state.players.some(victim=>victim.id===event.victimId&&victim.team!==player.team)){
+      const id=weaponIdByKillLabel.get(event.weapon);
+      if(id){
+        legacyKills??=observedRound===legacyRound?{...observedKills}:{};
+        legacyKills[id]=(legacyKills[id]??0)+1;
+      }
+    }
     if(event.type==='shot'&&event.playerId===localId&&!event.confirmedCosmetic){
-      const weapon=getWeapon(event.classId||player.classId,event.weaponId||player.weaponId);
+      const weapon=personalWeapon(event.classId||player.classId,event.weaponId||player.weaponId);
       const impulse=(event.mounted ? .008 : weapon.recoil)*(aim?.76:1)*(lastInput.crouch?.87:1);
       if(player.alive){
         recoilPitch=Math.min(.12,recoilPitch+impulse);
@@ -557,19 +574,20 @@ function receive(next){
     if(event.type==='squadOrder'&&event.playerId===localId)toast(event.kind==='follow'?'ОТРЯД · СЛЕДОВАТЬ ЗА МНОЙ':`ОТРЯД · ${event.kind==='defend'?'ОБОРОНЯТЬ':'ЗАХВАТИТЬ'} ${event.pointId??''}`);
     if(event.type==='revive'&&event.playerId===localId)toast('ТЕБЯ ВОСКРЕСИЛИ · Нажми на игру, чтобы продолжить');
   }
+  if(legacyKills)trackWeaponProgress({weaponRoundId:legacyRound,weaponKills:legacyKills});
   while(seen.size>8192)seen.delete(seen.keys().next().value);
   // Immediate local handling stays responsive; remote/projectile events use
   // the same presentation clock as their visuals below.
   audio.events({...state,events:state.events?.filter(e=>e.playerId===localId&&e.type!=='explosion'&&e.type!=='rocketLaunch')},player,{immediate:true});
-  if(state.winner!==null&&state.winner!==undefined&&!finished){
+  if(!state.campaign&&state.winner!==null&&state.winner!==undefined&&!finished){
     reviveAwaitingControl=false;show('revive-control-hint',false);
-    finished=true;clearControls();document.exitPointerLock?.();show('pause',false);show('death',false);show('scoreboard',false);
+    finished=true;quickAttachments.close();clearControls();document.exitPointerLock?.();show('pause',false);show('death',false);show('scoreboard',false);
     renderResultScreen(player);
     show('result');
   }
 }
 function presentLocalShot(event){
-  const player=local();if(!player?.alive)return;const weapon=getWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
+  const player=local();if(!player?.alive)return;const weapon=personalWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
   recoilPitch=Math.min(.12,recoilPitch+impulse);recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin(event.shotSeq*2.1)*impulse*.31));
   audio.events({time:event.time,events:[event],players:state.players},player,{immediate:true});
   text('ammo',(simulation?.client??multiplayer).prediction.player.ammo);
@@ -577,11 +595,66 @@ function presentLocalShot(event){
 const profile=mountPlayerProfile({
   onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,
 });
+const hasCollimator=weaponId=>profile.currentAttachment(weaponId,'optic')==='collimator-15';
+const weaponIdByKillLabel=new Map(Object.values(WEAPONS).map(weapon=>[weapon.weapon,weapon.id]));
+const personalWeapon=(classId,weaponId)=>resolveWeaponModules(getWeapon(classId,weaponId),profile.loadout[weaponId]);
+const quickAttachments=$('quick-attachments');
+let quickWeapon='',quickSlot='optic',quickChanging=false;
+let localRoundId='',observedRound='',observedKills={},weaponResultRevision=0;
+const renderQuickPicker=setupAttachmentPicker(quickAttachments,{
+  onSlot:slot=>{quickSlot=slot;updateQuickPicker();},
+  onSelect:id=>void changeQuickAttachment(id),
+});
+function updateQuickPicker(){
+  renderQuickPicker({weaponId:quickWeapon,slot:quickSlot,xp:profile.weaponXp(quickWeapon),
+    selected:profile.currentAttachment(quickWeapon,quickSlot),canTest:collimatorTestEnabled()});
+}
+function toggleQuickAttachments(){
+  if(quickAttachments.open){quickAttachments.close();void requestControl();return;}
+  const player=local(),seat=player?.vehicleId&&state.vehicles?.find(v=>v.id===player.vehicleId);
+  if(!player?.alive||player.downed||player.heldGadget||finished||!WEAPONS[player.weaponId]||
+    state?.campaign?.cutscene||state?.campaign?.choices||state?.campaign?.awaitingLoadout||
+    state?.campaign?.failed||state?.campaign?.complete||
+    seat&&VEHICLE_TYPES[seat.type]?.seats[player.vehicleSeat]?.role!=='passenger')return;
+  clearControls();show('scoreboard',false);
+  quickWeapon=player.weaponId;quickSlot='optic';
+  text('quick-attachment-weapon',WEAPONS[quickWeapon].name);updateQuickPicker();
+  quickAttachments.showModal();
+  document.exitPointerLock?.();
+}
+async function applyWeaponAttachments(){
+  const attachments=profile.loadout;
+  if(mode==='campaign')simulation?.setWeaponAttachments(attachments);
+  else await (simulation?.client??multiplayer).setWeaponAttachments(attachments);
+}
+async function changeQuickAttachment(id){
+  if(quickChanging||finished||!quickAttachments.open||!local()?.alive||local()?.weaponId!==quickWeapon)return;
+  quickChanging=true;
+  try{
+    if(await profile.chooseAttachment(quickWeapon,quickSlot,id))await applyWeaponAttachments();
+    if(quickAttachments.open)updateQuickPicker();
+  }catch{toast('Не удалось применить обвес.');}
+  finally{quickChanging=false;}
+}
+quickAttachments.addEventListener('cancel',event=>{event.preventDefault();toggleQuickAttachments();});
+$('quick-attachments-close').addEventListener('click',toggleQuickAttachments);
+
+function trackWeaponProgress(next){
+  const round=next.weaponRoundId||localRoundId;
+  if(!next.weaponKills||!round)return;
+  if(observedRound!==round){observedRound=round;observedKills={};weaponResultRevision++;}
+  if(!Object.entries(next.weaponKills).some(([id,count])=>count>(observedKills[id]??0)))return;
+  observedKills={...next.weaponKills};weaponResultRevision++;
+  profile.creditWeaponKills(round,observedKills);
+  if(finished)renderWeaponResults($('result-weapon-progress'),observedKills,profile.weaponXp);
+  if(quickAttachments.open)updateQuickPicker();
+}
 void restoreCollimatorTest().then(profile.refreshAttachments).catch(()=>{});
 const multiplayer=new Multiplayer({getProfileToken:profile.tokenForServer,predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
 function prepare(which){
+  localRoundId=weaponProgressId();observedRound='';observedKills={};weaponResultRevision++;
   campaignPresentation?.dispose();campaignPresentation=null;
   reviveAwaitingControl=false;show('revive-control-hint',false);
   pendingDamage.clear();enteredNetworkEpoch=null;
@@ -596,6 +669,7 @@ function enter(){
   document.body.classList.add('in-battle');audio.setMode?.('battle');
   text('pause-title','Бой продолжается');text('pause-description','Вернись в сектор. Твой отряд ждёт.');$('resume').firstChild.textContent='ПРОДОЛЖИТЬ ';show('unlocked');show('leave');
   if(state)receive(state);
+  if(Object.keys(profile.loadout).length&&!finished)void applyWeaponAttachments().catch(()=>{});
   text('room-badge',mode==='solo'?`БОЙ С БОТАМИ · ${state?.players?.filter(p=>p.bot).length??0} · ${difficultyNames[state?.difficulty]??difficultyNames[$('difficulty').value]}`:`КОМНАТА · ${state?.roomName||room||'СЕРВЕР'}`);
   if(mode==='campaign'&&state?.campaign?.cutscene)show('pause',false);
   else requestControl(true);
@@ -612,15 +686,24 @@ async function requestControl(allowPendingSpawn=false){
     else{if(local()?.alive)show('pause');toast('Нажми «Продолжить», чтобы включить управление мышью.');}
   }
 }
-function leave(resetStatus=true){
+function leave(resetStatus=true,showAbandonedResults=false){
   const completedCampaign=mode==='campaign'&&Boolean(state?.campaign?.complete);
+  const player=local();
+  const abandoned=showAbandonedResults&&active&&!finished&&!inLobby&&player&&
+    !state?.campaign?.complete&&!state?.campaign?.failed;
+  if(abandoned){
+    text('abandoned-results-title',mode==='campaign'?'Миссия прервана':'Бой покинут');
+    text('abandoned-results-stats',`Устранений ${player.kills??0} · Смертей ${player.deaths??0} · Помощь ${player.assists??0}`);
+    renderWeaponResults($('abandoned-weapon-progress'),observedKills,profile.weaponXp);
+  }
   closeMatchLoad();enteredNetworkEpoch=null;
   campaignPresentation?.dispose();campaignPresentation=null;
   if(mode==='campaign')vehicleThirdPerson=read('vehicle-camera','third')!=='first';
   reviveAwaitingControl=false;show('revive-control-hint',false);
-  active=false;inLobby=false;clearControls();simulation?.close();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
+  active=false;inLobby=false;quickAttachments.close();clearControls();simulation?.close();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
   document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов к высадке.');
+  if(abandoned)$('abandoned-results').showModal();
   if(completedCampaign)queueMicrotask(showCampaignMenu);
 }
 function beginMatchLoad(which,mapId,missionId){
@@ -866,7 +949,7 @@ $('menu-settings').addEventListener('click',()=>{text('pause-title','Настр�
 $('unlocked').addEventListener('click',()=>{captureGameKeyboard().catch(()=>{});unlocked=true;unlockedPaused=false;show('pause',false);audio.unlock();toast('WASD — движение. Зажми ПКМ и двигай мышью для обзора; стрелки тоже поворачивают камеру.');});
 for(const id of ['leave','death-leave','result-leave'])$(id).addEventListener('click',()=>{
   if(id!=='result-leave'&&performance.now()-lastFireClick<600)return;
-  leave();
+  leave(true,id!=='result-leave');
 });
 $('play-again').addEventListener('click',()=>{if(mode==='solo')solo();else if(state?.ownerId===localId)multiplayer.startMatch();else{leave();toast('Создай новую комнату для следующей операции.');}});
 async function triggerRespawn(){
@@ -984,7 +1067,7 @@ document.addEventListener('pointerlockchange',()=>{
   }else{
     navigator.keyboard?.unlock?.();
     clearControls();
-    if(active&&local()?.alive&&!finished&&!reviveAwaitingControl&&!state?.campaign?.choices&&!state?.campaign?.awaitingLoadout&&!state?.campaign?.failed&&!state?.campaign?.complete)show('pause');
+    if(active&&local()?.alive&&!finished&&!quickAttachments.open&&!reviveAwaitingControl&&!state?.campaign?.choices&&!state?.campaign?.awaitingLoadout&&!state?.campaign?.failed&&!state?.campaign?.complete)show('pause');
   }
 });
 window.addEventListener('beforeunload',event=>{
@@ -1020,11 +1103,15 @@ document.addEventListener('wheel',event=>{
   event.preventDefault();
   scopeZoom=event.deltaY<0?zooms.at(-1):zooms[0];
 },{passive:false});
-document.addEventListener('mousedown',event=>{if(!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){lastFireClick=performance.now();fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
+document.addEventListener('mousedown',event=>{if(quickAttachments.open||!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){lastFireClick=performance.now();fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
 document.addEventListener('contextmenu',event=>{if(active)event.preventDefault();});
 document.addEventListener('keydown',event=>{
   if($('patch-notes').open)return;
+  if(quickAttachments.open){
+    if(!event.repeat&&isBound('attachments',event.code)){event.preventDefault();toggleQuickAttachments();}
+    return;
+  }
   if(active&&$('pause').classList.contains('hidden')&&campaignPresentation?.key(event)){event.preventDefault();return;}
   if(active&&mode==='campaign'&&event.code==='Escape'&&!locked&&!unlocked){event.preventDefault();show('pause',$('pause').classList.contains('hidden'));clearControls();return;}
   if(active&&mode==='campaign'&&isBound('squad',event.code)){event.preventDefault();return;}
@@ -1052,6 +1139,9 @@ document.addEventListener('keydown',event=>{
     return;
   }
   if(!active){if(event.code==='Escape')show('pause',false);return;}
+  if(!event.repeat&&isBound('attachments',event.code)&&(locked||unlocked&&!unlockedPaused)){
+    event.preventDefault();toggleQuickAttachments();return;
+  }
   if(isBound('squad',event.code)&&!event.repeat){event.preventDefault();squadUI.open();return;}
   if(!local()?.alive&&!finished&&!$('death').classList.contains('hidden')){
     const classKeys={Digit1:'assault',Digit2:'medic',Digit3:'support',Digit4:'recon'};
@@ -1101,7 +1191,7 @@ window.addEventListener('blur',clearControls);
 document.addEventListener('visibilitychange',()=>{clearControls();if(document.hidden)simulation?.setPaused(true);lastFrame=performance.now();accumulator=0;fpsClock=0;frames=0;if(document.hidden)audio.ctx?.suspend?.();else if(audioStarted)unlockAudio();});
 function input(){
   const missionBlocked=state?.campaign&&(state.campaign.cutscene||state.campaign.awaitingLoadout||state.campaign.failed||state.campaign.complete);
-  const enabled=!!((locked||(unlocked&&!unlockedPaused))&&local()?.alive&&!finished&&!missionBlocked);
+  const enabled=!!((locked||(unlocked&&!unlockedPaused))&&local()?.alive&&!finished&&!missionBlocked&&!quickAttachments.open);
   const firing=enabled&&(fire||fireTap);
   const angles=aimAngles();
   return {
@@ -1526,6 +1616,7 @@ function renderResultScreen(player){
   text('result-enemy-score',`${enemyTotal} ОЧК.`);
   $('result-rows-ally').replaceChildren(...allies.map(p=>buildScoreRow(p,player.team)));
   $('result-rows-enemy').replaceChildren(...enemies.map(p=>buildScoreRow(p,player.team)));
+  renderWeaponResults($('result-weapon-progress'),observedKills,profile.weaponXp);
 }
 function updateVehicleHud(player){
   const vehicles=state.vehicles??[];
@@ -1560,7 +1651,7 @@ function hud(now){
   squadUI?.update(state,localId);
   drawBotDebug(state);
   const player=local();if(!player)return;
-  const weapon=getWeapon(player.classId,player.weaponId);
+  const weapon=personalWeapon(player.classId,player.weaponId);
   const mounted=updateVehicleHud(player);
   const personalWeapon=!mounted||mounted.role==='passenger';
   const heading=(((state.campaign?180+yaw*180/Math.PI:-yaw*180/Math.PI)%360)+360)%360;const cardinal=['N','NE','E','SE','S','SW','W','NW'][Math.round(heading/45)%8];text('compass-direction',cardinal);text('compass-degrees',`${String(Math.round(heading)).padStart(3,'0')}°`);
@@ -1746,7 +1837,7 @@ function frame(now){
     perfPanel.update({...renderStats,active:active&&$('pause').classList.contains('hidden')&&$('death').classList.contains('hidden')&&!document.hidden,mapId:renderer.map?.id??currentMap.id,quality,mode,settings:{...gfx,fov},population:state?.players.length??0,network,audio:audioStats,heapBytes:performance.memory?.usedJSHeapSize??null,viewport:{width:innerWidth,height:innerHeight}});
     if(network)canvas.dataset.networkStats=JSON.stringify(network);else delete canvas.dataset.networkStats;
   }
-  const paused=document.hidden||!$('pause').classList.contains('hidden');
+  const paused=document.hidden||!$('pause').classList.contains('hidden')||quickAttachments.open;
   if(active){
     recoilPitch*=Math.exp(-dt*8);recoilYaw*=Math.exp(-dt*10);
     if(locked||(unlocked&&!unlockedPaused)){
@@ -1811,6 +1902,20 @@ function frame(now){
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);
     showCampaignOutcome(campaignPresentation.root,state);
+    const ended=state?.campaign?.complete||state?.campaign?.failed;
+    if(ended)quickAttachments.close();
+    const resultCard=ended&&campaignPresentation.root.querySelector('.campaign-ending,.m02-finale');
+    if(resultCard){
+      let summary=resultCard.querySelector('.weapon-xp-summary');
+      if(!summary){
+        summary=document.createElement('section');summary.className='weapon-xp-summary';
+        resultCard.insertBefore(summary,resultCard.querySelector(':scope > button'));
+      }
+      if(summary.dataset.revision!==String(weaponResultRevision)){
+        renderWeaponResults(summary,observedKills,profile.weaponXp);
+        summary.dataset.revision=String(weaponResultRevision);
+      }
+    }
     campaignActors??=new CampaignActors();
   }
   if(campaignActors&&renderDue&&!generated){

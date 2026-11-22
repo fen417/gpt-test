@@ -21,11 +21,16 @@ export class SoloAuthority {
         if(data.type==='create'){
           this.sim=new Simulation(data);this.sim.addPlayer('local',data.name,0,data.classId,data.weaponId,data.sidearmId);
           this.encoder=new SnapshotEncoder(this.sim.map.size);this.sentEvent=this.sim.eventId;this.last=performance.now();
-          this.control({type:'init',mapId:this.sim.map.id,size:this.sim.map.size,difficulty:this.sim.difficulty,gameMode:this.sim.gameMode,killLimit:this.sim.killLimit,epoch:1,eventAck:this.sentEvent,snapshotHz:30});
+          this.control({type:'init',mapId:this.sim.map.id,size:this.sim.map.size,difficulty:this.sim.difficulty,gameMode:this.sim.gameMode,killLimit:this.sim.killLimit,epoch:1,eventAck:this.sentEvent,snapshotHz:30,weaponKills:{},weaponModules:true});
           this.snapshot(true);this.timer=setInterval(()=>this.pump(),1000/60);return;
         }
         if(data.type==='settings'){this.paused=Boolean(data.paused);this.last=performance.now();this.accumulator=0;if(this.paused){this.queue=[];this.sim.setInput('local',{});}return;}
         if(data.type==='respawn'){const accepted=this.sim.respawn('local',data.classId,data.pointId,data.weaponId,data.sidearmId);this.snapshot();this.control({type:'respawn',requestId:data.requestId,accepted});return;}
+        if(data.type==='weapon-attachments'){
+          const attachments=this.sim.setWeaponAttachments('local',data.attachments);
+          this.control({type:'weapon-attachments',requestId:data.requestId,attachments});
+          this.snapshot();return;
+        }
         if(data.type==='squad'){if(!this.sim.changeSquad('local',data.squadId))throw Error('Отряд заполнен.');this.snapshot();this.control({type:'squad',requestId:data.requestId});return;}
         if(data.type==='stats'){this.control({type:'stats',stats:{snapshotHz:30,workerTickMs:this.samples.summary()},botDebug:this.sim.debugBots?this.sim.snapshot().botDebug:null});return;}
         if(data.type==='leave'){this.close();return;}
@@ -46,6 +51,11 @@ export class SoloAuthority {
     const order=frames.find(frame=>frame.input.order);p.orderAim=order?{yaw:order.input.yaw,pitch:order.input.pitch}:null;
     p.networkControlled=true;p.networkIdle=false;
     const start=performance.now();this.sim.step(1/60);this.samples.add(performance.now()-start);this.tick++;
+    const kills=this.sim.weaponKills.get('local');
+    if(kills&&(p.kills!==this.sentKills)){
+      this.sentKills=p.kills;
+      this.control({type:'stats',weaponKills:kills});
+    }
     const events=this.sim.events.filter(e=>e.id>this.sentEvent);if(events.length){this.sentEvent=events.at(-1).id;this.send(encodeEvents(events,this.sentEvent,this.encoder.dict));}
     if(this.tick%2===0||this.sim.winner!==null)this.snapshot();
   }
