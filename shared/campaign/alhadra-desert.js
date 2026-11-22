@@ -3,12 +3,17 @@ import {registerLocalMap} from '../world.js';
 import {ALHADRA} from './alhadra.js';
 import {rotateMapAssets} from '../geometry.js';
 import {desertMountainSurface} from '../desert-mountain.js';
+import {terrainHeightfield} from '../terrain-heightfield.js';
 
 // The village itself is preserved exactly from mission 1. Mission 2 moves
 // its centre (150,105) to (0,0) on a much larger battlefield; no mission 1
 // geometry, collisions or terrain heights are edited.
 export const ALHADRA_OFFSET=Object.freeze({x:150,z:105});
 export const M02_BOUNDS=Object.freeze({minX:-1000,maxX:1000,minZ:-600,maxZ:600});
+export const M02_RESERVE_ROUTE=Object.freeze([
+  [300,-235],[270,-315],[151,-345],[8,-332],[-162,-314],[-315,-350],[-520,-407],
+]);
+const size=2000,cell=8,margin=112;
 const shift=object=>({...object,x:object.x-ALHADRA_OFFSET.x,z:object.z-ALHADRA_OFFSET.z});
 const inVillage=obj=>Math.abs(obj.x)<255&&Math.abs(obj.z)<185;
 const shiftedBoxes=ALHADRA.boxes.map(shift).filter(box=>inVillage(box)&&box.kind!=='village-palm')
@@ -31,19 +36,23 @@ const outerLandforms=[
   {x:-451,z:-193,rx:135,rz:72,height:8,angle:-.38,flat:.14},
   {x:-145,z:-328,rx:190,rz:80,height:9.5,angle:.29,flat:.12},
   {x:204,z:-253,rx:190,rz:90,height:8.5,angle:-.34,flat:.2},
+  {x:191,z:-252,rx:96,rz:51,height:16.5,angle:-.22,flat:.19},
+  {x:326,z:-200,rx:78,rz:48,height:14,angle:.31,flat:.13},
+  {x:102,z:-412,rx:137,rz:48,height:9,angle:.11,flat:.12},
+  {x:-371,z:-490,rx:134,rz:43,height:8,angle:-.37,flat:.12},
   {x:352,z:160,rx:126,rz:71,height:12,angle:-.22,flat:.2},
   {x:570,z:330,rx:210,rz:98,height:7.5,angle:.28,flat:.15},
   {x:-756,z:264,rx:172,rz:113,height:7,angle:-.27,flat:.2},
   {x:-632,z:-90,rx:178,rz:85,height:5.6,flat:.15},
   {x:738,z:-230,rx:182,rz:80,height:6.1,angle:.35,flat:.1},
 ];
-const outerTerrain=makeTerrain(2000,outerLandforms,8);
+const outerTerrain=makeTerrain(size,outerLandforms,cell);
 // At the edge of the original map, softly fade terrain back to the new
 // desert. The entire old village rectangle is sampled from the original
 // terrain; playable geometry and footing there remain unchanged.
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 const innerHalfX=270,innerHalfZ=210;
-const baseHeightAt=(x,z)=>{
+const originalHeight=(x,z)=>{
   const oldX=x+ALHADRA_OFFSET.x,oldZ=z+ALHADRA_OFFSET.z;
   // Bound the preserved village around its NEW local origin (0,0), not
   // the old Al-Hadra world origin. Comparing against oldX/oldZ accidentally
@@ -58,32 +67,49 @@ const baseHeightAt=(x,z)=>{
   // Use the same outer surface on both sides of the transition.
   return preserved*weight+outer*(1-weight);
 };
-const baseSurface={heightAt:baseHeightAt};
+const approach=[[-950,-560],[-750,-455],[-565,-373],[-400,-300],[-235,-248],[-115,-230],[-90,-110],[17,-70],[17,0]];
+function corridor(path,halfWidth,blend){
+  return path.slice(1).map(([x,z],i)=>{
+    const [ax,az]=path[i],dx=x-ax,dz=z-az;
+    return {ax,az,dx,dz,lengthSq:dx*dx+dz*dz,ay:originalHeight(ax,az),by:originalHeight(x,z),halfWidth,blend};
+  });
+}
+const corridors=[...corridor(M02_RESERVE_ROUTE,26,30),...corridor(approach.slice(2,7),22,32)];
+const half=size/2+margin,columns=2*half/cell;
+const elevations=new Float32Array((columns+1)*(columns+1));
+for(let row=0;row<=columns;row++)for(let col=0;col<=columns;col++){
+  const x=col*cell-half,z=row*cell-half;
+  let height=originalHeight(x,z),best=0,grade=height;
+  for(const {ax,az,dx,dz,lengthSq,ay,by,halfWidth,blend} of corridors){
+    const u=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/lengthSq));
+    const weight=1-smooth((Math.hypot(x-ax-u*dx,z-az-u*dz)-halfWidth)/blend);
+    if(weight>best){best=weight;grade=ay+(by-ay)*u;}
+  }
+  elevations[row*(columns+1)+col]=height+(grade-height)*best;
+}
+const baseGrid=terrainHeightfield({x:-half,z:-half,columns,rows:columns,stepX:cell,stepZ:cell,heights:elevations});
+const baseSurface={heightAt:(x,z)=>{
+  const height=baseGrid.heightAt(x,z);
+  return Number.isFinite(height)?height:0;
+}};
+for(const b of shiftedBoxes){
+  const original=ALHADRA.terrain.heightAt(b.x+ALHADRA_OFFSET.x,b.z+ALHADRA_OFFSET.z);
+  if(b.kind==='village-rock')b.baseY=baseSurface.heightAt(b.x,b.z);
+  else b.baseY=(b.baseY??original)+baseSurface.heightAt(b.x,b.z)-original;
+}
 const mountains=new Map(shiftedBoxes.filter(box=>box.kind==='village-rock')
   .map(box=>[box.id,desertMountainSurface(box,baseSurface)]));
 function heightAt(x,z){
-  let y=baseHeightAt(x,z);
+  let y=baseSurface.heightAt(x,z);
   for(const mountain of mountains.values())y=Math.max(y,mountain.heightAt(x,z));
   return y;
 }
 function raycast(origin,dir,length){
-  const f=t=>origin.y+dir.y*t-heightAt(origin.x+dir.x*t,origin.z+dir.z*t);
-  if(f(0)<-.001)return 0;
-  for(let previous=0;previous<length;){
-    const x=origin.x+dir.x*previous,z=origin.z+dir.z*previous;
-    // The mountain mesh has sub-metre triangles on its narrowest slopes.
-    const step=x>103&&x<189&&z>-194&&z<102?.5:4;
-    const t=Math.min(previous+step,length);
-    if(f(t)<=0){
-      let a=previous,b=t;
-      for(let n=0;n<9;n++){const mid=(a+b)*.5;if(f(mid)<=0)b=mid;else a=mid;}
-      return b;
-    }
-    previous=t;
-  }
-  return Infinity;
+  let hit=baseGrid.raycast(origin,dir,length);
+  for(const mountain of mountains.values())hit=Math.min(hit,mountain.raycast(origin,dir,Math.min(hit,length)));
+  return hit;
 }
-const terrain={cell:8,heightAt,raycast,baseSurface,mountains};
+const terrain={cell,heightAt,raycast,baseSurface,mountains};
 const additionalBoxes=[];
 // Keep the tank approaches clear and break up the original rows into small groves.
 const palms=[[-81,-49,6.1],[-72,-46,4.2],[-68,-39,7.0],[-79,-36,5.4],[-58,-42,5.9],
@@ -107,13 +133,28 @@ for(const [i,[x,z]] of stones.entries()){
   additionalBoxes.push({id:`m02-rock-${i}`,kind:'rock',x,z,w,d,h,
     baseY:terrain.heightAt(x,z)-.2,color:'#a58d70',assetMapId:'quarry'});
 }
-const approach=[[-950,-560],[-750,-455],[-565,-373],[-400,-300],[-235,-248],[-115,-230],[-90,-110],[17,-70],[17,0]];
+// These sites sit off the travelled corridors. Their walls, shelters and
+// supplies use the same authored placements for the baked scene and gameplay.
+for(const [index,x,z] of [[0,-839,-449],[1,-520,-298],[2,360,-174],[3,113,-383]]){
+  const add=(suffix,kind,dx,dz,w,d,h,color,extra={})=>additionalBoxes.push({
+    id:`m02-site-${index}-${suffix}`,kind,x:x+dx,z:z+dz,w,d,h,color,assetMapId:'village',
+    baseY:terrain.heightAt(x+dx,z+dz),...extra,
+  });
+  add('wall','village-stone',0,-5,7.6,.7,1.08,'#9e8560');
+  add('return','village-stone',-3.8,-2.4,.7,5.6,1.02,'#98815f');
+  add('case-a','village-street-crate',-1.6,-3.35,1.18,.88,.76,'#776548');
+  add('case-b','village-street-crate',.06,-3.60,1.38,.93,.89,'#80724d');
+  if(index<3)add('shelter','tent',3.5,4.8,5.5,6.2,2.55,'#a18d62',{assetMapId:'quarry'});
+  if(index===2)add('truck','truck',11,2,3,7,3.3,'#756a49',{assetMapId:'quarry'});
+}
+const routeRoads=(route,w)=>route.slice(1).map(([x,z],i)=>{
+  const [ax,az]=route[i],dx=x-ax,dz=z-az;
+  return {x:(ax+x)/2,z:(az+z)/2,w,d:Math.hypot(dx,dz)+6,yaw:Math.atan2(dx,dz)};
+});
 const roads=[
   ...(ALHADRA.roads??[]).map(shift),
-  ...approach.slice(1).map(([x,z],i)=>{
-    const [ax,az]=approach[i],dx=x-ax,dz=z-az;
-    return {x:(ax+x)/2,z:(az+z)/2,w:10,d:Math.hypot(dx,dz)+6,yaw:Math.atan2(dx,dz)};
-  }),
+  ...routeRoads(approach,10),
+  ...routeRoads(M02_RESERVE_ROUTE,8),
   {x:481,z:84,w:11,d:820,yaw:Math.PI/2},
 ];
 // Rebuild editor poses and colliders in desert coordinates. A shallow copy of
@@ -121,7 +162,7 @@ const roads=[
 export const ALHADRA_DESERT=registerLocalMap(rotateMapAssets({
   ...ALHADRA,
   id:'alhadra-desert',name:'Аль-Хадра: пустыня',missionId:'m02',
-  campaign:true,theme:'desert-village',size:2000,width:2000,depth:1200,terrainApron:920,
+  campaign:true,theme:'desert-village',size,width:2000,depth:1200,terrainApron:920,terrainMargin:margin,
   playArea:M02_BOUNDS,navigationCell:8,stepHeight:.5,
   terrain,landforms:[...outerLandforms,...shiftedLandforms],
   terrainPads:shiftedPads,terrainPadBlend:8,

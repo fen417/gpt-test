@@ -1,3 +1,5 @@
+import {terrainHeightfield} from './terrain-heightfield.js';
+
 const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 const hash = (x, z, seed) => {
   let n = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ seed;
@@ -43,12 +45,6 @@ export function desertMountainSurface(box, terrain) {
     heights[index] = y;
     tones[index] = .83 + ridge * .1 + fine * .1 + Math.sin(y * 1.1 + mountainNoise(u * 3 + 10, v * 3 + 10, seed) * 3) * .045;
   }
-  function heightAt(x, z) {
-    const gx = (x - minX) / box.w * MOUNTAIN_COLUMNS, gz = (z - minZ) / box.d * MOUNTAIN_ROWS;
-    if (gx < 0 || gz < 0 || gx >= MOUNTAIN_COLUMNS || gz >= MOUNTAIN_ROWS) return -Infinity;
-    const ix = Math.floor(gx), iz = Math.floor(gz), u = gx - ix, v = gz - iz, index = iz * stride + ix;
-    const a = heights[index], b = heights[index + 1], c = heights[index + stride], d = heights[index + stride + 1];
-    return u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (c - d) * (1 - u) + (b - d) * (1 - v);
-  }
-  return { heights, tones, heightAt };
+  return {heights,tones,...terrainHeightfield({x:minX,z:minZ,columns:MOUNTAIN_COLUMNS,rows:MOUNTAIN_ROWS,
+    stepX:box.w/MOUNTAIN_COLUMNS,stepZ:box.d/MOUNTAIN_ROWS,heights})};
 }

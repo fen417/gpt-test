@@ -45,6 +45,10 @@ export function getVehicleDimensions(vehicle) {
   const spec = VEHICLE_TYPES[vehicle.type], scale = vehicle.modelScale ?? { x: 1, y: 1, z: 1 };
   return { width: spec.width * scale.x, length: spec.length * scale.z, height: spec.height * scale.y };
 }
+const M02_WRECK_HULL=Object.freeze({width:3.56,length:6.76,height:1.47});
+export function vehicleCollisionSize(vehicle){
+  return vehicle.compactWreck&&vehicle.hp<=0?M02_WRECK_HULL:VEHICLE_TYPES[vehicle.type];
+}
 export function vehicleBoardingRange(vehicle) {
   return (VEHICLE_TYPES[vehicle.type].boardRange??VEHICLE_BOARD_RANGE) * Math.max(1, vehicle.modelScale?.x ?? 1, vehicle.modelScale?.z ?? 1);
 }
@@ -61,7 +65,7 @@ export function vehicleBodyTilt(vehicle, terrain) {
 }
 
 export function vehicleShape(vehicle){
-  const spec=VEHICLE_TYPES[vehicle.type],s=vehicle.modelScale??{x:1,y:1,z:1};
+  const spec=vehicleCollisionSize(vehicle),s=vehicle.modelScale??{x:1,y:1,z:1};
   const matrix=multiplyMatrix(rotationMatrix({y:vehicle.yaw??0}),
     multiplyMatrix([s.x,0,0,0,s.y,0,0,0,s.z],rotationMatrix({x:vehicle.bodyPitch??0,z:vehicle.bodyRoll??0})));
   const offset=transformVector(matrix,{x:0,y:spec.height/2,z:0});

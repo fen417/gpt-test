@@ -6,6 +6,7 @@ import { villageLayoutKey } from './village-layout-key.js';
 import {MapTextures} from './map-textures.js';
 import dryWindManifest from './assets/village/manifest.json' with {type:'json'};
 import alhadraManifest from './assets/alhadra/manifest.json' with {type:'json'};
+import alhadraDesertManifest from './assets/alhadra-desert/manifest.json' with {type:'json'};
 
 export const dryWindAssets={
   id:'village',name:'Dry Wind',manifest:dryWindManifest,replaceLeaves:true,
@@ -23,6 +24,13 @@ export const alhadraAssets={
   labels:new URL('./assets/alhadra/labels.webp',import.meta.url).href,
   fabric:new URL('./assets/estate/weave.webp',import.meta.url).href,
   paint:new URL('./assets/port/paint.webp',import.meta.url).href,
+};
+export const alhadraDesertAssets={
+  ...alhadraAssets,id:'alhadra-desert',name:'Al-Hadra Desert',manifest:alhadraDesertManifest,
+  base:new URL('./assets/alhadra-desert/base.glb',import.meta.url).href,
+  detail:new URL('./assets/alhadra-desert/detail.glb',import.meta.url).href,
+  roads:new URL('./assets/alhadra-desert/roads.webp',import.meta.url).href,
+  labels:new URL('./assets/alhadra-desert/labels.webp',import.meta.url).href,
 };
 const sandTint = new THREE.Color(0xd6bd90), roadTint = new THREE.Color(0xbda17a);
 const roadMultiplier = [roadTint.r/sandTint.r,roadTint.g/sandTint.g,roadTint.b/sandTint.b];

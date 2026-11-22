@@ -336,7 +336,7 @@ function addDesertHorizon(parent, material, span, apron) {
 }
 
 export function villageTerrainSpan(map){
-  const margin=map.id==='alhadra'?Math.ceil(110/map.terrain.cell)*map.terrain.cell:110;
+  const margin=map.terrainMargin??(map.id==='alhadra'?Math.ceil(110/map.terrain.cell)*map.terrain.cell:110);
   return map.size+2*margin;
 }
 

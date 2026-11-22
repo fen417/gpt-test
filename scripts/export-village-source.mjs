@@ -16,7 +16,9 @@ globalThis.document = { createElement: () => createCanvas(512, 512) };
 const output = resolve(process.argv[2] ?? '.perf-local/village-bake');
 const mapId = process.argv[3] ?? 'village';
 if(mapId==='alhadra')await import('../shared/campaign/alhadra.js');
-if(!['village','alhadra'].includes(mapId))throw new Error('Expected village or alhadra');
+const desert=mapId==='alhadra-desert'?await import('../shared/campaign/alhadra-desert.js'):null;
+const alhadra=Boolean(desert)||mapId==='alhadra';
+if(!alhadra&&mapId!=='village')throw new Error('Expected village, alhadra or alhadra-desert');
 await Promise.all([mkdir(output, {recursive:true}), MeshoptSimplifier.ready]);
 
 const surfaces = createSurfaceMaterials({capabilities:{getMaxAnisotropy:()=>2}},{bake:true});
@@ -24,11 +26,11 @@ const owner = createMapModelBuilder(surfaces);
 const map = getMap(mapId);
 owner.scene = new THREE.Group();
 const {root,groups} = buildMapScene(owner, map);
-if(mapId==='alhadra'){
+if(alhadra){
   const authoredProps=new Set(['truck','car','generator','fueltank']);
   for(const {key,kind,value} of mapItems(map))
     if((kind==='structure'&&value.kind==='village-house')||
-       (kind==='box'&&(value.kind==='village-awning'||authoredProps.has(value.kind))))
+       (kind==='box'&&(value.kind==='village-awning'||authoredProps.has(value.kind)||desert&&value.campaignDestructible)))
       groups.get(key)?.removeFromParent();
 }
 root.updateMatrixWorld(true);
@@ -37,7 +39,7 @@ const objectives = new Set([...owner.flags.values()].map(flag=>flag.group));
 const assetsByKey=new Map(mapItems(map).map(({key,value})=>[key,value]));
 const batches = new Map(), stats = {originalTriangles:0, groundTriangles:0};
 let roadMask, rockTexture, terrainIndex = 0;
-const labels = mapId==='alhadra'?createCanvas(1024,1024):null;
+const labels = alhadra?createCanvas(1024,1024):null;
 const labelSlots = new Map();
 
 function alhadraPaint(c,point,ground,rock,asset){
@@ -47,6 +49,10 @@ function alhadraPaint(c,point,ground,rock,asset){
     return [.433*grey,.35*grey,.23*grey];
   }
   if(ground){
+    if(desert){
+      const sediment=Math.sin(x*.021+z*.034)*Math.cos(z*.016)*.084+Math.sin(x*.071-z*.061)*.03;
+      return [c[0]*(1+sediment),c[1]*(1+sediment-.035),c[2]*(1+sediment-.074)];
+    }
     const center=-140+(x+200)*.91+Math.sin((x+172)*.045)*6;
     const wadi=(1-THREE.MathUtils.smoothstep(x,-119,-77))*Math.exp(-((z-center)**2)/175);
     const soil=Math.sin(x*.030+z*.041)*Math.cos(z*.072)*.068+Math.sin(x*.119-z*.209)*.032;
@@ -93,7 +99,7 @@ function include(mesh, matrix) {
       }
     }
     if (ground) roadMask = mat.roadMask.image;
-    if (rock) rockTexture = mat.map.image;
+    if (rock&&(!desert||!rockTexture||asset?.kind==='village-rock')) rockTexture = mat.map.image;
     const surface = ground ? 'road-sand' : label ? 'sign' : rock ? 'rock' : surfaceByMap.get(mat.map)
       ?? (mat.side===THREE.DoubleSide ? 'leaf' : mat.isMeshBasicMaterial ? 'unlit' : 'plain');
     if(mat.map && !ground && !rock && !label && !surfaceByMap.has(mat.map)){
@@ -107,14 +113,16 @@ function include(mesh, matrix) {
     const batch = batches.get(key);
     let triangles = Uint32Array.from(indexed.subarray(group.start, group.start+group.count));
     stats.originalTriangles += triangles.length/3;
-    if ((terrain || rock) && triangles.length > 600) {
+    // Keep the desert's driving surface within the terrain partitioner's
+    // existing 5 mm simplification bound.
+    if ((terrain || rock) && triangles.length > 600 && !(desert&&terrain)) {
       const span = MeshoptSimplifier.getScale(position.array,3);
       const backdrop=mapId==='alhadra'&&asset?.kind==='village-rock'&&asset.w>30;
-      const error=terrain?(mapId==='alhadra'?.008:.032):backdrop?.55:.060;
-      const fraction=backdrop?.15:.38;
+      const error=terrain?(alhadra?.008:.032):backdrop?.55:desert?.09:.060;
+      const fraction=backdrop?.15:desert?.28:.38;
       [triangles] = MeshoptSimplifier.simplify(triangles,position.array,3,Math.floor(triangles.length*fraction/3)*3,
         error/Math.max(span,1),['LockBorder']);
-    } else if (triangles.length > 360 && mesh.material === mat && normal && uv && !color) {
+    } else if (triangles.length > 360 && !(desert&&terrain) && mesh.material === mat && normal && uv && !color) {
       const attributes = new Float32Array(position.count*5);
       for(let i=0;i<position.count;i++) attributes.set([normal.getX(i),normal.getY(i),normal.getZ(i),uv.getX(i),uv.getY(i)],i*5);
       const error = .012 / Math.max(matrix.getMaxScaleOnAxis(),1);
@@ -132,7 +140,7 @@ function include(mesh, matrix) {
       const vertexColor=mat.vertexColors&&color;
       const c=[mat.color.r*(vertexColor?color.getX(index):1),mat.color.g*(vertexColor?color.getY(index):1),
         mat.color.b*(vertexColor?color.getZ(index):1)];
-      batch.c.push(...(mapId==='alhadra'?alhadraPaint(c,point,ground,rock,asset):c));
+      batch.c.push(...(alhadra?alhadraPaint(c,point,ground,rock,asset):c));
     }
     for(let i=0;i<triangles.length;i+=3) batch.indices.push(vertices.get(triangles[i]),
       vertices.get(triangles[i+(mirrored?2:1)]),vertices.get(triangles[i+(mirrored?1:2)]));
@@ -165,13 +173,13 @@ for(let i=0;mapId==='village'&&i<390;i++){
   groundDetails.push({x,z,baseY:map.terrain.heightAt(x,z),scale:.17+random()*.45,turn:random()*Math.PI*2});
 }
 const metadata = {
-  layout:villageLayoutKey(map), span:villageTerrainSpan(map), stats,
+  mapId,layout:villageLayoutKey(map), span:villageTerrainSpan(map), stats,
   structures:map.structures, boxes:map.boxes.filter(b=>!b.editorPart||
     ['village-bed','village-cabinet','village-table','village-shelf'].includes(b.kind)),
   ship:map.ship, groundDetails,
 };
-if(mapId==='alhadra'){
-  const spacing=2;
+if(alhadra){
+  const spacing=desert?map.terrain.cell:2;
   const {minX,minZ,maxX,maxZ}=map.playArea;
   const elevations=[];
   for(let z=minZ;z<=maxZ;z+=spacing)
@@ -179,6 +187,7 @@ if(mapId==='alhadra'){
   metadata.ground={minX,minZ,spacing,columns:1+(maxX-minX)/spacing,elevations};
   metadata.depotProps=metadata.boxes.filter(box=>box.campaignDestructible);
   metadata.boxes=metadata.boxes.filter(box=>!box.campaignDestructible&&!box.missionDynamic);
+  if(desert)metadata.reserveRoute=desert.M02_RESERVE_ROUTE;
 }
 for(const b of packed) for(const key of ['p','n','uv','c'])
   b[key] = Buffer.from(Float32Array.from(b[key]).buffer).toString('base64');

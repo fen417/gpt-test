@@ -14,7 +14,7 @@ import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-mode
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
-import { VillageModel, dryWindAssets, alhadraAssets } from './village-model.js';
+import { VillageModel, dryWindAssets, alhadraAssets, alhadraDesertAssets } from './village-model.js';
 import { hasPortAsset, PortModel } from './port-model.js';
 import { ArchitecturalMapModel, lagunaAssets, estateAssets } from './architectural-map-model.js';
 import { loadQuarryDetail, disposeQuarryDetail } from './quarry-model.js';
@@ -327,6 +327,7 @@ export class GameRenderer {
     this.worlds = new Map();
     this.villageModel = new VillageModel(this,dryWindAssets);
     this.alhadraModel = new VillageModel(this,alhadraAssets);
+    this.alhadraDesertModel = new VillageModel(this,alhadraDesertAssets);
     this.portModel = new PortModel(this);
     this.lagunaModel = new ArchitecturalMapModel(this,lagunaAssets);
     this.estateModel = new ArchitecturalMapModel(this,estateAssets);
@@ -538,7 +539,7 @@ export class GameRenderer {
             addPortLabels(this,map);
           }
           if(model.base)root.add(model.base);
-          else if(model===this.villageModel||model===this.alhadraModel){
+          else if(model===this.villageModel||model===this.alhadraModel||model===this.alhadraDesertModel){
             fallback=new THREE.Group();
             root.add(fallback);this.scene=fallback;
             buildMapScene(this,map,{skipObjectives:true});
@@ -677,6 +678,7 @@ export class GameRenderer {
     if(hasPortAsset(map))return this.portModel;
     if(this.villageModel.matches(map))return this.villageModel;
     if(this.alhadraModel.matches(map))return this.alhadraModel;
+    if(this.alhadraDesertModel.matches(map))return this.alhadraDesertModel;
     if(map===lagunaAssets.map)return this.lagunaModel;
     if(map===estateAssets.map)return this.estateModel;
   }
@@ -2240,6 +2242,7 @@ export class GameRenderer {
     this.disposed=true;
     this.villageModel.dispose();
     this.alhadraModel.dispose();
+    this.alhadraDesertModel.dispose();
     this.portModel.dispose();
     this.lagunaModel.dispose();
     this.estateModel.dispose();

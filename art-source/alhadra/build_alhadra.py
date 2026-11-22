@@ -212,12 +212,13 @@ def awning(setup,b,index):
     setup.place("Striped market canvas",x,z,shape)
 
 
-def prop_detail(setup,boxes):
+def prop_detail(setup,boxes,desert=False):
     for index,b in enumerate(boxes):
         x,y,z,w,d,h=(b[k] for k in ("x","baseY","z","w","d","h"))
         kind=b["kind"]
-        repair=(-13<x<3 and 42<z<52)
-        school=(144<x<156 and 99<z<104)
+        reference_x,reference_z=(x+150,z+105) if desert else (x,z)
+        repair=(-13<reference_x<3 and 42<reference_z<52)
+        school=(144<reference_x<156 and 99<reference_z<104)
         if kind in ("truck","car","generator","fueltank"):
             def equipment(layer):
                 parts={}
@@ -253,7 +254,7 @@ def prop_detail(setup,boxes):
                     else:
                         layer("metal",True,False).box((px,y+h+.031,z),(.43,.048,.076),IRON,.007)
             setup.place("Schoolbooks" if school else "Repair workbench tools",x,z,desk)
-        elif kind=="crate" and (-105<x<58 or x<-199) and not b.get("modelRotation"):
+        elif kind=="crate" and (-105<reference_x<58 or reference_x<-199) and not b.get("modelRotation"):
             def case(layer):
                 metal=layer("metal",True,False)
                 for side in (-1,1):
@@ -325,6 +326,9 @@ def ground_height(data,x,z):
     ix=min(n-2,max(0,math.floor(col)))
     iz=min(len(values)//n-2,max(0,math.floor(row)))
     fx,fz=max(0,min(1,col-ix)),max(0,min(1,row-iz))
+    if "reserveRoute" in data:
+        a,b,c,d=(values[iz*n+ix],values[iz*n+ix+1],values[(iz+1)*n+ix],values[(iz+1)*n+ix+1])
+        return a+(b-a)*fx+(c-a)*fz if fx+fz<=1 else d+(c-d)*(1-fx)+(b-d)*(1-fz)
     lower=values[iz*n+ix]*(1-fx)+values[iz*n+ix+1]*fx
     upper=values[(iz+1)*n+ix]*(1-fx)+values[(iz+1)*n+ix+1]*fx
     return lower*(1-fz)+upper*fz
@@ -340,6 +344,16 @@ def terrain_detail(setup,data):
         ("Dry channel", (48,9),(154,44),11,18,46),
         ("Farmland edges",(89,72),(197,149),10,22,46),
     ]
+    if "reserveRoute" in data:
+        sites=[
+            ("Western cuts",(-945,-560),(-755,-460),19,54,42),
+            ("Ridge apron",(-686,-482),(-572,-422),28,65,40),
+            ("Convoy approach",(-435,-316),(-240,-255),14,55,48),
+            ("Village approach",(-235,-246),(-90,-118),24,54,44),
+            ("Southern pass scree",(275,-316),(135,-344),26,56,48),
+            ("Dry wash deposits",(115,-345),(-125,-323),12,55,54),
+            ("Outskirts and field edges",(-55,-104),(84,-14),17,36,32),
+        ]
     for title,a,b,near,far,count in sites:
         for i in range(count):
             t=i/count
@@ -371,6 +385,64 @@ def terrain_detail(setup,data):
                                    (x+dx*tip,yy+rng.uniform(.16,.39),z+dz*tip),
                                    (x-dz*.026,yy,z+dx*.026)],[(0,1,2)],shade(OLIVE,rng.uniform(.68,1.08)))
             setup.place(title,x,z,weathering)
+
+
+def battlefield_detail(setup,data):
+    for b in data["depotProps"]:
+        x,z,y=b["x"],b["z"],b["baseY"]
+        is_truck=b["kind"]=="truck"
+        def burned(layer):
+            parts={}
+            def part(surface,detail=False,cast=True):
+                return parts.setdefault((surface,detail,cast),Mesh())
+            if is_truck:
+                truck(part)
+                for key in tuple(parts):
+                    if key[0]=="canvas":del parts[key]
+                truck_wreck(part)
+            else:
+                drum(part)
+            for (surface,detail,cast),mesh in parts.items():
+                mesh.colors=[shade(color,.32 if surface!="vehicle-glass" else .19) for color in mesh.colors]
+                if not is_truck and b["campaignFuel"]%3!=0:
+                    mesh.vertices=[(-p,.545+q,r) for q,p,r in mesh.vertices]
+                layer(surface,detail,cast).extend(mesh,(x,y,z),0)
+            if is_truck:
+                stain=layer("plain",True,False)
+                rng=random.Random(int(x*41+z*17))
+                for side in (-1,1):
+                    for dot in range(12):
+                        cx,cz=x+side*(1.4+rng.random()*1.25),z+rng.uniform(-3.8,3.65)
+                        width,depth=rng.uniform(.18,.64),rng.uniform(.22,.94)
+                        points=[(cx+dx,ground_height(data,cx+dx,cz+dz)+.038,cz+dz)
+                                for dx,dz in ((-width,-depth),(-width,depth),(width,depth),(width,-depth))]
+                        stain.add(points,[(0,1,2,3)],shade(DARK,rng.uniform(.7,1.1)))
+        setup.place("Burned supply truck" if is_truck else "Scorched fuel drum",x,z,burned)
+
+    paths=[
+        ("Column tracks",(-914,-541),(-855,-512),3),("Column tracks",(-802,-485),(-763,-461),4),
+        ("Wadi crossing",(-425,-308),(-341,-280),3),("Road into town",(-87,-107),(-42,-88),2),
+    ]
+    paths.extend(("Reserve track marks",tuple(a),tuple(b),2)
+                 for a,b in zip(data["reserveRoute"][1:4],data["reserveRoute"][2:5]))
+    for name,a,b,lanes in paths:
+        dx,dz=b[0]-a[0],b[1]-a[1]
+        length=math.hypot(dx,dz)
+        vx,vz=dx/length,dz/length
+        for lane in range(lanes):
+            spread=(lane-(lanes-1)/2)*2.75
+            def ruts(layer):
+                dirt=layer("plain",True,False)
+                for side in (-1,1):
+                    shift=spread+side*1.12
+                    for i in range(math.ceil(length/2.7)):
+                        at=i*2.7
+                        step=min(2.64,length-at)
+                        points=[(a[0]+u*vx-vz*w,a[1]+u*vz+vx*w) for u,w in
+                                ((at,shift-.21),(at,shift+.21),(at+step,shift+.24),(at+step,shift-.19))]
+                        world=[(x,ground_height(data,x,z)+.043,z) for x,z in points]
+                        dirt.add(world,[(0,1,2,3)],shade(PALE,.67+(i%3)*.025))
+            setup.place(name,(a[0]+b[0])/2,(a[1]+b[1])/2,ruts)
 
 
 def preview_materials(source,span):
@@ -434,6 +506,7 @@ def preview_materials(source,span):
 
 def main(source,runtime):
     data=json.loads((source/"village.json").read_text(encoding="utf-8"))
+    desert=data.get("mapId")=="alhadra-desert"
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version=0
     scene=bpy.context.scene
@@ -446,30 +519,33 @@ def main(source,runtime):
     for incoming in data["meshes"]:
         source_mesh(incoming,imported[bool(incoming["detail"])])
     setup=LayeredMap(("02 · Village and school joinery", "04 · Weathering, classroom and terrain detail"),
-                     authored_mesh,grids=(60,48))
+                     authored_mesh,grids=(86,70) if desert else (60,48))
     for index,s in enumerate(data["structures"]):
         if s["kind"]=="village-house":
             house(setup,s,index)
-    prop_detail(setup,data["boxes"])
+    prop_detail(setup,data["boxes"],desert)
     terrain_detail(setup,data)
+    if desert:battlefield_detail(setup,data)
     for tier,name in enumerate(("base","detail")):
         setup.export(bool(tier),source/(name+".glb"),imported[tier].objects)
-    export_depot_props(source,data["depotProps"])
+    if not desert:export_depot_props(source,data["depotProps"])
     runtime.mkdir(parents=True,exist_ok=True)
-    for name in ("roads.webp","rock.webp","labels.webp"):
+    for name in (("roads.webp","labels.webp") if desert else ("roads.webp","rock.webp","labels.webp")):
         shutil.copyfile(source/name,runtime/name)
     manifest={"layout":data["layout"],"span":data["span"],
               "baseTriangles":sum(len(obj.data.polygons) for obj in imported[0].objects),
               "batches":len(setup.batches)}
     (runtime/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
     preview_materials(source,data["span"])
-    preview=bpy.data.cameras.new("School approach")
-    camera=bpy.data.objects.new("School approach",preview)
+    label="Dunes and southern pass" if desert else "School approach"
+    preview=bpy.data.cameras.new(label)
+    camera=bpy.data.objects.new(label,preview)
     scene.collection.objects.link(camera)
-    camera.location=(162,-85,5.2)
-    camera.rotation_euler=(Vector((146,-103,2.3))-camera.location).to_track_quat("-Z","Y").to_euler()
+    camera.location=(-226,255,49) if desert else (162,-85,5.2)
+    target=(-40,157,3.8) if desert else (146,-103,2.3)
+    camera.rotation_euler=(Vector(target)-camera.location).to_track_quat("-Z","Y").to_euler()
     preview.lens=35
-    preview.clip_end=1200
+    preview.clip_end=3600 if desert else 1200
     scene.camera=camera
     lamp=bpy.data.lights.new("Dawn","SUN")
     lamp.energy=2.45
@@ -482,11 +558,12 @@ def main(source,runtime):
         for area in screen.areas:
             if area.type=="VIEW_3D":
                 space=area.spaces.active
-                space.clip_end=1700
+                space.clip_end=3600 if desert else 1700
                 space.shading.color_type="VERTEX"
-                space.region_3d.view_location=(130,-98,1.7)
-                space.region_3d.view_distance=120
-    bpy.ops.wm.save_as_mainfile(filepath=str(HERE/"alhadra.blend"),compress=True)
+                space.region_3d.view_location=(-100,185,3) if desert else (130,-98,1.7)
+                space.region_3d.view_distance=380 if desert else 120
+    blend="alhadra-desert.blend" if desert else "alhadra.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(HERE/blend),compress=True)
 
 
 if __name__=="__main__":

@@ -1,6 +1,6 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
-import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint, isEnclosedTankCrew } from './vehicles.js';
+import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint, isEnclosedTankCrew, vehicleCollisionSize } from './vehicles.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, prepareVehicleRoutes, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
@@ -111,9 +111,9 @@ function impactMaterial(kind) {
 const footprints=new WeakMap();
 function footprint(vehicle, x=vehicle.x, z=vehicle.z, yaw=vehicle.yaw) {
   const live=x===vehicle.x&&z===vehicle.z&&yaw===vehicle.yaw,sx=vehicle.modelScale?.x??1,sy=vehicle.modelScale?.y??1,sz=vehicle.modelScale?.z??1;
-  const cached=live?footprints.get(vehicle):null;
-  if(cached&&cached.x===x&&cached.z===z&&cached.yaw===yaw&&cached.type===vehicle.type&&cached.sx===sx&&cached.sy===sy&&cached.sz===sz)return cached;
-  const spec=VEHICLE_TYPES[vehicle.type],value={x,z,yaw,type:vehicle.type,sx,sy,sz,w:spec.width*sx/2,d:spec.length*sz/2,h:spec.height*sy,cos:Math.cos(yaw),sin:Math.sin(yaw)};
+  const spec=vehicleCollisionSize(vehicle),cached=live?footprints.get(vehicle):null;
+  if(cached&&cached.x===x&&cached.z===z&&cached.yaw===yaw&&cached.spec===spec&&cached.sx===sx&&cached.sy===sy&&cached.sz===sz)return cached;
+  const value={x,z,yaw,spec,sx,sy,sz,w:spec.width*sx/2,d:spec.length*sz/2,h:spec.height*sy,cos:Math.cos(yaw),sin:Math.sin(yaw)};
   if(live)footprints.set(vehicle,value);return value;
 }
 
@@ -399,7 +399,7 @@ export class Simulation {
     if(area&&(x-dx<area.minX||x+dx>area.maxX||z-dz<area.minZ||z+dz>area.maxZ))return true;
     const tilted=Boolean(vehicle.modelRotation?.x||vehicle.modelRotation?.z);
     const needsShape=tilted||this.hasRotatedGeometry||
-      this.vehicles.some(other=>other.modelRotation?.x||other.modelRotation?.z);
+      this.vehicles.some(other=>other.modelRotation?.x||other.modelRotation?.z||other.compactWreck&&other.wreckTime>0);
     const pose=needsShape?{...vehicle,x,z,yaw,y:this.groundAt(x,z)}:null;
     const shape=pose?vehicleShape({...pose,...vehicleBodyTilt(pose,this.map.terrain)}):null;
     const bounds=shape?boxBounds({obb:shape}):null;
@@ -416,12 +416,13 @@ export class Simulation {
       if(overlaps(body,{x:box.x,z:box.z,w:box.w/2,d:box.d/2,cos:1,sin:0}))return true;
     }
     return this.vehicles.some(other=>other!==vehicle&&(other.hp>0||other.wreckTime>0)&&
-      (tilted||other.modelRotation?.x||other.modelRotation?.z?overlapsAffine(shape,vehicleShape(other)):overlaps(body,footprint(other))));
+      (tilted||other.modelRotation?.x||other.modelRotation?.z||other.compactWreck&&other.hp<=0
+        ?overlapsAffine(shape,vehicleShape(other)):overlaps(body,footprint(other))));
   }
   vehicleAt(x,z,y,radius=PLAYER_RADIUS){
     return this.vehicles.some(v=>{
       if(v.hp<=0&&!(v.wreckTime>0))return false;
-      if(v.modelRotation?.x||v.modelRotation?.z)return overlapsAffine(uprightBox(x,y,z,radius,EYE_HEIGHT),vehicleShape(v));
+      if(v.modelRotation?.x||v.modelRotation?.z||v.compactWreck&&v.hp<=0)return overlapsAffine(uprightBox(x,y,z,radius,EYE_HEIGHT),vehicleShape(v));
       const body=footprint(v),dx=x-v.x,dz=z-v.z;
       return y<(v.y??0)+body.h && Math.abs(dx*body.cos-dz*body.sin)<body.w+radius
         && Math.abs(dx*body.sin+dz*body.cos)<body.d+radius;

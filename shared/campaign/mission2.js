@@ -3,18 +3,28 @@ import {thinkInfantryBot,ensureBotState} from '../bot-ai.js';
 import {moveBot,prepareNavigation} from '../bot-navigation.js';
 import {shotRandom} from '../fire-control.js';
 import {rayAffineBox} from '../geometry.js';
-import {VEHICLE_TYPES,vehicleShape} from '../vehicles.js';
+import {VEHICLE_TYPES,vehicleShape,vehicleBodyTilt} from '../vehicles.js';
 import {fireTank,tankMuzzle,tankArmorZone} from '../tank.js';
 import {campaignTankSight} from './tank-controls.js';
 import {zeroedBulletPitch} from '../ballistics.js';
-import {ALHADRA_DESERT} from './alhadra-desert.js';
+import {ALHADRA_DESERT,M02_RESERVE_ROUTE} from './alhadra-desert.js';
 
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const bearing=(from,to)=>Math.atan2(from.x-to.x,from.z-to.z);
 const angle=value=>Math.atan2(Math.sin(value),Math.cos(value));
 const INTRO_SPEED_LIMIT=25/3.6;
+const RESERVE_MARCH_SPEED=9.4;
+const RESERVE_FIRE_RANGE=285;
+const RESERVE_INTERCEPT_RANGE=110;
 export const M02_SAVE_VERSION=2;
+
+function trackGrade(terrain,x,z,yaw){
+  const c=Math.cos(yaw),s=Math.sin(yaw);
+  const h=(side,axle)=>terrain.heightAt(x+c*side+s*axle,z-s*side+c*axle);
+  const fl=h(-1.56,-2.6),fr=h(1.56,-2.6),rl=h(-1.56,2.6),rr=h(1.56,2.6);
+  return Math.max(Math.abs(fl-rl)/5.2,Math.abs(fr-rr)/5.2,Math.abs(fl-fr)/3.12,Math.abs(rl-rr)/3.12);
+}
 
 export class Mission2Simulation extends Simulation{
   constructor(definition,options={}){
@@ -49,7 +59,7 @@ export class Mission2Simulation extends Simulation{
     }
     if(wasAlive&&vehicle.type==='tank'&&vehicle.hp<=0){
       // Campaign wrecks stay as cover and do not respawn like multiplayer vehicles.
-      vehicle.respawnIn=1e8;vehicle.wreckTime=1e8;
+      vehicle.respawnIn=1e8;vehicle.wreckTime=1e8;vehicle.compactWreck=true;
       this.campaign?.onTankDestroyed(vehicle,attacker);
     }
     if(attacker?.id==='local'&&(hit?.amount>0||wasAlive&&vehicle.hp<=0)){
@@ -125,17 +135,18 @@ export class Mission2Simulation extends Simulation{
       for(const other of this.players.values())if(other.alive&&!other.vehicleId&&other.team===1&&distance(v,other)<500)enemy.push(other);
     let target=null,nearest=Infinity,best=Infinity;
     const from={x:v.x,y:(v.y??0)+2.4,z:v.z};
+    const fireRange=v.m02Rear?((v.m02Waypoint??0)>=3?RESERVE_FIRE_RANGE:RESERVE_INTERCEPT_RANGE):800;
     for(const other of enemy){
       const d=distance(v,other);
-      if(d>850||!this.campaign.visible(from,{x:other.x,y:other.y+1.2,z:other.z}))continue;
+      if(d>(v.m02Rear?fireRange:850)||!this.campaign.visible(from,{x:other.x,y:other.y+1.2,z:other.z}))continue;
       const assigned=this.vehicles.filter(t=>t.team===v.team&&t.hp>0&&t.id!==v.id&&t.m02TargetId===other.id).length;
       const score=d+assigned*280-(v.team===0&&c.order==='fire'&&c.orderTargetId===other.id?650:0);
       if(score<best){best=score;nearest=d;target=other;}
     }
     v.m02TargetId=target?.id??null;
     if(target){v.m02Shell=target.type==='tank'?'ap':'he';v.cannonAmmo=v.shellAmmo[v.m02Shell];}
-    const route=v.team===0?c.definition.friendlyCompany.route:v.m02Rear?c.definition.enemyCompany.rearRoute:c.definition.enemyCompany.route;
-    let wp=v.m02Waypoint??0;
+    const route=v.team===0?c.definition.friendlyCompany.route:v.m02Rear?M02_RESERVE_ROUTE:c.definition.enemyCompany.route;
+    let wp=Math.min(v.m02Waypoint??0,route.length-1);
     let point=route[Math.min(wp,route.length-1)];
     // A tank defending a zone should maintain a safe interval from its
     // neighbours, while moving toward the next authored waypoint.
@@ -166,23 +177,27 @@ export class Mission2Simulation extends Simulation{
       if(gun&&distance(v,gun)>105)goal={x:gun.x+(v.m02Index%3-1)*16,z:gun.z-36};
     }
     const combatAllowed=c.started&&c.elapsed>=13;
-    const inRange=target&&nearest<800;
+    const inRange=target&&nearest<fireRange;
     const attack=Boolean(inRange&&combatAllowed);
     if(c.order!=='hold'||v.team===1){
       if(c.enemiesAlive<=2&&v.team===0&&c.phase==='battle'&&!target){
         const hidden=enemy.filter(other=>other.type==='tank').sort((a,b)=>distance(v,a)-distance(v,b))[0];
         if(hidden)goal={x:hidden.x+(v.m02Index%3-1)*26,z:hidden.z-44};
       }
-      const playerTank=v.m02Rear&&this.vehicles.find(t=>t.id===c.definition.player.vehicleId&&t.hp>0);
-      if(playerTank&&(wp===route.length-1||wp>=3&&playerTank.x>v.x+40))
-        goal={x:playerTank.x+(v.m02Index%3-1)*18,z:playerTank.z};
-      else if(v.team===1&&wp===route.length-1&&target&&nearest>=180&&target.z<-95)
+      if(v.m02Rear&&wp===route.length-1&&(v.m02Pursuit||distance(v,goal)<28)){
+        v.m02Pursuit=true;
+        const opponent=target??enemy.reduce((closest,other)=>!closest||distance(v,other)<distance(v,closest)?other:closest,null);
+        if(opponent){
+          const spread=(v.m02Index%3-1)*16;
+          goal=attack&&nearest<55?{x:v.x,z:v.z}:{x:opponent.x-uz*spread,z:opponent.z+ux*spread};
+        }
+      }else if(!v.m02Rear&&v.team===1&&wp===route.length-1&&target&&nearest>=180&&target.z<-95)
         goal={x:target.x+(v.m02Index%3-1)*18,z:target.z};
       if(this.time<(v.m02DetourUntil??0))goal=v.m02Detour;
-      else if(attack&&(v.m02Rear?wp>=3&&target===playerTank&&nearest<85:nearest<180))goal={x:v.x,z:v.z};
+      else if(!v.m02Rear&&attack&&nearest<180)goal={x:v.x,z:v.z};
     }
     const desired=bearing(v,goal),delta=angle(desired-v.yaw);
-    const companySpeed=v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
+    const companySpeed=v.m02Rear?RESERVE_MARCH_SPEED:v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
     const drive=distance(v,goal)>10&&Math.abs(delta)<1.15?companySpeed/VEHICLE_TYPES.tank.maxSpeed:0;
     const turn=clamp(-delta*1.8,-1,1);
     if(this.time<(v.m02EscapeUntil??0)){
@@ -220,6 +235,13 @@ export class Mission2Simulation extends Simulation{
     p.input=sanitizeInput({forward:drive,strafe:turn,yaw,pitch,fire,weaponSlot:0});
   }
   // Campaign vehicles use the regular collision/suspension/track physics.
+  vehicleCollides(vehicle,x,z,yaw){
+    if(vehicle.type==='tank'&&(x!==vehicle.x||z!==vehicle.z)){
+      const grade=trackGrade(this.map.terrain,x,z,yaw);
+      if(grade>.55&&grade>trackGrade(this.map.terrain,vehicle.x,vehicle.z,vehicle.yaw)+.004)return true;
+    }
+    return super.vehicleCollides(vehicle,x,z,yaw);
+  }
   moveVehicle(vehicle,input,dt){
     if(vehicle.id===this.campaign.definition.player.vehicleId){
       if(this.campaign.braking)input={...input,forward:0};
@@ -248,9 +270,12 @@ export class Mission2Simulation extends Simulation{
     for(const v of this.vehicles){
       if(v.hp<=0||v.type!=='tank'||v.controlScheme!=='wot')continue;
       const driver=this.players.get(v.seats[0]);
-      if(driver?.alive&&(!driver.bot||c.elapsed>=13)){
+      if(driver?.alive&&(!driver.bot||c.elapsed>=13)&&(!v.m02Rear||this.time>=c.nextReserveShot)){
         const before=v.cannonSeq;fireTank(this,driver,v,dt);
-        if(before!==v.cannonSeq)v.m02FireAt=this.time+(v.team===1?5.5:4.5)+(v.m02Index%3)*.45;
+        if(before!==v.cannonSeq){
+          v.m02FireAt=this.time+(v.team===1?5.5:4.5)+(v.m02Index%3)*.45;
+          if(v.m02Rear)c.nextReserveShot=this.time+.85;
+        }
       }
     }
     c.update(dt);
@@ -261,6 +286,7 @@ export class Mission2Simulation extends Simulation{
       const live=this.vehicles.find(q=>q.id===v.id);
       if(!live)return;
       v.controlScheme=live.controlScheme;
+      if(live.compactWreck)v.compactWreck=true;
       if(v.type==='tank'&&v.team===1)v.camo='desert';
       v.m02Shell=live.m02Shell;
       v.shellAmmo=live.shellAmmo?{...live.shellAmmo}:undefined;
@@ -282,7 +308,7 @@ export class Mission2Director{
     this.cruise=false;this.lockedTargetId=null;
     this.epoch=0;this.phase='march';this.radioQueue=[];this.sight=null;this.orderTargetId=null;
     this.groundWave=0;this.villageStartedAt=null;this.intelProgress=0;this.lastCheckpointAt=0;
-    this.feedback=null;this.smoke=[];this.completedObjectives=[];
+    this.feedback=null;this.smoke=[];this.completedObjectives=[];this.nextReserveShot=0;
   }
   tankMaxHp(vehicle,difficulty){
     const {player,friendlyCompany,enemyCompany}=this.definition;
@@ -420,8 +446,8 @@ export class Mission2Director{
     }
   }
   spawnEnemy(count){
-    const c=this.definition.enemyCompany,rear=this.enemySerial>0,base=rear?c.start:c.contactStart;
-    const route=rear?c.rearRoute:c.route,heading=rear?route[1]:c.contactApproach;
+    const c=this.definition.enemyCompany,rear=this.enemySerial>=c.firstWave;
+    const base=rear?M02_RESERVE_ROUTE[0]:c.contactStart,heading=rear?M02_RESERVE_ROUTE[1]:c.contactApproach;
     const dirX=heading[0]-base[0],dirZ=heading[1]-base[1],
       norm=Math.max(1,Math.hypot(dirX,dirZ)),ux=dirX/norm,uz=dirZ/norm;
     for(let j=0;j<count;j++){
@@ -608,7 +634,7 @@ export class Mission2Director{
       players:[...this.sim.players.values()].map(p=>({...p,damagers:undefined,ai:undefined})),
       rockets:this.sim.rockets,bullets:this.sim.bullets,grenades:this.sim.grenades,deployables:this.sim.deployables,
       mission:{stage:this.stage,started:this.started,combatStartedAt:this.combatStartedAt,
-        elapsed:this.elapsed,checkpoint:this.checkpoint,order:this.order,
+        elapsed:this.elapsed,checkpoint:this.checkpoint,order:this.order,nextReserveShot:this.nextReserveShot,
         flags:this.flags,fired:[...this.fired],enemySerial:this.enemySerial,
         cruise:this.cruise,lockedTargetId:this.lockedTargetId,phase:this.phase,
         groundWave:this.groundWave,villageStartedAt:this.villageStartedAt,smoke:this.smoke,
@@ -623,6 +649,8 @@ export class Mission2Director{
     this.sim.vehicles=structuredClone(save.vehicles);
     for(const v of this.sim.vehicles){
       v.y=this.sim.groundAt(v.x,v.z);
+      Object.assign(v,vehicleBodyTilt(v,this.sim.map.terrain));
+      if(v.type==='tank'&&v.hp<=0)v.compactWreck=true;
       const maxHp=this.tankMaxHp(v,save.difficulty);
       if(v.maxHp!==maxHp){
         v.hp=v.hp/v.maxHp*maxHp;v.maxHp=maxHp;
@@ -633,6 +661,7 @@ export class Mission2Director{
       Object.assign(created,structuredClone(p),{damagers:new Map(),ai:null});
     }
     Object.assign(this,structuredClone(save.mission));
+    this.nextReserveShot=save.mission.nextReserveShot??0;
     this.fired=new Set(save.mission.fired);
     this.options.campaignProgress={carry:structuredClone(save.mission.carry)};
     this.sim.rngState=save.rngState;
