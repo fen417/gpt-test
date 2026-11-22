@@ -3,6 +3,19 @@ import {WEAPONS} from '../shared/world.js';
 import {SCOPE_ZOOMS} from './scope-optics.js';
 
 const stockNames={optic:'Штатный прицел',barrel:'Штатный ствол',magazine:'Штатный магазин',stock:'Штатный приклад'};
+const spreadLabels={hipSpreadScale:'Разброс от бедра',adsSpreadScale:'Разброс при прицеливании'};
+const magnification=new Intl.NumberFormat('ru-RU');
+const percentChange=new Intl.NumberFormat('ru-RU',{style:'percent',signDisplay:'exceptZero',maximumFractionDigits:1});
+
+function attachmentEffects({zoom,modifiers}){
+  const effects=[];
+  if(zoom)effects.push(`Увеличение ${magnification.format(zoom)}×`);
+  for(const [stat,label] of Object.entries(spreadLabels)){
+    const multiplier=modifiers?.[stat]??1;
+    if(multiplier!==1)effects.push(`${label} ${percentChange.format(multiplier-1)}`);
+  }
+  return effects.join(' · ');
+}
 
 export function setupAttachmentPicker(root,{onSlot,onSelect}){
   const tabs=root.querySelector('[data-attachment-slots]');
@@ -20,10 +33,15 @@ export function setupAttachmentPicker(root,{onSlot,onSelect}){
     const name=slot==='optic'&&zooms?'Штатный прицел '+zooms.join('–')+'×':
       slot==='barrel'&&weaponId==='vk45'?'Штатный ствол с глушителем':
       slot==='stock'&&WEAPONS[weaponId]?.sidearm?'Без приклада':stockNames[slot];
-    const buttonFor=(id,label,disabled=false)=>{
+    const buttonFor=(id,label,disabled=false,effects='')=>{
       const button=document.createElement('button');
       button.type='button';button.className='panel-secondary';button.dataset.module=id;
       button.textContent=label;button.disabled=disabled;
+      if(effects){
+        const details=document.createElement('small');
+        details.className='attachment-effects';details.textContent=effects;
+        button.append(details);
+      }
       button.setAttribute('aria-pressed',String(id===selected));
       button.addEventListener('click',()=>onSelect(id));
       return button;
@@ -41,7 +59,7 @@ export function setupAttachmentPicker(root,{onSlot,onSelect}){
       const suffix=unlocked?'':trial?' · тестовый доступ':
         networkXp===null&&requiresNetworkXp?' · требуется обновление сервера':
         ` · ${level} ${part.level} (${kills} / ${required} устр.)`;
-      items.push(buttonFor(id,part.name+suffix,!unlocked&&!trial));
+      items.push(buttonFor(id,part.name+suffix,!unlocked&&!trial,attachmentEffects(part)));
     }
     list.replaceChildren(...items);
     if(focused)items.find(button=>button.dataset.module===focused&&!button.disabled)?.focus();

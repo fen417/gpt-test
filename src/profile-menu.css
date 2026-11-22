@@ -61,7 +61,8 @@
 .attachment-slot-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
 .attachment-slot-list button { border: 1px solid var(--menu-line); padding: 9px 8px; border-radius: 5px; background: #202b23; color: #e0e6da; }
 .attachment-option-list { display: grid; gap: 6px; }
-.attachment-option-list button { justify-content: flex-start; text-align: left; }
+.attachment-option-list button { flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; }
+.attachment-effects { color: #bec9b9; font-size: 12px; line-height: 1.35; }
 .attachment-option-list button:disabled { opacity: .58; cursor: default; }
 .attachment-slot-list button[aria-pressed=true], .attachment-option-list button[aria-pressed=true] { border-color: var(--menu-accent,#d4e997); color: var(--menu-accent,#d4e997); }
 #profile-weapon-xp,.weapon-xp-summary progress { display: block; width: 100%; height: 7px; accent-color: var(--menu-accent,#d4e997); }
