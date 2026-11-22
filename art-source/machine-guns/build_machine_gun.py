@@ -264,9 +264,10 @@ def pkp_barrel_and_handle():
     return barrel,handle,sight
 
 
-def mounts(bore, muzzle_z, optic_y, optic_x, bottom_y, bipod_z):
+def mounts(bore, muzzle_z, optic, bottom_y, bipod_z, barrel_z, magazine):
     return {
-        'Mount_Optic':(optic_x,optic_y,-.095),'Mount_Muzzle':(0,bore,muzzle_z+.064),
+        'Mount_Optic':optic,'Mount_Muzzle':(0,bore,muzzle_z+.064),
+        'Mount_Barrel':(0,bore,barrel_z),'Mount_Magazine':magazine,
         'Muzzle_Exit':(0,bore,muzzle_z),'Mount_Stock':(0,.017,.145),
         'Mount_Bipod':(0,bottom_y,bipod_z),
     }
@@ -284,7 +285,7 @@ def build_mg36():
            ('CarrySight',mg_carry_sight()),('Stock',skeleton_stock(False)),
            ('MuzzleDevice',muzzle(.016,-.949)),('BipodMount',hinge),('BipodLeft',left),
            ('BipodRight',right),('Magazine',double_drum()),('Bolt',bolt)]
-    anchors=mounts(.016,-.950,.139,0,y,z)
+    anchors=mounts(.016,-.950,(0,.060,-.094),y,z,-.296,(0,-.125,-.144))
     anchors['Mount_Foregrip']=(0,-.044,-.468)
     anchors['Charge_Grip']=(-.042,.083,-.100)
     return parts,{'Magazine':(0,-.125,-.144),'BipodLeft':(-w,y,z),'BipodRight':(w,y,z)},anchors
@@ -302,7 +303,7 @@ def build_pkp():
            ('FrontSight',sight),('FeedCover',cover),('RearSight',rear_sight),('Stock',skeleton_stock(True)),
            ('MuzzleDevice',muzzle(.016,-1.079,True)),('BipodMount',hinge),('BipodLeft',left),
            ('BipodRight',right),('Magazine',pkp_box()),('Bolt',bolt)]
-    anchors=mounts(.016,-1.080,.010,-.059,y,z)
+    anchors=mounts(.016,-1.080,(0,.102,-.104),y,z,-.265,(0,-.100,-.148))
     anchors['Charge_Grip']=(.091,.022,-.050)
     return parts,{'Magazine':(0,-.100,-.148),'FeedCover':(0,.055,-.255),
                   'BipodLeft':(-w,y,z),'BipodRight':(w,y,z)},anchors
@@ -314,5 +315,5 @@ if __name__ == '__main__':
     finishes={POLYMER:1,PAD:1,MOULDED_STOCK:1,WEBBING:1,VOID:1,MARK:1,RED:1,
               EDGE:2,BRASS:2,COPPER:2}
     export_weapon(parts,Path(glb),Path(blend),pivots=pivots,mounts=anchors,
-                  parents={'RearSight':'FeedCover'} if name == 'pkp' else None,
-                  view_distance=2.3,finish_rows=finishes)
+                  parents={'RearSight':'FeedCover', 'Mount_Optic':'FeedCover'} if name == 'pkp' else None,
+                  modular=True,view_distance=2.3,finish_rows=finishes)

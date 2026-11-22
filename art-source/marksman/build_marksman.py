@@ -248,6 +248,7 @@ def build(sv):
            ('Barrel',tube),('MuzzleDevice',brake),('Magazine',magazine(sv)),('Bolt',bolt_parts(sv))]
     mounts={
         'Mount_Optic':(0,.089,-.128),'Scope_Eye':(0,eye_y,.065),
+        'Mount_Barrel':(0,bore,-.253 if sv else -.260),'Mount_Magazine':(0,-.110,-.154),
         'Muzzle_Exit':(0,bore,nose-.002),'Mount_Muzzle':(0,bore,nose+.061),
         'Mount_Bipod':(0,-.060,-.646),'Mount_Foregrip':(0,-.061,-.485),'Mount_Stock':(0,.024,.149),
         'Charge_Grip':(.087,.013,.059) if sv else (-.084,.041,-.155),
@@ -263,4 +264,4 @@ if __name__ == '__main__':
     parts,pivots,mounts=build(name=='sv98')
     finishes={POLYMER:1,PAD:1,RECESS:1,GLASS:1,ENGRAVING:1,RED:1,EDGE:2}
     export_weapon(parts,Path(glb),Path(blend),pivots=pivots,mounts=mounts,
-                  view_distance=2.25,finish_rows=finishes)
+                  modular=True,view_distance=2.25,finish_rows=finishes)

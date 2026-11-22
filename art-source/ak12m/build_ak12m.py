@@ -53,6 +53,7 @@ def furniture():
                  .037, POLYMER)
     side_profile(mesh, [(-.066, -.075), (-.084, -.075), (-.080, -.105), (-.064, -.112), (-.056, -.107)],
                  .013, STEEL)
+    grip, mesh = mesh, Assembly()
     mesh.box((0, -.027, .239), (.049, .062, .223), COVER, .005)
     side_profile(mesh, [(.151, .012), (.441, .012), (.460, -.010), (.453, -.045),
                         (.360, -.064), (.315, -.051), (.156, -.059)], .073, POLYMER)
@@ -66,7 +67,7 @@ def furniture():
         mesh.box((0, -.014 - step * .015, .491 - step * .0016), (.070, .006, .009), MOLDING, .001)
     for side in (-1, 1):
         mesh.cylinder((side * .036, -.024, .183), .012, .006, 'x', MOLDING, 16)
-    return mesh
+    return grip, mesh
 
 
 def front():
@@ -144,10 +145,14 @@ def main():
     moving.box((.062, .026, -.110), (.028, .018, .020), COVER, .004)
     moving.cylinder((.080, .027, -.110), .012, .017, 'x', FRAME, 16)
     guard, barrel, sights, rail = front()
-    parts = [('Receiver', receiver()), ('Furniture', furniture()), ('Handguard', guard),
+    grip, stock = furniture()
+    parts = [('Receiver', receiver()), ('Grip', grip), ('Stock', stock), ('Handguard', guard),
              ('Barrel', barrel), ('Sights', sights), ('TopRail', rail),
              ('Magazine', magazine()), ('Bolt', moving)]
-    export_weapon(parts, glb, blend, finish_rows={POLYMER:1, MOLDING:1, RUBBER:1, STEEL:2})
+    anchors = {'Mount_Optic':(0,.076,-.070), 'Mount_Barrel':(0,.015,-.289),
+               'Mount_Magazine':(0,-.067,-.235), 'Mount_Stock':(0,-.027,.128)}
+    export_weapon(parts, glb, blend, mounts=anchors, modular=True,
+                  finish_rows={POLYMER:1, MOLDING:1, RUBBER:1, STEEL:2})
 
 
 if __name__ == '__main__':

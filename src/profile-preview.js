@@ -2,8 +2,10 @@ import {CLASSES,WEAPONS,defaultWeaponId} from '../shared/world.js';
 import {InfantryAssets} from './infantry-assets.js';
 import {createInfantry,disposeInfantry,sampleInfantryClip} from './infantry.js';
 import {mountWeaponPreview} from './weapon-preview.js';
+import {mountCollimator} from './collimator.js';
 
 export function mountProfilePreview({getRenderer,getSelection}){
+  const optics=new WeakMap();
   return mountWeaponPreview({
     panelId:'profile-panel',prefix:'profile-preview',
     getGpuDevice:()=>getRenderer()?.webgpu?.device??null,
@@ -27,8 +29,12 @@ export function mountProfilePreview({getRenderer,getSelection}){
         },
       };
       return {
-        key:'weapon:'+weaponId+':'+Boolean(collimator),name:WEAPONS[weaponId].name,
-        load:()=>({model:renderer.weaponRig.createPreviewModel(WEAPONS[weaponId].classId??'assault',weaponId,collimator)}),
+        key:'weapon:'+weaponId,name:WEAPONS[weaponId].name,
+        load:()=>({model:renderer.weaponRig.createPreviewModel(WEAPONS[weaponId].classId??'assault',weaponId)}),
+        update(model){
+          if(collimator&&!optics.has(model))optics.set(model,mountCollimator(weaponId,model));
+          return optics.get(model)?.show(Boolean(collimator));
+        },
       };
     },
   });

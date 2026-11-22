@@ -2,8 +2,6 @@ import math
 import sys
 from pathlib import Path
 
-import bpy
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from weapon_mesh import Assembly, export_weapon, side_profile, surface_mark
 
@@ -81,52 +79,12 @@ def optic():
             ('FrontLens',lens(-.046,.025,.022)),('RearLens',lens(.037,.024,.0215))]
 
 
-def handguard(rear, front, y0, y1, width, rail):
-    guard = Assembly()
-    length = rear - front
-    middle = (rear + front) / 2
-    guard.box((0,y0+.008,middle), (width*.78,.016,length), BODY, .004)
-    for side in (-1,1):
-        x = width * side * .45
-        for y in (y0+.017,y1-.009):
-            guard.box((x,y,middle), (width*.15,.012,length*.94), BODY, .003)
-        for step in range(5):
-            z = rear - (step+.6)*length/5.18
-            guard.box((x,(y0+y1)/2,z), (width*.17,y1-y0-.013,length*.079), BODY, .0028)
-            guard.box((x*1.15,y0+.012,z), (.004,.007,length*.075), EDGE, .001)
-        for z in (rear-.015,front+.013):
-            guard.cylinder((x*1.17,(y0+y1)/2,z),.0046,.004,'x',STEEL,12)
-    if rail:
-        guard.box((0,y1-.008,middle),(width*.56,.012,length*.98),BODY,.0025)
-        for step in range(round(length/.020)):
-            z = rear - .010 - step*.020
-            guard.box((0,y1-.001,z),(width*.77,.007,.009),STEEL,.001)
-    return guard
-
-
 if __name__ == '__main__':
     glb, blend = map(Path, sys.argv[sys.argv.index('--') + 1:])
     components = optic()
-    guards = {
-        'ar416': (-.258,-.608,-.057,.088,.094,True),
-        'ak12':  (-.278,-.530,-.063,.068,.087,False),
-        'mcx9':  (-.269,-.571,-.052,.087,.094,True),
-        'vk45':  (-.315,-.508,-.070,-.004,.090,False),
-        'mg36':  (-.291,-.679,-.042,.058,.103,True),
-    }
-    parts = components + [('Guard_'+name,handguard(*fit)) for name,fit in guards.items()]
-    export_weapon(parts,glb,blend,
+    export_weapon(components,glb,blend,
                   groups={'Collimator':((0,0,0),[name for name,_ in components])},
                   mounts={'SightEye':(0,CENTER,0)},
                   glass={'FrontLens':(.29,.48,.40,.17),'RearLens':(.43,.55,.58,.09)},
                   finish_rows={RECESS:1,RUBBER:1,EDGE:2,STEEL:2},
                   view_distance=.35)
-    root = bpy.context.scene.collection
-    alternatives = bpy.data.collections.new('Handguard variants')
-    root.children.link(alternatives)
-    for name in guards:
-        obj = root.objects['Guard_'+name]
-        alternatives.objects.link(obj)
-        root.objects.unlink(obj)
-    alternatives.hide_viewport = alternatives.hide_render = True
-    bpy.ops.wm.save_as_mainfile(filepath=str(blend.resolve()), compress=True)

@@ -113,7 +113,7 @@ def badge(mesh, heavy, z_start, width):
 
 
 def make_upper(heavy, front):
-    slide, fixed = Assembly(), Assembly()
+    slide, fixed, barrel = Assembly(), Assembly(), Assembly()
     half = .036 if heavy else .028
     finish = SATIN if heavy else BLUED
     nose = fixed if heavy else slide
@@ -121,11 +121,11 @@ def make_upper(heavy, front):
     upper_section(slide, .023, .134, half, -.018, .044, .007, finish)
     slide.box((0,-.012,-.019),(half*1.68,.015,.086),finish,.003)
     slide.box((-half+.005,.013,-.018),(.010,.043,.091),finish,.002)
-    fixed.box((0,.019,-.022),(half*1.33,.041,.069),EDGE,.003)
+    barrel.box((0,.019,-.022),(half*1.33,.041,.069),EDGE,.003)
     tip = front-(.009 if heavy else .002)
-    fixed.cylinder((0,.012,tip+.005),.015 if heavy else .012,.009,'z',EDGE,20)
-    sight_ring(fixed,.012,tip,.009 if heavy else .007,.014 if heavy else .011,.005,RECESS)
-    fixed.cylinder((0,.012,tip-.001),.009 if heavy else .007,.002,'z',RECESS,18)
+    barrel.cylinder((0,.012,tip+.005),.015 if heavy else .012,.009,'z',EDGE,20)
+    sight_ring(barrel,.012,tip,.009 if heavy else .007,.014 if heavy else .011,.005,RECESS)
+    barrel.cylinder((0,.012,tip-.001),.009 if heavy else .007,.002,'z',RECESS,18)
     for side in (-1,1):
         for i in range(8 if heavy else 9):
             slide.box((side*(half+.0001),.014,.045+i*.008),(.0015,.041,.0026),RECESS,0)
@@ -143,12 +143,12 @@ def make_upper(heavy, front):
     badge(nose,heavy,-.135 if heavy else -.104,half)
     front_sight, rear_sight = Assembly(), Assembly()
     sights(front_sight,rear_sight,front,heavy)
-    return slide,fixed,front_sight,rear_sight
+    return slide,fixed,barrel,front_sight,rear_sight
 
 
 def build(heavy):
     front = -.248 if heavy else -.181
-    slide, fixed, front_sight, rear_sight = make_upper(heavy, front)
+    slide, fixed, barrel, front_sight, rear_sight = make_upper(heavy, front)
     trigger = Assembly()
     side_profile(trigger, [(.033,-.048),(.049,-.050),(.047,-.065),(.028,-.086),
                            (.025,-.104),(.013,-.105),(.013,-.091),(.027,-.061)], .013, EDGE)
@@ -158,11 +158,12 @@ def build(heavy):
     magazine.box((0,-.246,heel),(.056,.010,.064),EDGE if heavy else POLYMER,.0025)
     for i in range(4):
         magazine.cylinder((.022,-.180+i*.015,.112),.003,.0007,'x',RECESS,10)
-    parts = [('Frame',make_frame(heavy,front)),('Shroud' if heavy else 'Barrel',fixed),
+    parts = [('Frame',make_frame(heavy,front)),('Barrel',barrel),
              ('Slide',slide),('Trigger',trigger),('Magazine',magazine),
              ('FrontSight',front_sight),('RearSight',rear_sight)]
     pivots = {'Magazine':(0,-.246,heel),'Trigger':(0,-.051,.038)}
     if heavy:
+        parts.append(('Shroud',fixed))
         hammer = Assembly()
         side_profile(hammer,[(.130,-.023),(.134,.016),(.163,.021),(.177,.009),
                              (.171,-.006),(.153,-.009),(.147,-.026)],.015,BLUED)
@@ -170,11 +171,14 @@ def build(heavy):
             hammer.box((0,.016-i*.001,.152+i*.004),(.016,.002,.0022),EDGE,.0003)
         parts.append(('Hammer',hammer))
         pivots['Hammer'] = (0,-.016,.136)
-    return parts,pivots
+    mounts={'Mount_Optic':(0,.044,.079 if heavy else .082), 'Mount_Barrel':(0,.012,-.022),
+            'Mount_Magazine':(0,-.110,.110), 'Mount_Stock':(0,-.124,.112)}
+    return parts,pivots,mounts
 
 
 if __name__ == '__main__':
     name, glb, blend = sys.argv[sys.argv.index('--') + 1:]
-    parts, pivots = build(name == 'm50')
-    export_weapon(parts, Path(glb), Path(blend), pivots=pivots, view_distance=.70,
-                  parents={'RearSight':'Slide', 'FrontSight':'Shroud' if name == 'm50' else 'Slide'})
+    parts, pivots, mounts = build(name == 'm50')
+    export_weapon(parts, Path(glb), Path(blend), pivots=pivots, mounts=mounts, modular=True, view_distance=.70,
+                  parents={'RearSight':'Slide', 'FrontSight':'Shroud' if name == 'm50' else 'Slide',
+                           'Mount_Optic':'Slide'})

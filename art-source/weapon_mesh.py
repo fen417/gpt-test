@@ -63,7 +63,15 @@ def surface_mark(mesh, text, x, y, z, step, color, fill=.40):
 
 
 def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, parents=None,
-                  glass=None, view_distance=2.1, finish_rows=None):
+                  glass=None, modular=False, view_distance=2.1, finish_rows=None):
+    if modular:
+        for slot in ('Optic', 'Barrel', 'Magazine', 'Stock'):
+            if f'Mount_{slot}' not in mounts:
+                raise ValueError(f'Missing Mount_{slot}')
+        pivots = dict(pivots or {})
+        groups = {**(groups or {}), 'Magazine': (pivots.pop('Magazine', (0,0,0)), [])}
+        parents = {**(parents or {}), 'MagazineBody': 'Magazine', 'Mount_Magazine': 'Magazine'}
+        parts = [('MagazineBody' if name == 'Magazine' else name, mesh) for name, mesh in parts]
     bpy.ops.wm.read_factory_settings(use_empty=True)
     collection = bpy.context.scene.collection
     material = bpy.data.materials.new('Blued steel and molded polymer')

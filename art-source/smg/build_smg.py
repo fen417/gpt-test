@@ -160,7 +160,7 @@ def vector_model():
     parts=[('Upper',upper),('Lower',lower),('Handguard',guard),('Barrel',barrel),('Stock',stock(True)),
            ('IronSights',sights(-.399,.100,.075,.127)),('MuzzleDevice',muzzle(.001,-.551)),
            ('Magazine',magazine(rows,True)),('Bolt',bolt)]
-    return parts, mounts(.001,-.552,.071,-.418,-.072,.149)
+    return parts, mounts(.001,-.552,.069,-.418,-.072,.149, -.382, (-.073,-.235), optic_z=-.092)
 
 
 def mpx_model():
@@ -211,12 +211,13 @@ def mpx_model():
     parts=[('Upper',upper),('Lower',lower),('Handguard',guard),('Barrel',barrel),('Stock',stock(False)),
            ('IronSights',sights(-.542,.091,.097,.142)),('MuzzleDevice',muzzle(.016,-.630)),
            ('Magazine',magazine(rows,False)),('Bolt',bolt)]
-    return parts, mounts(.016,-.631,.093,-.440,-.054,.149)
+    return parts, mounts(.016,-.631,.091,-.440,-.054,.149, -.290, (-.075,-.127))
 
 
-def mounts(bore, nose, rail, accessory_z, foregrip_y, stock_z):
+def mounts(bore, nose, rail, accessory_z, foregrip_y, stock_z, barrel_z, magazine, optic_z=-.083):
     return {
-        'Mount_Optic': (0,rail,-.083), 'Mount_Muzzle': (0,bore,nose+.036),
+        'Mount_Optic': (0,rail,optic_z), 'Mount_Muzzle': (0,bore,nose+.036),
+        'Mount_Barrel': (0,bore,barrel_z), 'Mount_Magazine': (0,*magazine),
         'Muzzle_Exit': (0,bore,nose),
         'Mount_Foregrip': (0,foregrip_y,accessory_z), 'Mount_Left': (-.050,.015,accessory_z),
         'Mount_Right': (.050,.015,accessory_z), 'Mount_Stock': (0,.045,stock_z),
@@ -228,4 +229,4 @@ if __name__ == '__main__':
     parts, anchors = {'mcx9': mpx_model, 'vk45': vector_model}[name]()
     finishes = {POLYMER:1,VECTOR_CASE:1,GRIP:1,PAD:1,RECESS:1,
                 INSCRIPTION:1,RED:1,STEEL:2}
-    export_weapon(parts,Path(glb),Path(blend),mounts=anchors,view_distance=1.65,finish_rows=finishes)
+    export_weapon(parts,Path(glb),Path(blend),mounts=anchors,modular=True,view_distance=1.65,finish_rows=finishes)

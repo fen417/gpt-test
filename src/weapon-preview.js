@@ -23,7 +23,7 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,getGpuDevice=()=>n
   scene.add(new THREE.HemisphereLight(0xf4f6df,0x37483b,3));
   for(const [color,power,position] of [[0xffedca,3.5,[1,2,3]],[0xa9ced1,2,[-2,1,-1]]]){const light=new THREE.DirectionalLight(color,power);light.position.set(...position);scene.add(light);}
   let renderer,rendererPromise,model,key='',sidearm=false,raf=0,drag=null,size=new THREE.Vector3(),distance=1,loadingUntil=0;
-  let closed=false,disposeModel;
+  let closed=false,disposeModel,currentItem,modelKey;
   const weaponAngle=[-.10,Math.PI/2-.22,-.05];
   let angle=weaponAngle;
   const reset=()=>{pivot.rotation.set(...angle);fit();invalidate();};
@@ -80,17 +80,22 @@ export function mountWeaponPreview({getRig,getLoadout,getItem,getGpuDevice=()=>n
       key:id,name:WEAPONS[id]?.name??id,load:()=>({model:rig.createPreviewModel(loadout.classId,id)}),
     };
     if(!item)return;
-    if(key===item.key){invalidate();return;}
+    currentItem=item;
+    if(key===item.key){
+      if(modelKey===item.key&&item.update?.(model))fit();
+      invalidate();return;
+    }
     key=item.key;title.textContent=item.name;hint.textContent='Загрузка модели…';
     try{
       if(!await ensureRenderer()||closed||key!==item.key)return;
       const next=await item.load();
       if(closed||key!==item.key){next.dispose?.();return;}
       model?.removeFromParent();disposeModel?.();
-      model=next.model;disposeModel=next.dispose;angle=next.angle??weaponAngle;
+      model=next.model;modelKey=item.key;disposeModel=next.dispose;angle=next.angle??weaponAngle;
       pivot.rotation.set(0,0,0);pivot.add(model);
       const center=visibleBounds(pivot,true).getCenter(new THREE.Vector3());
       model.position.sub(pivot.worldToLocal(center));
+      currentItem.update?.(model);
       hint.textContent='Потяни, чтобы повернуть';
       canvas.setAttribute('aria-label','3D-модель '+title.textContent);loadingUntil=performance.now()+800;reset();resize();
     }catch(error){
