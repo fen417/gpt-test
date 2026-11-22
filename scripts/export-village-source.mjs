@@ -18,14 +18,25 @@ const mapId = process.argv[3] ?? 'village';
 if(mapId==='alhadra')await import('../shared/campaign/alhadra.js');
 const desert=mapId==='alhadra-desert'?await import('../shared/campaign/alhadra-desert.js'):null;
 const alhadra=Boolean(desert)||mapId==='alhadra';
-if(!alhadra&&mapId!=='village')throw new Error('Expected village, alhadra or alhadra-desert');
+const telMazin=mapId==='tel-mazin';
+if(telMazin)await import('../shared/campaign/tel-mazin.js');
+if(!alhadra&&!telMazin&&mapId!=='village')throw new Error('Unknown Blender village map');
 await Promise.all([mkdir(output, {recursive:true}), MeshoptSimplifier.ready]);
 
 const surfaces = createSurfaceMaterials({capabilities:{getMaxAnisotropy:()=>2}},{bake:true});
 const owner = createMapModelBuilder(surfaces);
 const map = getMap(mapId);
 owner.scene = new THREE.Group();
-const {root,groups} = buildMapScene(owner, map);
+const furnishings=new Set(['village-bed','village-table','village-cabinet','village-bench','village-shelf','village-awning',
+  'village-workbench','village-workcase','village-counter','village-cot']);
+const renderMap=telMazin?{
+  ...map,
+  boxes:map.boxes.filter(b=>!furnishings.has(b.kind)&&b.id!=='tower-tank'),
+  // Keep the wall and floor parts of these houses. Blender builds the trim
+  // from the actual openings, including the off-center machine-gun windows.
+  structures:map.structures.map(s=>s.interactiveShutters?{...s,kind:'village-facade'}:s),
+}:map;
+const {root,groups} = buildMapScene(owner,renderMap);
 if(alhadra){
   const authoredProps=new Set(['truck','car','generator','fueltank']);
   for(const {key,kind,value} of mapItems(map))
@@ -39,7 +50,7 @@ const objectives = new Set([...owner.flags.values()].map(flag=>flag.group));
 const assetsByKey=new Map(mapItems(map).map(({key,value})=>[key,value]));
 const batches = new Map(), stats = {originalTriangles:0, groundTriangles:0};
 let roadMask, rockTexture, terrainIndex = 0;
-const labels = alhadra?createCanvas(1024,1024):null;
+const labels = alhadra||telMazin?createCanvas(1024,1024):null;
 const labelSlots = new Map();
 
 function alhadraPaint(c,point,ground,rock,asset){
@@ -158,7 +169,7 @@ root.traverse(mesh=>{
   }
 });
 const packed = [...batches.values()];
-if(!roadMask || !rockTexture) throw new Error('Missing terrain textures');
+if(!roadMask || !rockTexture&&!telMazin) throw new Error('Missing terrain textures');
 // This mask only tints metre-wide paths, while the shared sand texture
 // supplies the close detail. Keep the uploaded mask at a quarter of the old area.
 const compactRoadMask=createCanvas(2048,2048);
@@ -175,7 +186,7 @@ for(let i=0;mapId==='village'&&i<390;i++){
 const metadata = {
   mapId,layout:villageLayoutKey(map), span:villageTerrainSpan(map), stats,
   structures:map.structures, boxes:map.boxes.filter(b=>!b.editorPart||
-    ['village-bed','village-cabinet','village-table','village-shelf'].includes(b.kind)),
+    furnishings.has(b.kind)),
   ship:map.ship, groundDetails,
 };
 if(alhadra){
@@ -189,13 +200,15 @@ if(alhadra){
   metadata.boxes=metadata.boxes.filter(box=>!box.campaignDestructible&&!box.missionDynamic);
   if(desert)metadata.reserveRoute=desert.M02_RESERVE_ROUTE;
 }
+if(telMazin)Object.assign(metadata,{tower:map.tower,towerStairs:map.towerStairs,
+  boxes:metadata.boxes.filter(b=>!b.missionDynamic),interactives:map.interactives});
 for(const b of packed) for(const key of ['p','n','uv','c'])
   b[key] = Buffer.from(Float32Array.from(b[key]).buffer).toString('base64');
 for(const b of packed) b.indices = Buffer.from(Uint32Array.from(b.indices).buffer).toString('base64');
 await Promise.all([
   writeFile(resolve(output,'village.json'),JSON.stringify({...metadata,meshes:packed})),
   writeFile(resolve(output,'roads.webp'),compactRoadMask.toBuffer('image/webp',95)),
-  writeFile(resolve(output,'rock.webp'),rockTexture.toBuffer('image/webp',94)),
+  ...(rockTexture?[writeFile(resolve(output,'rock.webp'),rockTexture.toBuffer('image/webp',94))]:[]),
   ...(labels?[writeFile(resolve(output,'labels.webp'),labels.toBuffer('image/webp',96))]:[]),
 ]);
 console.log(JSON.stringify({...stats,batches:packed.length}));

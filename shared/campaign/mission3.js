@@ -6,9 +6,10 @@ import {overlapsCollider,rayCollider} from '../asset-colliders.js';
 import {uprightBox} from '../geometry.js';
 import {vehicleBodyTilt} from '../vehicles.js';
 import {getSidearm,getWeapon,WEAPONS} from '../world.js';
-import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels} from './tel-mazin.js';
+import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels,telMazinFloor} from './tel-mazin.js';
 
 const SAVE_VERSION=1,MAX_ENEMIES=14;
+const TERRAIN_REVISION=1;
 const ambushTiming={
   recruit:{fireDelay:1.7,protection:4},
   regular:{fireDelay:1.2,protection:2.8},
@@ -286,7 +287,7 @@ class ColumnDirector{
   }
   hitTank(v,source){
     v.scriptedLoss=true;
-    const origin={...source,y:1.4},target={x:v.x,y:v.y+.75,z:v.z};
+    const origin={...source,y:this.sim.groundAt(source.x,source.z)+1.4},target={x:v.x,y:v.y+.75,z:v.z};
     const rocketId=`m03-ambush-${v.convoyIndex}`;
     this.sim.event('rocketLaunch',{...origin,rocketId,team:1,vx:(target.x-origin.x)*4,vy:(target.y-origin.y)*4,vz:(target.z-origin.z)*4});
     this.sim.damageVehicle(v,100000,null,'blast',origin);
@@ -347,7 +348,8 @@ class ColumnDirector{
       if(this.order==='assault'){
         const door=this.aimedPanel('door',32);
         if(!door){this.order='follow';return;}
-        this.orderTarget={x:door.part.x,y:0,z:door.part.z+Math.sign(door.part.z-this.player.z||1)*2};this.assaultDoor=door.id;
+        const {x,z}=door.part,targetZ=z+Math.sign(z-this.player.z||1)*2;
+        this.orderTarget={x,y:this.sim.groundAt(x,targetZ),z:targetZ};this.assaultDoor=door.id;
         this.assaultLead=this.sim.players.get('duran')?.alive?'duran':[...this.sim.players.values()].find(p=>p.squadMember&&p.alive&&!p.downed)?.id;
       }
       if(this.order==='hold')for(const p of this.sim.players.values())if(p.squadMember)p.holdAt={x:p.x,y:p.y,z:p.z};
@@ -377,8 +379,8 @@ class ColumnDirector{
     if(typeof entry[0]==='number')return {x:entry[0],z:entry[1]};
     if(entry[0]==='tower')return TEL_MAZIN.tower;
     const house=TEL_MAZIN.houses[entry[0]],inHouse=this.enemies.filter(p=>p.homeId===house.id).length;
-    const elevated=entry.at(-1)==='mg'&&house.floors>1;
-    return {x:house.x+(inHouse?1.9:0),z:house.z+(elevated?-Math.sign(house.z)*4.6:inHouse?1.9:-2.2),y:elevated?3:0};
+    if(entry.at(-1)==='mg'&&house.emplacement)return house.emplacement;
+    return {x:house.x+(inHouse?1.9:0),z:house.z+(inHouse?1.9:-2.2),y:house.baseY+.02};
   }
   flushEnemies(){
     if(this.stage>=1)for(const enemy of this.enemies){
@@ -437,7 +439,7 @@ class ColumnDirector{
     truck.seats[seat]=bot.id;Object.assign(bot,{vehicleId:id,vehicleSeat:seat});this.sim.syncVehicleSeat(bot,truck);
   }
   inside(p){
-    return this.sim.navigationHouses.find(h=>Math.abs(p.x-h.x)<h.w/2-.14&&Math.abs(p.z-h.z)<h.d/2-.14&&p.y<h.h-.1);
+    return this.sim.navigationHouses.find(h=>Math.abs(p.x-h.x)<h.w/2-.14&&Math.abs(p.z-h.z)<h.d/2-.14&&p.y<h.baseY+h.h-.1);
   }
   blastRoom(p){
     const room=this.inside(p);
@@ -465,7 +467,7 @@ class ColumnDirector{
       if(p.pursuing||p.role==='sapper'||this.stage===5&&!p.homeId)return this.player;
       if(p.homeId&&this.inside(this.player)?.id===p.homeId&&p.ai?.memory){
         const h=TEL_MAZIN.houses[p.homeId];
-        if(h&&p.home.y<1)return {x:h.x-h.w*.30,z:h.z+2,y:0};
+        if(h&&p.home.y<h.baseY+1)return {x:h.x-h.w*.30,z:h.z+2,y:h.baseY+.02};
       }
       return p.home;
     }
@@ -514,7 +516,7 @@ class ColumnDirector{
     return false;
   }
   routeDoor(actor,target){
-    const building=p=>this.sim.navigationHouses.find(h=>Math.abs(p.x-h.x)<h.w/2-.14&&Math.abs(p.z-h.z)<h.d/2-.14&&p.y<h.h+.7);
+    const building=p=>this.sim.navigationHouses.find(h=>Math.abs(p.x-h.x)<h.w/2-.14&&Math.abs(p.z-h.z)<h.d/2-.14&&p.y<h.baseY+h.h+.7);
     const current=building(actor),destination=building(target),house=current??destination;
     if(!house||current===destination)return null;
     const doors=[-1,1].map(side=>doorsById.get(`${house.id}-door-${side}`)).filter(d=>d&&this.interactives[d.id]!=='locked');
@@ -568,7 +570,9 @@ class ColumnDirector{
         }else if(p.id!==this.assaultLead&&distance(p,door.part)<6)p.input.forward=p.input.strafe=0;
       }
     }else{
-      if(p.role==='mg'){p.input.forward=p.input.strafe=0;p.input.crouch=true;}
+      if(p.role==='mg'&&distance(p,p.home)<1.4){
+        p.input.forward=p.input.strafe=0;p.input.crouch=false;
+      }
       if(p.role==='assault'&&p.homeId){
         const door=TEL_MAZIN.interactives.find(d=>d.type==='door'&&d.id.startsWith(`${p.homeId}-door-`)&&
           distance(p,d.part)<2.6&&['closed','locked'].includes(this.interactives[d.id]));
@@ -577,7 +581,7 @@ class ColumnDirector{
       }
       const grenade=sim.grenades.find(g=>g.team===0&&distance(p,g)<5&&g.fuse<1.4);
       if(grenade){p.avoidGrenadeAt??=this.time+.7;if(this.time>=p.avoidGrenadeAt){const h=TEL_MAZIN.houses[p.homeId];
-        if(h)moveBot(sim,p,{x:h.x,z:h.z+Math.sign(p.z-grenade.z||1)*(h.d/2+2),y:0},dt,{sprint:true});}}
+        if(h)moveBot(sim,p,{x:h.x,z:h.z+Math.sign(p.z-grenade.z||1)*(h.d/2+2)},dt,{sprint:true});}}
       else p.avoidGrenadeAt=null;
       if(p.homeId&&!contact&&distance(p,p.home)>10)moveBot(sim,p,p.home,dt,{sprint:false});
     }
@@ -813,8 +817,9 @@ class ColumnDirector{
     if(!atTarget||this.player.downed)return;
     this.finale={at:this.time};this.flags.harranti_alive=true;
     const harranti=this.sim.players.get('harranti');
-    Object.assign(this.player,{x:174.1,y:0,z:-11,yaw:-Math.PI/2,prone:false,downed:false,grounded:true,vy:0});
-    if(harranti)Object.assign(harranti,{x:175.23,y:0,z:-11,yaw:Math.PI/2,grounded:true,vy:0});
+    const y=TEL_MAZIN.houses.headquarters.baseY+.02;
+    Object.assign(this.player,{x:174.1,y,z:-11,yaw:-Math.PI/2,prone:false,downed:false,grounded:true,vy:0});
+    if(harranti)Object.assign(harranti,{x:175.23,y,z:-11,yaw:Math.PI/2,grounded:true,vy:0});
     for(const id of Object.keys(allies))this.flags[`${id}_alive`]=this.sim.players.get(id)?.alive===true;
     const vos=this.sim.players.get('vos');
     this.setPanel('hq-gate','open');this.queue=[];this.radio=null;
@@ -834,6 +839,7 @@ class ColumnDirector{
   serialize(){
     const sim=this.sim;
     return structuredClone({version:SAVE_VERSION,definitionVersion:this.definition.version,missionId:'m03',difficulty:sim.difficulty,
+      terrainRevision:TERRAIN_REVISION,
       time:sim.time,rngState:sim.rngState,players:[...sim.players.values()].map(({ai,damagers,...p})=>p),
       vehicles:sim.vehicles.map(({runOverHits,...v})=>v),grenades:sim.grenades,rockets:sim.rockets,bullets:sim.bullets,deployables:sim.deployables,
       mission:{checkpoint:this.checkpoint,stage:this.stage,stageAt:this.stageAt,rideTime:this.rideTime,rideIndex:this.rideIndex,
@@ -845,10 +851,26 @@ class ColumnDirector{
   restore(save){
     if(!validMission3Save(save,this.definition))return false;
     const sim=this.sim;
+    const migrateTerrain=save.terrainRevision!==TERRAIN_REVISION;
     resetNavigation(sim);sim.players.clear();sim.vehicles=structuredClone(save.vehicles);
+    if(migrateTerrain)for(const v of sim.vehicles){
+      v.y=sim.groundAt(v.x,v.z);
+      Object.assign(v,vehicleBodyTilt(v,sim.map.terrain));
+    }
     for(const actor of save.players){
       const p=sim.addPlayer(actor.id,actor.name,actor.team,actor.classId,actor.primaryWeaponId,actor.sidearmId,actor.bot);
       Object.assign(p,structuredClone(actor),{ai:null,damagers:new Map(),botPath:[]});
+      if(migrateTerrain){
+        if(p.home)p.home.y+=telMazinFloor(p.home.x,p.home.z);
+        const post=p.role==='sniper'?TEL_MAZIN.tower:TEL_MAZIN.houses[p.homeId]?.emplacement;
+        if(post&&p.alive&&(p.role==='sniper'||p.role==='mg')&&!p.pursuing){
+          const {x,y,z}=post;
+          Object.assign(p,{x,y,z,home:{x,y,z},crouching:false});
+        }else if(p.vehicleId){
+          const vehicle=sim.vehicles.find(v=>v.id===p.vehicleId);
+          if(vehicle)sim.syncVehicleSeat(p,vehicle);
+        }else p.y+=telMazinFloor(p.x,p.z);
+      }
       if(Object.hasOwn(crew,p.id)){p.columnCrew=true;p.squadMember=!p.vehicleId;}
       if(p.id==='lasko'||p.id==='stand-in-lasko')p.fieldMedic=true;
       if(p.role==='brigade'){
@@ -873,7 +895,10 @@ class ColumnDirector{
     for(const p of sim.players.values()){
       if(!p.alive||p.vehicleId)continue;
       const body=uprightBox(p.x,p.y+.025,p.z,.4,p.downed||p.prone?.65:1.65);
-      if(newCover.some(box=>overlapsCollider(body,box)))Object.assign(p,this.safeSpot({x:p.x,y:p.y,z:p.z},p));
+      if(newCover.some(box=>overlapsCollider(body,box))||
+        migrateTerrain&&sim.collides(p.x,p.z,p.y+.025,.4,p.downed||p.prone?.65:1.65)){
+        Object.assign(p,this.safeSpot({x:p.x,y:p.y,z:p.z},p));
+      }
     }
     if(this.inTransit)this.say('orlov.road');
     else if(this.stage===1||this.stage===2||this.stage===3||this.stage===4||this.stage===5)this.say(stageRadio[this.stage]);

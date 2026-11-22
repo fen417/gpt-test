@@ -3,7 +3,9 @@ import {rotateMapAssets} from '../geometry.js';
 import {registerLocalMap} from '../world.js';
 import {settlement} from './settlement.js';
 
-const size=2048,boxes=[],structures=[],interactives=[],navigationNodes=[];
+const size=2048,cell=4,boxes=[],structures=[],interactives=[],navigationNodes=[];
+const foundations=new Map();
+let foundation=null;
 export const PANEL_STATES=['closed','open','locked','destroyed'];
 export function packPanels(states){
   const packed=new Uint8Array(Math.ceil(interactives.length/4));
@@ -14,8 +16,14 @@ export const panelState=(packed,index)=>PANEL_STATES[(packed[index>>2]>>((index&
 const colors=['#d9bd92','#d5c4a2','#caa482','#e0cba5','#c8b7a0','#decfb2'];
 const box=(id,kind,x,z,w,d,h,color,extra={})=>{
   const part={id,kind,x,z,w,d,h,color,baseY:0,assetMapId:'village',...extra};
+  if(foundation)foundations.set(part,foundation);
   boxes.push(part);return part;
 };
+function navigationNode(x,y,z){
+  const node={x,y,z};
+  if(foundation)foundations.set(node,foundation);
+  navigationNodes.push(node);
+}
 
 export const CONVOY_ROAD=[[-923,-38],[-795,-38],[-660,-69],[-522,-57],[-390,-24],[-240,0],[-205,0],[-100,0]];
 export function convoyRoadZ(x){
@@ -42,6 +50,7 @@ function house(id,x,z,plan,floors=1,w=14,d=12){
   const h=floors*level,kind=floors>1?'village-house-tall':'village-house';
   const structure={id,kind,x,z,w,d,h,assetMapId:'village',baseY:0,color,floors,plan,doorWidth:door,doorHeight:2.12,enterable:true,interactiveShutters:true};
   structures.push(structure);
+  foundation=structure;
   let serial=0;
   const add=(kind,x,z,w,d,h,baseY=0,tint=color,extra={})=>{
     if(w>.025&&d>.025&&h>.025)box(`${id}-part-${serial++}`,kind,x,z,w,d,h,tint,
@@ -62,29 +71,42 @@ function house(id,x,z,plan,floors=1,w=14,d=12){
     for(const dir of [-1,1])wall(x+dir*(door+wing)/2,face,wing,thick,2.12);
     wall(x,face,w,thick,level-2.12,2.12);
     if(floors>1){
-      const topWindow=2.4,span=(w-topWindow)/2;
-      wall(x,face,w,thick,.9,level);wall(x,face,w,thick,.8,level+2.2);
-      for(const dir of [-1,1])wall(x+dir*(topWindow+span)/2,face,span,thick,1.3,level+.9);
+      const emplacement=plan==='mg'&&side===-Math.sign(z);
+      const topWindow=emplacement?3.55:2.4,span=(w-topWindow)/2;
+      const sill=emplacement?.46:.9,lintel=emplacement?2.28:2.2;
+      wall(x,face,w,thick,sill,level);wall(x,face,w,thick,level-lintel,level+lintel);
+      for(const dir of [-1,1])wall(x+dir*(topWindow+span)/2,face,span,thick,lintel-sill,level+sill);
     }
     interactive(`${id}-door-${side}`, 'door',x,face,door,.13,2.12,0,'#705238',side<0&&plan==='mayor'?'locked':'closed');
-    for(const dz of [-1.25,0,1.25])navigationNodes.push({x,z:face+dz,y:0});
+    for(const dz of [-1.25,0,1.25])navigationNode(x,0,face+dz);
     for(let floor=0;floor<floors;floor++){
-      const wy=floor*level,wx=x+side*w/2,opening=2.2,span=(d-opening)/2;
-      // Side window openings remain aligned with their shutters and sill.
-      wall(wx,z,thick,d,1,wy);wall(wx,z,thick,d,.85,wy+2.15);
-      for(const dir of [-1,1])wall(wx,z+dir*(opening+span)/2,thick,span,1.15,wy+1);
-      interactive(`${id}-shutter-${side}-${floor}`,'shutter',wx,z,.12,opening,1.15,wy+1,'#7a624c',
+      const wy=floor*level,wx=x+side*w/2,emplacement=plan==='mg'&&side<0&&floor===1;
+      const opening=emplacement?2.9:2.2,center=emplacement?z-Math.sign(z)*3.55:z;
+      const sill=emplacement?.47:1,lintel=emplacement?2.30:2.15;
+      wall(wx,z,thick,d,sill,wy);wall(wx,z,thick,d,level-lintel,wy+lintel);
+      for(const dir of [-1,1]){
+        const edge=z+dir*d/2,jamb=center+dir*opening/2;
+        wall(wx,(edge+jamb)/2,thick,Math.abs(edge-jamb),lintel-sill,wy+sill);
+      }
+      interactive(`${id}-shutter-${side}-${floor}`,'shutter',wx,center,.12,opening,lintel-sill,wy+sill,'#7a624c',
         (side===1||plan==='mg')&&plan!=='mayor'?'open':'closed');
+      if(emplacement)structure.emplacement={x:wx+.73,y:wy,z:center};
     }
   }
   if(['home','two-storey','mayor'].includes(plan)){
     wall(x+w*.27,z+1,w*.37,.28,2.3);
     wall(x+w*.22,z-d*.24,.28,d*.31,2.3);
   }else if(plan==='shop')wall(x+w*.28,z+2.6,w*.35,.3,2.35);
+  add('village-floor',x,z,w-.18,d-.18,.18,-.16,'#b5a27f');
   const stairW=1.7,left=x-w/2,right=x+w/2;
   for(let floor=1;floor<=floors;floor++){
-    const dir=floor%2?1:-1,stairX=x-dir*(w/2-1.23),start=z-dir*(d/2-.8),run=d-1.6,stepD=run/10,base=floor*level;
-    navigationNodes.push({x:stairX+dir*1.5,z:start+dir*stepD*.5,y:base-level});
+    if(plan==='mg'&&floor===2){
+      add('village-floor',x,z,w,d,.18,floor*level-.18,'#ac987d');
+      break;
+    }
+    const dir=(floor%2?1:-1)*(plan==='mg'?-1:1);
+    const stairX=x-dir*(w/2-1.23),start=z-dir*(d/2-.8),run=d-1.6,stepD=run/10,base=floor*level;
+    navigationNode(stairX+dir*1.5,base-level,start+dir*stepD*.5);
     for(let n=0;n<10;n++){
       const stepZ=start+dir*(n+.5)*stepD,top=(floor-1)*level+(n+1)*level/10;
       add('village-stair',stairX,stepZ,stairW,stepD,.17,top-.17,'#af9875');
@@ -93,7 +115,7 @@ function house(id,x,z,plan,floors=1,w=14,d=12){
     add('village-floor',(left+stairX-stairW/2)/2,z,stairX-stairW/2-left,d,.18,base-.18,'#ac987d');
     for(const side of [-1,1])add('village-floor',stairX,z+side*(d/2-.4),stairW,.8,.18,base-.18,'#ac987d');
     const landing=z+dir*(d/2-1.02);
-    navigationNodes.push({x:stairX,z:landing,y:base},{x:stairX+dir*1.65,z:landing,y:base},{x,z,y:base});
+    navigationNode(stairX,base,landing);navigationNode(stairX+dir*1.65,base,landing);navigationNode(x,base,z);
   }
   for(const side of [-1,1]){
     wall(x+side*w/2,z,.3,d,.55,h);
@@ -101,9 +123,18 @@ function house(id,x,z,plan,floors=1,w=14,d=12){
   }
   add('village-table',x+w*.28,z-d*.27,1.35,.8,.75,0,'#8b6a4b');
   if(plan!=='tea')add('village-cabinet',x+w*.36,z+d*.28,.6,1.25,1.6,0,'#8b6a4b');
+  if(plan==='tea'||plan==='home')add('village-bench',x-w*.33,z+d*.28,1.7,.5,.47,0,'#947554');
+  if(plan==='workshop'||plan==='shop')add('village-shelf',x-w*.348,z+d*.24,.52,1.8,1.68,0,'#937452');
+  if(plan==='workshop'){
+    add('village-workbench',x+w*.34,z-d*.026,2.32,.77,.95,0,'#80614a');
+    add('village-workcase',x+w*.29,z+d*.19,1.03,.72,.53,0,'#696d59');
+  }
+  if(plan==='shop'||plan==='tea')add('village-counter',x-w*.305,z-d*.071,2.18,.74,.95,0,'#9a7852');
+  if(plan==='home'||plan==='two-storey')add('village-cot',x-w*.275,z+d*.025,1.05,1.92,.51,0,'#83735a');
   if(plan==='home'||plan==='mayor')add('village-rug',x+.8,z+.9,2.4,2,.03,0,'#a46c4e',{noCollision:true});
-  navigationNodes.push({x,z:z-2,y:0},{x,z:z+2,y:0});
+  navigationNode(x,0,z-2);navigationNode(x,0,z+2);
   if(cut)interactive(cut,'breach',blastX,blastZ,.34,blastW,level,0,color,'closed');
+  foundation=null;
   return structure;
 }
 
@@ -121,7 +152,7 @@ const houses=Object.fromEntries(lots.map(([id,x,z,...spec])=>[id,house(id,x,Math
 
 const reserved=[
   {x:50,z:-31,w:54,d:48},{x:167,z:0,w:54,d:52},{x:108,z:40,w:49,d:24},
-  {x:-158,z:25,w:27,d:19},{x:-91,z:30,w:52,d:26},
+  {x:-158,z:25,w:27,d:19},{x:-91,z:30,w:52,d:26},{x:58,z:-47,w:11.4,d:18.2},
 ];
 const lotFits=(x,z,w,d)=>[...structures,...reserved].every(s=>Math.abs(x-s.x)>(w+s.w)/2+2.6||Math.abs(z-s.z)>(d+s.d)/2+2.6);
 const district=settlement(box);
@@ -156,13 +187,16 @@ for(const [row,band] of [-13,14,-31,33,-52,55,-74,78,-94,100].entries()){
     const z=side*Math.max(5+d/2,Math.abs(band)+(seed%9-4)+wing*5);
     if(x+w/2>218||!lotFits(x,z,w,d))continue;
     const serial=structures.length,id=`facade-${serial}`,color=colors[seed%colors.length],h=2.85+(seed%4)*.45;
-    structures.push({id,kind:'village-facade',x,z,w,d,h,baseY:0,assetMapId:'village',color});
+    foundation={id,kind:'village-facade',x,z,w,d,h,baseY:0,assetMapId:'village',color};
+    structures.push(foundation);
     const face=z-side*d/2,back=z+side*d/2;
     backgroundFacade(id+'-front',x,face,w,h,side,x+(seed%2?.7:-.7),seed%3===0?2.9:1.55,color,seed);
     district.wall(id+'-back',x,back,w,{gap:1.65,height:h,color});
     district.wall(id+'-back-header',x,back,1.65,{height:h-2.22,baseY:2.22,color});
     for(const end of [-1,1])district.wall(id+'-side-'+end,x+end*w/2,z,d,{axis:'z',height:h,color});
     box(id+'-roof','village-floor',x,z,w+.2,d+.2,.23,'#9b876e',{baseY:h,overhead:true});
+    box(id+'-floor','village-floor',x,z,w-.15,d-.15,.18,'#b6a180',{baseY:-.16});
+    if(seed%3===0)box(id+'-bench','village-bench',x-w*.31,z+d*.22,1.4,.52,.47,'#866749');
     district.wall(id+'-parapet',x,back,w,{height:.33+seed%3*.16,color,baseY:h+.23});
     if(seed%4===0){
       const annexWidth=w*.48,annexDepth=2.25,annexX=x+w*.24,annexZ=back+side*annexDepth/2;
@@ -171,6 +205,7 @@ for(const [row,band] of [-13,14,-31,33,-52,55,-74,78,-94,100].entries()){
         reserved.push({x:annexX,z:annexZ,w:annexWidth,d:annexDepth});
       }
     }
+    foundation=null;
   }
 }
 
@@ -178,10 +213,43 @@ for(const [row,band] of [-13,14,-31,33,-52,55,-74,78,-94,100].entries()){
 interactive('barrier','breach',133,0,.6,6.7,1.75,0,'#a38a6a','closed');
 interactive('hq-gate','gate',155,0,.18,5.4,2.5,0,'#71583e','locked');
 
-const high=14,tower={x:58,z:-42,y:high};
-for(const dx of [-1.8,1.8])for(const dz of [-1.8,1.8])box(`tower-leg-${dx}-${dz}`,'village-wood',tower.x+dx,tower.z+dz,.32,.32,high,'#725d49');
-box('tower-platform','village-floor',tower.x,tower.z,5,5,.25, '#8b6f52',{baseY:high-.25,overhead:true});
-box('tower-tank','village-wood',tower.x,tower.z-1.3,3.6,1.6,1.45,'#6f7369',{baseY:high,overhead:true});
+const high=12,tower={x:58,z:-41.9,y:high};
+const towerSite={x:57.8,z:-46.8,w:10.3,d:17.4,baseY:0};
+const towerStairs={left:55.81,right:57.99,near:-45.75,far:-53.55,width:1.67,rise:3,steps:10,flights:4};
+foundation=towerSite;
+for(const dx of [-2.32,2.32])for(const dz of [-1.95,1.95])
+  box(`tower-leg-${dx}-${dz}`,'village-stone',tower.x+dx,tower.z+dz,.61,.61,high,'#9d8565');
+for(const [i,z] of [towerStairs.near+.57,towerStairs.far-.57].entries()){
+  const height=i?9.12:6.12;
+  for(const [side,x] of [towerStairs.left-1.09,towerStairs.right+1.09].entries())
+    box(`tower-stair-pier-${i}-${side}`,'village-wood',x,z,.24,.24,height,'#775b3e');
+}
+box('tower-platform','village-floor',tower.x,tower.z,6.2,5.5,.26,'#8b6f52',{baseY:high-.26,overhead:true});
+box('tower-connector','village-floor',57.98,-45.07,1.73,1.72,.24,'#8b6f52',{baseY:high-.24,overhead:true});
+box('tower-tank','village-wood',59.93,-42.62,1.68,1.58,1.55,'#6f7369',{baseY:high,overhead:true});
+box('tower-street-parapet','village-stone',58,-39.23,6.15,.22,.48,'#a99372',{baseY:high,overhead:true});
+for(const side of [-1,1])box(`tower-edge-${side}`,'village-wood',58+side*3,-41.9,.18,5.4,.68,'#775f44',{baseY:high,overhead:true});
+for(let i=0;i<towerStairs.flights;i++){
+  const {left,right,near,far,width,rise,steps}=towerStairs;
+  const away=i%2===0,x=away?left:right,start=away?near:far,end=away?far:near;
+  const length=Math.abs(end-start),depth=length/steps,pitch=(end-start)/steps;
+  navigationNode(x,i*rise,start-Math.sign(pitch)*.37);
+  for(let j=0;j<steps;j++){
+    const z=start+(j+.5)*pitch,top=i*rise+(j+1)*rise/steps;
+    box(`tower-flight-${i}-${j}`,'village-stair',x,z,width,depth,.18,'#8c7456',{baseY:top-.18,overhead:true});
+    if(j%2===0||j===steps-1)navigationNode(x,top,z-pitch*.24);
+  }
+  if(i<towerStairs.flights-1){
+    const z=end+Math.sign(pitch)*.59,y=(i+1)*rise;
+    box(`tower-landing-${i}`,'village-floor',(left+right)/2,z,right-left+width,1.2,.22,'#897354',
+      {baseY:y-.22,overhead:true});
+    box(`tower-landing-beam-${i}`,'village-wood',(left+right)/2,z,right-left+2.22,.28,.18,'#72583d',
+      {baseY:y-.38,overhead:true});
+    navigationNode(left,y,z);navigationNode(right,y,z);
+  }
+}
+navigationNode(57.98,high,-45.08);navigationNode(tower.x,high,tower.z);
+foundation=null;
 const awnings=['#a56751','#c3aa71','#718674','#a88168'];
 const dressing=(id,...args)=>box(`street-dressing-${id}`,...args);
 const street=settlement(dressing);
@@ -256,13 +324,39 @@ const landforms=[
   {x:-705,z:-143,rx:240,rz:68,height:9,flat:.16},{x:-627,z:83,rx:220,rz:67,height:6.3,flat:.1},
   {x:-421,z:-130,rx:152,rz:71,height:10,flat:.1},{x:-254,z:122,rx:110,rz:67,height:13,flat:.12},
   {x:0,z:-154,rx:260,rz:56,height:13,flat:.08},{x:58,z:156,rx:235,rz:51,height:11,flat:.12},
+  {x:-171,z:19,rx:66,rz:38,height:.82,flat:.13},
+  {x:-107,z:45,rx:68,rz:43,height:1.46,flat:.33},
+  {x:-74,z:-19,rx:60,rz:31,height:-.54,flat:.24},
+  {x:-29,z:-12,rx:62,rz:44,height:1.32,flat:.22},
+  {x:46,z:-29,rx:57,rz:37,height:-.92,flat:.19},
+  {x:55,z:-70,rx:67,rz:34,height:2.11,flat:.24},
+  {x:104,z:44,rx:62,rz:42,height:1.72,flat:.30},
+  {x:131,z:4,rx:50,rz:28,height:.43,flat:.12},
+  {x:178,z:-17,rx:47,rz:33,height:1.18,flat:.27},
 ];
-const terrain=makeTerrain(size,landforms,8);
+const rough=makeTerrain(size,landforms,8);
+const terrainPads=[...structures,towerSite].map(site=>{
+  const {x,z,w,d}=site;
+  const height=Math.round(rough.heightAt(x,z)*10)/10;
+  site.baseY=height;
+  return {x,z,w:w+3,d:d+3,height,blend:5,protectedW:w+3,protectedD:d+3};
+});
+const terrain=makeTerrain(size,landforms,cell,terrainPads);
+for(const b of boxes)b.baseY+=foundations.get(b)?.baseY??terrain.heightAt(b.x,b.z);
+for(const node of navigationNodes)node.y+=foundations.get(node)?.baseY??terrain.heightAt(node.x,node.z);
+for(const house of Object.values(houses))if(house.emplacement)house.emplacement.y+=house.baseY;
+tower.y+=towerSite.baseY;
+tower.baseY=towerSite.baseY;
+
+export function telMazinFloor(x,z){
+  const inside=structures.find(s=>Math.abs(x-s.x)<=s.w/2+.18&&Math.abs(z-s.z)<=s.d/2+.18);
+  return inside?.baseY??terrain.heightAt(x,z);
+}
 export const TEL_MAZIN=registerLocalMap(rotateMapAssets({
   id:'tel-mazin',name:'Тель-Мазин',missionId:'m03',theme:'desert-village',campaign:true,size,width:1160,depth:344,
   playArea:{minX:-928,maxX:225,minZ:-169,maxZ:169},navigationCell:2,navigationSize:448,stepHeight:.4,
-  fogDensity:.0027,fogColor:'#c6b797',sunColor:'#fff1d7',terrain,boxes,structures,roads,landforms,navigationNodes,
+  fogDensity:.0027,fogColor:'#c6b797',sunColor:'#fff1d7',terrain,terrainMargin:112,terrainPads,boxes,structures,roads,landforms,navigationNodes,
   points:[],districts:[],signs:[],vehicleSpawns:[],spawns:[{x:-830,z:-38},{x:208,z:-7}],
   landmarks:[{id:'gate',name:'Тракт',x:-159,z:0},{id:'market',name:'Рынок',x:50,z:-30},{id:'hq',name:'Штаб',x:174,z:-10}],
-  interactives,houses,tower,
+  interactives,houses,tower,towerStairs,
 }));

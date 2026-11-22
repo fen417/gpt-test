@@ -48,8 +48,7 @@
         "lasko_alive",
         "bruno_alive",
         "duran_alive"
-      ],
-      "completionPercent": 95
+      ]
     },
     {
       "id": "m02",
@@ -67,7 +66,7 @@
         "tanks_alive",
         "enemy_order"
       ],
-      "completionPercent": 87
+      "completionPercent": 94
     },
     {
       "id": "m03",
@@ -81,7 +80,7 @@
       "implemented": true,
       "preview": "Мартен едет в Тель-Мазин на броне «Сокола-7». Когда засада останавливает колонну, ведите отделение через мастерские, дворы и рынок. Пробейте проход к штабу бригады и отразите контратаки во дворе.",
       "objective": "Прорваться к штабу и удержать двор",
-      "completionPercent": 45
+      "completionPercent": 88
     },
     {
       "id": "m04",

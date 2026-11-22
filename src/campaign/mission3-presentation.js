@@ -212,7 +212,8 @@ export class Mission3Presentation{
     }
     if(m.cutscene){
       const t=THREE.MathUtils.clamp(m.cutscene.elapsed/9,0,1);
-      r.camera.position.set(173.25-t*.9,1.7,-8.55-t*.4);r.camera.lookAt(174.68,1.38,-11);
+      const y=r.map.houses.headquarters.baseY;
+      r.camera.position.set(173.25-t*.9,y+1.7,-8.55-t*.4);r.camera.lookAt(174.68,y+1.38,-11);
       r.weapon.visible=false;
     }
     this.glint.visible=m.sniperFlash;

@@ -419,32 +419,6 @@ def battlefield_detail(setup,data):
                         stain.add(points,[(0,1,2,3)],shade(DARK,rng.uniform(.7,1.1)))
         setup.place("Burned supply truck" if is_truck else "Scorched fuel drum",x,z,burned)
 
-    paths=[
-        ("Column tracks",(-914,-541),(-855,-512),3),("Column tracks",(-802,-485),(-763,-461),4),
-        ("Wadi crossing",(-425,-308),(-341,-280),3),("Road into town",(-87,-107),(-42,-88),2),
-    ]
-    paths.extend(("Reserve track marks",tuple(a),tuple(b),2)
-                 for a,b in zip(data["reserveRoute"][1:4],data["reserveRoute"][2:5]))
-    for name,a,b,lanes in paths:
-        dx,dz=b[0]-a[0],b[1]-a[1]
-        length=math.hypot(dx,dz)
-        vx,vz=dx/length,dz/length
-        for lane in range(lanes):
-            spread=(lane-(lanes-1)/2)*2.75
-            def ruts(layer):
-                dirt=layer("plain",True,False)
-                for side in (-1,1):
-                    shift=spread+side*1.12
-                    for i in range(math.ceil(length/2.7)):
-                        at=i*2.7
-                        step=min(2.64,length-at)
-                        points=[(a[0]+u*vx-vz*w,a[1]+u*vz+vx*w) for u,w in
-                                ((at,shift-.21),(at,shift+.21),(at+step,shift+.24),(at+step,shift-.19))]
-                        world=[(x,ground_height(data,x,z)+.043,z) for x,z in points]
-                        dirt.add(world,[(0,1,2,3)],shade(PALE,.67+(i%3)*.025))
-            setup.place(name,(a[0]+b[0])/2,(a[1]+b[1])/2,ruts)
-
-
 def preview_materials(source,span):
     for mat in bpy.data.materials:
         name=mat.name
