@@ -1,22 +1,21 @@
 import {Vector3} from 'three';
-import {CLASSES,WEAPONS} from '../shared/world.js';
+import {CLASSES} from '../shared/world.js';
 import {InfantryAssets} from './infantry-assets.js';
 import {createInfantry,disposeInfantry,updateInfantry} from './infantry.js';
 import {mountWeaponPreview} from './weapon-preview.js';
-import {mountCollimator} from './collimator.js';
-import {showWeaponUpgrades,weaponModuleMount} from './weapon-models.js';
+import {attachmentPreviewItem} from './attachment-preview.js';
+import {weaponModuleMount} from './weapon-models.js';
 
 export function mountProfilePreview({getRenderer,getSelection}){
-  const optics=new WeakMap();
   const buttons=[...document.querySelectorAll('#profile-weapon-mounts button')];
   const position=new Vector3();
-  return mountWeaponPreview({
+  const preview=mountWeaponPreview({
     panelId:'profile-panel',prefix:'profile-preview',
     getGpuDevice:()=>getRenderer()?.webgpu?.device??null,
     getItem(){
       const renderer=getRenderer(),selection=getSelection();
       if(!renderer||!selection)return null;
-      const {classId,team,weaponId,collimator,attachments}=selection;
+      const {classId,team,weaponId,attachments}=selection;
       if(classId)return {
         key:'soldier:'+classId+':'+team,name:CLASSES[classId].name,
         async load(){
@@ -33,19 +32,7 @@ export function mountProfilePreview({getRenderer,getSelection}){
           };
         },
       };
-      return {
-        key:'weapon:'+weaponId,name:WEAPONS[weaponId].name,
-        load:()=>({model:renderer.weaponRig.createPreviewModel(WEAPONS[weaponId].classId??'assault',weaponId)}),
-        update(model){
-          if(collimator&&!optics.has(model)){
-            const optic=mountCollimator(weaponId,model);
-            if(optic)optics.set(model,optic);
-          }
-          const opticChanged=optics.get(model)?.show(Boolean(collimator));
-          const upgradesChanged=showWeaponUpgrades(model,weaponId,collimator?{...attachments,optic:'collimator-15'}:attachments);
-          return opticChanged||upgradesChanged;
-        },
-      };
+      return attachmentPreviewItem(weaponId,attachments,()=>preview.update());
     },
     afterDraw(model,camera){
       const visible=model&&getSelection()?.hotspots;
@@ -59,4 +46,5 @@ export function mountProfilePreview({getRenderer,getSelection}){
       }
     },
   });
+  return preview;
 }

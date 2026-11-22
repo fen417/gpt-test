@@ -24,6 +24,7 @@ import {mountMenuPanels,closeMenuPanels} from './menu-panels.js';
 import {mountRoomBrowser} from './room-browser.js';
 import {mountSquadUI} from './squad-ui.js';
 import {mountWeaponPreview} from './weapon-preview.js';
+import {attachmentPreviewItem} from './attachment-preview.js';
 import {MAP_ART} from './map-art.js';
 import './lobby.css';
 import {captureGameKeyboard} from './keyboard-capture.js';
@@ -605,10 +606,18 @@ const weaponScopeZoom=(weaponId,opticId=equippedAttachments(weaponId)?.optic)=>
   scopeMagnifications.get(scopeKey(weaponId,opticId));
 const quickAttachments=$('quick-attachments');
 let quickWeapon='',quickSlot='optic',quickChanging=false;
+let quickPreviewSlots;
 let localRoundId='',observedRound='',observedKills={},weaponResultRevision=0;
+const quickPreview=mountWeaponPreview({
+  panelId:'quick-attachments',prefix:'quick-weapon-preview',
+  getGpuDevice:()=>renderer?.webgpu?.device??null,
+  getItem:()=>attachmentPreviewItem(quickWeapon,quickPreviewSlots,()=>quickPreview.update()),
+});
 const renderQuickPicker=setupAttachmentPicker(quickAttachments,{
+  chartHost:$('quick-attachment-chart'),
   onSlot:slot=>{quickSlot=slot;updateQuickPicker();},
   onSelect:id=>void changeQuickAttachment(id),
+  onInspect:(_,slots)=>{quickPreviewSlots=slots;void quickPreview.update();},
 });
 function updateQuickPicker(){
   const networkXp=mode==='server'?(multiplayer.networkWeaponXp?multiplayer.networkWeaponXp[quickWeapon]??0:null):undefined;

@@ -21,13 +21,13 @@ function attachmentEffects({zoom,zooms,modifiers},weaponId){
     const multiplier=modifiers?.[stat]??1;
     if(multiplier!==1)effects.push(`${label} ${percentChange.format(multiplier-1)}`);
   }
-  return effects.join(' · ');
+  return effects;
 }
 
-export function setupAttachmentPicker(root,{onSlot,onSelect}){
+export function setupAttachmentPicker(root,{chartHost,onSlot,onSelect,onInspect}){
   const tabs=root.querySelector('[data-attachment-slots]');
   const list=root.querySelector('[data-attachment-options]');
-  const renderChart=createWeaponStatChart(list);
+  const renderChart=createWeaponStatChart(chartHost);
   for(const [slot,label] of Object.entries(WEAPON_SLOTS)){
     const button=document.createElement('button');
     button.type='button';button.dataset.attachmentSlot=slot;button.textContent=label;
@@ -41,24 +41,40 @@ export function setupAttachmentPicker(root,{onSlot,onSelect}){
     const name=slot==='optic'&&zooms?'Штатный прицел '+zooms.join('–')+'×':
       slot==='stock'&&WEAPONS[weaponId]?.sidearm?'Без приклада':stockNames[slot];
     const equipped={...attachments,[slot]:selected};
-    const showEquipped=()=>renderChart(weaponId,equipped);
-    const buttonFor=(id,label,disabled=false,effects='')=>{
+    const show=(id,label)=>{
+      const previewed=id!==selected;
+      const slots=previewed?{...equipped,[slot]:id}:equipped;
+      renderChart(weaponId,slots,previewed?label:null);
+      onInspect?.(weaponId,slots);
+    };
+    const showEquipped=()=>show(selected);
+    const buttonFor=(id,label,{locked=false,status='',note='',effects=[]}={})=>{
       const button=document.createElement('button');
-      button.type='button';button.className='panel-secondary';button.dataset.module=id;
-      button.textContent=label;
-      if(disabled)button.setAttribute('aria-disabled','true');
-      if(effects){
-        const details=document.createElement('small');
-        details.className='attachment-effects';details.textContent=effects;
+      button.type='button';button.className='attachment-choice';button.dataset.module=id;
+      if(locked)button.setAttribute('aria-disabled','true');
+      const heading=document.createElement('span');heading.className='attachment-choice-name';heading.textContent=label;
+      button.append(heading);
+      const tag=id===selected?'Установлено':status;
+      if(tag){
+        const meta=document.createElement('span');meta.className='attachment-choice-state';meta.textContent=tag;
+        button.append(meta);
+      }
+      if(note||effects.length){
+        const details=document.createElement('span');details.className='attachment-effects';
+        details.textContent=effects.join(' · ');
+        if(note){
+          const requirement=document.createElement('span');requirement.className='attachment-requirement';requirement.textContent=note;
+          details.append(requirement);
+        }
         button.append(details);
       }
       button.setAttribute('aria-pressed',String(id===selected));
-      const inspect=()=>renderChart(weaponId,{...equipped,[slot]:id},label.split(' · ')[0]);
+      const inspect=()=>show(id,label);
       button.addEventListener('pointerenter',inspect);
-      button.addEventListener('pointerleave',()=>{if(document.activeElement!==button)showEquipped();});
+      button.addEventListener('pointerleave',event=>{if(event.pointerType==='mouse')showEquipped();});
       button.addEventListener('focus',inspect);
       button.addEventListener('blur',showEquipped);
-      button.addEventListener('click',()=>{if(!disabled)onSelect(id);});
+      button.addEventListener('click',()=>{if(locked)inspect();else onSelect(id);});
       return button;
     };
     const items=[buttonFor('stock',name)];
@@ -70,11 +86,11 @@ export function setupAttachmentPicker(root,{onSlot,onSelect}){
       const trial=canTest&&id==='collimator-15';
       if(!unlocked&&!trial&&!showLocked&&!part.modifiers)continue;
       const kills=Math.floor(progress/XP_PER_WEAPON_KILL), required=threshold/XP_PER_WEAPON_KILL;
-      const level=requiresNetworkXp?'сетевой уровень':'уровень';
-      const suffix=unlocked?'':trial?' · тестовый доступ':
-        networkXp===null&&requiresNetworkXp?' · требуется обновление сервера':
-        ` · ${level} ${part.level} (${kills} / ${required} устр.)`;
-      items.push(buttonFor(id,part.name+suffix,!unlocked&&!trial,attachmentEffects(part,weaponId)));
+      const locked=!unlocked&&!trial;
+      const status=locked?`Ур. ${part.level}`:trial&&!unlocked?'Тест':'';
+      const note=!locked?'':networkXp===null&&requiresNetworkXp?'Требуется обновление сервера':
+        `${kills} / ${required} ${requiresNetworkXp?'сетевых ':''}устранений`;
+      items.push(buttonFor(id,part.name,{locked,status,note,effects:attachmentEffects(part,weaponId)}));
     }
     list.replaceChildren(...items);
     showEquipped();

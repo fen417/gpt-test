@@ -23,19 +23,22 @@ function element(tag,className,value){
   return node;
 }
 
-export function createWeaponStatChart(list){
+export function createWeaponStatChart(host){
   const panel=element('section','weapon-stat-chart');
+  const header=element('header','weapon-stat-header');
   const title=element('h3','', 'Характеристики');
   const caption=element('p','weapon-stat-caption');
   const legend=element('p','weapon-stat-key','Черта на шкале — штатная комплектация');
   const metrics=element('dl','weapon-stat-rows');
-  panel.append(title,caption,legend,metrics);
-  list.after(panel);
+  header.append(title,caption);
+  panel.append(header,metrics,legend);
+  host.append(panel);
   return (weaponId,slots,candidate)=>{
     const base=WEAPONS[weaponId];
     panel.hidden=!base;
     if(!base)return;
-    caption.textContent=candidate?candidate+' в сборке':'Текущая сборка';
+    caption.textContent=candidate?`Примерка · ${candidate}`:'Установленная сборка';
+    panel.classList.toggle('is-preview',Boolean(candidate));
     const stock={...base,zooms:opticZooms(weaponId)??[1]};
     const current={...resolveWeaponModules(base,slots),zooms:opticZooms(weaponId,slots?.optic)??[1]};
     metrics.replaceChildren(...rows.map(([label,measure,format,higherIsBetter])=>{
@@ -54,8 +57,8 @@ export function createWeaponStatChart(list){
       row.dataset.effect=changed?(improvement>0?'gain':'loss'):'base';
       const readings=element('dd','weapon-stat-reading');
       const shown=format(value,current),original=format(baseline,stock);
-      readings.append(element('span','weapon-stat-value',shown!==original?`${original} → ${shown}`:shown),
-        element('span','weapon-stat-delta',changed?signedPercent.format(delta):'—'));
+      readings.append(element('span','weapon-stat-value',shown!==original?`${original} → ${shown}`:shown));
+      if(changed)readings.append(element('span','weapon-stat-delta',signedPercent.format(delta)));
       meter.append(marker);
       row.append(element('dt','',label),meter,readings);
       return row;

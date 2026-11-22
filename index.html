@@ -112,6 +112,7 @@
             <div id="profile-weapon-mounts" class="profile-weapon-mounts" aria-hidden="true" hidden></div>
           </div>
           <div class="profile-preview-footer"><div><strong id="profile-preview-name"></strong><small id="profile-preview-hint"></small></div><button id="profile-preview-reset" class="panel-secondary" type="button">Сбросить ракурс</button></div>
+          <div id="profile-attachment-chart" class="attachment-chart-host" hidden></div>
         </div>
         <section id="profile-view-soldier" class="profile-option-panel profile-card" role="tabpanel" aria-labelledby="profile-nav-soldier" hidden>
           <div class="profile-selects">
@@ -124,10 +125,12 @@
           <label>Оружие<select id="profile-skin-weapon"></select></label>
           <p class="profile-configuration">Заводская расцветка</p>
         </section>
-        <section id="profile-view-attachments" class="profile-option-panel profile-card" role="tabpanel" aria-labelledby="profile-nav-attachments" hidden>
-          <label>Оружие<select id="profile-attachment-weapon"></select></label>
-          <p id="profile-weapon-level" class="profile-configuration"></p>
-          <progress id="profile-weapon-xp" aria-label="Прогресс оружия"></progress>
+        <section id="profile-view-attachments" class="attachment-controls" role="tabpanel" aria-labelledby="profile-nav-attachments" hidden>
+          <label class="attachment-select">Оружие<select id="profile-attachment-weapon"></select></label>
+          <div class="attachment-rank">
+            <div><strong id="profile-weapon-level"></strong><span id="profile-weapon-next"></span></div>
+            <progress id="profile-weapon-xp" aria-label="Прогресс оружия"></progress>
+          </div>
           <div class="attachment-slot-list" data-attachment-slots aria-label="Места установки"></div>
           <div class="attachment-option-list" data-attachment-options></div>
         </section>
@@ -392,13 +395,28 @@
       </div>
     </div>
   </section>
-  <dialog id="quick-attachments" class="menu-dialog quick-attachments" aria-labelledby="quick-attachment-title" data-static-backdrop>
+  <dialog id="quick-attachments" class="menu-dialog quick-attachments attachment-quick" aria-labelledby="quick-attachment-title" data-static-backdrop>
     <header class="menu-panel-header">
       <div><h2 id="quick-attachment-title">Обвесы</h2><p id="quick-attachment-weapon"></p></div>
+      <button type="button" id="quick-attachments-close" class="panel-secondary">Вернуться в бой</button>
     </header>
-    <div class="attachment-slot-list" data-attachment-slots aria-label="Места установки"></div>
-    <div class="attachment-option-list" data-attachment-options></div>
-    <button type="button" id="quick-attachments-close" class="panel-primary">Вернуться в бой</button>
+    <div class="attachment-quick-layout">
+      <div class="attachment-quick-model">
+        <div class="attachment-quick-preview">
+          <canvas id="quick-weapon-preview" tabindex="0" aria-label="3D-просмотр оружия"></canvas>
+          <div class="attachment-quick-preview-controls">
+            <strong id="quick-weapon-preview-name" class="sr-only"></strong>
+            <span id="quick-weapon-preview-hint"></span>
+            <button id="quick-weapon-preview-reset" class="panel-secondary" type="button">Сбросить ракурс</button>
+          </div>
+        </div>
+        <div id="quick-attachment-chart" class="attachment-chart-host"></div>
+      </div>
+      <div class="attachment-controls">
+        <div class="attachment-slot-list" data-attachment-slots aria-label="Места установки"></div>
+        <div class="attachment-option-list" data-attachment-options></div>
+      </div>
+    </div>
   </dialog>
   <dialog id="abandoned-results" class="menu-dialog quick-attachments" aria-labelledby="abandoned-results-title">
     <header class="menu-panel-header">
