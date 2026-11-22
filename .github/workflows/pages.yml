@@ -2,10 +2,6 @@ name: Deploy game to GitHub Pages
 on:
   push:
     branches: [main]
-  workflow_run:
-    workflows: [Verify Pool Day TDM branch]
-    types: [completed]
-    branches: [test]
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,13 +12,6 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    # The workflow_run is emitted by the feature branch verification workflow,
-    # but this Pages workflow runs from the trusted default branch.
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.head_repository.full_name == github.repository &&
-       github.event.workflow_run.head_branch == 'test' &&
-       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +24,6 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Restore previous benchmark
-        if: github.event_name != 'workflow_run'
         uses: actions/cache@v4
         with:
           path: .perf-ci/baseline.json
@@ -43,13 +31,11 @@ jobs:
           restore-keys: |
             perf-v1-${{ runner.os }}-${{ runner.arch }}-node24-
       - name: Benchmark simulation and flag regressions
-        if: github.event_name != 'workflow_run'
         run: npm run bench -- --ci --baseline .perf-ci/baseline.json --output .perf-ci/current.json
       - name: Keep benchmark for next comparison
-        if: github.event_name != 'workflow_run'
         run: node -e "require('node:fs').copyFileSync('.perf-ci/current.json','.perf-ci/baseline.json')"
       - name: Upload performance report
-        if: github.event_name != 'workflow_run' && always()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: simulation-performance
@@ -66,32 +52,6 @@ jobs:
           path: |
             .perf-local/build-budget.json
             .perf-local/bundle.html
-      # A Pages deployment replaces the entire published directory. Build both
-      # versions together so updating /test/ never overwrites the stable site.
-      - name: Checkout test preview branch
-        uses: actions/checkout@v4
-        with:
-          ref: test
-          path: pool-test
-          persist-credentials: false
-      - name: Install preview dependencies
-        working-directory: pool-test
-        run: npm ci
-      - name: Build preview with multiplayer enabled
-        working-directory: pool-test
-        env:
-          VITE_SERVER_URL: ${{ vars.SECTOR_SERVER_URL }}
-        run: npm run build
-      - name: Place preview at /gpt-test/test/
-        run: |
-          mkdir -p dist/test
-          cp -a pool-test/dist/. dist/test/
-          test -s dist/index.html
-          test -s dist/test/index.html
-          test -d dist/assets
-          test -d dist/test/assets
-          grep -q 'preview.href' dist/index.html
-          echo 'Stable and multiplayer-enabled test preview are both bundled into the Pages artifact.'
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

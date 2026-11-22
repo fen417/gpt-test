@@ -3,16 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- ?test opens the separately deployed, solo-only preview from the feature branch. -->
-  <script>
-    (() => {
-      const url = new URL(window.location.href);
-      if (!url.searchParams.has('test')) return;
-      const preview = new URL('./test/', url);
-      preview.searchParams.delete('test');
-      window.location.replace(preview.href);
-    })();
-  </script>
   <meta name="theme-color" content="#10191c" />
   <meta name="description" content="SECTOR 09 — браузерный пехотный шутер: захват точек, четыре класса, боты и сетевые комнаты." />
   <title>SECTOR 09 · Infantry Conquest</title>
