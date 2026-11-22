@@ -1,12 +1,12 @@
 import {initializeApp} from 'firebase/app';
 import {
-  createUserWithEmailAndPassword,getAuth,GoogleAuthProvider,linkWithCredential,linkWithPopup,
+  createUserWithEmailAndPassword,getAuth,GoogleAuthProvider,linkWithCredential,
   onAuthStateChanged,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,signOut,
 } from 'firebase/auth';
 import {getDatabase,onValue,ref,runTransaction} from 'firebase/database';
 import {CAMPAIGN_PROFILE_EVENT} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
-import {DEFAULT_CUSTOMIZATION,PROFILE_MISSIONS,mergeCampaignResult} from './profile-data.js';
+import {DEFAULT_CUSTOMIZATION,PROFILE_MISSIONS,mergeCampaignResult,withCustomization} from './profile-data.js';
 
 const missions=new Set(PROFILE_MISSIONS.map(mission=>mission.id));
 const key=uid=>'sector09-profile-campaign:'+uid;
@@ -70,14 +70,9 @@ export function createPlayerProfile(){
     notify();
     if(!user)return;
     const uid=user.uid;
-    let initializingCustomization=false;
     unwatch=onValue(profileRef(uid),snapshot=>{
       if(user?.uid!==uid)return;
       profile=snapshot.val()??{};loading=false;notify();
-      if(!profile.customization&&!initializingCustomization){
-        initializingCustomization=true;
-        void runTransaction(profileRef(uid,'customization'),value=>value??DEFAULT_CUSTOMIZATION,{applyLocally:false}).catch(()=>{});
-      }
     },()=>{
       if(user?.uid===uid){loading=false;problem='Сейчас облачный профиль недоступен.';notify();}
     });
@@ -114,10 +109,11 @@ export function createPlayerProfile(){
         throw error;
       }
     },
-    async linkGoogle(){
-      if(auth.currentUser){await linkWithPopup(auth.currentUser,provider());notify();}
-    },
     signOut(){pendingGoogle=null;return signOut(auth);},
+    saveCustomization(change){
+      if(!user)throw Error('Войдите, чтобы сохранить настройки.');
+      return runTransaction(profileRef(user.uid,'customization'),current=>withCustomization(current,change));
+    },
     importCampaign:addCampaign,
   };
 }

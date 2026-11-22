@@ -9,7 +9,7 @@ function visibleBounds(root){
   });return bounds;
 }
 
-export function mountWeaponPreview({getRig,getLoadout,getGpuDevice=()=>null,panelId='single-player-panel',prefix='weapon-preview'}){
+export function mountWeaponPreview({getRig,getLoadout,getItem,getGpuDevice=()=>null,panelId='single-player-panel',prefix='weapon-preview'}){
   const canvas=document.getElementById(prefix),panel=document.getElementById(panelId);
   const title=document.getElementById(prefix+'-name'),hint=document.getElementById(prefix+'-hint');
   const isOpen=()=>canvas.getClientRects().length>0;
@@ -18,8 +18,10 @@ export function mountWeaponPreview({getRig,getLoadout,getGpuDevice=()=>null,pane
   scene.add(new THREE.HemisphereLight(0xf4f6df,0x37483b,3));
   for(const [color,power,position] of [[0xffedca,3.5,[1,2,3]],[0xa9ced1,2,[-2,1,-1]]]){const light=new THREE.DirectionalLight(color,power);light.position.set(...position);scene.add(light);}
   let renderer,rendererPromise,model,key='',sidearm=false,raf=0,drag=null,size=new THREE.Vector3(),distance=1,loadingUntil=0;
-  let closed=false;
-  const reset=()=>{pivot.rotation.set(-.10,Math.PI/2-.22,-.05);fit();invalidate();};
+  let closed=false,disposeModel;
+  const weaponAngle=[-.10,Math.PI/2-.22,-.05];
+  let angle=weaponAngle;
+  const reset=()=>{pivot.rotation.set(...angle);fit();invalidate();};
   function fit(){
     if(!model)return;size.copy(visibleBounds(pivot).getSize(new THREE.Vector3()));
     const fov=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
@@ -65,16 +67,30 @@ export function mountWeaponPreview({getRig,getLoadout,getGpuDevice=()=>null,pane
     if(slot==='primary'||slot==='sidearm'){
       sidearm=slot==='sidearm';for(const button of slots())button.setAttribute('aria-pressed',String(button.dataset.previewSlot===slot));
     }
-    if(!isOpen()||closed)return;const rig=getRig();if(!rig)return;
-    const loadout=getLoadout(),id=sidearm?loadout.sidearmId:loadout.weaponId;
-    if(key===id){invalidate();return;}key=id;
+    if(!isOpen()||closed)return;
+    const rig=getRig?.();
+    const loadout=getLoadout?.();
+    const id=sidearm?loadout?.sidearmId:loadout?.weaponId;
+    const item=getItem?getItem():rig&&{
+      key:id,name:WEAPONS[id]?.name??id,load:()=>({model:rig.createPreviewModel(loadout.classId,id)}),
+    };
+    if(!item)return;
+    if(key===item.key){invalidate();return;}
+    key=item.key;title.textContent=item.name;hint.textContent='Загрузка модели…';
     try{
-      if(!await ensureRenderer()||!isOpen()||key!==id)return;
-      model?.removeFromParent();pivot.rotation.set(0,0,0);model=rig.createPreviewModel(loadout.classId,id);pivot.add(model);
+      if(!await ensureRenderer()||closed||key!==item.key)return;
+      const next=await item.load();
+      if(closed||key!==item.key){next.dispose?.();return;}
+      model?.removeFromParent();disposeModel?.();
+      model=next.model;disposeModel=next.dispose;angle=next.angle??weaponAngle;
+      pivot.rotation.set(0,0,0);pivot.add(model);
       const center=visibleBounds(model).getCenter(new THREE.Vector3());model.position.sub(center);
-      title.textContent=WEAPONS[id]?.name??id;hint.textContent='Потяни, чтобы повернуть';
+      hint.textContent='Потяни, чтобы повернуть';
       canvas.setAttribute('aria-label','3D-модель '+title.textContent);loadingUntil=performance.now()+800;reset();resize();
-    }catch(error){key='';hint.textContent='3D-просмотр недоступен';console.warn('Weapon preview unavailable',error);}
+    }catch(error){
+      if(key===item.key){key='';hint.textContent='3D-просмотр недоступен';}
+      console.warn('Equipment preview unavailable',error);
+    }
   }
   for(const button of slots())button.addEventListener('click',()=>{
     sidearm=button.dataset.previewSlot==='sidearm';
@@ -89,6 +105,6 @@ export function mountWeaponPreview({getRig,getLoadout,getGpuDevice=()=>null,pane
   new ResizeObserver(resize).observe(canvas);
   new MutationObserver(()=>{if(isOpen()){update();resize();}else{cancelAnimationFrame(raf);raf=0;drag=null;}}).observe(panel,{attributes:true,attributeFilter:['open','class']});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)invalidate();});
-  window.addEventListener('pagehide',()=>{closed=true;cancelAnimationFrame(raf);renderer?.dispose();});
+  window.addEventListener('pagehide',()=>{closed=true;cancelAnimationFrame(raf);disposeModel?.();renderer?.dispose();});
   return {update};
 }

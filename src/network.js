@@ -31,6 +31,17 @@ export async function configuredServerUrl(){
   return custom?normalizeServerUrl(custom):defaultServerUrl();
 }
 
+export async function resetNetworkProfile(token){
+  const url=await defaultServerUrl();
+  if(!token||!url.startsWith('wss://'))throw Error('Сброс статистики сейчас недоступен.');
+  const connection=new Multiplayer();
+  try{
+    await connection.open(url);
+    if(!connection.hello?.profileReset)throw Error('Игровой сервер пока не поддерживает сброс статистики.');
+    await connection.request('profile-reset',{token});
+  }finally{connection.close(false);}
+}
+
 export class Prediction{
   constructor(mapId,onShot=noop,{predictShots=true}={}){
     this.predictShots=predictShots;this.world=createPredictionWorld(mapId);this.onShot=onShot;this.played=new Set();this.reset();this.world.rockets=[];

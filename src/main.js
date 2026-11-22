@@ -12,7 +12,7 @@ import {GameRenderer} from './renderer.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
-import {Multiplayer,configuredServerUrl,defaultServerUrl,normalizeServerUrl} from './network.js';
+import {Multiplayer,configuredServerUrl,defaultServerUrl,normalizeServerUrl,resetNetworkProfile} from './network.js';
 import {CombatAudio} from './audio.js';
 import {mountChangelog} from './changelog.js';
 import './menu.css';
@@ -573,7 +573,9 @@ function presentLocalShot(event){
   audio.events({time:event.time,events:[event],players:state.players},player,{immediate:true});
   text('ammo',(simulation?.client??multiplayer).prediction.player.ammo);
 }
-const profile=mountPlayerProfile({onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl});
+const profile=mountPlayerProfile({
+  onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,
+});
 const multiplayer=new Multiplayer({getProfileToken:profile.tokenForServer,predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
@@ -1873,6 +1875,7 @@ try{
     }
   }
   renderer.resize();window.addEventListener('resize',()=>renderer.resize());
+  profile.refreshPreview();
   $('gfx-api-active').textContent='Используется: '+graphicsApiName(renderer.api)
     +(renderer.api==='webgpu'?' · аппаратный WebGPU':recoveredReason?' · WebGPU не запустился':'');
   const gpuRetry=$('gfx-api-retry');

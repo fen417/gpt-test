@@ -5,8 +5,8 @@ import {getDatabase} from 'firebase-admin/database';
 
 const WRITER_UID='sector09-pvp-writer';
 const RECEIPT_AGE=7*24*60*60*1000;
-function changes(){
-  return {kills:0,deaths:0,maps:{},classes:{}};
+function changes(since){
+  return {since,kills:0,deaths:0,maps:{},classes:{}};
 }
 function addCounts(previous,delta){
   const result={...previous};
@@ -33,20 +33,23 @@ export function createProfileStats(env){
     return null;
   }
 
-  const pending=new Map(),retry=new Map();
+  const pending=new Map(),retry=new Map(),resets=new Map();
   let sequence=0,saving;
+  const statsRef=uid=>db.ref('profiles').child(uid).child('pvp');
   function forPlayer(uid){
-    if(!pending.has(uid))pending.set(uid,changes());
+    if(!pending.has(uid))pending.set(uid,changes(Math.max(Date.now(),resets.get(uid)??0)));
     return pending.get(uid);
   }
   async function write(uid,batch){
     const {delta,id}=batch,now=Date.now();
-    await db.ref('profiles').child(uid).child('pvp').transaction(current=>{
+    await statsRef(uid).transaction(current=>{
       const previous=current??{},receipts=previous.receipts??{};
+      const resetAt=previous.resetAt??0;
+      if(delta.since<resetAt)return;
       if((receipts[writer]?.sequence??0)>=id)return;
       const retained=Object.fromEntries(Object.entries(receipts).filter(([,receipt])=>receipt.at>now-RECEIPT_AGE));
       return {
-        kills:(previous.kills??0)+delta.kills,deaths:(previous.deaths??0)+delta.deaths,
+        resetAt,kills:(previous.kills??0)+delta.kills,deaths:(previous.deaths??0)+delta.deaths,
         maps:addCounts(previous.maps,delta.maps),classes:addCounts(previous.classes,delta.classes),
         receipts:{...retained,[writer]:{sequence:id,at:now}},
       };
@@ -55,12 +58,13 @@ export function createProfileStats(env){
   function flush(){
     if(saving)return saving;
     for(const [uid,delta] of pending){
-      if(retry.has(uid))continue;
+      if(retry.has(uid)||resets.has(uid))continue;
       retry.set(uid,{delta,id:++sequence});
       pending.delete(uid);
     }
-    if(!retry.size)return Promise.resolve();
-    saving=Promise.allSettled(Array.from(retry,async ([uid,batch])=>{
+    const ready=[...retry].filter(([uid])=>!resets.has(uid));
+    if(!ready.length)return Promise.resolve();
+    saving=Promise.allSettled(ready.map(async ([uid,batch])=>{
       await write(uid,batch);retry.delete(uid);
     })).then(results=>{
       if(results.some(result=>result.status==='rejected'))console.warn('Could not save player stats. Will retry.');
@@ -72,6 +76,24 @@ export function createProfileStats(env){
       const {uid}=await auth.verifyIdToken(token);
       if(uid===WRITER_UID)throw Error('Invalid player identity');
       return uid;
+    },
+    async reset(uid){
+      if(resets.has(uid))throw Error('Сброс статистики уже выполняется.');
+      const cutoff=Date.now()+1,before=pending.get(uid);
+      resets.set(uid,cutoff);
+      pending.delete(uid);
+      try{
+        await statsRef(uid).transaction(current=>(current?.resetAt??0)>=cutoff?undefined:{resetAt:cutoff,kills:0,deaths:0});
+      }catch(error){
+        if(before){
+          const after=pending.get(uid)??changes(cutoff);
+          pending.set(uid,{
+            since:before.since,kills:before.kills+after.kills,deaths:before.deaths+after.deaths,
+            maps:addCounts(before.maps,after.maps),classes:addCounts(before.classes,after.classes),
+          });
+        }
+        throw error;
+      }finally{resets.delete(uid);}
     },
     kill(event,players,sessions){
       if(event.type!=='kill'||event.killerId===event.victimId)return;

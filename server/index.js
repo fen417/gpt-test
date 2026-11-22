@@ -253,7 +253,7 @@ export function createGameServer(options={}){
   function stopLoop(){clearTimeout(timer);timer=null;accumulator=0;}
   wss.on('connection',ws=>{
     const c={ws,session:null,lastSeen:Date.now(),messages:0,window:Date.now(),alive:true};clients.add(c);
-    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
+    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),profileReset:Boolean(profiles),maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
     ws.on('pong',()=>{c.alive=true;c.lastSeen=Date.now();});
     ws.on('message',(raw,isBinary)=>{
       const now=Date.now();c.lastSeen=now;if(now-c.window>1000){c.window=now;c.messages=0;}if(++c.messages>160){ws.close(1008,'Rate limit');return;}
@@ -265,6 +265,15 @@ export function createGameServer(options={}){
         if(c.profilePending&&['create','join','resume'].includes(data.type))throw Error('Подождите, пока проверяется профиль.');
         switch(data.type){
           case 'list':send(c,{type:'rooms',requestId,rooms:listing()});break;
+          case 'profile-reset':
+            if(!profiles||s||c.profilePending||typeof data.token!=='string'||data.token.length>5000)
+              throw Error('Сброс статистики сейчас недоступен.');
+            c.profilePending=true;
+            profiles.identify(data.token).then(uid=>profiles.reset(uid)).then(()=>{
+              send(c,{type:'profile-reset',requestId});
+            }).catch(()=>error(c,'Сервер не подтвердил сброс статистики.',requestId,'profile_reset'))
+              .finally(()=>{c.profilePending=false;});
+            break;
           case 'profile':
             if(!profiles||s||c.profilePending)throw Error('Профиль недоступен для этого подключения.');
             c.profileUid=null;
