@@ -79,10 +79,9 @@ def front():
             mesh.box((side * .044, .014, -.354 - step * .020), (.004, .011, .010), RECESS, .002)
         mesh.box((side * .043, -.015, -.451), (.013, .006, .105), COVER, .002)
         mesh.box((side * .043, -.026, -.395), (.011, .005, .178), MOLDING, .002)
-    for step in range(31):
-        mesh.box((0, .070, .083 - .0197 * step), (.081, .012, .011), COVER, .0015)
     for step in range(10):
         mesh.box((0, -.065, -.352 - .017 * step), (.060, .008, .009), MOLDING, .001)
+    guard, mesh = mesh, Assembly()
     mesh.cylinder((0, .015, -.650), .020, .254, 'z', COVER, 24)
     mesh.cylinder((0, .043, -.587), .014, .143, 'z', STEEL, 20)
     mesh.cylinder((0, .015, -.683), .025, .052, 'z', COVER, 24)
@@ -92,13 +91,17 @@ def front():
     mesh.cylinder((0, .015, -.860), .010, .001, 'z', RECESS, 20)
     for side in (-1, 1):
         mesh.box((side * .023, .016, -.826), (.007, .012, .025), RECESS, .002)
+    barrel, mesh = mesh, Assembly()
     mesh.box((0, .075, .059), (.069, .018, .047), STEEL, .003)
     sight_ring(mesh, .100, .059, .008, .016, .014, COVER)
     mesh.cylinder((.032, .085, .060), .011, .014, 'x', COVER, 18)
     side_profile(mesh, [(-.651, .023), (-.676, .023), (-.683, .085), (-.667, .097), (-.655, .073)], .038, COVER)
     sight_ring(mesh, .100, -.670, .016, .022, .013, COVER)
     mesh.box((0, .089, -.670), (.005, .022, .009), STEEL, .001)
-    return mesh
+    sights, rail = mesh, Assembly()
+    for step in range(31):
+        rail.box((0, .070, .083 - .0197 * step), (.081, .012, .011), COVER, .0015)
+    return guard, barrel, sights, rail
 
 
 def magazine():
@@ -140,7 +143,9 @@ def main():
     moving.box((.044, .027, -.167), (.017, .015, .144), STEEL, .003)
     moving.box((.062, .026, -.110), (.028, .018, .020), COVER, .004)
     moving.cylinder((.080, .027, -.110), .012, .017, 'x', FRAME, 16)
-    parts = [('Receiver', receiver()), ('Furniture', furniture()), ('Front', front()),
+    guard, barrel, sights, rail = front()
+    parts = [('Receiver', receiver()), ('Furniture', furniture()), ('Handguard', guard),
+             ('Barrel', barrel), ('Sights', sights), ('TopRail', rail),
              ('Magazine', magazine()), ('Bolt', moving)]
     export_weapon(parts, glb, blend, finish_rows={POLYMER:1, MOLDING:1, RUBBER:1, STEEL:2})
 

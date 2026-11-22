@@ -10,7 +10,7 @@ export function mountProfilePreview({getRenderer,getSelection}){
     getItem(){
       const renderer=getRenderer(),selection=getSelection();
       if(!renderer||!selection)return null;
-      const {classId,team,weaponId}=selection;
+      const {classId,team,weaponId,collimator}=selection;
       if(classId)return {
         key:'soldier:'+classId+':'+team,name:CLASSES[classId].name,
         async load(){
@@ -27,8 +27,8 @@ export function mountProfilePreview({getRenderer,getSelection}){
         },
       };
       return {
-        key:'weapon:'+weaponId,name:WEAPONS[weaponId].name,
-        load:()=>({model:renderer.weaponRig.createPreviewModel(WEAPONS[weaponId].classId??'assault',weaponId)}),
+        key:'weapon:'+weaponId+':'+Boolean(collimator),name:WEAPONS[weaponId].name,
+        load:()=>({model:renderer.weaponRig.createPreviewModel(WEAPONS[weaponId].classId??'assault',weaponId,collimator)}),
       };
     },
   });

@@ -62,7 +62,8 @@ def surface_mark(mesh, text, x, y, z, step, color, fill=.40):
                 mesh.add(vertices, [face], color)
 
 
-def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, view_distance=2.1, finish_rows=None):
+def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, parents=None,
+                  glass=None, view_distance=2.1, finish_rows=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     collection = bpy.context.scene.collection
     material = bpy.data.materials.new('Blued steel and molded polymer')
@@ -104,6 +105,25 @@ def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, v
         collection.objects.link(group)
         for child in children:
             collection.objects[child].parent = group
+    bpy.context.view_layer.update()
+    for name, parent_name in (parents or {}).items():
+        child = collection.objects[name]
+        parent = collection.objects[parent_name]
+        world = child.matrix_world.copy()
+        child.parent = parent
+        child.matrix_world = world
+    for name, color in (glass or {}).items():
+        coating = bpy.data.materials.new(name + ' coating')
+        coating.use_nodes = True
+        coating.diffuse_color = color
+        coating.surface_render_method = 'BLENDED'
+        lens = next(node for node in coating.node_tree.nodes if node.type == 'BSDF_PRINCIPLED')
+        lens.inputs['Base Color'].default_value = color
+        lens.inputs['Alpha'].default_value = color[3]
+        lens.inputs['Metallic'].default_value = .06
+        lens.inputs['Roughness'].default_value = .16
+        lens.inputs['Coat Weight'].default_value = .8
+        collection.objects[name].data.materials[0] = coating
     bpy.ops.export_scene.gltf(filepath=str(glb.resolve()), export_format='GLB', export_vertex_color='ACTIVE',
                               export_meshopt_compression_enable=True, export_meshopt_extension='EXT_meshopt_compression')
     for screen in bpy.data.screens:

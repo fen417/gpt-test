@@ -9,6 +9,7 @@ import { createFPSHand, fpsHandTextures } from './fps-hands.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
 import { cloneWeaponModel } from './weapon-models.js';
+import { mountCollimator } from './collimator.js';
 
 const rifleFits = {
   ak12: {muzzleZ:-.865, ejection:[.055,.03,-.165], sight:{height:.100,depth:-.38}},
@@ -1072,7 +1073,9 @@ export function createWeaponRig(owner = {}) {
   let previousTeam = -1;
   let visiblePistol = null;
   let visibleRifle = null;
-  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0}={}){
+  const installedOptics=new Map();
+  let activeOptic;
+  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1156,6 +1159,17 @@ export function createWeaponRig(owner = {}) {
       pistolGripMesh.morphTargetInfluences[0]=THREE.MathUtils.clamp(kick,0,1);
     }
     const usingTool=Boolean(gadgetKind&&gadgetPhase>0&&gadgetPhase<1);
+    let nextOptic;
+    if(collimator&&!unarmed&&!usingTool){
+      if(!installedOptics.has(key))installedOptics.set(key,mountCollimator(key,pistol?.root??rifle?.model,pistol?.modelMatrix));
+      nextOptic=installedOptics.get(key);
+    }
+    if(nextOptic!==activeOptic){
+      activeOptic?.show(false);
+      activeOptic=nextOptic;
+      activeOptic?.show(true);
+    }
+    activeOptic?.aim(aim>.75);
     const usingSupply=usingTool&&(gadgetKind==='ammo'||gadgetKind==='medkit');
     const usingDefib=usingTool&&gadgetKind==='defibrillator';
     const throwing=throwPhase>0&&throwPhase<1;
@@ -1242,10 +1256,10 @@ export function createWeaponRig(owner = {}) {
     for(const texture of ownedTextures)texture.dispose();
   }
   update();weapon.position.set(.26,-.23,-.42);
-  function createPreviewModel(classId,weaponId){
+  function createPreviewModel(classId,weaponId,collimator=false){
     // Menus use a rigid copy of the actual equipped model, without hands,
     // sleeves, muzzle effects or gadget geometry. GPU assets stay shared.
-    update({classId,weaponId,reloadPhase:1,reloadEmpty:false});
+    update({classId,weaponId,reloadPhase:1,reloadEmpty:false,collimator});
     const model=(visiblePistol?.root??visibleRifle?.model??rifleAssembly).clone(true);
     // The gameplay rig uses VIEWMODEL_LAYER. Standalone preview cameras and
     // their lights use the default layer; change the copy, never the live rig.
@@ -1253,6 +1267,7 @@ export function createWeaponRig(owner = {}) {
     return model;
   }
   return {weapon,handguard,bolt,get ejection(){return visibleRifle?.ejection??visiblePistol?.ejection??bolt;},
+    get collimatorSight(){return activeOptic;},
     get rifleSight(){return visibleRifle?.sight;},
     get sightType(){return visibleRifle?.scoped?'scope':visiblePistol||visibleRifle?'iron':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},

@@ -85,9 +85,9 @@ def furniture():
 
 
 def front():
-    mesh = Assembly()
-    mesh.cylinder((0, .015, -.505), .017, .595, 'z', STEEL, 24)
-    mesh.cylinder((0, .041, -.436), .016, .344, 'z', RECESS, 16)
+    mesh, barrel = Assembly(), Assembly()
+    barrel.cylinder((0, .015, -.505), .017, .595, 'z', STEEL, 24)
+    barrel.cylinder((0, .041, -.436), .016, .344, 'z', RECESS, 16)
     for y in [-.040, .060]:
         mesh.box((0, y, -.438), (.074, .023, .355), FRAME, .005)
     for side in [-1, 1]:
@@ -103,13 +103,14 @@ def front():
     for step in range(16):
         mesh.box((0, -.063, -.289 - step * .020), (.066, .009, .011), FRAME, .0015)
     rail(mesh, -.272, 19)
+    guard, mesh = mesh, barrel
     mesh.cylinder((0, .015, -.716), .019, .115, 'z', STEEL, 24)
     mesh.cylinder((0, .015, -.825), .021, .063, 'z', STEEL, 24)
     sight_ring(mesh, .015, -.857, .010, .019, .010, STEEL)
     mesh.cylinder((0, .015, -.861), .010, .001, 'z', RECESS, 20)
     for side in [-1, 1]:
         mesh.box((side * .019, .018, -.825), (.005, .009, .033), RECESS, .0008)
-    return mesh
+    return guard, barrel
 
 
 def sights():
@@ -155,7 +156,8 @@ def main():
     bolt.box((0, .072, .113), (.095, .017, .024), STEEL, .004)
     for side in [-1, 1]:
         bolt.box((side * .046, .069, .101), (.016, .015, .031), FRAME, .003)
-    parts = [('Receiver', receiver()), ('Handguard', front()), ('Furniture', furniture()),
+    guard, barrel = front()
+    parts = [('Receiver', receiver()), ('Handguard', guard), ('Barrel', barrel), ('Furniture', furniture()),
              ('Sights', sights()), ('Magazine', magazine()), ('Bolt', bolt)]
     export_weapon(parts, glb, blend, finish_rows={FURNITURE:1, POLYMER:1, RECESS:1, MARK:1, SELECTOR:1, BOLT:2})
 

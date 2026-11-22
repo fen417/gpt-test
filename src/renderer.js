@@ -27,6 +27,7 @@ import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSecto
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
 import { SCOPE_ZOOMS, scopeMagnification } from './scope-optics.js';
+import { COLLIMATOR_ZOOM } from './collimator.js';
 import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
@@ -1831,6 +1832,7 @@ export class GameRenderer {
     const rawDt = dt || 0.016;
     dt = Math.min(rawDt, 0.1); this.clock += dt;
     this.scoped = false;
+    this.collimatorAiming = false;
     if (this.map.shoreX !== undefined && this.portWater) {
       this.portWater.offset.set((this.clock * .011) % 1, (this.clock * .017) % 1);
     }
@@ -2013,6 +2015,9 @@ export class GameRenderer {
       this.aimAmount = lerp(this.aimAmount, view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 && (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2 ? 1 : 0, 1 - Math.exp(-dt * 15));
       const weapon = getWeapon(player.classId, player.weaponId);
       const scopedWeapon = !gadgetKind && Boolean(SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
+      const equippedCollimator = !gadgetKind && Boolean(view.hasCollimator?.(this.presentedWeaponId));
+      const opticZoom = scopedWeapon ? scopeMagnification(player.weaponId,view.scopeZoom) :
+        equippedCollimator && !this.weaponSwitch ? COLLIMATOR_ZOOM : 1;
       this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       // Local visual time must not be restarted by every authoritative snapshot.
@@ -2068,8 +2073,8 @@ export class GameRenderer {
       // Large iron-sighted machine guns need more visible surroundings than
       // rifles with close optics; don't narrow their ADS FOV as aggressively.
       const supportIron=!pistol&&!gadgetKind&&player.classId==='support';
-      const aimFov = scopedWeapon
-        ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / scopeMagnification(player.weaponId,view.scopeZoom)))
+      const aimFov = opticZoom>1
+        ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / opticZoom))
         : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
       const fov = lerp(baseFov + this.sprintBlend * 6 + this.slideBlend*3, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
@@ -2086,6 +2091,7 @@ export class GameRenderer {
         classId: player.classId,
         team: player.team,
         weaponId: this.presentedWeaponId,
+        collimator:equippedCollimator,
         unarmed: state.gameMode==='tdm'&&!player.weaponId,
         aim: this.aimAmount,
         reloadMotion,
@@ -2103,10 +2109,12 @@ export class GameRenderer {
       const actionTilt = Math.sin(Math.max(throwPhase, gadgetKind?0:gadgetPhase) * Math.PI);
       const closeOptic=!pistol&&!scopedWeapon&&this.weaponRig.sightType==='compact';
       const rifleSight=this.weaponRig.rifleSight;
+      const collimatorSight=this.weaponRig.collimatorSight;
+      this.collimatorAiming=Boolean(this.weapon.visible&&collimatorSight&&this.aimAmount>.8);
       // A little extra eye relief makes the MG/PKP aperture less dominant
       // without moving the centred sight line or changing bullet trajectories.
-      const adsZ=pistol?-.46:closeOptic?-.13:rifleSight?.depth??(scopedWeapon?-.32:supportIron?-.288:-.27);
-      const adsY=-(pistol?this.weaponRig.pistolSightHeight:rifleSight?.height??.167);
+      const adsZ=collimatorSight?.depth??(pistol?-.46:closeOptic?-.13:rifleSight?.depth??(scopedWeapon?-.32:supportIron?-.288:-.27));
+      const adsY=-(collimatorSight?.height??(pistol?this.weaponRig.pistolSightHeight:rifleSight?.height??.167));
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
       this.weapon.position.set(

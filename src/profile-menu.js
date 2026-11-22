@@ -3,6 +3,7 @@ import {readCampaignProgress} from './campaign/progress.js';
 import {firebaseWebConfig} from './profile-config.js';
 import {PROFILE_MISSIONS,favorite,localCampaignSummary} from './profile-data.js';
 import {SCOPE_ZOOMS} from './scope-optics.js';
+import {collimatorTestEnabled,equipCollimator,hasCollimator,supportsCollimator} from './collimator.js';
 import './profile-menu.css';
 
 const knownAccount='sector09-profile-session';
@@ -40,6 +41,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     .map(weapon=>[weapon.id,weapon.name]);
   const soldierClass=$('profile-soldier-class'),soldierTeam=$('profile-soldier-team');
   const skinWeapon=$('profile-skin-weapon'),attachmentWeapon=$('profile-attachment-weapon');
+  const opticButton=$('profile-collimator');
   fill(soldierClass,Object.entries(CLASSES).map(([id,info])=>[id,info.name]));
   for(const select of [skinWeapon,attachmentWeapon]){fill(select,weaponOptions);select.value='ar416';}
 
@@ -93,15 +95,20 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
 
   function describeAttachments(){
     const weaponId=attachmentWeapon.value,zooms=SCOPE_ZOOMS[weaponId];
-    const text=zooms?'Штатный прицел '+zooms.join('–')+'×':
+    const equipped=hasCollimator(weaponId);
+    const stock=zooms?'Штатный прицел '+zooms.join('–')+'×':
       weaponId==='vk45'?'Штатный глушитель':'Штатная комплектация';
-    set('profile-equipped-attachment',text);
+    set('profile-equipped-attachment',equipped?(weaponId==='vk45'?'Коллиматор 1,5× · Штатный глушитель':'Коллиматор 1,5×'):stock);
+    opticButton.hidden=!collimatorTestEnabled()||!supportsCollimator(weaponId);
+    opticButton.setAttribute('aria-pressed',String(equipped));
+    opticButton.textContent=equipped?'Снять коллиматор 1,5×':'Установить коллиматор 1,5×';
   }
 
   function selection(){
     if(tab==='soldier')return {classId:soldierClass.value,team:Number(soldierTeam.value)};
     if(tab==='overview')return null;
-    return {weaponId:tab==='weapon'?skinWeapon.value:attachmentWeapon.value};
+    const weaponId=tab==='weapon'?skinWeapon.value:attachmentWeapon.value;
+    return {weaponId,collimator:hasCollimator(weaponId)};
   }
 
   function refreshPreview(){
@@ -218,6 +225,11 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
   }
   for(const select of [soldierTeam,soldierClass,skinWeapon])select.addEventListener('change',refreshPreview);
   attachmentWeapon.addEventListener('change',()=>{describeAttachments();refreshPreview();});
+  opticButton.addEventListener('click',()=>{
+    const weaponId=attachmentWeapon.value;
+    equipCollimator(weaponId,!hasCollimator(weaponId));
+    describeAttachments();refreshPreview();
+  });
   describeAttachments();
 
   if(firebaseWebConfig){
@@ -226,6 +238,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
   }
   return {
     refreshPreview,
+    refreshAttachments(){describeAttachments();refreshPreview();},
     async tokenForServer(url){
       if(!firebaseWebConfig||!url.startsWith('wss://')||url!==await defaultServerUrl())return null;
       return (await connect())?.idToken()??null;

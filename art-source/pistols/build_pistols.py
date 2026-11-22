@@ -141,13 +141,14 @@ def make_upper(heavy, front):
         for i in range(8):
             fixed.box((0,.043,front+.039+i*.019),(.037,.007,.012),SATIN,.001)
     badge(nose,heavy,-.135 if heavy else -.104,half)
-    sights(nose,slide,front,heavy)
-    return slide,fixed
+    front_sight, rear_sight = Assembly(), Assembly()
+    sights(front_sight,rear_sight,front,heavy)
+    return slide,fixed,front_sight,rear_sight
 
 
 def build(heavy):
     front = -.248 if heavy else -.181
-    slide, fixed = make_upper(heavy, front)
+    slide, fixed, front_sight, rear_sight = make_upper(heavy, front)
     trigger = Assembly()
     side_profile(trigger, [(.033,-.048),(.049,-.050),(.047,-.065),(.028,-.086),
                            (.025,-.104),(.013,-.105),(.013,-.091),(.027,-.061)], .013, EDGE)
@@ -158,7 +159,8 @@ def build(heavy):
     for i in range(4):
         magazine.cylinder((.022,-.180+i*.015,.112),.003,.0007,'x',RECESS,10)
     parts = [('Frame',make_frame(heavy,front)),('Shroud' if heavy else 'Barrel',fixed),
-             ('Slide',slide),('Trigger',trigger),('Magazine',magazine)]
+             ('Slide',slide),('Trigger',trigger),('Magazine',magazine),
+             ('FrontSight',front_sight),('RearSight',rear_sight)]
     pivots = {'Magazine':(0,-.246,heel),'Trigger':(0,-.051,.038)}
     if heavy:
         hammer = Assembly()
@@ -174,4 +176,5 @@ def build(heavy):
 if __name__ == '__main__':
     name, glb, blend = sys.argv[sys.argv.index('--') + 1:]
     parts, pivots = build(name == 'm50')
-    export_weapon(parts, Path(glb), Path(blend), pivots=pivots, view_distance=.70)
+    export_weapon(parts, Path(glb), Path(blend), pivots=pivots, view_distance=.70,
+                  parents={'RearSight':'Slide', 'FrontSight':'Shroud' if name == 'm50' else 'Slide'})

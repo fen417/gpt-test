@@ -203,12 +203,13 @@ def pkp_cover():
         for i in range(7):
             mesh.box((side*.056,.072,-.219+i*.047),(.005,.012,.027),STEEL,.002)
     mesh.box((0,.091,.113),(.123,.019,.028),STEEL,.004)
+    cover, mesh = mesh, Assembly()
     mesh.box((0,.102,-.226),(.061,.013,.074),STEEL,.002)
     mesh.box((0,.118,-.218),(.028,.027,.020),BLACK,.003)
     mesh.box((0,.133,-.213),(.035,.012,.029),BLACK,.002)
     for side in (-1,1):
         mesh.box((side*.013,.144,-.218),(.010,.013,.018),STEEL,.001)
-    return mesh
+    return cover, mesh
 
 
 def pkp_box():
@@ -291,13 +292,14 @@ def build_mg36():
 
 def build_pkp():
     barrel,handle,sight=pkp_barrel_and_handle()
+    cover,rear_sight=pkp_cover()
     bolt=Assembly()
     bolt.box((.052,.018,-.096),(.023,.018,.107),EDGE,.003)
     bolt.box((.069,.018,-.049),(.039,.013,.027),STEEL,.003)
     z,y,w=-.921,-.014,.047
     hinge,left,right=bipod(z,y,-.459,w)
     parts=[('Receiver',pkp_receiver()),('Barrel',barrel),('CarryHandle',handle),
-           ('FrontSight',sight),('FeedCover',pkp_cover()),('Stock',skeleton_stock(True)),
+           ('FrontSight',sight),('FeedCover',cover),('RearSight',rear_sight),('Stock',skeleton_stock(True)),
            ('MuzzleDevice',muzzle(.016,-1.079,True)),('BipodMount',hinge),('BipodLeft',left),
            ('BipodRight',right),('Magazine',pkp_box()),('Bolt',bolt)]
     anchors=mounts(.016,-1.080,.010,-.059,y,z)
@@ -311,4 +313,6 @@ if __name__ == '__main__':
     parts,pivots,anchors={'mg36':build_mg36,'pkp':build_pkp}[name]()
     finishes={POLYMER:1,PAD:1,MOULDED_STOCK:1,WEBBING:1,VOID:1,MARK:1,RED:1,
               EDGE:2,BRASS:2,COPPER:2}
-    export_weapon(parts,Path(glb),Path(blend),pivots=pivots,mounts=anchors,view_distance=2.3,finish_rows=finishes)
+    export_weapon(parts,Path(glb),Path(blend),pivots=pivots,mounts=anchors,
+                  parents={'RearSight':'FeedCover'} if name == 'pkp' else None,
+                  view_distance=2.3,finish_rows=finishes)

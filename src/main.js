@@ -2,6 +2,7 @@ import {loadFPSHands} from './fps-hands.js';
 import {loadWeaponModels} from './weapon-models.js';
 import {loadEquipmentModels} from './gadget-models.js';
 import {SCOPE_ZOOMS,scopeMagnification} from './scope-optics.js';
+import {COLLIMATOR_ZOOM,enableCollimatorTest,hasCollimator,restoreCollimatorTest} from './collimator.js';
 import { PerformanceSamples } from '../shared/performance-samples.js';
 import {mountPerfPanel} from './perf-panel.js';
 const frameTimes=new PerformanceSamples(),cpuTimes=new PerformanceSamples(),renderTimes=new PerformanceSamples(),simulationTimes=new PerformanceSamples();
@@ -576,6 +577,7 @@ function presentLocalShot(event){
 const profile=mountPlayerProfile({
   onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,
 });
+void restoreCollimatorTest().then(profile.refreshAttachments).catch(()=>{});
 const multiplayer=new Multiplayer({getProfileToken:profile.tokenForServer,predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
 const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
@@ -769,12 +771,18 @@ document.addEventListener('keydown',event=>{
   if(active||busy||$('menu').classList.contains('hidden')||event.repeat||event.ctrlKey||event.altKey||event.metaKey||document.querySelector('dialog[open]')||event.target.closest?.('input,textarea,select,[contenteditable="true"]'))return;
   const now=performance.now();if(now-debugAt>2500)debugWord='';debugAt=now;
   const letter=/^Key[A-Z]$/.test(event.code)?event.code.slice(3).toLowerCase():'';
-  debugWord=(debugWord+letter).slice(-6);
+  debugWord=(debugWord+letter).slice(-8);
   // The optional "unlock" development cheat can bypass mission progression;
   // normal campaign access no longer requires DEBUG or any key sequence.
-  if(debugWord==='unlock'){
+  if(debugWord.endsWith('unlock')){
     unlockCampaignMissions=true;debugWord='';audio.click();
     toast('Все доступные миссии открыты.');
+  }
+  if(debugWord==='testmode'){
+    debugWord='';audio.click();
+    void enableCollimatorTest().then(()=>{
+      profile.refreshAttachments();toast('Коллиматор 1,5× открыт в профиле.');
+    }).catch(()=>toast('Не удалось загрузить коллиматор. Введите код ещё раз.'));
   }
 });
 async function serverAddress(){
@@ -994,8 +1002,8 @@ document.addEventListener('mousemove',event=>{
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
-  const scopedWeapon = !player?.heldGadget && SCOPE_ZOOMS[player?.weaponId];
-  const aimScale = aim ? (scopedWeapon ? .70/scopeMagnification(player.weaponId,scopeZoom) : .65) : 1;
+  const opticZoom=player?.heldGadget?1:hasCollimator(player?.weaponId)?COLLIMATOR_ZOOM:scopeMagnification(player?.weaponId,scopeZoom);
+  const aimScale = aim ? (opticZoom>1 ? .70/opticZoom : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
 });
@@ -1649,7 +1657,7 @@ function hud(now){
   const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
   const gap=`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`;
   if(crosshair.dataset.gap!==gap){crosshair.dataset.gap=gap;crosshair.style.setProperty('--spread-gap',gap);}
-  const showCrosshair=player.alive&&(mounted?.role==='gunner'||(personalWeapon&&Boolean(player.weaponId)&&!player.reloading&&(!mounted||mounted.canFire)));
+  const showCrosshair=player.alive&&(mounted?.role==='gunner'||(personalWeapon&&Boolean(player.weaponId)&&!player.reloading&&!renderer.collimatorAiming&&(!mounted||mounted.canFire)));
   crosshair.classList.toggle('aim',aim&&personalWeapon);
   crosshair.style.opacity=showCrosshair?'':'0';
   $('hitmarker').style.opacity=now<hitUntil?'1':'0';
@@ -1796,7 +1804,7 @@ function frame(now){
     try{
       const realBegin=performance.now();
       renderer.render(renderState,localId,renderDelta,{mapId:inLobby?state?.mapId:$('map-select').value,...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
-        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom,hasCollimator,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
       if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
     }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
   }
