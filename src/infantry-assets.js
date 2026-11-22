@@ -5,11 +5,20 @@ import { SafeWebGpuKtx2Loader } from './webgpu-ktx2.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { weaponModelUrls } from './weapon-models.js';
 
 const weaponNames = {
   ar416: 'ar416', ak12: 'ak12m', mcx9: 'mcx9', vk45: 'vk45',
   mg36: 'mg36', pkp: 'pkp', sv98: 'sv98', dmr12: 'dmr12', p19: 'p19', m50: 'm50',
 };
+const assetUrls = {
+  regular: new URL('./assets/infantry/regular.glb', import.meta.url).href,
+  militia: new URL('./assets/infantry/militia.glb', import.meta.url).href,
+  'blue-kit': new URL('./assets/infantry/blue-kit.glb', import.meta.url).href,
+  'field-kit': new URL('./assets/infantry/field-kit.glb', import.meta.url).href,
+  ...Object.fromEntries(Object.entries(weaponNames).map(([id, asset]) => [asset, weaponModelUrls[id]])),
+};
+const weaponAsset = id => Object.hasOwn(weaponNames, id) ? weaponNames[id] : 'dmr12';
 const weaponFit = {
   mg36: { primary: [0, -.138, .077], support: [-.043, -.044, -.440], scale: .72 },
   pkp: { primary: [0, -.138, .077], support: [-.042, -.052, -.435], scale: .73 },
@@ -17,7 +26,6 @@ const weaponFit = {
   ar416: { primary: [0, -.137, .072], support: [-.042, -.045, -.423], muzzle: [0, .015, -.863], scale: .74 },
   mcx9: { primary: [0, -.125, .078], support: [-.044, -.050, -.411], scale: .74 },
   vk45: { primary: [0, -.112, .084], support: [-.045, -.050, -.420], scale: .76 },
-  m24: { primary: [-.005, -.08, -.07], support: [-.036, -.012, -.31], muzzle: [0, .08, -1.42], scale: .68 },
   dmr12: { primary: [0, -.132, .074], support: [-.045, -.050, -.452], scale: .72 },
   sv98: { primary: [0, -.132, .075], support: [-.046, -.050, -.460], scale: .74 },
   p19: { primary: [0, -.096, .108], support: [-.033, -.124, .113], muzzle: [0, .012, -.185], scale: .57, pistol: true },
@@ -250,7 +258,7 @@ export class InfantryAssets {
 
   request(name, prepare) {
     if (!this.pending.has(name)) {
-      const url = new URL(`./assets/infantry/${name}.glb`, import.meta.url).href;
+      const url = assetUrls[name];
       const load = this.loader.loadAsync(url).then(gltf => {
         const data = prepare(gltf, name);
         if (this.disposed) this.disposeTemplate(data);
@@ -266,7 +274,7 @@ export class InfantryAssets {
   }
 
   load(team, weaponId) {
-    const name = team ? 'militia' : 'regular', weapon = weaponNames[weaponId] ?? 'm24';
+    const name = team ? 'militia' : 'regular', weapon = weaponAsset(weaponId);
     return Promise.all([
       this.request(name, prepareBody), this.request(weapon, prepareWeapon),
       this.request(kitNames[name], prepareKit),
@@ -282,7 +290,7 @@ export class InfantryAssets {
   }
 
   get(team, weaponId) {
-    const name = team ? 'militia' : 'regular', weapon = weaponNames[weaponId] ?? 'm24';
+    const name = team ? 'militia' : 'regular', weapon = weaponAsset(weaponId);
     const body = this.templates.get(name), gun = this.templates.get(weapon);
     const kit = this.templates.get(kitNames[name]);
     if (!body || !gun || !kit) {

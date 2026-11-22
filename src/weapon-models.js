@@ -1,7 +1,7 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
-const urls = {
+export const weaponModelUrls = {
   ak12: new URL('./assets/infantry/ak12m.glb', import.meta.url).href,
   ar416: new URL('./assets/infantry/ar416.glb', import.meta.url).href,
   mcx9: new URL('./assets/infantry/mcx9.glb', import.meta.url).href,
@@ -38,7 +38,7 @@ let pending;
 export function loadWeaponModels() {
   if (pending) return pending;
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-  pending = Promise.all(Object.entries(urls).map(async ([id, url]) => {
+  pending = Promise.all(Object.entries(weaponModelUrls).map(async ([id, url]) => {
     try {
       const {scene} = await loader.loadAsync(url);
       if (!animatedParts[id].every(part => scene.getObjectByName(part))) {

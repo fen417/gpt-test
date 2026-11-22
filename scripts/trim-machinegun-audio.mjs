@@ -6,7 +6,7 @@ import {mkdirSync,statSync} from 'node:fs';
 import {join} from 'node:path';
 
 const directory='src/assets/audio/gunshots';
-const source=join(directory,'machinegun.ogg');
+const source='art-source/audio/gunshots/machinegun.ogg';
 const output=(index,ext)=>join(directory,`machinegun-shot-${index}.${ext}`);
 function run(bin,args){
   const result=spawnSync(bin,args,{encoding:null,maxBuffer:64*1024*1024});

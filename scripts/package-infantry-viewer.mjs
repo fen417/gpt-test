@@ -29,6 +29,5 @@ await Promise.all([
   copy('node_modules/meshoptimizer/LICENSE.md', 'licenses/Meshoptimizer.txt'),
   copy('scripts/viewer/Basis-Universal.txt', 'licenses/Basis-Universal.txt'),
   copy('src/assets/infantry/SOURCES.md', 'licenses/Источники.md'),
-  copy('src/assets/infantry/LICENSE-steel-tide.txt', 'licenses/Operation-Steel-Tide.txt'),
 ]);
 console.log(path(output));

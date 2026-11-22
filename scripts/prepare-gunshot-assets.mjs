@@ -6,7 +6,7 @@ import { resolve, join } from 'node:path';
 const input=process.argv[2];
 if(!input)throw new Error('Usage: node scripts/prepare-gunshot-assets.mjs <curated-directory>');
 const destination=resolve('src/assets/audio/gunshots');
-const ar='assault_rifles/ar/',pi='pistols/pi_hand/',sr='sniper_rifles/sr/';
+const ar='assault_rifles/ar/',pi='pistols/pi_hand/';
 const reports=[
   ['rifle-light-1',ar+'ar_full_near_01.wav',4.74,.66,.16,.72],
   ['rifle-light-2',ar+'ar_full_near_01.wav',7.265,.66,.16,.72],
@@ -15,13 +15,6 @@ const reports=[
   ['smg-1',ar+'ar_full_near_01.wav',4.74,.34,.13,.65],
   ['smg-2',ar+'ar_full_near_01.wav',7.265,.34,.13,.65],
   ['smg-suppressed-1',pi+'pi_hand_single_near_03.wav',0,.55,.10,.68],
-  // Stop before the unrelated broadband noise later in the range recording.
-  ['lmg-1','machine_guns/mg/mg_single_near_01.wav',2.06,.28,.16,.72],
-  ['lmg-2','machine_guns/mg/mg_single_near_01.wav',4.0,.28,.16,.72],
-  ['marksman-1',sr+'sr_single_near_01.wav',0,.59,.16,.72],
-  ['marksman-2',sr+'sr_single_near_02.wav',0,.59,.16,.72],
-  ['sniper-1',sr+'sr_single_near_01.wav',.685,.99,.19,.76],
-  ['sniper-2',sr+'sr_single_near_02.wav',.685,.99,.19,.76],
   ['pistol-1','pistols/pi_rev/pi_rev_single_near_04.wav',0,.9,.14,.68],
   ['pistol-2','pistols/pi_rev/pi_rev_single_near_04.wav',1.60,.9,.14,.68],
   ['pistol-heavy-1',pi+'pi_hand_single_near_01.wav',0,.321,.17,.72],

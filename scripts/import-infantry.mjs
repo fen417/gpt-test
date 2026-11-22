@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Canvas, loadImage } from '@napi-rs/canvas';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRTextureBasisu } from '@gltf-transform/extensions';
-import { dedup, join, joinPrimitives, meshopt, prune, simplify, weld } from '@gltf-transform/functions';
+import { dedup, joinPrimitives, meshopt, prune, simplify } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import { paintRegularUniform } from './infantry-camouflage.mjs';
@@ -15,12 +15,6 @@ const revision = '130ac2a5c856401ec36e7d35afcfefe40c5801f4';
 const files = {
   soldier: '6f229176b1ca49ff33605718ebfcca7fcee8f65d6d311ce3c86693df9310d2d7',
   soldier_tac: 'fe02bc307077d7a5a74069d085893988d93751495871c84082256e60bf9bfc9e',
-  m4a1: '9a429c5973b2b682847f0fc87550d052683c6c26780329bce7bd8a7d1f7e7677',
-  ak47: 'b5ff1d175a7c6d6b3f49c83d4147d7f0830f8f0584231e3e5d30f4e8adde2c64',
-  mp5a5: '55a33356f659cc9a6ec68fe3de68a4b3d3c63ddafcc45fe918db1cc9ffbf1bdf',
-  m24: 'f057513b5df9b90a43d3129fee7cbfefbfbf3415c85c822b07adb39979650454',
-  p226: '579cb38e8f861ecac5b7c7739946c4620046fffaf94ee5e073cb69b913db72fc',
-  m1911: '08b5dc8d4abc14b88b6728f2b4eb007284da54adc30d5295dbd703e5551d3c10',
 };
 const operatorSource = {
   url: 'https://huggingface.co/datasets/allenai/objaverse/resolve/main/glbs/000-132/9e82fabf26194896b5ad4a364d864eab.glb',
@@ -33,9 +27,8 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 await Promise.all([MeshoptEncoder.ready, MeshoptSimplifier.ready, mkdir(output, { recursive: true })]);
 
 async function readSource(name) {
-  const folder = name.startsWith('soldier') ? 'characters' : 'weapons';
   const url = name === 'operator' ? operatorSource.url :
-    'https://raw.githubusercontent.com/cktang88/3d-fps/' + revision + '/public/assets/models/' + folder + '/' + name + '.glb';
+    'https://raw.githubusercontent.com/cktang88/3d-fps/' + revision + '/public/assets/models/characters/' + name + '.glb';
   const response = await fetch(url);
   if (!response.ok) throw new Error(url + ' returned ' + response.status);
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -248,34 +241,6 @@ async function bakeBody(document, name) {
   await io.write(pathJoin(output, name + '.glb'), document);
 }
 
-async function bakeWeapon(document, name) {
-  for (const node of document.getRoot().listNodes()) if (/^SpareMagazine/.test(node.getName())) node.dispose();
-  const root = document.getRoot(), scene = root.listScenes()[0];
-  const nodes = root.listNodes().slice();
-  const magazine = nodes.find(node => node.getName() === 'Magazine');
-  const magazineMatrix = magazine && world(magazine);
-  const weapon = document.createNode('Weapon');
-  const mag = magazine && document.createNode('Magazine').setMatrix(magazineMatrix.toArray());
-  if (mag) weapon.addChild(mag);
-  scene.addChild(weapon);
-  for (const node of nodes) {
-    if (!node.getMesh()) continue;
-    let parent = node;
-    while (parent && parent !== magazine) parent = parent.getParentNode();
-    const separate = Boolean(parent);
-    const matrix = world(node);
-    if (separate) matrix.premultiply(magazineMatrix.clone().invert());
-    (separate ? mag : weapon).addChild(document.createNode().setMesh(node.getMesh()).setMatrix(matrix.toArray()));
-  }
-  for (const node of nodes) node.dispose();
-  await document.transform(dedup(), weld(), simplify({
-    simplifier: MeshoptSimplifier, ratio: name === 'ak47' ? .026 : .40, error: .035,
-  }), join(), prune());
-  await encodeTextures(document);
-  await document.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
-  await io.write(pathJoin(output, name + '.glb'), document);
-}
-
 const [motionSource, regular, militia] = await Promise.all([
   readSource('soldier'), readSource('operator'), readSource('soldier_tac'),
 ]);
@@ -285,5 +250,4 @@ retarget(motionSource, militia);
 await bakeBody(regular, 'regular');
 if (!process.argv.includes('--regular-only')) {
   await bakeBody(militia, 'militia');
-  for (const name of Object.keys(files).filter(name => !name.startsWith('soldier'))) await bakeWeapon(await readSource(name), name);
 }
