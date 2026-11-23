@@ -6,7 +6,11 @@ import {CASE_RARITIES, CASE_TYPES, FIELD_RESERVE, POLAR_CIRCUIT, getCaseType,
 
 const guestPattern=/^[a-f0-9]{64}$/;
 const welcomeCaseId='welcome-035';
-const releaseCaseIds=['release-037-1','release-037-2'];
+const releaseCaseGrants=[
+  ['release-036','release'],
+  ['release-037-1','release',POLAR_CIRCUIT],
+  ['release-037-2','release',POLAR_CIRCUIT],
+];
 const casePattern=/^(?:[A-Za-z0-9_-]{32}|m0[1-3]-(?:polar-)?[12]|welcome-035|release-036|release-037-[12])$/;
 // Existing records predate case types and always represent the Field Reserve.
 const typeOf=item=>item.caseType??FIELD_RESERVE;
@@ -158,12 +162,11 @@ export function createCaseInventory(db,env){
     async list(owner,{welcome=false,release=false}={}){
       const current=await store.get(owner);
       const welcomeDue=welcome&&!current?.cases?.[welcomeCaseId];
-      const releaseDue=release&&releaseCaseIds.some(id=>!current?.cases?.[id]);
+      const releaseDue=release&&releaseCaseGrants.some(([id])=>!current?.cases?.[id]);
       if(!welcomeDue&&!releaseDue)return view(current);
       const grants=welcomeDue?[[welcomeCaseId,'welcome']]:[];
       try{
-        return view(await grantLoginCases(owner,releaseDue?
-          [...grants,...releaseCaseIds.map(id=>[id,'release',POLAR_CIRCUIT])]:grants));
+        return view(await grantLoginCases(owner,releaseDue?[...grants,...releaseCaseGrants]:grants));
       }catch(error){
         if(!releaseDue||!permissionDenied(error))throw error;
         // An older RTDB ruleset can reject the new patch gift. Keep the
