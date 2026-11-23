@@ -32,7 +32,7 @@ async function loadPaint(id){
 export function prepareSkinProjection(root,weaponId){
   root.updateWorldMatrix(true,true);
   const rootInverse=new Matrix4().copy(root.matrixWorld).invert();
-  const point=new Vector3(),normal=new Vector3();
+  const point=new Vector3();
   const sharedBounds=new Box3(),panels=[];
   root.traverse(mesh=>{
     if(!mesh.isMesh||!paintNames.test(mesh.name)||!mesh.geometry.attributes.normal)return;
@@ -45,25 +45,71 @@ export function prepareSkinProjection(root,weaponId){
     sharedBounds.union(bounds);
     panels.push({source,world,bounds});
   });
-  for(const {source,world,bounds} of panels){
-    const {position:pos,normal:normals}=source.attributes;
-    // The M-50 atlas is laid out over the entire side. Preserve the same
-    // texel scale on the slide, shroud and grip instead of filling each part.
-    const {min,max}=weaponId==='m50'?sharedBounds:bounds;
-    const depth=Math.max(.001,max.z-min.z),height=Math.max(.001,max.y-min.y);
-    const values=new Float32Array(pos.count*2);
-    for(let i=0;i<pos.count;i++){
-      point.fromBufferAttribute(pos,i).applyMatrix4(world);
-      normal.fromBufferAttribute(normals,i).transformDirection(world);
-      values[i*2]=.025+.95*(point.z-min.z)/depth;
-      // Broaden the projection over top rails and bevels as it wraps around.
-      values[i*2+1]=.025+.95*(point.y-min.y)/height+.09*(point.x/(max.x-min.x||1))*Math.abs(normal.y);
-    }
-    // Share the original geometry and GPU buffers across both stock and
-    // painted instances. Only the extra UV attribute is new.
-    source.setAttribute('uv1',new BufferAttribute(values,2));
-    projections.set(source,true);
+  // The M-50 atlas is laid out over the entire side, at one texel scale.
+  for(const {source,world,bounds} of panels)
+    projectPaint(source,world,weaponId==='m50'?sharedBounds:bounds);
+}
+
+function projectPaint(geometry,transform,bounds){
+  const {position,normal:normals}=geometry.attributes;
+  const {min,max}=bounds;
+  const depth=Math.max(.001,max.z-min.z),height=Math.max(.001,max.y-min.y);
+  const point=new Vector3(),normal=new Vector3();
+  const values=new Float32Array(position.count*2);
+  for(let i=0;i<position.count;i++){
+    point.fromBufferAttribute(position,i).applyMatrix4(transform);
+    normal.fromBufferAttribute(normals,i).transformDirection(transform);
+    values[i*2]=.025+.95*(point.z-min.z)/depth;
+    // Broaden the projection over top rails and bevels as it wraps around.
+    values[i*2+1]=.025+.95*(point.y-min.y)/height+.09*(point.x/(max.x-min.x||1))*Math.abs(normal.y);
   }
+  // Every clone of a given stock module shares the same paint UVs.
+  geometry.setAttribute('uv1',new BufferAttribute(values,2));
+  projections.set(geometry,bounds);
+}
+
+function restorePaint(state,mesh){
+  const material=state.materials.get(mesh);
+  if(!material)return;
+  mesh.material=material.original;
+  material.painted.dispose();
+  state.materials.delete(mesh);
+}
+
+function paintParts(state,root){
+  const reward=caseReward(state.id);
+  const hero=illustrationParts[state.id];
+  root.traverse(mesh=>{
+    if(!mesh.isMesh||!projections.has(mesh.geometry)||!mesh.material.isMeshStandardMaterial||state.materials.has(mesh))return;
+    const original=mesh.material,painted=original.clone();
+    painted.map=hero&&mesh.name!==hero?companionPaint(state.texture):state.texture;
+    painted.color.set(0xffffff);
+    painted.vertexColors=false;
+    painted.roughnessMap=null;
+    painted.metalnessMap=null;
+    Object.assign(painted,finishes[reward.rarity]);
+    originalMaterials.set(painted,original);
+    mesh.material=painted;
+    state.materials.set(mesh,{original,painted});
+  });
+}
+
+export function updateStockSkin(root,previous,part){
+  if(part){
+    const original=root.getObjectByName('Stock');
+    const replacement=part.getObjectByName(part.name+'_Frame');
+    const bounds=projections.get(original?.geometry);
+    if(bounds&&replacement?.isMesh&&replacement.geometry.attributes.normal&&!projections.has(replacement.geometry)){
+      root.updateWorldMatrix(true,false);
+      replacement.updateWorldMatrix(true,false);
+      const transform=new Matrix4().copy(root.matrixWorld).invert().multiply(replacement.matrixWorld);
+      projectPaint(replacement.geometry,transform,bounds);
+    }
+  }
+  const state=instances.get(root);
+  if(!state?.texture)return;
+  previous?.traverse(mesh=>restorePaint(state,mesh));
+  if(part)paintParts(state,part);
 }
 
 export function setWeaponSkin(root,weaponId,rewardId){
@@ -73,33 +119,18 @@ export function setWeaponSkin(root,weaponId,rewardId){
   let state=instances.get(root);
   if(!state){
     if(!id)return Promise.resolve();
-    state={id:null,materials:[],pending:null};
+    state={id:null,materials:new Map(),pending:null,texture:null};
     instances.set(root,state);
   }
   if(state.id===id)return state.pending??Promise.resolve();
   state.id=id;
-  for(const [mesh,original,painted] of state.materials){
-    mesh.material=original;
-    painted.dispose();
-  }
-  state.materials.length=0;
+  state.texture=null;
+  for(const mesh of state.materials.keys())restorePaint(state,mesh);
   if(!id){state.pending=null;return Promise.resolve();}
   const pending=loadPaint(id).then(texture=>{
     if(state.pending!==pending)return;
-    const hero=illustrationParts[id];
-    root.traverse(mesh=>{
-      if(!mesh.isMesh||!projections.has(mesh.geometry)||!mesh.material.isMeshStandardMaterial)return;
-      const original=mesh.material,painted=original.clone();
-      painted.map=hero&&mesh.name!==hero?companionPaint(texture):texture;
-      painted.color.set(0xffffff);
-      painted.vertexColors=false;
-      painted.roughnessMap=null;
-      painted.metalnessMap=null;
-      Object.assign(painted,finishes[reward.rarity]);
-      originalMaterials.set(painted,original);
-      mesh.material=painted;
-      state.materials.push([mesh,original,painted]);
-    });
+    state.texture=texture;
+    paintParts(state,root);
   }).catch(error=>{
     if(state.pending===pending){state.id=null;state.pending=null;}
     throw error;

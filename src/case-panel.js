@@ -256,7 +256,7 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
     tape.style.transform=end;
     if(!roulette.clientWidth||matchMedia('(prefers-reduced-motion: reduce)').matches)return Promise.resolve();
     const motion=tape.animate([{transform:'translateX(0)'},{transform:end}],{
-      duration:3650,easing:'cubic-bezier(.12,.66,.14,1)',fill:'none',
+      duration:8395,easing:'cubic-bezier(.12,.66,.14,1)',fill:'none',
     });
     animation=motion;
     return motion.finished.catch(()=>{}).finally(()=>{

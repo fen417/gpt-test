@@ -1,7 +1,7 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { LONG_BARREL_ID, WEAPON_MODULES } from '../shared/weapon-modules.js';
-import {prepareSkinProjection,unpaintedMaterial} from './weapon-skins.js';
+import {prepareSkinProjection,unpaintedMaterial,updateStockSkin} from './weapon-skins.js';
 
 export const weaponModelUrls = {
   ak12: new URL('./assets/infantry/ak12m.glb', import.meta.url).href,
@@ -173,5 +173,6 @@ export function setWeaponModule(root,slot,part) {
     socket.add(part);
     mountedParts.set(socket,{part,stock});
   }
+  if(slot==='stock')updateStockSkin(root,previous?.part,part);
   return true;
 }
