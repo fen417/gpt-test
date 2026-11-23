@@ -3,7 +3,7 @@ const characters={
   orlov:'Лейтенант Орлов · «Маяк»',harranti:'Полковник Харранти',bale:'Ник Бэйл · «Сокол-8»',
   holt:'Капитан Холт · «Сокол-1»',grey:'«Старик» Грей · «Сокол-4»',
   vos:'Ирвин Вос · «Сокол-7»',timo:'Тимо Рэй · «Сокол-7»',rafa:'Рафа Ким · «Сокол-7»',
-  taver:'Сержант Тавер',nyoro:'Сапёр Ньоро',black:'Сапёр Блэк',marten:'Рядовой Ян Мартен',
+  taver:'Сержант Тавер',nyoro:'Сапёр Ньоро',black:'Сапёр Блэк',marten:'Рядовой Ян Мартен',gunner:'Бортстрелок «Грач»',
 };
 const knownTankCrew={'sokol-1':'holt','sokol-4':'grey','sokol-8':'bale'};
 
@@ -23,7 +23,7 @@ export function campaignOutcome(state){
     if(crew&&v.hp<=0)fallen.push(characters[crew]);
   }
   const count=state.vehicles.filter(vehicle=>vehicle.team===0&&vehicle.type==='tank'&&vehicle.hp>0).length;
-  const tanks=missionId==='m01'?null:missionId==='m02'?tanksAlive??count:count;
+  const tanks=missionId==='m01'||missionId==='m04'?null:missionId==='m02'?tanksAlive??count:count;
   return {tanks,fallen:[...new Set(fallen)]};
 }
 

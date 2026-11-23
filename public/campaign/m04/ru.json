@@ -1,58 +1,247 @@
 {
   "speakers": {
-    "harranti": "Полковник Харранти",
-    "orlov": "Лейтенант Орлов · Маяк",
+    "orlov": "Лейтенант Орлов · «Маяк»",
+    "marten": "Ян Мартен",
+    "pilot": "Лида Соколова · «Ветер»",
+    "gunner": "Бортстрелок «Грач»",
+    "wing": "Напарник",
     "duran": "Сержант Дюран",
-    "kane": "Кейн",
-    "bruno": "Бруно Валь",
-    "quartermaster": "Квартирмейстер",
-    "taver": "Сержант Тавер",
-    "dargo": "Майор Дарго · перехват",
-    "vos": "Ирвин Вос · Сокол-7",
-    "marten": "Ян Мартен"
+    "lasko": "Тео Ласко",
+    "medic": "Санитар",
+    "dispatcher": "Диспетчер",
+    "bruno": "Бруно Валь"
   },
   "objectives": {
-    "briefing": "Брифинг операции «Переправа»",
-    "issue": "Получить ПТ-90",
-    "ridgeScene": "Выход на гряду",
-    "ridge": "Спуститесь к полю танков",
-    "field": "Уничтожьте танки на западном берегу",
-    "assault": "Перейдите мост и захватите гнездо",
-    "prepare": "Подготовьте гнездо к контратаке",
-    "defence": "Держите гнездо, пока сапёры разминируют мост",
-    "finale": "Колонна переходит Сафру"
+    "approach": "Осмотрите правый борт",
+    "right": "Прикройте союзный вертолёт",
+    "transfer": "Займите левый миниган",
+    "orbit": "Прикройте посадку у депо",
+    "landing": "Удерживайте посадочный двор",
+    "disembark": "Покиньте вертолёт",
+    "depot": "Проведите группу к станции",
+    "station": "Найдите диспетчера",
+    "freight": "Выведите группу через грузовой двор",
+    "canal": "Включите питание водомерной станции",
+    "relay": "Передайте схему по частоте «Маяк»",
+    "tunnel": "Выведите группу в служебный тоннель",
+    "finale": "Связь с бригадой восстановлена"
   },
   "lines": {
-    "harranti.brief": {"speaker":"harranti","duration":10.9,"text":"Сафра. Шестьдесят метров воды и одна переправа. Эль-Каср цел, но заминирован. Четыре танка Восточного корпуса держат западный берег.","audio":"voice/harranti.brief.ogg"},
-    "orlov.brief": {"speaker":"orlov","duration":9.21,"text":"Полковник бы сказал проще. У нас одна переправа. Мост Эль-Каср цел, но заминирован, а поле перед ним держат танки корпуса.","audio":"voice/orlov.brief.ogg"},
-    "orlov.field": {"speaker":"orlov","duration":9,"text":"ПТ-90. Шесть выстрелов, ещё есть ящики в поле. Бейте с борта, в корму или сверху. Пехота постарается прижать вас к земле.","audio":"voice/orlov.field.ogg"},
-    "orlov.documents": {"speaker":"orlov","duration":6.7,"text":"Документы из Тель-Мазина пригодились. Все четыре танка отмечены, включая машину на северном фланге.","audio":"voice/orlov.documents.ogg"},
-    "orlov.blind": {"speaker":"orlov","duration":6.21,"text":"Три машины видим. Четвёртая где-то на фланге. Следите за арыком и не стойте на месте.","audio":"voice/orlov.blind.ogg"},
-    "orlov.window": {"speaker":"orlov","duration":8.71,"text":"После танков — через мост, забрать дот на восточном берегу. Сапёрам нужно восемь минут. Пока они работают, держите гнездо.","audio":"voice/orlov.window.ogg"},
-    "quartermaster.issue": {"speaker":"quartermaster","duration":6.3,"text":"Мартен, держи ПТ-90 и две коробки. За спиной должно быть чисто, особенно в траншее.","audio":"voice/quartermaster.issue.ogg"},
-    "duran.joke": {"speaker":"duran","duration":5.61,"text":"Если труба тяжёлая, считай, что это трость. На обратном пути она будет полегче.","audio":"voice/duran.joke.ogg"},
-    "orlov.absent": {"speaker":"orlov","duration":7.9,"text":"В Тель-Мазине мы потеряли людей. Резерв займёт свободные места. На переправе держимся вместе.","audio":"voice/orlov.absent.ogg"},
-    "orlov.ridge": {"speaker":"orlov","duration":7.21,"text":"Кейн, смотри за грядой. Остальные — рассредоточиться. Как увидите, куда смотрит башня, уходите ей вбок.","audio":"voice/orlov.ridge.ogg"},
-    "orlov.first": {"speaker":"orlov","duration":5.45,"text":"Выстрел! С гряды вниз, к воронкам. Пока он заряжается, меняйте позицию.","audio":"voice/orlov.first.ogg"},
-    "orlov.hunters": {"speaker":"orlov","duration":4.73,"text":"Пехота идёт через поле. Держите фланги. Мартен, танки на тебе.","audio":"voice/orlov.hunters.ogg"},
-    "orlov.smoke": {"speaker":"orlov","duration":6.3,"text":"Западный берег чист. Дым на мосту будет через двадцать секунд. Сапёры идут следом.","audio":"voice/orlov.smoke.ogg"},
-    "orlov.cross": {"speaker":"orlov","duration":5.98,"text":"Дым лёг. Через мост, к западному входу в дот. На подступах два пулемёта.","audio":"voice/orlov.cross.ogg"},
-    "taver.prepare": {"speaker":"taver","duration":6.8,"text":"Начинаем через минуту. Проверьте ленты. В бункере ещё есть радиокод корпуса, заберите, пока можете.","audio":"voice/taver.prepare.ogg"},
-    "taver.work": {"speaker":"taver","duration":5.21,"text":"Мины вижу. Начали разминирование. Мартен, держи восточную сторону.","audio":"voice/taver.work.ogg"},
-    "taver.loss": {"speaker":"taver","duration":4.89,"text":"Есть потеря. Работаем медленнее, нам нужно ещё сорок секунд.","audio":"voice/taver.loss.ogg"},
-    "orlov.wave1": {"speaker":"orlov","duration":4.16,"text":"Через десять секунд пехота с восточной дороги. Занять амбразуру.","audio":"voice/orlov.wave1.ogg"},
-    "orlov.wave2": {"speaker":"orlov","duration":4.72,"text":"Техничка на дороге. Шесть человек в северном арыке. У вас десять секунд.","audio":"voice/orlov.wave2.ogg"},
-    "orlov.wave3": {"speaker":"orlov","duration":5.94,"text":"Два танка с востока. Миномёт накрывает траншею и мост. Уходите от отметок.","audio":"voice/orlov.wave3.ogg"},
-    "orlov.wave4": {"speaker":"orlov","duration":5.49,"text":"Контратака со всех трёх направлений. Следите за южным оврагом и северным арыком.","audio":"voice/orlov.wave4.ogg"},
-    "orlov.wave5": {"speaker":"orlov","duration":4.85,"text":"Ещё два танка, идут прямо к мосту. Вос ждёт на западном берегу.","audio":"voice/orlov.wave5.ogg"},
-    "dargo.tanks": {"speaker":"dargo","duration":4.69,"text":"Машины вперёд. Дот не обходить. Берите мост, пока он закрыт.","audio":"voice/dargo.tanks.ogg"},
-    "orlov.supply": {"speaker":"orlov","duration":4.72,"text":"Поднесли ленты и шесть выстрелов для ПТ-90, ящики в гнезде.","audio":"voice/orlov.supply.ogg"},
-    "orlov.near": {"speaker":"orlov","duration":3.13,"text":"Трое у дота! Не отдавайте гнездо.","audio":"voice/orlov.near.ogg"},
-    "orlov.wait": {"speaker":"orlov","duration":5.67,"text":"Мины сняты, но на подходах танки. Колонна подождёт, пока вы расчистите дорогу.","audio":"voice/orlov.wait.ogg"},
-    "marten.code": {"speaker":"marten","duration":3.48,"text":"Радиокод у меня. Передам в штаб после боя.","audio":"voice/marten.code.ogg"},
-    "vos.move": {"speaker":"vos","duration":3.95,"text":"Переправа чиста. Двигаемся по одному. Держись, Мартен.","audio":"voice/vos.move.ogg"},
-    "vos.thanks": {"speaker":"vos","duration":2.54,"text":"Мартен. Мы тебе должны.","audio":"voice/vos.thanks.ogg"},
-    "duran.final": {"speaker":"duran","duration":3.81,"text":"Видишь? Трость можно сдать. Дальше поедем.","audio":"voice/duran.final.ogg"},
-    "orlov.final": {"speaker":"orlov","duration":5.53,"text":"Мост наш. Отметьте работу сапёров в журнале. Дальше — к карьеру.","audio":"voice/orlov.final.ogg"}
+    "pilot.city": {
+      "speaker": "pilot",
+      "duration": 6.29,
+      "text": "Нахар впереди. Мартен, осмотрись справа. За крышами увидишь трамвайную линию.",
+      "audio": "voice/pilot.city.ogg"
+    },
+    "orlov.inbound": {
+      "speaker": "orlov",
+      "duration": 10.36,
+      "text": "Карта Харранти указывает на железнодорожный узел. Диспетчер знает маршруты топливной колонны. Нахар перестал отвечать. Заберите его.",
+      "audio": "voice/orlov.inbound.ogg"
+    },
+    "gunner.ready": {
+      "speaker": "gunner",
+      "duration": 5.59,
+      "text": "Левый борт чист. Правые, второй вертолёт ваш. Следите за крышами.",
+      "audio": "voice/gunner.ready.ogg"
+    },
+    "pilot.contact": {
+      "speaker": "pilot",
+      "duration": 4.59,
+      "text": "Впереди огонь с крыш. Правый борт, прикройте второй вертолёт!",
+      "audio": "voice/pilot.contact.ogg"
+    },
+    "wing.blue": {
+      "speaker": "wing",
+      "duration": 3.79,
+      "text": "Справа, у синего бака! ПТ-90!",
+      "audio": "voice/wing.blue.ogg"
+    },
+    "duran.blue": {
+      "speaker": "duran",
+      "duration": 3.59,
+      "text": "Справа, у синего бака! ПТ-90!",
+      "audio": "voice/duran.blue.ogg"
+    },
+    "pilot.rocket": {
+      "speaker": "pilot",
+      "duration": 3.19,
+      "text": "Ракета в воздухе! Держитесь за борт!",
+      "audio": "voice/pilot.rocket.ogg"
+    },
+    "pilot.hull": {
+      "speaker": "pilot",
+      "duration": 5.19,
+      "text": "Есть попадание. Борт ещё держится. Не дайте им выстрелить снова!",
+      "audio": "voice/pilot.hull.ogg"
+    },
+    "pilot.cross": {
+      "speaker": "pilot",
+      "duration": 4.69,
+      "text": "Заходим вдоль трамвайной линии. Внимание, огонь слева!",
+      "audio": "voice/pilot.cross.ogg"
+    },
+    "wing.transfer": {
+      "speaker": "wing",
+      "duration": 3.04,
+      "text": "Грач не дышит. Мартен, за левый!",
+      "audio": "voice/wing.transfer.ogg"
+    },
+    "duran.transfer": {
+      "speaker": "duran",
+      "duration": 2.85,
+      "text": "Грач не дышит. Мартен, за левый!",
+      "audio": "voice/duran.transfer.ogg"
+    },
+    "pilot.hold": {
+      "speaker": "pilot",
+      "duration": 4.79,
+      "text": "Держу круг. Мартен, займи левый миниган, когда будешь готов.",
+      "audio": "voice/pilot.hold.ogg"
+    },
+    "marten.seated": {
+      "speaker": "marten",
+      "duration": 3.27,
+      "text": "Миниган мой. Держи левым бортом к двору.",
+      "audio": "voice/marten.seated.ogg"
+    },
+    "pilot.orbit": {
+      "speaker": "pilot",
+      "duration": 5.79,
+      "text": "Депо внутри круга. Сначала ПТ-90, потом очистите двор.",
+      "audio": "voice/pilot.orbit.ogg"
+    },
+    "pilot.again": {
+      "speaker": "pilot",
+      "duration": 5.09,
+      "text": "Ещё один проход. Смотрите на крышу станции и на сигнальную будку.",
+      "audio": "voice/pilot.again.ogg"
+    },
+    "pilot.backup": {
+      "speaker": "pilot",
+      "duration": 4.19,
+      "text": "Основной двор простреливают. Сажусь в ремонтном дворе.",
+      "audio": "voice/pilot.backup.ogg"
+    },
+    "pilot.land": {
+      "speaker": "pilot",
+      "duration": 3.79,
+      "text": "Иду на посадку. Оставайтесь на местах до касания.",
+      "audio": "voice/pilot.land.ogg"
+    },
+    "pilot.clear": {
+      "speaker": "pilot",
+      "duration": 4.49,
+      "text": "На земле. Санитар, первым. Мартен, выходи за ним.",
+      "audio": "voice/pilot.clear.ogg"
+    },
+    "lasko.down": {
+      "speaker": "lasko",
+      "duration": 2.77,
+      "text": "Я снаружи. Давайте к станции!",
+      "audio": "voice/lasko.down.ogg"
+    },
+    "medic.down": {
+      "speaker": "medic",
+      "duration": 2.77,
+      "text": "Я снаружи. Давайте к станции!",
+      "audio": "voice/medic.down.ogg"
+    },
+    "orlov.routes": {
+      "speaker": "orlov",
+      "duration": 6.36,
+      "text": "К станции ведут платформы и ремонтный зал. Вход с платформы прямо под часами.",
+      "audio": "voice/orlov.routes.ogg"
+    },
+    "bruno.route": {
+      "speaker": "bruno",
+      "duration": 6.89,
+      "text": "В бумагах из Тель-Мазина есть план. Служебная дверь слева от платформ. Откроем и выйдем к лестнице.",
+      "audio": "voice/bruno.route.ogg"
+    },
+    "wing.route": {
+      "speaker": "wing",
+      "duration": 6.69,
+      "text": "В бумагах из Тель-Мазина есть план. Служебная дверь слева от платформ. За ней лестница.",
+      "audio": "voice/wing.route.ogg"
+    },
+    "orlov.dispatch": {
+      "speaker": "orlov",
+      "duration": 5.96,
+      "text": "Диспетчерская на втором уровне. Осмотрите пульт и поднимите диспетчера.",
+      "audio": "voice/orlov.dispatch.ogg"
+    },
+    "dispatcher.live": {
+      "speaker": "dispatcher",
+      "duration": 6.29,
+      "text": "Я записал их позывные. Возьмите схему. Передатчик стоит у канала, за мостом.",
+      "audio": "voice/dispatcher.live.ogg"
+    },
+    "marten.copy": {
+      "speaker": "marten",
+      "duration": 5.49,
+      "text": "Есть журнал и голосовая запись. Координаты совпадают. Идём к передатчику.",
+      "audio": "voice/marten.copy.ogg"
+    },
+    "orlov.channel": {
+      "speaker": "orlov",
+      "duration": 6.76,
+      "text": "Внизу связь пропадает. Перейдите служебный мост и включите питание водомерной станции.",
+      "audio": "voice/orlov.channel.ogg"
+    },
+    "marten.power": {
+      "speaker": "marten",
+      "duration": 3.19,
+      "text": "Питание есть. Перехожу к передатчику.",
+      "audio": "voice/marten.power.ogg"
+    },
+    "orlov.send": {
+      "speaker": "orlov",
+      "duration": 4.76,
+      "text": "Слышу вас. Держите канал открытым, пока принимаю схему.",
+      "audio": "voice/orlov.send.ogg"
+    },
+    "wing.pressure": {
+      "speaker": "wing",
+      "duration": 3.49,
+      "text": "Подходят со стороны канала! Прикройте питание!",
+      "audio": "voice/wing.pressure.ogg"
+    },
+    "duran.pressure": {
+      "speaker": "duran",
+      "duration": 3.39,
+      "text": "Подходят со стороны канала! Прикройте питание!",
+      "audio": "voice/duran.pressure.ogg"
+    },
+    "wing.broken": {
+      "speaker": "wing",
+      "duration": 3.99,
+      "text": "Щит выбило! Мартен, питание в служебной комнате!",
+      "audio": "voice/wing.broken.ogg"
+    },
+    "duran.broken": {
+      "speaker": "duran",
+      "duration": 3.99,
+      "text": "Щит выбило! Мартен, питание в служебной комнате!",
+      "audio": "voice/duran.broken.ogg"
+    },
+    "orlov.received": {
+      "speaker": "orlov",
+      "duration": 6.06,
+      "text": "Принял схему. Топливо уходит на карьер. Выводи людей через служебный тоннель.",
+      "audio": "voice/orlov.received.ogg"
+    },
+    "dispatcher.gate": {
+      "speaker": "dispatcher",
+      "duration": 4.79,
+      "text": "Я открою калитку. Тоннель за релейной будкой, держитесь стены.",
+      "audio": "voice/dispatcher.gate.ogg"
+    },
+    "marten.exit": {
+      "speaker": "marten",
+      "duration": 3.89,
+      "text": "Мы в тоннеле. Отряд вывожу. Встретимся у карьера.",
+      "audio": "voice/marten.exit.ogg"
+    }
   }
 }

@@ -1,48 +1,430 @@
 {
-  "version": 1,
+  "version": 2,
   "id": "m04",
-  "title": "Мост",
-  "map": "safra",
-  "scenes": {"briefing": 70, "issue": 20, "ridge": 15, "finale": 40},
-  "difficulty": {
-    "recruit": {"aim": 1.6, "reload": 6, "defence": 360, "hunters": 120, "crates": 4},
-    "regular": {"aim": 1.2, "reload": 5, "defence": 480, "hunters": 90, "crates": 3},
-    "veteran": {"aim": 0.9, "reload": 4, "defence": 570, "hunters": 60, "crates": 2}
+  "title": "Под крышами",
+  "map": "nahar",
+  "audioBudgets": {
+    "voice": 1000000
   },
-  "field": {
-    "startAt": 90,
-    "flankAt": 90,
-    "tanks": [
-      {"at": [-110, 70], "yaw": 1.57},
-      {"at": [-132, -51], "yaw": 2.08},
-      {"at": [-85, 11], "yaw": 1.8, "patrol": [-60, 39]},
-      {"at": [-60, -90], "yaw": 0.95}
+  "music": {
+    "flight": "music/flight.ogg"
+  },
+  "flight": {
+    "approach": [
+      [
+        0,
+        -925,
+        -224,
+        115
+      ],
+      [
+        12,
+        -760,
+        -212,
+        104
+      ],
+      [
+        29,
+        -566,
+        -189,
+        76
+      ],
+      [
+        43,
+        -424,
+        -172,
+        54
+      ]
     ],
-    "caches": [[-188, -9], [-147, 40], [-94, -35], [-172, 83]],
-    "entrenched": [[-177, -10], [-142, -39], [-128, 40], [-103, 61], [-119, -29], [-68, 24], [-74, -67]],
-    "hunterEntries": [[-92, 86], [-99, -77], [-42, 26]]
-  },
-  "assault": {
-    "smokeDelay": 20,
-    "positions": [[59,-6],[61,-16],[68,-4],[68,-17],[70,-9],[73,-12],[76,-17],[79,-3],[82,-11],[85,-20],[90,-6],[90,8]]
-  },
-  "defence": {
-    "prepare": 60,
-    "casualtyPenalty": 40,
-    "resupplyAt": 255,
-    "mortarInterval": 12,
-    "waves": [
-      {"at": 30, "road": 10, "north": 0, "south": 0, "tanks": 0, "technical": false},
-      {"at": 120, "road": 6, "north": 6, "south": 0, "tanks": 0, "technical": true},
-      {"at": 210, "road": 8, "north": 0, "south": 0, "tanks": 2, "technical": false},
-      {"at": 315, "road": 6, "north": 4, "south": 4, "tanks": 0, "technical": true},
-      {"at": 405, "road": 6, "north": 0, "south": 0, "tanks": 2, "technical": false}
+    "right": [
+      [
+        0,
+        -424,
+        -172,
+        54
+      ],
+      [
+        19,
+        -334,
+        -171,
+        50
+      ],
+      [
+        40,
+        -231,
+        -163,
+        48
+      ],
+      [
+        62,
+        -130,
+        -155,
+        51
+      ],
+      [
+        83,
+        -18,
+        -142,
+        53
+      ],
+      [
+        105,
+        112,
+        -124,
+        61
+      ]
+    ],
+    "turn": [
+      [
+        0,
+        112,
+        -124,
+        61
+      ],
+      [
+        4,
+        158,
+        -105,
+        68
+      ],
+      [
+        9,
+        192,
+        -68,
+        72
+      ],
+      [
+        15,
+        146,
+        18,
+        68
+      ],
+      [
+        20,
+        146,
+        -9,
+        64
+      ]
+    ],
+    "orbit": {
+      "x": 0,
+      "z": -9,
+      "rx": 146,
+      "rz": 113,
+      "height": 64,
+      "seconds": 48
+    },
+    "airWaves": [
+      {
+        "at": 2,
+        "posts": [
+          [
+            "blue",
+            2,
+            true
+          ],
+          [
+            "line",
+            3,
+            true
+          ]
+        ]
+      },
+      {
+        "at": 48,
+        "posts": [
+          [
+            "arcade",
+            3,
+            true
+          ],
+          [
+            "corner",
+            3,
+            true
+          ],
+          [
+            "balcony",
+            3,
+            true
+          ]
+        ]
+      }
+    ],
+    "orbitWaves": [
+      {
+        "at": 1,
+        "posts": [
+          [
+            "siding",
+            3,
+            true
+          ],
+          [
+            "station",
+            3,
+            true
+          ]
+        ]
+      },
+      {
+        "at": 37,
+        "posts": [
+          [
+            "signal",
+            3,
+            true
+          ],
+          [
+            "foundry",
+            3,
+            true
+          ]
+        ]
+      }
     ]
   },
-  "music": {"briefing":"music/briefing.ogg","field":"music/field.ogg","defence":"music/defence.ogg"},
-  "launcher": {"speed": 160, "damage": 700, "reload": 3.5, "range": 150, "capacity": 8},
-  "machineGun": {
-    "range": 300, "damage": 28, "interval": 0.1, "projectileSpeed": 700, "capacity": 200,
-    "reload": 5, "barrelChange": 4, "barrels": 3, "heatPerSecond": 0.08, "coolPerSecond": 0.05
+  "difficulty": {
+    "recruit": {
+      "aimSeconds": 5.2,
+      "damage": 0.78,
+      "hold": 52
+    },
+    "regular": {
+      "aimSeconds": 3.8,
+      "damage": 1,
+      "hold": 67
+    },
+    "veteran": {
+      "aimSeconds": 2.75,
+      "damage": 1.22,
+      "hold": 81
+    }
+  },
+  "ground": {
+    "depot": [
+      [
+        -91,
+        -3
+      ],
+      [
+        -77,
+        31
+      ],
+      [
+        -60,
+        39
+      ],
+      [
+        -44,
+        26
+      ],
+      [
+        -30,
+        6
+      ],
+      [
+        -12,
+        18
+      ],
+      [
+        9,
+        6
+      ],
+      [
+        18,
+        -16
+      ]
+    ],
+    "station": [
+      [
+        35,
+        21
+      ],
+      [
+        30,
+        36,
+        3.12
+      ],
+      [
+        9,
+        28
+      ],
+      [
+        41,
+        38
+      ],
+      [
+        36,
+        39,
+        3.12
+      ],
+      [
+        31,
+        48
+      ],
+      [
+        48,
+        36
+      ],
+      [
+        9,
+        40
+      ]
+    ],
+    "freight": [
+      [
+        48,
+        66
+      ],
+      [
+        70,
+        63
+      ],
+      [
+        76,
+        78
+      ],
+      [
+        81,
+        53
+      ],
+      [
+        92,
+        85
+      ],
+      [
+        39,
+        72
+      ],
+      [
+        66,
+        36
+      ]
+    ],
+    "canal": [
+      [
+        110,
+        143
+      ],
+      [
+        127,
+        148
+      ],
+      [
+        143,
+        141
+      ],
+      [
+        161,
+        154
+      ],
+      [
+        98,
+        145
+      ],
+      [
+        139,
+        178
+      ],
+      [
+        166,
+        174
+      ]
+    ],
+    "relay": [
+      [
+        [
+          98,
+          147
+        ],
+        [
+          112,
+          143
+        ],
+        [
+          124,
+          143
+        ],
+        [
+          150,
+          143
+        ],
+        [
+          161,
+          146
+        ]
+      ],
+      [
+        [
+          170,
+          183
+        ],
+        [
+          164,
+          175
+        ],
+        [
+          154,
+          181
+        ],
+        [
+          172,
+          160
+        ],
+        [
+          179,
+          172
+        ],
+        [
+          166,
+          150
+        ]
+      ],
+      [
+        [
+          102,
+          140
+        ],
+        [
+          127,
+          144
+        ],
+        [
+          143,
+          138
+        ],
+        [
+          161,
+          162
+        ],
+        [
+          162,
+          179
+        ]
+      ]
+    ],
+    "tunnel": [
+      [
+        169,
+        182
+      ],
+      [
+        184,
+        181
+      ],
+      [
+        196,
+        185
+      ],
+      [
+        191,
+        208
+      ],
+      [
+        213,
+        210
+      ]
+    ]
   }
 }

@@ -1,20 +1,23 @@
-import {CampaignSession,readCampaignSave} from './session.js';
+import {CampaignSession,hasOldMission4Save,readCampaignSave} from './session.js';
 import {CampaignPresentation} from './presentation.js';
 import {SIDEARMS,WEAPONS} from '../../shared/world.js';
 import {describeCampaignOutcome} from './outcome.js';
 import {CASE_TYPES,campaignCaseReward} from '../../shared/cases.js';
 import {campaignCatalog,readCampaignProgress,saveCampaignProgress,setCampaignDifficulty,
-  campaignStorageWarning,campaignMissionStatus,canStartCampaignMission} from './progress.js';
+  campaignStorageWarning,campaignMissionStatus,campaignRecordKey,canStartCampaignMission} from './progress.js';
 import './style.css';
 import './map-screen.css';
 
 const cache=new Map();
 let dialog;
 export async function campaignData(missionId='m01'){
-  if(!campaignCatalog.missions.some(m=>m.id===missionId&&m.implemented))throw Error('Эта миссия ещё не готова.');
+  const mission=campaignCatalog.missions.find(m=>m.id===missionId&&m.implemented);
+  if(!mission)throw Error('Эта миссия ещё не готова.');
   if(cache.has(missionId))return cache.get(missionId);
   const pending=Promise.all(['mission.json','ru.json'].map(async file=>{
-    const r=await fetch(new URL(`${import.meta.env.BASE_URL}campaign/${missionId}/${file}`,location.href));
+    const url=new URL(`${import.meta.env.BASE_URL}campaign/${missionId}/${file}`,location.href);
+    if(mission.saveVersion)url.searchParams.set('v',mission.saveVersion);
+    const r=await fetch(url);
     if(!r.ok)throw Error('Не удалось загрузить данные миссии.');
     return r.json();
   })).then(([definition,locale])=>({definition,locale,missionId}))
@@ -91,6 +94,9 @@ function buildScreen(){
             <legend>Снаряжение Мартена</legend>
             <label>Основное оружие <select name="primary"></select></label>
             <label>Пистолет <select name="sidearm"></select></label>
+            <label class="campaign-boarding-seat" hidden>Место в UH-60 <select name="seat">
+              <option value="3">Переднее правое</option><option value="4">Заднее правое</option>
+            </select></label>
           </fieldset>
           <p class="campaign-mission-result"></p><p class="campaign-storage-warning" role="status"></p>
           <p class="campaign-menu-error" role="alert"></p>
@@ -142,7 +148,7 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
   const selector=dialog.querySelector('#campaign-difficulty');
   selector.value=progress.difficulty??'regular';
   let selected=campaignCatalog.missions.find(m=>
-    canStartCampaignMission(m.id,progress,unlocked)&&!progress.completed.includes(m.id))?.id??'m01';
+    canStartCampaignMission(m.id,progress,unlocked)&&campaignMissionStatus(m.id,progress,unlocked)!=='complete')?.id??'m01';
   let launching=false;
   const paintReward=()=>{
     const panel=dialog.querySelector('.campaign-mission-reward');
@@ -181,10 +187,11 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
     paintReward();
     dialog.querySelector('.campaign-mission-objective').textContent=status==='locked'?'???':mission.objective;
     dialog.querySelector('.campaign-mission-duration').textContent=mission.duration;
-    const outcome=progress.outcomes?.[id],best=progress.best[id];
+    const record=campaignRecordKey(id),outcome=progress.outcomes?.[record],best=progress.best[record];
     const result=best
       ?`ЛУЧШЕЕ ВРЕМЯ: ${minutes(best.elapsedSeconds)}${outcome?'':` · ПОТЕРИ: ${best.losses??'—'}`}`
-      :progress.checkpoints[id]&&readCampaignSave(id)?`Сохранено: КП ${progress.checkpoints[id].number??0} · ${new Date(progress.checkpoints[id].when).toLocaleString('ru-RU')}`:'';
+      :progress.checkpoints[id]&&readCampaignSave(id)?`Сохранено: КП ${progress.checkpoints[id].number??0} · ${new Date(progress.checkpoints[id].when).toLocaleString('ru-RU')}`:
+        id==='m04'&&status!=='locked'&&hasOldMission4Save()?'Сохранение «Моста» относится к прежней миссии 04. «Под крышами» начинается заново.':'';
     dialog.querySelector('.campaign-mission-result').textContent=[result,describeCampaignOutcome(outcome)].filter(Boolean).join(' · ');
     dialog.querySelector('.campaign-storage-warning').textContent=campaignStorageWarning()
       ?'⚠ Хранилище браузера недоступно: прогресс сохранится только до перезагрузки.':'';
@@ -193,7 +200,8 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
     dialog.querySelector('.campaign-continue').disabled=!mission.implemented||!canStartCampaignMission(id,progress,unlocked);
     const play=dialog.querySelector('.campaign-play');
     play.disabled=!canStartCampaignMission(id,progress,unlocked);
-    dialog.querySelector('.campaign-mission-loadout').hidden=id!=='m03'||play.disabled;
+    dialog.querySelector('.campaign-mission-loadout').hidden=!['m03','m04'].includes(id)||play.disabled;
+    dialog.querySelector('.campaign-boarding-seat').hidden=id!=='m04';
     play.textContent=status==='planned'?'В РАЗРАБОТКЕ':status==='locked'?'ЗАКРЫТО':status==='complete'?'ПЕРЕИГРАТЬ ↗':'НАЧАТЬ МИССИЮ ↗';
     dialog.dataset.mission=id;
   };
@@ -204,9 +212,10 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
     const save=resume?readCampaignSave(missionId):null;
     if(resume&&!save){dialog.querySelector('.campaign-menu-error').textContent='Контрольная точка недоступна. Начните миссию заново.';return;}
     if(!resume&&readCampaignSave(missionId)&&!window.confirm('Начать миссию сначала? Последняя контрольная точка будет перезаписана.'))return;
-    const loadout=!resume&&missionId==='m03'?{
+    const loadout=!resume&&['m03','m04'].includes(missionId)?{
       primary:dialog.querySelector('.campaign-mission-loadout [name="primary"]').value,
       sidearm:dialog.querySelector('.campaign-mission-loadout [name="sidearm"]').value,
+      ...(missionId==='m04'?{seat:Number(dialog.querySelector('.campaign-boarding-seat select').value)}:{}),
     }:undefined;
     launching=true;
     try{

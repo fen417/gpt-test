@@ -42,7 +42,7 @@ self.onmessage=event=>{
       const liveCommand=id==='m01'&&m.command?.type==='nightVision'||
         id==='m02'&&['weapon','order','repair','targetLock','cruise'].includes(m.command?.type)||
         id==='m03'&&['order','smoke','talk','answer'].includes(m.command?.type)||
-        id==='m04'&&['order','barrel'].includes(m.command?.type);
+        id==='m04'&&m.command?.type==='order';
       if(!liveCommand){input={};sim.setInput('local',{});}
       sim.campaign.command(m.command);
       if(sim.weaponAttachments.has('local'))sim.setWeaponAttachments('local',sim.weaponAttachments.get('local'));

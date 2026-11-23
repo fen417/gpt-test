@@ -34,7 +34,9 @@ export class ColumnMusic{
     const ctx=this.combat.ctx,source=ctx.createBufferSource(),gain=ctx.createGain();
     const loop=name!=='ambush';
     source.buffer=buffer;source.loop=loop;gain.gain.value=loop?0:1;
-    const window=(name==='combat'||name==='drums')&&campaignMusicWindow(this.definition.music.combatLoop,buffer.duration,offset);
+    const loopWindow=name==='flight'?this.definition.music.flightLoop:
+      name==='combat'||name==='drums'?this.definition.music.combatLoop:null;
+    const window=loopWindow&&campaignMusicWindow(loopWindow,buffer.duration,offset);
     if(window?.loop){source.loopStart=window.loopStart;source.loopEnd=window.loopEnd;}
     source.connect(gain);gain.connect(this.bus);source.start(at,window?.loop?window.offset:loop?offset%buffer.duration:0);
     const voice={source,gain,zeroAt:at-offset};this.voices.set(name,voice);

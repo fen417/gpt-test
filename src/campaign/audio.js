@@ -21,7 +21,7 @@ export function usesCampaignRadio(missionId,speaker,key){
   if(['orlov','dargo'].includes(speaker))return true;
   if(missionId==='m03')return ['timo.road','timo.roofs','timo.window',
     'vos.meet','vos.village','vos.trapped','harranti.hold','harranti.truck'].includes(key);
-  return missionId==='m04'&&['vos.move','taver.work','taver.loss'].includes(key);
+  return missionId==='m04'&&['pilot','gunner'].includes(speaker);
 }
 
 function dialogueActor(state,speaker){

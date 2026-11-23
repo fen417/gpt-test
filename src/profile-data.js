@@ -1,4 +1,4 @@
-import {campaignCatalog} from './campaign/progress.js';
+import {campaignCatalog,campaignRecordKey} from './campaign/progress.js';
 
 export const PROFILE_MISSIONS=campaignCatalog.missions.filter(mission=>mission.implemented);
 
@@ -17,8 +17,9 @@ export function localCampaignSummary(progress){
   const summary={};
   for(const mission of PROFILE_MISSIONS){
     const id=mission.id,completed=progress.completed.includes(id);
-    const checkpoint=progress.checkpoints[id]?.number??0;
-    const bestSeconds=progress.best[id]?.elapsedSeconds??0;
+    const point=progress.checkpoints[id];
+    const checkpoint=point&&(!mission.saveVersion||point.version===mission.saveVersion)?point.number??0:0;
+    const bestSeconds=(progress.best[campaignRecordKey(id)]??progress.best[id])?.elapsedSeconds??0;
     if(completed||checkpoint||bestSeconds)summary[id]={completed,checkpoint,bestSeconds};
   }
   return summary;

@@ -2,281 +2,297 @@
   "engine": "ElevenLabs",
   "model": "eleven_v4",
   "language": "ru",
-  "attribution": "elevenlabs.io",
-  "usage": "non-commercial",
-  "profiles": {
-    "harranti": {
-      "voiceId": "nPczCjzI2devNBz1zQrb",
-      "voice": "Brian - Deep, Resonant and Comforting",
-      "direction": "Старший штабной офицер. Тяжёлый тон, за усталостью слышна решимость.",
-      "stability": 0.5
-    },
-    "orlov": {
-      "voiceId": "onwK4e9ZLuTAKqWW03F9",
-      "voice": "Daniel - Steady Broadcaster",
-      "direction": "Офицер штаба. Размеренно и уверенно, с чёткими паузами между указаниями.",
-      "stability": 0.5
-    },
-    "quartermaster": {
-      "voiceId": "pqHfZKP75CvOlQylNhV4",
-      "voice": "Bill - Wise, Mature, Balanced",
-      "direction": "Бывалая, предметная манера, живой инструктаж при выдаче снаряжения.",
-      "stability": 0.5
-    },
-    "duran": {
-      "voiceId": "pNInz6obpgDQGcFmaJgB",
-      "voice": "Adam - Dominant, Firm",
-      "direction": "Командир взвода. Короткие фразы, собранный голос, на скрытном подходе вполголоса.",
-      "stability": 0.5
-    },
-    "taver": {
-      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
-      "voice": "Roger - Laid-Back, Casual, Resonant",
-      "direction": "Сапёр. Сдержан, следит за руками и даёт короткие доклады из-под огня.",
-      "stability": 0.5
-    },
-    "dargo": {
-      "voiceId": "JBFqnCBsd6RMkjVDRZzb",
-      "voice": "George - Warm, Captivating Storyteller",
-      "direction": "Холодная уверенность. Угрозы почти вполголоса, приказы рублено.",
-      "stability": 0.5
-    },
-    "marten": {
-      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
-      "voice": "Harry - Fierce Warrior",
-      "direction": "Молодой пехотинец. Усталость, благодарность и собранность перед боем.",
-      "stability": 0.5
-    },
-    "vos": {
-      "voiceId": "iP95p4xoKVk53GoZ742B",
-      "voice": "Chris - Charming, Down-to-Earth",
-      "direction": "Танкист. Открытый в разговоре, в бою подаёт точные команды.",
-      "stability": 0.5
-    }
+  "voice_settings": {
+    "stability": 0.5
   },
-  "totalBytes": 525195,
   "clips": [
     {
-      "id": "harranti.brief",
-      "speaker": "harranti",
-      "seconds": 10.6,
-      "bytes": 32434,
-      "performance": "[grave, deliberate]",
-      "spokenText": "Сафра. Шестьдесят метров воды и одна переправа. Эль-Ка́ср цел, но заминирован. Четыре танка Восточного корпуса держат западный берег."
+      "id": "bruno.route",
+      "speaker": "bruno",
+      "voiceId": "TX3LPaxmHKxFdv7VOQHJ",
+      "duration": 6.606542,
+      "spoken": "В бумагах из Тель-Мазина есть план. Служебная дверь слева от платформ. Откроем и выйдем к лестнице.",
+      "bytes": 20490
     },
     {
-      "id": "orlov.brief",
-      "speaker": "orlov",
-      "seconds": 8.9,
-      "bytes": 27436,
-      "performance": "[dryly, firm]",
-      "spokenText": "Полковник бы сказал проще. У нас одна переправа. Мост Эль-Ка́ср цел, но заминирован, а поле перед ним держат танки корпуса."
+      "id": "dispatcher.gate",
+      "speaker": "dispatcher",
+      "voiceId": "bIHbv24MWmeRgasZH58o",
+      "duration": 4.506542,
+      "spoken": "Я открою калитку. Тоннель за релейной будкой, держитесь стены.",
+      "bytes": 13532
     },
     {
-      "id": "orlov.field",
-      "speaker": "orlov",
-      "seconds": 8.7,
-      "bytes": 26872,
-      "performance": "[brisk instruction]",
-      "spokenText": "пэ-тэ девяносто. Шесть выстрелов, ещё есть ящики в поле. Бейте с борта, в корму или сверху. Пехота постарается прижать вас к земле."
+      "id": "dispatcher.live",
+      "speaker": "dispatcher",
+      "voiceId": "bIHbv24MWmeRgasZH58o",
+      "duration": 6.0065,
+      "spoken": "[tired] Я записал их позывные. Возьмите схему. Передатчик стоит у канала, за мостом.",
+      "bytes": 17802
     },
     {
-      "id": "orlov.documents",
-      "speaker": "orlov",
-      "seconds": 6.4,
-      "bytes": 19727,
-      "performance": "[approving, taut]"
-    },
-    {
-      "id": "orlov.blind",
-      "speaker": "orlov",
-      "seconds": 5.900041666666667,
-      "bytes": 17978,
-      "performance": "[warning, tense]"
-    },
-    {
-      "id": "orlov.window",
-      "speaker": "orlov",
-      "seconds": 8.400041666666667,
-      "bytes": 25714,
-      "performance": "[firm, deliberate]"
-    },
-    {
-      "id": "quartermaster.issue",
-      "speaker": "quartermaster",
-      "seconds": 6,
-      "bytes": 18981,
-      "performance": "[brisk, gruff]",
-      "spokenText": "Мартен, держи пэ-тэ девяносто и две коробки. За спиной должно быть чисто, особенно в траншее."
-    },
-    {
-      "id": "duran.joke",
+      "id": "duran.blue",
       "speaker": "duran",
-      "seconds": 5.301458333333334,
-      "bytes": 16285,
-      "performance": "[dry, amused]"
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "duration": 3.3065,
+      "spoken": "[urgent] Справа, у синего бака! пэ-тэ девяносто!",
+      "bytes": 10266
     },
     {
-      "id": "orlov.absent",
-      "speaker": "orlov",
-      "seconds": 7.6,
-      "bytes": 22947,
-      "performance": "[heavy, subdued]"
+      "id": "duran.broken",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "duration": 3.7065,
+      "spoken": "[urgent] Щит выбило! Мартен, питание в служебной комнате!",
+      "bytes": 11560
     },
     {
-      "id": "orlov.ridge",
-      "speaker": "orlov",
-      "seconds": 6.900041666666667,
-      "bytes": 21130,
-      "performance": "[low, urgent]"
+      "id": "duran.pressure",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "duration": 3.106542,
+      "spoken": "[urgent] Подходят со стороны канала! Прикройте питание!",
+      "bytes": 9665
     },
     {
-      "id": "orlov.first",
-      "speaker": "orlov",
-      "seconds": 5.142333333333333,
-      "bytes": 15953,
-      "performance": "[alarmed, shouts]"
+      "id": "duran.transfer",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "duration": 2.567583,
+      "spoken": "[urgent] Грач не дышит. Мартен, за левый!",
+      "bytes": 8272
     },
     {
-      "id": "orlov.hunters",
-      "speaker": "orlov",
-      "seconds": 4.426375,
-      "bytes": 13736,
-      "performance": "[urgent, clipped]"
+      "id": "gunner.ready",
+      "speaker": "gunner",
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO",
+      "duration": 5.306542,
+      "spoken": "Левый борт чист. Правые, второй вертолёт ваш. Следите за крышами.",
+      "bytes": 16013
     },
     {
-      "id": "orlov.smoke",
-      "speaker": "orlov",
-      "seconds": 6,
-      "bytes": 17836,
-      "performance": "[firmly]"
+      "id": "lasko.down",
+      "speaker": "lasko",
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "duration": 2.489208,
+      "spoken": "Я снаружи. Давайте к станции!",
+      "bytes": 7595
     },
     {
-      "id": "orlov.cross",
-      "speaker": "orlov",
-      "seconds": 5.67925,
-      "bytes": 17763,
-      "performance": "[shouts a command]"
-    },
-    {
-      "id": "taver.prepare",
-      "speaker": "taver",
-      "seconds": 6.5,
-      "bytes": 19657,
-      "performance": "[tightly focused]"
-    },
-    {
-      "id": "taver.work",
-      "speaker": "taver",
-      "seconds": 4.909041666666667,
-      "bytes": 15031,
-      "performance": "[hushed, focused]"
-    },
-    {
-      "id": "taver.loss",
-      "speaker": "taver",
-      "seconds": 4.584708333333333,
-      "bytes": 14062,
-      "performance": "[shaken, breathless]"
-    },
-    {
-      "id": "orlov.wave1",
-      "speaker": "orlov",
-      "seconds": 3.8597083333333333,
-      "bytes": 11770,
-      "performance": "[tense, urgent]"
-    },
-    {
-      "id": "orlov.wave2",
-      "speaker": "orlov",
-      "seconds": 4.418208333333333,
-      "bytes": 13573,
-      "performance": "[fast, urgent]"
-    },
-    {
-      "id": "orlov.wave3",
-      "speaker": "orlov",
-      "seconds": 5.638833333333333,
-      "bytes": 19561,
-      "performance": "[shouts, alarmed]"
-    },
-    {
-      "id": "orlov.wave4",
-      "speaker": "orlov",
-      "seconds": 5.181666666666667,
-      "bytes": 16065,
-      "performance": "[strained, urgent]"
-    },
-    {
-      "id": "orlov.wave5",
-      "speaker": "orlov",
-      "seconds": 4.5492083333333335,
-      "bytes": 14166,
-      "performance": "[urgent callout]"
-    },
-    {
-      "id": "dargo.tanks",
-      "speaker": "dargo",
-      "seconds": 4.386125,
-      "bytes": 13238,
-      "performance": "[cold, commanding]"
-    },
-    {
-      "id": "orlov.supply",
-      "speaker": "orlov",
-      "seconds": 4.419,
-      "bytes": 13644,
-      "performance": "[brisk, relieved]",
-      "spokenText": "Поднесли ленты и шесть выстрелов для пэ-тэ девяносто, ящики в гнезде."
-    },
-    {
-      "id": "orlov.near",
-      "speaker": "orlov",
-      "seconds": 2.828,
-      "bytes": 9554,
-      "performance": "[shouts in alarm]"
-    },
-    {
-      "id": "orlov.wait",
-      "speaker": "orlov",
-      "seconds": 5.366583333333334,
-      "bytes": 16607,
-      "performance": "[grim, firm]"
-    },
-    {
-      "id": "marten.code",
+      "id": "marten.copy",
       "speaker": "marten",
-      "seconds": 3.170916666666667,
-      "bytes": 9644,
-      "performance": "[focused, low voice]"
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "duration": 5.2065,
+      "spoken": "Есть журнал и голосовая запись. Координаты совпадают. Идём к передатчику.",
+      "bytes": 15409
     },
     {
-      "id": "vos.move",
-      "speaker": "vos",
-      "seconds": 3.6429583333333335,
-      "bytes": 11028,
-      "performance": "[firm, relieved]"
+      "id": "marten.exit",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "duration": 3.606542,
+      "spoken": "Мы в тоннеле. Отряд вывожу. Встретимся у карьера.",
+      "bytes": 10997
     },
     {
-      "id": "vos.thanks",
-      "speaker": "vos",
-      "seconds": 2.23175,
-      "bytes": 6713,
-      "performance": "[quiet, heartfelt]"
+      "id": "marten.power",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "duration": 2.907167,
+      "spoken": "Питание есть. Перехожу к передатчику.",
+      "bytes": 8579
     },
     {
-      "id": "duran.final",
-      "speaker": "duran",
-      "seconds": 3.5064166666666665,
-      "bytes": 10638,
-      "performance": "[tired, amused]"
+      "id": "marten.seated",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "duration": 2.985542,
+      "spoken": "Миниган мой. Держи левым бортом к двору.",
+      "bytes": 9406
     },
     {
-      "id": "orlov.final",
+      "id": "medic.down",
+      "speaker": "medic",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "duration": 2.489208,
+      "spoken": "Я снаружи. Давайте к станции!",
+      "bytes": 7535
+    },
+    {
+      "id": "orlov.channel",
       "speaker": "orlov",
-      "seconds": 5.221,
-      "bytes": 15452,
-      "performance": "[weary, approving]"
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "duration": 6.106542,
+      "spoken": "Внизу связь пропадает. Перейдите служебный мост и включите питание водомерной станции.",
+      "bytes": 19049
+    },
+    {
+      "id": "orlov.dispatch",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "duration": 5.306542,
+      "spoken": "Диспетчерская на втором уровне. Осмотрите пульт и поднимите диспетчера.",
+      "bytes": 15920
+    },
+    {
+      "id": "orlov.inbound",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "duration": 9.7065,
+      "spoken": "Карта Харранти указывает на железнодорожный узел. Диспетчер знает маршруты топливной колонны. Наха́р перестал отвечать. Заберите его.",
+      "bytes": 29234
+    },
+    {
+      "id": "orlov.received",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "duration": 5.4065,
+      "spoken": "Принял схему. Топливо уходит на карьер. Выводи людей через служебный тоннель.",
+      "bytes": 16230
+    },
+    {
+      "id": "orlov.routes",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "duration": 5.706542,
+      "spoken": "К станции ведут платформы и ремонтный зал. Вход с платформы прямо под часами.",
+      "bytes": 17334
+    },
+    {
+      "id": "orlov.send",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "duration": 4.106542,
+      "spoken": "Слышу вас. Держите канал открытым, пока принимаю схему.",
+      "bytes": 12397
+    },
+    {
+      "id": "pilot.again",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 4.806542,
+      "spoken": "Ещё один проход. Смотрите на крышу станции и на сигнальную будку.",
+      "bytes": 14579
+    },
+    {
+      "id": "pilot.backup",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 3.9065,
+      "spoken": "Основной двор простреливают. Сажусь в ремонтном дворе.",
+      "bytes": 11931
+    },
+    {
+      "id": "pilot.city",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 6.0065,
+      "spoken": "Наха́р впереди. Мартен, осмотрись справа. За крышами увидишь трамвайную линию.",
+      "bytes": 18478
+    },
+    {
+      "id": "pilot.clear",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 4.2065,
+      "spoken": "На земле. Санитар, первым. Мартен, выходи за ним.",
+      "bytes": 12855
+    },
+    {
+      "id": "pilot.contact",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 4.3065,
+      "spoken": "[urgent] Впереди огонь с крыш. Правый борт, прикройте второй вертолёт!",
+      "bytes": 12936
+    },
+    {
+      "id": "pilot.cross",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 4.406542,
+      "spoken": "Заходим вдоль трамвайной линии. Внимание, огонь слева!",
+      "bytes": 13327
+    },
+    {
+      "id": "pilot.hold",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 4.506542,
+      "spoken": "Держу круг. Мартен, займи левый миниган, когда будешь готов.",
+      "bytes": 13689
+    },
+    {
+      "id": "pilot.hull",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 4.906542,
+      "spoken": "[urgent] Есть попадание. Борт ещё держится. Не дайте им выстрелить снова!",
+      "bytes": 14805
+    },
+    {
+      "id": "pilot.land",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 3.506542,
+      "spoken": "Иду на посадку. Оставайтесь на местах до касания.",
+      "bytes": 10717
+    },
+    {
+      "id": "pilot.orbit",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 5.5065,
+      "spoken": "Депо внутри круга. Сначала пэ-тэ девяносто, потом очистите двор.",
+      "bytes": 16656
+    },
+    {
+      "id": "pilot.rocket",
+      "speaker": "pilot",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "duration": 2.907167,
+      "spoken": "[urgent] Ракета в воздухе! Держитесь за борт!",
+      "bytes": 8782
+    },
+    {
+      "id": "wing.blue",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "duration": 3.506542,
+      "spoken": "[urgent] Справа, у синего бака! пэ-тэ девяносто!",
+      "bytes": 10431
+    },
+    {
+      "id": "wing.broken",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "duration": 3.7065,
+      "spoken": "[urgent] Щит выбило! Мартен, питание в служебной комнате!",
+      "bytes": 11271
+    },
+    {
+      "id": "wing.pressure",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "duration": 3.206542,
+      "spoken": "[urgent] Подходят со стороны канала! Прикройте питание!",
+      "bytes": 9707
+    },
+    {
+      "id": "wing.route",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "duration": 6.4065,
+      "spoken": "В бумагах из Тель-Мазина есть план. Служебная дверь слева от платформ. За ней лестница.",
+      "bytes": 20129
+    },
+    {
+      "id": "wing.transfer",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "duration": 2.750458,
+      "spoken": "[urgent] Грач не дышит. Мартен, за левый!",
+      "bytes": 8240
     }
   ]
 }

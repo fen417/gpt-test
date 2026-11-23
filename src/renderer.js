@@ -14,7 +14,7 @@ import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-mode
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
 import { buildMapScene } from './map-scene.js';
-import { VillageModel, dryWindAssets, alhadraAssets, alhadraDesertAssets, telMazinAssets } from './village-model.js';
+import { VillageModel, dryWindAssets, alhadraAssets, alhadraDesertAssets, telMazinAssets, naharAssets } from './village-model.js';
 import { hasPortAsset, PortModel } from './port-model.js';
 import { ArchitecturalMapModel, lagunaAssets, estateAssets } from './architectural-map-model.js';
 import { loadQuarryDetail, disposeQuarryDetail } from './quarry-model.js';
@@ -336,6 +336,7 @@ export class GameRenderer {
     this.alhadraModel = new VillageModel(this,alhadraAssets);
     this.alhadraDesertModel = new VillageModel(this,alhadraDesertAssets);
     this.telMazinModel = new VillageModel(this,telMazinAssets);
+    this.naharModel = new VillageModel(this,naharAssets);
     this.portModel = new PortModel(this);
     this.lagunaModel = new ArchitecturalMapModel(this,lagunaAssets);
     this.estateModel = new ArchitecturalMapModel(this,estateAssets);
@@ -691,6 +692,7 @@ export class GameRenderer {
     if(this.alhadraModel.matches(map))return this.alhadraModel;
     if(this.alhadraDesertModel.matches(map))return this.alhadraDesertModel;
     if(this.telMazinModel.matches(map))return this.telMazinModel;
+    if(this.naharModel.matches(map))return this.naharModel;
     if(map===lagunaAssets.map)return this.lagunaModel;
     if(map===estateAssets.map)return this.estateModel;
   }
@@ -2329,6 +2331,7 @@ export class GameRenderer {
     this.alhadraModel.dispose();
     this.alhadraDesertModel.dispose();
     this.telMazinModel.dispose();
+    this.naharModel.dispose();
     this.portModel.dispose();
     this.lagunaModel.dispose();
     this.estateModel.dispose();

@@ -858,7 +858,7 @@ async function startCampaign(options){
     // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
     const map=second?import('../shared/campaign/alhadra-desert.js'):
       third?import('../shared/campaign/tel-mazin.js'):
-      fourth?import('../shared/campaign/safra.js'):null;
+      fourth?import('../shared/campaign/nahar.js'):null;
     const presentation=second?import('./campaign/mission2-presentation.js'):
       third?import('./campaign/mission3-presentation.js'):
       fourth?import('./campaign/mission4-presentation.js'):null;
@@ -1722,7 +1722,8 @@ function updateVehicleHud(player,renderState){
   const nearby=!vehicle&&player.alive&&Math.abs(player.y-(currentMap.terrain?.heightAt(player.x,player.z)??0))<=.8&&getVehicleBoardingSeat(player,vehicles,currentMap.terrain);
   const seat=VEHICLE_TYPES[vehicle?.type]?.seats[player.vehicleSeat];
   const parachute=player.alive&&!vehicle&&(player.parachuteOpen||player.parachuteReady);
-  show('vehicle-prompt',!!(nearby||seat||parachute));
+  const missionFlight=state.campaign?.missionId==='m04'&&state.campaign.airborne;
+  show('vehicle-prompt',!missionFlight&&Boolean(nearby||seat||parachute));
   if(nearby)text('vehicle-prompt',key+' · СЕСТЬ В ТЕХНИКУ — '+VEHICLE_TYPES[nearby.vehicle.type].name.toUpperCase());
   if(parachute)text('vehicle-prompt',player.parachuteOpen?'ПАРАШЮТ РАСКРЫТ':formatKeyCode(keybinds.jump)+' · УДЕРЖИВАТЬ ДЛЯ РАСКРЫТИЯ ПАРАШЮТА');
   if(!seat)return null;
@@ -1959,11 +1960,6 @@ function frame(now){
         yaw=heading+Math.max(-2.094,Math.min(2.094,relative));
       }
     }else columnHeading=null;
-    if(state?.campaign?.missionId==='m04'&&state.campaign.mounted){
-      const angle=Math.atan2(Math.sin(yaw+Math.PI/2),Math.cos(yaw+Math.PI/2));
-      yaw=-Math.PI/2+Math.max(-1.22173,Math.min(1.22173,angle));
-      pitch=Math.max(-.08727,Math.min(.5,pitch));
-    }
     lastInput=input();
     const simulationBegin=performance.now();
     if(simulation){simulation.setPaused(paused);if(!paused)simulation.advance(lastInput,dt);pulses.clear();fireTap=false;}

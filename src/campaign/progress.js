@@ -7,6 +7,7 @@ const initial=()=>({version:1,completed:[],best:{},outcomes:{},checkpoints:{},di
 let transient=null,lastError=false;
 
 export const campaignCatalog=catalog;
+export const campaignRecordKey=id=>catalog.missions.find(m=>m.id===id)?.recordKey??id;
 export function readCampaignProgress(){
   if(transient)return structuredClone(transient);
   try{
@@ -38,7 +39,7 @@ export function setCampaignDifficulty(difficulty){
 export function recordCampaignCheckpoint(missionId,save,when=Date.now()){
   const progress=readCampaignProgress();
   if(!catalog.missions.some(m=>m.id===missionId)||!save)return;
-  progress.checkpoints[missionId]={number:save.mission?.checkpoint??save.checkpoint??0,when};
+  progress.checkpoints[missionId]={number:save.mission?.checkpoint??save.checkpoint??0,when,version:save.version};
   saveCampaignProgress(progress);
   globalThis.dispatchEvent?.(new CustomEvent(CAMPAIGN_PROFILE_EVENT,{detail:{missionId,checkpoint:progress.checkpoints[missionId].number}}));
 }
@@ -48,12 +49,13 @@ export function markCampaignComplete(missionId,results={},flags={}){
   if(!progress.completed.includes(missionId))progress.completed.push(missionId);
   delete progress.checkpoints[missionId];
   const elapsed=Math.max(0,Number(results.elapsedSeconds??0));
-  const previous=progress.best[missionId];
+  const record=campaignRecordKey(missionId),previous=progress.best[record];
   if(!previous||elapsed>0&&(!previous.elapsedSeconds||elapsed<previous.elapsedSeconds))
-    progress.best[missionId]={elapsedSeconds:elapsed,losses:Math.max(0,Number(results.losses??0)),stealth:results.stealth??null};
-  if(results.outcome)(progress.outcomes??={})[missionId]=results.outcome;
+    progress.best[record]={elapsedSeconds:elapsed,losses:Math.max(0,Number(results.losses??0)),stealth:results.stealth??null};
+  if(results.outcome)(progress.outcomes??={})[record]=results.outcome;
   const allowed=new Set(['kane_alive','lasko_alive','bruno_alive','duran_alive','tanks_alive','enemy_order',
-    'marten_wounded','m3_done','harranti_alive','brigade_saved','m3_documents','m4_done','m4_radio_code','m4_tanks_killed','sappers_alive']);
+    'marten_wounded','m3_done','harranti_alive','brigade_saved','m3_documents','m4_done','m4_radio_code','m4_tanks_killed','sappers_alive',
+    'm4_dispatcher_alive','m4_signal_sent']);
   for(const [key,value] of Object.entries(flags))if(allowed.has(key))progress.carry[key]=value;
   saveCampaignProgress(progress);
   globalThis.dispatchEvent?.(new CustomEvent(CAMPAIGN_PROFILE_EVENT,{detail:{missionId,completed:true,bestSeconds:elapsed}}));
@@ -63,10 +65,12 @@ export function campaignMissionStatus(missionId,progress=readCampaignProgress(),
   const number=catalog.missions.findIndex(m=>m.id===missionId);
   if(number<0)return 'locked';
   const mission=catalog.missions[number];
-  if(progress.completed.includes(missionId))return 'complete';
+  const record=campaignRecordKey(missionId);
+  if(record===missionId?progress.completed.includes(missionId):Boolean(progress.best[record]))return 'complete';
   if(number>0&&!unlockAll&&!progress.completed.includes(catalog.missions[number-1].id))return 'locked';
   if(!mission.implemented)return 'planned';
-  return progress.checkpoints[missionId]?'progress':'available';
+  const point=progress.checkpoints[missionId];
+  return point&&(!mission.saveVersion||point.version===mission.saveVersion)?'progress':'available';
 }
 export function canStartCampaignMission(missionId,progress=readCampaignProgress(),unlockAll=false){
   const mission=catalog.missions.find(m=>m.id===missionId);
@@ -74,6 +78,12 @@ export function canStartCampaignMission(missionId,progress=readCampaignProgress(
 }
 export function resetCampaignProgress(){
   const state=initial();saveCampaignProgress(state);
-  try{localStorage.removeItem(legacyProgressKey);for(const m of catalog.missions)localStorage.removeItem(`sector09-campaign-${m.id}-v1`);}
+  try{
+    localStorage.removeItem(legacyProgressKey);
+    for(const m of catalog.missions){
+      localStorage.removeItem(`sector09-campaign-${m.id}-v1`);
+      if(m.saveVersion)localStorage.removeItem(`sector09-campaign-${m.id}-v${m.saveVersion}`);
+    }
+  }
   catch{lastError=true;}
 }

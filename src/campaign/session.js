@@ -7,11 +7,18 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const lerpAngle=(a,b,t)=>a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*t;
 
 export const SAVE_KEY='sector09-campaign-m01-v1';
-const saveKey=id=>`sector09-campaign-${id}-v1`;
+const saveKey=id=>`sector09-campaign-${id}-v${id==='m04'?2:1}`;
 export function readCampaignSave(missionId='m01'){
   try{const save=JSON.parse(localStorage.getItem(saveKey(missionId))??'null');
-    return save?.version===(missionId==='m02'?2:1)&&save.missionId===missionId?save:null;
+    return save?.version===(['m02','m04'].includes(missionId)?2:1)&&save.missionId===missionId?save:null;
   }catch{return null;}
+}
+
+export function hasOldMission4Save(){
+  try{
+    const save=JSON.parse(localStorage.getItem('sector09-campaign-m04-v1')??'null');
+    return save?.version===1&&save.missionId==='m04';
+  }catch{return false;}
 }
 
 export class CampaignSession {

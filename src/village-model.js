@@ -8,6 +8,7 @@ import dryWindManifest from './assets/village/manifest.json' with {type:'json'};
 import alhadraManifest from './assets/alhadra/manifest.json' with {type:'json'};
 import alhadraDesertManifest from './assets/alhadra-desert/manifest.json' with {type:'json'};
 import telMazinManifest from './assets/tel-mazin/manifest.json' with {type:'json'};
+import naharManifest from './assets/nahar/manifest.json' with {type:'json'};
 
 export const dryWindAssets={
   id:'village',name:'Dry Wind',manifest:dryWindManifest,replaceLeaves:true,
@@ -39,6 +40,11 @@ export const telMazinAssets={
   detail:new URL('./assets/tel-mazin/detail.glb',import.meta.url).href,
   roads:new URL('./assets/tel-mazin/roads.webp',import.meta.url).href,
   labels:new URL('./assets/tel-mazin/labels.webp',import.meta.url).href,
+};
+export const naharAssets={
+  id:'nahar',name:'Нахар',manifest:naharManifest,
+  base:new URL('./assets/nahar/base.glb',import.meta.url).href,
+  detail:new URL('./assets/nahar/detail.glb',import.meta.url).href,
 };
 const sandTint = new THREE.Color(0xd6bd90), roadTint = new THREE.Color(0xbda17a);
 const roadMultiplier = [roadTint.r/sandTint.r,roadTint.g/sandTint.g,roadTint.b/sandTint.b];
@@ -90,8 +96,10 @@ export class VillageModel {
     try {
       if(base){
         const tex = this.textureLoader;
-        this.roadMask=tex.load(this.assets.roads);
-        this.textures.add(this.roadMask);
+        if(this.assets.roads){
+          this.roadMask=tex.load(this.assets.roads);
+          this.textures.add(this.roadMask);
+        }
         if(this.assets.rock){
           this.rockMap=tex.load(this.assets.rock);
           this.rockMap.wrapS=this.rockMap.wrapT=THREE.RepeatWrapping;
