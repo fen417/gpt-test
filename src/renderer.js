@@ -31,6 +31,7 @@ import { SCOPE_ZOOMS, scopeMagnification } from './scope-optics.js';
 import { COLLIMATOR_ZOOM } from './collimator.js';
 import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
+import { CLAYMORE_ARM_DELAY, CLAYMORE_LIFETIME, isPlacementGadget } from '../shared/gadgets.js';
 import { drawFlagBanner } from './logos.js';
 import { BLACK_HAWK, blackHawkGunPose, canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
 import { placeTankDriverCamera } from './tank-camera.js';
@@ -1307,7 +1308,7 @@ export class GameRenderer {
       }
       if (event.type === 'gadget') {
         if (event.playerId === localId) this.gadgetTimer = this.gadgetDuration;
-        else if(event.kind==='ammo'||event.kind==='medkit'||event.kind==='beacon')infantryAction(this.soldiers.get(event.playerId), 'interact');
+        else if(isPlacementGadget(event.kind)||event.kind==='beacon')infantryAction(this.soldiers.get(event.playerId), 'interact');
         continue;
       }
       if(event.type==='equipmentDestroyed'){
@@ -1379,9 +1380,10 @@ export class GameRenderer {
     this.effectBounds.center.set(x,y,z);
     if(!this.viewFrustum.intersectsSphere(this.effectBounds))return;
     const reduced=this.lowQuality||this.integratedGpu,count=reduced?8:13;
-    for(let i=0;i<count;i++)this.smoke(x+(this.random()-.5)*2,y+this.random()*2,z+(this.random()-.5)*2,1.1+this.random()*1.4,2.5+this.random()*2,i<3?0xffb668:0x535953);
-    this.blastFlash(x,y+1,z);
-    for(let i=0;i<(reduced?6:14);i++)this.spark(x,y+.3,z,3);
+    const scale=event.kind==='claymore'?.62:1;
+    for(let i=0;i<count;i++)this.smoke(x+(this.random()-.5)*2*scale,y+this.random()*2*scale,z+(this.random()-.5)*2*scale,(1.1+this.random()*1.4)*scale,2.5+this.random()*2,i<3?0xffb668:0x535953);
+    this.blastFlash(x,y+scale,z);
+    for(let i=0;i<(reduced?6:14);i++)this.spark(x,y+.3,z,3*scale);
   }
 
   blastFlash(x, y, z) {
@@ -1616,6 +1618,19 @@ export class GameRenderer {
         const yaw=item.yaw??Math.atan2(-item.vx,-item.vz);
         model.rotation.y=yaw+(item.kind==='ammo'?Math.PI:0);
         if(item.vy!==undefined)model.rotation.x=Math.atan2(item.vy,Math.hypot(item.vx,item.vz));
+        if(item.kind==='claymore'){
+          const beam=model.getObjectByName('claymore-laser');
+          if(beam.userData.length==null){
+            const origin=beam.parent.getWorldPosition(this.scratchPosition);
+            const direction={x:-Math.sin(yaw),y:0,z:-Math.cos(yaw)};
+            const cover=distanceToCover(origin,direction,this.campaignCoverColliders??getAssetColliders(this.map),1.15);
+            const terrain=this.map.terrain?.raycast(origin,direction,cover)??Infinity;
+            beam.userData.length=Math.max(0,Math.min(terrain,cover)-.015);
+            beam.scale.z=beam.userData.length;
+          }
+          beam.visible=beam.userData.length>.025&&state.time>=item.expires-CLAYMORE_LIFETIME+CLAYMORE_ARM_DELAY&&
+            this.camera.position.distanceToSquared(model.position)<24**2;
+        }
       }
       for(const [id,model] of cache)if(!active.has(id)){model.removeFromParent();cache.delete(id);}
     };
@@ -1653,9 +1668,9 @@ export class GameRenderer {
         continue;
       }
       if(model.parent!==soldier.group)soldier.group.add(model);
-      model.position.set(.10,(player.crouch?.86:1.22)-(kind==='medkit'?.08:0),-.30);
+      model.position.set(.10,(player.crouch?.86:1.22)-(['medkit','claymore'].includes(kind)?.08:0),-.30);
       model.rotation.set(player.pitch??0,0,0);
-      model.scale.setScalar(kind==='beacon'?.4:kind==='ammo'?.75:1);
+      model.scale.setScalar(kind==='beacon'?.4:kind==='ammo'||kind==='claymore'?.75:1);
       soldier.rifle.scale.setScalar(.001);soldier.flash.visible=false;
       const flame=model.getObjectByName('tool-flame');
       if(flame){flame.visible=player.gadgetAction==='repair';flame.scale.setScalar(.8+Math.sin(this.clock*43)*.15);}
@@ -1944,7 +1959,7 @@ export class GameRenderer {
     this.throwTimer = Math.max(0, this.throwTimer - dt);
     const player = state.players.find(p => p.id === localId);
     let gadgetKind=player?.heldGadget??player?.gadgetAction??null;
-    this.gadgetDuration=gadgetKind==='launcher'?1.05:gadgetKind==='defibrillator'?.7:gadgetKind==='medkit'?.85:.75;
+    this.gadgetDuration=gadgetKind==='launcher'?1.05:gadgetKind==='defibrillator'?.7:gadgetKind==='claymore'?CLAYMORE_ARM_DELAY:gadgetKind==='medkit'?.85:.75;
     this.gadgetTimer=player?.gadgetActionRemaining??0;
     const throwPhase = this.throwTimer > 0 ? 1 - this.throwTimer / this.throwDuration : 0;
     let gadgetPhase=(player?.heldGadget||gadgetKind==='repair') ? .5 : this.gadgetTimer>0?clamp(1-this.gadgetTimer/this.gadgetDuration,.001,.999):0;
@@ -2167,7 +2182,7 @@ export class GameRenderer {
       const pistolSprint=pistol&&!gadgetKind?applyPistolSprintPose(this.weapon,this.sprintBlend,this.aimAmount,this.reloadAmount,kick,cycle):0;
       if(gadgetKind){
         const launcher=gadgetKind==='launcher';
-        const framing=launcher?LAUNCHER_POSE:gadgetKind==='defibrillator'?DEFIB_POSE:(gadgetKind==='ammo'||gadgetKind==='medkit')?SUPPLY_POSE:null;
+        const framing=launcher?LAUNCHER_POSE:gadgetKind==='defibrillator'?DEFIB_POSE:isPlacementGadget(gadgetKind)?SUPPLY_POSE:null;
         this.weapon.position.set(
           lerp(framing?.hip[0]??.08,framing?.ads[0]??.02,this.aimAmount)+Math.sin(cycle)*.007*bob-this.swayX,
           lerp(framing?.hip[1]??-.27,framing?.ads[1]??-.22,this.aimAmount)-this.landDip*.4-lowered*.42,

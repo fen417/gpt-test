@@ -1,4 +1,4 @@
-import { selectedGadget, isSupplyGadget, gadgetCooldown } from '../shared/gadgets.js';
+import { selectedGadget, isPlacementGadget, gadgetCooldown } from '../shared/gadgets.js';
 
 // Presentation only: ammunition, firing permission and damage stay authoritative.
 export class EquipmentPresentation {
@@ -6,7 +6,7 @@ export class EquipmentPresentation {
     if(!player?.alive||player.vehicleId){this.key=null;return player;}
     const slot=input.weaponSlot||player.weaponSlot||1;
     let kind=selectedGadget(player.classId,input.toolSlot);
-    if(isSupplyGadget(kind)&&gadgetCooldown(player,kind)>0)kind=null;
+    if(isPlacementGadget(kind)&&gadgetCooldown(player,kind)>0)kind=null;
     const key=player.id+'/'+slot+'/'+(kind??'');
     if(this.key!==key){
       const initialized=this.key!=null;this.key=key;this.sequence=sequence;this.elapsed=0;

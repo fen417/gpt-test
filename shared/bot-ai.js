@@ -309,6 +309,14 @@ function equipment(sim,p,dt){
   if(p.pendingGadget)return thinkEquipment(sim,p,dt);
   if(ai.pressure>.6||sim.time-p.lastHurt<1||contact&&distance(p,contact)<20)return false;
   if(thinkEquipment(sim,p,dt)){ai.mode=p.botJob?.kind??'support';return true;}
+  if(p.classId==='support'&&p.grounded&&p.secondaryCooldown<=0&&p.botObjective&&distance(p,p.botObjective)<19&&
+    sim.time>=(ai.claymoreAt??0)){
+    ai.claymoreAt=sim.time+14+sim.random()*13;
+    if(sim.random()<.48&&!sim.deployables.some(item=>item.kind==='claymore'&&item.team===p.team&&
+      item.hp>0&&(item.ownerId===p.id||distance(item,p)<8))){
+      p.input.secondaryGadget=true;ai.mode='place-claymore';return true;
+    }
+  }
   if(p.classId==='medic'&&p.secondaryCooldown<=0&&(!contact||ai.cover)){
     const need=[...sim.players.values()].some(ally=>ally.alive&&ally.team===p.team&&ally.hp<75&&distance(ally,p)<5);
     const existing=sim.deployables.some(item=>item.kind==='medkit'&&item.team===p.team&&item.hp>0&&distance(item,p)<7);

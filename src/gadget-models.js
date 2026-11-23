@@ -11,6 +11,10 @@ const cylinderGeometry=new THREE.CylinderGeometry(1,1,1,12);
 const sphereGeometry=new THREE.SphereGeometry(1,12,8);
 const flameHull=new THREE.ConeGeometry(.026,.25,12).rotateX(-Math.PI/2);
 const flameCore=new THREE.ConeGeometry(.013,.16,10).rotateX(-Math.PI/2);
+const laserGeometry=new THREE.CylinderGeometry(.001,.004,1,6).rotateX(-Math.PI/2).translate(0,0,-.5);
+const laserMaterial=new THREE.MeshBasicMaterial({
+  color:0xf55445,transparent:true,opacity:.32,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending,
+});
 const templates=new WeakMap();
 const equipmentTemplates=new Map();
 let equipmentLoading;
@@ -25,6 +29,7 @@ export function loadEquipmentModels() {
     repair:new URL('./assets/equipment/repair.glb',import.meta.url).href,
     beacon:new URL('./assets/equipment/beacon.glb',import.meta.url).href,
     launcher:new URL('./assets/equipment/pt90.glb',import.meta.url).href,
+    claymore:new URL('./assets/equipment/claymore.glb',import.meta.url).href,
   };
   const required={
     ammo:['Lid','Contents'],
@@ -33,6 +38,7 @@ export function loadEquipmentModels() {
     repair:['FlameSocket'],
     beacon:['Antenna','Supports','StatusLamp','SignalDisplay'],
     launcher:['SightEye','FrontPost'],
+    claymore:['Signal_Origin'],
   };
   equipmentLoading=Promise.all(Object.entries(urls).map(async ([kind,url])=>{
     try{
@@ -128,6 +134,17 @@ function build(kind,m) {
     }
     wire([[-.1,.31,.02],[-.1,.38,.02],[.1,.38,.02],[.1,.31,.02]],.012,m.cloth);
     for(const z of [-.1,.1])box(0,.068,z,.46,.018,.022,m.orange);
+  }else if(kind==='claymore'){
+    box(0,.184,.027,.397,.165,.118,m.olive);
+    box(0,.183,-.041,.17,.055,.014,m.dark);
+    tube(0,.22,-.050,.013,.018,m.red,'z');
+    for(const side of [-1,1]){
+      const foot=box(side*.168,.058,.036,.027,.123,.042,m.metal);
+      foot.rotation.z=side*.35;
+      box(side*.187,.014,.036,.062,.027,.118,m.dark);
+    }
+    const signal=new THREE.Object3D();
+    signal.name='Signal_Origin';signal.position.set(0,.22,-.066);root.add(signal);
   }else if(kind==='beacon'){
     box(0,.25,0,.31,.34,.22);
     box(0,.075,0,.35,.065,.27,m.dark);
@@ -302,6 +319,15 @@ function assembledDefibrillator(template,palette) {
   return model;
 }
 
+function attachClaymoreLaser(model,kind,deployed){
+  if(!deployed||kind!=='claymore')return model;
+  const beam=new THREE.Mesh(laserGeometry,laserMaterial);
+  beam.name='claymore-laser';
+  beam.visible=false;
+  model.getObjectByName('Signal_Origin').add(beam);
+  return model;
+}
+
 export function createGadgetModel(kind,palette,{deployed=false,side='left'}={}) {
   const defib=equipmentTemplates.get('defibrillator');
   if(defib&&(kind==='defibrillator-paddle'||kind==='defibrillator-unit')){
@@ -325,12 +351,12 @@ export function createGadgetModel(kind,palette,{deployed=false,side='left'}={}) 
     }else if(kind==='repair'){
       addRepairFlame(model.getObjectByName('FlameSocket'),palette);
     }
-    return model;
+    return attachClaymoreLaser(model,kind,deployed);
   }
   if(!templates.has(palette))templates.set(palette,new Map());
   const models=templates.get(palette);
   if(!models.has(kind))models.set(kind,kind==='defibrillator'&&defib?assembledDefibrillator(defib,palette):build(kind,palette));
-  return models.get(kind).clone(true);
+  return attachClaymoreLaser(models.get(kind).clone(true),kind,deployed);
 }
 
 export function gadgetTemplates(palette) {

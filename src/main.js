@@ -11,7 +11,7 @@ import {mountPerfPanel} from './perf-panel.js';
 const frameTimes=new PerformanceSamples(),cpuTimes=new PerformanceSamples(),renderTimes=new PerformanceSamples(),simulationTimes=new PerformanceSamples();
 import { drawBotDebug } from './bot-debug.js';
 import './style.css';
-import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isSupplyGadget, gadgetCooldown } from '../shared/gadgets.js';
+import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isPlacementGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
@@ -111,7 +111,7 @@ const BIND_LABELS=[
   ['crouch','Присесть'],
   ['reload','Перезарядка'],
   ['attachments','Обвесы оружия'],
-  ['secondaryGadget','Достать гранатомёт / аптечку'],
+  ['secondaryGadget','Достать снаряжение из слота 4'],
   ['grenade','Граната'],['drop','Выбросить оружие (TDM)'],
   ['score','Таблица счёта'],
   ['interact','Сесть в технику / выйти'],
@@ -503,7 +503,7 @@ function receive(next){
   if(player)document.body.classList.toggle('team-1',player.team===1);
   if(!active||!player)return;
   const requestedTool=selectedGadget(player.classId,toolSlot);
-  if(player.alive&&isSupplyGadget(requestedTool)&&gadgetCooldown(player,requestedTool)>0){
+  if(player.alive&&isPlacementGadget(requestedTool)&&gadgetCooldown(player,requestedTool)>0){
     // Clear the persistent input selection as soon as placement is confirmed.
     // The server finishes the gesture, then equips the primary weapon. This
     // also reconciles guests whose input still requested the pistol/tool.
@@ -1256,7 +1256,7 @@ document.addEventListener('keydown',event=>{
     const player=local(),kind=selectedGadget(player.classId,slot);
     if(toolSlot===slot)toolSlot=0;
     else if(kind){
-      if(isSupplyGadget(kind)&&gadgetCooldown(player,kind)>0)toast(`${GADGET_NAMES[kind]} · ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(gadgetCooldown(player,kind))}с`);
+      if(isPlacementGadget(kind)&&gadgetCooldown(player,kind)>0)toast(`${GADGET_NAMES[kind]} · ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(gadgetCooldown(player,kind))}с`);
       else toolSlot=slot;
     }
     return;
@@ -1760,8 +1760,8 @@ function hud(now,renderState){
     const label=!player.weaponId?'БЕЗ ОРУЖИЯ':tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`;
     text('weapon-name',mounted?.role==='passenger'?`ПАССАЖИР · ${label}`:label);
     if(state.gameMode==='tdm'&&!player.weaponId){text('ammo','—');text('reserve','—');}
-    const cooldown=tool==='launcher'||tool==='medkit'?player.secondaryCooldown:player.gadgetCooldown;
-    text('ammo-status',state.gameMode==='tdm'&&!player.weaponId?'ПОДБЕРИ ОРУЖИЕ С ПОЛА':player.equipTime>0?'СМЕНА СНАРЯЖЕНИЯ…':tool?(cooldown>0?`ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(cooldown)}с`:tool==='repair'?'УДЕРЖИВАЙ ЛКМ · РЕМОНТ':tool==='launcher'&&player.rockets===0?'НЕТ РАКЕТ · НУЖЕН ЯЩИК ПАТРОНОВ':tool==='launcher'?'ПКМ · ПРИЦЕЛ · ЛКМ · ВЫСТРЕЛ':'ЛКМ · ПРИМЕНИТЬ · 1 / 2 · ОРУЖИЕ'):player.reloading?'ПЕРЕЗАРЯДКА…':
+    const cooldown=gadgetCooldown(player,tool);
+    text('ammo-status',state.gameMode==='tdm'&&!player.weaponId?'ПОДБЕРИ ОРУЖИЕ С ПОЛА':player.equipTime>0?'СМЕНА СНАРЯЖЕНИЯ…':tool?(cooldown>0?`ГОТОВНОСТЬ ЧЕРЕЗ ${Math.ceil(cooldown)}с`:tool==='repair'?'УДЕРЖИВАЙ ЛКМ · РЕМОНТ':tool==='launcher'&&player.rockets===0?'НЕТ РАКЕТ · НУЖЕН ЯЩИК ПАТРОНОВ':tool==='launcher'?'ПКМ · ПРИЦЕЛ · ЛКМ · ВЫСТРЕЛ':tool==='claymore'?'ЛКМ · УСТАНОВИТЬ НА ЗЕМЛЮ':'ЛКМ · ПРИМЕНИТЬ · 1 / 2 · ОРУЖИЕ'):player.reloading?'ПЕРЕЗАРЯДКА…':
       player.ammo===0?'НЕТ ПАТРОНОВ':(weapon.semi||weapon.semiAuto)?'ПОЛУАВТОМАТИЧЕСКИЙ ОГОНЬ':'АВТОМАТИЧЕСКИЙ ОГОНЬ');
   }
   text('kd',`${player.score||0} ОЧК · ${player.kills}/${player.deaths}/${player.assists||0}`);
@@ -1779,9 +1779,10 @@ function hud(now,renderState){
   show('grenade-label',personalWeapon&&(state.gameMode!=='tdm'||currentMap.tdmLoadout==='pickup'));
   text('grenade-label',state.gameMode==='tdm'?`${formatKeyCode(keybinds.drop)} · ВЫБРОСИТЬ ОРУЖИЕ`:`${formatKeyCode(keybinds.grenade)} · ГРАНАТА`);
   for(const p of state.points){const el=$(`objective-${p.id}`),owner=p.owner===-1?-1:p.owner===player.team?0:1;el.className=`objective owned${owner}${p.contested?' contested':''}`;el.title=`${p.name} · ${Math.round(Math.abs(p.progress)*100)}%`;}
-  const secondary=player.classId==='assault'?`ПТ-90 · ${player.rockets??0}`:player.classId==='medic'?'АПТЕЧКА':'';
+  const secondaryKind=selectedGadget(player.classId,2);
+  const secondary=secondaryKind==='launcher'?`ПТ-90 · ${player.rockets??0}`:GADGET_NAMES[secondaryKind]??'';
   show('secondary-gadget-label',personalWeapon&&(state.gameMode!=='tdm'||currentMap.tdmLoadout==='class')&&Boolean(secondary));
-  text('secondary-gadget-label',`${formatKeyCode(keybinds.secondaryGadget)} · ${secondary}${player.secondaryCooldown>0?' · '+Math.ceil(player.secondaryCooldown)+'с':''}`);
+  text('secondary-gadget-label',`${formatKeyCode(keybinds.secondaryGadget)} / 4 · ${secondary}${player.secondaryCooldown>0?' · '+Math.ceil(player.secondaryCooldown)+'с':''}`);
   const nearby=state.gameMode==='tdm'?null:state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
   if(state.gameMode==='tdm'&&!mounted&&!player.parachuteReady&&!player.parachuteOpen){
     const item=(state.weaponItems??[]).filter(w=>Math.hypot(w.x-player.x,w.z-player.z)<2.1).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0];

@@ -18,7 +18,7 @@ import { slideVelocity } from './movement.js';
 import { boxBounds, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
 import { createWeaponItems, dropWeapon, updateWeaponItems, weaponTarget } from './tdm.js';
-import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast, placingSupply, selectedGadget, isSupplyGadget, gadgetCooldown } from './gadgets.js';
+import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast, placingGadget, selectedGadget, isPlacementGadget, isSecondaryGadget, gadgetCooldown } from './gadgets.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -1225,14 +1225,14 @@ export class Simulation {
       p.equipTime=Math.max(0,p.equipTime-dt);
       const mounted=p.vehicleId&&this.vehicles.find(v=>v.id===p.vehicleId);
       const personal=!mounted||VEHICLE_TYPES[mounted.type].seats[p.vehicleSeat].role==='passenger';
-      if(personal&&!placingSupply(p,this.time)){
+      if(personal&&!placingGadget(p,this.time)){
         const backup=p.bot&&p.ammo+p.reserve===0&&p.stowedAmmo.ammo+p.stowedAmmo.reserve>0;
         const tool=selectedGadget(p.classId,i.toolSlot);
         // A delayed client input may still request the pre-placement pistol
         // and supply slot. Keep the automatic return authoritative until the
         // client clears that unavailable tool selection.
-        const usedSupply=!p.bot&&isSupplyGadget(tool)&&gadgetCooldown(p,tool)>0;
-        this.equipWeapon(p,usedSupply?1:i.weaponSlot||(backup?3-p.weaponSlot:0));
+        const usedTool=!p.bot&&isPlacementGadget(tool)&&gadgetCooldown(p,tool)>0;
+        this.equipWeapon(p,usedTool?1:i.weaponSlot||(backup?3-p.weaponSlot:0));
       }
       if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&!p.bot)selectGadget(this,p,i.toolSlot);
       const c=this.playerWeapon(p);
@@ -1263,7 +1263,7 @@ export class Simulation {
       if(!p.alive)continue;
       this.firePersonalWeapon(p,c,pressed,firing);
       if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.heldGadget&&i.fire&&!i.sprint&&(pressed||p.heldGadget==='repair')){
-        activateGadget(this,p,p.heldGadget==='launcher'||p.heldGadget==='medkit');
+        activateGadget(this,p,isSecondaryGadget(p.classId,p.heldGadget));
       }
       if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.bot&&i.gadget&&(!p.gadgetHeld||p.classId==='support'))this.gadget(p);
       if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.bot&&i.secondaryGadget&&!p.secondaryGadgetHeld)activateGadget(this,p,true);

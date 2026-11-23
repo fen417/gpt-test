@@ -11,6 +11,7 @@ import { createEquipmentCable } from './equipment-cable.js';
 import { cloneWeaponModel, upgradeMuzzle, upgradeOpticEye, showWeaponUpgrades } from './weapon-models.js';
 import { setWeaponSkin } from './weapon-skins.js';
 import { mountCollimator } from './collimator.js';
+import { isPlacementGadget } from '../shared/gadgets.js';
 
 const rifleFits = {
   ak12: {muzzleZ:-.865, ejection:[.055,.03,-.165], sight:{height:.100,depth:-.38}},
@@ -586,9 +587,9 @@ export function createWeaponRig(owner = {}) {
   const supplyLeft=new THREE.Group();supplyLeft.name='supply-left-grip';leftHand.add(supplyLeft);
   const supplyLeftMesh=createFPSHand('supplyLeft',importedGloveMat);ownedGeometries.add(supplyLeftMesh.geometry);supplyLeft.add(supplyLeftMesh);supplyLeft.visible=false;
   const heldTools={};
-  for(const kind of ['ammo','beacon','repair','medkit']){
+  for(const kind of ['ammo','beacon','repair','medkit','claymore']){
     const model=createGadgetModel(kind,equipmentPalette);model.visible=false;
-    const supply=kind==='ammo'||kind==='medkit';(supply?supplyRoot:leftHand).add(model);
+    const supply=isPlacementGadget(kind);(supply?supplyRoot:leftHand).add(model);
     model.position.set(.024,.025,-.058);
     if(kind==='ammo'||kind==='beacon'){model.scale.setScalar(.55);model.position.y=-.04;}
     if(supply){const pose=SUPPLY_POSE[kind];model.position.set(...pose.position);model.scale.setScalar(pose.scale);model.rotation.y=Math.PI;}
@@ -1187,7 +1188,7 @@ export function createWeaponRig(owner = {}) {
     showWeaponUpgrades(weaponRoot,key,slots,owner.detailLevel===0);
     if(rifle&&slots?.barrel&&upgradeMuzzle(rifle.model,muzzleFlash.position))flashLight.position.copy(muzzleFlash.position);
     upgradeSight=rifle&&upgradeOpticEye(rifle.model,scopeEye)?{height:scopeEye.y,depth:-.25-scopeEye.z}:null;
-    const usingSupply=usingTool&&(gadgetKind==='ammo'||gadgetKind==='medkit');
+    const usingSupply=usingTool&&isPlacementGadget(gadgetKind);
     const usingDefib=usingTool&&gadgetKind==='defibrillator';
     const throwing=throwPhase>0&&throwPhase<1;
     const discharge=usingTool&&gadgetKind==='defibrillator'&&toolActive?Math.sin(toolProgress*Math.PI):0;
@@ -1249,7 +1250,7 @@ export function createWeaponRig(owner = {}) {
       leftHand.position.copy(supplyRoot.position);leftHand.quaternion.copy(supplyRoot.quaternion);
       rightHand.position.copy(supplyRoot.position);rightHand.quaternion.copy(supplyRoot.quaternion);
       supplyLeftMesh.morphTargetInfluences[0]=supplyRightMesh.morphTargetInfluences[0]=0;
-      for(const kind of ['ammo','medkit'])heldTools[kind].visible=kind===gadgetKind;
+      for(const kind of ['ammo','medkit','claymore'])heldTools[kind].visible=kind===gadgetKind;
       fitLeftSleeve(supplyLeftWrist,.017,.92);
     }
     rightArm.visible=!usingTool||usingSupply||gadgetKind==='defibrillator'||gadgetKind==='launcher';

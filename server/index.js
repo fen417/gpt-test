@@ -6,6 +6,7 @@ import {canReadMetrics} from './metrics-access.js';
 import {createProfileStats} from './profile-stats.js';
 import {caseOwner,createCaseInventory} from './case-inventory.js';
 import {matchCaseChance} from '../shared/cases.js';
+import {GAME_VERSION} from '../shared/releases.js';
 import {networkWeaponXpCap} from './weapon-progress.js';
 import {XP_PER_WEAPON_KILL,weaponLevel} from '../shared/weapon-modules.js';
 import { pathToFileURL } from 'node:url';
@@ -45,7 +46,7 @@ export function createGameServer(options={}){
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
   const server=http.createServer((req,res)=>{
-    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,caseInventory:true,caseStorage:profiles?.caseDatabase?'rtdb':'file',weaponSkins:true,room:room?.phase??'empty'}));return;}
+    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,version:GAME_VERSION,protocol:PROTOCOL_VERSION,caseInventory:true,caseStorage:profiles?.caseDatabase?'rtdb':'file',weaponSkins:true,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
       if(!canReadMetrics(req,env)){res.writeHead(403);res.end('Forbidden');return;}
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(stats()));return;

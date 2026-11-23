@@ -1,28 +1,34 @@
 import { getWeapon, getSidearm, EYE_HEIGHT } from './world.js';
 import { VEHICLE_TYPES, vehicleShape } from './vehicles.js';
-import { boxBounds, rayAffineBox, uprightBox } from './geometry.js';
+import { affineBox, boxBounds, rayAffineBox, rotationMatrix, uprightBox } from './geometry.js';
 import { rayCollider } from './asset-colliders.js';
 import { moveBot,findCover } from './bot-navigation.js';
 import {TANK_CANNON,tankShellIncidence,tankShellRicochets} from './tank.js';
 
 export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 'repair', recon: 'beacon' };
+const SECONDARY_GADGET = {assault:'launcher',medic:'medkit',support:'claymore'};
 export const GADGET_NAMES = { ammo: 'ЯЩИК ПАТРОНОВ', defibrillator: 'ДЕФИБРИЛЛЯТОР', repair: 'РЕМОНТНАЯ ГОРЕЛКА',
-  beacon: 'МАЯК ВЫСАДКИ', launcher: 'ПТ-90', medkit: 'АПТЕЧКА' };
+  beacon: 'МАЯК ВЫСАДКИ', launcher: 'ПТ-90', medkit: 'АПТЕЧКА', claymore: 'КЛЕЙМОР' };
 export const BEACON_LIFETIME = 120;
+export const CLAYMORE_LIFETIME = 75;
+export const CLAYMORE_ARM_DELAY = .85;
+const CLAYMORE_COOLDOWN = 26;
 export function selectedGadget(classId,slot) {
-  return slot===1?CLASS_GADGET[classId]??null:slot===2?({assault:'launcher',medic:'medkit'}[classId]??null):null;
+  return slot===1?CLASS_GADGET[classId]??null:slot===2?SECONDARY_GADGET[classId]??null:null;
 }
 export const isSupplyGadget = kind => kind==='ammo'||kind==='medkit';
-export const gadgetCooldown = (p,kind) => Math.max(0,kind==='medkit'||kind==='launcher'
+export const isPlacementGadget = kind => isSupplyGadget(kind)||kind==='claymore';
+export const isSecondaryGadget = (classId,kind) => Boolean(kind)&&kind===SECONDARY_GADGET[classId];
+export const gadgetCooldown = (p,kind) => Math.max(0,isSecondaryGadget(p.classId,kind)
   ? p.secondaryCooldown??0 : p.gadgetTime??p.gadgetCooldown??0);
-export const placingSupply = (p,time) => isSupplyGadget(p.gadgetAction)&&p.gadgetActionUntil>time;
+export const placingGadget = (p,time) => isPlacementGadget(p.gadgetAction)&&p.gadgetActionUntil>time;
 
 export function selectGadget(sim,p,slot) {
   // Finish the short placement gesture before accepting another selection.
-  if(!p.vehicleId&&placingSupply(p,sim.time))return;
+  if(!p.vehicleId&&placingGadget(p,sim.time))return;
   const kind=p.vehicleId?null:selectedGadget(p.classId,slot);
   if(kind===(p.heldGadget??null))return;
-  if(isSupplyGadget(kind)&&gadgetCooldown(p,kind)>0)return;
+  if(isPlacementGadget(kind)&&gadgetCooldown(p,kind)>0)return;
   p.heldGadget=kind;p.pendingGadget=null;p.gadgetAction=null;p.gadgetActionUntil=0;p.gadgetTargetId=null;
   p.equipTime=.32;p.reloading=false;p.reloadTime=0;
   // Selecting gear while holding the trigger must not discharge it by accident.
@@ -40,6 +46,10 @@ function aimedAt(p,target) {
 }
 
 export function deployableBounds(item) {
+  if(item.kind==='claymore'){
+    const obb=affineBox(center(item,.14),[.224,.14,.134],rotationMatrix({y:item.yaw}));
+    return boxBounds({x:item.x,z:item.z,obb});
+  }
   if(item.kind==='medkit')return boxBounds({x:item.x,z:item.z,baseY:item.y,w:.29,d:.20,h:.23});
   return boxBounds({x:item.x,z:item.z,baseY:item.y,w:item.kind==='beacon'?.55:.65,d:.5,h:item.kind==='beacon'?1.04:.45});
 }
@@ -101,6 +111,41 @@ function place(sim,p,kind) {
   return true;
 }
 
+function placeClaymore(sim,p){
+  if(!p.grounded||p.parachuteOpen)return false;
+  const x=p.x-Math.sin(p.yaw)*.93,z=p.z-Math.cos(p.yaw)*.93;
+  const y=supportHeight(sim,x,z,p.y);
+  if(Math.abs(y-p.y)>.42||sim.collides(x,z,y+.035,.24,.3)||!sim.lineClear(eye(p),{x,y:y+.17,z}))return false;
+  sim.deployables=sim.deployables.filter(item=>item.ownerId!==p.id||item.kind!=='claymore');
+  sim.deployables.push({
+    id:'claymore:'+ ++sim.eventId,kind:'claymore',ownerId:p.id,team:p.team,squadId:p.squadId,
+    x,y,z,yaw:p.yaw,hp:35,expires:sim.time+CLAYMORE_LIFETIME,checkAt:sim.time+CLAYMORE_ARM_DELAY,
+  });
+  beginAction(sim,p,'claymore',CLAYMORE_ARM_DELAY);
+  p.secondaryCooldown=CLAYMORE_COOLDOWN;
+  return true;
+}
+
+function updateClaymore(sim,item){
+  if(item.checkAt>sim.time)return;
+  item.checkAt=sim.time+.10;
+  const origin=center(item,.22),forwardX=-Math.sin(item.yaw),forwardZ=-Math.cos(item.yaw);
+  const targets=[];
+  for(const p of sim.players.values()){
+    if(!p.alive||p.team===item.team||p.vehicleId||p.invulnerableUntil>sim.time||Math.abs(p.y-item.y)>.85)continue;
+    const dx=p.x-item.x,dz=p.z-item.z,rangeSq=dx*dx+dz*dz;
+    if(rangeSq>2.65**2||dx*forwardX+dz*forwardZ<Math.sqrt(rangeSq)*.72||
+      !sim.lineClear(origin,center(p,.48)))continue;
+    targets.push(p);
+  }
+  if(!targets.length)return;
+  item.hp=0;
+  const owner=sim.players.get(item.ownerId);
+  const attacker=owner?.team===item.team?owner:null;
+  sim.event('explosion',{...origin,kind:'claymore',playerId:attacker?.id});
+  for(const target of targets)sim.damage(target,125,attacker,{weapon:GADGET_NAMES.claymore,explosive:true});
+}
+
 export function activateGadget(sim,p,secondary=false) {
   if(!p.alive||p.vehicleId||p.equipTime>0)return false;
   if(p.gadgetActionUntil>sim.time&&p.gadgetAction!=='repair')return false;
@@ -113,9 +158,8 @@ export function activateGadget(sim,p,secondary=false) {
       else launchRocket(sim,p);
       return true;
     }
-    if(p.classId==='medic'){
-      return place(sim,p,'medkit');
-    }
+    if(p.classId==='medic')return place(sim,p,'medkit');
+    if(p.classId==='support')return placeClaymore(sim,p);
     return false;
   }
   if(p.gadgetTime>0)return false;
@@ -313,7 +357,7 @@ export function updateEquipment(sim,dt) {
       }
     }
     if(sim.time>=p.gadgetActionUntil){
-      if(isSupplyGadget(p.gadgetAction)&&!p.vehicleId){
+      if(isPlacementGadget(p.gadgetAction)&&!p.vehicleId){
         p.heldGadget=null;p.gadgetTargetId=null;
         p.input.toolSlot=0;p.input.weaponSlot=1;
         const alreadyPrimary=p.weaponSlot===1;
@@ -328,6 +372,7 @@ export function updateEquipment(sim,dt) {
   }
   for(const item of sim.deployables){
     if(item.hp<=0||item.expires<=sim.time)continue;
+    if(item.kind==='claymore'){updateClaymore(sim,item);continue;}
     if(item.falling){
       item.fallSpeed=Math.min(26,item.fallSpeed+18*dt);
       const drop=item.fallSpeed*dt;
