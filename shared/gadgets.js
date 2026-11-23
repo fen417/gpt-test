@@ -6,9 +6,9 @@ import { moveBot,findCover } from './bot-navigation.js';
 import {TANK_CANNON,tankShellIncidence,tankShellRicochets} from './tank.js';
 
 export const CLASS_GADGET = { assault: 'ammo', medic: 'defibrillator', support: 'repair', recon: 'beacon' };
-const SECONDARY_GADGET = {assault:'launcher',medic:'medkit',support:'claymore'};
+const SECONDARY_GADGET = {assault:'launcher',medic:'medkit',support:'claymore',recon:'binoculars'};
 export const GADGET_NAMES = { ammo: 'ЯЩИК ПАТРОНОВ', defibrillator: 'ДЕФИБРИЛЛЯТОР', repair: 'РЕМОНТНАЯ ГОРЕЛКА',
-  beacon: 'МАЯК ВЫСАДКИ', launcher: 'ПТ-90', medkit: 'АПТЕЧКА', claymore: 'КЛЕЙМОР' };
+  beacon: 'МАЯК ВЫСАДКИ', launcher: 'ПТ-90', medkit: 'АПТЕЧКА', claymore: 'КЛЕЙМОР', binoculars:'БИНОКЛЬ БД-09' };
 export const BEACON_LIFETIME = 120;
 export const CLAYMORE_LIFETIME = 75;
 export const CLAYMORE_ARM_DELAY = .85;
@@ -30,6 +30,7 @@ export function selectGadget(sim,p,slot) {
   if(kind===(p.heldGadget??null))return;
   if(isPlacementGadget(kind)&&gadgetCooldown(p,kind)>0)return;
   p.heldGadget=kind;p.pendingGadget=null;p.gadgetAction=null;p.gadgetActionUntil=0;p.gadgetTargetId=null;
+  p.reconScan=null;
   p.equipTime=.32;p.reloading=false;p.reloadTime=0;
   // Selecting gear while holding the trigger must not discharge it by accident.
   p.fireHeld=p.input.fire;

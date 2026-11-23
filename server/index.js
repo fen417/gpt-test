@@ -7,6 +7,7 @@ import {createProfileStats} from './profile-stats.js';
 import {caseOwner,createCaseInventory} from './case-inventory.js';
 import {matchCaseChance} from '../shared/cases.js';
 import {GAME_VERSION} from '../shared/releases.js';
+import {canSeeReconMark,RECON_MARK_LIFETIME} from '../shared/recon-optics.js';
 import {networkWeaponXpCap} from './weapon-progress.js';
 import {XP_PER_WEAPON_KILL,weaponLevel} from '../shared/weapon-modules.js';
 import { pathToFileURL } from 'node:url';
@@ -46,7 +47,7 @@ export function createGameServer(options={}){
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
   const server=http.createServer((req,res)=>{
-    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,version:GAME_VERSION,protocol:PROTOCOL_VERSION,caseInventory:true,caseStorage:profiles?.caseDatabase?'rtdb':'file',weaponSkins:true,room:room?.phase??'empty'}));return;}
+    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,version:GAME_VERSION,protocol:PROTOCOL_VERSION,caseInventory:true,caseStorage:profiles?.caseDatabase?'rtdb':'file',weaponSkins:true,reconMarks:true,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
       if(!canReadMetrics(req,env)){res.writeHead(403);res.end('Forbidden');return;}
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(stats()));return;
@@ -155,6 +156,7 @@ export function createGameServer(options={}){
     s.caseOwner??=inventoryOwner;
     s.caseClient=Boolean(data.caseKey);
     s.skinClient=data.weaponSkins===true;
+    s.reconMarks=data.reconMarks===true;
     s.client=c;s.detachedAt=0;c.session=s;c.profileUid=null;c.profileWeaponXp=null;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
     if(s.loadingReady)room.loading?.pending.add(s.id);
     identity(c,requestId);
@@ -235,6 +237,7 @@ export function createGameServer(options={}){
     if(send(s.client,packet.bytes,'snapshot')&&room.sim.winner!==null)s.finishedSequence=packet.sequence;
   }
   function visibleEvent(e,s){
+    if(e.type==='reconMark')return s.reconMarks&&room.sim.time-e.time<RECON_MARK_LIFETIME&&canSeeReconMark(room.sim.players.get(s.id),e);
     if(e.type==='score')return e.playerId===s.id;
     if(e.type==='damage')return e.playerId===s.id||e.attackerId===s.id;
     if(!['shot','bulletImpact','dryFire','reload','grenade','horn','explosion'].includes(e.type)||e.playerId===s.id)return true;
@@ -349,7 +352,7 @@ export function createGameServer(options={}){
   function stopLoop(){clearTimeout(timer);timer=null;accumulator=0;}
   wss.on('connection',ws=>{
     const c={ws,session:null,lastSeen:Date.now(),messages:0,window:Date.now(),alive:true};clients.add(c);
-    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),profileReset:Boolean(profiles),caseInventory:true,weaponSkins:true,maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
+    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),profileReset:Boolean(profiles),caseInventory:true,weaponSkins:true,reconMarks:true,maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
     ws.on('pong',()=>{c.alive=true;c.lastSeen=Date.now();});
     ws.on('message',(raw,isBinary)=>{
       const now=Date.now();c.lastSeen=now;if(now-c.window>1000){c.window=now;c.messages=0;}if(++c.messages>160){ws.close(1008,'Rate limit');return;}

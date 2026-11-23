@@ -6,7 +6,7 @@ import { smoothRingSeams } from './character-geometry.js';
 import { anatomicalGeometry } from './soldier-anatomy.js';
 import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS, pistolGripSectionAt } from './pistol-grip.js';
 import { createFPSHand, fpsHandTextures } from './fps-hands.js';
-import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
+import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE, BINOCULAR_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
 import { cloneWeaponModel, upgradeMuzzle, upgradeOpticEye, showWeaponUpgrades } from './weapon-models.js';
 import { setWeaponSkin } from './weapon-skins.js';
@@ -595,6 +595,14 @@ export function createWeaponRig(owner = {}) {
     if(supply){const pose=SUPPLY_POSE[kind];model.position.set(...pose.position);model.scale.setScalar(pose.scale);model.rotation.y=Math.PI;}
     heldTools[kind]=model;
   }
+  const binoculars=[true,false].map(lowDetail=>{
+    const model=createGadgetModel('binoculars',equipmentPalette,{lowDetail});
+    model.position.set(...BINOCULAR_POSE.position);
+    model.scale.setScalar(BINOCULAR_POSE.scale);
+    model.visible=false;
+    supplyRoot.add(model);
+    return model;
+  });
   const heldLauncher=createGadgetModel('launcher',equipmentPalette);weapon.add(heldLauncher);
   heldLauncher.position.set(...LAUNCHER_POSE.model);heldLauncher.visible=false;
   const rightHand=new THREE.Group();rightHand.name='right-trigger-glove';weapon.add(rightHand);
@@ -1188,7 +1196,8 @@ export function createWeaponRig(owner = {}) {
     showWeaponUpgrades(weaponRoot,key,slots,owner.detailLevel===0);
     if(rifle&&slots?.barrel&&upgradeMuzzle(rifle.model,muzzleFlash.position))flashLight.position.copy(muzzleFlash.position);
     upgradeSight=rifle&&upgradeOpticEye(rifle.model,scopeEye)?{height:scopeEye.y,depth:-.25-scopeEye.z}:null;
-    const usingSupply=usingTool&&isPlacementGadget(gadgetKind);
+    const usingBinoculars=usingTool&&gadgetKind==='binoculars';
+    const usingSupply=usingTool&&(isPlacementGadget(gadgetKind)||usingBinoculars);
     const usingDefib=usingTool&&gadgetKind==='defibrillator';
     const throwing=throwPhase>0&&throwPhase<1;
     const discharge=usingTool&&gadgetKind==='defibrillator'&&toolActive?Math.sin(toolProgress*Math.PI):0;
@@ -1215,6 +1224,8 @@ export function createWeaponRig(owner = {}) {
     rifleGlove.visible=!usingSupply&&!usingDefib&&(usingTool||throwing||!pistol);
     pistolGlove.visible=Boolean(pistol)&&!usingTool&&!throwing;
     supplyLeft.visible=supplyRight.visible=supplyRoot.visible=usingSupply;
+    binoculars[0].visible=usingBinoculars&&owner.detailLevel===0;
+    binoculars[1].visible=usingBinoculars&&owner.detailLevel!==0;
     triggerGloveModel.visible=!usingSupply&&!usingDefib;
     rightHand.visible=usingTool?usingSupply||gadgetKind==='defibrillator'||gadgetKind==='launcher':!pistol;
     pistolRight.visible=Boolean(pistol)&&!usingTool;
@@ -1243,7 +1254,7 @@ export function createWeaponRig(owner = {}) {
       // through the object during the use gesture. Palms clasp its lower sides.
       const push=toolActive?Math.sin(THREE.MathUtils.clamp(toolProgress,0,1)*Math.PI):0;
       supplyRoot.position.set(0,-push*.025,-push*.09);supplyRoot.rotation.set(-push*.08,0,0);
-      const spread=SUPPLY_POSE[gadgetKind].handSpread;
+      const spread=(usingBinoculars?BINOCULAR_POSE:SUPPLY_POSE[gadgetKind]).handSpread;
       supplyLeft.position.x=-spread;supplyRight.position.x=spread;
       supplyLeftWrist.fromArray(SUPPLY_POSE.leftWrist).add(supplyLeft.position);
       supplyRightWrist.fromArray(SUPPLY_POSE.rightWrist).add(supplyRight.position);

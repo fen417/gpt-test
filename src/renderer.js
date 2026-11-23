@@ -30,8 +30,9 @@ import { createWeaponRig } from './weapons.js';
 import { SCOPE_ZOOMS, scopeMagnification } from './scope-optics.js';
 import { COLLIMATOR_ZOOM } from './collimator.js';
 import {sameSquad} from '../shared/squads.js';
-import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
+import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE, BINOCULAR_POSE } from './gadget-poses.js';
 import { CLAYMORE_ARM_DELAY, CLAYMORE_LIFETIME, isPlacementGadget } from '../shared/gadgets.js';
+import {BINOCULAR_RANGE,BINOCULAR_ZOOM,binocularGroundRange,traceBinoculars} from '../shared/recon-optics.js';
 import { drawFlagBanner } from './logos.js';
 import { BLACK_HAWK, blackHawkGunPose, canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
 import { placeTankDriverCamera } from './tank-camera.js';
@@ -1655,9 +1656,11 @@ export class GameRenderer {
       if(!player.alive||!kind||!soldier.group.parent)continue;
       active.add(player.id);
       let model=this.remoteTools.get(player.id);
-      if(model?.userData.kind!==kind){
+      const lowDetail=kind==='binoculars'&&(this.detailLevel===0||soldier.lod>=2);
+      if(model?.userData.kind!==kind||model.userData.lowDetail!==lowDetail){
         model?.removeFromParent();
-        model=createGadgetModel(kind,this.equipmentPalette);model.userData.kind=kind;
+        model=createGadgetModel(kind,this.equipmentPalette,{lowDetail});
+        model.userData.kind=kind;model.userData.lowDetail=lowDetail;
         model.traverse(object=>{if(object.material)object.material=this.getQualityMaterial(object.material);});
         this.remoteTools.set(player.id,model);
       }
@@ -1670,12 +1673,24 @@ export class GameRenderer {
       if(model.parent!==soldier.group)soldier.group.add(model);
       model.position.set(.10,(player.crouch?.86:1.22)-(['medkit','claymore'].includes(kind)?.08:0),-.30);
       model.rotation.set(player.pitch??0,0,0);
+      if(kind==='binoculars')model.position.set(.025,(player.crouch?.84:1.21)+(player.aim?.18:0),-.26);
       model.scale.setScalar(kind==='beacon'?.4:kind==='ammo'||kind==='claymore'?.75:1);
       soldier.rifle.scale.setScalar(.001);soldier.flash.visible=false;
       const flame=model.getObjectByName('tool-flame');
       if(flame){flame.visible=player.gadgetAction==='repair';flame.scale.setScalar(.8+Math.sin(this.clock*43)*.15);}
     }
     for(const [id,model] of this.remoteTools)if(!active.has(id)){model.removeFromParent();this.remoteTools.delete(id);}
+  }
+
+  measureBinocularDistance(state,player){
+    if(this.clock<(this.binocularRangeAt??0))return;
+    this.binocularRangeAt=this.clock+.08;
+    this.binocularRay??=new THREE.Vector3();
+    const origin=this.camera.position,direction=this.camera.getWorldDirection(this.binocularRay);
+    const ground=binocularGroundRange(origin,direction,this.map.terrain);
+    const occluders=this.campaignCoverColliders??getAssetColliders(this.map);
+    const wall=distanceToCover(origin,direction,occluders,Math.min(BINOCULAR_RANGE,ground));
+    this.binocularDistance=traceBinoculars(origin,direction,wall,state.players,state.vehicles,player.id).distance;
   }
 
   updateGrenades(state, localId) {
@@ -1874,6 +1889,7 @@ export class GameRenderer {
     const rawDt = dt || 0.016;
     dt = Math.min(rawDt, 0.1); this.clock += dt;
     this.scoped = false;
+    this.binocularAiming=false;
     this.collimatorAiming = false;
     if (this.map.shoreX !== undefined && this.portWater) {
       this.portWater.offset.set((this.clock * .011) % 1, (this.clock * .017) % 1);
@@ -2064,9 +2080,11 @@ export class GameRenderer {
       const opticId=view.equippedAttachments?.(player.weaponId)?.optic;
       const optic=getWeaponModule(player.weaponId,'optic',opticId);
       const scopedWeapon = !gadgetKind && Boolean(optic?.zooms??SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
+      const binoculars=gadgetKind==='binoculars'&&!this.weaponSwitch&&!mounted;
       const equippedCollimator = !gadgetKind && Boolean(view.hasCollimator?.(this.presentedWeaponId));
-      this.scoped = isAlive && scopedWeapon && this.aimAmount >= .92;
-      const opticZoom = this.scoped ? scopeMagnification(player.weaponId,view.scopeZoom,opticId) :
+      this.scoped = isAlive && (scopedWeapon||binoculars) && this.aimAmount >= .92;
+      this.binocularAiming=Boolean(binoculars&&this.scoped);
+      const opticZoom = this.binocularAiming ? BINOCULAR_ZOOM : this.scoped ? scopeMagnification(player.weaponId,view.scopeZoom,opticId) :
         equippedCollimator && !this.weaponSwitch ? COLLIMATOR_ZOOM : 1;
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       // Local visual time must not be restarted by every authoritative snapshot.
@@ -2126,12 +2144,14 @@ export class GameRenderer {
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / opticZoom))
         : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
       const hipFov = baseFov + this.sprintBlend * 6 + this.slideBlend*3;
-      const fov = scopedWeapon ? (this.scoped ? aimFov : hipFov) : lerp(hipFov, aimFov, this.aimAmount);
+      const fov = scopedWeapon||binoculars ? (this.scoped ? aimFov : hipFov) : lerp(hipFov, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
         this.camera.fov = fov;
         this.camera.near = .045;
         this.camera.updateProjectionMatrix();
       }
+      if(this.binocularAiming)this.measureBinocularDistance(state,player);
+      else this.binocularRangeAt=0;
       this.swayX = lerp(this.swayX, clamp(Math.atan2(Math.sin(yaw - this.lastYaw), Math.cos(yaw - this.lastYaw)) * 1.3, -0.025, 0.025), 0.18);
       this.swayY = lerp(this.swayY, clamp((pitch - this.lastPitch) * 1.3, -0.02, 0.02), 0.18);
       this.lastYaw = yaw; this.lastPitch = pitch;
@@ -2182,7 +2202,7 @@ export class GameRenderer {
       const pistolSprint=pistol&&!gadgetKind?applyPistolSprintPose(this.weapon,this.sprintBlend,this.aimAmount,this.reloadAmount,kick,cycle):0;
       if(gadgetKind){
         const launcher=gadgetKind==='launcher';
-        const framing=launcher?LAUNCHER_POSE:gadgetKind==='defibrillator'?DEFIB_POSE:isPlacementGadget(gadgetKind)?SUPPLY_POSE:null;
+        const framing=launcher?LAUNCHER_POSE:gadgetKind==='defibrillator'?DEFIB_POSE:gadgetKind==='binoculars'?BINOCULAR_POSE:isPlacementGadget(gadgetKind)?SUPPLY_POSE:null;
         this.weapon.position.set(
           lerp(framing?.hip[0]??.08,framing?.ads[0]??.02,this.aimAmount)+Math.sin(cycle)*.007*bob-this.swayX,
           lerp(framing?.hip[1]??-.27,framing?.ads[1]??-.22,this.aimAmount)-this.landDip*.4-lowered*.42,

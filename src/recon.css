@@ -1,0 +1,29 @@
+#binocular-overlay,#recon-markers { position:fixed; inset:0; pointer-events:none; }
+#binocular-overlay { z-index:3; }
+#binocular-overlay::before {
+  content:""; position:absolute; inset:0; background:#050b0c;
+  mask-image:radial-gradient(circle at calc(50% - 13vmin) 50%,transparent 27.4vmin,#000 29vmin),
+    radial-gradient(circle at calc(50% + 13vmin) 50%,transparent 27.4vmin,#000 29vmin);
+  mask-composite:intersect;
+}
+.binocular-reticle {
+  position:absolute; left:50%; top:50%; width:32px; height:32px; transform:translate(-50%,-50%);
+  background:linear-gradient(#bad7a4,#bad7a4) center top/1px 10px no-repeat,
+    linear-gradient(#bad7a4,#bad7a4) center bottom/1px 10px no-repeat,
+    linear-gradient(#bad7a4,#bad7a4) left center/10px 1px no-repeat,
+    linear-gradient(#bad7a4,#bad7a4) right center/10px 1px no-repeat,
+    radial-gradient(circle,#d1f0b3 1px,transparent 2px);
+  filter:drop-shadow(0 1px 1px #080e0a);
+}
+#binocular-range {
+  position:absolute; top:calc(50% + 10vmin); left:50%; transform:translateX(-50%);
+  color:#d7edbf; background:#0b1813df; border:1px solid #9cb58a7a;
+  padding:6px 10px; font:600 13px monospace; white-space:nowrap; letter-spacing:.07em;
+}
+.recon-mark {
+  position:absolute; left:0; top:0; display:grid; justify-items:center; gap:7px;
+  color:#f6ce8a; font:700 10px monospace; letter-spacing:.08em; text-shadow:0 1px 3px #080c0e;
+}
+.recon-mark[hidden] { display:none; }
+.recon-mark i { width:10px; height:10px; border:1.5px solid currentColor; transform:rotate(45deg); background:#271d0d46; box-shadow:0 0 0 1px #15130f7a; }
+.recon-mark[data-target="vehicle"] i { transform:none; }

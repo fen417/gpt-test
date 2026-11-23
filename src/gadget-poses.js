@@ -25,3 +25,7 @@ export const DEFIB_POSE = {
   unit:[0,-.092,.015],
   hip:[0,-.22,-.50], ads:[0,-.19,-.53],
 };
+export const BINOCULAR_POSE = {
+  hip:[0,-.255,-.47],ads:[0,-.085,-.255],
+  scale:1,position:[0,-.018,.015],handSpread:-.039,
+};

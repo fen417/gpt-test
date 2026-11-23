@@ -1,9 +1,10 @@
 import { aimBullet } from './ballistics.js';
 import { getWeapon, EYE_HEIGHT, CAPTURE_RADIUS } from './world.js';
 import { thinkVehicleBot } from './vehicle-ai.js';
-import { thinkEquipment, liveBeacons } from './gadgets.js';
+import { thinkEquipment, liveBeacons, selectGadget } from './gadgets.js';
 import { findCover, moveBot, elevatedSpots } from './bot-navigation.js';
 import { rayVehicleArmor } from './vehicle-combat.js';
+import {vehicleShape} from './vehicles.js';
 import {SQUAD_NAMES,aimedSquadPoint} from './squads.js';
 
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -340,6 +341,34 @@ function equipment(sim,p,dt){
   return false;
 }
 
+function observeWithBinoculars(sim,p,dt){
+  if(p.classId!=='recon'||sim.campaign||(sim.gameMode==='tdm'&&sim.map.tdmLoadout!=='class'))return false;
+  const ai=p.ai,contact=ai.contact;
+  const canObserve=contact?.kind==='player'&&distance(p,contact)>=24&&ai.pressure<.53&&sim.time-p.lastHurt>1.4;
+  if(p.heldGadget!=='binoculars'){
+    if(!canObserve||p.equipTime>0||sim.time<(ai.nextOpticsAt??0))return false;
+    ai.nextOpticsAt=sim.time+22+sim.random()*18;
+    if(sim.random()>.43)return false;
+    selectGadget(sim,p,2);
+    ai.observeUntil=sim.time+1.85;
+  }else if(!canObserve||sim.time>=ai.observeUntil){
+    selectGadget(sim,p,0);
+    return false;
+  }
+  const observed=sim.players.get(contact.id);
+  const vehicle=observed?.vehicleId&&sim.vehicles.find(item=>item.id===observed.vehicleId);
+  const target=vehicle??contact;
+  const from=eye(p),dx=target.x-from.x,dz=target.z-from.z;
+  const targetY=vehicle?vehicleShape(vehicle).center.y:contact.y+contact.height;
+  const wantedYaw=Math.atan2(-dx,-dz);
+  const wantedPitch=Math.atan2(targetY-from.y,Math.hypot(dx,dz));
+  p.input.yaw=p.yaw+clamp(angle(wantedYaw-p.yaw),-dt*3,dt*3);
+  p.input.pitch=p.pitch+clamp(wantedPitch-p.pitch,-dt*2.2,dt*2.2);
+  p.input.aim=true;
+  ai.mode='observe';
+  return true;
+}
+
 export function thinkInfantryBot(sim,p,dt){
   if(!p.alive)return;
   const ai=state(sim,p);reset(p);ai.pressure=Math.max(0,1-(sim.time-ai.pressureAt)/1.7);
@@ -355,10 +384,12 @@ export function thinkInfantryBot(sim,p,dt){
   if(grenade&&sim.time>=ai.evadeAt){
     ai.mode='evade-grenade';const d=Math.max(.1,distance(p,grenade));
     p.pendingGadget=null;p.gadgetAction=null;
+    if(p.heldGadget==='binoculars')selectGadget(sim,p,0);
     moveBot(sim,p,{x:p.x+(p.x-grenade.x)/d*9,z:p.z+(p.z-grenade.z)/d*9},dt,{sprint:true});return;
   }
   if(p.gadgetAction&&p.gadgetAction!=='repair'){ai.mode='use-equipment';return;}
   if(sim.time>=ai.decideAt)decide(sim,p);
+  if(observeWithBinoculars(sim,p,dt))return;
   if(ai.squad?.order){
     const target=ai.contact;if(target)aim(sim,p,target,dt);
     if(ai.goal)moveBot(sim,p,ai.goal,dt,{sprint:!target,look:!target});

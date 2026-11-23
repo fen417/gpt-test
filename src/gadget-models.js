@@ -30,6 +30,8 @@ export function loadEquipmentModels() {
     beacon:new URL('./assets/equipment/beacon.glb',import.meta.url).href,
     launcher:new URL('./assets/equipment/pt90.glb',import.meta.url).href,
     claymore:new URL('./assets/equipment/claymore.glb',import.meta.url).href,
+    binoculars:new URL('./assets/equipment/binoculars.glb',import.meta.url).href,
+    'binoculars-low':new URL('./assets/equipment/binoculars-low.glb',import.meta.url).href,
   };
   const required={
     ammo:['Lid','Contents'],
@@ -39,6 +41,8 @@ export function loadEquipmentModels() {
     beacon:['Antenna','Supports','StatusLamp','SignalDisplay'],
     launcher:['SightEye','FrontPost'],
     claymore:['Signal_Origin'],
+    binoculars:['Binoculars'],
+    'binoculars-low':['Binoculars'],
   };
   equipmentLoading=Promise.all(Object.entries(urls).map(async ([kind,url])=>{
     try{
@@ -47,7 +51,10 @@ export function loadEquipmentModels() {
         throw new Error('Missing equipment parts');
       scene.name='equipment-'+kind;
       scene.traverse(object=>{
-        if(object.isMesh)object.castShadow=object.receiveShadow=true;
+        if(object.isMesh){
+          const clearLens=kind.startsWith('binoculars')&&object.material.transparent;
+          object.castShadow=object.receiveShadow=!clearLens;
+        }
       });
       if(kind==='defibrillator'){
         const glow=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false});
@@ -134,6 +141,15 @@ function build(kind,m) {
     }
     wire([[-.1,.31,.02],[-.1,.38,.02],[.1,.38,.02],[.1,.31,.02]],.012,m.cloth);
     for(const z of [-.1,.1])box(0,.068,z,.46,.018,.022,m.orange);
+  }else if(kind==='binoculars'){
+    for(const x of [-.057,.057]){
+      tube(x,.063,0,.041,.19,m.olive,'z');
+      tube(x,.063,-.087,.047,.026,m.dark,'z');
+      tube(x,.063,-.101,.035,.006,m.blue,'z');
+      tube(x,.063,.093,.036,.027,m.dark,'z');
+    }
+    box(0,.079,0,.066,.048,.09,m.dark);
+    box(0,.108,-.015,.038,.017,.038,m.orange);
   }else if(kind==='claymore'){
     box(0,.184,.027,.397,.165,.118,m.olive);
     box(0,.183,-.041,.17,.055,.014,m.dark);
@@ -328,7 +344,7 @@ function attachClaymoreLaser(model,kind,deployed){
   return model;
 }
 
-export function createGadgetModel(kind,palette,{deployed=false,side='left'}={}) {
+export function createGadgetModel(kind,palette,{deployed=false,side='left',lowDetail=false}={}) {
   const defib=equipmentTemplates.get('defibrillator');
   if(defib&&(kind==='defibrillator-paddle'||kind==='defibrillator-unit')){
     const name=kind==='defibrillator-unit'?'Monitor':side==='right'?'RightPaddle':'LeftPaddle';
@@ -336,7 +352,7 @@ export function createGadgetModel(kind,palette,{deployed=false,side='left'}={}) 
     model.position.set(0,0,0);
     return model;
   }
-  const authored=equipmentTemplates.get(kind);
+  const authored=(kind==='binoculars'&&lowDetail?equipmentTemplates.get('binoculars-low'):null)??equipmentTemplates.get(kind);
   if(authored&&kind!=='defibrillator'){
     const model=authored.clone(true);
     if(kind==='ammo'){

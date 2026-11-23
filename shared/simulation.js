@@ -19,6 +19,7 @@ import { boxBounds, overlapsAffine, uprightBox } from './geometry.js';
 import { getAssetColliders, rayCollider as rayBox, overlapsCollider, colliderNormal, expandCollider } from './asset-colliders.js';
 import { createWeaponItems, dropWeapon, updateWeaponItems, weaponTarget } from './tdm.js';
 import { activateGadget, selectGadget, updateEquipment, thinkEquipment, damageDeployable, deployableBounds, liveBeacons, supportHeight, blast, placingGadget, selectedGadget, isPlacementGadget, isSecondaryGadget, gadgetCooldown } from './gadgets.js';
+import { updateBinocularScan } from './recon-optics.js';
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -287,7 +288,7 @@ export class Simulation {
       parachuteOpen:false,parachuteReady:false,parachuteHold:0});
     p.y=spawnY;
     Object.assign(p,{rockets:p.classId==='assault'?2:0,secondaryCooldown:0,gadgetTime:0,gadgetAction:null,gadgetActionUntil:0,
-      pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null,heldGadget:null});
+      pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null,heldGadget:null,reconScan:null});
     p.ai=null;p.botRideOrder=null;p.hornHeld=false;p.botCrewTarget=null;p.botCrewSenseAt=0;this.botTeamAt=0;
     if(p.bot){p.botThinkAt=this.time+((p.botSlot??0)%5)*.01;p.botThinkLastAt=this.time;}
     p.velocityX=0;p.velocityZ=0;p.tickX=x;p.tickZ=z;
@@ -1261,6 +1262,7 @@ export class Simulation {
         p.networkFrames=null;
       }else if(!p.networkControlled||p.networkIdle)this.movePlayer(p,i,dt);
       if(!p.alive)continue;
+      updateBinocularScan(this,p);
       this.firePersonalWeapon(p,c,pressed,firing);
       if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.heldGadget&&i.fire&&!i.sprint&&(pressed||p.heldGadget==='repair')){
         activateGadget(this,p,isSecondaryGadget(p.classId,p.heldGadget));

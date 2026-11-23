@@ -162,8 +162,8 @@ export class SnapshotDecoder{
     return {frame,state:materializeSnapshot(frame,this.context),inputAck,tick,sequence};
   }
 }
-const EVENT_TYPES=['shot','bulletImpact','damage','score','kill','reload','equip','grenade','gadget','revive','rocketLaunch','explosion','spawn','vehicleEnter','vehicleExit','vehicleDestroyed','equipmentDestroyed','capture','roundEnd','horn','glassBreak','squadOrder','dryFire','cannonShot','ricochet'];
-const EVENT_SPEC=Object.fromEntries(specs(`playerId:r attackerId:r victimId:r killerId:r medicId:r team:u8 classId:r weaponId:r weapon:r kind:r reason:r points:u16 total:u32 shotSeq:u16
+const EVENT_TYPES=['shot','bulletImpact','damage','score','kill','reload','equip','grenade','gadget','revive','rocketLaunch','explosion','spawn','vehicleEnter','vehicleExit','vehicleDestroyed','equipmentDestroyed','capture','roundEnd','horn','glassBreak','squadOrder','dryFire','cannonShot','ricochet','reconMark'];
+const EVENT_SPEC=Object.fromEntries(specs(`playerId:r attackerId:r victimId:r killerId:r medicId:r team:u8 squadId:u8 classId:r weaponId:r weapon:r kind:r reason:r points:u16 total:u32 shotSeq:u16
   x:f32 y:f32 z:f32 tx:f32 ty:f32 tz:f32 vx:v vy:v vz:v life:f32 duration:f32 yaw:a pitch:a amount:f32 headshot:u8 hit:u8 vehicleHit:u8 equipmentHit:u8 mounted:u8 empty:u8
   vehicleId:r vehicleType:r equipmentId:r rocketId:r impact:r impactBoxId:r impactVehicleId:r dx:signed dy:signed dz:signed targetId:r pointId:r killer:r victim:r seat:u8 pane:u8 winner:u8 shotId:u32 flight:f32`).map(f=>[f.key,f]));
 const EVENT_KEYS={shot:'playerId classId weaponId team shotSeq x y z vx vy vz life vehicleId mounted',
@@ -173,7 +173,8 @@ const EVENT_KEYS={shot:'playerId classId weaponId team shotSeq x y z vx vy vz li
   reload:'playerId classId weaponId duration empty x z',equip:'playerId kind weaponId x z',grenade:'playerId x y z yaw',gadget:'playerId classId kind team x y z yaw duration targetId',
   revive:'playerId medicId x y z',rocketLaunch:'playerId team rocketId x y z vx vy vz yaw pitch',explosion:'x y z kind playerId rocketId vehicleId',spawn:'playerId x y z team',
   vehicleEnter:'playerId vehicleId seat',vehicleExit:'playerId vehicleId seat',vehicleDestroyed:'vehicleId vehicleType attackerId x y z',equipmentDestroyed:'equipmentId kind x y z',
-  capture:'pointId team',roundEnd:'winner reason',horn:'playerId vehicleId x y z',glassBreak:'vehicleId pane x y z',squadOrder:'playerId kind pointId',dryFire:'playerId classId x z'};
+  capture:'pointId team',roundEnd:'winner reason',horn:'playerId vehicleId x y z',glassBreak:'vehicleId pane x y z',squadOrder:'playerId kind pointId',dryFire:'playerId classId x z',
+  reconMark:'playerId team squadId targetId kind x y z'};
 export function encodeEvents(events,through,dict){
   const body=new Writer();body.u32(through);body.u16(events.length);
   for(const event of events){const type=EVENT_TYPES.indexOf(event.type);if(type<0)throw Error('Unknown event '+event.type);body.u32(event.id);body.u8(type);body.f32(event.time);
