@@ -7,6 +7,7 @@ import {uprightBox} from '../geometry.js';
 import {vehicleBodyTilt} from '../vehicles.js';
 import {getSidearm,WEAPONS} from '../world.js';
 import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels,telMazinFloor} from './tel-mazin.js';
+import {M03_EXTRACTION,Mission3Extraction} from './mission3-extraction.js';
 
 const SAVE_VERSION=1,MAX_ENEMIES=14;
 const TERRAIN_REVISION=1;
@@ -45,6 +46,7 @@ export class Mission3Simulation extends Simulation{
   }
   balanceTeams(){}
   setInput(id,input={}){
+    if(this.campaign?.extraction)return;
     super.setInput(id,input);
     if(id!=='local')return;
     const c=this.campaign,p=c.player;
@@ -109,6 +111,11 @@ export class Mission3Simulation extends Simulation{
   step(dt){
     const c=this.campaign;
     if(c.complete||c.failed)return;
+    if(c.extraction){
+      this.time+=dt;c.extraction.update();
+      if(c.extraction.elapsed>=M03_EXTRACTION.end){c.complete=true;c.flags.m3_done=true;}
+      return;
+    }
     c.beforeStep(dt);super.step(dt);c.afterStep(dt);
   }
   snapshot(){
@@ -118,8 +125,8 @@ export class Mission3Simulation extends Simulation{
       Object.assign(p,{role:live.role,downed:Boolean(live.downed),downedTimer:live.downedTimer??0,prone:Boolean(live.prone),
         reviver:live.reviver??null,syringes:live.syringes??0,medkits:live.medkits??0,interior:this.campaign.inside(live)?.id??null,
         fieldMedic:Boolean(live.fieldMedic),rescuedBrigade:Boolean(live.rescuedBrigade),rescue:Boolean(live.rescue),
-        fieldRevives:live.fieldRevives??0});
-      if(this.campaign.finale&&['local','harranti'].includes(p.id))p.handshake=this.time-this.campaign.finale.at;
+        fieldRevives:live.fieldRevives??0,inExtractionCabin:Boolean(live.inExtractionCabin)});
+      if(this.campaign.finale&&!this.campaign.extraction&&['local','harranti'].includes(p.id))p.handshake=this.time-this.campaign.finale.at;
     }
     state.campaign=this.campaign.presentation();return state;
   }
@@ -132,7 +139,7 @@ class ColumnDirector{
     this.input={};this.previous={};this.rideTime=0;this.rideIndex=0;this.skipHold=0;this.stage=-1;
     this.fired=new Set();this.choiceIndex=0;this.queue=[];this.serial=0;this.radio=null;this.radioEnd=0;
     this.checkpoint=0;this.saveRevision=0;this.epoch=0;this.pending=[];this.enemySerial=0;
-    this.failed=null;this.complete=false;this.finale=null;this.flags={brigade_saved:0,m3_documents:false};
+    this.failed=null;this.complete=false;this.finale=null;this.extraction=null;this.flags={brigade_saved:0,m3_documents:false};
     this.order='follow';this.progress=0;this.charges=[false,false];this.chargesCollected=false;this.fuseAt=null;this.defenceAt=null;this.defenceWave=0;
     this.interactives=Object.fromEntries(TEL_MAZIN.interactives.map(item=>[item.id,item.initial]));
     this.smoke=[];this.notices=[];this.supplies={};this.limp=Boolean(this.carry.marten_wounded);this.geometryDirty=true;
@@ -238,7 +245,7 @@ class ColumnDirector{
     if(this.inTransit){this.updateRide();this.flushEnemies();this.updateRadio();return;}
     if(this.finale){
       this.updateRadio();
-      if(!this.radio&&!this.queue.length&&this.time>=this.finale.at+8){this.complete=true;this.flags.m3_done=true;}
+      if(!this.radio&&!this.queue.length&&this.time>=this.finale.at+8)this.startExtraction();
       return;
     }
     this.rideTime+=dt;
@@ -835,6 +842,13 @@ class ColumnDirector{
     }
     this.say('dargo.final');
   }
+  startExtraction(){
+    const sim=this.sim;
+    const infantry=[this.player,...[...sim.players.values()].filter(p=>p.bot&&p.team===0&&p.alive&&!p.downed&&
+      !p.storyCrew&&(p.squadMember||p.rescuedBrigade))];
+    this.smoke=[];sim.events=[];sim.grenades=[];sim.rockets=[];
+    this.extraction=new Mission3Extraction(sim,infantry);
+  }
   defenceThreats(){return this.pending.length+this.enemies.filter(e=>e.defenceWave).length;}
   save(number){
     if(this.options.ironman)return;
@@ -890,7 +904,7 @@ class ColumnDirector{
     this.chargesCollected=save.mission.chargesCollected??(this.charges.some(Boolean)||this.flags.breached===true);
     this.nextWaveAt=save.mission.nextWaveAt??null;
     Object.assign(this,{input:{},previous:{},queue:[],radio:null,radioEnd:0,skipHold:0,choices:null,
-      latestExplosion:0,failed:null,complete:false,finale:null,prompt:'',interaction:null,progress:0,
+      latestExplosion:0,failed:null,complete:false,finale:null,extraction:null,prompt:'',interaction:null,progress:0,
       notices:[],playerMedic:null,assaultDoor:null,geometryDirty:true});
     this.latestSave=save.mission.checkpoint?structuredClone(save):null;
     this.saveRevision++;this.epoch++;this.refreshGeometry();
@@ -909,7 +923,7 @@ class ColumnDirector{
     return true;
   }
   presentation(){
-    const p=this.player,cutscene=this.finale?{id:'finale',elapsed:this.time-this.finale.at}:null;
+    const p=this.player,cutscene=this.finale?{id:'finale',elapsed:this.time-this.finale.at,extractionElapsed:this.extraction?.elapsed}:null;
     const objective=this.finale?'finale':this.section?.id??'ride';
     const objectiveState=this.objectiveState();
     const roomStatus={};

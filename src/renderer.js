@@ -653,6 +653,7 @@ export class GameRenderer {
       units.set(player.team+'/'+weapon,[player.team,weapon]);
     }
     const vehicleTypes=new Set([...(state.vehicles??[]),...(this.map.vehicleSpawns??[])].map(vehicle=>vehicle.type));
+    if(state.campaign?.missionId==='m03')vehicleTypes.add(BLACK_HAWK);
     await Promise.allSettled([
       this.parachutes.load(),
       ...Array.from(units.values(),([team,weapon])=>this.infantry.load(team,weapon)),
@@ -1151,9 +1152,10 @@ export class GameRenderer {
     // Use projected size so magnification keeps distant targets detailed.
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
+    const m03Finale=state.campaign?.missionId==='m03'&&state.campaign.cutscene?.id==='finale';
     for (const player of state.players) {
-      const cinematicPlayer=state.campaign?.missionId==='m03'&&state.campaign.cutscene?.id==='finale';
-      if (player.id === localId&&!cinematicPlayer&&!(this.tankThirdPerson&&player.vehicleSeat===0&&
+      if(m03Finale&&player.inExtractionCabin)continue;
+      if (player.id === localId&&!m03Finale&&!(this.tankThirdPerson&&player.vehicleSeat===0&&
         ['tank',BLACK_HAWK].includes(state.vehicles.find(v=>v.id===player.vehicleId)?.type))) continue;
       active.add(player.id);
       // Only the tank's enclosed driver and gunner are hidden under its armour.
@@ -1273,7 +1275,7 @@ export class GameRenderer {
       const mustReset = reset || respawned || returning;
       soldier.marker.material.color.setHex(sameSquad(local, player) ? 0x91dc78 :
         player.team === localTeam ? 0x79c5d2 : TEAM_COLORS[player.team] ?? COLORS.friendly);
-      soldier.marker.visible = player.team === localTeam;
+      soldier.marker.visible = player.team === localTeam&&!m03Finale;
       soldier.marker.position.y = player.downed || player.prone ? .6 :
         (player.crouching || player.crouch ? 1.48 : 1.94) + Math.sin(this.clock * 2) * .025;
       soldier.rifle.scale.setScalar(1);

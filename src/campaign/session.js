@@ -38,7 +38,8 @@ export class CampaignSession {
       if(m.type==='state'){
         const next=m.state,previous=this.state;
         if(!previous||next.campaign.epoch!==previous.campaign.epoch||next.time<previous.time||
-          Boolean(next.campaign.cutscene)!==Boolean(previous.campaign.cutscene))this.resetPlayback();
+          Boolean(next.campaign.cutscene)!==Boolean(previous.campaign.cutscene)||
+          (next.campaign.cutscene?.extractionElapsed!=null)!==(previous.campaign.cutscene?.extractionElapsed!=null))this.resetPlayback();
         this.state=next;
         if(this.frames.at(-1)?.time!==next.time){
           this.frames.push(next);
@@ -73,7 +74,8 @@ export class CampaignSession {
   setWeaponAttachments(attachments){this.worker.postMessage({type:'weapon-attachments',attachments});}
   snapshot(){return this.state;}
   sample(now){
-    if(this.frames.length<2||this.state.campaign.cutscene||this.paused)return this.state;
+    const cutscene=this.state.campaign.cutscene;
+    if(this.frames.length<2||cutscene&&cutscene.extractionElapsed==null||this.paused)return this.state;
     const oldest=this.frames[0].time,latest=this.frames.at(-1).time;
     const desired=Math.min(latest,latest+(now-this.receivedAt)/1000-SNAPSHOT_DELAY);
     const dt=Math.max(0,Math.min(.1,(now-(this.lastSampleAt??now))/1000));

@@ -801,7 +801,8 @@ export class CombatAudio {
     }
     if(critical&&!paused&&now>=this._heartbeat){this._tone(59,.16,.1,{end:38});this._tone(52,.13,.065,{time:now+.19,end:34});this._heartbeat=now+.9;}
     const briefing=state?.campaign?.missionId==='m02'&&state.campaign.cutscene?.id==='briefing';
-    this._updateEngine(state,local,inMenu||paused||(briefing&&!engineListener),briefing?engineListener:null);
+    const cinematicEnded=Boolean(engineListener&&state?.campaign?.complete);
+    this._updateEngine(state,local,inMenu||paused||cinematicEnded||(briefing&&!engineListener),engineListener);
     if(camera&&local)this._updateSpatialListener(local,camera);
     this._updateRocketAudio(state,local,inMenu||paused,Boolean(camera));
     this._updateReloadSounds(state,local,inMenu||paused);

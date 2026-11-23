@@ -5,6 +5,8 @@ import {CampaignFire} from './fire.js';
 import {convoyTrackDust,emitTrackDust} from './track-dust.js';
 import {placeCampaignMarker} from './markers.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
+import {BLACK_HAWK} from '../../shared/vehicles.js';
+import {M03_EXTRACTION} from '../../shared/campaign/mission3-extraction.js';
 import {m03ConvoyPose,panelState} from '../../shared/campaign/tel-mazin.js';
 import './mission3.css';
 
@@ -30,12 +32,14 @@ export class Mission3Presentation{
       <aside class="m03-squad" hidden><div class="m03-temporary"></div><div class="m03-notices" role="status"></div></aside>
       <canvas class="m03-map" width="168" height="168" aria-label="Карта Тель-Мазина" hidden></canvas>
       <div class="m03-cinematic" hidden></div>
+      <div class="m03-fade" aria-hidden="true" hidden></div>
       <section class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div>
         <button class="campaign-retry">С контрольной точки</button><button class="campaign-exit">К экрану кампании</button></section>`;
     document.body.append(this.root);this.$=query=>this.root.querySelector(query);
     this.$('.campaign-retry').onclick=()=>this.retry();this.$('.campaign-exit').onclick=()=>leave();
     [...this.$('.m03-choices').children].forEach((button,index)=>button.onclick=()=>this.answer(index));
     this.marker=this.$('.m03-marker');this.mapCanvas=this.$('.m03-map');
+    this.fade=this.$('.m03-fade');this.extractionListener={x:0,y:0,z:0,yaw:0};
     document.querySelector('#hud .bottom-right')?.append(this.mapCanvas);
     this.original={sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,
       sunOffset:renderer.sunOffset.clone()};
@@ -125,14 +129,15 @@ export class Mission3Presentation{
     this.mapCanvas.hidden=blocked||m.ride||paused;
     if(!this.mapCanvas.hidden&&performance.now()>=(this.nextMap??0)){this.nextMap=performance.now()+150;this.drawMap(state,p);}
     this.$('.m03-cinematic').hidden=!cutscene||end;
+    const extraction=m.cutscene?.extractionElapsed;
+    this.fade.hidden=extraction==null;
+    if(extraction!=null)this.fade.style.opacity=THREE.MathUtils.smoothstep(extraction,M03_EXTRACTION.fadeAt,M03_EXTRACTION.end);
     const ending=this.$('.campaign-ending');ending.classList.toggle('hidden',!end);
     if(end){
       ending.querySelector('small').textContent=m.failed?'МИССИЯ ПРЕРВАНА':'МИССИЯ ЗАВЕРШЕНА';
-      ending.querySelector('h2').textContent=m.failed?'Колонна потеряла Мартена':'Штаб удержан';
+      ending.querySelector('h2').textContent=m.failed?'Колонна потеряла Мартена':'Эвакуация завершена';
       const rescued=m.flags.brigade_saved,survived=m.stats.brigadeAlive;
-      ending.querySelector('p').textContent=m.failed??(rescued===0?'Карта у Мартена. Эвакуировать раненых не удалось.':
-        survived===0?'Карта у Мартена. Никто из поднятых бойцов не дожил до конца боя.':
-        `Карта у Мартена. Бойцов бригады выжило: ${survived}. Следующая цель — переправа.`);
+      ending.querySelector('p').textContent=m.failed??'Мартен увёз карту, которую передал Харранти.';
       ending.querySelector('.campaign-final-stats').textContent=`РЕАНИМИРОВАНО ${rescued}/8 · В СТРОЮ ${survived??0} · ПОТЕРИ ${m.stats.losses??0} · ${clock(m.stats.elapsedSeconds)}`;
       this.$('.campaign-retry').hidden=!m.failed;
     }
@@ -190,6 +195,41 @@ export class Mission3Presentation{
     this.renderer.campaignCoverColliders=getAssetColliders(this.renderer.map).filter(box=>!disabled.has(box.id));
     this.renderer.interiorVisibility.disabled=disabled;
   }
+  renderExtraction(r,state,t,view){
+    const camera=r.camera,terrain=r.map.terrain;
+    const [lead,wing]=state.vehicles.filter(v=>v.type===BLACK_HAWK);
+    if(!lead||!wing)return;
+    if(t<M03_EXTRACTION.boardingShot){
+      const glide=THREE.MathUtils.smoothstep(t,0,M03_EXTRACTION.boardingShot);
+      camera.position.set(210+4*glide,terrain.heightAt(214,7)+3.1+2*glide,7-2*glide);
+      camera.lookAt((lead.x+wing.x)*.5,(lead.y+wing.y)*.5+1.5,(lead.z+wing.z)*.5);
+    }else if(t<M03_EXTRACTION.wingShot){
+      const glide=THREE.MathUtils.smoothstep(t,M03_EXTRACTION.boardingShot,M03_EXTRACTION.wingShot);
+      camera.position.set(225+2.8*glide,terrain.heightAt(225,-30)+2.75,-30-1.3*glide);
+      camera.lookAt(237.2+1.5*glide,terrain.heightAt(237,-15)+1.7,-16+3*glide);
+    }else if(t<M03_EXTRACTION.departureShot){
+      const glide=THREE.MathUtils.smoothstep(t,M03_EXTRACTION.wingShot,M03_EXTRACTION.departureShot);
+      camera.position.set(239+1.8*glide,terrain.heightAt(239,-5)+3.2,-5-2*glide);
+      camera.lookAt(249.5,terrain.heightAt(251,13)+1.85,10.5+1.5*glide);
+    }else{
+      // Hold on the clearing so both aircraft fly out of the shot.
+      camera.position.set(229,terrain.heightAt(229,32)+8,32);
+      camera.lookAt(241,terrain.heightAt(241,0)+5,-2);
+    }
+    const fov=t>=M03_EXTRACTION.departureShot?52:56;
+    if(camera.fov!==fov){camera.fov=fov;camera.updateProjectionMatrix();}
+    this.engineListener=Object.assign(this.extractionListener,{x:camera.position.x,y:camera.position.y,z:camera.position.z,yaw:camera.rotation.y});
+    if(!view.paused&&t>=this.nextRotorDust){
+      this.nextRotorDust=t+(view.quality==='low'?.48:.27);
+      for(const v of [lead,wing]){
+        const ground=terrain.heightAt(v.x,v.z),strength=1-THREE.MathUtils.clamp((v.y-ground)/7,0,1);
+        if(strength<=0)continue;
+        const angle=t*7+(v===lead?0:Math.PI);
+        r.smoke(v.x+4*Math.sin(angle),ground+.45,v.z+4*Math.cos(angle),2.8,2.1,0xb29b77,
+          {opacity:strength*.36,rise:.32,wind:1.3});
+      }
+    }
+  }
   render(r,state,dt,view){
     const m=state.campaign;if(m?.missionId!=='m03')return;
     this.syncPanels(m);
@@ -210,7 +250,13 @@ export class Mission3Presentation{
       }
       r.weapon.visible=false;
     }
-    if(m.cutscene){
+    const extraction=m.cutscene?.extractionElapsed;
+    this.engineListener=null;
+    if(extraction!=null){
+      this.renderExtraction(r,state,extraction,view);
+      r.weapon.visible=false;
+    }else if(m.cutscene){
+      this.nextRotorDust=0;
       const t=THREE.MathUtils.clamp(m.cutscene.elapsed/9,0,1);
       const y=r.map.houses.headquarters.baseY;
       r.camera.position.set(173.25-t*.9,y+1.7,-8.55-t*.4);r.camera.lookAt(174.68,y+1.38,-11);
