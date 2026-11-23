@@ -167,7 +167,8 @@ export class VillageModel {
     }else{
       const normalMap=source?.normalMap??(sourceName==='village-sand'?surfaces.villageNormals.sand:
         sourceName==='village-stucco'?surfaces.villageNormals.stucco:null);
-      high=new THREE.MeshStandardMaterial({...options,normalMap,normalScale:new THREE.Vector2(.26,.26),
+      const normalStrength=this.assets.id==='nahar'?.13:.26;
+      high=new THREE.MeshStandardMaterial({...options,normalMap,normalScale:new THREE.Vector2(normalStrength,normalStrength),
         roughness:name==='vehicle-glass'?.32:name==='vehicle-paint'?.68:source?.roughness??.95,
         metalness:name.startsWith('vehicle-')?.16:source?.metalness??0});
       low=new THREE.MeshLambertMaterial(options);

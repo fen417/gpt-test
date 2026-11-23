@@ -18,10 +18,11 @@ export function usesCampaignRadio(missionId,speaker,key){
   if(missionId==='m01')return speaker==='orlov'&&!key.startsWith('m01.orlov.brief')||
     ['m01.officer.mid01','m01.officer.call','m01.bruno.sokol'].includes(key);
   if(missionId==='m02')return speaker!=='crew'&&speaker!=='vos';
+  if(missionId==='m04')return true;
   if(['orlov','dargo'].includes(speaker))return true;
   if(missionId==='m03')return ['timo.road','timo.roofs','timo.window',
     'vos.meet','vos.village','vos.trapped','harranti.hold','harranti.truck'].includes(key);
-  return missionId==='m04'&&['pilot','gunner'].includes(speaker);
+  return false;
 }
 
 function dialogueActor(state,speaker){
@@ -49,7 +50,15 @@ export class CampaignAudio {
   }
   async buffer(path){
     if(this.missing.has(path))return null;
-    if(!this.cache.has(path))this.cache.set(path,(async()=>{try{const r=await fetch(new URL(path,this.root));if(!r.ok){this.missing.add(path);return null;}return await this.combat.ctx.decodeAudioData(await r.arrayBuffer());}catch{this.missing.add(path);return null;}})());
+    if(!this.cache.has(path))this.cache.set(path,(async()=>{
+      try{
+        const url=new URL(path,this.root);
+        if(this.definition.contentRevision&&path.startsWith('voice/'))url.searchParams.set('v',this.definition.contentRevision);
+        const r=await fetch(url);
+        if(!r.ok){this.missing.add(path);return null;}
+        return await this.combat.ctx.decodeAudioData(await r.arrayBuffer());
+      }catch{this.missing.add(path);return null;}
+    })());
     return this.cache.get(path);
   }
   ensureGraph(){

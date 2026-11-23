@@ -65,14 +65,14 @@
     },
     "pilot.rocket": {
       "speaker": "pilot",
-      "duration": 3.19,
-      "text": "Ракета в воздухе! Держитесь за борт!",
+      "duration": 3.72,
+      "text": "Ракета! Ракета в воздухе! Держитесь!",
       "audio": "voice/pilot.rocket.ogg"
     },
     "pilot.hull": {
       "speaker": "pilot",
-      "duration": 5.19,
-      "text": "Есть попадание. Борт ещё держится. Не дайте им выстрелить снова!",
+      "duration": 6.02,
+      "text": "Нас задело! Держу борт… Мартен, не дай им выстрелить снова!",
       "audio": "voice/pilot.hull.ogg"
     },
     "pilot.cross": {
@@ -83,14 +83,14 @@
     },
     "wing.transfer": {
       "speaker": "wing",
-      "duration": 3.04,
-      "text": "Грач не дышит. Мартен, за левый!",
+      "duration": 5.22,
+      "text": "Грач не дышит! Мартен! За левый, живо!",
       "audio": "voice/wing.transfer.ogg"
     },
     "duran.transfer": {
       "speaker": "duran",
-      "duration": 2.85,
-      "text": "Грач не дышит. Мартен, за левый!",
+      "duration": 4.02,
+      "text": "Грач не дышит! Мартен, смени его! За левый!",
       "audio": "voice/duran.transfer.ogg"
     },
     "pilot.hold": {
@@ -101,8 +101,8 @@
     },
     "marten.seated": {
       "speaker": "marten",
-      "duration": 3.27,
-      "text": "Миниган мой. Держи левым бортом к двору.",
+      "duration": 4.42,
+      "text": "Я у минигана! Держи левый к двору. Я прикрою!",
       "audio": "voice/marten.seated.ogg"
     },
     "pilot.orbit": {
@@ -119,14 +119,14 @@
     },
     "pilot.backup": {
       "speaker": "pilot",
-      "duration": 4.19,
-      "text": "Основной двор простреливают. Сажусь в ремонтном дворе.",
+      "duration": 4.72,
+      "text": "Двор простреливают! В основной не полезу. Сажусь в ремонтном!",
       "audio": "voice/pilot.backup.ogg"
     },
     "pilot.land": {
       "speaker": "pilot",
-      "duration": 3.79,
-      "text": "Иду на посадку. Оставайтесь на местах до касания.",
+      "duration": 6.02,
+      "text": "Иду вниз! Подержите крыши! Всем оставаться на местах до касания!",
       "audio": "voice/pilot.land.ogg"
     },
     "pilot.clear": {
@@ -173,8 +173,8 @@
     },
     "dispatcher.live": {
       "speaker": "dispatcher",
-      "duration": 6.29,
-      "text": "Я записал их позывные. Возьмите схему. Передатчик стоит у канала, за мостом.",
+      "duration": 6.72,
+      "text": "Вот… схема и позывные. Я всё записал. Передатчик у канала… за мостом.",
       "audio": "voice/dispatcher.live.ogg"
     },
     "marten.copy": {
@@ -227,8 +227,8 @@
     },
     "orlov.received": {
       "speaker": "orlov",
-      "duration": 6.06,
-      "text": "Принял схему. Топливо уходит на карьер. Выводи людей через служебный тоннель.",
+      "duration": 5.82,
+      "text": "Принял! Схема у нас. Топливо уходит на карьер. Мартен, выводи людей.",
       "audio": "voice/orlov.received.ogg"
     },
     "dispatcher.gate": {
@@ -239,9 +239,195 @@
     },
     "marten.exit": {
       "speaker": "marten",
-      "duration": 3.89,
-      "text": "Мы в тоннеле. Отряд вывожу. Встретимся у карьера.",
+      "duration": 5.42,
+      "text": "Мы в тоннеле. Уходим. Маяк… спасибо, что был на связи.",
       "audio": "voice/marten.exit.ogg"
+    },
+    "dispatcher.walk": {
+      "speaker": "dispatcher",
+      "duration": 6.42,
+      "text": "У меня ноги ещё ходят. Доведите до станции у воды — дальше покажу.",
+      "audio": "voice/dispatcher.walk.ogg"
+    },
+    "gunner.check": {
+      "speaker": "gunner",
+      "duration": 8.02,
+      "text": "Привыкай к ветру, Мартен. Когда начнём крениться, цель уйдёт вместе с бортом. Дыши. Успеешь.",
+      "audio": "voice/gunner.check.ogg"
+    },
+    "gunner.cut": {
+      "speaker": "gunner",
+      "duration": 3.18,
+      "text": "Слева! Я вижу… А-а!",
+      "audio": "voice/gunner.cut.ogg"
+    },
+    "gunner.tracers": {
+      "speaker": "gunner",
+      "duration": 6.22,
+      "text": "Трассы слева! Я держу левый. Правый борт, не отрывайтесь от линии крыш!",
+      "audio": "voice/gunner.tracers.ogg"
+    },
+    "lasko.gunnerDown": {
+      "speaker": "lasko",
+      "duration": 8.22,
+      "text": "Мартен… Всё. Я освобожу место. Иди к минигану, я держу его.",
+      "audio": "voice/lasko.gunnerDown.ogg"
+    },
+    "lasko.pulse": {
+      "speaker": "lasko",
+      "duration": 5.02,
+      "text": "Пульс есть! Погоди. Сейчас подниму.",
+      "audio": "voice/lasko.pulse.ogg"
+    },
+    "marten.moveDispatcher": {
+      "speaker": "marten",
+      "duration": 4.82,
+      "text": "Схема у нас. Держись рядом, мы выведем тебя к каналу.",
+      "audio": "voice/marten.moveDispatcher.ogg"
+    },
+    "marten.moveGun": {
+      "speaker": "marten",
+      "duration": 4.32,
+      "text": "Понял. Я иду. Держите левый борт к депо!",
+      "audio": "voice/marten.moveGun.ogg"
+    },
+    "marten.onFoot": {
+      "speaker": "marten",
+      "duration": 4.82,
+      "text": "Я на земле! К платформам, за мной!",
+      "audio": "voice/marten.onFoot.ogg"
+    },
+    "marten.relayHold": {
+      "speaker": "marten",
+      "duration": 6.42,
+      "text": "Маяк, держу канал! У щита движение, нам нужна ещё минута!",
+      "audio": "voice/marten.relayHold.ogg"
+    },
+    "marten.repair": {
+      "speaker": "marten",
+      "duration": 4.62,
+      "text": "Питание вернул! Продолжаем с того места, где оборвалось.",
+      "audio": "voice/marten.repair.ogg"
+    },
+    "marten.roofs": {
+      "speaker": "marten",
+      "duration": 3.82,
+      "text": "Вижу движение! На крышах, между баками!",
+      "audio": "voice/marten.roofs.ogg"
+    },
+    "marten.secondPass": {
+      "speaker": "marten",
+      "duration": 4.32,
+      "text": "Справа ещё люди. Вижу стрелка у края крыши.",
+      "audio": "voice/marten.secondPass.ogg"
+    },
+    "marten.sky": {
+      "speaker": "marten",
+      "duration": 6.32,
+      "text": "Сколько крыш... После Тель-Мазина кажется, что город вообще без конца.",
+      "audio": "voice/marten.sky.ogg"
+    },
+    "marten.suppressed": {
+      "speaker": "marten",
+      "duration": 4.32,
+      "text": "Сбил ему прицел! Следите, чтобы снова не поднялся.",
+      "audio": "voice/marten.suppressed.ogg"
+    },
+    "marten.yard": {
+      "speaker": "marten",
+      "duration": 4.52,
+      "text": "Двор вижу. Снижайся, я держу край крыши!",
+      "audio": "voice/marten.yard.ogg"
+    },
+    "medic.gunnerDown": {
+      "speaker": "medic",
+      "duration": 5.12,
+      "text": "Он не дышит. Я уберу его от станка. Мартен, иди сюда!",
+      "audio": "voice/medic.gunnerDown.ogg"
+    },
+    "medic.pulse": {
+      "speaker": "medic",
+      "duration": 4.12,
+      "text": "Живой! Секунду, остановлю кровь.",
+      "audio": "voice/medic.pulse.ogg"
+    },
+    "orlov.freight": {
+      "speaker": "orlov",
+      "duration": 5.82,
+      "text": "Выходите через грузовой двор. Линию связи в городе глушат, передатчик у воды.",
+      "audio": "voice/orlov.freight.ogg"
+    },
+    "orlov.signalAlmost": {
+      "speaker": "orlov",
+      "duration": 4.42,
+      "text": "Слышу вас. Ещё немного. Пакет почти пришёл.",
+      "audio": "voice/orlov.signalAlmost.ogg"
+    },
+    "orlov.silent": {
+      "speaker": "orlov",
+      "duration": 5.72,
+      "text": "Диспетчер снова не отвечает. Времени мало. Держите «Маяк» открытым.",
+      "audio": "voice/orlov.silent.ogg"
+    },
+    "orlov.stationIn": {
+      "speaker": "orlov",
+      "duration": 7.22,
+      "text": "Мартен, если найдёшь его раненым, позови санитара. Журнал и запись у диспетчера — запасной вариант.",
+      "audio": "voice/orlov.stationIn.ogg"
+    },
+    "orlov.tunnel": {
+      "speaker": "orlov",
+      "duration": 6.42,
+      "text": "Топливный маршрут подтверждён. Маршрут группы — через тоннель. Я остаюсь на связи.",
+      "audio": "voice/orlov.tunnel.ogg"
+    },
+    "orlov.yard": {
+      "speaker": "orlov",
+      "duration": 7.22,
+      "text": "Вижу вас с земли. Синий ангар слева от основного двора. Если не пустят, идите в ремонтный.",
+      "audio": "voice/orlov.yard.ogg"
+    },
+    "pilot.coverWing": {
+      "speaker": "pilot",
+      "duration": 5.12,
+      "text": "Второй борт, в сторону! Мартен, следи за теми, кто с трубами!",
+      "audio": "voice/pilot.coverWing.ogg"
+    },
+    "pilot.descend": {
+      "speaker": "pilot",
+      "duration": 6.42,
+      "text": "Снижаемся, держитесь. Второй борт впереди справа. Здесь крыши высокие.",
+      "audio": "voice/pilot.descend.ogg"
+    },
+    "pilot.gunnerDown": {
+      "speaker": "pilot",
+      "duration": 6.02,
+      "text": "Грач?! Грач, ответь! Чёрт… Отхожу в сторону, держитесь!",
+      "audio": "voice/pilot.gunnerDown.ogg"
+    },
+    "pilot.orbitTwo": {
+      "speaker": "pilot",
+      "duration": 7.62,
+      "text": "Повторяю круг. Слева сигнальная будка, дальше крыша цеха. Там ещё могут быть ракеты.",
+      "audio": "voice/pilot.orbitTwo.ogg"
+    },
+    "pilot.roofDanger": {
+      "speaker": "pilot",
+      "duration": 3.92,
+      "text": "Пэ-тэ на крыше! Не выпускай его из прицела!",
+      "audio": "voice/pilot.roofDanger.ogg"
+    },
+    "pilot.stationRoof": {
+      "speaker": "pilot",
+      "duration": 5.82,
+      "text": "Левый борт, у тебя вокзал. Смотри крышу над часами, я подведу ближе.",
+      "audio": "voice/pilot.stationRoof.ogg"
+    },
+    "pilot.touchdown": {
+      "speaker": "pilot",
+      "duration": 6.02,
+      "text": "Держу! Ещё чуть-чуть… Есть земля. Быстро, быстро, на выход!",
+      "audio": "voice/pilot.touchdown.ogg"
     }
   }
 }

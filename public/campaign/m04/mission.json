@@ -4,7 +4,9 @@
   "title": "Под крышами",
   "map": "nahar",
   "audioBudgets": {
-    "voice": 1000000
+    "music": 4600000,
+    "voice": 1000000,
+    "sfx": 400000
   },
   "music": {
     "flight": "music/flight.ogg"
@@ -47,25 +49,25 @@
         19,
         -334,
         -171,
-        50
+        46
       ],
       [
         40,
         -231,
         -163,
-        48
+        44
       ],
       [
         62,
         -130,
         -155,
-        51
+        45
       ],
       [
         83,
         -18,
         -142,
-        53
+        47
       ],
       [
         105,
@@ -100,19 +102,25 @@
         68
       ],
       [
+        15,
+        128,
+        18,
+        61
+      ],
+      [
         20,
-        146,
+        128,
         -9,
-        64
+        57
       ]
     ],
     "orbit": {
       "x": 0,
       "z": -9,
-      "rx": 146,
-      "rz": 113,
-      "height": 64,
-      "seconds": 48
+      "rx": 128,
+      "rz": 105,
+      "height": 57,
+      "seconds": 51
     },
     "airWaves": [
       {
@@ -186,19 +194,25 @@
   },
   "difficulty": {
     "recruit": {
-      "aimSeconds": 5.2,
+      "aimSeconds": 10,
       "damage": 0.78,
-      "hold": 52
+      "hold": 52,
+      "rocketGap": 19,
+      "rocketHull": 0.165
     },
     "regular": {
-      "aimSeconds": 3.8,
+      "aimSeconds": 8.2,
       "damage": 1,
-      "hold": 67
+      "hold": 67,
+      "rocketGap": 15,
+      "rocketHull": 0.215
     },
     "veteran": {
-      "aimSeconds": 2.75,
+      "aimSeconds": 6.2,
       "damage": 1.22,
-      "hold": 81
+      "hold": 81,
+      "rocketGap": 11,
+      "rocketHull": 0.29
     }
   },
   "ground": {
@@ -426,5 +440,6 @@
         210
       ]
     ]
-  }
+  },
+  "contentRevision": 3
 }

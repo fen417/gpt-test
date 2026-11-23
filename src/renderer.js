@@ -1985,6 +1985,7 @@ export class GameRenderer {
     let gadgetPhase=(player?.heldGadget||gadgetKind==='repair') ? .5 : this.gadgetTimer>0?clamp(1-this.gadgetTimer/this.gadgetDuration,.001,.999):0;
     const isAlive = player?.alive !== false;
     const mounted = this.updateVehicles(state, player, dt, view);
+    const worldNear=state.mapId==='nahar'&&mounted?.rig.blackHawk ? .072 : .045;
     const seat = mounted && VEHICLE_TYPES[mounted.vehicle.type].seats[player.vehicleSeat];
     const passenger = seat?.role === 'passenger';
     if (player && !isAlive) {
@@ -2036,9 +2037,9 @@ export class GameRenderer {
       this.viewWeaponTarget = null;
       this.wallStow = this.aimAmount = this.sprintBlend = 0;
       const mountedFov=fieldTank&&view.aim?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov)/2)/2.5)):baseFov;
-      if (Math.abs(this.camera.fov - mountedFov) > .03 || this.camera.near !== .045) {
+      if (Math.abs(this.camera.fov - mountedFov) > .03 || this.camera.near !== worldNear) {
         this.camera.fov = mountedFov;
-        this.camera.near = .045;
+        this.camera.near = worldNear;
         this.camera.updateProjectionMatrix();
       }
     } else if (player) {
@@ -2149,9 +2150,9 @@ export class GameRenderer {
         : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
       const hipFov = baseFov + this.sprintBlend * 6 + this.slideBlend*3;
       const fov = scopedWeapon||binoculars ? (this.scoped ? aimFov : hipFov) : lerp(hipFov, aimFov, this.aimAmount);
-      if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== .045) {
+      if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== worldNear) {
         this.camera.fov = fov;
-        this.camera.near = .045;
+        this.camera.near = worldNear;
         this.camera.updateProjectionMatrix();
       }
       if(this.binocularAiming)this.measureBinocularDistance(state,player);

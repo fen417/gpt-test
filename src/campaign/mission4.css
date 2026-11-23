@@ -3,6 +3,9 @@
 .m04-marker,.m04-threat{position:absolute;left:0;top:0;padding:4px 8px;background:#101824c9;
   color:#f3d7ac;font:700 12px monospace;white-space:nowrap}
 .m04-threat{color:#ffba8b;border:1px solid #ba6a4e}
+.m04-threat[data-on-target="true"]{color:#ffdfbf;background:#501f14e8;border-color:#ff955b}
+.m04-threat[data-on-target="true"]::after{content:"";position:absolute;left:50%;top:100%;transform:translateX(-50%);
+  border-inline:5px solid transparent;border-top:6px solid #ff955b}
 .m04-warning{position:absolute;top:clamp(96px,20vh,158px);left:50%;transform:translateX(-50%);width:max-content;
   max-width:86vw;padding:7px 13px;background:#582c20e8;color:#ffdfc0;border-bottom:1px solid #e4a374;
   text-align:center;font:700 12px/1.4 monospace}

@@ -13,9 +13,18 @@ const CHECKPOINT_STAGES=['approach','right','transfer','depot','freight','canal'
 const MAIN='m03-extraction-1',WING='m03-extraction-2';
 const LEFT=BLACK_HAWK_GUN.index;
 const SAVE_FIELDS=['stage','stageAt','checkpoint','flags','gates','supplyUsed','enemySerial','order','knowledge','sent','waves',
-  'power','source','escortAt','escortFrom','escortAway','orbitAt','combatOrbitAt','landing','departAt','blastTaken',
+  'power','source','escortAt','escortFrom','escortAway','orbitAt','combatOrbitAt','landing','departAt','nextRocketAt','lastHullBlast',
   'radio','radioEnd','radioSerial','queue','transmitting'];
 const ptWarning='ПТ-90 ГОТОВИТ ВЫСТРЕЛ';
+const RADIO_CUES={
+  approach:[[6,'marten.sky'],[17,'gunner.check'],[29,'pilot.descend'],[37,'orlov.silent']],
+  right:[[12,'marten.roofs'],[27,'gunner.tracers'],[47,'pilot.coverWing'],[68,'marten.secondPass'],[94,'pilot.cross']],
+  orbit:[[12,'pilot.stationRoof'],[48,'pilot.orbitTwo'],[73,'orlov.yard']],
+  landing:[[7,'marten.yard']],
+  disembark:[[8,'pilot.clear']],
+  relay:[[18,'marten.relayHold']],
+  tunnel:[[9,'orlov.tunnel']],
+};
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const close=(a,b,r=3)=>dist(a,b)<r&&Math.abs(a.y-(b.y??0))<1.55;
 const eye=(p,h=1.45)=>({x:p.x,y:p.y+h,z:p.z});
@@ -53,15 +62,21 @@ export class Mission4Simulation extends Simulation{
     const c=this.campaign;
     if(!p?.alive||p.campaignHidden||c.complete||c.stage==='finale'||attacker?.team===p.team&&attacker!==p)return;
     if(p.vehicleId&&(p.airCrew&&p.id!=='local'||p.id==='local'&&c.stage==='transfer'))return;
+    if(p.id==='local'&&p.vehicleId===MAIN&&c.aircraft?.hp>0)amount*=meta.explosive?.32:.62;
     if(p.id==='dispatcher'&&p.wounded&&c.stage==='station'&&this.time<p.invulnerableUntil)return;
     super.damage(p,p.team===0?amount*c.settings.damage:amount,attacker,meta);
   }
   damageVehicle(v,amount,attacker,kind,origin,sourceVehicleId){
-    if(v.id===WING||v.id===MAIN&&!this.campaign.airDanger)return {ricochet:false,amount:0};
-    if(v.id===MAIN&&kind==='blast'&&!this.campaign.blastTaken){
-      this.campaign.blastTaken=true;
-      amount=Math.min(amount,Math.max(0,(v.hp-v.maxHp*.38)/VEHICLE_TYPES[BLACK_HAWK].blastArmor));
+    const c=this.campaign;
+    if(v.id===WING||v.id===MAIN&&!c.airDanger)return {ricochet:false,amount:0};
+    if(v.id===MAIN&&kind==='blast'){
+      if(this.time-(c.lastHullBlast??-30)<3)return {ricochet:false,amount:0};
+      const capped=Math.min(amount,v.maxHp*c.settings.rocketHull/VEHICLE_TYPES[BLACK_HAWK].blastArmor);
+      const hit=super.damageVehicle(v,capped,attacker,kind,origin,sourceVehicleId);
+      if(hit?.amount>0||v.hp<=0)c.lastHullBlast=this.time;
+      return hit;
     }
+    if(v.id===MAIN&&kind==='bullet')amount*=.46;
     return super.damageVehicle(v,amount,attacker,kind,origin,sourceVehicleId);
   }
   step(dt){
@@ -167,6 +182,14 @@ class NaharDirector{
     this.radio=key?{key,serial:++this.radioSerial}:null;
     this.radioEnd=key?this.time+this.options.lines[key].duration:0;
   }
+  radioCues(){
+    if(this.stage==='relay'&&!this.transmitting)return;
+    const elapsed=this.stage==='orbit'?this.time-this.combatOrbitAt:this.stage==='relay'?this.sent:this.age;
+    for(const [at,key] of RADIO_CUES[this.stage]??[]){
+      if(elapsed<at||this.eventsDone.has(key))continue;
+      this.eventsDone.add(key);this.say(key);
+    }
+  }
   setStage(stage){
     this.stage=stage;this.stageAt=this.time;this.interaction=null;this.progress=0;
   }
@@ -196,31 +219,38 @@ class NaharDirector{
       for(let i=0;i<count;i++){
         const x=post.x+(i===0?-.6:i===1?-4:3.4),z=post.z+(i===0?-2.5:i===1?.8:1.7);
         const p=this.add(`roof-${++this.enemySerial}`,'Стрелок Корпуса',1,'assault','ar416',null,'roof');
-        Object.assign(p,{x,y:post.y,z,grounded:true,airRole:launcher&&i===0?'pt':'rifle',rockets:launcher&&i===0?2:0,
-          fireOffset:i*.37+this.enemySerial*.135,notBefore:this.time+.8+i*.55});
+        const pt=launcher&&i===0;
+        Object.assign(p,{x,y:post.y,z,grounded:true,airRole:pt?'pt':'rifle',airPost:id,rockets:pt?1:0,
+          hp:pt?57:p.hp,fireOffset:i*.37+this.enemySerial*.135,notBefore:this.time+.8+i*.55});
       }
     }
   }
   airTargets(){return [...this.sim.players.values()].filter(p=>p.alive&&p.airRole&&!p.campaignHidden);}
   updateThreat(){
     const craft=this.aircraft,player=this.player;
+    const seat=player.vehicleSeat;
+    const effectiveRange=seat===LEFT?177:Math.min(159,this.sim.playerWeapon(player).range*.91);
+    const visible=target=>dist(craft,target)<effectiveRange&&targetInArc(this.sim,craft,seat,target);
     const active=this.sim.players.get(this.threatId);
     if(active&&(!active.alive||active.rockets<=0||this.time<(active.suppressedUntil??0)||
-      !targetInArc(this.sim,craft,player.vehicleSeat,active))){
+      !visible(active))){
       active.aimAt=null;active.heldGadget=null;this.threatId=null;
     }
-    if(!this.threatId){
-      const target=this.airTargets().find(p=>p.airRole==='pt'&&p.rockets>0&&this.time>=p.notBefore&&
-        this.time>=(p.suppressedUntil??0)&&targetInArc(this.sim,craft,player.vehicleSeat,p));
+    if(!this.threatId&&this.time>=(this.nextRocketAt??0)){
+      const target=this.airTargets().filter(p=>p.airRole==='pt'&&p.rockets>0&&this.time>=p.notBefore&&
+        this.time>=(p.suppressedUntil??0)&&visible(p)).sort((a,b)=>dist(craft,a)-dist(craft,b))[0];
       if(target){
         this.threatId=target.id;target.aimAt=this.time+this.settings.aimSeconds;target.heldGadget='launcher';
-        if(!this.eventsDone.has('first-pt')){this.eventsDone.add('first-pt');this.say(`${this.wingSpeaker}.blue`,true);}
+        if(!target.warned){
+          target.warned=true;
+          this.say(target.airPost==='blue'?`${this.wingSpeaker}.blue`:'pilot.roofDanger',true);
+        }
       }
     }
     const threat=this.sim.players.get(this.threatId);
     if(threat?.aimAt!=null&&this.time>=threat.aimAt){
       threat.aimAt=null;threat.heldGadget=null;this.threatId=null;
-      threat.notBefore=this.time+9;
+      threat.notBefore=this.time+this.settings.rocketGap;
       const target=this.stage==='right'&&!this.eventsDone.has('rocket-wing')?this.wing??craft:craft;
       this.eventsDone.add('rocket-wing');
       const speed=85,dt=Math.min(2.2,dist(threat,target)/speed);
@@ -230,6 +260,7 @@ class NaharDirector{
       Object.assign(threat.input,aimAt(eye(threat),prediction),{aim:true,fire:false});
       if(activateGadget(this.sim,threat,true)){
         threat.rocketYaw=threat.input.yaw;threat.rocketPitch=threat.input.pitch;
+        this.nextRocketAt=this.time+this.settings.rocketGap;
         this.say('pilot.rocket',true);
       }
     }
@@ -246,7 +277,8 @@ class NaharDirector{
       Object.assign(gunner,{vehicleId:null,vehicleSeat:null,hp:0,alive:false,campaignHidden:true});
       const {x,y,z}=vehiclePartPose(craft,-1.11,2.12,-.64);
       this.sim.event('bulletImpact',{x,y,z,tx:x,ty:y,tz:z,impact:'metal',impactVehicleId:craft.id});
-      this.threatId=null;this.setStage('transfer');this.say('pilot.cross',true);this.say(`${this.wingSpeaker}.transfer`);
+      this.threatId=null;this.setStage('transfer');
+      this.say('gunner.cut',true);this.say('pilot.gunnerDown');this.say(`${this.wingSpeaker}.transfer`);this.say(this.medic.id+'.gunnerDown');
       this.save(2);
     }
     const groups=this.stage==='right'?route.airWaves:this.stage==='orbit'&&this.time>=this.orbitAt?route.orbitWaves:null;
@@ -261,7 +293,7 @@ class NaharDirector{
       if(this.checkpointShifting&&this.time>=this.switchAt){
         this.seat(this.player,this.aircraft,LEFT);this.switchAt=null;
         this.combatOrbitAt=Math.max(this.time,this.orbitAt);this.setStage('orbit');
-        this.say('marten.seated',true);this.say('pilot.orbit');
+        this.say('marten.seated');this.say('pilot.orbit');
       }else if(this.age>14&&!this.checkpointShifting&&!this.eventsDone.has('hold')){
         this.eventsDone.add('hold');this.say('pilot.hold');
       }
@@ -270,9 +302,9 @@ class NaharDirector{
     if(this.stage==='orbit')this.checkLanding();
     if(this.stage==='landing'&&this.age>=LANDING_SECONDS){
       this.setStage('disembark');this.clearAir();
-      this.unseatInfantry();this.say('pilot.clear',true);
+      this.unseatInfantry();this.say('pilot.touchdown',true);
     }
-    if(this.aircraft?.hp<=this.aircraft?.maxHp*.56&&this.aircraft.hp>0&&!this.eventsDone.has('hull')){
+    if(this.lastHullBlast!=null&&this.aircraft?.hp>0&&!this.eventsDone.has('hull')){
       this.eventsDone.add('hull');this.say('pilot.hull',true);
     }
     if(this.escortAway!=null&&this.time-this.escortAway>23&&this.wing){
@@ -324,7 +356,7 @@ class NaharDirector{
     if(this.carry.bruno_alive!==false){
       const bruno=this.add('bruno','Бруно Валь',0,'support','pkp',{x:v.x+12,z:v.z+12},'signals');bruno.squadMember=true;
     }
-    this.spawnGround('depot');this.say(this.medic.id+'.down',true);this.say('orlov.routes');
+    this.spawnGround('depot');this.say('marten.onFoot');this.say(this.medic.id+'.down');this.say('orlov.routes');
     if(this.carry.m3_documents)this.say(this.sim.players.has('bruno')?'bruno.route':'wing.route');
     this.save(3);
   }
@@ -401,11 +433,14 @@ class NaharDirector{
     this.flags.m4_dispatcher_alive=Boolean(this.dispatcher?.alive);
     this.source=source;
     this.setStage('freight');this.spawnGround('freight');
-    this.say(source==='dispatcher'?'dispatcher.live':'marten.copy',true);this.save(4);
+    this.say(source==='dispatcher'?'dispatcher.live':'marten.copy');
+    if(source==='dispatcher'){this.say('marten.moveDispatcher');this.say('dispatcher.walk');}
+    this.say('orlov.freight');this.save(4);
   }
   reviveDispatcher(){
     const p=this.dispatcher;if(!p?.alive||!p.wounded)return;
     Object.assign(p,{wounded:false,rescued:true,prone:false,hp:65});
+    if(this.order==='assist'&&this.medic?.alive&&close(this.medic,p,3))this.say(this.medic.id+'.pulse',true);
     this.acquire('dispatcher');
   }
   updateGround(dt){
@@ -417,7 +452,7 @@ class NaharDirector{
       this.setStage('station');this.spawnGround('station');
       const d=this.add('dispatcher','Диспетчер',0,'medic','mcx9',sites.dispatcher,'dispatcher');
       Object.assign(d,{wounded:true,hp:42,prone:true,invulnerableUntil:this.time+9});
-      this.say('orlov.dispatch');
+      this.say('orlov.dispatch');this.say('orlov.stationIn');
     }else if(this.stage==='freight'&&p.z>52&&p.x>12){
       this.setStage('canal');this.spawnGround('canal');this.say('orlov.channel');this.save(5);
     }
@@ -451,6 +486,9 @@ class NaharDirector{
       this.power=false;this.eventsDone.add('power-cut');this.say(`${this.wingSpeaker}.broken`,true);return;
     }
     this.sent=Math.min(length,this.sent+dt);
+    if(this.sent>=length*.82&&!this.eventsDone.has('signal-almost')){
+      this.eventsDone.add('signal-almost');this.say('orlov.signalAlmost');
+    }
     if(this.sent>=length){
       this.flags.m4_signal_sent=true;this.setStage('tunnel');this.spawnGround('tunnel');
       this.say('orlov.received',true);
@@ -476,7 +514,9 @@ class NaharDirector{
       if(!this.knowledge.recording)options.push(['recording','Забрать запись',sites.recording,1.25,()=>{this.knowledge.recording=true;}]);
     }
     if((current==='canal'||current==='relay')&&!this.power)options.push(['power','Включить питание',sites.power,1.8,()=>{
-      this.power=true;if(current==='canal'){this.setStage('relay');this.say('marten.power',true);}
+      this.power=true;
+      if(current==='canal'){this.setStage('relay');this.say('marten.power',true);}
+      else this.say('marten.repair',true);
     }]);
     if(current==='relay'&&this.power&&!this.transmitting)options.push(['relay','Начать передачу',sites.relay,1.25,()=>{
       this.transmitting=true;this.say('orlov.send',true);
@@ -495,7 +535,9 @@ class NaharDirector{
       }
       if(this.stage==='transfer'){
         p.input.fire=false;
-        if(swap&&this.age>=2.2&&!this.checkpointShifting)this.switchAt=this.time+1.65;
+        if(swap&&this.age>=3.6&&!this.checkpointShifting){
+          this.switchAt=this.time+1.65;this.say('marten.moveGun');
+        }
       }
       if(this.stage==='disembark'&&this.age>=1.4&&this.input.use)this.exitAircraft();
       return;
@@ -516,10 +558,16 @@ class NaharDirector{
       return;
     }
     for(const p of this.airTargets())if(p.airRole==='pt'&&p.lastHurt>this.time-.04){
-      p.suppressedUntil=this.time+4.5;p.aimAt=null;p.heldGadget=null;
-      if(this.threatId===p.id)this.threatId=null;
+      p.suppressedUntil=this.time+7;p.aimAt=null;p.heldGadget=null;
+      if(this.threatId===p.id){
+        this.threatId=null;
+        if(!this.eventsDone.has('confirmed-suppression')){
+          this.eventsDone.add('confirmed-suppression');this.say('marten.suppressed');
+        }
+      }
     }
     if(this.airborne)this.updateAir();else this.updateGround(dt);
+    this.radioCues();
     this.updateRadio();
   }
   command(command){
@@ -545,10 +593,10 @@ class NaharDirector{
     const transfer=this.checkpointShifting?Math.max(0,1-(this.switchAt-this.time)/1.65):null;
     return {missionId:'m04',objective:this.stage,stage:this.stage,stageAt:this.stageAt,time:this.time,
       epoch:this.epoch,checkpoint:this.checkpoint,complete:this.complete,failed:this.failed,cutscene:this.stage==='finale'?{id:'finale',elapsed:this.age}:null,
-      airborne:this.airborne,transfer,transferReady:this.stage==='transfer'&&this.age>=2.2,
+      airborne:this.airborne,transfer,transferReady:this.stage==='transfer'&&this.age>=3.6,
       disembarkReady:this.stage==='disembark'&&this.age>=1.4,landing:this.landing?.kind??null,
       hull:craft?Math.ceil(craft.hp/craft.maxHp*100):null,bodyRoll:craft?.bodyRoll??0,
-      threat:threat?.alive?{...eye(threat,1.85),label:ptWarning,time:Math.max(0,(threat.aimAt??this.time)-this.time)}:null,
+      threat:threat?.alive?{...eye(threat,2.45),label:ptWarning,time:Math.max(0,(threat.aimAt??this.time)-this.time)}:null,
       target:target?{x:target.x,y:target.y??0,z:target.z}:null,gates:{...this.gates},
       prompt:this.prompt,progress:this.progress,order:this.order,power:this.power,transmitting:this.transmitting??false,
       sent:this.sent/this.settings.hold,source:this.source??null,flags:{...this.flags},
@@ -598,7 +646,7 @@ export function validMission4Save(save,definition){
   if(save?.version!==M04_SAVE_VERSION||save.missionId!=='m04'||save.definitionVersion!==definition.version||
     !['recruit','regular','veteran'].includes(save.difficulty)||!Number.isFinite(save.time)||save.time<0||
     !Number.isInteger(save.rngState)||!m||!Number.isInteger(m.checkpoint)||CHECKPOINT_STAGES[m.checkpoint]!==m.stage||
-    !Number.isFinite(m.stageAt)||m.stageAt>save.time||!Array.isArray(m.eventsDone)||m.eventsDone.length>24||
+    !Number.isFinite(m.stageAt)||m.stageAt>save.time||!Array.isArray(m.eventsDone)||m.eventsDone.length>64||
     !m.flags||!m.gates||!m.knowledge||!Array.isArray(m.queue)||!['follow','hold','assist'].includes(m.order)||
     !list(save.players,100)||!list(save.vehicles,2))return false;
   const aircraft=save.vehicles;

@@ -16,7 +16,7 @@ export async function campaignData(missionId='m01'){
   if(cache.has(missionId))return cache.get(missionId);
   const pending=Promise.all(['mission.json','ru.json'].map(async file=>{
     const url=new URL(`${import.meta.env.BASE_URL}campaign/${missionId}/${file}`,location.href);
-    if(mission.saveVersion)url.searchParams.set('v',mission.saveVersion);
+    if(mission.contentRevision??mission.saveVersion)url.searchParams.set('v',mission.contentRevision??mission.saveVersion);
     const r=await fetch(url);
     if(!r.ok)throw Error('Не удалось загрузить данные миссии.');
     return r.json();

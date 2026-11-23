@@ -12,15 +12,19 @@ const audio=[],campaignAudio=[];for(const file of runtimeFiles)if(/\.(ogg|opus|m
   const item={file,bytes:(await readFile(file)).length};
   if(file.startsWith('dist/campaign/'))campaignAudio.push(item);else audio.push(item);
 }
-const campaignMissions=[...new Set(campaignAudio.map(item=>item.file.split('/')[2]))].map(id=>{
-  const items=campaignAudio.filter(item=>item.file.startsWith(`dist/campaign/${id}/`));
-  const musicBytes=items.filter(item=>item.file.includes('/music/')).reduce((n,item)=>n+item.bytes,0),voiceBytes=items.filter(item=>item.file.includes('/voice/')).reduce((n,item)=>n+item.bytes,0);
-  const otherBytes=items.filter(item=>!item.file.includes('/music/')&&!item.file.includes('/voice/')).reduce((n,item)=>n+item.bytes,0);
-  return {id,musicBytes,voiceBytes,otherBytes,budgets:{musicBytes:3000000,voiceBytes:1000000},pass:musicBytes<=3000000&&voiceBytes<=1000000&&otherBytes===0};
-});
+const campaignMissions=await Promise.all([...new Set(campaignAudio.map(item=>item.file.split('/')[2]))].map(async id=>{
+  const directory=`dist/campaign/${id}/`;
+  const definition=JSON.parse(await readFile(directory+'mission.json','utf8'));
+  const items=campaignAudio.filter(item=>item.file.startsWith(directory));
+  const bytesFor=folder=>items.filter(item=>item.file.startsWith(directory+folder+'/')).reduce((n,item)=>n+item.bytes,0);
+  const musicBytes=bytesFor('music'),voiceBytes=bytesFor('voice'),sfxBytes=bytesFor('sfx');
+  const otherBytes=items.reduce((n,item)=>n+item.bytes,0)-musicBytes-voiceBytes-sfxBytes;
+  const budgets={musicBytes:definition.audioBudgets?.music??3000000,voiceBytes:definition.audioBudgets?.voice??1000000,sfxBytes:definition.audioBudgets?.sfx??0};
+  return {id,musicBytes,voiceBytes,sfxBytes,otherBytes,budgets,pass:musicBytes<=budgets.musicBytes&&voiceBytes<=budgets.voiceBytes&&sfxBytes<=budgets.sfxBytes&&otherBytes===0};
+}));
 const report={schema:2,createdAt:new Date().toISOString(),initialJsGzipBytes:initial.reduce((n,item)=>n+item.gzipBytes,0),audioBytes:audio.reduce((n,item)=>n+item.bytes,0),budgets:{initialJsGzipBytes:700000,audioBytes:2550000},initial,audio,campaignMissions,campaignAudio,pass:true};
 report.pass=report.initialJsGzipBytes<=report.budgets.initialJsGzipBytes&&report.audioBytes<=report.budgets.audioBytes&&campaignMissions.every(m=>m.pass);
 const i=process.argv.indexOf('--output'),output=i<0?'.perf-local/build-budget.json':process.argv[i+1];await mkdir(dirname(output),{recursive:true});await writeFile(output,JSON.stringify(report,null,2)+'\n');
 console.log(`Initial JS: ${report.initialJsGzipBytes} / 700000 gzip bytes; audio (all runtime formats): ${report.audioBytes} / ${report.budgets.audioBytes} bytes`);
-for(const m of campaignMissions)console.log(`Campaign ${m.id}: music ${m.musicBytes}/3000000; voice ${m.voiceBytes}/1000000 bytes`);
+for(const m of campaignMissions)console.log(`Campaign ${m.id}: music ${m.musicBytes}/${m.budgets.musicBytes}; voice ${m.voiceBytes}/${m.budgets.voiceBytes}; effects ${m.sfxBytes}/${m.budgets.sfxBytes} bytes`);
 if(!report.pass){console.error('Runtime asset budget exceeded');process.exitCode=1;}

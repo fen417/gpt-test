@@ -25,10 +25,18 @@
     {
       "id": "dispatcher.live",
       "speaker": "dispatcher",
+      "duration": 6.106542,
       "voiceId": "bIHbv24MWmeRgasZH58o",
-      "duration": 6.0065,
-      "spoken": "[tired] Я записал их позывные. Возьмите схему. Передатчик стоит у канала, за мостом.",
-      "bytes": 17802
+      "spoken": "[exhausted, breathless] Вот… схема и позывные. Я всё записал. Передатчик у канала… за мостом.",
+      "bytes": 16948
+    },
+    {
+      "id": "dispatcher.walk",
+      "speaker": "dispatcher",
+      "duration": 5.8065,
+      "voiceId": "bIHbv24MWmeRgasZH58o",
+      "spoken": "[exhausted, catches breath] У меня ноги ещё ходят. Доведите до станции у воды — дальше покажу.",
+      "bytes": 15780
     },
     {
       "id": "duran.blue",
@@ -57,10 +65,26 @@
     {
       "id": "duran.transfer",
       "speaker": "duran",
+      "duration": 3.4065,
       "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "[shocked then urgent, shouts] Грач не дышит! Мартен, смени его! За левый!",
+      "bytes": 10288
+    },
+    {
+      "id": "gunner.check",
+      "speaker": "gunner",
+      "duration": 7.406542,
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO",
+      "spoken": "[calm, reassuring] Привыкай к ветру, Мартен. Когда начнём крениться, цель уйдёт вместе с бортом. Дыши. Успеешь.",
+      "bytes": 19748
+    },
+    {
+      "id": "gunner.cut",
+      "speaker": "gunner",
       "duration": 2.567583,
-      "spoken": "[urgent] Грач не дышит. Мартен, за левый!",
-      "bytes": 8272
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO",
+      "spoken": "[shouts, sudden pain, cuts off] Слева! Я вижу… А-а!",
+      "bytes": 7085
     },
     {
       "id": "gunner.ready",
@@ -71,12 +95,36 @@
       "bytes": 16013
     },
     {
+      "id": "gunner.tracers",
+      "speaker": "gunner",
+      "duration": 5.6065,
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO",
+      "spoken": "[shouts, intense] Трассы слева! Я держу левый. Правый борт, не отрывайтесь от линии крыш!",
+      "bytes": 17329
+    },
+    {
       "id": "lasko.down",
       "speaker": "lasko",
       "voiceId": "cjVigY5qzO86Huf0OWal",
       "duration": 2.489208,
       "spoken": "Я снаружи. Давайте к станции!",
       "bytes": 7595
+    },
+    {
+      "id": "lasko.gunnerDown",
+      "speaker": "lasko",
+      "duration": 7.6065,
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "spoken": "[breathing heavily, shaken] Мартен… Всё. Я освобожу место. Иди к минигану, я держу его.",
+      "bytes": 20770
+    },
+    {
+      "id": "lasko.pulse",
+      "speaker": "lasko",
+      "duration": 4.406542,
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "spoken": "[breathing heavily, reassuring] Пульс есть! Погоди. Сейчас подниму.",
+      "bytes": 11869
     },
     {
       "id": "marten.copy",
@@ -89,10 +137,34 @@
     {
       "id": "marten.exit",
       "speaker": "marten",
+      "duration": 4.806542,
       "voiceId": "SOYHLrjzK2X1ezoPC6cr",
-      "duration": 3.606542,
-      "spoken": "Мы в тоннеле. Отряд вывожу. Встретимся у карьера.",
-      "bytes": 10997
+      "spoken": "[exhausted, relieved] Мы в тоннеле. Уходим. Маяк… спасибо, что был на связи.",
+      "bytes": 13345
+    },
+    {
+      "id": "marten.moveDispatcher",
+      "speaker": "marten",
+      "duration": 4.2065,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[soft, reassuring] Схема у нас. Держись рядом, мы выведем тебя к каналу.",
+      "bytes": 11375
+    },
+    {
+      "id": "marten.moveGun",
+      "speaker": "marten",
+      "duration": 3.706542,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[strained, raises voice] Понял. Я иду. Держите левый борт к депо!",
+      "bytes": 10787
+    },
+    {
+      "id": "marten.onFoot",
+      "speaker": "marten",
+      "duration": 4.2065,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[shouts, breathing heavily] Я на земле! К платформам, за мной!",
+      "bytes": 12697
     },
     {
       "id": "marten.power",
@@ -103,12 +175,68 @@
       "bytes": 8579
     },
     {
+      "id": "marten.relayHold",
+      "speaker": "marten",
+      "duration": 5.8065,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[shouts, breathing heavily] Маяк, держу канал! У щита движение, нам нужна ещё минута!",
+      "bytes": 17308
+    },
+    {
+      "id": "marten.repair",
+      "speaker": "marten",
+      "duration": 4.006542,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[strained, decisive] Питание вернул! Продолжаем с того места, где оборвалось.",
+      "bytes": 10813
+    },
+    {
+      "id": "marten.roofs",
+      "speaker": "marten",
+      "duration": 3.206542,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[urgent, alarmed] Вижу движение! На крышах, между баками!",
+      "bytes": 8805
+    },
+    {
       "id": "marten.seated",
       "speaker": "marten",
+      "duration": 3.8065,
       "voiceId": "SOYHLrjzK2X1ezoPC6cr",
-      "duration": 2.985542,
-      "spoken": "Миниган мой. Держи левым бортом к двору.",
-      "bytes": 9406
+      "spoken": "[raised voice, focused] Я у минигана! Держи левый к двору. Я прикрою!",
+      "bytes": 10545
+    },
+    {
+      "id": "marten.secondPass",
+      "speaker": "marten",
+      "duration": 3.7065,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[short breath, focused] Справа ещё люди. Вижу стрелка у края крыши.",
+      "bytes": 10003
+    },
+    {
+      "id": "marten.sky",
+      "speaker": "marten",
+      "duration": 5.706542,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[quiet, awed] Сколько крыш... После Тель-Мазина кажется, что город вообще без конца.",
+      "bytes": 15498
+    },
+    {
+      "id": "marten.suppressed",
+      "speaker": "marten",
+      "duration": 3.706542,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[out of breath, urgent] Сбил ему прицел! Следите, чтобы снова не поднялся.",
+      "bytes": 10359
+    },
+    {
+      "id": "marten.yard",
+      "speaker": "marten",
+      "duration": 3.9065,
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "[shouts] Двор вижу. Снижайся, я держу край крыши!",
+      "bytes": 10655
     },
     {
       "id": "medic.down",
@@ -117,6 +245,22 @@
       "duration": 2.489208,
       "spoken": "Я снаружи. Давайте к станции!",
       "bytes": 7535
+    },
+    {
+      "id": "medic.gunnerDown",
+      "speaker": "medic",
+      "duration": 4.506542,
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "[shaken, urgent] Он не дышит. Я уберу его от станка. Мартен, иди сюда!",
+      "bytes": 12370
+    },
+    {
+      "id": "medic.pulse",
+      "speaker": "medic",
+      "duration": 3.506542,
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "[strained, relieved] Живой! Секунду, остановлю кровь.",
+      "bytes": 9520
     },
     {
       "id": "orlov.channel",
@@ -135,6 +279,14 @@
       "bytes": 15920
     },
     {
+      "id": "orlov.freight",
+      "speaker": "orlov",
+      "duration": 5.2065,
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "[focused] Выходите через грузовой двор. Линию связи в городе глушат, передатчик у воды.",
+      "bytes": 14538
+    },
+    {
       "id": "orlov.inbound",
       "speaker": "orlov",
       "voiceId": "onwK4e9ZLuTAKqWW03F9",
@@ -145,10 +297,10 @@
     {
       "id": "orlov.received",
       "speaker": "orlov",
+      "duration": 5.2065,
       "voiceId": "onwK4e9ZLuTAKqWW03F9",
-      "duration": 5.4065,
-      "spoken": "Принял схему. Топливо уходит на карьер. Выводи людей через служебный тоннель.",
-      "bytes": 16230
+      "spoken": "[relieved, firm] Принял! Схема у нас. Топливо уходит на карьер. Мартен, выводи людей.",
+      "bytes": 14328
     },
     {
       "id": "orlov.routes",
@@ -167,6 +319,46 @@
       "bytes": 12397
     },
     {
+      "id": "orlov.signalAlmost",
+      "speaker": "orlov",
+      "duration": 3.8065,
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "[urgent, reassuring] Слышу вас. Ещё немного. Пакет почти пришёл.",
+      "bytes": 10542
+    },
+    {
+      "id": "orlov.silent",
+      "speaker": "orlov",
+      "duration": 5.1065,
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "[tense, controlled] Диспетчер снова не отвечает. Времени мало. Держите «Маяк» открытым.",
+      "bytes": 14140
+    },
+    {
+      "id": "orlov.stationIn",
+      "speaker": "orlov",
+      "duration": 6.606542,
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "[urgent, steady] Мартен, если найдёшь его раненым, позови санитара. Журнал и запись у диспетчера — запасной вариант.",
+      "bytes": 18468
+    },
+    {
+      "id": "orlov.tunnel",
+      "speaker": "orlov",
+      "duration": 5.8065,
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "[relieved, composed] Топливный маршрут подтверждён. Маршрут группы — через тоннель. Я остаюсь на связи.",
+      "bytes": 16220
+    },
+    {
+      "id": "orlov.yard",
+      "speaker": "orlov",
+      "duration": 6.606542,
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "[calm under pressure] Вижу вас с земли. Синий ангар слева от основного двора. Если не пустят, идите в ремонтный.",
+      "bytes": 18597
+    },
+    {
       "id": "pilot.again",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
@@ -177,10 +369,10 @@
     {
       "id": "pilot.backup",
       "speaker": "pilot",
+      "duration": 4.106542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 3.9065,
-      "spoken": "Основной двор простреливают. Сажусь в ремонтном дворе.",
-      "bytes": 11931
+      "spoken": "[urgent, strained] Двор простреливают! В основной не полезу. Сажусь в ремонтном!",
+      "bytes": 12737
     },
     {
       "id": "pilot.city",
@@ -207,12 +399,36 @@
       "bytes": 12936
     },
     {
+      "id": "pilot.coverWing",
+      "speaker": "pilot",
+      "duration": 4.506542,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[shouts, urgent] Второй борт, в сторону! Мартен, следи за теми, кто с трубами!",
+      "bytes": 12510
+    },
+    {
       "id": "pilot.cross",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
       "duration": 4.406542,
       "spoken": "Заходим вдоль трамвайной линии. Внимание, огонь слева!",
       "bytes": 13327
+    },
+    {
+      "id": "pilot.descend",
+      "speaker": "pilot",
+      "duration": 5.8065,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[focused] Снижаемся, держитесь. Второй борт впереди справа. Здесь крыши высокие.",
+      "bytes": 16261
+    },
+    {
+      "id": "pilot.gunnerDown",
+      "speaker": "pilot",
+      "duration": 5.4065,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[shocked, voice cracks, then urgent] Грач?! Грач, ответь! Чёрт… Отхожу в сторону, держитесь!",
+      "bytes": 15406
     },
     {
       "id": "pilot.hold",
@@ -225,18 +441,18 @@
     {
       "id": "pilot.hull",
       "speaker": "pilot",
+      "duration": 5.406542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 4.906542,
-      "spoken": "[urgent] Есть попадание. Борт ещё держится. Не дайте им выстрелить снова!",
-      "bytes": 14805
+      "spoken": "[shaken, strained then shouts] Нас задело! Держу борт… Мартен, не дай им выстрелить снова!",
+      "bytes": 14983
     },
     {
       "id": "pilot.land",
       "speaker": "pilot",
+      "duration": 5.406542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 3.506542,
-      "spoken": "Иду на посадку. Оставайтесь на местах до касания.",
-      "bytes": 10717
+      "spoken": "[shouts, strained] Иду вниз! Подержите крыши! Всем оставаться на местах до касания!",
+      "bytes": 16046
     },
     {
       "id": "pilot.orbit",
@@ -247,12 +463,44 @@
       "bytes": 16656
     },
     {
+      "id": "pilot.orbitTwo",
+      "speaker": "pilot",
+      "duration": 7.006542,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[tense, clear] Повторяю круг. Слева сигнальная будка, дальше крыша цеха. Там ещё могут быть ракеты.",
+      "bytes": 19584
+    },
+    {
       "id": "pilot.rocket",
       "speaker": "pilot",
+      "duration": 3.106542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 2.907167,
-      "spoken": "[urgent] Ракета в воздухе! Держитесь за борт!",
-      "bytes": 8782
+      "spoken": "[shouts, panic, clipped radio] Ракета! Ракета в воздухе! Держитесь!",
+      "bytes": 8775
+    },
+    {
+      "id": "pilot.roofDanger",
+      "speaker": "pilot",
+      "duration": 3.3065,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[shouts, sharp] Пэ-тэ на крыше! Не выпускай его из прицела!",
+      "bytes": 9212
+    },
+    {
+      "id": "pilot.stationRoof",
+      "speaker": "pilot",
+      "duration": 5.2065,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[focused] Левый борт, у тебя вокзал. Смотри крышу над часами, я подведу ближе.",
+      "bytes": 14480
+    },
+    {
+      "id": "pilot.touchdown",
+      "speaker": "pilot",
+      "duration": 5.4065,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[strained, then relieved, then shouts] Держу! Ещё чуть-чуть… Есть земля. Быстро, быстро, на выход!",
+      "bytes": 14962
     },
     {
       "id": "wing.blue",
@@ -289,10 +537,10 @@
     {
       "id": "wing.transfer",
       "speaker": "wing",
+      "duration": 4.6065,
       "voiceId": "IKne3meq5aSn9XLyUdCD",
-      "duration": 2.750458,
-      "spoken": "[urgent] Грач не дышит. Мартен, за левый!",
-      "bytes": 8240
+      "spoken": "[shaken, breathing hard, shouts] Грач не дышит! Мартен! За левый, живо!",
+      "bytes": 13146
     }
   ]
 }

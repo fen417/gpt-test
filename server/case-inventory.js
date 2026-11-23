@@ -11,7 +11,7 @@ const releaseCaseGrants=[
   ['release-037-1','release',POLAR_CIRCUIT],
   ['release-037-2','release',POLAR_CIRCUIT],
 ];
-const casePattern=/^(?:[A-Za-z0-9_-]{32}|m0[1-3]-(?:polar-)?[12]|welcome-035|release-036|release-037-[12])$/;
+const casePattern=/^(?:[A-Za-z0-9_-]{32}|m0[1-4]-(?:polar-)?[12]|welcome-035|release-036|release-037-[12])$/;
 // Existing records predate case types and always represent the Field Reserve.
 const typeOf=item=>item.caseType??FIELD_RESERVE;
 const permissionDenied=error=>String(error?.code).toUpperCase().replaceAll('-','_')==='PERMISSION_DENIED';

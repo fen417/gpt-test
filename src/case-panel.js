@@ -1,4 +1,4 @@
-import {CASE_TYPES,CASE_RARITIES,FIELD_RESERVE,POLAR_CIRCUIT,RELEASE_CASE_VERSION,getCaseType,caseReward,campaignCaseReward} from '../shared/cases.js';
+import {CAMPAIGN_CASE_MISSIONS,CASE_TYPES,CASE_RARITIES,FIELD_RESERVE,POLAR_CIRCUIT,RELEASE_CASE_VERSION,getCaseType,caseReward,campaignCaseReward} from '../shared/cases.js';
 import {WEAPONS} from '../shared/world.js';
 import {requestCases} from './network.js';
 import {mountWeaponPreview} from './weapon-preview.js';
@@ -8,7 +8,6 @@ import './case-panel.css';
 
 const $=id=>document.getElementById(id);
 const rarityById=new Map(CASE_RARITIES.map(rarity=>[rarity.id,rarity]));
-const campaignMissions=['m01','m02','m03'];
 const campaignDifficulties=['regular','veteran'];
 const caseModels=import.meta.glob('./assets/cases/*.glb',{eager:true,query:'?url',import:'default'});
 
@@ -249,7 +248,7 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
   }
 
   async function syncCampaign({url,token,account},version){
-    for(const missionId of campaignMissions){
+    for(const missionId of CAMPAIGN_CASE_MISSIONS){
       const pending=campaignDifficulties.map(difficulty=>({
         difficulty,key:claimKey(url,account,missionId,difficulty),
       })).filter(({key})=>hasClaim(key));

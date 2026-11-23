@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
-import {NAHAR_GATES,NAHAR_SITES} from '../../shared/campaign/nahar.js';
+import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM} from '../../shared/campaign/nahar.js';
 import {getVehicleSeatPose,vehiclePartPose} from '../../shared/vehicles.js';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
@@ -45,13 +45,21 @@ export class Mission4Presentation{
     this.$('.campaign-exit').onclick=leave;this.$('.campaign-retry').onclick=()=>this.retry();
     this.marker=this.$('.m04-marker');this.threat=this.$('.m04-threat');
     this.dressing=new THREE.Group();this.dressing.name='nahar-interactives';renderer.worldRoot.add(this.dressing);
+    this.sky=renderer.webgpu?renderer.atmosphere:renderer.atmosphere.sky.material.uniforms;
+    this.cityFog=new THREE.Color('#c6ac91');this.stormFog=new THREE.Color('#ba8c64');
+    this.dustBanks=Array.from({length:25},(_,index)=>{
+      const material=new THREE.SpriteMaterial({map:renderer.smokeTexture,color:0xc4a17b,transparent:true,depthWrite:false,fog:false,opacity:0});
+      const sprite=new THREE.Sprite(material);this.dressing.add(sprite);
+      return {sprite,angle:index*Math.PI*2/25,row:index%3,phase:index*1.73};
+    });
     this.doorMeshes=Object.fromEntries(Object.entries(NAHAR_GATES).map(([name,b])=>{
       const gate=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h,b.d),new THREE.MeshStandardMaterial({color:b.color,metalness:.16,roughness:.84}));
       gate.position.set(b.x,b.baseY+b.h/2,b.z);gate.castShadow=true;gate.receiveShadow=true;this.dressing.add(gate);
       return [name,gate];
     }));
     this.original={sun:renderer.sun.intensity,sunOffset:renderer.sunOffset.clone(),hemi:renderer.hemiLight.intensity,
-      ambient:renderer.ambientLight.intensity};
+      ambient:renderer.ambientLight.intensity,fogColor:renderer.scene.fog.color.clone(),fogDensity:renderer.scene.fog.density,
+      haze:this.sky.hazeAmount.value,hazeTint:this.sky.hazeTint.value.clone()};
     this.renderHook=(r,state,dt,view)=>this.render(r,state,dt,view);
   }
   retry(){this.clearControls();this.session.command({type:'retry'});this.resume();}
@@ -139,11 +147,48 @@ export class Mission4Presentation{
     element.hidden=false;element.style.transform=`translate(${location.x}px,${location.y}px) translate(-50%,-50%)`;
     element.textContent=direction+label;
   }
+  placeThreat(r,target,player){
+    if(!target){this.threat.hidden=true;return;}
+    const pos=r.project(target.x,target.y,target.z);
+    const onTarget=pos.visible&&pos.x>64&&pos.x<r.viewportWidth-64&&pos.y>78&&pos.y<r.viewportHeight-16;
+    this.threat.dataset.onTarget=String(onTarget);
+    if(!onTarget){this.placeMarker(this.threat,r,target,player,'ПТ-90');return;}
+    this.threat.hidden=false;
+    this.threat.style.transform=`translate(${pos.x}px,${pos.y}px) translate(-50%,-100%)`;
+    this.threat.textContent='ПТ-90';
+  }
+  updateStorm(r,time,quality){
+    const band=NAHAR_STORM,pos=r.camera.position;
+    const radius=Math.hypot((pos.x-band.x)/band.innerX,(pos.z-band.z)/band.innerZ);
+    const gust=(1+Math.sin(time*.34)+Math.sin(time*.79)*.28)*.5;
+    const dense=smooth(radius,.63,1.46);
+    r.scene.fog.density=mix(.00172,.00435+.00045*gust,dense);
+    r.scene.fog.color.copy(this.cityFog).lerp(this.stormFog,mix(.18,.76,dense));
+    this.sky.hazeAmount.value=mix(.4,.81,dense);
+    this.sky.hazeTint.value.copy(r.scene.fog.color);
+    if(!r.webgpu)this.sky.hazeTint.value.convertLinearToSRGB();
+    for(const bank of this.dustBanks){
+      const {sprite,row,phase}=bank;
+      sprite.visible=quality!=='low'||row!==2;
+      if(!sprite.visible)continue;
+      const a=bank.angle+.055*Math.sin(time*.08+phase);
+      const ring=.12+row*.28;
+      const x=band.x+Math.cos(a)*mix(band.innerX,band.outerX,ring)+Math.sin(time*.115+phase)*31;
+      const z=band.z+Math.sin(a)*mix(band.innerZ,band.outerZ,ring)+Math.sin(time*.07+phase)*15;
+      const ground=r.map.terrain.heightAt(x,z);
+      sprite.position.set(x,ground+31+row*23+Math.sin(time*.14+phase)*5,z);
+      sprite.scale.set(178+row*33,77+row*21,1);
+      sprite.material.rotation=.16*Math.sin(phase);
+      sprite.material.opacity=(.16+row*.055)*(.76+.24*Math.sin(time*.18+phase)**2);
+    }
+    r.sun.intensity=mix(2.1,1.54,dense);r.hemiLight.intensity=mix(1.34,1.47,dense);
+    r.ambientLight.intensity=mix(.24,.32,dense);
+  }
   render(r,state,dt,view){
     const m=state.campaign;if(m?.missionId!=='m04')return;
     this.syncGates(m.gates);
     const p=state.players.find(a=>a.id==='local'),craft=state.vehicles.find(v=>v.id===p?.vehicleId);
-    r.sunOffset.set(-140,86,-60);r.sun.intensity=2.1;r.hemiLight.intensity=1.34;r.ambientLight.intensity=.24;
+    r.sunOffset.set(-140,86,-60);
     if(craft&&m.airborne&&m.transfer!=null){
       const t=smooth(m.transfer,0,1),from=getVehicleSeatPose(craft,p.vehicleSeat),to=vehiclePartPose(craft,-.62,2.5,-.83);
       r.camera.position.set(mix(from.x,to.x,t),mix(from.y,to.y,t)-Math.sin(Math.PI*t)*.22,mix(from.z,to.z,t));
@@ -156,9 +201,10 @@ export class Mission4Presentation{
       const e=NAHAR_SITES.exit,t=smooth(m.cutscene.elapsed,0,5.8);
       r.camera.position.set(e.x-6+t*3,1.78,e.z+2.3-t*.8);r.camera.lookAt(e.x+9,1.34,e.z-.4);r.weapon.visible=false;
     }
+    this.updateStorm(r,m.time,view.quality);
     r.camera.updateMatrixWorld();
     const show=!m.failed&&!m.complete&&!m.cutscene&&p;
-    this.placeMarker(this.threat,r,show?m.threat:null,p,'▲ ПТ-90');
+    this.placeThreat(r,show?m.threat:null,p);
     const t=show&&m.target;
     this.placeMarker(this.marker,r,t?{...t,y:t.y+.8}:null,p,t?`◇ ${Math.round(Math.hypot(t.x-p.x,t.z-p.z))} М`:'');
     if(!view.paused&&craft&&m.stage==='landing'&&craft.y<6&&r.clock>=(this.nextDust??0)){
@@ -171,6 +217,9 @@ export class Mission4Presentation{
     this.voice.dispose();this.score.dispose();this.combat.campaignMusicOverride=this.oldMusicOverride;
     const r=this.renderer,o=this.original;r.sun.intensity=o.sun;r.sunOffset.copy(o.sunOffset);
     r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.campaignCoverColliders=null;
+    r.scene.fog.color.copy(o.fogColor);r.scene.fog.density=o.fogDensity;
+    this.sky.hazeAmount.value=o.haze;this.sky.hazeTint.value.copy(o.hazeTint);
+    for(const {sprite} of this.dustBanks)sprite.material.dispose();
     for(const gate of Object.values(this.doorMeshes)){gate.geometry.dispose();gate.material.dispose();}
     this.dressing.removeFromParent();this.root.remove();
     document.body.classList.remove('campaign-active','campaign-m04-active','campaign-cinematic');

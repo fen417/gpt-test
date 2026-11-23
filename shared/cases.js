@@ -51,7 +51,9 @@ export const CASE_REWARDS = CASE_TYPES.flatMap(type=>type.rewards);
 const rewardById=new Map(CASE_REWARDS.map(reward=>[reward.id,reward]));
 export const caseReward=id=>rewardById.get(id);
 
+export const CAMPAIGN_CASE_MISSIONS=Object.freeze(['m01','m02','m03','m04']);
+
 export function campaignCaseReward(missionId,difficulty){
-  if(!['m01','m02','m03'].includes(missionId))return 0;
+  if(!CAMPAIGN_CASE_MISSIONS.includes(missionId))return 0;
   return difficulty==='veteran'?2:difficulty==='regular'?1:0;
 }
