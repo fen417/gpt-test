@@ -45,7 +45,7 @@ export function createGameServer(options={}){
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
   const server=http.createServer((req,res)=>{
-    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,caseInventory:true,weaponSkins:true,room:room?.phase??'empty'}));return;}
+    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,caseInventory:true,caseStorage:profiles?.caseDatabase?'rtdb':'file',weaponSkins:true,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
       if(!canReadMetrics(req,env)){res.writeHead(403);res.end('Forbidden');return;}
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(stats()));return;
@@ -323,7 +323,8 @@ export function createGameServer(options={}){
       const caseChance=matchCaseChance(sim.gameMode,sim.killLimit);
       if(caseChance&&room.casePlayers.size>=2){
         const owners=new Set([...room.casePlayers.values()].filter(Boolean));
-        cases.awardRound(room.weaponRoundId,owners,caseChance,(owner,inventory,caseId)=>{
+        const round={mode:sim.gameMode,killLimit:sim.killLimit,humanPlayers:room.casePlayers.size};
+        cases.awardRound(room.weaponRoundId,owners,caseChance,round,(owner,inventory,caseId)=>{
           const player=connected().find(s=>s.caseOwner===owner&&s.caseClient);
           if(player)send(player.client,{type:'case-awarded',inventory,caseId});
         });

@@ -48,12 +48,26 @@ function fileStore(path){
 }
 
 function cloudStore(db){
-  // The dedicated server already has a writer-only grant on this branch.
-  // Inventory identities are in a separate namespace from player XP.
+  // Keep the existing paths so older grants, opened rewards and equipped
+  // skins continue to work when the database starts enforcing the schema.
   const ref=owner=>db.ref('profiles').child(owner).child('weaponNetworkProgress').child('caseInventory');
   return {
     async get(owner){return (await ref(owner).get()).val();},
-    async change(owner,mutate){return (await ref(owner).transaction(mutate,undefined,false)).snapshot.val();},
+    async change(owner,mutate){
+      const inventory=ref(owner);
+      const known=(await inventory.get()).val();
+      const result=await inventory.transaction(current=>{
+        const next=mutate(current??known);
+        if(next==null)return;
+        // RTDB rules can check individual records by key. Give equipped skins
+        // a reference to the corresponding opened case in the same transaction.
+        const skinCases={};
+        for(const [caseId,item] of Object.entries(next.cases??{}))
+          if(caseReward(item.rewardId))skinCases[item.rewardId]??=caseId;
+        return {...next,skinCases};
+      },undefined,false);
+      return result.committed?result.snapshot.val():result.snapshot.val()??known;
+    },
   };
 }
 
@@ -81,21 +95,21 @@ export function createCaseInventory(db,env){
   const store=db?cloudStore(db):fileStore(env.CASE_INVENTORY_FILE??'data/case-inventory.json');
   const pending=new Map();
   let flushing;
-  function awardRound(roundId,owners,chance,notify){
+  function awardRound(roundId,owners,chance,round,notify){
     const createdAt=Date.now();
     for(const owner of owners){
       if(randomInt(100)>=chance)continue;
-      pending.set(owner+'/'+roundId,{owner,roundId,createdAt,notify});
+      pending.set(owner+'/'+roundId,{owner,roundId,createdAt,round,notify});
     }
   }
   function flush(){
     if(flushing)return flushing;
     if(!pending.size)return Promise.resolve();
-    flushing=Promise.allSettled([...pending].map(async([key,{owner,roundId,createdAt,notify}])=>{
+    flushing=Promise.allSettled([...pending].map(async([key,{owner,roundId,createdAt,round,notify}])=>{
       const saved=await store.change(owner,current=>{
         if(current?.cases?.[roundId])return;
         return {...current,revision:(current?.revision??0)+1,
-          cases:{...current?.cases,[roundId]:{createdAt,source:'match'}}};
+          cases:{...current?.cases,[roundId]:{createdAt,source:'match',round}}};
       });
       if(!saved?.cases?.[roundId])throw Error('Case grant did not commit');
       pending.delete(key);
@@ -138,12 +152,10 @@ export function createCaseInventory(db,env){
       const rewardId=rollReward(),openedAt=Date.now();
       const saved=await store.change(owner,current=>{
         const item=current?.cases?.[caseId];
-        // A Firebase transaction can start with a cold local snapshot.
-        // Send the comparison to the database before rejecting a missing ID.
-        if(!item)return current??null;
+        if(!item)return;
         if(item.rewardId)return;
         return {...current,revision:(current.revision??0)+1,
-          cases:{...current.cases,[caseId]:{...item,rewardId,openedAt}}};
+          cases:{...current.cases,[caseId]:{...item,rewardId,openedAt:Math.max(openedAt,item.createdAt)}}};
       });
       const result=saved?.cases?.[caseId]?.rewardId;
       if(!caseReward(result))throw Error('Кейс не найден.');

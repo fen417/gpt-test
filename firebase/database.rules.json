@@ -4,7 +4,7 @@
     ".write": false,
     "profiles": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid && auth.uid !== 'sector09-pvp-writer'",
+        ".read": "auth != null && auth.uid === $uid && auth.uid !== 'sector09-pvp-writer' && !$uid.matches(/^case-(account|guest)-[a-f0-9]{64}$/)",
         "campaign": {
           ".write": "auth != null && auth.uid === $uid && auth.uid !== 'sector09-pvp-writer' && newData.exists()",
           "$mission": {
@@ -74,7 +74,59 @@
         },
         "weaponNetworkProgress": {
           ".read": "auth != null && auth.uid === 'sector09-pvp-writer'",
-          ".write": "auth != null && auth.uid === 'sector09-pvp-writer'"
+          ".write": "auth != null && auth.uid === 'sector09-pvp-writer' && !$uid.matches(/^case-(account|guest)-[a-f0-9]{64}$/)",
+          "caseInventory": {
+            ".write": "auth != null && auth.uid === 'sector09-pvp-writer' && $uid.matches(/^case-(account|guest)-[a-f0-9]{64}$/) && newData.exists() && ((!data.exists() && newData.child('revision').val() === 1) || (data.exists() && newData.child('revision').val() === data.child('revision').val() + 1)) && (!data.child('cases/welcome-035').exists() || newData.child('cases/welcome-035').exists())",
+            ".validate": "newData.hasChildren(['revision', 'cases']) && (!data.child('campaign/m01').exists() || newData.child('campaign/m01').val() >= data.child('campaign/m01').val()) && (!data.child('campaign/m02').exists() || newData.child('campaign/m02').val() >= data.child('campaign/m02').val()) && (!data.child('campaign/m03').exists() || newData.child('campaign/m03').val() >= data.child('campaign/m03').val()) && newData.child('campaign/m01').exists() === newData.child('cases/m01-1').exists() && (newData.child('campaign/m01').val() === 2) === newData.child('cases/m01-2').exists() && newData.child('campaign/m02').exists() === newData.child('cases/m02-1').exists() && (newData.child('campaign/m02').val() === 2) === newData.child('cases/m02-2').exists() && newData.child('campaign/m03').exists() === newData.child('cases/m03-1').exists() && (newData.child('campaign/m03').val() === 2) === newData.child('cases/m03-2').exists()",
+            "revision": {
+              ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() % 1 === 0"
+            },
+            "cases": {
+              ".validate": "newData.hasChildren()",
+              "$case": {
+                ".validate": "newData.hasChildren(['createdAt', 'source']) && newData.child('rewardId').exists() === newData.child('openedAt').exists() && ((!data.exists() && !newData.child('rewardId').exists() && (newData.child('source').val() !== 'match' || newData.child('round').exists())) || (data.exists() && newData.child('source').val() === data.child('source').val() && newData.child('createdAt').val() === data.child('createdAt').val() && (!data.child('rewardId').exists() || (newData.child('rewardId').val() === data.child('rewardId').val() && newData.child('openedAt').val() === data.child('openedAt').val())) && newData.child('round/mode').val() === data.child('round/mode').val() && newData.child('round/killLimit').val() === data.child('round/killLimit').val() && newData.child('round/humanPlayers').val() === data.child('round/humanPlayers').val()))",
+                "source": {
+                  ".validate": "($case === 'welcome-035' && newData.val() === 'welcome') || ($case.matches(/^m0[1-3]-[12]$/) && newData.val() === 'campaign') || ($case.matches(/^[A-Za-z0-9_-]{32}$/) && newData.val() === 'match')"
+                },
+                "createdAt": {
+                  ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() % 1 === 0 && newData.val() <= now + 60000"
+                },
+                "openedAt": {
+                  ".validate": "newData.isNumber() && newData.val() >= newData.parent().child('createdAt').val() && newData.val() % 1 === 0 && newData.val() <= now + 60000"
+                },
+                "rewardId": {
+                  ".validate": "newData.isString() && newData.val().matches(/^(common-[1-3]|uncommon-[1-3]|rare-[1-3]|legendary-[12]|ultra-1)$/)"
+                },
+                "round": {
+                  ".validate": "newData.hasChildren(['mode', 'killLimit', 'humanPlayers']) && newData.parent().child('source').val() === 'match' && (newData.child('mode').val() === 'conquest' || (newData.child('mode').val() === 'tdm' && newData.child('killLimit').val() >= 50))",
+                  "mode": { ".validate": "newData.val() === 'conquest' || newData.val() === 'tdm'" },
+                  "killLimit": { ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 10 && newData.val() <= 500" },
+                  "humanPlayers": { ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 2" },
+                  "$other": { ".validate": false }
+                },
+                "$other": { ".validate": false }
+              }
+            },
+            "campaign": {
+              ".validate": "newData.hasChildren()",
+              "$mission": {
+                ".validate": "$mission.matches(/^m0[1-3]$/) && (newData.val() === 1 || newData.val() === 2)"
+              }
+            },
+            "skinCases": {
+              ".validate": "newData.hasChildren()",
+              "$reward": {
+                ".validate": "$reward.matches(/^(common-[1-3]|uncommon-[1-3]|rare-[1-3]|legendary-[12]|ultra-1)$/) && newData.isString() && newData.val().matches(/^(welcome-035|m0[1-3]-[12]|[A-Za-z0-9_-]{32})$/) && newData.parent().parent().child('cases').child(newData.val()).child('rewardId').val() === $reward"
+              }
+            },
+            "equipped": {
+              ".validate": "newData.hasChildren()",
+              "$weapon": {
+                ".validate": "newData.isString() && (($weapon === 'ar416' && newData.val().matches(/^(common-1|rare-3)$/)) || ($weapon === 'ak12' && newData.val().matches(/^(common-2|legendary-1)$/)) || ($weapon === 'p19' && newData.val() === 'common-3') || ($weapon === 'mcx9' && newData.val() === 'uncommon-1') || ($weapon === 'pkp' && newData.val() === 'uncommon-2') || ($weapon === 'mg36' && newData.val() === 'uncommon-3') || ($weapon === 'vk45' && newData.val() === 'rare-1') || ($weapon === 'dmr12' && newData.val() === 'rare-2') || ($weapon === 'm50' && newData.val() === 'legendary-2') || ($weapon === 'sv98' && newData.val() === 'ultra-1')) && newData.parent().parent().child('skinCases').child(newData.val()).isString() && newData.parent().parent().child('cases').child(newData.parent().parent().child('skinCases').child(newData.val()).val()).child('rewardId').val() === newData.val()"
+              }
+            },
+            "$other": { ".validate": false }
+          }
         }
       }
     }
