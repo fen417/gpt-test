@@ -42,7 +42,7 @@ export const VEHICLE_TYPES = {
   [BLACK_HAWK]: {
     name: 'UH-60 «Чёрный Ястреб»', width: 3.1, length: 8.2, height: 3.84,
     maxHp: 1450, bulletArmor: .22, blastArmor: 1.02, respawn: 100, boardRange: 5,
-    maxSpeed: 37, reverseSpeed: 9, acceleration: 11, brake: 14, turnRate: .93,
+    maxSpeed: 18, reverseSpeed: 4.4, acceleration: 4.8, brake: 6.5, turnRate: .44,
     seats: [
       { name: 'Пилот', role: 'driver', x: -.59, z: -2.06, height: 2.51 },
       { name: 'Второй пилот', role: 'copilot', x: .59, z: -2.06, height: 2.51 },

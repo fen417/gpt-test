@@ -342,7 +342,7 @@ export function createGameServer(options={}){
           case 'weapon-attachments': {
             if(!s||!room?.sim||room.ended)throw Error('Сменить обвес можно в активном бою.');
             const attachments=room.sim.setWeaponAttachments(s.id,data.attachments,(part,id,weaponId)=>
-              !part.modifiers || weaponLevel(s.weaponXp[weaponId])>=part.level);
+              !(part.modifiers||part.zooms) || weaponLevel(s.weaponXp[weaponId])>=part.level);
             send(c,{type:'weapon-attachments',requestId,attachments});
             break;
           }

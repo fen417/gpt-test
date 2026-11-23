@@ -412,13 +412,13 @@ export class Multiplayer{
     const target=renderTime;
     let a=samples[0],b=last;for(let i=1;i<samples.length;i++){if(samples[i].time>=target){a=samples[i-1];b=samples[i];break;}a=samples[i];}
     const discrete=target>=b.time?b.pose:a.pose,out={...current},span=b.time-a.time;
-    for(const key of kind==='players'?['alive','vehicleId','vehicleSeat','reviveSeq','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','team','attachmentFlags']:['seats','hp','wreckTime'])if(key in discrete)out[key]=discrete[key];
+    for(const key of kind==='players'?['alive','vehicleId','vehicleSeat','reviveSeq','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','team','attachmentFlags','parachuteOpen','grounded']:['seats','hp','wreckTime'])if(key in discrete)out[key]=discrete[key];
     if(a.pose.alive!==b.pose.alive||a.pose.vehicleId!==b.pose.vehicleId||a.pose.reviveSeq!==b.pose.reviveSeq||Math.hypot(a.pose.x-b.pose.x,a.pose.z-b.pose.z)>8){for(const key of ['x','y','z','yaw','pitch','bodyPitch','bodyRoll'])if(Number.isFinite(discrete[key]))out[key]=discrete[key];return out;}
     const alpha=span>0?clamp((target-a.time)/span,0,1):1;
     for(const key of ['x','y','z'])out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;
     for(const key of ['yaw','pitch','bodyPitch','bodyRoll','aimYaw','aimPitch','gunAimYaw','gunAimPitch'])if(Number.isFinite(a.pose[key])&&Number.isFinite(b.pose[key]))out[key]=a.pose[key]+difference(b.pose[key],a.pose[key])*alpha;
     if(kind==='vehicles')for(const key of ['speed','steer'])if(Number.isFinite(a.pose[key])&&Number.isFinite(b.pose[key]))out[key]=a.pose[key]+(b.pose[key]-a.pose[key])*alpha;
-    if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;if(kind==='players'&&!out.grounded)out.y+=(last.pose.y-previous.pose.y)/interval*extra;}}
+    if(target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0&&out.alive!==false&&Math.hypot(last.pose.x-previous.pose.x,last.pose.z-previous.pose.z)<8){out.x+=(last.pose.x-previous.pose.x)/interval*extra;out.z+=(last.pose.z-previous.pose.z)/interval*extra;if(kind==='players'&&!out.grounded||kind==='vehicles'&&out.type==='black-hawk'&&Math.abs(last.pose.verticalSpeed)>.1)out.y+=(last.pose.y-previous.pose.y)/interval*extra;}}
     if(kind==='vehicles'&&target>last.time&&samples.length>1){const previous=samples.at(-2),interval=last.time-previous.time,extra=Math.min(.12,target-last.time);if(interval>0)for(const key of ['yaw','aimYaw'])if(Number.isFinite(last.pose[key])&&Number.isFinite(previous.pose[key]))out[key]+=clamp(difference(last.pose[key],previous.pose[key])/interval,-2.5,2.5)*extra;}
     return out;
   }

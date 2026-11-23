@@ -43,45 +43,57 @@ export function blackHawkCollides(world, vehicle, pose) {
   });
 }
 
-export function moveBlackHawk(world, vehicle, input, dt) {
+export function moveBlackHawk(world, vehicle, input, dt, falling=false) {
   const spec = VEHICLE_TYPES[BLACK_HAWK];
   const floor = blackHawkGroundHeight(vehicle,world.map.terrain);
   const rise = Number(input?.jump===true)-Number(input?.crouch===true);
-  if(rise<=0&&vehicle.speed===0&&vehicle.y<=floor+.02&&
+  if(!falling&&rise<=0&&vehicle.speed===0&&vehicle.y<=floor+.02&&
     Math.abs(vehicle.bodyPitch??0)<.001&&Math.abs(vehicle.bodyRoll??0)<.001)return;
-  const lift = input ? rise*(rise>=0?8:6) : -3.2;
-  const airborne = vehicle.y>floor+.24 || rise>0;
+  const vertical=vehicle.verticalSpeed??0;
+  const liftTarget=input?rise*(rise>=0?7:5.5):-2.5;
+  const lift=falling?Math.max(-32,vertical-14*dt):approach(vertical,liftTarget,dt*9);
+  const airborne = vehicle.y>floor+.24;
   const throttle = airborne ? input?.forward??0 : 0;
-  const steer = airborne ? input?.strafe??0 : 0;
+  const steerTarget = airborne ? input?.strafe??0 : 0;
+  const steer=approach(vehicle.steer??0,steerTarget,dt*2.4);
   const speed = approach(vehicle.speed,throttle*(throttle<0?spec.reverseSpeed:spec.maxSpeed),
-    (throttle===0?spec.brake:spec.acceleration)*dt);
-  const heading = vehicle.yaw-steer*spec.turnRate*dt;
-  const yaw = Math.atan2(Math.sin(heading),Math.cos(heading));
-  const dx = -Math.sin(yaw)*speed*dt, dz = -Math.cos(yaw)*speed*dt;
-  const steps = Math.max(1,Math.ceil(Math.hypot(dx,dz,lift*dt)/.40));
-  let blocked = false;
+    (falling?2.2:throttle===0?spec.brake:spec.acceleration)*dt);
+  const steps = Math.max(1,Math.ceil(Math.hypot(speed,lift)*dt/.35));
+  const step=dt/steps;
+  let blocked=false,verticalBlocked=false;
   for (let i=0;i<steps;i++) {
-    const next = {...vehicle,yaw,x:vehicle.x+dx/steps,z:vehicle.z+dz/steps};
+    const heading=vehicle.yaw-steer*spec.turnRate*step;
+    const yaw=Math.atan2(Math.sin(heading),Math.cos(heading));
+    const next={...vehicle,yaw,x:vehicle.x-Math.sin(yaw)*speed*step,z:vehicle.z-Math.cos(yaw)*speed*step};
     const ground = blackHawkGroundHeight(next,world.map.terrain);
     const ceiling = Math.min(220,Math.max(ground+18,world.groundAt(next.x,next.z)+105));
-    const y = clamp(vehicle.y+lift*dt/steps,ground,ceiling);
+    const unclampedY=vehicle.y+lift*step;
+    const y = clamp(unclampedY,ground,ceiling);
     // A translating aircraft cannot climb through terrain on a horizontal input.
-    const clearTerrain = ground<=vehicle.y+Math.max(0,lift)*dt/steps+.24;
+    const clearTerrain = ground<=vehicle.y+Math.max(0,lift)*step+.24;
     const flying = y>ground+.18;
-    const bodyPitch = approach(vehicle.bodyPitch??0,flying ? clamp(-speed*.005,-.22,.10):0,dt*1.7/steps);
-    const bodyRoll = approach(vehicle.bodyRoll??0,flying ? -steer*.24:0,dt*2/steps);
+    const bodyPitch=approach(vehicle.bodyPitch??0,flying?(falling?-.22:clamp(-speed*.009,-.18,.10)):0,step*.8);
+    const bodyRoll=approach(vehicle.bodyRoll??0,flying?(falling?.34:-steer*.21):0,step);
     Object.assign(next,{y,bodyPitch,bodyRoll});
     if (clearTerrain && !blackHawkCollides(world,vehicle,next)) {
       Object.assign(vehicle,{x:next.x,y,z:next.z,yaw,bodyPitch,bodyRoll});
+      verticalBlocked=lift<0?unclampedY<=ground:unclampedY>=ceiling;
     } else {
       blocked = true;
-      const vertical = {...vehicle,y:clamp(vehicle.y+lift*dt/steps,floor,ceiling)};
-      if (!blackHawkCollides(world,vehicle,vertical)) vehicle.y=vertical.y;
+      const support=blackHawkGroundHeight(vehicle,world.map.terrain);
+      const straight={...vehicle,y:clamp(unclampedY,support,ceiling)};
+      if(!blackHawkCollides(world,vehicle,straight)){
+        vehicle.y=straight.y;
+        verticalBlocked=lift<0?unclampedY<=support:unclampedY>=ceiling;
+      }else verticalBlocked=lift!==0;
       break;
     }
+    if(falling&&verticalBlocked)break;
   }
   vehicle.speed=blocked||vehicle.y<=blackHawkGroundHeight(vehicle,world.map.terrain)+.18?0:speed;
   vehicle.steer=steer;
+  vehicle.verticalSpeed=verticalBlocked?0:lift;
+  return falling&&verticalBlocked;
 }
 
 export function fallBlackHawk(world, vehicle, dt) {
@@ -92,8 +104,12 @@ export function fallBlackHawk(world, vehicle, dt) {
     bodyRoll:approach(vehicle.bodyRoll,.44,dt*.6),bodyPitch:approach(vehicle.bodyPitch,-.24,dt*.45)};
   if (!blackHawkCollides(world,vehicle,next)) {
     Object.assign(vehicle,{y:next.y,bodyRoll:next.bodyRoll,bodyPitch:next.bodyPitch});
-    if (next.y>floor+.02) return true;
+    if (next.y>floor+.02){
+      vehicle.verticalSpeed=-vehicle.wreckFallSpeed;
+      return true;
+    }
   }
   vehicle.wreckFallSpeed=0;
+  vehicle.verticalSpeed=0;
   return false;
 }

@@ -37,6 +37,7 @@ export const STABLE_STOCK_ID = 'stable-stock';
 export const PRISM_OPTIC_ID = 'prism-2';
 export const VARIABLE_OPTIC_ID = 'variable-12';
 export const TACTICAL_OPTIC_ID = 'tactical-3';
+export const HORIZON_OPTIC_ID = 'horizon-610';
 const primaryWeapons = ['ar416', 'ak12', 'mcx9', 'vk45', 'mg36', 'pkp', 'dmr12', 'sv98'];
 
 export const WEAPON_MODULES = Object.freeze({
@@ -55,6 +56,10 @@ export const WEAPON_MODULES = Object.freeze({
   [TACTICAL_OPTIC_ID]: {
     slot:'optic', name:'Тактический прицел 3×', level:7, zooms:[3], reticle:'ladder',
     weapons:primaryWeapons, modifiers:{adsSpreadScale:.88,aimTime:1.23},
+  },
+  [HORIZON_OPTIC_ID]: {
+    slot:'optic', name:'Горизонт 6–10×', level:8, zooms:[6,8,10], reticle:'precision',
+    weapons:['dmr12','sv98'],
   },
   [LONG_BARREL_ID]: {
     slot: 'barrel', name: 'Удлинённый ствол', level: 3,
@@ -90,7 +95,7 @@ const snapshotSlots = {
   barrel:[undefined,LONG_BARREL_ID,COMPENSATOR_ID],
   magazine:[undefined,EXTENDED_MAGAZINE_ID,FAST_MAGAZINE_ID],
   stock:[undefined,LIGHT_STOCK_ID,STABLE_STOCK_ID],
-  optic:[undefined,'collimator-15',PRISM_OPTIC_ID,VARIABLE_OPTIC_ID,TACTICAL_OPTIC_ID],
+  optic:[undefined,'collimator-15',PRISM_OPTIC_ID,VARIABLE_OPTIC_ID,TACTICAL_OPTIC_ID,HORIZON_OPTIC_ID],
 };
 export function weaponAttachmentFlags(slots) {
   return Math.max(0,snapshotSlots.barrel.indexOf(slots?.barrel))

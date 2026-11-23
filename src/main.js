@@ -309,7 +309,7 @@ function selectClass(classId,playClick=false){
 }
 function deploymentPoints(){
   const player=local();
-  const beacons=(state?.deployables??[]).filter(item=>item.kind==='beacon'&&item.hp>0&&item.team===player?.team&&item.expires>state.time).map(item=>({
+  const beacons=(state?.deployables??[]).filter(item=>item.kind==='beacon'&&!item.falling&&item.hp>0&&item.team===player?.team&&item.expires>state.time).map(item=>({
     ...item,beacon:true,squadBeacon:sameSquad(player,item),owner:item.team,name:(sameSquad(player,item)?'МАЯК ОТРЯДА · ':'СОЮЗНЫЙ МАЯК · ')+(state.players.find(p=>p.id===item.ownerId)?.name??'СОЮЗНИК'),
     contested:false,progress:0,spawnBlocked:state.players.some(p=>p.alive&&p.team!==item.team&&Math.hypot(p.x-item.x,p.z-item.z)<8),
   }));
@@ -1128,7 +1128,9 @@ document.addEventListener('wheel',event=>{
   if(!active||!aim||!player?.alive||player.heldGadget||!zooms||zooms.length<2||
     (!locked&&!(unlocked&&!unlockedPaused))||!event.deltaY)return;
   event.preventDefault();
-  scopeMagnifications.set(scopeKey(weaponId,opticId),event.deltaY<0?zooms.at(-1):zooms[0]);
+  const current=scopeMagnification(weaponId,weaponScopeZoom(weaponId,opticId),opticId);
+  const index=zooms.indexOf(current)+(event.deltaY<0?1:-1);
+  scopeMagnifications.set(scopeKey(weaponId,opticId),zooms[Math.max(0,Math.min(zooms.length-1,index))]);
 },{passive:false});
 document.addEventListener('mousedown',event=>{if(quickAttachments.open||!locked&&!(unlocked&&!unlockedPaused&&active&&event.target===canvas))return;if(event.button===0){lastFireClick=performance.now();fireTap=!fire;fire=true;}if(event.button===2)aim=true;});
 document.addEventListener('mouseup',event=>{if(event.button===0)fire=false;if(event.button===2)aim=false;});
@@ -1659,23 +1661,25 @@ function renderResultScreen(player){
 function updateVehicleHud(player,renderState){
   const vehicles=state.vehicles??[];
   const vehicle=vehicles.find(v=>v.id===player.vehicleId);
-  if(state.campaign?.missionId==='m02'){
+  if(state.campaign?.missionId==='m02'&&vehicle?.type==='tank'){
     show('vehicle-prompt',false);
     return vehicle?VEHICLE_TYPES.tank.seats[0]:null;
   }
   const key=formatKeyCode(keybinds.interact);
   const nearby=!vehicle&&player.alive&&Math.abs(player.y-(currentMap.terrain?.heightAt(player.x,player.z)??0))<=.8&&getVehicleBoardingSeat(player,vehicles,currentMap.terrain);
   const seat=VEHICLE_TYPES[vehicle?.type]?.seats[player.vehicleSeat];
-  show('vehicle-prompt',!!(nearby||seat));
+  const parachute=player.alive&&!vehicle&&(player.parachuteOpen||player.parachuteReady);
+  show('vehicle-prompt',!!(nearby||seat||parachute));
   if(nearby)text('vehicle-prompt',key+' · СЕСТЬ В ТЕХНИКУ — '+VEHICLE_TYPES[nearby.vehicle.type].name.toUpperCase());
+  if(parachute)text('vehicle-prompt',player.parachuteOpen?'ПАРАШЮТ РАСКРЫТ':formatKeyCode(keybinds.jump)+' · УДЕРЖИВАТЬ ДЛЯ РАСКРЫТИЯ ПАРАШЮТА');
   if(!seat)return null;
   const displayed=renderState?.vehicles.find(v=>v.id===vehicle.id)??vehicle;
   const aircraft=vehicle.type===BLACK_HAWK;
   const parked=!aircraft||blackHawkParked(displayed,currentMap.terrain);
-  const swap=vehicle.seats.includes(null)&&(aircraft?parked:Math.abs(displayed.speed)<(vehicle.type==='tank'?3:4.5));
+  const swap=vehicle.seats.includes(null)&&(aircraft||Math.abs(displayed.speed)<(vehicle.type==='tank'?3:4.5));
   const look=aimAngles();
   const canFire=canFirePassengerWeapon(displayed,player.vehicleSeat,look.yaw,look.pitch);
-  const controls=(parked?key+' · ВЫЙТИ':'ВЫХОД ПОСЛЕ ПОСАДКИ')+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':'');
+  const controls=(parked?key+' · ВЫЙТИ':key+' · ВЫПРЫГНУТЬ')+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':'');
   const windowHint=seat.role==='passenger'&&!canFire?(vehicle.type==='tank'||aircraft?'\nСТРЕЛЯЙТЕ НАРУЖУ СО СВОЕГО БОРТА':'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО'):'';
   const tankControls=vehicle.type==='tank'&&player.vehicleSeat<2?'     ПКМ · ПРИЦЕЛ     ЛКМ · ОГОНЬ':'';
   const pilotControls=aircraft&&seat.role==='driver'?`\n${formatKeyCode(keybinds.jump)} · НАБОР ВЫСОТЫ     ${formatKeyCode(keybinds.crouch)} · СНИЖЕНИЕ`:'';
@@ -1738,7 +1742,7 @@ function hud(now,renderState){
   show('secondary-gadget-label',personalWeapon&&(state.gameMode!=='tdm'||currentMap.tdmLoadout==='class')&&Boolean(secondary));
   text('secondary-gadget-label',`${formatKeyCode(keybinds.secondaryGadget)} · ${secondary}${player.secondaryCooldown>0?' · '+Math.ceil(player.secondaryCooldown)+'с':''}`);
   const nearby=state.gameMode==='tdm'?null:state.points.find(p=>Math.hypot(p.x-player.x,p.z-player.z)<CAPTURE_RADIUS);
-  if(state.gameMode==='tdm'&&!mounted){
+  if(state.gameMode==='tdm'&&!mounted&&!player.parachuteReady&&!player.parachuteOpen){
     const item=(state.weaponItems??[]).filter(w=>Math.hypot(w.x-player.x,w.z-player.z)<2.1).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0];
     show('vehicle-prompt',!!item&&player.alive);
     if(item){const occupied=WEAPONS[item.weaponId]?.sidearm?player.sidearmId:player.primaryWeaponId;
@@ -1928,6 +1932,13 @@ function frame(now){
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
   const fgAngles=aimAngles();
+  if(!vehicleThirdPerson&&driven?.type===BLACK_HAWK){
+    const authority=state?.vehicles.find(v=>v.id===driven.id);
+    if(authority){
+      const offset=driven.yaw-authority.yaw;
+      fgAngles.yaw+=Math.atan2(Math.sin(offset),Math.cos(offset));
+    }
+  }
   const fgMeta={playerId:renderPlayer?.id??null,alive:Boolean(renderPlayer?.alive),
     mapId:renderState?.mapId??null,weaponId:renderPlayer?.weaponId??null,
     vehicleId:renderPlayer?.vehicleId??null,seat:renderPlayer?.vehicleSeat??null,

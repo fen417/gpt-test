@@ -611,9 +611,17 @@ export function thinkVehicleBot(sim, p, dt) {
       p.botVehicleSince??=sim.time;
       if(p.vehicleSeat===0){
         const patrol=blackHawkPatrolFor(sim,vehicle);
-        if(!driveBlackHawkPatrol(sim,p,vehicle,patrol))stopRiding(sim,p);
-      }else if(!vehicle.seats[0])stopRiding(sim,p);
-      else if(VEHICLE_TYPES[BLACK_HAWK].seats[p.vehicleSeat].role!=='copilot')aimCrew(sim,p,vehicle,dt);
+        if(!driveBlackHawkPatrol(sim,p,vehicle,patrol)&&blackHawkParked(vehicle,sim.map.terrain))stopRiding(sim,p);
+      }else if(!vehicle.seats[0]&&blackHawkParked(vehicle,sim.map.terrain))stopRiding(sim,p);
+      else if(p.vehicleSeat===BLACK_HAWK_GUN.index)aimCrew(sim,p,vehicle,dt);
+      else {
+        const height=vehicle.y-sim.groundAt(vehicle.x,vehicle.z);
+        const objective=height>=17&&sim.points.find(point=>distance(point,vehicle)<28&&(point.owner!==p.team||point.contested));
+        if(height>=17&&(!vehicle.seats[0]||objective)){
+          if(stopRiding(sim,p,objective?.id))return true;
+        }
+        if(VEHICLE_TYPES[BLACK_HAWK].seats[p.vehicleSeat].role==='passenger')aimCrew(sim,p,vehicle,dt);
+      }
       return true;
     }
     const order=p.ai?.squad?.order;

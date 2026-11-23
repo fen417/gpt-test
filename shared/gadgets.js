@@ -44,10 +44,10 @@ export function deployableBounds(item) {
   return boxBounds({x:item.x,z:item.z,baseY:item.y,w:item.kind==='beacon'?.55:.65,d:.5,h:item.kind==='beacon'?1.04:.45});
 }
 
-export function supportHeight(sim,x,z,height) {
+export function supportHeight(sim,x,z,height,reach=2) {
   let y=sim.groundAt(x,z);
   const origin={x,y:height+.35,z},direction={x:0,y:-1,z:0};
-  let closest=2;
+  let closest=reach;
   for(const box of sim.rayBoxes(origin,direction,closest)){
     const hit=rayCollider(origin,direction,box,closest);
     if(hit>1e-5&&hit<closest){closest=hit;y=origin.y-hit;}
@@ -56,7 +56,7 @@ export function supportHeight(sim,x,z,height) {
 }
 
 export function liveBeacons(sim,team) {
-  return sim.deployables.filter(item=>item.kind==='beacon'&&item.team===team&&item.hp>0&&item.expires>sim.time);
+  return sim.deployables.filter(item=>item.kind==='beacon'&&!item.falling&&item.team===team&&item.hp>0&&item.expires>sim.time);
 }
 
 export function reviveTarget(sim,p) {
@@ -86,11 +86,15 @@ function beginAction(sim,p,kind,duration,targetId) {
 }
 
 function place(sim,p,kind) {
-  const x=p.x-Math.sin(p.yaw)*1.15,z=p.z-Math.cos(p.yaw)*1.15,y=supportHeight(sim,x,z,p.y);
-  if(Math.abs(y-p.y)>1.2||sim.collides(x,z,y+.04,.35,.8)||!sim.lineClear(eye(p),{x,y:y+.4,z}))return false;
+  const x=p.x-Math.sin(p.yaw)*1.15,z=p.z-Math.cos(p.yaw)*1.15;
+  const floor=supportHeight(sim,x,z,p.y);
+  const falling=p.parachuteOpen&&p.y-floor>1.2;
+  const y=falling?p.y+.8:floor;
+  if((!falling&&Math.abs(y-p.y)>1.2)||sim.collides(x,z,y+.04,.35,.8)||!sim.lineClear(eye(p),{x,y:y+.4,z}))return false;
   sim.deployables=sim.deployables.filter(item=>item.ownerId!==p.id||item.kind!==kind);
   sim.deployables.push({id:`${kind==='beacon'?'beacon':'crate'}:${++sim.eventId}`,kind,ownerId:p.id,team:p.team,squadId:p.squadId,x,y,z,yaw:p.yaw,
-    hp:kind==='beacon'?70:120,expires:sim.time+(kind==='beacon'?BEACON_LIFETIME:60),supplyAt:sim.time});
+    hp:kind==='beacon'?70:120,expires:sim.time+(kind==='beacon'?BEACON_LIFETIME:60),supplyAt:sim.time,
+    ...(falling?{falling:true,fallSpeed:Math.max(0,-p.vy)}:{})});
   beginAction(sim,p,kind,kind==='medkit'?.85:.75);
   if(kind==='medkit')p.secondaryCooldown=15;
   else p.gadgetTime=kind==='beacon'?35:18;
@@ -323,7 +327,18 @@ export function updateEquipment(sim,dt) {
     }
   }
   for(const item of sim.deployables){
-    if(item.hp<=0||item.expires<=sim.time||!isSupplyGadget(item.kind))continue;
+    if(item.hp<=0||item.expires<=sim.time)continue;
+    if(item.falling){
+      item.fallSpeed=Math.min(26,item.fallSpeed+18*dt);
+      const drop=item.fallSpeed*dt;
+      const floor=supportHeight(sim,item.x,item.z,item.y,Math.max(2,drop+.36));
+      item.y=Math.max(floor,item.y-drop);
+      if(item.y>floor)continue;
+      item.falling=false;
+      item.fallSpeed=0;
+      item.supplyAt=sim.time;
+    }
+    if(!isSupplyGadget(item.kind))continue;
     if(item.supplyAt>sim.time)continue;
     const healingSince=item.lastSupplyAt??sim.time-dt;
     item.lastSupplyAt=sim.time;

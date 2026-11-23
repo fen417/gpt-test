@@ -21,8 +21,9 @@ function position(input,vehicle,target,speedLimit){
 }
 
 function altitude(input,vehicle,target){
-  input.jump=vehicle.y<target-.55;
-  input.crouch=vehicle.y>target+.55;
+  const projected=vehicle.y+(vehicle.verticalSpeed??0)*.42;
+  input.jump=projected<target-.55;
+  input.crouch=projected>target+.55;
 }
 
 export function blackHawkPatrolFor(sim,vehicle){
@@ -80,12 +81,12 @@ export function driveBlackHawkPatrol(sim,p,vehicle,plan){
       if(patrol.waypoint>=route.length)patrol.phase='return';
     }
     altitude(input,vehicle,altitudeTarget);
-    position(input,vehicle,target,26);
+    position(input,vehicle,target,14);
     return true;
   }
   if(patrol.phase==='return'){
     altitude(input,vehicle,altitudeTarget);
-    if(vehicle.y>=altitudeTarget-2)position(input,vehicle,home,23);
+    if(vehicle.y>=altitudeTarget-2)position(input,vehicle,home,13);
     if(distance(vehicle,home)<1.35&&Math.abs(vehicle.speed)<1.6)patrol.phase='land';
     return true;
   }

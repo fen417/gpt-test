@@ -21,6 +21,10 @@
 #scope-overlay[data-reticle=ladder]::before{width:51vmin}
 #scope-overlay[data-reticle=ladder]::after{height:48vmin}
 [data-reticle=ladder] .scope-mark{width:6vmin;height:17vmin;transform:translate(-50%,0);background:repeating-linear-gradient(transparent 0 3.15vmin,#191e20 3.15vmin calc(3.15vmin + 1px));filter:drop-shadow(0 0 1px #b6aa8c)}
+#scope-overlay[data-reticle=precision]::before{width:52vmin;background:linear-gradient(90deg,#171d1e 47%,transparent 47% 53%,#171d1e 53%);box-shadow:none}
+#scope-overlay[data-reticle=precision]::after{height:48vmin;background:linear-gradient(#171d1e 46%,transparent 46% 54%,#171d1e 54%);box-shadow:none}
+[data-reticle=precision] .scope-mark{width:3px;height:3px;border-radius:50%;background:#ec7149;box-shadow:0 0 2px #1b1512}
+[data-reticle=precision] .scope-mark::before{content:'';position:absolute;top:4vmin;left:50%;transform:translateX(-50%);width:3.7vmin;height:17vmin;background:repeating-linear-gradient(#171d1e 0 1px,transparent 1px 3.4vmin);filter:drop-shadow(0 0 1px #baad90)}
 .scoped .gfx-note{display:block;font-size:9px;line-height:1.5;color:#8fa6ac;margin-top:10px}
 #crosshair{opacity:0!important}
 .killfeed .enemy-kill b{color:var(--orange)}.killfeed .enemy-kill em{color:var(--cyan)}

@@ -70,7 +70,7 @@ export function loadWeaponModels() {
   const barrels = loadUpgrades(new URL('./assets/infantry/long-barrels.glb', import.meta.url).href,
     [[LONG_BARREL_ID, WEAPON_MODULES[LONG_BARREL_ID]]], false);
   const upgrades = loadUpgrades(new URL('./assets/infantry/weapon-upgrades.glb', import.meta.url).href,
-    Object.entries(WEAPON_MODULES).filter(([id, part]) => id !== LONG_BARREL_ID && part.modifiers), true);
+    Object.entries(WEAPON_MODULES).filter(([id, part]) => id !== LONG_BARREL_ID && (part.modifiers || part.zooms)), true);
   pending = Promise.all([...baseModels, barrels, upgrades]);
   return pending;
 }

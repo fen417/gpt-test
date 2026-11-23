@@ -65,7 +65,7 @@ export function createBlackHawkRig() {
 export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
   const {group,body,controls,rotorDisk,lods,mount,turret,flash}=rig;
   const reset=!rig.initialized||Math.hypot(group.position.x-vehicle.x,group.position.z-vehicle.z)>9;
-  const t=reset?1:blend, mix=THREE.MathUtils.lerp;
+  const t=reset?1:Math.min(blend,1-Math.exp(-dt*18)), mix=THREE.MathUtils.lerp;
   group.position.set(mix(group.position.x,vehicle.x,t),mix(group.position.y,vehicle.y,t),mix(group.position.z,vehicle.z,t));
   const delta=vehicle.yaw-group.rotation.y;
   group.rotation.y+=Math.atan2(Math.sin(delta),Math.cos(delta))*t;
@@ -105,6 +105,10 @@ export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
     level.MainRotor.rotation.y=rig.rotorAngle;
     level.TailRotor.rotation.x=rig.tailAngle;
     level.Minigun.rotation.set(aim.pitch,aim.yaw,0,'YXZ');
+    const fast=rig.rotorSpeed>19;
+    if(rig.fastRotor!==fast)for (const rotor of [level.MainRotor,level.TailRotor]){
+      rotor.traverse(mesh=>{if(mesh.isMesh)mesh.castShadow=!fast;});
+    }
     if(rig.wrecked!==wrecked||rig.low!==low){
       for(const {mesh,base} of level.meshes){
         const mat=low?(base._lowMaterial??base):base;
@@ -114,4 +118,5 @@ export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
   }
   rig.wrecked=wrecked;
   rig.low=low;
+  rig.fastRotor=rig.rotorSpeed>19;
 }

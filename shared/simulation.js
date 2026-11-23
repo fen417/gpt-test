@@ -1,6 +1,6 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
-import { BLACK_HAWK, blackHawkGroundHeight, blackHawkGunPose, blackHawkParked, canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, vehicleTurretWeapon, VEHICLE_TYPES, vehicleLocalPoint, isEnclosedTankCrew, vehicleCollisionSize } from './vehicles.js';
+import { BLACK_HAWK, blackHawkGroundHeight, blackHawkGunPose, blackHawkParked, canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehiclePartPose, vehicleShape, vehicleTurretWeapon, VEHICLE_TYPES, vehicleLocalPoint, isEnclosedTankCrew, vehicleCollisionSize } from './vehicles.js';
 import { blackHawkCollides, blackHawkShapes, fallBlackHawk, moveBlackHawk } from './black-hawk-flight.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, prepareVehicleRoutes, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
@@ -28,12 +28,17 @@ const classKeys = Object.keys(CLASSES);
 const validClass = value => typeof value==='string' && Object.hasOwn(CLASSES,value);
 const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 
-const crouching = player => !player.vehicleId && Boolean(player.crouching || player.slideTime > 0 || player.input.crouch);
+const crouching = player => !player.vehicleId&&!player.parachuteOpen&&Boolean(player.crouching || player.slideTime > 0 || player.input.crouch);
 const rayDir = { x: 0, y: 0, z: 0 };
 const GRENADE_RADIUS = .05;
 const GRENADE_CONTACT_GAP = .002;
 const GRENADE_MAX_THROW_RANGE = 24;
 const GRENADE_GROUND_RETENTION = .45;
+const PARACHUTE_MIN_HEIGHT=6;
+const PARACHUTE_HOLD_SECONDS=.32;
+const PARACHUTE_SINK_SPEED=4.8;
+const BLACK_HAWK_CRASH_HEIGHT=6;
+const BLACK_HAWK_PILOT_GRACE=2;
 
 
 
@@ -278,7 +283,8 @@ export class Simulation {
     p.damagers=new Map();p.spottedBy=null;
     Object.assign(p,{x,y:this.groundAt(x,z),z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:wep.mag,reserve:wep.reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
     Object.assign(p,{bloom:0,moveSpeed:0,jumpFatigue:0,jumpCooldown:0,lastShotAt:-Infinity,fireHeld:false,vehicleId:null,vehicleSeat:null,interactHeld:false,switchSeatHeld:false});
-    Object.assign(p,{slideTime:0,slideCooldown:0,slideVx:0,slideVz:0,crouchHeld:false,crouching:false,wasSprinting:false});
+    Object.assign(p,{slideTime:0,slideCooldown:0,slideVx:0,slideVz:0,crouchHeld:false,crouching:false,wasSprinting:false,
+      parachuteOpen:false,parachuteReady:false,parachuteHold:0});
     p.y=spawnY;
     Object.assign(p,{rockets:p.classId==='assault'?2:0,secondaryCooldown:0,gadgetTime:0,gadgetAction:null,gadgetActionUntil:0,
       pendingGadget:null,gadgetTargetId:null,gadgetHeld:false,secondaryGadgetHeld:false,downedUntil:0,botJob:null,heldGadget:null});
@@ -326,7 +332,8 @@ export class Simulation {
     return height;
   }
   createMapVehicle(spawn){
-    if(spawn.type===BLACK_HAWK)return {...createVehicle(spawn),y:blackHawkGroundHeight(spawn,this.map.terrain),bodyPitch:0,bodyRoll:0,wreckFallSpeed:0,botPatrol:null};
+    if(spawn.type===BLACK_HAWK)return {...createVehicle(spawn),y:blackHawkGroundHeight(spawn,this.map.terrain),bodyPitch:0,bodyRoll:0,
+      verticalSpeed:0,wreckFallSpeed:0,botPatrol:null,pilotVacantAt:null};
     return {...createVehicle(spawn),y:this.groundAt(spawn.x,spawn.z),...vehicleBodyTilt(spawn,this.map.terrain)};
   }
   collides(x,z,y=this.groundAt(x,z),radius=this.playerRadius,height=EYE_HEIGHT){
@@ -465,7 +472,8 @@ export class Simulation {
       const origin=this.points.find(point=>dist(vehicle,point)<22)?.id??null;
       for(const id of vehicle.seats){const ally=this.players.get(id);if(ally?.bot)ally.botRideOrder={driverId:p.id,vehicleId:vehicle.id,origin,holdUntil:this.time+8};}
     }
-    Object.assign(p,{vehicleId:vehicle.id,vehicleSeat:seat,reloading:false,reloadTime:0,invulnerableUntil:0});
+    Object.assign(p,{vehicleId:vehicle.id,vehicleSeat:seat,reloading:false,reloadTime:0,invulnerableUntil:0,
+      parachuteOpen:false,parachuteReady:false,parachuteHold:0});
     this.syncVehicleSeat(p,vehicle);
     this.event('vehicleEnter',{playerId:p.id,vehicleId:vehicle.id,seat});
     return true;
@@ -474,10 +482,18 @@ export class Simulation {
     if(!p.vehicleId)return false;
     const vehicle=this.vehicles.find(v=>v.id===p.vehicleId),seat=p.vehicleSeat;
     if(vehicle?.type===BLACK_HAWK&&!blackHawkParked(vehicle,this.map.terrain)){
-      if(!force)return false;
+      const position=VEHICLE_TYPES[BLACK_HAWK].seats[seat];
+      const side=position.x<0?-1:1;
+      const exits=[[side*2.65,position.z],[-side*2.65,position.z],[side*2.65,.36],[-side*2.65,.36]];
+      const exit=exits.map(([x,z])=>vehiclePartPose(vehicle,x,1.04,z)).find(q=>
+        !this.collides(q.x,q.z,q.y,this.playerRadius,EYE_HEIGHT)&&!this.vehicleAt(q.x,q.z,q.y)&&
+        this.lineClear({x:p.x,y:p.y+1,z:p.z},{x:q.x,y:q.y+1,z:q.z}));
+      if(!exit&&!force)return false;
+      if(exit)Object.assign(p,exit);
       vehicle.seats[seat]=null;
       this.event('vehicleExit',{playerId:p.id,vehicleId:vehicle.id,seat});
-      Object.assign(p,{vehicleId:null,vehicleSeat:null,grounded:false,vy:0,moveSpeed:0});
+      Object.assign(p,{vehicleId:null,vehicleSeat:null,grounded:false,vy:Math.min(-1.6,vehicle.verticalSpeed??0),moveSpeed:0,
+        parachuteOpen:false,parachuteHold:0,parachuteReady:p.y-this.groundAt(p.x,p.z)>PARACHUTE_MIN_HEIGHT});
       return true;
     }
     if(vehicle){
@@ -517,7 +533,7 @@ export class Simulation {
     if(switchSeat&&!p.switchSeatHeld&&p.vehicleId){
       const vehicle=this.vehicles.find(v=>v.id===p.vehicleId);
       const oldSeat=p.vehicleSeat;
-      if((vehicle.type===BLACK_HAWK?blackHawkParked(vehicle,this.map.terrain):Math.abs(vehicle.speed)<(vehicle.type==='tank'?3:4.5))&&this.time>=(p.nextSeatSwitch??0)){
+      if((vehicle.type===BLACK_HAWK||Math.abs(vehicle.speed)<(vehicle.type==='tank'?3:4.5))&&this.time>=(p.nextSeatSwitch??0)){
         for(let n=1;n<vehicle.seats.length;n++){
           const seat=(oldSeat+n)%vehicle.seats.length;
           if(vehicle.seats[seat]!==null)continue;
@@ -569,6 +585,11 @@ export class Simulation {
       }
       const spec=VEHICLE_TYPES[vehicle.type];
       const driver=this.players.get(vehicle.seats[0]);
+      const aircraft=vehicle.type===BLACK_HAWK;
+      if(aircraft){
+        if(driver?.alive)vehicle.pilotVacantAt=null;
+        else if(vehicle.y-blackHawkGroundHeight(vehicle,this.map.terrain)>=BLACK_HAWK_CRASH_HEIGHT)vehicle.pilotVacantAt??=this.time;
+      }
       // Client prediction advances each 60 Hz input frame. Replaying only the
       // latest input once per server tick (e.g. at 45 Hz) causes the vehicle's
       // authoritative path to drift and its visual pose to be corrected repeatedly.
@@ -579,9 +600,17 @@ export class Simulation {
       for(let n=0;n<count;n++){
         const frame=frames?.[n],stepDt=frame?.dt??dt;
         const before={x:vehicle.x,y:vehicle.y??0,z:vehicle.z,yaw:vehicle.yaw,speed:vehicle.speed};
-        this.moveVehicle(vehicle,frame?.input??driver?.input,stepDt);
+        if(aircraft&&vehicle.pilotVacantAt!==null&&vehicle.pilotVacantAt!==undefined){
+          const falling=this.time-vehicle.pilotVacantAt>=BLACK_HAWK_PILOT_GRACE;
+          if(moveBlackHawk(this,vehicle,falling?undefined:{},stepDt,falling)){
+            vehicle.pilotVacantAt=null;
+            this.damageVehicle(vehicle,vehicle.maxHp,null,'crash');
+            break;
+          }
+        }else this.moveVehicle(vehicle,frame?.input??driver?.input,stepDt);
         this.runOverPlayers(vehicle,before,stepDt);
       }
+      if(vehicle.hp<=0)continue;
       for(const id of vehicle.seats){
         const passenger=this.players.get(id);
         if(passenger)this.syncVehicleSeat(passenger,vehicle);
@@ -659,7 +688,8 @@ export class Simulation {
     const previousHp=vehicle.hp;
     vehicle.lastHurt=this.time;
     if(kind==='blast')vehicle.lastBlastAt=this.time;
-    vehicle.hp=Math.max(0,vehicle.hp-amount*(kind==='bullet'?spec.bulletArmor:spec.blastArmor)*zoneMultiplier);
+    const armor=kind==='crash'?1:kind==='bullet'?spec.bulletArmor:spec.blastArmor;
+    vehicle.hp=Math.max(0,vehicle.hp-amount*armor*zoneMultiplier);
     if(vehicle.hp>0)return{ricochet:false,amount:previousHp-vehicle.hp};
     vehicle.speed=0;vehicle.steer=0;vehicle.respawnIn=spec.respawn;vehicle.wreckTime=vehicle.type==='tank'||vehicle.type===BLACK_HAWK?20:8;
     for(const id of [...vehicle.seats]){
@@ -670,9 +700,9 @@ export class Simulation {
     }
     this.event('vehicleDestroyed',{vehicleId:vehicle.id,vehicleType:vehicle.type,attackerId:attacker?.id,x:vehicle.x,y:vehicle.y+.65,z:vehicle.z});
     this.event('explosion',{x:vehicle.x,y:vehicle.y+.65,z:vehicle.z,vehicleId:vehicle.id});
-    if(vehicle.type==='tank'&&!vehicle.delayedCookoff)for(const p of this.players.values()){
+    if(kind==='crash'||vehicle.type==='tank'&&!vehicle.delayedCookoff)for(const p of this.players.values()){
       const d=Math.hypot(p.x-vehicle.x,p.z-vehicle.z,p.y-vehicle.y);
-      if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:'ВЗРЫВ ТАНКА',explosive:true,vehicleId:sourceVehicleId});
+      if(p.alive&&d<8&&this.lineClear({x:vehicle.x,y:vehicle.y+.65,z:vehicle.z},{x:p.x,y:p.y+.8,z:p.z}))this.damage(p,200*(1-d/8),attacker,{weapon:kind==='crash'?'ВЗРЫВ ВЕРТОЛЁТА':'ВЗРЫВ ТАНКА',explosive:true,vehicleId:sourceVehicleId});
     }
     if(attacker)this.awardScore(attacker,100,'УНИЧТОЖЕНИЕ ТЕХНИКИ',{kind:'vehicle'});
   }
@@ -702,7 +732,7 @@ export class Simulation {
          dropWeapon(this,victim,1,true);dropWeapon(this,victim,2,true);
        }
        victim.alive=false;victim.deaths++;victim.respawnIn=this.gameMode==='tdm'?3:4;victim.downedUntil=this.time+victim.respawnIn;victim.reloading=false;
-      victim.pendingGadget=null;victim.gadgetAction=null;
+      victim.pendingGadget=null;victim.gadgetAction=null;victim.parachuteOpen=false;victim.parachuteReady=false;victim.parachuteHold=0;
       if(this.gameMode!=='tdm')this.tickets[victim.team]=Math.max(0,this.tickets[victim.team]-1);
       if(attacker&&attacker.team!==victim.team){
         attacker.kills++;
@@ -1007,6 +1037,18 @@ export class Simulation {
     return bestSpot;
   }
   // Shared by authority and local movement prediction; no combat or AI runs here.
+  landingFloor(p,min,max,ground){
+    let floor=ground;
+    for(const box of this.floorBoxes(p.x,p.z,this.playerRadius)){
+      if(box.obb||box.parts){
+        floor=Math.max(floor,rotatedFloor(box,p.x,p.z,min-.01,max+.01,this.playerRadius));
+        continue;
+      }
+      const support=this.playerRadius*(['village-stair','village-floor'].includes(box.kind)?1:.6);
+      if(max>=box.h-.01&&min<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
+    }
+    return floor;
+  }
   movePlayer(p,i,dt){
     if(!dt||!p.alive||p.vehicleId)return;
     const wasGrounded=p.grounded;
@@ -1014,14 +1056,15 @@ export class Simulation {
     p.jumpCooldown=Math.max(0,(p.jumpCooldown??0)-dt);
     p.yaw=i.yaw;p.pitch=i.pitch;
     const c=getWeapon(p.classId,p.weaponId);
-      const slide=slideVelocity(p,i,c,dt,(x,z)=>this.groundAt(x,z));
-      p.crouching=Boolean(i.crouch||slide||(p.crouching&&this.collides(p.x,p.z,p.y)));
+      const slide=p.parachuteOpen?null:slideVelocity(p,i,c,dt,(x,z)=>this.groundAt(x,z));
+      p.crouching=!p.parachuteOpen&&Boolean(i.crouch||slide||(p.crouching&&this.collides(p.x,p.z,p.y)));
       const bodyHeight=this.campaign&&(p.prone||p.downed)? .65:p.crouching?CROUCH_EYE_HEIGHT+.12:EYE_HEIGHT;
       const norm=Math.max(1,Math.hypot(i.forward,i.strafe));let speed=c.speed*(i.crouch?.5:i.sprint&&!i.fire?1.3:i.aim?.7:1);
       if(p.crouching)speed=c.speed*.5;
       if(this.campaign&&p.downed)speed=.8;
       else if(this.campaign&&p.prone)speed=1.15;
       speed*=1-p.jumpFatigue*.22;
+      if(p.parachuteOpen)speed=6.3;
       const dx=slide?slide.vx*dt:(-Math.sin(p.yaw)*i.forward+Math.cos(p.yaw)*i.strafe)/norm*speed*dt;
       const dz=slide?slide.vz*dt:(-Math.cos(p.yaw)*i.forward-Math.sin(p.yaw)*i.strafe)/norm*speed*dt;
       const oldX=p.x,oldZ=p.z;
@@ -1031,11 +1074,9 @@ export class Simulation {
       let followsGround=p.grounded&&p.y<=this.groundAt(p.x,p.z)+.025;
       const insideVehicle=this.vehicleAt(p.x,p.z,p.y);
       let walkX=followsGround?this.groundAt(p.x+stepX,p.z):p.y;
-      // At the top of an estate ramp, do not snap 3 m down to the
-      // ground-floor terrain as soon as the player steps onto a gallery.
-      // Keep the elevated Y and let the existing floor-support query land on
-      // the real second-floor slab instead.
-      if(this.map.theme==='linden-estate'&&followsGround&&walkX<p.y-.42){walkX=p.y;followsGround=false;}
+      // Keep the old foot height when stepping off a lip so the landing
+      // query measures the descent instead of snapping to the lower ground.
+      if(followsGround&&walkX<p.y-.42){walkX=p.y;followsGround=false;}
       const groundX=walkX;
       if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x+stepX,p.z,walkX,this.playerRadius,bodyHeight))walkX=this.stairHeightAt(p.x+stepX,p.z,walkX,bodyHeight);
       if(!this.collides(p.x+stepX,p.z,walkX,this.playerRadius,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x+stepX,p.z,walkX))){
@@ -1043,7 +1084,7 @@ export class Simulation {
         if(walkX>groundX+.0001){p.y=walkX;followsGround=false;}
       }
       let walkZ=followsGround?this.groundAt(p.x,p.z+stepZ):p.y;
-      if(this.map.theme==='linden-estate'&&followsGround&&walkZ<p.y-.42){walkZ=p.y;followsGround=false;}
+      if(followsGround&&walkZ<p.y-.42){walkZ=p.y;followsGround=false;}
       const groundZ=walkZ;
       if(!slide&&this.stepHeight&&p.grounded&&this.collides(p.x,p.z+stepZ,walkZ,this.playerRadius,bodyHeight))walkZ=this.stairHeightAt(p.x,p.z+stepZ,walkZ,bodyHeight);
       if(!this.collides(p.x,p.z+stepZ,walkZ,this.playerRadius,bodyHeight)&&(insideVehicle||!this.vehicleAt(p.x,p.z+stepZ,walkZ))){
@@ -1058,17 +1099,34 @@ export class Simulation {
       if(i.jump&&p.grounded&&!p.jumpHeld&&p.jumpCooldown===0&&p.jumpFatigue<.92){
         p.vy=6*(1-p.jumpFatigue*.5);p.jumpFatigue=Math.min(1,p.jumpFatigue+.42);p.grounded=false;
       }p.jumpHeld=i.jump;
-      const oldY=p.y;p.vy-=18*dt;let nextY=p.y+p.vy*dt;let floor=ground;
-      if(p.vy<=0)for(const box of this.floorBoxes(p.x,p.z,this.playerRadius)){
-        if(box.obb||box.parts){
-          floor=Math.max(floor,rotatedFloor(box,p.x,p.z,nextY-.01,oldY+.01,this.playerRadius));
-          continue;
-        }
-        const support=this.playerRadius*(['village-stair','village-floor'].includes(box.kind)?1:.6);
-        if(oldY>=box.h-.01&&nextY<=box.h&&Math.abs(p.x-box.x)<box.w/2+support&&Math.abs(p.z-box.z)<box.d/2+support)floor=Math.max(floor,box.h);
+      const oldY=p.y;
+      const deployLimit=oldY-PARACHUTE_MIN_HEIGHT;
+      p.parachuteReady=!p.parachuteOpen&&!p.grounded&&p.vy<-1.4&&ground<deployLimit&&
+        this.landingFloor(p,deployLimit,oldY,ground)<deployLimit;
+      p.parachuteHold=p.parachuteReady&&(i.jump||p.bot)?Math.min(PARACHUTE_HOLD_SECONDS,(p.parachuteHold??0)+dt):0;
+      if(p.parachuteHold>=PARACHUTE_HOLD_SECONDS&&!this.collides(p.x,p.z,p.y,this.playerRadius,6.1)){
+        p.parachuteOpen=true;
+        p.parachuteReady=false;
+        p.parachuteHold=0;
+        p.vy=Math.max(-10,p.vy);
       }
-      p.y=Math.max(floor,nextY);p.grounded=p.y===floor;if(p.grounded)p.vy=0;
-      if(!wasGrounded&&p.grounded)p.jumpCooldown=.22;
+      if(p.parachuteOpen)p.vy+=clamp(-PARACHUTE_SINK_SPEED-p.vy,-18*dt,26*dt);
+      else p.vy=Math.max(-45,p.vy-18*dt);
+      const nextY=p.y+p.vy*dt;
+      const floor=p.vy<=0?this.landingFloor(p,nextY,oldY,ground):ground;
+      p.y=Math.max(floor,nextY);
+      p.grounded=p.y===floor;
+      if(p.grounded){
+        const impact=-p.vy;
+        p.vy=0;
+        p.parachuteOpen=false;
+        p.parachuteReady=false;
+        p.parachuteHold=0;
+        if(!wasGrounded){
+          p.jumpCooldown=.22;
+          if(impact>14&&this.players?.has(p.id))this.damage(p,Math.ceil((impact-14)*8),null,{weapon:'ПАДЕНИЕ'});
+        }
+      }
     p.velocityX=(p.x-oldX)/dt;p.velocityZ=(p.z-oldZ)/dt;
   }
   grenadeBoxes(x,z,endX,endZ){
@@ -1202,6 +1260,7 @@ export class Simulation {
         for(const frame of p.networkFrames){this.movePlayer(p,frame.input,frame.dt);p.inputAck=frame.sequence;}
         p.networkFrames=null;
       }else if(!p.networkControlled||p.networkIdle)this.movePlayer(p,i,dt);
+      if(!p.alive)continue;
       this.firePersonalWeapon(p,c,pressed,firing);
       if((this.gameMode!=='tdm'||this.map.tdmLoadout==='class')&&p.heldGadget&&i.fire&&!i.sprint&&(pressed||p.heldGadget==='repair')){
         activateGadget(this,p,p.heldGadget==='launcher'||p.heldGadget==='medkit');
@@ -1305,8 +1364,9 @@ export class Simulation {
         hp:p.hp,alive:p.alive,reviveSeq:p.reviveSeq??0,orderKind:this.squadOrders?.get(p.team+'/'+p.squadId)?.kind??null,orderPointId:this.squadOrders?.get(p.team+'/'+p.squadId)?.pointId??null,squadId:p.squadId,squadLeader:p.squadLeader,ammo:p.ammo,reserve:p.reserve,kills:p.kills,deaths:p.deaths,assists:p.assists||0,score:p.score||0,respawnIn:p.respawnIn,
         reloading:p.reloading,reloadProgress:p.reloading?clamp(1-p.reloadTime/wep.reload,0,1):0,
         cooldown:p.cooldown,bloom:p.bloom,lastShotAt:p.lastShotAt,shotSeq:p.shotSeq,spread:weaponSpread(p),crouch:crouching(p),sliding:!p.vehicleId&&p.slideTime>0,
-        slideYaw:p.slideTime>0?Math.atan2(-p.slideVx,-p.slideVz):p.yaw,sprint:!p.vehicleId&&!crouching(p)&&p.input.sprint&&p.moveSpeed>wep.speed,
+        slideYaw:p.slideTime>0?Math.atan2(-p.slideVx,-p.slideVz):p.yaw,sprint:!p.vehicleId&&!p.parachuteOpen&&!crouching(p)&&p.input.sprint&&p.moveSpeed>wep.speed,
         aim:p.input.aim,grounded:p.grounded,bot:p.bot,protected:this.time<p.invulnerableUntil,
+        parachuteOpen:p.parachuteOpen,parachuteReady:p.parachuteReady,parachuteHold:p.parachuteHold,
         gadgetCooldown:p.gadgetTime,secondaryCooldown:p.secondaryCooldown,rockets:p.rockets,heldGadget:p.heldGadget,
         gadgetAction:p.gadgetAction,gadgetActionRemaining:Math.max(0,(p.gadgetActionUntil??0)-this.time),gadgetTargetId:p.gadgetTargetId,
         grenades:p.grenades,spotted:p.spottedUntil>this.time,

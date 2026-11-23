@@ -1,6 +1,6 @@
 """Author modular upgrades in the existing weapon socket space."""
 from collections import Counter
-from math import cos, pi, sin, tau
+from math import cos, pi, radians, sin, tau
 from pathlib import Path
 import sys
 
@@ -12,7 +12,7 @@ ART = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ART))
 from weapon_finish import finish_uv, shader_finish
-from weapon_mesh import Assembly, optic_coating, optic_lens, optic_shell, side_profile, sight_ring
+from weapon_mesh import Assembly, optic_coating, optic_lens, optic_shell, side_profile, sight_ring, surface_mark
 
 SOURCES = {
     "ar416": "ar416/ar416.blend", "ak12": "ak12m/ak12m.blend",
@@ -220,6 +220,83 @@ def scope(module, reach, rear, front, kind):
     return group
 
 
+def horizon_scope():
+    group = group_for("horizon-610", "Shared")
+    axis = .066
+    nose, back = -.181, .139
+    mesh = Assembly()
+    # The bell, central tube and ocular keep a clear bore through both panes.
+    outer = [
+        (nose,.039),(nose+.003,.043),(nose+.016,.043),(nose+.021,.041),
+        (-.124,.038),(-.103,.025),(-.090,.022),(.063,.022),
+        (.070,.026),(.083,.030),(.106,.031),(.110,.033),(.134,.033),(back,.030),
+    ]
+    bore = [(nose,.035),(-.157,.035),(-.103,.018),(.068,.018),
+            (.104,.024),(.131,.027),(back,.027)]
+    optic_shell(mesh,axis,outer,bore,STEEL,48)
+    sight_ring(mesh,axis,nose+.007,.035,.0415,.006,EDGE)
+    sight_ring(mesh,axis,nose+.018,.035,.039,.004,RECESS)
+    sight_ring(mesh,axis,back-.006,.027,.032,.006,POLYMER)
+
+    # Mount locks, split rings and screw heads stay on the optic assembly.
+    mesh.box((0,.010,-.011),(.066,.028,.160),STEEL,.004)
+    mesh.box((0,.022,-.011),(.051,.014,.149),POLYMER,.003)
+    for z in (-.068,.046):
+        mesh.box((0,.033,z),(.046,.030,.026),STEEL,.004)
+        sight_ring(mesh,axis,z,.0215,.0275,.022,EDGE)
+        for x in (-.028,.028):
+            mesh.box((x,axis-.001,z),(.013,.011,.020),STEEL,.002)
+            mesh.cylinder((x,.015,z),.006,.009,'x',EDGE,16)
+            mesh.cylinder((x*1.19,.015,z),.0027,.0014,'x',RECESS,6)
+            mesh.cylinder((x*.89,axis+.008,z-.004),.004,.006,'y',POLYMER,12)
+            mesh.cylinder((x*.89,axis+.011,z-.004),.0018,.0012,'y',RECESS,6)
+    for side in (-1,1):
+        mesh.box((side*.025,axis,-.009),(.012,.043,.043),STEEL,.004)
+        mesh.box((0,axis+side*.025,-.009),(.042,.012,.043),STEEL,.004)
+
+    brass=(.44,.24,.095)
+    mesh.tube((0,0,-.009),[(axis+.020,.015),(axis+.024,.018),(axis+.038,.018),
+                           (axis+.041,.016)],'y',POLYMER,32)
+    mesh.cylinder((0,axis+.040,-.009),.016,.004,'y',EDGE,32)
+    for step in range(28):
+        angle=step*tau/28
+        mesh.cylinder((.0175*cos(angle),axis+.031,-.009+.0175*sin(angle)),
+                      .0014,.012,'y',POLYMER,6)
+    for side in (-1,1):
+        mesh.cylinder((side*.029,axis,-.009),.015,.014,'x',STEEL,28)
+        mesh.cylinder((side*.037,axis,-.009),.011,.009,'x',POLYMER,22)
+        mesh.cylinder((side*.043,axis,-.009),.004,.003,'x',EDGE,12)
+        mesh.box((side*.0435,axis,-.009),(.001,.013,.002),brass,.0003)
+
+    # Deep ribs on the adjustment collar, with a contrasting index mark.
+    collar=.091
+    sight_ring(mesh,axis,collar,.0295,.035,.022,POLYMER)
+    for step in range(24):
+        angle=step*tau/24
+        mesh.cylinder((.034*cos(angle),axis+.034*sin(angle),collar),
+                      .0015,.018,'z',EDGE,7)
+    mesh.box((.019,axis+.034,collar),(.009,.014,.013),STEEL,.0018)
+    mesh.box((.019,axis+.0415,collar),(.003,.001,.008),brass,.0003)
+    sight_ring(mesh,axis,back-.017,.030,.0338,.004,EDGE)
+    for side in (-1,1):
+        surface_mark(mesh,'6-10X',side*.0332,.017,-.030*side,.00175,MARK,.48)
+    housing=machined_part(mesh,'_Housing',group,{POLYMER:1,RECESS:1,EDGE:2,MARK:1,brass:2})
+    for face in housing.data.polygons:
+        face.use_smooth=True
+    housing.data.set_sharp_from_angle(angle=radians(40))
+    for name,z,radius,coating in [
+        ('_FrontLens',nose+.019,.035,front_coating),('_RearLens',back-.007,.027,rear_coating),
+    ]:
+        glass=optic_lens(axis,z,radius,48).object(group.name+name,scene.collection)
+        glass.parent=group
+        glass.data.materials.append(coating)
+    eye=bpy.data.objects.new(group.name+"_Eye",None)
+    scene.collection.objects.link(eye)
+    eye.parent=group
+    eye.location=(0,-back,axis)
+    return group
+
+
 def compensator(weapon, stock):
     group = group_for("compensator", weapon)
     socket = stock["Mount_Barrel"]
@@ -297,6 +374,7 @@ for index,(name,reach,rear,front) in enumerate([
     ("prism-2",.143,.030,.038),("variable-12",.239,.032,.034),("tactical-3",.201,.029,.043),
 ]):
     gallery.append((scope(name,reach,rear,front,index),index,5))
+gallery.append((horizon_scope(),3,5))
 
 # Export socket-local meshes. The game supplies the original barrel and
 # magazine materials, and its own finishes for the newly modeled housings.

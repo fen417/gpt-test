@@ -15,11 +15,11 @@ export function mountChangelog() {
     }
     article.append(summary);
     const content = document.createElement('div'); content.className = 'patch-content';
-    if (patch.image) {
+    for (const image of patch.images ?? (patch.image ? [patch.image] : [])) {
       const photo = document.createElement('img');
       photo.className = 'patch-photo';
-      photo.src = import.meta.env.BASE_URL + patch.image.src;
-      photo.alt = patch.image.alt;
+      photo.src = import.meta.env.BASE_URL + image.src;
+      photo.alt = image.alt;
       photo.width = 1080;
       photo.height = 720;
       photo.loading = 'lazy';

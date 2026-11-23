@@ -29,6 +29,7 @@ export const COURIER_ESCAPE_ROUTE=Object.freeze([
   ...COURIER_SERVICE_ROAD.map(([x,z])=>({x,z})),
 ]);
 const persistentPlayerKeys=['id','name','team','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','stowedAmmo','x','y','z','yaw','pitch','hp','alive','ammo','reserve','grenades','rockets','kills','deaths','assists','score','bot','botSlot','grounded','lastHurt','lastShotAt','shotSeq','reviveSeq','downed','downedAt','downedTimer','reviver','syringes','medkits','medkitCapacity','suppressed','prone','campaignRole','campaignZone','campaignGroup','home','homeYaw','holdAt','guideIndex','sleeping','detection','patrolIndex','withdrawn','scriptedWound','officerCallAt','called','invulnerableUntil','secondaryCooldown','gadgetTime','spawnedAt','vehicleId','vehicleSeat'];
+persistentPlayerKeys.push('vy','parachuteOpen','parachuteHold');
 
 // The ordinary movement, weapons, collision, projectiles and combat AI remain
 // authoritative in Simulation. Only mission rules differ, in this local subclass.

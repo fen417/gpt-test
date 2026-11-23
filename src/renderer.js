@@ -34,6 +34,7 @@ import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
 import { BLACK_HAWK, blackHawkGunPose, canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
 import { placeTankDriverCamera } from './tank-camera.js';
+import { Parachutes } from './parachute.js';
 import { tankMachineGunMuzzle, tankMuzzle, TANK_MG } from '../shared/tank.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
 import { lightVehicleModels } from './light-vehicle-models.js';
@@ -217,6 +218,7 @@ export class GameRenderer {
     this.previousGrounded = true;
     this.cameraAnchor = new THREE.Vector3();
     this.vehicleSeatAnchor = new THREE.Vector3();
+    this.parachutes = new Parachutes(optimizeLighting);
     this.cameraPlayerId = null;
     this.cameraAlive = null;
     this.scratchPosition = new THREE.Vector3();
@@ -573,6 +575,7 @@ export class GameRenderer {
       });
     }
     this.clearVehicles();
+    this.parachutes.clear();
     this.clearMapDynamics();
     this.staticRoot?.removeFromParent();
     this.map = map;
@@ -649,6 +652,7 @@ export class GameRenderer {
     }
     const vehicleTypes=new Set([...(state.vehicles??[]),...(this.map.vehicleSpawns??[])].map(vehicle=>vehicle.type));
     await Promise.allSettled([
+      this.parachutes.load(),
       ...Array.from(units.values(),([team,weapon])=>this.infantry.load(team,weapon)),
       ...Array.from(vehicleTypes,type=>lightVehicleModels[type]?.load()),
     ]);
@@ -1594,14 +1598,16 @@ export class GameRenderer {
             led.name='equipment-status';led.position.set(.06,.34,-.14);led.scale.setScalar(.022);model.add(led);
           }
           model.traverse(object=>{if(object.material)object.material=this.getQualityMaterial(object.material);});
+          model.position.set(item.x,item.y,item.z);
           cache.set(item.id,model);this.worldRoot.add(model);
         }
         model.visible=true;
         const led=model.getObjectByName('equipment-status');if(led){
-          led.visible=Math.sin(this.clock*4.5)>-.2;
+          led.visible=!item.falling&&Math.sin(this.clock*4.5)>-.2;
           led.material=this.getQualityMaterial(sameSquad(local,item)?this.gadgetAssets.green:item.team===local?.team?this.gadgetAssets.team0:this.gadgetAssets.team1);
         }
-        model.position.set(item.x,item.y,item.z);
+        const y=item.falling?lerp(model.position.y,item.y,1-Math.exp(-dt*24)):item.y;
+        model.position.set(item.x,y,item.z);
         model.rotation.order='YXZ';
         const yaw=item.yaw??Math.atan2(-item.vx,-item.vz);
         model.rotation.y=yaw+(item.kind==='ammo'?Math.PI:0);
@@ -1828,14 +1834,15 @@ export class GameRenderer {
     this.camera.position.set(eye.x,eye.y,eye.z);
     if (shake && seat.role==='driver') this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012, Math.abs(vehicle.speed) * .001) * (humvee ? .65 : 1);
     const gunner = seat.role === 'gunner';
-    const roll = shake && seat.role==='driver' ? rig.body.rotation.z * (humvee ? .62 : 1) : 0;
+    const roll = shake && seat.role==='driver' ? rig.body.rotation.z * (rig.blackHawk?.48:humvee?.62:1) : 0;
     if(rig.blackHawk&&gunner){
       const aim=blackHawkGunPose(pose,yaw,pitch);
       const dx=-Math.sin(aim.yaw)*Math.cos(aim.pitch), dy=Math.sin(aim.pitch), dz=-Math.cos(aim.yaw)*Math.cos(aim.pitch);
       this.camera.position.set(aim.muzzle.x-dx*1.48,aim.muzzle.y-dy*1.48+.25,aim.muzzle.z-dz*1.48);
       this.camera.rotation.set(aim.pitch-.005,aim.yaw,rig.body.rotation.z*.35,'YXZ');
     }else{
-      this.camera.rotation.set(gunner ? clamp(pitch, TURRET_MIN_PITCH, TURRET_MAX_PITCH) : pitch, yaw, roll, 'YXZ');
+      const heading=rig.blackHawk&&seat.role==='driver'?yaw+rig.group.rotation.y-vehicle.yaw:yaw;
+      this.camera.rotation.set(gunner ? clamp(pitch, TURRET_MIN_PITCH, TURRET_MAX_PITCH) : pitch, heading, roll, 'YXZ');
     }
     this.cameraPlayerId = null;
     this.cameraAlive = true;
@@ -1886,6 +1893,7 @@ export class GameRenderer {
     if (!state?.players) {
       this.cameraPlayerId = null;
       if (this.vehicleRigs.size) this.clearVehicles();
+      this.parachutes.clear();
       const angle = this.clock * 0.012, radius = this.map.terrain ? this.map.size * .29 : 130;
       const menuView=this.map.menuView;
       if(menuView){
@@ -1983,7 +1991,7 @@ export class GameRenderer {
         this.updateSunShadow(vehicle.x,vehicle.z);
       }
       else if(tank&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankCamera(this,mounted,view,dt);
-      else if(mounted.rig.blackHawk&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankDriverCamera(this,mounted,view,dt,{radius:15,height:3});
+      else if(mounted.rig.blackHawk&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankDriverCamera(this,mounted,view,dt,{radius:15,height:3,orbitRecovery:8});
       else{if(this.tankCamera)this.tankCamera.initialized=false;this.placeVehicleCamera(mounted, seat, view.yaw ?? player.yaw, view.pitch ?? player.pitch, shake);}
       this.weapon.visible = false;
       this.viewWeaponTarget = null;
@@ -2017,7 +2025,7 @@ export class GameRenderer {
       const pistol = getWeapon(player.classId, this.presentedWeaponId).sidearm;
       const yaw = view.yaw ?? player.yaw ?? 0, pitch = view.pitch ?? player.pitch ?? 0;
       const sliding = !passenger && Boolean(player.sliding);
-      const crouching = !passenger && Boolean(sliding || player.crouch || player.crouching || view.crouch);
+      const crouching = !passenger&&!player.parachuteOpen&&Boolean(sliding || player.crouch || player.crouching || view.crouch);
       const targetHeight = state.campaign&&(player.prone||player.downed)? .48:crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
       this.eyeHeight=lerp(this.eyeHeight??targetHeight,targetHeight,1-Math.exp(-dt*20));
       this.slideBlend=lerp(this.slideBlend??0,sliding?1:0,1-Math.exp(-dt*16));
@@ -2055,7 +2063,7 @@ export class GameRenderer {
       const reloadMotion = Math.sin(reloadPhase * Math.PI) * this.reloadAmount;
       const moving = passenger ? 0 : clamp(Number(view.move) || 0, 0, 1);
       const grounded = player.grounded !== false;
-      const sprint = !crouching && !sliding && view.sprint && !view.aim && moving > .1 && !player.reloading;
+      const sprint = !player.parachuteOpen&&!crouching&&!sliding&&view.sprint&&!view.aim&&moving>.1&&!player.reloading;
       this.handlingMove = lerp(this.handlingMove, grounded && !sliding ? moving : 0, 1 - Math.exp(-dt * 9));
       this.sprintBlend = lerp(this.sprintBlend, sprint ? 1 : 0, 1 - Math.exp(-dt * 11));
       this.strafeBlend = lerp(this.strafeBlend, passenger ? 0 : Number(view.strafe) || 0, 1 - Math.exp(-dt * 9));
@@ -2215,6 +2223,7 @@ export class GameRenderer {
       }
     }
     this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updatePoolWeapons(state); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
+    this.parachutes.update(this.worldRoot,state.players,dt,this.lowQuality);
     this.atmosphere.sky.position.copy(this.camera.position);
     if(view.warming){
       // Upload visible map layers even when the starting camera faces away.
@@ -2291,6 +2300,7 @@ export class GameRenderer {
     this.cachedShadows.dispose();
     this.bulletMarks.dispose();
     this.clearVehicles();
+    this.parachutes.dispose();
     const geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set();
     const collect = object => {
       if (object.geometry) geometries.add(object.geometry);
