@@ -275,7 +275,7 @@ for(const [index,z] of [[0,-6],[1,9]]){
     part(`platform-${index}-${section}`,(from+end)/2,z,end-from,3.15,.26,0,'#b0a18a',{kind:'village-floor'});
     from=to+crossingWidth/2;
   }
-  part('platform-roof-'+index,12,z,62,3.9,.16,4.1,'#615f55',iron);
+  part('platform-roof-'+index,9.5,z,67,3.9,.16,4.1,'#615f55',iron);
   for(const x of [-23,-3,12,27,42])part(`platform-column-${index}-${x}`,x,z,.18,.18,4.1,.14,beam,iron);
 }
 for(const x of NAHAR_RAIL_CROSSINGS){
