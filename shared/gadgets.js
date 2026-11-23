@@ -252,7 +252,8 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
       }else{
         const before=vehicle.hp;
         const angleFactor=shellProfile?.kind==='ap'?.6+.4*tankShellIncidence(vehicle,origin,shellProfile.direction):1;
-        sim.damageVehicle(vehicle,(shellProfile?.damage??(cannon&&vehicle.type==='tank'?900:760))*angleFactor,owner,'blast',origin,sourceVehicleId);
+        sim.damageVehicle(vehicle,(shellProfile?.damage??(cannon&&vehicle.type==='tank'?900:760))*angleFactor,
+          owner,'blast',origin,sourceVehicleId,{directCannon:cannon});
         confirmed||=vehicle.hp<before;
       }
     }

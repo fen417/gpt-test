@@ -627,8 +627,12 @@ export class Simulation {
       const cooling=vehicle.overheated ? .28 : firingMinigun ? .065 : .26;
       vehicle.heat=Math.max(0,vehicle.heat-dt*cooling);
       if(vehicle.overheated&&vehicle.heat<=.3)vehicle.overheated=false;
+      if(vehicle.type===BLACK_HAWK){
+        const winding=firingMinigun&&!vehicle.overheated;
+        vehicle.gunSpin=clamp((vehicle.gunSpin??0)+dt*(winding?5:-2.8),0,1);
+      }
       if(vehicle.type==='tank'){
-        vehicle.burning=vehicle.hp<vehicle.maxHp*.25&&this.time>=(vehicle.extinguishedUntil??0);
+        if(!vehicle.fireByHit)vehicle.burning=vehicle.hp<vehicle.maxHp*.25&&this.time>=(vehicle.extinguishedUntil??0);
         if(vehicle.burning)this.damageVehicle(vehicle,12*dt,null,'fire');
         const sightHold=vehicle.controlScheme==='wot'&&gunner?.input?.turretHold;
         const aimingGunner=sightHold?{...gunner,input:{...gunner.input,
@@ -835,6 +839,7 @@ export class Simulation {
   }
   shootTurret(p,vehicle,dt){
     if(!p.input.fire||vehicle.overheated||vehicle.gunCooldown>0)return;
+    if(vehicle.type===BLACK_HAWK&&vehicle.gunSpin<.82)return;
     const weapon=vehicleTurretWeapon(vehicle);
     vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown)+weapon.interval;
     vehicle.heat=Math.min(1,vehicle.heat+weapon.heatPerShot);

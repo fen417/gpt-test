@@ -3,7 +3,7 @@
 .m03-interaction,.m03-choices{position:absolute;bottom:106px;left:50%;transform:translateX(-50%);text-align:center}
 .m03-interaction>span,.m03-choices button{display:block;width:max-content;max-width:80vw;margin:0 auto;color:#f5dfaf;font:700 12px/1.4 monospace}
 .m03-interaction>span:not(:empty){padding:6px 10px;background:#141a1bbc}
-.m03-choices button{border:0;background:none;padding:5px 9px;pointer-events:auto;cursor:pointer;text-shadow:0 1px 4px #000}
+.m03-choices button{border:1px solid #a78e6075;background:#171e22e0;padding:9px 14px;margin:5px auto;pointer-events:auto;cursor:pointer;text-shadow:0 1px 4px #000;font:700 clamp(14px,1.5vw,18px)/1.25 Arial,sans-serif}
 .m03-choices button:is(:hover,:focus-visible){color:#fff;text-decoration:underline}
 .m03-interaction progress{display:block;margin:7px auto 0;width:150px;height:8px;accent-color:#e7bd78}
 .m03-interaction progress[hidden]{display:none}
@@ -12,7 +12,6 @@
   font:700 10px/1.4 monospace;max-width:calc(100vw - 35px)}
 .m03-status{margin:8px 0 0;color:#ecd6ab;font:700 10px/1.45 monospace}
 .m03-bindings{left:50%;bottom:62px;transform:translateX(-50%);text-align:center;white-space:nowrap}
-.m03-map{position:absolute;right:0;bottom:calc(100% + 12px);width:145px;height:145px;border:1px solid #c8a87499}
 .m03-marker{position:absolute;top:0;left:0;color:#f1d7a3;padding:4px 6px;background:#181b1bb8;font:700 11px monospace;white-space:nowrap}
 .m03-squad{position:absolute;right:24px;top:26px;max-width:min(290px,38vw);color:#cde8c9;text-align:right;
   text-shadow:0 1px 4px #121715;font:700 11px/1.5 monospace;white-space:pre-line}
@@ -23,7 +22,6 @@
 .campaign-m03 .campaign-ending{z-index:2}
 .campaign-m03-ride :is(#crosshair,.bottom-left,.bottom-right,#vehicle-prompt,.squad-hud){visibility:hidden}
 @media(max-width:700px){
-  .m03-map{width:92px;height:92px}
   .m03-squad{right:8px;top:95px;max-width:55vw}
   .m03-bindings{bottom:105px;width:max-content;max-width:80vw;white-space:normal}
   .m03-interaction{bottom:148px}.m03-choices{bottom:177px}

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {TANK_CANNON,tankMuzzle,tankDropAngle} from '../../shared/tank.js';
 import {tankReloadMarkup} from '../tank-reticle.js';
 import {CampaignAudio} from './audio.js';
+import {drawArmoredMinimap} from './minimap.js';
 import {TankMusic} from './tank-music.js';
 import {M02_BINDINGS,campaignTankSight} from '../../shared/campaign/tank-controls.js';
 import {mission2BriefingCamera} from './mission2-briefing-camera.js';
@@ -200,18 +201,8 @@ export class Mission2Presentation {
     if(performance.now()>=(this.nextMapAt??0)){this.nextMapAt=performance.now()+100;this.drawMap(state);}
   }
   drawMap(state){
-    const canvas=this.$('.m02-minimap'),ctx=canvas.getContext('2d'),v=state.vehicles.find(v=>v.id==='sokol-7');if(!v)return;
-    const m=state.campaign,scale=.22,point=o=>({x:110+(o.x-v.x)*scale,y:110+(o.z-v.z)*scale});
-    ctx.clearRect(0,0,220,220);ctx.save();ctx.beginPath();ctx.arc(110,110,105,0,Math.PI*2);ctx.clip();ctx.fillStyle='#13201de8';ctx.fillRect(0,0,220,220);
-    ctx.strokeStyle='#c8b68a33';for(let i=0;i<220;i+=22){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,220);ctx.moveTo(0,i);ctx.lineTo(220,i);ctx.stroke();}
-    const mark=(o,color,r)=>{const p=point(o);ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();};
-    for(const box of this.renderer.map.boxes){if(box.w>3&&box.d>3){const p=point(box);ctx.fillStyle='#cdbb9144';ctx.fillRect(p.x-box.w*scale/2,p.y-box.d*scale/2,Math.max(2,box.w*scale),Math.max(2,box.d*scale));}}
-    const visible=new Set(m.visibleEnemies);
-    for(const t of state.vehicles)if(t.hp>0&&(t.team===0||visible.has(t.id)))mark(t,t.team===0?'#8acccc':'#f09c77',t.id===v.id?5:3);
-    for(const p of state.players)if(p.alive&&!p.vehicleId&&(p.team===0||visible.has(p.id)))mark(p,p.team===0?'#a7d9a2':'#efb18a',2);
-    if(m.phase==='village')for(const gun of m.guns)if(gun.alive)mark(gun,'#efb18a',4);
-    mark(m.target,'#ffe19b',4);ctx.strokeStyle='#ffe19b';ctx.beginPath();ctx.moveTo(110,110);ctx.lineTo(110-Math.sin(v.aimYaw)*25,110-Math.cos(v.aimYaw)*25);ctx.stroke();ctx.restore();
-    ctx.fillStyle='#e4d5b0';ctx.font='10px monospace';ctx.fillText('РАЗВЕДКА РОТЫ',55,211);
+    const vehicle=state.vehicles.find(v=>v.id==='sokol-7');
+    if(vehicle)drawArmoredMinimap(this.$('.m02-minimap'),this.renderer,state,vehicle);
   }
   render(r,state,dt,view={}){
     const m=state.campaign;if(m?.missionId!=='m02')return;

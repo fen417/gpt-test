@@ -8,6 +8,7 @@ import {vehicleBodyTilt} from '../vehicles.js';
 import {getSidearm,WEAPONS} from '../world.js';
 import {TEL_MAZIN,M03_CHARGE_CACHE as chargeCache,m03ConvoyPose,packPanels,telMazinFloor} from './tel-mazin.js';
 import {M03_EXTRACTION,Mission3Extraction} from './mission3-extraction.js';
+import {reviveDuration} from './medical.js';
 
 const SAVE_VERSION=1,MAX_ENEMIES=14;
 const TERRAIN_REVISION=1;
@@ -201,13 +202,15 @@ class ColumnDirector{
   }
   updateRadio(){
     if(this.radio&&this.time<this.radioEnd)return;
-    if(this.choices&&this.rideTime<this.choiceUntil)return;
-    this.choices=null;
+    if(this.choices){
+      if(this.rideTime<this.choiceUntil)return;
+      this.queue.unshift(...this.choices.slice(0,2));this.choices=null;
+    }
     const question=this.definition.dialogueChoices.findIndex(choice=>choice.question===this.radio?.key);
     if(this.inTransit&&this.rideTime<this.definition.convoy.villageAt&&question>=this.choiceIndex){
       this.choices=this.definition.dialogueChoices[question].answers;
       this.choiceIndex=question+1;
-      this.choiceUntil=this.rideTime+6;
+      this.choiceUntil=this.rideTime+7;
       this.radio=null;
       return;
     }
@@ -339,7 +342,7 @@ class ColumnDirector{
     if(command?.type==='retry'){this.restore(this.latestSave??this.initialSave);return;}
     if(this.failed||this.complete||this.finale)return;
     if(this.inTransit){
-      if(command?.type==='answer'&&this.choices&&[0,1].includes(command.index)){
+      if(command?.type==='answer'&&this.choices&&Number.isInteger(command.index)&&command.index>=0&&command.index*2<this.choices.length){
         const choice=command.index*2;
         this.queue.unshift(this.choices[choice],this.choices[choice+1]);this.choices=null;
       }
@@ -513,7 +516,7 @@ class ColumnDirector{
     if(p.role==='truck-gunner'&&p.vehicleId){
       p.input=sanitizeInput({yaw:yawTo(p,player),pitch:Math.atan2(player.y-p.y,distance(p,player)),fire:this.canSee(p,player),aim:true});return true;
     }
-    if(p.fieldMedic&&p.medicTarget){
+    if(p.medicTarget){
       const wounded=sim.players.get(p.medicTarget);
       if(!wounded?.alive||!wounded.downed)return false;
       ensureBotState(sim,p);p.input=sanitizeInput({yaw:yawTo(p,wounded)});
@@ -634,7 +637,7 @@ class ColumnDirector{
     if(wounded){
       this.prompt=`E · удерживать: помочь · ${wounded.name}`;
       if(i.use)wounded.reviver=p.id;
-      this.hold(wounded.id,i.use,dt,6,()=>this.revive(wounded));return;
+      this.hold(wounded.id,i.use,dt,reviveDuration(p,6),()=>this.revive(wounded));return;
     }
     if(previousPatient){this.interaction=null;this.progress=0;}
     if(this.stage===4&&!this.flags.breached&&!this.chargesCollected&&distance(p,chargeCache)<2.75){
@@ -786,13 +789,17 @@ class ColumnDirector{
       const available=medics.filter(p=>distance(p,player)<range&&this.time>=(p.medicBlockedUntil??0));
       const score=p=>distance(p,player)+Math.abs(p.y-player.y)*3-(this.medicCanTreat(p,player)?50:0)-(p===previous?7:0);
       lead=available.sort((a,b)=>score(a)-score(b))[0]??null;
+      if(!lead)lead=allies.filter(p=>p!==player&&p.squadMember&&!p.downed&&!p.vehicleId&&
+        distance(p,player)<30&&this.time>=(p.medicBlockedUntil??0)).sort((a,b)=>score(a)-score(b))[0]??null;
     }
     this.playerMedic=lead;
     if(previous&&previous!==lead&&player.reviver===previous.id)player.reviver=null;
     const patients=allies.filter(p=>p!==player&&p.downed&&(!p.rescue||p.downedTimer<=115)&&!(p.reviver===player.id&&this.reviveInProgress(p)));
-    for(const medic of medics){
-      const candidate=medic===lead?player:patients.filter(p=>!assigned.has(p.id)&&distance(p,medic)<(this.order==='revive'?30:13))
-        .sort((a,b)=>distance(a,medic)-distance(b,medic))[0];
+    const responders=allies.filter(p=>p===lead||medics.includes(p)||p.medicTarget);
+    for(const medic of responders){
+      const candidate=medic===lead?player:medic.fieldMedic&&!medic.downed?
+        patients.filter(p=>!assigned.has(p.id)&&distance(p,medic)<(this.order==='revive'?30:13))
+          .sort((a,b)=>distance(a,medic)-distance(b,medic))[0]:null;
       if(candidate?.id!==medic.medicTarget){
         const previous=this.sim.players.get(medic.medicTarget);
         if(previous?.reviver===medic.id)previous.reviver=null;
@@ -811,7 +818,7 @@ class ColumnDirector{
         medic.medicProgress=0;continue;
       }
       candidate.reviver=medic.id;medic.medicProgress=(medic.medicProgress??0)+dt;
-      if(medic.medicProgress+1e-7>=MEDIC_TREATMENT_SECONDS){this.revive(candidate,medic);medic.medicTarget=null;medic.medicProgress=0;}
+      if(medic.medicProgress+1e-7>=reviveDuration(medic,MEDIC_TREATMENT_SECONDS)){this.revive(candidate,medic);medic.medicTarget=null;medic.medicProgress=0;}
     }
   }
   defend(atTarget){
@@ -931,7 +938,8 @@ class ColumnDirector{
       roomStatus[enemy.homeId]=enemy.alive||roomStatus[enemy.homeId]==='hostile'?'hostile':'clear';
     const brigade=[...this.sim.players.values()].filter(a=>a.rescuedBrigade),losses=[...this.sim.players.values()].filter(a=>a.team===0&&!a.alive).length;
     const medic=p.downed?this.playerMedic:null;
-    const medicalResponse=medic?{name:medic.name,distance:Math.round(distance(medic,p)),progress:(medic.medicProgress??0)/MEDIC_TREATMENT_SECONDS}:null;
+    const medicalResponse=medic?{name:medic.name,distance:Math.round(distance(medic,p)),
+      progress:(medic.medicProgress??0)/reviveDuration(medic,MEDIC_TREATMENT_SECONDS)}:null;
     return {missionId:'m03',stage:this.stage,objective,...objectiveState,rideTime:this.rideTime,ride:this.inTransit,cutscene,medicalResponse,
       alert:this.alert(),inside:Boolean(this.inside(p)),time:this.time,checkpoint:this.checkpoint,epoch:this.epoch,
       failed:this.failed,complete:this.complete,flags:{...this.flags},radio:this.radio,radioRemaining:Math.max(0,this.radioEnd-this.time),

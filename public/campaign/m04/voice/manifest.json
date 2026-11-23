@@ -81,10 +81,18 @@
     {
       "id": "gunner.cut",
       "speaker": "gunner",
-      "duration": 2.567583,
+      "duration": 0.8265,
       "voiceId": "N2lVS1w4EtoT3dr4eOWO",
-      "spoken": "[shouts, sudden pain, cuts off] Слева! Я вижу… А-а!",
-      "bytes": 7085
+      "spoken": "А-а!",
+      "bytes": 2326
+    },
+    {
+      "id": "gunner.lastCall",
+      "speaker": "gunner",
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO",
+      "duration": 1.3915,
+      "spoken": "Слева! Я вижу!",
+      "bytes": 4159
     },
     {
       "id": "gunner.ready",
@@ -117,6 +125,14 @@
       "voiceId": "cjVigY5qzO86Huf0OWal",
       "spoken": "[breathing heavily, shaken] Мартен… Всё. Я освобожу место. Иди к минигану, я держу его.",
       "bytes": 20770
+    },
+    {
+      "id": "lasko.medkitDrop",
+      "speaker": "lasko",
+      "duration": 2.907167,
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "spoken": "[raised voice, urgent] Бросил аптечку! Раненые, сюда!",
+      "bytes": 8090
     },
     {
       "id": "lasko.pulse",
@@ -253,6 +269,14 @@
       "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
       "spoken": "[shaken, urgent] Он не дышит. Я уберу его от станка. Мартен, иди сюда!",
       "bytes": 12370
+    },
+    {
+      "id": "medic.medkitDrop",
+      "speaker": "medic",
+      "duration": 3.206542,
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "[urgent, breathless] Аптечка на земле! Подлечитесь, пока есть время!",
+      "bytes": 9399
     },
     {
       "id": "medic.pulse",
@@ -499,8 +523,8 @@
       "speaker": "pilot",
       "duration": 3.3065,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[alarmed, raises voice] На крыше — \"/ˌpɛˈtɛ/\"! Он уже целится!",
-      "bytes": 9253
+      "spoken": "[shouts, alarmed] Ракетница на крыше! Он уже́ целится!",
+      "bytes": 9130
     },
     {
       "id": "pilot.stationRoof",

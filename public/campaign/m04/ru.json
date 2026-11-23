@@ -257,8 +257,8 @@
     },
     "gunner.cut": {
       "speaker": "gunner",
-      "duration": 3.18,
-      "text": "Слева! Я вижу… А-а!",
+      "text": "А-а!",
+      "duration": 1.28,
       "audio": "voice/gunner.cut.ogg"
     },
     "gunner.tracers": {
@@ -437,9 +437,27 @@
     },
     "pilot.roofDangerReady": {
       "speaker": "pilot",
-      "duration": 3.92,
-      "text": "На крыше — ПТ! Он уже целится!",
+      "duration": 3.96,
+      "text": "Ракетница на крыше! Он уже целится!",
       "audio": "voice/pilot.roofDangerReady.ogg"
+    },
+    "lasko.medkitDrop": {
+      "speaker": "lasko",
+      "text": "Бросил аптечку! Раненые, сюда!",
+      "duration": 3.56,
+      "audio": "voice/lasko.medkitDrop.ogg"
+    },
+    "medic.medkitDrop": {
+      "speaker": "medic",
+      "text": "Аптечка на земле! Подлечитесь, пока есть время!",
+      "duration": 3.86,
+      "audio": "voice/medic.medkitDrop.ogg"
+    },
+    "gunner.lastCall": {
+      "speaker": "gunner",
+      "text": "Слева! Я вижу!",
+      "duration": 1.84,
+      "audio": "voice/gunner.lastCall.ogg"
     }
   }
 }

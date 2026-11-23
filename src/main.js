@@ -504,6 +504,8 @@ function receive(next){
       const turn=vehicle.yaw-previousVehicle.yaw;
       yaw+=Math.atan2(Math.sin(turn),Math.cos(turn));
     }
+  }else if(player?.alive&&next.campaign?.missionId==='m04'&&previousVehicle?.type===BLACK_HAWK){
+    yaw=player.yaw;pitch=player.pitch;recoilPitch=0;recoilYaw=0;
   }
   if(player)document.body.classList.toggle('team-1',player.team===1);
   if(!active||!player)return;
@@ -1159,10 +1161,11 @@ document.addEventListener('mousemove',event=>{
   const weaponId=player?.weaponId,opticId=equippedAttachments(weaponId)?.optic;
   const opticZoom=renderer?.binocularAiming?BINOCULAR_ZOOM:player?.heldGadget?1:hasCollimator(weaponId)?COLLIMATOR_ZOOM:
     renderer?.scoped?scopeMagnification(weaponId,weaponScopeZoom(weaponId,opticId),opticId):1;
-  const aimScale = aim ? (opticZoom>1 ? .70/opticZoom : .65) : 1;
+  const minigun=drivingVehicle?.type===BLACK_HAWK&&player.vehicleSeat===BLACK_HAWK_GUN.index;
+  const aimScale = aim ? (minigun?.35:opticZoom>1 ? .70/opticZoom : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
-  if(drivingVehicle?.type===BLACK_HAWK&&player.vehicleSeat===BLACK_HAWK_GUN.index){
+  if(minigun){
     const angles=blackHawkGunPose(drivingVehicle,yaw,pitch);
     yaw=angles.yaw;pitch=angles.pitch;
   }

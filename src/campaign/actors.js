@@ -43,7 +43,7 @@ export class CampaignActors {
   aim(renderer,state,self,paused){
     this.label.hidden=true;
     const mission=state?.campaign;
-    if(!mission||!self?.alive||paused||mission.cutscene||mission.transfer!=null||mission.failed||mission.complete)return;
+    if(!mission||!self?.alive||paused||mission.cutscene||mission.transfer!=null||mission.disembark||mission.failed||mission.complete)return;
     const origin=renderer.camera.position,direction=renderer.camera.getWorldDirection(this.direction);
     let best=mission.missionId==='m04'?360:mission.missionId==='m03'?150:55,head=null,name=null;
     for(const p of state.players){

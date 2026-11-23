@@ -77,326 +77,354 @@
     {
       "id": "orlov.road",
       "speaker": "orlov",
-      "seconds": 5.480416666666667,
-      "bytes": 16735,
-      "performance": "[tense, firm]"
+      "seconds": 5.8065,
+      "bytes": 16446,
+      "performance": "[firm, clear, brisk] Мартен, бригада ждёт в Тель-Мази́не. До деревни меньше двух минут. Держитесь с колонной."
     },
     {
       "id": "vos.meet",
       "speaker": "vos",
-      "seconds": 5.900041666666667,
-      "bytes": 17324,
-      "performance": "[warm, casual]",
+      "seconds": 5.6065,
+      "bytes": 15460,
+      "performance": "[firm, brisk] Ирвин Вос, «Сокол-7». Устраивайтесь. Поручень справа, за ствол не держитесь.",
       "spokenText": "Ирвин Вос, «Сокол семь». Устраивайтесь. Поручень справа, за ствол не держитесь."
     },
     {
       "id": "timo.road",
       "speaker": "timo",
-      "seconds": 5.4,
-      "bytes": 15850,
-      "performance": "[clearly, dry humor]"
+      "seconds": 5.306542,
+      "bytes": 14629,
+      "performance": "[conversational, dry] Тимо за рычагами. Держитесь за поручни, на этой колее нас будет трясти."
     },
     {
       "id": "duran.night",
       "speaker": "duran",
-      "seconds": 5.9,
-      "bytes": 18339,
-      "performance": "[wry, tired]"
+      "seconds": 5.706542,
+      "bytes": 16304,
+      "performance": "[decisive, controlled] Всю ночь сидели у рации. Хорошо, что вы пришли, Вос. Ещё час мы бы там не продержались."
     },
     {
       "id": "marten.night",
       "speaker": "marten",
-      "seconds": 5.219666666666667,
-      "bytes": 16100,
-      "performance": "[shaken, grateful]"
+      "seconds": 5.706542,
+      "bytes": 16072,
+      "performance": "[natural, tired but attentive] Вчера на плацдарме думал, что рассвет уже́ не увижу. Спасибо за танки, Вос."
     },
     {
       "id": "lasko.wound",
       "speaker": "lasko",
-      "seconds": 4.403875,
-      "bytes": 13307,
-      "performance": "[quietly concerned]"
+      "seconds": 4.806542,
+      "bytes": 13077,
+      "performance": "[quiet, sincere] Мартен, как нога? Когда слезем, первым делом загляни ко мне."
     },
     {
       "id": "marten.wound",
       "speaker": "marten",
-      "seconds": 3.7264583333333334,
-      "bytes": 11256,
-      "performance": "[dryly]"
+      "seconds": 4.006542,
+      "bytes": 11099,
+      "performance": "[natural, tired but attentive] На броне ногой работать почти не надо. Дальше посмотрим."
     },
     {
       "id": "rafa.armor",
       "speaker": "rafa",
-      "seconds": 4.836875,
-      "bytes": 14965,
-      "performance": "[teasing]"
+      "seconds": 6.206542,
+      "bytes": 17570,
+      "performance": "[natural, wry] Дюран, теперь понимаешь, зачем на броне поручни? Смотри, дальше совсем разбитая дорога."
     },
     {
       "id": "vos.bale",
       "speaker": "vos",
-      "seconds": 5.44175,
-      "bytes": 16402,
-      "performance": "[quiet grief]"
+      "seconds": 5.2065,
+      "bytes": 14406,
+      "performance": "[firm, brisk] Перед рассветом потеряли Бэйла. Холт велел не сбавлять ход. Так и добрались до вас."
     },
     {
       "id": "timo.grey",
       "speaker": "timo",
-      "seconds": 3.4702083333333333,
-      "bytes": 10807,
-      "performance": "[wryly]"
+      "seconds": 5.306542,
+      "bytes": 14646,
+      "performance": "[conversational, dry] Грей молчит с самого рассвета. После Бэйла никто толком не разговаривал."
     },
     {
       "id": "rafa.grey",
       "speaker": "rafa",
-      "seconds": 3.9303333333333335,
-      "bytes": 12058,
-      "performance": "[chuckles]"
+      "seconds": 5.2065,
+      "bytes": 14276,
+      "performance": "[natural, wry] Мы с Бэйлом собирались после смены выпить кофе. Теперь вот едем дальше."
     },
     {
       "id": "bruno.home",
       "speaker": "bruno",
-      "seconds": 6.2000416666666665,
-      "bytes": 18931,
-      "performance": "[softly, nostalgic]"
+      "seconds": 5.1065,
+      "bytes": 14543,
+      "performance": "[quick, tense] Когда это кончится, вернусь к морю. Сяду на причале и целый день не сдвинусь с места."
     },
     {
       "id": "marten.home",
       "speaker": "marten",
-      "seconds": 5.472541666666666,
-      "bytes": 16827,
-      "performance": "[wry, smiling]"
+      "seconds": 5.706542,
+      "bytes": 16586,
+      "performance": "[natural, tired but attentive] Дома первый день буду спать. Второй проведу на кухне. Дальше ещё не придумал."
     },
     {
       "id": "duran.sand",
       "speaker": "duran",
-      "seconds": 5.102416666666667,
-      "bytes": 15759,
-      "performance": "[tired, wry]"
+      "seconds": 5.4065,
+      "bytes": 15104,
+      "performance": "[decisive, controlled] Песок в затворе, песок в ботинках. Моя доля пустыни уже́ при мне."
     },
     {
       "id": "timo.sand",
       "speaker": "timo",
-      "seconds": 3.477625,
-      "bytes": 10867,
-      "performance": "[deadpan]"
+      "seconds": 3.606542,
+      "bytes": 10186,
+      "performance": "[conversational, dry] У нас тот же песок, только мы его возим тоннами."
     },
     {
       "id": "kane.quiet",
       "speaker": "kane",
-      "seconds": 5.377541666666667,
-      "bytes": 16216,
-      "performance": "[hushed, uneasy]"
+      "seconds": 5.6065,
+      "bytes": 15275,
+      "performance": "[alert, low voice] В оптику вижу крыши. Ни движения. Для своей деревни слишком тихо."
     },
     {
       "id": "vos.quiet",
       "speaker": "vos",
-      "seconds": 4.361416666666667,
-      "bytes": 13185,
-      "performance": "[tense, low voice]"
+      "seconds": 4.906542,
+      "bytes": 13479,
+      "performance": "[firm, brisk] Крайние дома вижу. Ведущий сбавляет ход. Смотрите в окна и на крыши."
     },
     {
       "id": "vos.village",
       "speaker": "vos",
-      "seconds": 4.740708333333333,
-      "bytes": 14423,
-      "performance": "[guarded]"
+      "seconds": 4.5065,
+      "bytes": 12411,
+      "performance": "[firm, brisk] На тракте чисто. Заходим по одному. Тимо, держись за ведущим."
     },
     {
       "id": "duran.joke",
       "speaker": "duran",
-      "seconds": 3.1285416666666666,
-      "bytes": 9738,
-      "performance": "[deadpan]"
+      "seconds": 4.3065,
+      "bytes": 12014,
+      "performance": "[decisive, controlled] У крайних домов ни машин, ни людей. Будьте внимательнее."
     },
     {
       "id": "timo.joke",
       "speaker": "timo",
-      "seconds": 3.854625,
-      "bytes": 12759,
-      "performance": "[amused]"
+      "seconds": 3.7065,
+      "bytes": 10437,
+      "performance": "[conversational, dry] Понял. Вижу ставни справа. Скорость сбрасываю."
     },
     {
       "id": "lasko.choiceFine",
       "speaker": "lasko",
-      "seconds": 2.7550833333333333,
-      "bytes": 8500,
-      "performance": "[reassuring]"
+      "seconds": 3.3065,
+      "bytes": 8886,
+      "performance": "[quiet, sincere] Хорошо. Если заноет, скажи сразу."
     },
     {
       "id": "lasko.choiceHonest",
       "speaker": "lasko",
-      "seconds": 3.388875,
-      "bytes": 10428,
-      "performance": "[gently concerned]"
+      "seconds": 3.4065,
+      "bytes": 9487,
+      "performance": "[quiet, sincere] У чайханы перевяжем. Береги ногу до остановки."
     },
     {
       "id": "marten.choiceFine",
       "speaker": "marten",
-      "seconds": 2.037375,
-      "bytes": 6297,
-      "performance": "[short, determined]"
+      "seconds": 2.254125,
+      "bytes": 6141,
+      "performance": "[quiet, sincere] Нога держит. Дойду."
     },
     {
       "id": "marten.choiceHonest",
       "speaker": "marten",
-      "seconds": 2.222,
-      "bytes": 6782,
-      "performance": "[quietly, strained]"
+      "seconds": 2.410833,
+      "bytes": 6517,
+      "performance": "[quiet, sincere] До сих пор тянет, когда бегу."
     },
     {
       "id": "marten.choiceHome",
       "speaker": "marten",
-      "seconds": 2.3289583333333335,
-      "bytes": 7195,
-      "performance": "[wistful]"
+      "seconds": 2.672083,
+      "bytes": 7350,
+      "performance": "[quiet, sincere] Когда вернёмся домой, выпью чаю."
     },
     {
       "id": "marten.choiceRoad",
       "speaker": "marten",
-      "seconds": 1.9256666666666666,
-      "bytes": 5953,
-      "performance": "[determined]"
+      "seconds": 2.3325,
+      "bytes": 6371,
+      "performance": "[quiet, sincere] Сначала доберёмся до бригады."
     },
     {
       "id": "vos.choiceHome",
       "speaker": "vos",
-      "seconds": 3.1622083333333335,
-      "bytes": 9394,
-      "performance": "[warmly amused]"
+      "seconds": 3.206542,
+      "bytes": 8657,
+      "performance": "[quiet, sincere] У меня обещание такое же. Только кофе."
     },
     {
       "id": "vos.choiceRoad",
       "speaker": "vos",
-      "seconds": 3.014291666666667,
-      "bytes": 9320,
-      "performance": "[quiet reassurance]"
+      "seconds": 3.3065,
+      "bytes": 9357,
+      "performance": "[quiet, sincere] Договорились. А там поговорим как следует."
     },
     {
       "id": "kane.roofs",
       "speaker": "kane",
-      "seconds": 3.6272083333333334,
-      "bytes": 11197,
-      "performance": "[uneasy, hushed]"
+      "seconds": 3.8065,
+      "bytes": 10432,
+      "performance": "[alert, low voice] Крыши пустые. Ставни закрыты по обе стороны."
     },
     {
       "id": "timo.roofs",
       "speaker": "timo",
-      "seconds": 2.326041666666667,
-      "bytes": 7258,
-      "performance": "[alert]"
+      "seconds": 2.750458,
+      "bytes": 7533,
+      "performance": "[conversational, dry] По крышам чисто. Смотрю окна."
     },
     {
       "id": "timo.window",
       "speaker": "timo",
-      "seconds": 2.9145833333333333,
-      "bytes": 9697,
-      "performance": "[alarmed, shouts]"
+      "seconds": 3.706542,
+      "bytes": 10282,
+      "performance": "[shouts, tense, breath catches] Движение в окне справа. Ведущий, стой!"
     },
     {
       "id": "vos.trapped",
       "speaker": "vos",
-      "seconds": 5.58925,
-      "bytes": 17641,
-      "performance": "[breathless, shouting]"
+      "seconds": 6.3065,
+      "bytes": 18067,
+      "performance": "[shouts, tense, breath catches] Мартен, нас зажали с двух сторон, башню не развернуть. Держим тыл, дальше сами."
     },
     {
       "id": "orlov.craft",
       "speaker": "orlov",
-      "seconds": 5.07225,
-      "bytes": 15681,
-      "performance": "[urgent]"
+      "seconds": 5.306542,
+      "bytes": 14895,
+      "performance": "[firm, clear, brisk] Штаб вышел на связь. Идите дворами через мастерские. Там могут быть раненые."
     },
     {
       "id": "orlov.cross",
       "speaker": "orlov",
-      "seconds": 3.9665,
-      "bytes": 12274,
-      "performance": "[brisk warning]"
+      "seconds": 4.2065,
+      "bytes": 11425,
+      "performance": "[firm, clear, brisk] Два пулемёта на верхних этажах. Обойдите перекрёсток дворами."
     },
     {
       "id": "orlov.market",
       "speaker": "orlov",
-      "seconds": 4.677041666666667,
-      "bytes": 14476,
-      "performance": "[urgently]",
+      "seconds": 5.2065,
+      "bytes": 14497,
+      "performance": "[firm, clear, brisk] Снайпер на водонапорной башне. На краю рынка оставили пэ-тэ девяносто.",
       "spokenText": "Снайпер на водонапорной башне. На краю рынка оставили пэ-тэ девяносто."
     },
     {
       "id": "orlov.breach",
       "speaker": "orlov",
-      "seconds": 4.344666666666667,
-      "bytes": 13544,
-      "performance": "[firm, urgent]"
+      "seconds": 4.5065,
+      "bytes": 12773,
+      "performance": "[firm, clear, brisk] У штаба баррикада. Заряды в ящике между мастерскими, ставьте оба."
     },
     {
       "id": "orlov.fuse",
       "speaker": "orlov",
-      "seconds": 3.933625,
-      "bytes": 12116,
-      "performance": "[urgent, clipped]"
+      "seconds": 5.5065,
+      "bytes": 15641,
+      "performance": "[shouts, tense, breath catches] Запал пошёл. Тридцать секунд. Не подпускайте их к стене."
     },
     {
       "id": "harranti.hold",
       "speaker": "harranti",
-      "seconds": 5.274041666666666,
-      "bytes": 16210,
-      "performance": "[rough, determined]"
+      "seconds": 6.0065,
+      "bytes": 17721,
+      "performance": "[weary, forceful] Полковник Харранти. Мартен, держите двор. В бригаде ещё есть кому стрелять."
     },
     {
       "id": "harranti.truck",
       "speaker": "harranti",
-      "seconds": 3.9827083333333335,
-      "bytes": 13643,
-      "performance": "[shouts a warning]"
+      "seconds": 4.2065,
+      "bytes": 12684,
+      "performance": "[weary, forceful] Грузовик с пулемётом! У восточных ворот, подрывники с ним!"
     },
     {
       "id": "harranti.final",
       "speaker": "harranti",
-      "seconds": 5.3925,
-      "bytes": 16638,
-      "performance": "[tired, relieved]"
+      "seconds": 5.6065,
+      "bytes": 15716,
+      "performance": "[quiet relief, still alert] Сержант, вы вовремя. Возьмите карту. Корпус перебрасывает людей к переправе."
     },
     {
       "id": "vos.final",
       "speaker": "vos",
-      "seconds": 4.144875,
-      "bytes": 12553,
-      "performance": "[exhausted, relieved]"
+      "seconds": 4.106542,
+      "bytes": 11263,
+      "performance": "[quiet relief, still alert] У тракта ещё горит. Тимо и Рафа со мной, пришли пешком."
     },
     {
       "id": "dargo.final",
       "speaker": "dargo",
-      "seconds": 2.4557083333333334,
-      "bytes": 7599,
-      "performance": "[quiet menace]"
+      "seconds": 2.3325,
+      "bytes": 6723,
+      "performance": "[quiet relief, still alert] Вы пришли не в ту деревню, сержант."
     },
     {
       "id": "marten.downed",
       "speaker": "marten",
-      "seconds": 2.7904583333333335,
-      "bytes": 8798,
-      "performance": "[cries out in pain]"
+      "seconds": 2.489208,
+      "bytes": 6720,
+      "performance": "[natural, tired but attentive] Я ранен! Нужна помощь."
     },
     {
       "id": "orlov.loss",
       "speaker": "orlov",
-      "seconds": 3.36425,
-      "bytes": 10054,
-      "performance": "[subdued, grim]"
+      "seconds": 4.6065,
+      "bytes": 13097,
+      "performance": "[shouts, tense, breath catches] Потери в группе. Остальным держаться вместе."
     },
     {
       "id": "marten.documents",
       "speaker": "marten",
-      "seconds": 3.8533333333333335,
-      "bytes": 11785,
-      "performance": "[quietly, focused]"
+      "seconds": 4.106542,
+      "bytes": 11760,
+      "performance": "[natural, tired but attentive] Нашёл бумаги корпуса. Забираю, пригодятся на переправе."
     },
     {
       "id": "vos.askHome",
       "speaker": "vos",
-      "seconds": 4.5,
-      "bytes": 12821,
-      "performance": "[warm, curious]"
+      "seconds": 3.9065,
+      "bytes": 10873,
+      "performance": "[firm, brisk] А ты, Мартен? Что первым делом сделаешь, когда вернёшься домой?"
+    },
+    {
+      "id": "marten.choiceNeedAid",
+      "speaker": "marten",
+      "seconds": 4.406542,
+      "bytes": 11858,
+      "performance": "[quiet, frank] Если у тебя есть бинт, дай сейчас. Потом может не быть времени."
+    },
+    {
+      "id": "lasko.choiceNeedAid",
+      "speaker": "lasko",
+      "seconds": 3.706542,
+      "bytes": 10319,
+      "performance": "[calm, focused] Держи. Перетяни выше раны и не спрыгивай первым."
+    },
+    {
+      "id": "marten.choiceFamily",
+      "speaker": "marten",
+      "seconds": 4.006542,
+      "bytes": 11148,
+      "performance": "[thoughtful, soft] Найду тех, кто ещё ждёт меня. Остальное подождёт."
+    },
+    {
+      "id": "vos.choiceFamily",
+      "speaker": "vos",
+      "seconds": 3.8065,
+      "bytes": 10107,
+      "performance": "[warm, resolved] Правильно. Главное сначала довезти всех до деревни."
     }
   ]
 }

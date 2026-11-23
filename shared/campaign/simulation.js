@@ -6,6 +6,7 @@ import {aimCrew, thinkVehicleBot} from '../vehicle-ai.js';
 import {BLACK_HAWK, getVehicleBoardingSeat, vehicleBoardingRange} from '../vehicles.js';
 import {ALHADRA,COURIER_SERVICE_ROAD,ROUTES} from './alhadra.js';
 import {MissionRuntime} from './mission-runtime.js';
+import {dropCampaignMedkit,reviveDuration} from './medical.js';
 import {resolveWeaponModules} from '../weapon-modules.js';
 
 export const CAMPAIGN_SAVE_VERSION=1;
@@ -29,7 +30,7 @@ export const COURIER_ESCAPE_ROUTE=Object.freeze([
   ...COURIER_SERVICE_ROAD.map(([x,z])=>({x,z})),
 ]);
 const persistentPlayerKeys=['id','name','team','classId','weaponId','primaryWeaponId','sidearmId','weaponSlot','stowedAmmo','x','y','z','yaw','pitch','hp','alive','ammo','reserve','grenades','rockets','kills','deaths','assists','score','bot','botSlot','grounded','lastHurt','lastShotAt','shotSeq','reviveSeq','downed','downedAt','downedTimer','reviver','syringes','medkits','medkitCapacity','suppressed','prone','campaignRole','campaignZone','campaignGroup','home','homeYaw','holdAt','guideIndex','sleeping','detection','patrolIndex','withdrawn','scriptedWound','officerCallAt','called','invulnerableUntil','secondaryCooldown','gadgetTime','spawnedAt','vehicleId','vehicleSeat'];
-persistentPlayerKeys.push('vy','parachuteOpen','parachuteHold');
+persistentPlayerKeys.push('vy','parachuteOpen','parachuteHold','nextCampaignAid','lastCampaignAid');
 
 // The ordinary movement, weapons, collision, projectiles and combat AI remain
 // authoritative in Simulation. Only mission rules differ, in this local subclass.
@@ -413,7 +414,7 @@ export class CampaignDirector {
         if(isMedic&&casualty.id==='local'&&casualty.reviver!==p.id)this.say('m01.lasko.reviving',true);
         casualty.reviver=p.id;
         casualty.reviveAt=this.time;
-        casualty.reviveProgress=(casualty.reviveProgress??0)+dt/(isMedic?6:10);
+        casualty.reviveProgress=(casualty.reviveProgress??0)+dt/reviveDuration(p,8);
         if(casualty.reviveProgress>=1)this.revive(casualty);
       }
       return true;
@@ -544,7 +545,7 @@ export class CampaignDirector {
     }
     const wounded=[...this.sim.players.values()].filter(a=>a.alive&&a.team===0&&a.downed&&a!==p&&distance(p,a)<3&&this.sim.lineClear(eye(p),{x:a.x,y:a.y+.35,z:a.z})).sort((a,b)=>distance(p,a)-distance(p,b))[0];
     let target=null,duration=0;
-    if(wounded){target={id:wounded.id,kind:'revive',text:`E · удерживать: помочь ${wounded.name}`};duration=5;}
+    if(wounded){target={id:wounded.id,kind:'revive',text:`E · удерживать: помочь ${wounded.name}`};duration=reviveDuration(p,5);}
     else if(this.stage===3){const site=this.chargeSites.find(s=>!s.planted&&distance(p,s)<4.5);if(site){target={...site,kind:'charge',text:'E · удерживать: заложить заряд'};duration=3;}}
     if(!target&&this.stage>=4&&!this.flags.documents&&distance(p,{x:154,z:109})<2.8){target={id:'documents',kind:'documents',text:'E · забрать документы офицера'};duration=.7;}
     if(!target){
@@ -624,6 +625,7 @@ export class CampaignDirector {
       }else if(this.time-a.lastHurt>5&&a.hp<60)a.hp=Math.min(60,a.hp+4*dt);
       if(a.id!=='local'&&a.id!=='courier'&&!a.downed&&!(a.id==='bruno'&&this.stage>=6))this.recoverAlly(a,dt);
     }
+    dropCampaignMedkit(this.sim,this.sim.players.get('lasko'),()=>this.say('m01.lasko.medkitDrop'));
     this.consumeEvents();this.senses(dt);this.scriptedEvents();this.runtime.tick();
     this.lastInput={...this.rawInput};
     if(this.pendingCheckpoint&&!this.failed){const n=this.pendingCheckpoint;this.pendingCheckpoint=null;this.save(n);}

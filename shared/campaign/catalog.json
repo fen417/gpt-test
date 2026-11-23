@@ -33,6 +33,7 @@
   "missions": [
     {
       "id": "m01",
+      "contentRevision": 39,
       "number": 1,
       "title": "Высадка у вади",
       "previewImage": "previews/m01.webp",
@@ -52,6 +53,7 @@
     },
     {
       "id": "m02",
+      "contentRevision": 39,
       "number": 2,
       "title": "Рассвет над Аль-Хадрой",
       "previewImage": "previews/m02.webp",
@@ -69,6 +71,7 @@
     },
     {
       "id": "m03",
+      "contentRevision": 39,
       "number": 3,
       "title": "Колонна",
       "previewImage": "previews/m03.webp",
@@ -91,7 +94,7 @@
       "duration": "30–38 мин",
       "implemented": true,
       "saveVersion": 2,
-      "contentRevision": 5,
+      "contentRevision": 6,
       "recordKey": "m04-nahar",
       "preview": "После эвакуации из Тель-Мазина Мартен летит в Нахар на борту UH-60. Прикройте посадку у трамвайного депо, найдите диспетчера на вокзале и передайте его схему по частоте «Маяк».",
       "objective": "Прикрыть посадку и передать схему диспетчера",

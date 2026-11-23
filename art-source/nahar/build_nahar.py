@@ -2,7 +2,7 @@
 
 import json
 from collections import defaultdict
-from math import ceil, cos, floor, pi, sin
+from math import ceil, cos, floor, hypot, pi, sin
 from pathlib import Path
 import sys
 
@@ -35,6 +35,17 @@ class Batch:
     def block(self, part, tint):
         x, z, y = (part[k] for k in ('x', 'z', 'baseY'))
         w, d, h = (part[k] for k in ('w', 'd', 'h'))
+        if part.get('shape') == 'rail-strip':
+            (ax, ay, az), (bx, by, bz) = part['ends']
+            length = hypot(bx - ax, bz - az)
+            dx, dz = (az - bz) * d / (2 * length), (bx - ax) * d / (2 * length)
+            corners = [(ax+dx, ay, az+dz), (bx+dx, by, bz+dz), (bx-dx, by, bz-dz), (ax-dx, ay, az-dz)]
+            top = [(px, py+h, pz) for px, py, pz in corners]
+            self.polygon(top, tint, (0, 2))
+            for k in (0, 2):
+                j = (k + 1) % 4
+                self.polygon([corners[k], corners[j], top[j], top[k]], tint, (0, 1))
+            return
         if part.get('shape') == 'palm-crown':
             for leaf in range(10):
                 a = leaf * pi / 5

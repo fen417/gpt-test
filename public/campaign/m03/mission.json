@@ -5,15 +5,14 @@
   "map": "tel-mazin",
   "convoy": {"speed": 6, "firstX": -810, "interval": 15, "villageAt": 100, "ambushAt": 118, "dismountAt": 119, "combatAt": 120},
   "ride": [
-    [0, "orlov.road"], [8, "vos.meet"], [13, "timo.road"],
-    [17, "duran.night", "marten.night"], [26, "lasko.wound", "marten.wound"],
-    [35, "rafa.armor"], [44, "vos.bale"], [55, "timo.grey"], [59, "rafa.grey"],
-    [64, "bruno.home", "marten.home"], [71, "vos.askHome"], [73, "duran.sand", "timo.sand"],
-    [82, "kane.quiet", "vos.quiet"], [90, "vos.village"], [98, "duran.joke", "timo.joke"]
+    [0, "orlov.road"], [7, "vos.meet"], [14, "timo.road"], [20, "duran.night", "marten.night"],
+    [27, "lasko.wound", "marten.wound"], [45, "vos.bale"], [52, "rafa.grey"],
+    [57, "bruno.home", "duran.sand"], [65, "vos.askHome"], [82, "timo.sand"],
+    [91, "kane.quiet", "vos.quiet"], [98, "vos.village"]
   ],
   "dialogueChoices": [
-    {"question":"lasko.wound","answers":["marten.choiceFine","lasko.choiceFine","marten.choiceHonest","lasko.choiceHonest"]},
-    {"question":"vos.askHome","answers":["marten.choiceHome","vos.choiceHome","marten.choiceRoad","vos.choiceRoad"]}
+    {"question":"lasko.wound","answers":["marten.choiceFine","lasko.choiceFine","marten.choiceHonest","lasko.choiceHonest","marten.choiceNeedAid","lasko.choiceNeedAid"]},
+    {"question":"vos.askHome","answers":["marten.choiceHome","vos.choiceHome","marten.choiceRoad","vos.choiceRoad","marten.choiceFamily","vos.choiceFamily"]}
   ],
   "stages": [
     {"id":"ambush", "target":[-159,11], "radius":7, "first":[[-191,-15,"at"],[-115,15,"at"],[-121,24,"rifle"],[-181,-18,"rifle"],[-107,3,"rifle"],[-126,-19,"assault"],[-174,26,"assault"],[-126,31,"rpg"]], "second":[[-103,4,"rifle"],[-108,-5,"rifle"],[-119,9,"rifle"],[-183,12,"rifle"],[-197,-7,"assault"],[-203,5,"rpg"]]},
@@ -30,5 +29,6 @@
     "drums":"music/combat-drums.ogg", "interior":"music/interior.ogg", "finale":"music/finale.ogg",
     "combatLoop":{"loopStart":51.455563,"loopEnd":310.312708},
     "approachAt":80, "approachEnd":100, "ambushSilence":0.4
-  }
+  },
+  "contentRevision": 39
 }

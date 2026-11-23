@@ -64,6 +64,16 @@
       "voice": "Chris - Charming, Down-to-Earth",
       "direction": "Танкист. Открытый в разговоре, в бою подаёт точные команды.",
       "stability": 0.5
+    },
+    "lasko": {
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "voice": "Eric - Smooth, Trustworthy",
+      "stability": 0.5
+    },
+    "reserveMedic": {
+      "voiceId": "SAz9YHcvj6GT2YYXdXww",
+      "voice": "River - Relaxed, Neutral, Informative",
+      "stability": 0.5
     }
   },
   "totalBytes": 267155,
@@ -71,178 +81,269 @@
     {
       "id": "holt.brief01",
       "speaker": "holt",
-      "seconds": 4.542291666666666,
-      "bytes": 14081,
-      "performance": "[firmly]"
+      "seconds": 4.5065,
+      "bytes": 13107,
+      "performance": "[serious, brisk, deliberate] Рота «Сокол», выходим на сигнал «Маяк». Аль-Ха́дра ждёт помощи."
     },
     {
       "id": "holt.brief02",
       "speaker": "holt",
-      "seconds": 4.250291666666667,
-      "bytes": 13214,
-      "performance": "[grave]"
+      "seconds": 4.506542,
+      "bytes": 12719,
+      "performance": "[serious, brisk, deliberate] Восточный корпус идёт к деревне. Мы перехватим колонну на подходе."
     },
     {
       "id": "holt.brief03",
       "speaker": "holt",
-      "seconds": 4.4875,
-      "bytes": 13875,
-      "performance": "[assertive]"
+      "seconds": 4.6065,
+      "bytes": 12733,
+      "performance": "[serious, brisk, deliberate] Вос, держись рядом с ротой. По моей команде — удар с фланга."
     },
     {
       "id": "holt.hold",
       "speaker": "holt",
-      "seconds": 2.2860416666666667,
-      "bytes": 7049,
-      "performance": "[shouts]"
+      "seconds": 2.3325,
+      "bytes": 6437,
+      "performance": "[firm, raised voice] «Сокол», держать строй!"
     },
     {
       "id": "grey.dust",
       "speaker": "grey",
-      "seconds": 1.2872916666666667,
-      "bytes": 4042,
-      "performance": "[startled, shouts]"
+      "seconds": 1.470458,
+      "bytes": 3924,
+      "performance": "[gruff, clipped] Пыль на востоке!"
     },
     {
       "id": "bale.loss",
       "speaker": "holt",
-      "seconds": 3.29475,
-      "bytes": 10228,
-      "performance": "[shaken, firm]",
+      "seconds": 6.9065,
+      "bytes": 20001,
+      "performance": "[shouts, tense, breath catches] Восьмой, отвечай! Чёрт… «Сокол-восемь» потерян! Держим строй!",
       "spokenText": "«Сокол восемь» потерян. Продолжаем атаку."
     },
     {
       "id": "duran.support",
       "speaker": "duran",
-      "seconds": 2.705416666666667,
-      "bytes": 8437,
-      "performance": "[urgent, shouts]"
+      "seconds": 2.985542,
+      "bytes": 8331,
+      "performance": "[decisive, controlled] Нам нужна поддержка бронетехники на площади!"
     },
     {
       "id": "bruno.signal",
       "speaker": "bruno",
-      "seconds": 2.53475,
-      "bytes": 7899,
-      "performance": "[urgently]"
+      "seconds": 2.410833,
+      "bytes": 6946,
+      "performance": "[quick, tense] «Сокол», примите сигнал — выдвигаемся."
     },
     {
       "id": "dargo.final",
       "speaker": "dargo",
-      "seconds": 5.750708333333334,
-      "bytes": 17366,
-      "performance": "[coldly, threatening]"
+      "seconds": 5.9065,
+      "bytes": 16055,
+      "performance": "[quiet relief, still alert] Вы удержали Аль-Ха́дру. Но у карьера вас уже́ ждут. Маяк не останется вашим."
     },
     {
       "id": "crew.loaded",
       "speaker": "kim",
-      "seconds": 1.0670833333333334,
-      "bytes": 3291,
-      "performance": "[calls out]"
+      "seconds": 1.287583,
+      "bytes": 3550,
+      "performance": "[lively, tense] Заряжено!"
     },
     {
       "id": "duran.signal",
       "speaker": "duran",
-      "seconds": 4.784125,
-      "bytes": 14504,
-      "performance": "[worried, hushed]"
+      "seconds": 5.0065,
+      "bytes": 13759,
+      "performance": "[decisive, controlled] «Сокол», Аль-Ха́дра на связи. Ждём вас. Бруно больше не отвечает."
     },
     {
       "id": "kane.support",
       "speaker": "kane",
-      "seconds": 4.1394166666666665,
-      "bytes": 12766,
-      "performance": "[strained, shouts]"
+      "seconds": 3.706542,
+      "bytes": 10221,
+      "performance": "[alert, low voice] Здесь Кейн. Держу площадь. Работайте по броне!"
     },
     {
       "id": "duran.underFire",
       "speaker": "duran",
-      "seconds": 3.975416666666667,
-      "bytes": 12407,
-      "performance": "[panicked, shouts]"
+      "seconds": 4.7065,
+      "bytes": 14726,
+      "performance": "[shouts, tense, breath catches] Танки противника прорываются! Без поддержки нам не удержаться."
     },
     {
       "id": "bale.ready",
       "speaker": "bale",
-      "seconds": 3.2760416666666665,
-      "bytes": 10176,
-      "performance": "[energized]"
+      "seconds": 3.3065,
+      "bytes": 9210,
+      "performance": "[urgent, tense] Седьмой, я справа от тебя. Не отстану!"
     },
     {
       "id": "grey.tactics",
       "speaker": "grey",
-      "seconds": 4.511833333333334,
-      "bytes": 13870,
-      "performance": "[shouts, firm]"
+      "seconds": 4.506542,
+      "bytes": 12491,
+      "performance": "[gruff, clipped] Не стойте бортом! Огонь с остановки, затем меняйте позицию."
     },
     {
       "id": "grey.repair",
       "speaker": "grey",
-      "seconds": 5.407791666666666,
-      "bytes": 16524,
-      "performance": "[gruff, worried]"
+      "seconds": 5.406542,
+      "bytes": 14791,
+      "performance": "[gruff, clipped] Вос, броня ещё держит. Остановись и прикажи экипажу ремонтировать машину."
     },
     {
       "id": "grey.cover",
       "speaker": "grey",
-      "seconds": 3.1429583333333335,
-      "bytes": 9696,
-      "performance": "[urgent, shouts]"
+      "seconds": 3.3065,
+      "bytes": 9077,
+      "performance": "[gruff, clipped] Вторая группа справа от площади! Прикрою вас."
     },
     {
       "id": "crew.repair",
       "speaker": "ray",
-      "seconds": 3.859875,
-      "bytes": 11856,
-      "performance": "[strained, dryly]"
+      "seconds": 3.8065,
+      "bytes": 10519,
+      "performance": "[focused, brisk] Ремонт закончен. Всё, дым ушёл. Можно трогаться!"
     },
     {
       "id": "duran.targets",
       "speaker": "duran",
-      "seconds": 4.939291666666667,
-      "bytes": 15192,
-      "performance": "[shouts a warning]"
+      "seconds": 5.306542,
+      "bytes": 14696,
+      "performance": "[decisive, controlled] Пехота у восточных домов! Два противотанковых орудия у дороги. Уберите их!"
     },
     {
       "id": "holt.lastWave",
       "speaker": "holt",
-      "seconds": 4.061708333333334,
-      "bytes": 12638,
-      "performance": "[shouts, urgent]"
+      "seconds": 5.0065,
+      "bytes": 13879,
+      "performance": "[shouts, tense, breath catches] Последняя группа противника! Не подпускайте их к нашим пехотинцам."
     },
     {
       "id": "duran.saved",
       "speaker": "duran",
-      "seconds": 6.2000416666666665,
-      "bytes": 19052,
-      "performance": "[relieved, then firm]"
+      "seconds": 6.106542,
+      "bytes": 17403,
+      "performance": "[quiet relief, still alert] Площадь наша. Спасибо, Сокол. Осмотрите подбитую штабную машину: там вражеские приказы."
     },
     {
       "id": "vos.forward",
       "speaker": "vos",
-      "seconds": 1.5295,
-      "bytes": 4972,
-      "performance": "[shouts]"
+      "seconds": 1.548792,
+      "bytes": 4145,
+      "performance": "[firm, brisk] Рота, вперёд!"
     },
     {
       "id": "vos.fire",
       "speaker": "vos",
-      "seconds": 1.62925,
-      "bytes": 5099,
-      "performance": "[sharp shout]"
+      "seconds": 3.106542,
+      "bytes": 9231,
+      "performance": "[shouts, tense, breath catches] Огонь по отмеченной цели!"
     },
     {
       "id": "vos.hold",
       "speaker": "vos",
-      "seconds": 1.4489166666666666,
-      "bytes": 4596,
-      "performance": "[firm command]"
+      "seconds": 1.548792,
+      "bytes": 4276,
+      "performance": "[firm, brisk] Держать позицию!"
     },
     {
       "id": "vos.help",
       "speaker": "vos",
-      "seconds": 1.387625,
-      "bytes": 4325,
-      "performance": "[urgent shout]"
+      "seconds": 1.705542,
+      "bytes": 4545,
+      "performance": "[firm, brisk] Прикрыть Сокол семь!"
+    },
+    {
+      "id": "holt.allyHit",
+      "speaker": "holt",
+      "seconds": 3.4065,
+      "bytes": 9958,
+      "performance": "[shouts, alarmed] У нас горит машина! Сокол, прикройте экипаж!"
+    },
+    {
+      "id": "ray.allyLoss",
+      "speaker": "ray",
+      "seconds": 4.006542,
+      "bytes": 10995,
+      "performance": "[shocked, urgent] Чёрт! Наш танк подбит! Отходим за укрытие!"
+    },
+    {
+      "id": "vos.enemyDown",
+      "speaker": "vos",
+      "seconds": 3.206542,
+      "bytes": 9010,
+      "performance": "[excited, catches breath] Попали! Один готов! Переноси огонь!"
+    },
+    {
+      "id": "kim.enemyDown",
+      "speaker": "kim",
+      "seconds": 4.506542,
+      "bytes": 12427,
+      "performance": "[excited shout] Есть! Вражеская машина встала! Вот это удар!"
+    },
+    {
+      "id": "grey.enemyDown",
+      "speaker": "grey",
+      "seconds": 4.3065,
+      "bytes": 11844,
+      "performance": "[shouts with relief] Хорошо приложили! Держим строй, ещё не всё!"
+    },
+    {
+      "id": "holt.retreat",
+      "speaker": "holt",
+      "seconds": 4.006542,
+      "bytes": 11438,
+      "performance": "[sharp, urgent] Три машины разворачиваются! Следите за ними, строй держать!"
+    },
+    {
+      "id": "kim.fire",
+      "speaker": "kim",
+      "seconds": 3.706542,
+      "bytes": 11027,
+      "performance": "[shouts, panicked] Внутри дым! Горим! Стой, надо потушить!"
+    },
+    {
+      "id": "lasko.medkitDrop",
+      "speaker": "lasko",
+      "seconds": 3.506542,
+      "bytes": 9746,
+      "performance": "[short, raised voice] Аптечка у меня! Раненые, подходите по одному!"
+    },
+    {
+      "id": "lasko.revive",
+      "speaker": "lasko",
+      "seconds": 3.706542,
+      "bytes": 10336,
+      "performance": "[strained, urgent] Держись, я подниму тебя. Остальные, прикройте!"
+    },
+    {
+      "id": "reserveMedic.medkitDrop",
+      "speaker": "reserveMedic",
+      "seconds": 3.706542,
+      "bytes": 10119,
+      "performance": "[urgent, clear] Аптечка на земле! Подлечитесь и держитесь вместе!"
+    },
+    {
+      "id": "reserveMedic.revive",
+      "speaker": "reserveMedic",
+      "seconds": 4.2065,
+      "bytes": 11372,
+      "performance": "[strained, reassuring] Не вставай сам. Я тебя подниму. Прикройте нас!"
+    },
+    {
+      "id": "holt.contactReport",
+      "speaker": "holt",
+      "seconds": 3.706542,
+      "bytes": 10673,
+      "performance": "[urgent, sharp] Правый фланг видит броню у гряды! Вос, что у тебя?"
+    },
+    {
+      "id": "vos.contactReply",
+      "speaker": "vos",
+      "seconds": 4.806542,
+      "bytes": 13060,
+      "performance": "[decisive, raises voice] Вижу машины слева от гряды! Седьмой открывает огонь, держите фланг!"
     }
   ]
 }

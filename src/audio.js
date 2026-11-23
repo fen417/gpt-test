@@ -26,8 +26,8 @@ const WEAPONS = {
 };
 const CLASS_SHOTS = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
 const recording=(url,fallback)=>({url,fallback});
-const blackHawkRecording=position=>{
-  const path=`${import.meta.env.BASE_URL}campaign/m04/sfx/black-hawk-${position}`;
+const campaignRecording=(mission,name)=>{
+  const path=`${import.meta.env.BASE_URL}campaign/${mission}/sfx/${name}`;
   return recording(path+'.ogg',path+'.m4a');
 };
 const SHOT_SAMPLES = {
@@ -563,14 +563,8 @@ export class CombatAudio {
     const {distance,pan}=this._position(event,local);
     if(distance>680)return;
     const gain=1/(1+distance*.014),time=this.ctx.currentTime+Math.min(.22,distance/343);
-    const played=this._sample('explosion-heavy',.67*gain,{
-      time,pan,rate:.76,cutoff:Math.max(640,7200/(1+distance*.033)),send:.18,
-    });
-    this._noise(played?.36:.75,(played?.21:.48)*gain,{
-      time,pan,color:'pink',cutoff:distance<45?1700:850,endCutoff:160,attack:.001,decay:.045,decayGain:.28,send:.21,
-    });
-    if(distance<45)this._noise(.095,.27*gain,{
-      time,pan,cutoff:3100,filter:'highpass',attack:.0005,decay:.014,decayGain:.13,
+    this._sample(event.shellType==='he'?'abrams-he':'abrams-ap',1.15*gain,{
+      time,pan,cutoff:Math.max(740,10500/(1+distance*.021)),send:.13,priority:2,
     });
   }
   _queueReload(event,state,profile,duration,kind='handheld'){
@@ -945,14 +939,15 @@ export class CombatAudio {
       channel.gain.gain.cancelScheduledValues(now);channel.gain.gain.setTargetAtTime(0,now,.015);channel.source.stop(now+.08);this._rocketChannels.delete(id);
     }
   }
-  prepareBlackHawk(){
-    if(!this.ctx||this._blackHawkLoad)return;
+  prepareVehicleRecordings(mission,names){
+    this._vehicleRecordingLoads??=new Set();
+    if(!this.ctx||this._vehicleRecordingLoads.has(mission))return;
+    this._vehicleRecordingLoads.add(mission);
     const context=this.ctx;
-    this._blackHawkSounds={};
-    this._blackHawkLoad=Promise.all(['cabin','field'].map(async position=>{
+    void Promise.all(names.map(async name=>{
       try{
-        const sample=await this._loadRecording(blackHawkRecording(position),context);
-        if(!this._disposed)this._blackHawkSounds[position]=sample;
+        const sample=await this._loadRecording(campaignRecording(mission,name),context);
+        if(!this._disposed)this._foley.set(name,sample);
       }catch(error){
         if(!this._disposed)this._foleyLoadFailures++;
       }
@@ -965,10 +960,13 @@ export class CombatAudio {
     const buffer=this._foley.get('engine');
     const listener=engineListener??local;
     const dialogue=state?.campaign?.radioRemaining>0;
-    if(state?.campaign?.missionId==='m04'||state?.vehicles?.some(vehicle=>vehicle.type===BLACK_HAWK))this.prepareBlackHawk();
+    const armoredMission=state?.campaign?.missionId==='m02';
+    if(armoredMission)this.prepareVehicleRecordings('m02',['abrams-engine','abrams-ap','abrams-he']);
+    if(state?.campaign?.missionId==='m04'||state?.vehicles?.some(vehicle=>vehicle.type===BLACK_HAWK))
+      this.prepareVehicleRecordings('m04',['black-hawk-cabin','black-hawk-field','black-hawk-spool']);
     const mix=engineListener?(dialogue?.4:.65):1;
     const candidates=local?.alive&&!silent?(state?.vehicles??[])
-      .filter(vehicle=>vehicle.hp>0&&vehicle.seats[0]&&(vehicle.type===BLACK_HAWK||buffer))
+      .filter(vehicle=>vehicle.hp>0&&vehicle.seats[0]&&(vehicle.type===BLACK_HAWK||armoredMission&&vehicle.type==='tank'||buffer))
       .map(vehicle=>({
         vehicle,
         own:vehicle.id===listener.vehicleId,
@@ -980,7 +978,9 @@ export class CombatAudio {
     for(const {vehicle,own,distance} of candidates){
       const aircraft=vehicle.type===BLACK_HAWK;
       const inCabin=aircraft&&own;
-      const sample=aircraft?this._blackHawkSounds?.[inCabin?'cabin':'field']:buffer;
+      const recordedTank=armoredMission&&vehicle.type==='tank';
+      const sample=aircraft?this._foley.get(inCabin?'black-hawk-cabin':'black-hawk-field'):
+        recordedTank?this._foley.get('abrams-engine'):buffer;
       if(!sample)continue;
       const channelId=inCabin?`${vehicle.id}:cabin`:vehicle.id;
       active.add(channelId);let channel=this._engineChannels.get(channelId);
@@ -991,7 +991,7 @@ export class CombatAudio {
         source.connect(filter).connect(gain);if(pan)gain.connect(pan).connect(this._effects);else gain.connect(this._effects);
         source.start(0,(now*.83)%source.buffer.duration);
         channel={source,filter,gain,pan,speed:0,gear:1};this._engineChannels.set(channelId,channel);
-        if(vehicle.type==='tank'){
+        if(vehicle.type==='tank'&&!recordedTank){
           const trackSource=c.createBufferSource(),trackFilter=c.createBiquadFilter(),trackGain=c.createGain();trackSource.buffer=this._noiseBuffer('pink');trackSource.loop=true;trackFilter.type='bandpass';trackFilter.frequency.value=1350;trackFilter.Q.value=.65;trackGain.gain.value=0;
           trackSource.connect(trackFilter).connect(trackGain);if(pan)trackGain.connect(pan);else trackGain.connect(this._effects);trackSource.start();Object.assign(channel,{trackSource,trackFilter,trackGain});
         }
@@ -1001,6 +1001,11 @@ export class CombatAudio {
       if(aircraft){
         const loudness=inCabin?1.2:.85/(1+distance*.023);
         const radioDuck=dialogue?.62:1;
+        const spinning=(vehicle.gunSpin??0)>.04;
+        if(spinning&&!channel.spinning)this._sample('black-hawk-spool',(own?.88:.62)*loudness,{
+          pan:own?0:this._position(vehicle,listener).pan,cutoff:own?9000:6000,priority:1,
+        });
+        channel.spinning=spinning;
         this._target(channel.source.playbackRate,.98+Math.min(.06,speed*.0025),.15);
         this._target(channel.filter.frequency,inCabin?11000:9000/(1+distance*.015),.1);
         this._target(channel.gain.gain,loudness*radioDuck*(engineListener?.65:1),.15);
@@ -1009,13 +1014,15 @@ export class CombatAudio {
       }
       const gear=Math.min(4,1+Math.floor(speed/4.5)),load=(speed-(gear-1)*4.5)/4.5;
       const acceleration=Math.max(0,speed-channel.speed);
-      const rate=(vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);
+      const rate=recordedTank?.73+Math.min(.42,speed*.038):
+        (vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);
       this._target(channel.source.playbackRate,rate,.12);
       this._target(channel.filter.frequency,(own?9500:6500)/(1+distance*.022),.1);
-      this._target(channel.gain.gain,(own?.30:.18)*mix/(1+distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
+      const engineGain=recordedTank?(own?.8:.46)*(dialogue?.7:1):own?.30:.18;
+      this._target(channel.gain.gain,engineGain*mix/(1+distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
       if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
       if(channel.trackGain){this._target(channel.trackGain.gain,Math.min(1,(speed+Math.abs(vehicle.steer??0)*2)/8)*(own?.045:.025)*mix/(1+distance*.042),.08);this._target(channel.trackSource.playbackRate,.7+Math.min(1.5,speed/9),.1);}
-      if(own&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
+      if(own&&!recordedTank&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
       channel.speed=speed;channel.gear=gear;
     }
     for(const [id,channel] of this._engineChannels)if(!active.has(id)){
@@ -1045,7 +1052,6 @@ export class CombatAudio {
     this._stopRocketAudio();
     this._shotBuffers.clear();this._foley.clear();this._reloads.clear();
     for(const channel of this._engineChannels.values()){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();channel.trackSource?.stop();channel.trackSource?.disconnect();channel.trackFilter?.disconnect();channel.trackGain?.disconnect();}
-    this._blackHawkSounds=null;
     this._engineChannels.clear();this._remoteSteps.clear();this._stepCounts.clear();
     for(const {source,nodes}of this._ambientSources){try{source.stop();source.disconnect();}catch{}for(const node of nodes){try{node.disconnect();}catch{}}}
     this._ambientSources=[];for(const node of this._nodes){try{node.disconnect();}catch{}}this._nodes=[];this._buffers.clear();

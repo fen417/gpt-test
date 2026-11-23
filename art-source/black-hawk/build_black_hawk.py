@@ -425,6 +425,7 @@ class Aircraft:
             if self.level < 2:
                 self.rod("Receiver fastener",STEEL,(side*.063,.024,.223),(side*.063,.024,.233),.011,sides=6)
         self.rod("Barrel hub",METAL,(0,0,-.25),(0,0,-.36),.104)
+        self.group = "MinigunBarrels"
         self.rod("Barrel brace",STEEL,(0,0,-.68),(0,0,-.70),.088)
         self.rod("Muzzle clamp",METAL,(0,0,-1.064),(0,0,-1.094),.093)
         for i in range(6):
@@ -442,8 +443,11 @@ class Aircraft:
         pivots = {"MainRotor":(0,4.26,.08),"TailRotor":(-.61,4.01,7.17),
                   "Minigun":(-1.19,2.09,-.65)}
         copies = []
+        groups = {}
         for part, objects in self.parts.items():
-            group = empty(root.name+"_"+part, self.collection, root, pivots.get(part,(0,0,0)))
+            parent = groups["Minigun"] if part == "MinigunBarrels" else root
+            group = empty(root.name+"_"+part, self.collection, parent, pivots.get(part,(0,0,0)))
+            groups[part] = group
             if part == "Minigun":
                 group.rotation_euler.z = math.pi/2
             # Join detail by material, retaining named editable source meshes
@@ -504,10 +508,13 @@ def build(texture_directory):
         model.cabin()
         model.systems()
         aircraft.append(model)
+        anchors = {}
         for part, objects in model.parts.items():
-            anchor = empty(part+" source",collection,None,{
+            parent = anchors["Minigun"] if part == "MinigunBarrels" else None
+            anchor = empty(part+" source",collection,parent,{
                 "MainRotor":(0,4.26,.08),"TailRotor":(-.61,4.01,7.17),
                 "Minigun":(-1.19,2.09,-.65)}.get(part,(0,0,0)))
+            anchors[part] = anchor
             if part == "Minigun":
                 anchor.rotation_euler.z = math.pi/2
             for obj in objects:

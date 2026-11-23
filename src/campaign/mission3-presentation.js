@@ -4,6 +4,7 @@ import {ColumnMusic} from './column-music.js';
 import {CampaignFire} from './fire.js';
 import {convoyTrackDust,emitTrackDust} from './track-dust.js';
 import {placeCampaignMarker} from './markers.js';
+import {InfantryMinimap} from './minimap.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {BLACK_HAWK} from '../../shared/vehicles.js';
 import {M03_EXTRACTION} from '../../shared/campaign/mission3-extraction.js';
@@ -26,11 +27,10 @@ export class Mission3Presentation{
     this.root.innerHTML=`<header class="campaign-objective m03-objective"><small>ТЕЛЬ-МАЗИН · КОЛОННА</small><strong></strong><span></span><p class="m03-status"></p></header>
       <div class="campaign-subtitle hidden" role="status" aria-live="polite"><b></b><span></span></div>
       <div class="m03-interaction"><span></span><progress max="1" value="0" hidden></progress></div>
-      <div class="m03-choices" hidden><button type="button"></button><button type="button"></button></div>
+      <div class="m03-choices" hidden><button type="button"></button><button type="button"></button><button type="button"></button></div>
       <div class="campaign-injury hidden"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span><progress max="1" hidden></progress></div>
       <div class="m03-bindings"></div><span class="m03-marker" hidden></span>
       <aside class="m03-squad" hidden><div class="m03-temporary"></div><div class="m03-notices" role="status"></div></aside>
-      <canvas class="m03-map" width="168" height="168" aria-label="Карта Тель-Мазина" hidden></canvas>
       <div class="m03-cinematic" hidden></div>
       <div class="m03-fade" aria-hidden="true" hidden></div>
       <section class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div>
@@ -38,9 +38,8 @@ export class Mission3Presentation{
     document.body.append(this.root);this.$=query=>this.root.querySelector(query);
     this.$('.campaign-retry').onclick=()=>this.retry();this.$('.campaign-exit').onclick=()=>leave();
     [...this.$('.m03-choices').children].forEach((button,index)=>button.onclick=()=>this.answer(index));
-    this.marker=this.$('.m03-marker');this.mapCanvas=this.$('.m03-map');
+    this.marker=this.$('.m03-marker');this.minimap=new InfantryMinimap(renderer);
     this.fade=this.$('.m03-fade');this.extractionListener={x:0,y:0,z:0,yaw:0};
-    document.querySelector('#hud .bottom-right')?.append(this.mapCanvas);
     this.original={sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,
       sunOffset:renderer.sunOffset.clone()};
     this.props=new THREE.Group();this.props.name='tel-mazin-dynamic';renderer.worldRoot.add(this.props);
@@ -64,7 +63,7 @@ export class Mission3Presentation{
     if(m.failed&&event.code==='Enter'){this.retry();return true;}
     if(m.failed||m.complete||m.cutscene)return false;
     if(m.ride){
-      if(m.choices&&/^(Digit|Numpad)[12]$/.test(event.code)){this.answer(Number(event.code.at(-1))-1);return true;}
+      if(m.choices&&/^(Digit|Numpad)[123]$/.test(event.code)){this.answer(Number(event.code.at(-1))-1);return true;}
       return false;
     }
     const order=orders[event.code];
@@ -126,8 +125,7 @@ export class Mission3Presentation{
     this.$('.m03-temporary').textContent=members.length?`Временный отряд · ${members.length}\n${names}${contribution?'\n'+contribution:''}`:'';
     const notices=this.$('.m03-notices'),notice=(m.notices??[]).join('\n');
     if(notices.textContent!==notice)notices.textContent=notice;
-    this.mapCanvas.hidden=blocked||m.ride||paused;
-    if(!this.mapCanvas.hidden&&performance.now()>=(this.nextMap??0)){this.nextMap=performance.now()+150;this.drawMap(state,p);}
+    this.minimap.update(state,p,{hidden:blocked||m.ride||paused});
     this.$('.m03-cinematic').hidden=!cutscene||end;
     const extraction=m.cutscene?.extractionElapsed;
     this.fade.hidden=extraction==null;
@@ -143,38 +141,6 @@ export class Mission3Presentation{
     }
     if(end&&!this.ended){this.clearControls();document.exitPointerLock?.();}this.ended=end;
     this.voice.update(state,this.locale,paused||end,this.renderer);this.score.update(state,paused);
-  }
-  drawMap(state,p){
-    const ctx=this.mapCanvas.getContext('2d'),size=168,scale=1.55,half=size/2;
-    const x=value=>half+(value-p.x)*scale,z=value=>half+(value-p.z)*scale;
-    ctx.fillStyle='#141b1be8';ctx.fillRect(0,0,size,size);
-    for(const h of this.renderer.map.structures){
-      ctx.fillStyle=h.enterable?'#6e6351':'#373c38';
-      ctx.fillRect(x(h.x-h.w/2),z(h.z-h.d/2),h.w*scale,h.d*scale);
-    }
-    for(const panel of this.renderer.map.interactives)if(panel.type==='door'){
-      const id=panel.id.split('-door-')[0],status=state.campaign.roomStatus[id];
-      ctx.fillStyle=status==='clear'?'#acd798':'#d8a263';
-      ctx.fillRect(x(panel.part.x)-1.5,z(panel.part.z)-1,3,2);
-    }
-    const target=state.campaign.target;
-    if(target){ctx.fillStyle='#f2cc82';ctx.beginPath();ctx.arc(x(target.x),z(target.z),4,0,Math.PI*2);ctx.fill();}
-    for(const actor of state.players){
-      if(!actor.alive||actor.team===p.team&&!actor.rescue)continue;
-      const dx=x(actor.x)-half,dz=z(actor.z)-half;
-      const distance=Math.max(Math.abs(dx),Math.abs(dz));
-      const ratio=Math.min(1,(half-5)/Math.max(1,distance));
-      const px=half+dx*ratio,pz=half+dz*ratio;
-      ctx.fillStyle=actor.rescue?actor.downedTimer<=25?'#ffc295':'#9be9ca':'#eb835c';
-      if(actor.rescue){
-        ctx.fillRect(px-1,pz-4,2,8);ctx.fillRect(px-4,pz-1,8,2);
-        if(actor.fieldMedic){ctx.strokeStyle='#9be9ca';ctx.strokeRect(px-5,pz-5,10,10);}
-      }else if(actor.y-p.y>2.3){
-        ctx.beginPath();ctx.moveTo(px,pz-4);ctx.lineTo(px-3.5,pz+3);ctx.lineTo(px+3.5,pz+3);ctx.fill();
-      }else{ctx.beginPath();ctx.arc(px,pz,3,0,Math.PI*2);ctx.fill();}
-    }
-    ctx.fillStyle='#c3ecdf';ctx.beginPath();ctx.arc(half,half,3.5,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#c3ecdf';ctx.beginPath();ctx.moveTo(half,half);ctx.lineTo(half-Math.sin(p.yaw)*12,half-Math.cos(p.yaw)*12);ctx.stroke();
   }
   syncPanels(m){
     if(m.doorRevision===this.doorRevision)return;
@@ -294,6 +260,6 @@ export class Mission3Presentation{
     const r=this.renderer,o=this.original;r.sun.intensity=o.sun;r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.sunOffset.copy(o.sunOffset);
     r.campaignCoverColliders=null;r.interiorVisibility.disabled=null;
     this.props.removeFromParent();for(const obj of [this.panels,this.glint]){obj.geometry.dispose();obj.material.dispose();obj.dispose?.();}
-    this.mapCanvas.remove();this.root.remove();document.body.classList.remove('campaign-active','campaign-m03-active','campaign-m03-ride','campaign-cinematic','campaign-downed');
+    this.minimap.dispose();this.root.remove();document.body.classList.remove('campaign-active','campaign-m03-active','campaign-m03-ride','campaign-cinematic','campaign-downed');
   }
 }

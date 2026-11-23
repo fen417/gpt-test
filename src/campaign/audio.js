@@ -112,15 +112,17 @@ export class CampaignAudio {
     source.connect(output);channel.sources.push(source);source.start(at,offset);
     source.onended=()=>{source.disconnect();channel.sources=channel.sources.filter(s=>s!==source);};
   }
-  async voice(channel,line,remaining,{radio,spatial,transmit}){
-    this.finishVoice(channel);const generation=channel.generation;
+  async voice(channel,line,remaining,{radio,spatial,transmit,continuation}){
+    if(continuation)this.stopVoice(channel);else this.finishVoice(channel);
+    const generation=channel.generation;
     const [buffer,[opening,closing]]=await Promise.all([this.buffer(line.audio),radio||transmit?this.radioSwitches:[]]);
     if(!buffer||generation!==channel.generation||this.closed||this.paused)return;
     const late=(line.duration??4)-remaining;
     const offset=late>.22?late:0;
     if(offset>=buffer.duration)return;
-    const now=Math.max(this.combat.ctx.currentTime,channel.radioEnd??0),start=now+(opening&&offset===0?opening.duration:0);
-    if(opening&&offset===0)this.playVoiceBuffer(channel,opening,this.voiceBus,now);
+    const open=opening&&offset===0&&!continuation;
+    const now=Math.max(this.combat.ctx.currentTime,channel.radioEnd??0),start=now+(open?opening.duration:0);
+    if(open)this.playVoiceBuffer(channel,opening,this.voiceBus,now);
     this.playVoiceBuffer(channel,buffer,radio?this.radioInput:spatial?channel.worldVoice:this.voiceBus,start,offset);
     if(radio&&closing){
       const close=start+buffer.duration-offset;
@@ -171,10 +173,11 @@ export class CampaignAudio {
     }
     const radio=channel.dialogueRadio;
     const transmit=missionId==='m04'&&line?.speaker==='marten';
+    const continuation=missionId==='m04'&&cue?.key==='gunner.cut';
     const spatial=line&&!radio&&!transmit&&this.positionVoice(channel,state,renderer,line.speaker,briefingPosition);
     if(changed){
       channel.key=key;
-      if(line?.audio)this.voice(channel,line,remaining??line.duration,{radio,spatial,transmit});
+      if(line?.audio)this.voice(channel,line,remaining??line.duration,{radio,spatial,transmit,continuation});
       else this.finishVoice(channel);
     }
   }

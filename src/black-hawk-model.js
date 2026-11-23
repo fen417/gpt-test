@@ -31,7 +31,7 @@ export function createBlackHawkRig() {
   const lods = [0,1,2].map(i=>{
     const prefix=`LOD${i}`;
     const root=model.getObjectByName(prefix);
-    const parts=Object.fromEntries(['Cabin','MainRotor','TailRotor','Minigun'].map(part=>[
+    const parts=Object.fromEntries(['Cabin','MainRotor','TailRotor','Minigun','MinigunBarrels'].map(part=>[
       part,model.getObjectByName(prefix+'_'+part),
     ]));
     const meshes=[];
@@ -57,7 +57,7 @@ export function createBlackHawkRig() {
   body.add(rotorDisk);
   return {
     blackHawk:true,assetReady:true,group,body,controls,lods,rotorDisk,wheels:[],riders:[],
-    turret:{gun,grips},mount,flash,rotorSpeed:0,rotorAngle:0,tailAngle:0,
+    turret:{gun,grips},mount,flash,rotorSpeed:0,rotorAngle:0,tailAngle:0,barrelAngle:0,barrelSpeed:0,
     materialsToDispose:new Set([flash.material,rotorDisk.material]),
   };
 }
@@ -96,6 +96,8 @@ export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
   if(rig.gunSeq!==undefined&&rig.gunSeq!==vehicle.gunSeq&&!wrecked)rig.flashTime=.046;
   rig.gunSeq=vehicle.gunSeq;
   rig.flashTime=Math.max(0,(rig.flashTime??0)-dt);
+  rig.barrelSpeed=mix(rig.barrelSpeed,(vehicle.gunSpin??Number(rig.flashTime>0))*95,1-Math.exp(-dt*22));
+  rig.barrelAngle=(rig.barrelAngle-dt*rig.barrelSpeed)%(Math.PI*2);
   flash.visible=!wrecked&&rig.flashTime>0;
   flash.material.opacity=rig.flashTime/.046;
   const low=quality!=='high';
@@ -106,6 +108,7 @@ export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
     level.MainRotor.rotation.y=rig.rotorAngle;
     level.TailRotor.rotation.x=rig.tailAngle;
     level.Minigun.rotation.set(aim.pitch,aim.yaw,0,'YXZ');
+    if(level.MinigunBarrels)level.MinigunBarrels.rotation.z=rig.barrelAngle;
     const fast=rig.rotorSpeed>19;
     if(rig.fastRotor!==fast)for (const rotor of [level.MainRotor,level.TailRotor]){
       rotor.traverse(mesh=>{if(mesh.isMesh)mesh.castShadow=!fast;});

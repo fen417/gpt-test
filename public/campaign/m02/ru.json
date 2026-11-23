@@ -10,7 +10,9 @@
     "kane": "Рядовой Кейн",
     "ray": "Тимо Рэй · механик-водитель",
     "kim": "Рафа Ким · заряжающий",
-    "vos": "Ирвин Вос · Сокол-7"
+    "vos": "Ирвин Вос · Сокол-7",
+    "lasko": "Тео Ласко",
+    "reserveMedic": "Санитар взвода"
   },
   "objectives": {
     "march": "Держать строй",
@@ -24,8 +26,7 @@
     "holt.brief01": {
       "speaker": "holt",
       "text": "Рота «Сокол», выходим на сигнал «Маяк». Аль-Хадра ждёт помощи.",
-      "duration": 4.85,
-      "provisional": true,
+      "duration": 5.16,
       "audio": "voice/holt.brief01.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -36,8 +37,7 @@
     "holt.brief02": {
       "speaker": "holt",
       "text": "Восточный корпус идёт к деревне. Мы перехватим колонну на подходе.",
-      "duration": 4.56,
-      "provisional": true,
+      "duration": 5.16,
       "audio": "voice/holt.brief02.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -48,8 +48,7 @@
     "holt.brief03": {
       "speaker": "holt",
       "text": "Вос, держись рядом с ротой. По моей команде — удар с фланга.",
-      "duration": 4.79,
-      "provisional": true,
+      "duration": 5.26,
       "audio": "voice/holt.brief03.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -60,7 +59,7 @@
     "holt.hold": {
       "speaker": "holt",
       "text": "«Сокол», держать строй!",
-      "duration": 2.59,
+      "duration": 2.96,
       "audio": "voice/holt.hold.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -71,7 +70,7 @@
     "grey.dust": {
       "speaker": "grey",
       "text": "Пыль на востоке!",
-      "duration": 2,
+      "duration": 2.06,
       "audio": "voice/grey.dust.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -81,9 +80,8 @@
     },
     "bale.loss": {
       "speaker": "holt",
-      "text": "«Сокол-8» потерян. Продолжаем атаку.",
-      "duration": 3.6,
-      "provisional": true,
+      "text": "Восьмой, отвечай! Чёрт… «Сокол-восемь» потерян! Держим строй!",
+      "duration": 7.56,
       "audio": "voice/bale.loss.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -94,8 +92,7 @@
     "duran.support": {
       "speaker": "duran",
       "text": "Нам нужна поддержка бронетехники на площади!",
-      "duration": 3.01,
-      "provisional": true,
+      "duration": 3.56,
       "audio": "voice/duran.support.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -106,7 +103,7 @@
     "bruno.signal": {
       "speaker": "bruno",
       "text": "«Сокол», примите сигнал — выдвигаемся.",
-      "duration": 2.84,
+      "duration": 3.06,
       "audio": "voice/bruno.signal.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -117,8 +114,7 @@
     "dargo.final": {
       "speaker": "dargo",
       "text": "Вы удержали Аль-Хадру. Но у карьера вас уже ждут. Маяк не останется вашим.",
-      "duration": 6.06,
-      "provisional": true,
+      "duration": 6.56,
       "audio": "voice/dargo.final.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -129,7 +125,7 @@
     "crew.loaded": {
       "speaker": "kim",
       "text": "Заряжено!",
-      "duration": 2,
+      "duration": 1.86,
       "audio": "voice/crew.loaded.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -140,8 +136,7 @@
     "duran.signal": {
       "speaker": "duran",
       "text": "«Сокол», Аль-Хадра на связи. Ждём вас. Бруно больше не отвечает.",
-      "duration": 5.09,
-      "provisional": true,
+      "duration": 5.66,
       "audio": "voice/duran.signal.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -152,8 +147,7 @@
     "kane.support": {
       "speaker": "kane",
       "text": "Здесь Кейн. Держу площадь. Работайте по броне!",
-      "duration": 4.44,
-      "provisional": true,
+      "duration": 4.36,
       "audio": "voice/kane.support.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -164,8 +158,7 @@
     "duran.underFire": {
       "speaker": "duran",
       "text": "Танки противника прорываются! Без поддержки нам не удержаться.",
-      "duration": 4.28,
-      "provisional": true,
+      "duration": 5.36,
       "audio": "voice/duran.underFire.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -176,7 +169,7 @@
     "bale.ready": {
       "speaker": "bale",
       "text": "Седьмой, я справа от тебя. Не отстану!",
-      "duration": 3.58,
+      "duration": 3.96,
       "audio": "voice/bale.ready.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -187,7 +180,7 @@
     "grey.tactics": {
       "speaker": "grey",
       "text": "Не стойте бортом! Огонь с остановки, затем меняйте позицию.",
-      "duration": 4.82,
+      "duration": 5.16,
       "audio": "voice/grey.tactics.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -198,7 +191,7 @@
     "grey.repair": {
       "speaker": "grey",
       "text": "Вос, броня ещё держит. Остановись и прикажи экипажу ремонтировать машину.",
-      "duration": 5.71,
+      "duration": 6.06,
       "audio": "voice/grey.repair.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -209,7 +202,7 @@
     "grey.cover": {
       "speaker": "grey",
       "text": "Вторая группа справа от площади! Прикрою вас.",
-      "duration": 3.45,
+      "duration": 3.96,
       "audio": "voice/grey.cover.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -219,8 +212,8 @@
     },
     "crew.repair": {
       "speaker": "ray",
-      "text": "Заделываем повреждения. Машина ещё повоюет.",
-      "duration": 4.16,
+      "text": "Ремонт закончен. Всё, дым ушёл. Можно трогаться!",
+      "duration": 4.46,
       "audio": "voice/crew.repair.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -231,7 +224,7 @@
     "duran.targets": {
       "speaker": "duran",
       "text": "Пехота у восточных домов! Два противотанковых орудия у дороги. Уберите их!",
-      "duration": 5.24,
+      "duration": 5.96,
       "audio": "voice/duran.targets.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -242,7 +235,7 @@
     "holt.lastWave": {
       "speaker": "holt",
       "text": "Последняя группа противника! Не подпускайте их к нашим пехотинцам.",
-      "duration": 4.37,
+      "duration": 5.66,
       "audio": "voice/holt.lastWave.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -253,7 +246,7 @@
     "duran.saved": {
       "speaker": "duran",
       "text": "Площадь наша. Спасибо, Сокол. Осмотрите подбитую штабную машину: там вражеские приказы.",
-      "duration": 6.51,
+      "duration": 6.76,
       "audio": "voice/duran.saved.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -264,7 +257,7 @@
     "vos.forward": {
       "speaker": "vos",
       "text": "Рота, вперёд!",
-      "duration": 2,
+      "duration": 2.16,
       "audio": "voice/vos.forward.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -275,7 +268,7 @@
     "vos.fire": {
       "speaker": "vos",
       "text": "Огонь по отмеченной цели!",
-      "duration": 2,
+      "duration": 3.76,
       "audio": "voice/vos.fire.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -286,7 +279,7 @@
     "vos.hold": {
       "speaker": "vos",
       "text": "Держать позицию!",
-      "duration": 2,
+      "duration": 2.16,
       "audio": "voice/vos.hold.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
@@ -297,13 +290,91 @@
     "vos.help": {
       "speaker": "vos",
       "text": "Прикрыть Сокол семь!",
-      "duration": 2,
+      "duration": 2.36,
       "audio": "voice/vos.help.ogg",
       "synthesis": {
         "engine": "ElevenLabs",
         "model": "eleven_v4",
         "profile": "vos"
       }
+    },
+    "holt.allyHit": {
+      "speaker": "holt",
+      "text": "У нас горит машина! Сокол, прикройте экипаж!",
+      "duration": 4.06,
+      "audio": "voice/holt.allyHit.ogg"
+    },
+    "ray.allyLoss": {
+      "speaker": "ray",
+      "text": "Чёрт! Наш танк подбит! Отходим за укрытие!",
+      "duration": 4.66,
+      "audio": "voice/ray.allyLoss.ogg"
+    },
+    "vos.enemyDown": {
+      "speaker": "vos",
+      "text": "Попали! Один готов! Переноси огонь!",
+      "duration": 3.86,
+      "audio": "voice/vos.enemyDown.ogg"
+    },
+    "kim.enemyDown": {
+      "speaker": "kim",
+      "text": "Есть! Вражеская машина встала! Вот это удар!",
+      "duration": 5.16,
+      "audio": "voice/kim.enemyDown.ogg"
+    },
+    "grey.enemyDown": {
+      "speaker": "grey",
+      "text": "Хорошо приложили! Держим строй, ещё не всё!",
+      "duration": 4.96,
+      "audio": "voice/grey.enemyDown.ogg"
+    },
+    "holt.retreat": {
+      "speaker": "holt",
+      "text": "Три машины разворачиваются! Следите за ними, строй держать!",
+      "duration": 4.66,
+      "audio": "voice/holt.retreat.ogg"
+    },
+    "kim.fire": {
+      "speaker": "kim",
+      "text": "Внутри дым! Горим! Стой, надо потушить!",
+      "duration": 4.36,
+      "audio": "voice/kim.fire.ogg"
+    },
+    "lasko.medkitDrop": {
+      "speaker": "lasko",
+      "text": "Аптечка у меня! Раненые, подходите по одному!",
+      "duration": 4.16,
+      "audio": "voice/lasko.medkitDrop.ogg"
+    },
+    "lasko.revive": {
+      "speaker": "lasko",
+      "text": "Держись, я подниму тебя. Остальные, прикройте!",
+      "duration": 4.36,
+      "audio": "voice/lasko.revive.ogg"
+    },
+    "reserveMedic.medkitDrop": {
+      "speaker": "reserveMedic",
+      "text": "Аптечка на земле! Подлечитесь и держитесь вместе!",
+      "duration": 4.36,
+      "audio": "voice/reserveMedic.medkitDrop.ogg"
+    },
+    "reserveMedic.revive": {
+      "speaker": "reserveMedic",
+      "text": "Не вставай сам. Я тебя подниму. Прикройте нас!",
+      "duration": 4.86,
+      "audio": "voice/reserveMedic.revive.ogg"
+    },
+    "holt.contactReport": {
+      "speaker": "holt",
+      "text": "Правый фланг видит броню у гряды! Вос, что у тебя?",
+      "duration": 4.36,
+      "audio": "voice/holt.contactReport.ogg"
+    },
+    "vos.contactReply": {
+      "speaker": "vos",
+      "text": "Вижу машины слева от гряды! Седьмой открывает огонь, держите фланг!",
+      "duration": 5.46,
+      "audio": "voice/vos.contactReply.ogg"
     }
   }
 }

@@ -7,17 +7,24 @@ import {BLACK_HAWK,BLACK_HAWK_GUN,VEHICLE_TYPES,blackHawkGunPose,vehiclePartPose
 import {WEAPONS,getSidearm} from '../world.js';
 import {NAHAR,NAHAR_AIR_POSTS,NAHAR_GATES,NAHAR_LANDING,NAHAR_SITES as sites} from './nahar.js';
 import {aimAt,departingPose,flightPath,LANDING_SECONDS,landingPose,orbitPose,targetInArc} from './mission4-flight.js';
+import {dropCampaignMedkit,reviveDuration} from './medical.js';
 
 export const M04_SAVE_VERSION=2;
 const STAGES=['approach','right','transfer','orbit','landing','disembark','depot','station','freight','canal','relay','tunnel','finale'];
 const CHECKPOINT_STAGES=['approach','right','transfer','depot','freight','canal'];
 const MAIN='m03-extraction-1',WING='m03-extraction-2';
 const CALLSIGNS={[MAIN]:'Чёрный ястреб-1',[WING]:'Чёрный ястреб-2'};
+const ESCORT_INFANTRY=[
+  {id:'escort-rudin',name:'Илья Рудин',classId:'assault',weapon:'ar416',seat:3},
+  {id:'escort-volkov',name:'Семён Волков',classId:'support',weapon:'mg36',seat:4},
+];
 const LEFT=BLACK_HAWK_GUN.index;
 const KNOCKOUT_SECONDS={recruit:35,regular:25,veteran:18};
-const DEPARTURE_DELAY=4;
+const DEPARTURE_DELAY=4,DEPARTURE_DURATION=24.5;
+const EXIT_DURATION=1.45;
+const GUNNER_HIT_AT=1.75,GUNNER_REMOVED_AT=3.45;
 const SAVE_FIELDS=['stage','stageAt','checkpoint','flags','gates','supplyUsed','enemySerial','order','knowledge','sent','waves',
-  'power','source','escortAt','escortFrom','escortAway','orbitAt','combatOrbitAt','landing','departAt','nextRocketAt','lastHullBlast',
+  'power','source','orbitAt','combatOrbitAt','landing','departAt','nextRocketAt','lastHullBlast',
   'radio','radioEnd','radioSerial','queue','transmitting','roofWarningIndex'];
 const ROOF_WARNINGS=['pilot.roofDanger','pilot.roofDangerEdge','pilot.roofDangerReady'];
 const ptWarning='ПТ-90 ГОТОВИТ ВЫСТРЕЛ';
@@ -74,13 +81,13 @@ export class Mission4Simulation extends Simulation{
     if(p.id==='local'&&p.vehicleId===MAIN&&c.aircraft?.hp>0)amount*=meta.explosive?.32:.62;
     if(p.id==='dispatcher'&&p.wounded&&c.stage==='station'&&this.time<p.invulnerableUntil)return;
     if(p.team===0)amount*=c.settings.damage;
-    if(p.id==='local'&&this.time>=p.invulnerableUntil){
+    if((p.id==='local'||p.squadMember)&&this.time>=p.invulnerableUntil){
       if(p.downed){
         if(!p.reviver&&this.time-p.downedAt>=6)p.downedTimer-=Math.max(0,amount)*.12;
         return;
       }
       if(amount>=p.hp){
-        c.downMarten(p);
+        c.knockOut(p);
         this.event('damage',{playerId:p.id,attackerId:attacker?.id,amount,x:attacker?.x??p.x,z:attacker?.z??p.z});
         return;
       }
@@ -97,7 +104,7 @@ export class Mission4Simulation extends Simulation{
       if(hit?.amount>0||v.hp<=0)c.lastHullBlast=this.time;
       return hit;
     }
-    if(v.id===MAIN&&kind==='bullet')amount*=.46;
+    if(v.id===MAIN&&kind==='bullet')amount*=.23;
     return super.damageVehicle(v,amount,attacker,kind,origin,sourceVehicleId);
   }
   step(dt){
@@ -110,6 +117,7 @@ export class Mission4Simulation extends Simulation{
     state.players=state.players.filter(p=>!this.players.get(p.id).campaignHidden).map(p=>{
       const actor=this.players.get(p.id);
       return {...p,role:actor.role,downed:Boolean(actor.wounded||actor.downed),prone:Boolean(actor.prone),
+        seatCollapse:actor.seatHitAt==null?null:Math.min(1,(this.time-actor.seatHitAt)/.45),
         downedTimer:actor.downedTimer??0,reviver:actor.reviver??null,medkits:actor.medkits??0,
         unlimitedReserve:this.hasUnlimitedReserve(actor)};
     });
@@ -128,12 +136,23 @@ class NaharDirector{
     this.input={};this.radio=null;this.radioEnd=0;this.radioSerial=0;this.queue=[];this.eventsDone=new Set();
     this.gates={service:false,tunnel:false};this.progress=0;this.supplyUsed=false;this.enemySerial=0;
     this.order='follow';this.knowledge={log:false,recording:false};this.sent=0;this.waves=0;this.power=false;
+    const {approach,right,turn,orbit}=definition.flight;
+    this.approachSeconds=approach.at(-1)[0];
+    const turnAt=this.approachSeconds+right.at(-1)[0];
+    this.routeEnd=turnAt+turn.at(-1)[0];
+    this.flightRoute=[...approach,...right.slice(1).map(([t,...point])=>[t+this.approachSeconds,...point]),
+      ...turn.slice(1).map(([t,...point])=>[t+turnAt,...point])];
+    for(const t of [1.5,3,6]){
+      const {x,z,y}=orbitPose(orbit,t);
+      this.flightRoute.push([this.routeEnd+t,x,z,y]);
+    }
   }
   get time(){return this.sim.time;}
   get age(){return this.time-this.stageAt;}
   get player(){return this.sim.players.get('local');}
   get aircraft(){return this.sim.vehicles.find(v=>v.id===MAIN);}
   get wing(){return this.sim.vehicles.find(v=>v.id===WING);}
+  get escortPad(){return NAHAR_LANDING[this.landing.kind==='primary'?'alternate':'primary'];}
   get dispatcher(){return this.sim.players.get('dispatcher');}
   get airborne(){return STAGES.indexOf(this.stage)<STAGES.indexOf('depot');}
   get airDanger(){return ['right','orbit','landing'].includes(this.stage);}
@@ -147,11 +166,7 @@ class NaharDirector{
     const sidearm=getSidearm(this.options.loadout?.sidearm);
     const p=this.add('local','Ян Мартен',0,weapon.classId,weapon.id,null,'marten',false,sidearm.id);
     p.medkits=2;
-    for(const [id,role] of [[MAIN,'transport'],[WING,'escort']]){
-      const pose=this.aircraftPose({id});
-      const v=this.sim.createMapVehicle({id,type:BLACK_HAWK,team:0,noRespawn:true,...pose});
-      Object.assign(v,pose,{m04Aircraft:role});this.sim.vehicles.push(v);
-    }
+    this.addAircraft(MAIN);
     const pilot=this.add('pilot','Лида Соколова',0,'assault','ar416',null,'pilot');
     const gunner=this.add('gunner','Бортстрелок Грач',0,'support','mg36',null,'gunner');
     const passenger=this.carry.lasko_alive===false?
@@ -160,12 +175,11 @@ class NaharDirector{
     const wingman=this.carry.duran_alive===false?
       this.add('wing','Стрелок бригады',0,'assault','ar416',null,'wing'):
       this.add('duran','Гари Дюран',0,'assault','ar416',null,'wing');
-    const second=this.add('escort-pilot','Пилот второго борта',0,'assault','ar416',null,'escort');
     const rightSeat=Number(this.options.loadout?.seat)===4?4:3;
     for(const [actor,seat] of [[pilot,0],[passenger,1],[gunner,LEFT],[wingman,rightSeat===3?4:3],[p,rightSeat]]){
       actor.airCrew=true;this.seat(actor,this.aircraft,seat);
     }
-    second.airCrew=true;this.seat(second,this.wing,0);
+    this.addEscort();
     this.say('pilot.city');this.say('orlov.inbound');this.say('gunner.ready');this.updateRadio();
     this.initialSave=this.serialize();
   }
@@ -175,7 +189,30 @@ class NaharDirector{
     if(where)this.place(p,where);
     return p;
   }
-  place(actor,at){
+  addAircraft(id){
+    const pose=this.aircraftPose({id});
+    const v=this.sim.createMapVehicle({id,type:BLACK_HAWK,team:0,noRespawn:true,...pose});
+    Object.assign(v,pose,{m04Aircraft:id===WING?'escort':'transport'});
+    this.sim.vehicles.push(v);
+    return v;
+  }
+  addEscort(){
+    const stillFlying=this.airborne||this.departAt!=null&&this.time-this.departAt<DEPARTURE_DURATION;
+    const helicopter=this.wing??(stillFlying?this.addAircraft(WING):null);
+    if(helicopter&&!this.sim.players.has('escort-pilot')){
+      const pilot=this.add('escort-pilot','Пилот второго борта',0,'assault','ar416',null,'escort');
+      pilot.airCrew=true;this.seat(pilot,helicopter,0);
+    }
+    for(const {id,name,classId,weapon,seat} of ESCORT_INFANTRY){
+      if(this.sim.players.has(id))continue;
+      const player=this.player;
+      const position=this.airborne?null:{x:player.x-3,z:player.z+(seat===3?2:-2),y:player.y};
+      const soldier=this.add(id,name,0,classId,weapon,position,'reinforcement');
+      soldier.airCrew=true;soldier.squadMember=true;
+      if(this.airborne)this.seat(soldier,helicopter,seat);
+    }
+  }
+  openPosition(actor,at){
     const desired={...at,y:at.y??this.sim.groundAt(at.x,at.z)};
     for(let i=0;i<34;i++){
       const a=i*2.399,r=Math.sqrt(i)*.67;
@@ -183,9 +220,13 @@ class NaharDirector{
       const y=at.y??this.sim.groundAt(x,z);
       if(this.sim.collides(x,z,y+.023)||this.sim.vehicleAt(x,z,y)||
         [...this.sim.players.values()].some(p=>p!==actor&&p.alive&&!p.vehicleId&&close(p,{x,y,z},.65)))continue;
-      Object.assign(actor,{x,y,z,grounded:true,vy:0,moveSpeed:0,tickX:x,tickZ:z});return;
+      return {x,y,z};
     }
-    Object.assign(actor,{...desired,grounded:true,vy:0,moveSpeed:0,tickX:desired.x,tickZ:desired.z});
+    return desired;
+  }
+  place(actor,at){
+    const point=this.openPosition(actor,at);
+    Object.assign(actor,{...point,grounded:true,vy:0,moveSpeed:0,tickX:point.x,tickZ:point.z});
   }
   seat(actor,vehicle,seat){
     if(actor.vehicleId===vehicle.id&&vehicle.seats[actor.vehicleSeat]===actor.id)vehicle.seats[actor.vehicleSeat]=null;
@@ -221,21 +262,32 @@ class NaharDirector{
   aircraftPose(v){
     const route=this.definition.flight;
     if(v.id===WING){
-      const right=this.escortAt!=null,turn=right?this.time-this.escortAt:0;
-      const pose=flightPath(right?route.right:route.approach,this.age);
-      if(this.escortAway){
-        const t=this.time-this.escortAway;
-        return {...this.escortFrom,x:this.escortFrom.x+11*t,y:this.escortFrom.y+2.4*t,z:this.escortFrom.z+2*t,yaw:-1.74,speed:12};
+      if(this.departAt!=null)return departingPose(this.escortPad,this.time-this.departAt,this.sim.map.terrain);
+      if(this.landing){
+        const elapsed=this.time-this.landing.at;
+        const pose=landingPose({pad:this.escortPad,from:this.landing.escortFrom},elapsed,this.sim.map.terrain);
+        if(this.landing.kind==='primary'){
+          // Pass behind the lead aircraft as the formation splits for the two yards.
+          const separation=Math.sin(Math.PI*Math.min(1,elapsed/LANDING_SECONDS))**2;
+          pose.z+=19*separation;pose.y+=7*separation;
+        }
+        return pose;
       }
-      return {...pose,x:pose.x+54,y:pose.y+6,z:pose.z+28,bodyRoll:right?.04*Math.sin(turn*.45):0};
+      const pose=this.aircraftPose({id:MAIN});
+      return {...pose,x:pose.x+54,y:pose.y+6,z:pose.z+28};
     }
     if(this.departAt!=null)return departingPose(this.landing.pad,this.time-this.departAt,this.sim.map.terrain);
     if(this.landing)return landingPose(this.landing,this.time-this.landing.at,this.sim.map.terrain);
     if(this.orbitAt!=null){
-      if(this.time>=this.orbitAt)return orbitPose(route.orbit,this.time-this.orbitAt);
-      return flightPath(route.turn,this.time-this.orbitAt+route.turn.at(-1)[0]);
+      const elapsed=this.time-this.orbitAt;
+      if(elapsed>=1.5)return orbitPose(route.orbit,elapsed);
+      const pose=flightPath(this.flightRoute,this.routeEnd+elapsed);
+      const t=Math.max(0,(elapsed+4)/5.5);
+      const banking=t*t*(3-2*t);
+      pose.bodyRoll=.12*banking;pose.bodyPitch+=(.06-pose.bodyPitch)*banking;
+      return pose;
     }
-    return flightPath(this.stage==='right'?route.right:route.approach,this.age);
+    return flightPath(this.flightRoute,this.age+(this.stage==='right'?this.approachSeconds:0));
   }
   spawnAir(wave){
     for(const [id,count,launcher] of wave.posts){
@@ -297,18 +349,11 @@ class NaharDirector{
   updateAir(){
     const route=this.definition.flight;
     if(this.stage==='approach'&&this.age>=route.approach.at(-1)[0]){
-      this.setStage('right');this.escortAt=this.time;this.say('pilot.contact');this.save(1);
+      this.setStage('right');this.say('pilot.contact');this.save(1);
     }else if(this.stage==='right'&&this.age>=route.right.at(-1)[0]){
-      this.escortFrom={...this.wing};this.escortAway=this.time;
       this.orbitAt=this.time+route.turn.at(-1)[0];
-      const gunner=this.sim.players.get('gunner'),craft=this.aircraft;
-      craft.seats[LEFT]=null;
-      Object.assign(gunner,{vehicleId:null,vehicleSeat:null,hp:0,alive:false,campaignHidden:true});
-      const {x,y,z}=vehiclePartPose(craft,-1.11,2.12,-.64);
-      this.sim.event('bulletImpact',{x,y,z,tx:x,ty:y,tz:z,impact:'metal',impactVehicleId:craft.id});
       this.threatId=null;this.setStage('transfer');
-      this.say('gunner.cut',true);this.say('pilot.gunnerDown');this.say(`${this.wingSpeaker}.transfer`);this.say(this.medic.id+'.gunnerDown');
-      this.save(2);
+      this.say('gunner.lastCall',true);
     }
     const groups=this.stage==='right'?route.airWaves:this.stage==='orbit'&&this.time>=this.orbitAt?route.orbitWaves:null;
     if(groups){
@@ -319,6 +364,7 @@ class NaharDirector{
       }
     }
     if(this.stage==='transfer'){
+      this.gunnerCasualty();
       if(this.checkpointShifting&&this.time>=this.switchAt){
         this.seat(this.player,this.aircraft,LEFT);this.switchAt=null;
         this.combatOrbitAt=Math.max(this.time,this.orbitAt);this.setStage('orbit');
@@ -331,14 +377,27 @@ class NaharDirector{
     if(this.stage==='orbit')this.checkLanding();
     if(this.stage==='landing'&&this.age>=LANDING_SECONDS){
       this.setStage('disembark');this.clearAir();
-      if(!this.player.downed)this.unseatInfantry();
+      this.unseatInfantry(this.wing);
+      if(!this.player.downed)this.unseatInfantry(this.aircraft);
       this.say('pilot.touchdown',true);
     }
     if(this.lastHullBlast!=null&&this.aircraft?.hp>0&&!this.eventsDone.has('hull')){
       this.eventsDone.add('hull');this.say('pilot.hull',true);
     }
-    if(this.escortAway!=null&&this.time-this.escortAway>23&&this.wing){
-      this.sim.removePlayer('escort-pilot');this.sim.vehicles=this.sim.vehicles.filter(v=>v.id!==WING);
+  }
+  gunnerCasualty(){
+    const gunner=this.sim.players.get('gunner'),craft=this.aircraft;
+    if(!gunner?.alive)return;
+    if(this.age>=GUNNER_HIT_AT&&gunner.seatHitAt==null){
+      Object.assign(gunner,{seatHitAt:this.time,wounded:true,hp:1,input:fixed(gunner)});
+      const {x,y,z}=vehiclePartPose(craft,-1.11,2.12,-.64);
+      this.sim.event('bulletImpact',{x,y,z,tx:x,ty:y,tz:z,impact:'metal',impactVehicleId:craft.id});
+      this.say('gunner.cut',true);this.say('pilot.gunnerDown');this.say(`${this.wingSpeaker}.transfer`);this.say(this.medic.id+'.gunnerDown');
+    }
+    if(this.age>=GUNNER_REMOVED_AT){
+      craft.seats[LEFT]=null;
+      Object.assign(gunner,{vehicleId:null,vehicleSeat:null,hp:0,alive:false,campaignHidden:true});
+      this.save(2);
     }
   }
   checkLanding(){
@@ -355,9 +414,9 @@ class NaharDirector{
     if(passed>=3*lap)this.beginLanding('alternate');
   }
   beginLanding(kind){
-    const from=this.aircraft;
-    this.landing={kind,pad:NAHAR_LANDING[kind],at:this.time,from:{x:from.x,y:from.y,z:from.z,yaw:from.yaw,
-      bodyPitch:from.bodyPitch,bodyRoll:from.bodyRoll}};
+    const pose=({x,y,z,yaw,bodyPitch,bodyRoll})=>({x,y,z,yaw,bodyPitch,bodyRoll});
+    this.landing={kind,pad:NAHAR_LANDING[kind],at:this.time,
+      from:pose(this.aircraft),escortFrom:pose(this.wing)};
     // The backup yard sits outside the roofs that denied the main approach.
     if(kind==='alternate')this.threatId=null;
     this.setStage('landing');this.say(kind==='alternate'?'pilot.backup':'pilot.land',true);
@@ -367,8 +426,7 @@ class NaharDirector{
     for(const p of this.airTargets())this.sim.removePlayer(p.id);
     this.sim.rockets=this.sim.rockets.filter(r=>this.sim.players.has(r.ownerId));
   }
-  unseatInfantry(){
-    const v=this.aircraft;
+  unseatInfantry(v){
     for(const [i,seat] of [1,3,4].entries()){
       const p=this.sim.players.get(v.seats[seat]);
       if(!p||p.id==='local')continue;
@@ -376,11 +434,19 @@ class NaharDirector{
       this.place(p,{x:v.x+7+i*1.7,z:v.z+3+i*2});p.squadMember=true;
     }
   }
+  beginDisembark(){
+    const p=this.player,v=this.aircraft;
+    const left=vehiclePartPose(v,-4.7,0,.6);
+    const point=this.openPosition(p,{x:left.x,z:left.z});
+    const yaw=Math.atan2(point.x-sites.platforms.x,point.z-sites.platforms.z);
+    this.disembark={at:this.time,point,yaw};
+  }
   exitAircraft(){
     const v=this.aircraft,p=this.player;
+    const {point,yaw}=this.disembark;
+    this.disembark=null;
     this.sim.dismountVehicle(p,true);
-    this.place(p,{x:v.x+5,z:v.z+4});
-    const yaw=Math.atan2(p.x-sites.platforms.x,p.z-sites.platforms.z);
+    this.place(p,point);
     Object.assign(p,{yaw,pitch:0,input:fixed(p,yaw)});
     this.departAt=this.time+DEPARTURE_DELAY;this.setStage('depot');
     if(this.carry.bruno_alive!==false){
@@ -391,18 +457,18 @@ class NaharDirector{
     this.save(3);
   }
 
-  downMarten(p){
+  knockOut(p){
     Object.assign(p,{hp:1,downed:true,downedAt:this.time,downedTimer:KNOCKOUT_SECONDS[this.sim.difficulty],
       reviver:null,reviveProgress:0,prone:!p.vehicleId,lastHurt:this.time,slideTime:0,reloading:false,
       reloadTime:0,heldGadget:null,pendingGadget:null,gadgetAction:null});
-    if(!p.vehicleId){
+    if(p.id==='local'&&!p.vehicleId){
       this.sim.equipWeapon(p,2);
       p.equipTime=0;
     }
     p.input.fire=false;
   }
-  canReachMarten(helper,p){
-    return close(helper,p,2.4)&&(p.vehicleId||this.sim.lineClear(eye(helper),eye(p,.35)));
+  canReachCasualty(helper,p,range=2.4){
+    return close(helper,p,range)&&(p.vehicleId||this.sim.lineClear(eye(helper),eye(p,.35)));
   }
   findRescuer(p){
     let best=null,bestCost=Infinity;
@@ -410,46 +476,93 @@ class NaharDirector{
       if(helper===p||helper.team!==p.team||!helper.alive||helper.wounded||helper.downed||helper.campaignHidden)continue;
       if(p.vehicleId?helper.vehicleId!==p.vehicleId||helper.vehicleSeat===0:helper.vehicleId)continue;
       const distance=dist(helper,p);
-      if(distance>24||Math.abs(helper.y-p.y)>4)continue;
-      const reachable=this.canReachMarten(helper,p);
+      const medic=helper.classId==='medic';
+      if(distance>(medic?44:26)||Math.abs(helper.y-p.y)>5)continue;
+      const reachable=this.canReachCasualty(helper,p);
       if(reachable&&helper.id===p.reviver)return helper;
-      const cost=distance+(reachable?0:25);
+      const blocked=helper.ai?.mode==='blocked'&&this.time-(helper.ai.blockedSince??this.time)>1.2;
+      const cost=distance+(reachable?0:18)+(medic?0:reachable?4:24)+(blocked?26:0);
       if(cost<bestCost){best=helper;bestCost=cost;}
     }
     return best;
   }
+  rescueApproach(helper,patient){
+    const previous=this.rescueGoal;
+    if(previous?.helperId===helper.id&&dist(previous.patient,patient)<.8&&Math.abs(previous.patient.y-patient.y)<.35)
+      return previous.point;
+    let point=patient,nearest=Infinity;
+    for(let step=0;step<8;step++){
+      const angle=step*Math.PI/4;
+      const candidate={x:patient.x+Math.cos(angle)*1.65,z:patient.z+Math.sin(angle)*1.65,y:patient.y};
+      const distance=dist(helper,candidate);
+      if(distance>=nearest||this.sim.collides(candidate.x,candidate.z,candidate.y+.03)||
+        !this.canReachCasualty(candidate,patient))continue;
+      nearest=distance;point=candidate;
+    }
+    this.rescueGoal={helperId:helper.id,patient:{x:patient.x,y:patient.y,z:patient.z},point};
+    return point;
+  }
   updateMartenRevive(dt){
     const p=this.player,helper=this.sim.players.get(this.rescuerId);
     if(!p.downed)return;
-    if(helper?.alive&&!helper.wounded&&!helper.downed&&(helper.vehicleId??null)===(p.vehicleId??null)&&this.canReachMarten(helper,p)){
+    if(helper?.alive&&!helper.wounded&&!helper.downed&&(helper.vehicleId??null)===(p.vehicleId??null)&&this.canReachCasualty(helper,p)){
       if(p.reviver!==helper.id)p.reviveProgress=0;
       p.reviver=helper.id;
-      p.reviveProgress+=dt/(helper.classId==='medic'?6:10);
+      p.reviveProgress+=dt/reviveDuration(helper,8);
       if(p.reviveProgress>=1){
-        Object.assign(p,{hp:40,downed:false,prone:false,downedTimer:0,reviver:null,reviveProgress:0,
-          lastHurt:this.time,invulnerableUntil:this.time+2,reviveSeq:(p.reviveSeq??0)+1});
+        this.revive(p,helper);
         this.rescuerId=null;
-        if(this.stage==='disembark')this.unseatInfantry();
-        this.sim.event('revive',{playerId:p.id,x:p.x,z:p.z});
+        if(this.stage==='disembark')this.unseatInfantry(this.aircraft);
       }
-    }else{
-      p.reviver=null;p.reviveProgress=0;
-      p.downedTimer=Math.max(0,p.downedTimer-dt);
-      if(p.downedTimer<=0){
-        this.sim.dismountVehicle(p,true);
-        Object.assign(p,{hp:0,downed:false,alive:false,respawnIn:1e8,deaths:p.deaths+1});
-      }
+    }else this.bleed(p,dt);
+  }
+  revive(p,helper){
+    Object.assign(p,{hp:40,downed:false,prone:false,downedTimer:0,reviver:null,reviveProgress:0,
+      lastHurt:this.time,invulnerableUntil:this.time+2,reviveSeq:(p.reviveSeq??0)+1});
+    this.sim.event('revive',{playerId:p.id,medicId:helper.id,x:p.x,z:p.z});
+    if(p.id==='local')this.rescueGoal=null;
+  }
+  bleed(p,dt){
+    p.reviver=null;p.reviveProgress=0;
+    p.downedTimer=Math.max(0,p.downedTimer-dt);
+    if(p.downedTimer<=0){
+      this.sim.dismountVehicle(p,true);
+      Object.assign(p,{hp:0,downed:false,alive:false,respawnIn:1e8,deaths:p.deaths+1});
     }
+  }
+  helpSquad(dt){
+    const p=this.player;
+    const patient=[...this.sim.players.values()].filter(ally=>ally!==p&&ally.squadMember&&ally.alive&&ally.downed&&
+      !ally.vehicleId&&this.canReachCasualty(p,ally,2.7)).sort((a,b)=>dist(a,p)-dist(b,p))[0];
+    if(!patient){
+      if(this.squadPatientId){this.progress=0;this.squadPatientId=null;}
+      return false;
+    }
+    this.interaction=null;
+    this.prompt='Удерживать, чтобы поднять бойца: '+patient.name;
+    if(!this.input.use){this.progress=0;this.squadPatientId=null;return true;}
+    p.input.fire=false;
+    if(patient.id!==this.squadPatientId){patient.reviveProgress=0;this.squadPatientId=patient.id;}
+    patient.reviver=p.id;
+    patient.reviveProgress+=dt/reviveDuration(p,5);
+    this.progress=patient.reviveProgress;
+    if(this.progress>=1){
+      this.revive(patient,p);this.progress=0;this.squadPatientId=null;
+    }
+    return true;
   }
   think(p,dt){
     const craft=this.aircraft;
-    if(p.campaignHidden||p.wounded||this.stage==='finale'){p.input=fixed(p);return true;}
+    if(p.campaignHidden||p.wounded||p.downed||this.stage==='finale'){p.input=fixed(p);return true;}
     if(this.player.downed&&p.id===this.rescuerId){
       const patient=this.player;
       p.input=fixed(p,aimAt(eye(p),patient).yaw);
       if(!p.vehicleId){
-        if(this.canReachMarten(p,patient))p.input.crouch=true;
-        else{ensureBotState(this.sim,p);moveBot(this.sim,p,patient,dt,{sprint:true,followSteps:true});}
+        if(this.canReachCasualty(p,patient))p.input.crouch=true;
+        else{
+          ensureBotState(this.sim,p);
+          moveBot(this.sim,p,this.rescueApproach(p,patient),dt,{sprint:true,followSteps:true});
+        }
       }
       return true;
     }
@@ -494,7 +607,7 @@ class NaharDirector{
   }
   canSee(a,b){
     if(b.campaignHidden||b.airRole||b.vehicleId)return false;
-    return this.sim.lineClear(eye(a),eye(b,b.wounded?.55:1.2));
+    return this.sim.lineClear(eye(a),eye(b,(b.wounded||b.downed)?.55:1.2));
   }
   squadGoal(p){
     const player=this.player,offset=p.botSlot%3;
@@ -543,10 +656,7 @@ class NaharDirector{
     this.acquire('dispatcher');
   }
   updateGround(dt){
-    const p=this.player,craft=this.aircraft;
-    if(craft&&this.departAt!=null&&this.time-this.departAt>=24.5){
-      this.sim.removePlayer('pilot');this.sim.vehicles=this.sim.vehicles.filter(v=>v.id!==MAIN);
-    }
+    const p=this.player;
     if(this.stage==='depot'&&dist(p,sites.station)<55){
       this.setStage('station');this.spawnGround('station');
       const d=this.add('dispatcher','Диспетчер',0,'medic','mcx9',sites.dispatcher,'dispatcher');
@@ -633,6 +743,7 @@ class NaharDirector{
         yaw,pitch,forward,strafe,aim,fire,reload,crouch:true,weaponSlot:2,
       });
       this.progress=0;this.interaction=null;
+      this.squadPatientId=null;
       return;
     }
     if(this.airborne){
@@ -647,12 +758,21 @@ class NaharDirector{
           this.switchAt=this.time+1.65;this.say('marten.moveGun');
         }
       }
-      if(this.stage==='disembark'&&this.age>=1.4&&this.input.use)this.exitAircraft();
+      if(this.stage==='disembark'){
+        if(this.disembark){
+          p.input=emptyInput(p);
+          if(this.time-this.disembark.at>=EXIT_DURATION)this.exitAircraft();
+        }else if(this.age>=1.4&&this.input.use){
+          p.input=emptyInput(p);
+          this.beginDisembark();
+        }
+      }
       return;
     }
     if(this.stage==='finale'){p.input=emptyInput(p);return;}
     if(this.input.order&&!this.lastOrder)this.command({type:'order',order:'follow'});
     this.lastOrder=Boolean(this.input.order);
+    if(this.helpSquad(dt))return;
     const use=this.candidates().filter(([, ,point])=>close(p,point,2.7)).sort((a,b)=>dist(p,a[2])-dist(p,b[2]))[0];
     if(!use){this.interaction=null;this.progress=0;return;}
     const [id,label,,seconds,action]=use;this.prompt=label;
@@ -663,9 +783,18 @@ class NaharDirector{
   afterStep(dt){
     const lostAircraft=this.airborne&&this.aircraft?.hp<=0;
     if(!lostAircraft)this.updateMartenRevive(dt);
+    const player=this.player;
+    for(const ally of this.sim.players.values()){
+      if(ally===player||!ally.downed||!ally.alive)continue;
+      if(ally.id!==this.squadPatientId||player.downed||!this.canReachCasualty(player,ally,2.7))this.bleed(ally,dt);
+    }
     if(!this.player.alive||lostAircraft){
       this.failed=lostAircraft?'Вертолёт потерян. Вернитесь к контрольной точке.':'Мартен погиб. Вернитесь к контрольной точке.';
       return;
+    }
+    if(this.aircraft&&this.departAt!=null&&this.time-this.departAt>=DEPARTURE_DURATION){
+      this.sim.removePlayer('pilot');this.sim.removePlayer('escort-pilot');
+      this.sim.vehicles=this.sim.vehicles.filter(v=>v.id!==MAIN&&v.id!==WING);
     }
     for(const p of this.airTargets())if(p.airRole==='pt'&&p.lastHurt>this.time-.04){
       p.suppressedUntil=this.time+7;p.aimAt=null;p.heldGadget=null;
@@ -677,6 +806,8 @@ class NaharDirector{
       }
     }
     if(this.airborne)this.updateAir();else if(!this.player.downed)this.updateGround(dt);
+    if(!this.airborne&&this.stage!=='finale'&&!this.player.downed)
+      dropCampaignMedkit(this.sim,this.medic,()=>this.say(this.medic.id+'.medkitDrop'));
     this.radioCues();
     this.updateRadio();
   }
@@ -705,14 +836,15 @@ class NaharDirector{
       epoch:this.epoch,checkpoint:this.checkpoint,complete:this.complete,failed:this.failed,cutscene:this.stage==='finale'?{id:'finale',elapsed:this.age}:null,
       airborne:this.airborne,transfer,transferReady:this.stage==='transfer'&&this.age>=3.6,
       groundElapsed:this.departAt==null?0:Math.max(0,this.time-this.departAt+DEPARTURE_DELAY),
+      disembark:this.disembark?{...this.disembark,progress:Math.min(1,(this.time-this.disembark.at)/EXIT_DURATION)}:null,
       disembarkReady:this.stage==='disembark'&&this.age>=1.4,landing:this.landing?.kind??null,
       hull:craft?Math.ceil(craft.hp/craft.maxHp*100):null,bodyRoll:craft?.bodyRoll??0,
       threat:threat?.alive?{...eye(threat,2.45),label:ptWarning,time:Math.max(0,(threat.aimAt??this.time)-this.time)}:null,
       target:target?{x:target.x,y:target.y??0,z:target.z}:null,gates:{...this.gates},
       prompt:this.prompt,progress:this.progress,order:this.order,power:this.power,transmitting:this.transmitting??false,
       sent:this.sent/this.settings.hold,source:this.source??null,flags:{...this.flags},
-      squadIds:['local',this.sim.players.has('duran')?'duran':'wing',this.medic?.id??'medic','bruno'],
-      reviveProgress:player.reviveProgress??0,
+      squadIds:['local',this.sim.players.has('duran')?'duran':'wing',this.medic?.id??'medic','bruno',...ESCORT_INFANTRY.map(p=>p.id)],
+      rescuerId:player.downed?this.rescuerId:null,reviveProgress:player.reviveProgress??0,
       radio:this.radio,radioRemaining:Math.max(0,this.radioEnd-this.time),
       stats:{elapsedSeconds:Math.floor(this.time),kills:player.kills,
         losses:[...this.sim.players.values()].filter(p=>p.team===0&&!p.alive).length},
@@ -738,15 +870,17 @@ class NaharDirector{
     const sim=this.sim;resetNavigation(sim);sim.players.clear();sim.vehicles=structuredClone(save.vehicles);
     for(const actor of save.players){
       const p=sim.addPlayer(actor.id,actor.name,actor.team,actor.classId,actor.primaryWeaponId,actor.sidearmId,actor.bot);
-      Object.assign(p,structuredClone(actor),{ai:null,damagers:new Map(),botPath:[]});
+      Object.assign(p,structuredClone(actor),{ai:null,damagers:new Map(),botPath:[],reviver:null,reviveProgress:0});
     }
     for(const key of ['grenades','rockets','bullets','deployables'])sim[key]=structuredClone(save[key]);
     sim.time=save.time;sim.rngState=save.rngState;sim.events=[];sim.eventId=0;sim.botTeams=null;sim.botTeamAt=0;
     sim.weaponKills=new Map(Object.entries(save.weaponKills??{}));
     for(const key of SAVE_FIELDS)this[key]=structuredClone(save.mission[key]);
     Object.assign(this,{failed:null,complete:false,input:{},lastSwap:false,lastOrder:false,
-      switchAt:null,threatId:null,prompt:'',progress:0,interaction:null,medicCare:0,exitAt:null,landingClearSince:null,rescuerId:null});
+      switchAt:null,threatId:null,prompt:'',progress:0,interaction:null,medicCare:0,exitAt:null,
+      landingClearSince:null,rescuerId:null,rescueGoal:null,disembark:null,squadPatientId:null});
     this.eventsDone=new Set(save.mission.eventsDone);this.syncGates();
+    this.addEscort();
     this.latestSave=this.checkpoint?structuredClone(save):null;this.saveRevision++;this.epoch++;
     return true;
   }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {CampaignAudio} from './audio.js';
+import {InfantryMinimap} from './minimap.js';
 import {prepareViewModel} from '../viewmodel.js';
 import {cinematicCameraPose} from './camera.js';
 import {CampaignDepotProps,groundCampaignTruck,loadDepotProps} from './props.js';
@@ -19,6 +20,7 @@ export class CampaignPresentation {
     this.root=document.createElement('section');this.root.className='campaign-ui';this.root.setAttribute('aria-label','Сюжетная миссия');
     this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>Выберите вооружение</h2><p>Основное и дополнительное оружие доступны без ограничений класса.</p><div class="campaign-loadout-selects"><label>ОСНОВНОЕ <select data-primary></select></label><label>ДОПОЛНИТЕЛЬНОЕ <select data-sidearm></select></label></div><button data-loadout="custom">Начать операцию</button><p>ПТ-90 и ящик патронов выдаются обязательно. N в миссии — ПНВ.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
     document.body.append(this.root);this.$=selector=>this.root.querySelector(selector);
+    this.minimap=new InfantryMinimap(renderer);
     this.storySubtitle=this.$('.campaign-subtitle');
     this.reactionSubtitle=this.storySubtitle.cloneNode(true);
     this.reactionSubtitle.classList.add('hidden');
@@ -165,6 +167,7 @@ export class CampaignPresentation {
     this.$('.campaign-prompt').textContent=m.prompt??(p.downed?'X удерживать · шприц / санитар идёт на помощь':'Z · лечь   V · нож   E · взаимодействие   H · аптечка   Q · приказ   N · ПНВ');
     const progress=Math.max(m.progress,m.reviveProgress);this.$('.campaign-progress').classList.toggle('hidden',progress<=0);this.$('.campaign-progress-fill').style.strokeDashoffset=String(276.46*(1-Math.min(1,progress)));this.$('.campaign-progress > span').textContent=`${Math.round(progress*100)}%`;
     this.$('.campaign-injury').classList.toggle('hidden',!p.downed);this.$('.campaign-injury strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;this.$('.campaign-injury > span').textContent=p.syringes?`X удерживать 4 с · шприцы: ${p.syringes}`:'Шприцов нет · дождись помощи союзника';
+    this.minimap.update(state,p,{hidden:paused||Boolean(m.cutscene||m.awaitingLoadout||m.failed||m.complete),radius:m.nightVision?70:55});
     this.$('.campaign-supplies').textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes}${m.nightVision&&!m.cutscene?' · ПНВ ВКЛ':''}${m.fuze>0?' · ЗАРЯДЫ '+Math.ceil(m.fuze)+' с':''}`;
     this.$('.campaign-cutscene').classList.toggle('hidden',!m.cutscene);this.$('.campaign-cutscene > span').textContent=m.cutscene?.id==='briefing'?'02:00 / БРИФИНГ':m.cutscene?.id==='finale'?'05:40 / РАССВЕТ':'АЛЬ-ХАДРА / ЭКСПЕДИЦИОННАЯ БРИГАДА';
     this.$('.campaign-choice').classList.toggle('hidden',!m.awaitingLoadout);
@@ -205,8 +208,7 @@ export class CampaignPresentation {
       const glare=THREE.MathUtils.smoothstep(dawn,.45,.82);
       r.scene.background.setRGB(.025+glare*.51,.115+glare*.76,.045+glare*.5);
       r.scene.fog.color.copy(r.scene.background);
-      // Keep the same fog cutoff at 35 m instead of 25 m.
-      r.scene.fog.density=2.025/35;
+      r.scene.fog.density=2.025/70;
       r.sun.intensity=.22+glare*2.6;r.sun.color.setRGB(.22+glare*.55,.72+glare*.28,.31+glare*.53);
       r.hemiLight.intensity=1.25+glare;r.hemiLight.color.setRGB(.3+glare*.48,1,.45+glare*.34);
       r.hemiLight.groundColor.setRGB(.04+glare*.6,.22+glare*.57,.08+glare*.54);
@@ -269,7 +271,7 @@ export class CampaignPresentation {
     if(m.flags.courierRevived&&!m.flags.courierSaved)add({x:200,z:140},'◇ ЭВАК');
   }
   dispose(){
-    this.audio.dispose();this.fire.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);
+    this.audio.dispose();this.fire.dispose();this.minimap.dispose();this.root.remove();this.props.removeFromParent();this.knife.removeFromParent();this.renderer.weapon.scale.setScalar(1);
     for(const {rig} of this.finalConvoy??[])disposeVehicleRig(rig);
     this.depot.dispose();
     for(const g of this.geometries)g.dispose();for(const m of this.materials)m.dispose();for(const t of this.textures)t.dispose();

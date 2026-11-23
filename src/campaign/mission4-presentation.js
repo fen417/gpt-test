@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM} from '../../shared/campaign/nahar.js';
 import {bulletHeight} from '../../shared/ballistics.js';
-import {BLACK_HAWK_GUN,blackHawkGunPose,getVehicleSeatPose} from '../../shared/vehicles.js';
+import {BLACK_HAWK_GUN,blackHawkGunPose,getVehicleSeatPose,vehiclePartPose} from '../../shared/vehicles.js';
+import {EYE_HEIGHT} from '../../shared/world.js';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {placeCampaignMarker} from './markers.js';
+import {InfantryMinimap} from './minimap.js';
 import './mission4.css';
 
 const orders={F1:'follow',F2:'hold',KeyQ:'assist'};
@@ -48,6 +50,8 @@ export class Mission4Presentation{
     this.$('.campaign-exit').onclick=leave;this.$('.campaign-retry').onclick=()=>this.retry();
     this.marker=this.$('.m04-marker');this.threat=this.$('.m04-threat');
     this.minigunReticle=this.$('.m04-minigun-reticle');this.aimPoint=new THREE.Vector3();
+    this.casualtyMarkers=new Map();
+    this.minimap=new InfantryMinimap(renderer);
     this.dressing=new THREE.Group();this.dressing.name='nahar-interactives';renderer.worldRoot.add(this.dressing);
     this.sky=renderer.webgpu?renderer.atmosphere:renderer.atmosphere.sky.material.uniforms;
     this.cityFog=new THREE.Color('#c6ac91');this.stormFog=new THREE.Color('#ba8c64');
@@ -82,10 +86,10 @@ export class Mission4Presentation{
     const hint=(action,fallback)=>this.keyLabel(this.getBindings()[action]??fallback);
     const use=hint('interact','KeyE'),switchSeat=hint('switchSeat','KeyF');
     document.body.classList.add('campaign-active','campaign-m04-active');
-    document.body.classList.toggle('campaign-cinematic',cinematic||m.transfer!=null);
+    document.body.classList.toggle('campaign-cinematic',cinematic||m.transfer!=null||Boolean(m.disembark));
     document.body.classList.toggle('campaign-downed',p.downed&&!end);
     this.root.classList.toggle('campaign-ui-paused',paused&&!end);
-    const objective=this.$('.campaign-objective');objective.hidden=end||cinematic||m.transfer!=null;
+    const objective=this.$('.campaign-objective');objective.hidden=end||cinematic||m.transfer!=null||Boolean(m.disembark);
     objective.querySelector('strong').textContent=this.locale.objectives[m.objective];
     const stageNote=m.airborne?(m.landing?names[m.landing]:p.vehicleSeat===2?'ЛЕВЫЙ БОРТ':'ПРАВЫЙ БОРТ'):
       m.target?`${Math.round(Math.hypot(p.x-m.target.x,p.z-m.target.z))} м`:'';
@@ -97,16 +101,16 @@ export class Mission4Presentation{
     let prompt=m.prompt?`${use} · ${m.prompt}`:'';
     if(m.stage==='approach')prompt=`${switchSeat} · Сменить правое место`;
     if(m.transferReady)prompt=m.transfer!=null?'Переход к минигану':`${switchSeat} · Занять миниган`;
-    if(m.disembarkReady)prompt=`${use} · Выйти из вертолёта`;
+    if(m.disembarkReady)prompt=m.disembark?'Высадка':`${use} · Выйти из вертолёта`;
     const action=this.$('.m04-interaction');action.hidden=!prompt||end||cinematic||p.downed;
     action.querySelector('span').textContent=prompt;
-    const progress=action.querySelector('progress');progress.value=m.transfer??m.progress??0;
+    const progress=action.querySelector('progress');progress.value=m.transfer??m.disembark?.progress??m.progress??0;
     progress.hidden=progress.value<=0;
     const danger=this.$('.m04-warning');danger.hidden=end||cinematic||m.transfer!=null||!(m.threat||m.transmitting&&m.stage==='relay');
     danger.textContent=m.threat?`ПТ-90 · ${Math.max(1,Math.ceil(m.threat.time))} С ДО ВЫСТРЕЛА`:
       m.power?`ПЕРЕДАЧА СХЕМЫ · ${Math.floor(m.sent*100)}%`:`НЕТ ПИТАНИЯ · ПЕРЕДАНО ${Math.floor(m.sent*100)}%`;
     const flight=this.$('.m04-flight-status'),craft=state.vehicles.find(v=>v.id===p.vehicleId);
-    flight.hidden=!m.airborne||!craft||end||m.transfer!=null;
+    flight.hidden=!m.airborne||!craft||end||m.transfer!=null||Boolean(m.disembark);
     flight.querySelector('b').textContent=`КОРПУС ${m.hull??0}%`;
     flight.querySelector('span').textContent=p.vehicleSeat===2?
       craft?.overheated?'МИНИГАН ПЕРЕГРЕТ':`НАГРЕВ ${Math.round((craft?.heat??0)*100)}%`:
@@ -116,8 +120,10 @@ export class Mission4Presentation{
     if(!injury.hidden){
       injury.querySelector('strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;
       const helper=state.players.find(a=>a.id===p.reviver);
-      injury.querySelector('span').textContent=helper?
-        `${helper.name} оказывает помощь · ${Math.floor(m.reviveProgress*100)}%`:'Дождитесь помощи союзника';
+      const approaching=state.players.find(a=>a.id===m.rescuerId);
+      injury.querySelector('span').textContent=helper?`${helper.name} оказывает помощь · ${Math.floor(m.reviveProgress*100)}%`:
+        approaching?`${approaching.name} идёт на помощь · ${Math.round(Math.hypot(p.x-approaching.x,p.z-approaching.z))} м`:
+          'Дождитесь помощи союзника';
     }
     const mat=this.$('.m04-cinematic');mat.hidden=!cinematic||Boolean(m.failed);
     if(cinematic)mat.style.setProperty('--end-fade',String(smooth(m.cutscene.elapsed,2.2,5.9)));
@@ -133,6 +139,7 @@ export class Mission4Presentation{
       if(!this.ended){this.clearControls();document.exitPointerLock?.();}
     }
     this.ended=end;
+    this.minimap.update(state,p,{hidden:m.airborne||paused||end||cinematic});
     this.voice.update(state,this.locale,paused||end,this.renderer);
     this.score.update(state,paused||end);
   }
@@ -199,7 +206,9 @@ export class Mission4Presentation{
     const p=state.players.find(a=>a.id==='local'),craft=state.vehicles.find(v=>v.id===p?.vehicleId);
     r.sunOffset.set(-140,86,-60);
     const pose=r.blackHawkViewPose??craft;
-    if(craft&&m.airborne&&m.transfer!=null){
+    if(craft&&m.disembark){
+      this.renderDisembark(r,pose,m.disembark,view);
+    }else if(craft&&m.airborne&&m.transfer!=null){
       const camera=r.camera;
       if(!this.transferView){
         const yaw=angle(camera.rotation.y-pose.yaw),turn=BLACK_HAWK_GUN.restYaw-yaw;
@@ -219,6 +228,7 @@ export class Mission4Presentation{
       r.weapon.visible=false;
     }else{
       this.transferView=null;
+      this.exitView=null;
       if(craft&&m.airborne&&p.vehicleSeat>=3&&view.shake!==false)r.camera.rotation.z=(pose.bodyRoll??0)*.22;
     }
     if(m.cutscene?.id==='finale'){
@@ -228,14 +238,50 @@ export class Mission4Presentation{
     this.updateStorm(r,m.time,view.quality);
     r.camera.updateMatrixWorld();
     const show=!m.failed&&!m.complete&&!m.cutscene&&p;
-    this.placeMinigunReticle(r,show&&p.alive&&!p.downed&&!view.paused&&m.transfer==null?r.minigunAim:null);
+    this.placeMinigunReticle(r,show&&p.alive&&!p.downed&&!view.paused&&m.transfer==null&&!m.disembark?r.minigunAim:null);
     this.placeThreat(r,show?m.threat:null,p);
     const t=show&&m.target;
     this.placeMarker(this.marker,r,t?{...t,y:t.y+.8}:null,p,t?`◇ ${Math.round(Math.hypot(t.x-p.x,t.z-p.z))} М`:'');
+    this.placeCasualties(r,show&&!m.airborne?p:null,state);
     if(!view.paused&&craft&&m.stage==='landing'&&craft.y<6&&r.clock>=(this.nextDust??0)){
       this.nextDust=r.clock+(view.quality==='low'?.47:.28);
       const a=r.clock*6;
       r.smoke(craft.x+Math.sin(a)*4,.45,craft.z+Math.cos(a)*4.5,2.4,1.75,0xb4a084,{opacity:.3,rise:.34,wind:1.1});
+    }
+  }
+  renderDisembark(r,pose,exit,view){
+    const camera=r.camera;
+    if(!this.exitView){
+      const door=vehiclePartPose(pose,-1.38,2.31,-.47);
+      const step=vehiclePartPose(pose,-2.08,1.69,-.27);
+      const end=new THREE.Vector3(exit.point.x,exit.point.y+EYE_HEIGHT,exit.point.z);
+      const path=new THREE.CatmullRomCurve3([camera.position.clone(),new THREE.Vector3(door.x,door.y,door.z),
+        new THREE.Vector3(step.x,step.y,step.z),end]);
+      this.exitView={path,yaw:camera.rotation.y,pitch:camera.rotation.x,fov:camera.fov};
+    }
+    const start=this.exitView,t=smooth(exit.progress,0,1),dip=Math.sin(Math.PI*t)**2;
+    start.path.getPoint(t,camera.position);
+    camera.rotation.set(mix(start.pitch,0,t)-dip*.16,start.yaw+angle(exit.yaw-start.yaw)*t,-dip*.065,'YXZ');
+    camera.fov=mix(start.fov,THREE.MathUtils.clamp(Number(view.fov)||85,65,105),t);
+    camera.updateProjectionMatrix();
+    r.weapon.visible=false;
+  }
+  placeCasualties(r,player,state){
+    const active=new Set();
+    if(player)for(const ally of state.players){
+      if(ally.id===player.id||ally.team!==player.team||!ally.alive||!ally.downed||ally.downedTimer<=0||
+        Math.hypot(ally.x-player.x,ally.y-player.y,ally.z-player.z)>32)continue;
+      active.add(ally.id);
+      let marker=this.casualtyMarkers.get(ally.id);
+      if(!marker){
+        marker=document.createElement('span');marker.className='campaign-marker wounded';
+        this.root.append(marker);this.casualtyMarkers.set(ally.id,marker);
+      }
+      this.placeMarker(marker,r,{x:ally.x,y:ally.y+1,z:ally.z},player,
+        `✚ ${ally.name.split(' ').at(-1)} · ${Math.ceil(ally.downedTimer)} С`);
+    }
+    for(const [id,marker] of this.casualtyMarkers)if(!active.has(id)){
+      marker.remove();this.casualtyMarkers.delete(id);
     }
   }
   placeMinigunReticle(r,aim){
@@ -250,7 +296,7 @@ export class Mission4Presentation{
     reticle.style.top=`${(1-point.y)*50}%`;
   }
   dispose(){
-    this.voice.dispose();this.score.dispose();this.combat.campaignMusicOverride=this.oldMusicOverride;
+    this.voice.dispose();this.score.dispose();this.minimap.dispose();this.combat.campaignMusicOverride=this.oldMusicOverride;
     const r=this.renderer,o=this.original;r.sun.intensity=o.sun;r.sunOffset.copy(o.sunOffset);
     r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.campaignCoverColliders=null;
     r.scene.fog.color.copy(o.fogColor);r.scene.fog.density=o.fogDensity;

@@ -59,489 +59,496 @@
     {
       "id": "m01.orlov.brief01",
       "speaker": "orlov",
-      "seconds": 3.6679166666666667,
-      "bytes": 11394,
-      "performance": "[calm, authoritative]"
+      "seconds": 3.706542,
+      "bytes": 10170,
+      "performance": "[serious, brisk, deliberate] В два часа ночи грузовики высадят вас у сухого русла."
     },
     {
       "id": "m01.orlov.brief02",
       "speaker": "orlov",
-      "seconds": 5.525875,
-      "bytes": 17152,
-      "performance": "[calm, authoritative]"
+      "seconds": 5.9065,
+      "bytes": 16586,
+      "performance": "[serious, brisk, deliberate] Восточный корпус держит Аль-Ха́дру. В бывшей школе работает их радиостанция."
     },
     {
       "id": "m01.orlov.brief03",
       "speaker": "orlov",
-      "seconds": 6.500041666666666,
-      "bytes": 19147,
-      "performance": "[clear, speaking Russian at a measured pace]",
+      "seconds": 6.106542,
+      "bytes": 16719,
+      "performance": "[serious, brisk, deliberate] Маршрут: гряда, тыловой склад, деревня. Не выходите на освещённые участки.",
       "seed": 1464,
       "spokenText": "Маршрут. Гряда, тылово́й склад, деревня. Не выходите на освещённые участки."
     },
     {
       "id": "m01.orlov.brief04",
       "speaker": "orlov",
-      "seconds": 6.600041666666667,
-      "bytes": 20313,
-      "performance": "[calm, authoritative]"
+      "seconds": 6.3065,
+      "bytes": 17661,
+      "performance": "[serious, brisk, deliberate] Уничтожьте топливо и грузовики. Затем захватите станцию и удерживайте до подхо́да снабжения."
     },
     {
       "id": "m01.orlov.brief05",
       "speaker": "orlov",
-      "seconds": 5.074625,
-      "bytes": 15740,
-      "performance": "[calm, authoritative]"
+      "seconds": 5.0065,
+      "bytes": 14131,
+      "performance": "[serious, brisk, deliberate] Если поднимут тревогу — продолжайте. Стрелять первыми не торопитесь."
     },
     {
       "id": "m01.duran.landing01",
       "speaker": "duran",
-      "seconds": 4.726708333333334,
-      "bytes": 14230,
-      "performance": "[quietly, firm]"
+      "seconds": 4.906542,
+      "bytes": 12838,
+      "performance": "[whispering, urgent] Мартен, за мной. Ласко — замыкающий. Валь, проверь связь."
     },
     {
       "id": "m01.bruno.landing02",
       "speaker": "bruno",
-      "seconds": 3.137375,
-      "bytes": 9594,
-      "performance": "[quietly, dry humor]"
+      "seconds": 3.206542,
+      "bytes": 8665,
+      "performance": "[whispering, urgent] Связь есть. Надеюсь, местные уже́ спят."
     },
     {
       "id": "m01.lasko.landing03",
       "speaker": "lasko",
-      "seconds": 3.044791666666667,
-      "bytes": 9388,
-      "performance": "[muttering, wry]"
+      "seconds": 3.206542,
+      "bytes": 9556,
+      "performance": "[whispering, urgent] В такую темноту и собственную тень потеряешь."
     },
     {
       "id": "m01.duran.landing04",
       "speaker": "duran",
-      "seconds": 3.3752916666666666,
-      "bytes": 10363,
-      "performance": "[low and decisive]"
+      "seconds": 3.506542,
+      "bytes": 9469,
+      "performance": "[whispering, urgent] Темнота сегодня на нашей стороне. В русло, живо."
     },
     {
       "id": "m01.duran.follow",
       "speaker": "duran",
-      "seconds": 3.156875,
-      "bytes": 9781,
-      "performance": "[quietly]"
+      "seconds": 3.3065,
+      "bytes": 9093,
+      "performance": "[whispering, urgent] Держись рядом, Мартен. До гряды идём по руслу."
     },
     {
       "id": "m01.duran.crouch",
       "speaker": "duran",
-      "seconds": 3.484208333333333,
-      "bytes": 10934,
-      "performance": "[hushed, urgent]"
+      "seconds": 4.006542,
+      "bytes": 11275,
+      "performance": "[whispering, urgent] Патруль на берегу́. Присядь. Не показывайся на фоне неба."
     },
     {
       "id": "m01.duran.prone",
       "speaker": "duran",
-      "seconds": 4.3097916666666665,
-      "bytes": 13386,
-      "performance": "[quietly, steady]"
+      "seconds": 4.2065,
+      "bytes": 11189,
+      "performance": "[whispering, urgent] Если укрытие низкое — ложись. Здесь спешка выдаёт нас."
     },
     {
       "id": "m01.bruno.patrol",
       "speaker": "bruno",
-      "seconds": 2.3228333333333335,
-      "bytes": 7448,
-      "performance": "[hushed, alert]"
+      "seconds": 2.567583,
+      "bytes": 6976,
+      "performance": "[whispering, urgent] Двое наверху. Пока нас не заметили."
     },
     {
       "id": "m01.duran.ridge",
       "speaker": "duran",
-      "seconds": 3.675708333333333,
-      "bytes": 11585,
-      "performance": "[low and matter-of-fact]"
+      "seconds": 3.9065,
+      "bytes": 10732,
+      "performance": "[whispering, urgent] На гряде пулемётный пост. Уберём дозор и пойдём дальше."
     },
     {
       "id": "m01.duran.knife",
       "speaker": "duran",
-      "seconds": 4.370958333333333,
-      "bytes": 13373,
-      "performance": "[quietly, precise]"
+      "seconds": 4.7065,
+      "bytes": 12906,
+      "performance": "[whispering, urgent] Обойди со стороны траншеи. Ножом со спины — без единого звука."
     },
     {
       "id": "m01.kane.grenade",
       "speaker": "kane",
-      "seconds": 3.778583333333333,
-      "bytes": 11804,
-      "performance": "[low, matter-of-fact]"
+      "seconds": 3.706542,
+      "bytes": 10266,
+      "performance": "[alert, low voice] Граната достанет их за мешками. Только предупреди нас."
     },
     {
       "id": "m01.duran.objective",
       "speaker": "duran",
-      "seconds": 2.0922083333333332,
-      "bytes": 6318,
-      "performance": "[quiet approval]"
+      "seconds": 2.17575,
+      "bytes": 6214,
+      "performance": "[decisive, controlled] Хорошая работа. Продолжаем."
     },
     {
       "id": "m01.duran.ridgeClear",
       "speaker": "duran",
-      "seconds": 4.258166666666667,
-      "bytes": 13042,
-      "performance": "[steady and direct]"
+      "seconds": 4.106542,
+      "bytes": 11604,
+      "performance": "[whispering, urgent] Гряда наша. Дальше склад. За дюнами укрытий больше."
     },
     {
       "id": "m01.bruno.road",
       "speaker": "bruno",
-      "seconds": 3.705125,
-      "bytes": 11527,
-      "performance": "[dry humor]"
+      "seconds": 3.3065,
+      "bytes": 9410,
+      "performance": "[quick, tense] По дороге быстрее. И смотреть на нас будут со всех сторон."
     },
     {
       "id": "m01.duran.depot",
       "speaker": "duran",
-      "seconds": 3.623125,
-      "bytes": 11124,
-      "performance": "[steady and direct]"
+      "seconds": 3.8065,
+      "bytes": 10609,
+      "performance": "[decisive, controlled] Топливо и три грузовика. Два заряда — и отходим."
     },
     {
       "id": "m01.duran.charges",
       "speaker": "duran",
-      "seconds": 6.000041666666666,
-      "bytes": 18361,
-      "performance": "[clear, measured]"
+      "seconds": 5.9065,
+      "bytes": 16662,
+      "performance": "[decisive, controlled] Держи клавишу взаимодействия у метки. Взрыв через двадцать пять секунд после второго заряда."
     },
     {
       "id": "m01.kane.wounded",
       "speaker": "kane",
-      "seconds": 3.6031666666666666,
-      "bytes": 11078,
-      "performance": "[cries out in pain]"
+      "seconds": 3.4065,
+      "bytes": 9659,
+      "performance": "[alert, low voice] А! Ногу зацепило! Мартен, помоги!"
     },
     {
       "id": "m01.lasko.kaneDown",
       "speaker": "lasko",
-      "seconds": 4.200708333333333,
-      "bytes": 12968,
-      "performance": "[urgently]"
+      "seconds": 4.506542,
+      "bytes": 12419,
+      "performance": "[urgent, reassuring] Кейн ранен! Подойди, зажми взаимодействие и держи пять секунд!"
     },
     {
       "id": "m01.kane.revived",
       "speaker": "kane",
-      "seconds": 5.467958333333334,
-      "bytes": 17302,
-      "performance": "[breathing hard, relieved]"
+      "seconds": 4.106542,
+      "bytes": 11524,
+      "performance": "[quiet relief, still alert] Думал, так тут и останусь. Спасибо. Прикрою."
     },
     {
       "id": "m01.lasko.kaneLost",
       "speaker": "lasko",
-      "seconds": 4.389833333333334,
-      "bytes": 13373,
-      "performance": "[subdued, composed]"
+      "seconds": 4.506542,
+      "bytes": 12550,
+      "performance": "[urgent, reassuring] Он без сознания. Отмечаю место для санитаров. Нам нужно идти."
     },
     {
       "id": "m01.duran.chargeOne",
       "speaker": "duran",
-      "seconds": 3.7415833333333333,
-      "bytes": 11666,
-      "performance": "[steady and direct]"
+      "seconds": 3.7065,
+      "bytes": 10726,
+      "performance": "[decisive, controlled] Первый готов. Теперь второй, у другой группы грузовиков."
     },
     {
       "id": "m01.duran.chargeTwo",
       "speaker": "duran",
-      "seconds": 4.452333333333334,
-      "bytes": 13850,
-      "performance": "[urgent, firm]"
+      "seconds": 4.506542,
+      "bytes": 12556,
+      "performance": "[decisive, controlled] Оба заряда стоя́т. Двадцать пять секунд. Всем отойти от топлива!"
     },
     {
       "id": "m01.bruno.fuse",
       "speaker": "bruno",
-      "seconds": 2.7835833333333335,
-      "bytes": 8638,
-      "performance": "[calling out, urgent]"
+      "seconds": 3.7065,
+      "bytes": 10345,
+      "performance": "[shouts, tense, breath catches] Сейчас рванёт. Держите головы ниже!"
     },
     {
       "id": "m01.duran.depotBoom",
       "speaker": "duran",
-      "seconds": 3.4966666666666666,
-      "bytes": 10754,
-      "performance": "[steady and direct]"
+      "seconds": 3.8065,
+      "bytes": 10469,
+      "performance": "[decisive, controlled] Склад уничтожен. Проверить оружие. Идём к деревне."
     },
     {
       "id": "m01.officer.mid01",
       "speaker": "officer",
-      "seconds": 4.020958333333334,
-      "bytes": 12381,
-      "performance": "[shouts urgently]"
+      "seconds": 4.2065,
+      "bytes": 11690,
+      "performance": "[shouts, sharp] Склад горит! Поднять гарнизон, перекрыть подходы к школе!"
     },
     {
       "id": "m01.bruno.mid02",
       "speaker": "bruno",
-      "seconds": 3.886416666666667,
-      "bytes": 12031,
-      "performance": "[dry, tense]"
+      "seconds": 3.4065,
+      "bytes": 9756,
+      "performance": "[quick, tense] Они запрашивают подкрепление. Тихая прогулка закончилась."
     },
     {
       "id": "m01.duran.mid03",
       "speaker": "duran",
-      "seconds": 4.023708333333333,
-      "bytes": 12091,
-      "performance": "[calm, decisive]"
+      "seconds": 4.2065,
+      "bytes": 11303,
+      "performance": "[decisive, controlled] Тогда заставим их смотреть не туда. Мартен, выбирай подход."
     },
     {
       "id": "m01.duran.village",
       "speaker": "duran",
-      "seconds": 3.8423333333333334,
-      "bytes": 12052,
-      "performance": "[steady and direct]"
+      "seconds": 4.006542,
+      "bytes": 11415,
+      "performance": "[decisive, controlled] К школе можно пройти через рощу или по сухому каналу справа."
     },
     {
       "id": "m01.lasko.courier",
       "speaker": "lasko",
-      "seconds": 2.7499166666666666,
-      "bytes": 8298,
-      "performance": "[quietly, urgent]"
+      "seconds": 3.106542,
+      "bytes": 8458,
+      "performance": "[urgent, reassuring] В крайнем доме наш связной. Ещё дышит!"
     },
     {
       "id": "m01.courier.help",
       "speaker": "courier",
-      "seconds": 4.863541666666666,
-      "bytes": 14708,
-      "performance": "[weak, short of breath]"
+      "seconds": 5.406542,
+      "bytes": 14819,
+      "performance": "[weak, distressed] Свои?.. Я не могу встать. Помогите добраться до дороги."
     },
     {
       "id": "m01.courier.saved",
       "speaker": "courier",
-      "seconds": 3.1192083333333334,
-      "bytes": 10180,
-      "performance": "[weak, frightened]"
+      "seconds": 2.985542,
+      "bytes": 8400,
+      "performance": "[quiet relief, still alert] Дойду. Только не оставляйте меня здесь."
     },
     {
       "id": "m01.courier.evacuated",
       "speaker": "courier",
-      "seconds": 4.156416666666667,
-      "bytes": 12602,
-      "performance": "[tired but relieved]"
+      "seconds": 4.5065,
+      "bytes": 12364,
+      "performance": "[weak, distressed] Спасибо, Мартен. В машине есть ещё аптечка. Возьми."
     },
     {
       "id": "m01.duran.station",
       "speaker": "duran",
-      "seconds": 3.8535416666666666,
-      "bytes": 11881,
-      "performance": "[low, alert]"
+      "seconds": 3.8065,
+      "bytes": 10702,
+      "performance": "[decisive, controlled] Радиостанция впереди. Вход с двух сторон. Проверяй углы."
     },
     {
       "id": "m01.officer.call",
       "speaker": "officer",
-      "seconds": 3.7477916666666666,
-      "bytes": 11602,
-      "performance": "[urgent, into the radio]"
+      "seconds": 4.2065,
+      "bytes": 12188,
+      "performance": "[shouts, sharp] Говорит станция Аль-Ха́дра. Пришлите резерв! Немедленно!"
     },
     {
       "id": "m01.bruno.officerStopped",
       "speaker": "bruno",
-      "seconds": 3.7372916666666667,
-      "bytes": 11611,
-      "performance": "[relieved]"
+      "seconds": 3.8065,
+      "bytes": 10736,
+      "performance": "[quiet relief, still alert] Офицер не успел передать вызов. Одной проблемой меньше."
     },
     {
       "id": "m01.duran.documents",
       "speaker": "duran",
-      "seconds": 3.3287916666666666,
-      "bytes": 10105,
-      "performance": "[steady and direct]"
+      "seconds": 3.4065,
+      "bytes": 9720,
+      "performance": "[decisive, controlled] Документы офицера. Забери — в штабе разберутся."
     },
     {
       "id": "m01.bruno.radioStart",
       "speaker": "bruno",
-      "seconds": 3.71775,
-      "bytes": 11553,
-      "performance": "[focused, urgent]"
+      "seconds": 3.7065,
+      "bytes": 10584,
+      "performance": "[quick, tense] Станция наша. Мне нужно полторы минуты. Прикройте входы."
     },
     {
       "id": "m01.duran.defend",
       "speaker": "duran",
-      "seconds": 3.690875,
-      "bytes": 11484,
-      "performance": "[shouts firmly]"
+      "seconds": 3.7065,
+      "bytes": 10449,
+      "performance": "[decisive, controlled] Держим школу! Валь должен закончить передачу."
     },
     {
       "id": "m01.kane.waveOne",
       "speaker": "kane",
-      "seconds": 2.9520416666666667,
-      "bytes": 9068,
-      "performance": "[calling out, alert]"
+      "seconds": 4.406542,
+      "bytes": 12774,
+      "performance": "[shouts, tense, breath catches] На восточной дороге движение! Идут к нам!"
     },
     {
       "id": "m01.duran.waveTwo",
       "speaker": "duran",
-      "seconds": 2.693125,
-      "bytes": 8360,
-      "performance": "[shouts, urgent]"
+      "seconds": 3.206542,
+      "bytes": 8982,
+      "performance": "[shouts, tense, breath catches] Ещё одна группа! Не стойте у окон!"
     },
     {
       "id": "m01.lasko.sniper",
       "speaker": "lasko",
-      "seconds": 3.3232083333333335,
-      "bytes": 10291,
-      "performance": "[shouts a warning]"
+      "seconds": 3.7065,
+      "bytes": 10749,
+      "performance": "[shouts, tense, breath catches] Снайпер на крыше! Не высовывайтесь под вспышки!"
     },
     {
       "id": "m01.bruno.radioHalf",
       "speaker": "bruno",
-      "seconds": 3.393375,
-      "bytes": 10333,
-      "performance": "[strained, focused]"
+      "seconds": 3.106542,
+      "bytes": 8455,
+      "performance": "[quick, tense] Половина ушла. Держитесь, ещё немного!"
     },
     {
       "id": "m01.duran.waveThree",
       "speaker": "duran",
-      "seconds": 3.92825,
-      "bytes": 13314,
-      "performance": "[urgent command]",
+      "seconds": 4.906542,
+      "bytes": 15093,
+      "performance": "[shouts, tense, breath catches] Машина с пулемётом! Мартен, гранаты или пэ-тэ девяносто!",
       "spokenText": "Машина с пулемётом! Мартен, гранаты или пэ-тэ девяносто!"
     },
     {
       "id": "m01.bruno.vehicleDown",
       "speaker": "bruno",
-      "seconds": 2.7760833333333332,
-      "bytes": 8515,
-      "performance": "[relieved, excited]"
+      "seconds": 2.672083,
+      "bytes": 7345,
+      "performance": "[quick, tense] Пулемёт замолчал! Отличный выстрел!"
     },
     {
       "id": "m01.bruno.radioDone",
       "speaker": "bruno",
-      "seconds": 2.7500416666666667,
-      "bytes": 8597,
-      "performance": "[relieved, excited]"
+      "seconds": 2.907167,
+      "bytes": 7933,
+      "performance": "[quiet relief, still alert] Сигнал принят! Колонна выходит к нам!"
     },
     {
       "id": "m01.orlov.final01",
       "speaker": "orlov",
-      "seconds": 4.440416666666667,
-      "bytes": 13518,
-      "performance": "[calm, approving]"
+      "seconds": 4.906542,
+      "bytes": 13653,
+      "performance": "[quiet relief, still alert] Взвод Дюрана, задача выполнена. Снабжение уже́ на дороге."
     },
     {
       "id": "m01.lasko.final02",
       "speaker": "lasko",
-      "seconds": 4.33775,
-      "bytes": 14031,
-      "performance": "[softly, exhausted relief]"
+      "seconds": 3.9065,
+      "bytes": 10695,
+      "performance": "[quiet relief, still alert] Рассвет... Не думал, что так обрадуюсь солнцу."
     },
     {
       "id": "m01.bruno.final03",
       "speaker": "bruno",
-      "seconds": 3.5609583333333332,
-      "bytes": 10945,
-      "performance": "[quietly, growing concern]"
+      "seconds": 4.006542,
+      "bytes": 11166,
+      "performance": "[quiet relief, still alert] Сержант, пыль на горизонте. Это не наша колонна."
     },
     {
       "id": "m01.duran.final04",
       "speaker": "duran",
-      "seconds": 4.258958333333333,
-      "bytes": 12653,
-      "performance": "[grim, controlled]"
+      "seconds": 4.3065,
+      "bytes": 12294,
+      "performance": "[quiet relief, still alert] Вижу. Всем пополнить боезапас. Утро только начинается."
     },
     {
       "id": "m01.duran.hold",
       "speaker": "duran",
-      "seconds": 1.7459166666666666,
-      "bytes": 5418,
-      "performance": "[short, firm command]"
+      "seconds": 2.097375,
+      "bytes": 6002,
+      "performance": "[decisive, controlled] Взвод, держать позицию."
     },
     {
       "id": "m01.duran.move",
       "speaker": "duran",
-      "seconds": 2.50675,
-      "bytes": 7558,
-      "performance": "[short, firm command]"
+      "seconds": 2.985542,
+      "bytes": 8097,
+      "performance": "[decisive, controlled] Взвод, за Мартеном. Не отставать."
     },
     {
       "id": "m01.lasko.playerDown",
       "speaker": "lasko",
-      "seconds": 3.223375,
-      "bytes": 10017,
-      "performance": "[urgent, reassuring]"
+      "seconds": 4.806542,
+      "bytes": 14407,
+      "performance": "[shouts, tense, breath catches] Мартен ранен! Я иду. Не поднимай голову!"
     },
     {
       "id": "m01.lasko.reviving",
       "speaker": "lasko",
-      "seconds": 3.6443333333333334,
-      "bytes": 11094,
-      "performance": "[quiet, reassuring]"
+      "seconds": 4.006542,
+      "bytes": 11008,
+      "performance": "[quiet, sincere] Спокойно. Сейчас перевяжу. Ещё несколько секунд."
     },
     {
       "id": "m01.lasko.playerUp",
       "speaker": "lasko",
-      "seconds": 2.462083333333333,
-      "bytes": 7536,
-      "performance": "[softly, relieved]"
+      "seconds": 2.567583,
+      "bytes": 7321,
+      "performance": "[quiet relief, still alert] Дыши ровно. Ты снова в строю."
     },
     {
       "id": "m01.duran.syringe",
       "speaker": "duran",
-      "seconds": 4.5492083333333335,
-      "bytes": 14006,
-      "performance": "[steady and direct]"
+      "seconds": 5.0065,
+      "bytes": 13764,
+      "performance": "[decisive, controlled] Если санитар не дойдёт — используй шприц. Держи клавишу, не отпускай."
     },
     {
       "id": "m01.bruno.allyDown",
       "speaker": "bruno",
-      "seconds": 2.16925,
-      "bytes": 6678,
-      "performance": "[calls out urgently]"
+      "seconds": 2.097375,
+      "bytes": 5766,
+      "performance": "[quick, tense] У нас раненый! Нужна помощь!"
     },
     {
       "id": "m01.sentry.suspicion",
       "speaker": "sentry",
-      "seconds": 2.59075,
-      "bytes": 7655,
-      "performance": "[low, suspicious]"
+      "seconds": 2.672083,
+      "bytes": 6936,
+      "performance": "[suspicious, hushed] Стой... Ты слышал? Проверю."
     },
     {
       "id": "m01.sentry.search",
       "speaker": "sentry",
-      "seconds": 2.624458333333333,
-      "bytes": 7962,
-      "performance": "[sharp commanding voice]",
+      "seconds": 2.985542,
+      "bytes": 8130,
+      "performance": "[suspicious, hushed] Здесь кто-то был! Осмотреть укрытия!",
       "spokenText": "Здесь кто-то был! Осмотреть укры́тия!"
     },
     {
       "id": "m01.officer.alarm",
       "speaker": "officer",
-      "seconds": 2.367583333333333,
-      "bytes": 7361,
-      "performance": "[shouts sharply]"
+      "seconds": 3.4065,
+      "bytes": 10383,
+      "performance": "[shouts, tense, breath catches] Противник! Тревога! К оружию!"
     },
     {
       "id": "m01.duran.quiet",
       "speaker": "duran",
-      "seconds": 3.09325,
-      "bytes": 9489,
-      "performance": "[low, quietly pleased]"
+      "seconds": 3.3065,
+      "bytes": 8913,
+      "performance": "[whispering, urgent] Тихо прошли. На площади будет меньше солдат."
     },
     {
       "id": "m01.bruno.failure",
       "speaker": "bruno",
-      "seconds": 3.13275,
-      "bytes": 9535,
-      "performance": "[subdued, shaken]"
+      "seconds": 2.567583,
+      "bytes": 7311,
+      "performance": "[quick, tense] Валь не отвечает... Мы потеряли связь."
     },
     {
       "id": "m01.duran.ammo",
       "speaker": "duran",
-      "seconds": 3.187708333333333,
-      "bytes": 9948,
-      "performance": "[steady and direct]"
+      "seconds": 3.606542,
+      "bytes": 9923,
+      "performance": "[decisive, controlled] Пополни патроны у ящиков. В школе будет жарко."
     },
     {
       "id": "m01.lasko.medkit",
       "speaker": "lasko",
-      "seconds": 4.593583333333333,
-      "bytes": 14183,
-      "performance": "[calm, matter-of-fact]"
+      "seconds": 4.6065,
+      "bytes": 13075,
+      "performance": "[urgent, reassuring] Аптечка восстановит силы полностью. Береги шприцы для тяжёлого ранения."
     },
     {
       "id": "m01.bruno.sokol",
       "speaker": "bruno",
-      "seconds": 2.397666666666667,
-      "bytes": 7510,
-      "performance": "[clear and brisk, into the radio]"
+      "seconds": 2.410833,
+      "bytes": 6934,
+      "performance": "[quick, tense] «Сокол», примите сигнал — выдвигаемся."
+    },
+    {
+      "id": "m01.lasko.medkitDrop",
+      "speaker": "lasko",
+      "seconds": 3.506542,
+      "bytes": 9635,
+      "performance": "[raises voice, practical] Кинул аптечку! Подлечитесь и держитесь рядом!"
     }
   ]
 }

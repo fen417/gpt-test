@@ -8,6 +8,7 @@ import {fireTank,tankMuzzle,tankArmorZone} from '../tank.js';
 import {campaignTankSight} from './tank-controls.js';
 import {zeroedBulletPitch} from '../ballistics.js';
 import {ALHADRA_DESERT,M02_RESERVE_ROUTE} from './alhadra-desert.js';
+import {dropCampaignMedkit,reviveDuration} from './medical.js';
 
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
@@ -37,6 +38,14 @@ export class Mission2Simulation extends Simulation{
   balanceTeams(){}
   damage(player,amount,attacker,meta){
     if(player.campaignRole==='platoon'&&attacker?.team===1&&attacker.campaignRole==='tank-driver')return;
+    if(player.campaignRole==='platoon'&&player.alive&&this.time>=player.invulnerableUntil){
+      if(player.downed)return;
+      if(amount>=player.hp){
+        Object.assign(player,{hp:1,downed:true,prone:true,downedTimer:25,reviver:null,lastHurt:this.time,
+          input:sanitizeInput({yaw:player.yaw})});
+        return;
+      }
+    }
     return super.damage(player,amount,attacker,meta);
   }
   updateVehicleActions(p){
@@ -45,7 +54,7 @@ export class Mission2Simulation extends Simulation{
     if(p.campaignRole==='tank-driver')return;
     super.updateVehicleActions(p);
   }
-  damageVehicle(vehicle,amount,attacker,kind,origin,sourceVehicleId){
+  damageVehicle(vehicle,amount,attacker,kind,origin,sourceVehicleId,impact){
     const wasAlive=vehicle.hp>0;
     if(vehicle.type==='tank'&&vehicle.controlScheme==='wot'&&kind==='blast'&&!vehicle.scriptedLoss){
       // A tank has one health pool. Even a rear/roof hit cannot erase it in
@@ -54,6 +63,12 @@ export class Mission2Simulation extends Simulation{
       amount=Math.min(amount,this.campaign.tankMaxHp(vehicle)*.34/armor);
     }
     const hit=super.damageVehicle(vehicle,amount,attacker,kind,origin,sourceVehicleId);
+    if(vehicle.type==='tank'&&vehicle.hp>0&&!vehicle.burning&&impact?.directCannon&&
+      hit?.amount>0&&tankArmorZone(vehicle,origin)==='rear'&&this.random()<.8){
+      vehicle.burning=true;
+      if(vehicle.id==='sokol-7')this.campaign.say('kim.fire',3,{priority:2});
+      else if(vehicle.team===0)this.campaign.say('holt.allyHit',3);
+    }
     if(vehicle.id==='sokol-7'&&vehicle.hp>0&&vehicle.hp<(vehicle.maxHp*.45)&&!this.campaign.flags.repairHint){
       this.campaign.flags.repairHint=true;this.campaign.say('grey.repair',5);
     }
@@ -115,6 +130,8 @@ export class Mission2Simulation extends Simulation{
     if(p.campaignRole!=='tank-driver'){
       if(p.campaignRole==='atgun'){this.campaign.thinkGun(p);return;}
       if(!p.alive)return;
+      if(p.downed){p.input=sanitizeInput({yaw:p.yaw,crouch:true});return;}
+      if(this.campaign.thinkMedic(p,dt))return;
       ensureBotState(this,p);thinkInfantryBot(this,p,dt);
       const goal=this.campaign.botGoal(p);
       if(goal&&!p.ai.contact)moveBot(this,p,goal,dt,{sprint:false});
@@ -178,7 +195,7 @@ export class Mission2Simulation extends Simulation{
     }
     const combatAllowed=c.started&&c.elapsed>=13;
     const inRange=target&&nearest<fireRange;
-    const attack=Boolean(inRange&&combatAllowed);
+    const attack=Boolean(inRange&&combatAllowed&&!v.m02Withdraw);
     if(c.order!=='hold'||v.team===1){
       if(c.enemiesAlive<=2&&v.team===0&&c.phase==='battle'&&!target){
         const hidden=enemy.filter(other=>other.type==='tank').sort((a,b)=>distance(v,a)-distance(v,b))[0];
@@ -196,8 +213,9 @@ export class Mission2Simulation extends Simulation{
       if(this.time<(v.m02DetourUntil??0))goal=v.m02Detour;
       else if(!v.m02Rear&&attack&&nearest<180)goal={x:v.x,z:v.z};
     }
+    if(v.m02Withdraw&&this.time>=(v.m02DetourUntil??0))goal=v.m02Withdraw;
     const desired=bearing(v,goal),delta=angle(desired-v.yaw);
-    const companySpeed=v.m02Rear?RESERVE_MARCH_SPEED:v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
+    const companySpeed=v.m02Rear||v.m02Withdraw?RESERVE_MARCH_SPEED:v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
     const drive=distance(v,goal)>10&&Math.abs(delta)<1.15?companySpeed/VEHICLE_TYPES.tank.maxSpeed:0;
     const turn=clamp(-delta*1.8,-1,1);
     if(this.time<(v.m02EscapeUntil??0)){
@@ -282,6 +300,10 @@ export class Mission2Simulation extends Simulation{
   }
   snapshot(){
     const state=super.snapshot(),c=this.campaign;
+    for(const player of state.players){
+      const live=this.players.get(player.id);
+      Object.assign(player,{downed:Boolean(live.downed),prone:Boolean(live.prone),downedTimer:live.downedTimer??0});
+    }
     state.vehicles.forEach(v=>{
       const live=this.vehicles.find(q=>q.id===v.id);
       if(!live)return;
@@ -332,6 +354,7 @@ export class Mission2Director{
       const v=this.sim.createMapVehicle({id:meta.id,type:'tank',team:0,x,z,yaw:forward});
       const maxHp=this.tankMaxHp(v,this.sim.difficulty);
       Object.assign(v,{controlScheme:'wot',m02Index:i,m02Waypoint:0,
+        fireByHit:true,
         shellAmmo:{ap:c.weapons.ap.ammo,he:c.weapons.he.ammo},
         m02Shell:'ap',campaignWeapons:c.weapons,
         cannonAmmo:c.weapons.ap.ammo,respawnIn:1e8,dispersion:.12,
@@ -355,7 +378,14 @@ export class Mission2Director{
   onTankDestroyed(vehicle,attacker){
     this.smoke.push({x:vehicle.x,y:vehicle.y,z:vehicle.z,until:this.time+45});
     if(vehicle.id==='sokol-8'&&!this.flags.baleLost){
-      this.flags.baleLost=true;this.say('bale.loss',4);
+      this.flags.baleLost=true;this.say('bale.loss',4,{priority:2});
+    }else if(vehicle.team===0&&this.time>=(this.nextLossReport??0)){
+      this.nextLossReport=this.time+12;this.say('ray.allyLoss',3,{priority:2});
+    }else if(vehicle.team===1&&attacker?.team===0&&this.time>=(this.nextVictoryReport??0)){
+      const cheers=['kim.enemyDown','vos.enemyDown','grey.enemyDown'];
+      const index=this.flags.destroyedTankReport??0;
+      this.flags.destroyedTankReport=(index+1)%cheers.length;this.nextVictoryReport=this.time+9;
+      this.say(cheers[index],3);
     }
   }
   say(key,duration=4,{priority=1}={}){
@@ -415,9 +445,9 @@ export class Mission2Director{
     }
     if(command?.type==='repair'){
       const v=this.sim.vehicles.find(x=>x.id==='sokol-7');
-      if(v?.hp>0&&v.hp<v.maxHp&&this.sim.time>=(v.nextSelfRepair??0)&&Math.abs(v.speed)<1){
+      if(v?.hp>0&&(v.hp<v.maxHp||v.burning)&&this.sim.time>=(v.nextSelfRepair??0)&&Math.abs(v.speed)<1){
         v.hp=Math.min(v.maxHp,v.hp+300);v.nextSelfRepair=this.sim.time+35;
-        v.extinguishedUntil=this.sim.time+15;this.say('crew.repair',2);
+        v.burning=false;this.say('crew.repair',2);
         this.sim.event('campaignRepair',{vehicleId:v.id,amount:300});return;
       }
     }
@@ -458,6 +488,7 @@ export class Mission2Director{
       const yaw=Math.atan2(-ux,-uz);
       const v=this.sim.createMapVehicle({id:`east-tank-${n+1}`,type:'tank',team:1,x,z,yaw});
       Object.assign(v,{controlScheme:'wot',m02Waypoint:rear?1:0,m02Index:i,m02Rear:rear,
+        fireByHit:true,
         cannonAmmo:48,campaignWeapons:this.definition.weapons,m02Shell:'ap',
         shellAmmo:{ap:48,he:8},respawnIn:1e8,hp:c.maxHp,maxHp:c.maxHp,dispersion:.12,
         m02FireAt:this.sim.time+(n%3)*.6});
@@ -475,6 +506,8 @@ export class Mission2Director{
     if(event.id==='enemyVanguard'){
       this.ensureVanguard();
       this.flags.contact=true;
+      this.say('holt.contactReport',3);
+      this.say('vos.contactReply',3);
       this.openContact();
     }
     else if(event.type==='spawn')this.spawnEnemy(event.count??1);
@@ -515,6 +548,7 @@ export class Mission2Director{
     if(!playerTank||playerTank.hp<=0||!this.player?.alive){this.failed='Танк «Сокол-7» уничтожен.';return;}
     if(this.elapsed>=13&&this.phase==='march'){this.phase='battle';this.stage=3;}
     const company=this.definition.enemyCompany;
+    if(this.phase==='battle'&&this.enemySerial===company.firstWave)this.withdrawVanguard(playerTank);
     if(this.phase==='battle'&&this.enemySerial===company.firstWave&&this.enemiesAlive===0){
       this.fired.add('enemyRear');this.spawnEnemy(company.total-this.enemySerial);
     }
@@ -526,6 +560,7 @@ export class Mission2Director{
     }
     if(this.phase==='village'){
       const defenders=[...this.sim.players.values()].filter(p=>p.campaignRole==='platoon'&&p.alive);
+      this.updateVillageAid(defenders,dt);
       if(!defenders.length){this.failed='Взвод на площади уничтожен. Аль-Хадра потеряна.';return;}
       if(this.villageStartedAt===null&&distance(playerTank,{x:17,z:0})<110){
         this.villageStartedAt=this.time;
@@ -575,7 +610,58 @@ export class Mission2Director{
     this.spawnSoldier('m02-duran',carry.duran_alive===false?'Командир взвода':'Гари Дюран',0,17,8,'platoon');
     const members=[['kane','Кейн',-29,20,'support'],['bruno','Бруно',18,25,'assault'],['lasko','Ласко',-29,-15,'medic']];
     for(const [id,name,x,z,cls] of members)if(carry[id+'_alive']!==false)this.spawnSoldier('m02-'+id,name,0,x,z,'platoon',cls);
+    if(carry.lasko_alive===false)this.spawnSoldier('m02-field-medic','Санитар взвода',0,-26,-12,'platoon','medic');
     for(let i=0;i<2;i++)this.spawnSoldier('m02-rifle-'+i,'Боец взвода',0,17,-12+i*7,'platoon');
+  }
+  withdrawVanguard(playerTank){
+    const vanguard=this.sim.vehicles.filter(v=>v.team===1&&!v.m02Rear&&v.hp>0);
+    if(vanguard.length&&vanguard.length<=3&&!this.flags.enemyRetreat){
+      this.flags.enemyRetreat=true;
+      const [x,z]=this.definition.enemyCompany.contactApproach;
+      for(const [index,v] of vanguard.entries())v.m02Withdraw={x:x-40,z:z+(index-1)*29,at:this.time};
+      if(vanguard.length===3)this.say('holt.retreat',3);
+    }
+    for(const v of vanguard){
+      if(!v.m02Withdraw||distance(v,v.m02Withdraw)>24&&
+        (this.time-v.m02Withdraw.at<65||distance(v,playerTank)<180))continue;
+      this.sim.removePlayer(v.seats[0]);this.sim.vehicles=this.sim.vehicles.filter(other=>other!==v);
+    }
+  }
+  medicInVillage(){
+    return this.sim.players.get('m02-lasko')??this.sim.players.get('m02-field-medic');
+  }
+  thinkMedic(p,dt){
+    const patient=this.sim.players.get(this.medicPatientId);
+    if(p!==this.medicInVillage()||!patient?.downed||!patient.alive)return false;
+    p.input=sanitizeInput({yaw:bearing(p,patient),crouch:distance(p,patient)<2.4});
+    if(distance(p,patient)>=2.4){
+      ensureBotState(this.sim,p);moveBot(this.sim,p,patient,dt,{sprint:true,followSteps:true});
+    }
+    return true;
+  }
+  updateVillageAid(defenders,dt){
+    const medic=this.medicInVillage();
+    const voice=medic?.id==='m02-field-medic'?'reserveMedic':'lasko';
+    const casualties=defenders.filter(p=>p.downed);
+    const couldRescue=medic?.alive&&!medic.downed;
+    const patient=couldRescue?casualties.filter(p=>p!==medic&&distance(p,medic)<44).sort((a,b)=>distance(a,medic)-distance(b,medic))[0]:null;
+    this.medicPatientId=patient?.id??null;
+    for(const p of casualties){
+      if(p===patient&&distance(p,medic)<2.5&&Math.abs(p.y-medic.y)<1.4&&
+        this.sim.lineClear({x:medic.x,y:medic.y+1.4,z:medic.z},{x:p.x,y:p.y+.4,z:p.z})){
+        if(!p.reviver)this.say(voice+'.revive',2);
+        p.reviver=medic.id;p.reviveProgress=(p.reviveProgress??0)+dt/reviveDuration(medic,8);
+        if(p.reviveProgress>=1){
+          Object.assign(p,{downed:false,prone:false,hp:40,reviver:null,reviveProgress:0,
+            downedTimer:0,invulnerableUntil:this.time+2,reviveSeq:(p.reviveSeq??0)+1});
+          this.sim.event('revive',{playerId:p.id,medicId:medic.id,x:p.x,z:p.z});
+        }
+      }else{
+        p.reviver=null;p.reviveProgress=0;p.downedTimer-=dt;
+        if(p.downedTimer<=0)Object.assign(p,{hp:0,downed:false,alive:false,respawnIn:1e8,deaths:p.deaths+1});
+      }
+    }
+    dropCampaignMedkit(this.sim,medic,()=>this.say(voice+'.medkitDrop',3));
   }
   spawnVillageAttack(){
     for(const [i,[x,z]] of this.definition.villageApproachGuns.entries()){
@@ -651,6 +737,7 @@ export class Mission2Director{
       v.y=this.sim.groundAt(v.x,v.z);
       Object.assign(v,vehicleBodyTilt(v,this.sim.map.terrain));
       if(v.type==='tank'&&v.hp<=0)v.compactWreck=true;
+      if(v.type==='tank'&&!v.fireByHit){v.burning=false;v.fireByHit=true;}
       const maxHp=this.tankMaxHp(v,save.difficulty);
       if(v.maxHp!==maxHp){
         v.hp=v.hp/v.maxHp*maxHp;v.maxHp=maxHp;
@@ -664,6 +751,8 @@ export class Mission2Director{
     this.nextReserveShot=save.mission.nextReserveShot??0;
     this.fired=new Set(save.mission.fired);
     this.options.campaignProgress={carry:structuredClone(save.mission.carry)};
+    if(this.options.campaignProgress.carry.lasko_alive===false&&!this.medicInVillage())
+      this.spawnSoldier('m02-field-medic','Санитар взвода',0,-26,-12,'platoon','medic');
     this.sim.rngState=save.rngState;
     this.flags.contact=this.fired.has('enemyVanguard');
     const firstTank=this.sim.vehicles.find(v=>v.id==='east-tank-1');

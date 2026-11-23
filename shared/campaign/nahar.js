@@ -21,11 +21,11 @@ const landforms=[
   {x:-635,z:1410,rx:460,rz:229,height:72,flat:.15,angle:.32},
   {x:-1110,z:1080,rx:388,rz:232,height:42,flat:.1,angle:-.46},
 ];
-const terrainPads=[{x:90,z:116,w:1500,d:24,height:-4.2,blend:8}];
+const terrainPads=[{x:0,z:116,w:4136,d:24,height:-4.2,blend:8}];
 const terrain=makeTerrain(size,landforms,cell,terrainPads);
 
 export const NAHAR_LANDING={primary:{x:-35,z:-35},alternate:{x:-111,z:-38}};
-export const NAHAR_WATER={x:90,z:116,w:1490,d:21,y:-3.18};
+export const NAHAR_WATER={x:0,z:116,w:4096,d:21,y:-3.18};
 export const NAHAR_STORM={x:-50,z:5,innerX:640,innerZ:510,outerX:1080,outerZ:860};
 const roadPlan=[
   ['north-avenue',-142,-166,1080,13],['depot-road',-41,-13,210,7],
@@ -158,6 +158,7 @@ const reserved=[
   {x:-68,z:-33,w:138,d:61},{x:-96,z:25,w:82,d:34},{x:12,z:13,w:108,d:104},
   {x:83,z:37,w:30,d:85},{x:104,z:97,w:36,d:85},{x:152,z:171,w:127,d:91},
   {x:-192,z:-171,w:675,d:27},{x:0,z:116,w:1800,d:36},
+  {x:-1040,z:-20,w:1950,d:13},{x:1005,z:1.5,w:1900,d:13},
   ...structures.map(s=>({...s,w:s.w+13,d:s.d+13})),
   ...roadPlan.map(([,x,z,w,d])=>({x,z,w:w+3.4,d:d+3.4})),
 ];
@@ -233,9 +234,31 @@ for(const [id,x,z,w,d] of [['shed-west',-104,23,30,19],['shed-east',-68,25,25,17
   part(id+'-roof',x,z,w+.8,d+.86,.26,4.8,id==='shed-west'?'#375d70':'#80796b',iron);
   for(const dz of [-5,5])part(id+'-workbench-'+dz,x-4,z+dz,6.5,1.12,.91,0,'#796747');
 }
+function railPoint(x,offset){
+  const t=Math.max(0,Math.min(1,(x+56)/29));
+  const z=offset-20*(1-t*t*(3-2*t));
+  return [x,terrain.heightAt(x,z),z];
+}
+function railStrip(id,a,b,width,height,color,surface){
+  const item=part(id,(a[0]+b[0])/2,(a[2]+b[2])/2,b[0]-a[0],width,height,(a[1]+b[1])/2,color,
+    {surface,shape:'rail-strip',noCollision:true});
+  item.ends=[a,b];
+}
+for(let x=-2048;x<2048;){
+  const next=Math.min(2048,x+((x>=-64&&x<-24)?4:16));
+  railStrip('ballast-'+x,railPoint(x,1.5),railPoint(next,1.5),8.8,.094,'#8f806c','village-sand');
+  for(const offset of [-1.68,-.32,3.32,4.68]){
+    const a=railPoint(x,offset),b=railPoint(next,offset);
+    a[1]+=.091;b[1]+=.091;
+    railStrip(`rail-${x}-${offset}`,a,b,.087,.105,'#60594f','metal');
+  }
+  x=next;
+}
 for(const z of [-1,4]){
-  for(const dz of [-.68,.68])part(`rail-${z}-${dz}`,11,z+dz,186,.09,.105,.012,'#4c4641',iron);
-  for(let x=-80;x<102;x+=1.4)part(`tie-${z}-${x}`,x,z,.22,2.25,.08,0,'#77695b',{detail:1,noCollision:true});
+  for(let x=-280;x<344;x+=1.65){
+    const [,y,trackZ]=railPoint(x,z);
+    part(`tie-${z}-${x}`,x,trackZ,.22,2.25,.06,y+.092,'#6f6150',{detail:1,noCollision:true});
+  }
 }
 for(const [index,z] of [[0,-6],[1,9]]){
   part('platform-'+index,14,z,88,3.15,.26,0,'#b0a18a',{kind:'village-floor'});
@@ -291,6 +314,95 @@ for(const x of [8,20,32])part(`station-light-${x}`,x,24,3.1,.19,.13,8.76,'#e3cfa
 for(const side of [-1,1])part('stair-rail-'+side,19.8+side*2.05,23.4,.085,6.5,.08,1.25,beam,{...iron,detail:2,noCollision:true});
 part('station-divider',1,36,5,.27,2.47,0,'#968a73');
 
+const timber={surface:'wood'},fittings={...iron,noCollision:true,detail:1};
+function cabinet(id,x,z,y,{wide=1.55,paint='#64746b',drawers=3}={}){
+  part(id,x,z,wide,.64,1.58,y,paint,iron);
+  for(let drawer=0;drawer<drawers;drawer++){
+    const dy=y+.17+drawer*.36;
+    part(id+'-drawer-'+drawer,x,z+.328,wide-.11,.045,.27,dy,paint,fittings);
+    part(id+'-pull-'+drawer,x,z+.365,.29,.07,.047,dy+.135,'#9d9a84',fittings);
+  }
+}
+function shelves(id,x,z,y,color='#6c7567'){
+  for(const dx of [-1.4,1.4])part(id+'-post-'+dx,x+dx,z,.09,.72,2.14,y,beam,iron);
+  for(const level of [.28,.97,1.61]){
+    part(id+'-shelf-'+level,x,z,2.96,.79,.075,y+level,color,iron);
+    for(const dx of [-.81,.42,1.08])
+      part(id+'-stock-'+level+'-'+dx,x+dx,z,.45,.54,.22+Math.abs(dx)*.21,y+level+.075,dx>0?'#968468':'#70614a',timber);
+  }
+}
+for(const [id,x,z] of [['west',-104,23],['east',-68,25]]){
+  const depth=id==='west'?19:17,width=id==='west'?30:25;
+  for(const dx of [-width*.37,-width*.19,width*.19,width*.37]){
+    const wallZ=z-depth/2+.18;
+    part(id+'-shop-pilaster-'+dx,x+dx,wallZ,.26,.21,4.54,0,beam,fittings);
+    part(id+'-shop-skirt-'+dx,x+dx,wallZ+.14,3.3,.08,.88,0,'#70786b',trim('concrete'));
+  }
+  cabinet(id+'-tool-locker',x+8,z+5,0,{paint:'#6d755f'});
+  shelves(id+'-parts-rack',x-9,z-6.6,0);
+  shelves(id+'-bin-rack',x+7.4,z-6.5,0,'#7c7466');
+  part(id+'-pegboard',x-7.6,z-depth/2+.30,3.2,.11,1.47,1.26,'#817257',timber);
+  for(const row of [.25,.53,.84,1.14]){
+    part(id+'-pegboard-rail-'+row,x-7.6,z-depth/2+.37,2.88,.05,.036,1.26+row,'#a09878',fittings);
+  }
+  for(const [i,dy] of [.72,.47,.61,.87].entries()){
+    const toolX=x-8.73+i*.67,toolZ=z-depth/2+.39;
+    part(id+'-tool-shank-'+i,toolX,toolZ,.07,.07,dy,1.58,'#5e6664',fittings);
+    part(id+'-tool-head-'+i,toolX,toolZ,.19,.09,.08,1.58+dy,'#a5987b',fittings);
+  }
+  for(const [dx,tone] of [[-.29,'#716d56'],[.29,'#9c7557']]){
+    part(id+'-welding-bottle-'+dx,x+9.1+dx,z+5.2,.37,.37,1.24,0,tone,{...iron,shape:'cylinder'});
+    part(id+'-welding-valve-'+dx,x+9.1+dx,z+5.2,.13,.13,.18,1.24,'#9a917d',{...fittings,shape:'cylinder'});
+  }
+  part(id+'-safety-panel',x+7.5,z-depth/2+.24,2.4,.09,.84,2.86,'#a79a77',trim());
+  for(const dx of [-.68,0,.68])part(id+'-safety-print-'+dx,x+7.5+dx,z-depth/2+.30,.39,.025,.48,3.02,'#985c42',fittings);
+  part(id+'-worktop',x-4,z-5,6.6,1.14,.08,.87,'#74685b',timber);
+  for(const dx of [-2.4,-1.8,1.3,2.35])part(id+'-bench-parts-'+dx,x-4+dx,z-5,.31,.42,.18,.95,'#56656a',fittings);
+  for(const offset of [-5,2,6]){
+    part(id+'-roof-girder-'+offset,x,z+offset,23,.17,.26,4.5,beam,fittings);
+    part(id+'-shop-lamp-'+offset,x,z+offset,5,.24,.11,4.38,'#ecd7af',{surface:'unlit',noCollision:true});
+  }
+}
+for(const [x,z] of [[-1,16],[4,43],[39,15]]){
+  cabinet('station-locker-'+x,x,z,0);
+  shelves('station-rack-'+x,x+2.7,z,0,'#9b8c70');
+}
+for(const [x,z] of [[27,36.9],[40.6,42.1]]){
+  cabinet('dispatch-files-'+x,x,z,3.12,{wide:1.95,paint:'#67706b',drawers:4});
+}
+for(const [x,boardColor] of [[27.4,'#ac9972'],[36.8,'#8a9a86'],[41.3,'#ad9a7b']]){
+  part('dispatch-noticeboard-'+x,x,45.72,3.3,.16,1.65,4.45,'#7b6e56',timber);
+  part('dispatch-board-inset-'+x,x,45.618,3.13,.07,1.47,4.54,boardColor,trim('wood',1));
+  for(const [dx,dy,shade] of [[-.96,.26,'#d1c5a1'],[-.25,.49,'#c9b897'],[.53,.34,'#b7ae98'],[1.01,.56,'#dad0af']]){
+    part('dispatch-pin-sheet-'+x+'-'+dx,x+dx,45.565,.44,.015,.68,4.55+dy,shade,trim('concrete',1));
+    for(let mark=0;mark<4;mark++)
+      part('dispatch-note-line-'+x+'-'+dx+'-'+mark,x+dx,45.548,.31,.011,.018,4.65+dy+mark*.11,'#7c7763',trim('concrete',2));
+  }
+}
+for(const z of [24,30,37,43]){
+  part('dispatch-east-baseboard-'+z,43.787,z,.079,5.66,.61,3.12,'#687367',trim('concrete',1));
+  part('dispatch-east-post-'+z,43.78,z,.19,.21,5.92,3.12,beam,fittings);
+}
+for(const x of [25,34,41]){
+  part('dispatch-led-girder-'+x,x,34,0.13,15.1,.24,6.72,beam,fittings);
+  for(const z of [26,41.8])part('dispatch-led-hanger-'+x+'-'+z,x,z,.06,.06,2.72,6.96,beam,fittings);
+  part('dispatch-led-light-'+x,x,34,.36,3.6,.17,6.5,'#e0d2a3',{surface:'unlit',noCollision:true});
+}
+for(const [x,z] of [[23,26],[34,33],[41,38]]){
+  part('dispatch-monitor-'+x,x+.61,z,.43,.49,.38,4.18,'#425b5b',iron);
+  part('dispatch-console-dials-'+x,x-.43,z+.27,.92,.26,.07,4.175,'#b7aa86',fittings);
+  for(const dx of [-.42,.06,.38])
+    part('dispatch-console-led-'+x+'-'+dx,x+dx,z+.29,.051,.06,.028,4.243,'#bacc98',{surface:'unlit',noCollision:true,detail:2});
+  part('dispatch-slate-'+x,x-.41,z-.14,.84,.33,.04,4.208,'#bcb292',trim('concrete',1));
+  part('dispatch-mic-stem-'+x,x+.98,z+.17,.045,.046,.27,4.21,'#4e5a58',fittings);
+  part('dispatch-mic-head-'+x,x+.98,z+.11,.10,.18,.085,4.46,'#4e5a58',fittings);
+}
+for(const [x,z] of [[118,161],[131,171]])cabinet('pump-controls-'+x,x,z,0,{paint:'#556a66'});
+for(const [i,z] of [161,162.2,169.8,171].entries()){
+  part('pump-interior-line-'+i,125,z,19,.17,.175,3.33,'#726c54',fittings);
+  for(const x of [120,126,131])part('pipe-joint-'+i+'-'+x,x,z,.18,.33,.31,3.27,'#8b7e64',fittings);
+}
+
 for(const z of [101,131]){
   for(const x of [-160,-82,-15,53,148,221,292])if(Math.abs(x-104)>12)
     wall(`canal-rail-${x}-${z}`,x,z,55,.29,1.1,concrete,{gap:2.2,offset:12});
@@ -318,6 +430,34 @@ for(const [id,x,z,tone] of [['depot',-57,-53,'#78654e'],['yard',-129,-54,'#6c7e7
   part('container-'+id,x,z,6.1,2.45,2.55,0,tone,iron);
   for(const side of [-1,1])for(let n=-2.72;n<2.8;n+=.34)
     part(`container-rib-${id}-${side}-${n}`,x+n,z+side*1.24,.06,.09,2.28,.12,tone,{...iron,noCollision:true,detail:1});
+}
+for(const [id,x,z] of [['yard-west',-142,-35],['depot-west',-81,-57],
+  ['workshop',-117,37],['station',45,-9],['freight',76,63],['bank',88,137],['pump',143,179],['tunnel',172,175]]){
+  for(const [offset,width,height] of [[-1.35,1.22,.82],[0,1.28,1.14],[1.42,1.21,.91]]){
+    part(id+'-freight-crate-'+offset,x+offset,z,width,1.16,height,0,'#8f7958',timber);
+    for(const d of [-.39,.39])part(id+'-crate-batten-'+offset+'-'+d,x+offset+d,z+.59,.12,.055,height,0,'#685742',
+      {surface:'wood',noCollision:true,detail:1});
+  }
+  part(id+'-drum',x+2.8,z-.65,.62,.62,.91,0,'#61756d',{surface:'metal',shape:'cylinder'});
+  part(id+'-drum-top',x+2.8,z-.65,.58,.58,.035,.913,'#a28661',{surface:'metal',shape:'cylinder',noCollision:true});
+}
+for(const [id,x,z] of [['depot-storage',-61,-68],['freight-storage',87,61],['pump-storage',153,179]]){
+  for(const dx of [-4.6,4.6])for(const dz of [-2.55,2.55])
+    part(id+'-awning-post-'+dx+'-'+dz,x+dx,z+dz,.15,.16,3,0,beam,iron);
+  part(id+'-awning',x,z,9.9,5.85,.17,3,'#6e7772',iron);
+  for(const offset of [-2.15,0,2.15]){
+    for(let board=0;board<4;board++)
+      part(id+'-pallet-'+offset+'-'+board,x+offset,z-.63+board*.32,1.38,.19,.14,0,'#867453',timber);
+    part(id+'-stack-'+offset,x+offset,z-.06,1.18,1.12,1.06,.14,offset===0?'#9a8161':'#71684f',timber);
+    part(id+'-stack-cap-'+offset,x+offset,z-.06,1.22,1.15,.09,1.20,'#a18c6b',timber);
+  }
+}
+for(const [id,x,z] of [['freight-cable',95,72],['pump-cable',151,170]]){
+  part(id+'-drum',x,z,.94,.94,.92,0,'#665e4a',{surface:'wood',shape:'cylinder'});
+  part(id+'-base',x,z,1.39,1.39,.14,0,'#94805f',{surface:'wood',shape:'cylinder'});
+  part(id+'-rim',x,z,1.39,1.39,.16,.92,'#94805f',{surface:'wood',shape:'cylinder'});
+  for(const height of [.27,.51,.74])part(id+'-wire-'+height,x,z,1.03,1.03,.13,height,'#424949',
+    {surface:'metal',shape:'cylinder',noCollision:true});
 }
 for(const [id,x,z] of [['depot',-40,-9],['station',7,-5],['freight',46,60],['canal',124,148],['tunnel',175,185]]){
   part(id+'-sign-post',x,z,.08,.08,2.6,0,beam,{...iron,detail:1,noCollision:true});

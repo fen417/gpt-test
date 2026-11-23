@@ -1210,6 +1210,12 @@ export class GameRenderer {
         infantrySeat(soldier,{vehicle,seat,index,control,relativeYaw:Math.atan2(Math.sin(yawDelta),Math.cos(yawDelta)),
           pitch:player.pitch,aim:player.aim,shotSeq:player.shotSeq,dt,
           attachmentFlags:player.weaponId===soldier.weaponId?player.attachmentFlags??0:undefined});
+        if(player.seatCollapse!=null){
+          const fall=Math.sin(THREE.MathUtils.clamp(player.seatCollapse,0,1)*Math.PI/2);
+          group.position.y-=.32*fall;
+          group.rotation.x=-.42*fall;
+          group.rotation.z=.58*fall;
+        }
         // Keep the light-vehicle placeholder visible until the full soldier
         // rig is actually drawn; don't blank the seat if assets are still loading.
         if(rig.riders[index])rig.riders[index].visible=fallbackRiderVisible(vehicle,index,localId,group.parent===rig.body&&group.visible);
@@ -1988,6 +1994,7 @@ export class GameRenderer {
     const mounted = this.updateVehicles(state, player, dt, view);
     const worldNear=state.mapId==='nahar'&&mounted?.rig.blackHawk ? .072 : .045;
     const seat = mounted && VEHICLE_TYPES[mounted.vehicle.type].seats[player.vehicleSeat];
+    if(!mounted?.rig.blackHawk||seat?.role!=='gunner')this.minigunZoom=1;
     const passenger = seat?.role === 'passenger';
     if (player && !isAlive) {
       const focusX = view.deployTarget?.x ?? player.x ?? 0;
@@ -2037,7 +2044,10 @@ export class GameRenderer {
       this.weapon.visible = false;
       this.viewWeaponTarget = null;
       this.wallStow = this.aimAmount = this.sprintBlend = 0;
-      const mountedFov=fieldTank&&view.aim?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov)/2)/2.5)):baseFov;
+      const minigun=mounted.rig.blackHawk&&seat.role==='gunner'&&player.alive&&!player.downed;
+      this.minigunZoom=minigun?lerp(this.minigunZoom??1,view.aim?2:1,1-Math.exp(-dt*16)):1;
+      const zoom=fieldTank&&view.aim?2.5:this.minigunZoom;
+      const mountedFov=THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov)/2)/zoom));
       if (Math.abs(this.camera.fov - mountedFov) > .03 || this.camera.near !== worldNear) {
         this.camera.fov = mountedFov;
         this.camera.near = worldNear;

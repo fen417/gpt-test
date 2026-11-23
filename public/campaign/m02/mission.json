@@ -338,6 +338,8 @@
     "loopEnd": 179.643
   },
   "audioBudgets": {
-    "voice": 1000000
-  }
+    "voice": 1000000,
+    "sfx": 300000
+  },
+  "contentRevision": 39
 }
