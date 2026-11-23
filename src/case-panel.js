@@ -1,8 +1,7 @@
-import {CASE_NAME,CASE_RARITIES,CASE_REWARDS,RELEASE_CASE_VERSION,caseReward,campaignCaseReward} from '../shared/cases.js';
+import {CASE_TYPES,CASE_RARITIES,FIELD_RESERVE,POLAR_CIRCUIT,RELEASE_CASE_VERSION,getCaseType,caseReward,campaignCaseReward} from '../shared/cases.js';
 import {WEAPONS} from '../shared/world.js';
 import {requestCases} from './network.js';
 import {mountWeaponPreview} from './weapon-preview.js';
-import caseModel from './assets/cases/field-reserve.glb?url';
 import {cloneWeaponModel,loadWeaponModels} from './weapon-models.js';
 import {setWeaponSkin,weaponSkinUrl} from './weapon-skins.js';
 import './case-panel.css';
@@ -11,6 +10,7 @@ const $=id=>document.getElementById(id);
 const rarityById=new Map(CASE_RARITIES.map(rarity=>[rarity.id,rarity]));
 const campaignMissions=['m01','m02','m03'];
 const campaignDifficulties=['regular','veteran'];
+const caseModels=import.meta.glob('./assets/cases/*.glb',{eager:true,query:'?url',import:'default'});
 
 function node(tag,value){
   const item=document.createElement(tag);
@@ -32,6 +32,8 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
   const readyEvents=new EventTarget();
   const queued=new Set();
   const catalogue=new Map(),equipButton=$('case-equip-skin');
+  const choices=new Map();
+  let selected=CASE_TYPES[0],selectionMade=false;
   let showing=null,equipping=false,caseLoadout;
   let snapshot,refreshing,opening,animation,lastFailure,epoch=0;
   const preview=mountWeaponPreview({
@@ -50,18 +52,46 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
           },
         };
       }
+      const {id,name}=selected;
       return {
-        key:'field-reserve',name:CASE_NAME,
+        key:id,name,
         async load(){
           const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
-          const {scene}=await new GLTFLoader().loadAsync(caseModel);
-          return {model:scene,angle:[.48,.48,0],dispose:()=>scene.traverse(mesh=>{
-            if(mesh.isMesh){mesh.geometry.dispose();mesh.material.dispose();}
-          })};
+          const {scene}=await new GLTFLoader().loadAsync(caseModels[`./assets/cases/${id}.glb`]);
+          return {model:scene,angle:[.48,.48,0],dispose:()=>{
+            const geometries=new Set(),materials=new Set(),textures=new Set();
+            scene.traverse(mesh=>{
+              if(!mesh.isMesh)return;
+              geometries.add(mesh.geometry);
+              materials.add(mesh.material);
+              if(mesh.material.map)textures.add(mesh.material.map);
+            });
+            for(const resource of [...geometries,...materials,...textures])resource.dispose();
+          }};
         },
       };
     },
   });
+
+  for(const type of CASE_TYPES){
+    const button=node('button',type.name);
+    const count=node('span','—');
+    button.type='button';
+    button.className='panel-secondary';
+    button.append(count);
+    button.onclick=()=>{
+      selectionMade=true;
+      if(selected===type&&!showing)return;
+      selected=type;
+      result.hidden=true;
+      roulette.hidden=true;
+      tape.replaceChildren();
+      if(lastFailure!=='refresh')setStatus();
+      inspect(null);
+    };
+    choices.set(type.id,{button,count});
+    $('case-type-picker').append(button);
+  }
 
   for(const rarity of CASE_RARITIES){
     const row=document.createElement('div');
@@ -70,29 +100,36 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
     $('case-odds').append(row);
   }
 
-  for(const reward of CASE_REWARDS){
-    const button=rewardLabel(reward,'button');
-    button.type='button';
-    button.dataset.skin=reward.id;
-    button.setAttribute('aria-pressed','false');
-    const pattern=node('img','');
-    pattern.alt='';
-    pattern.width=160;
-    pattern.height=50;
-    pattern.loading='lazy';
-    pattern.src=weaponSkinUrl(reward.id);
-    const ownership=node('small','');
-    ownership.className='case-skin-ownership';
-    button.prepend(pattern);
-    button.append(ownership);
-    button.onclick=()=>{inspect(reward);$('case-preview').scrollIntoView({block:'nearest'});};
-    catalogue.set(reward.id,{button,ownership});
-    $('case-skins').append(button);
+  function buildCatalogue(){
+    catalogue.clear();
+    $('case-skins').replaceChildren();
+    for(const reward of selected.rewards){
+      const button=rewardLabel(reward,'button');
+      button.type='button';
+      button.dataset.skin=reward.id;
+      button.setAttribute('aria-pressed','false');
+      const pattern=node('img','');
+      pattern.alt='';
+      pattern.width=160;
+      pattern.height=50;
+      pattern.loading='lazy';
+      pattern.src=weaponSkinUrl(reward.id);
+      const ownership=node('small','');
+      ownership.className='case-skin-ownership';
+      button.prepend(pattern);
+      button.append(ownership);
+      button.onclick=()=>{inspect(reward);$('case-preview').scrollIntoView({block:'nearest'});};
+      catalogue.set(reward.id,{button,ownership});
+      $('case-skins').append(button);
+    }
   }
+  buildCatalogue();
 
   function inspect(reward){
+    if(reward)selected=getCaseType(reward.caseType);
     showing=reward;
-    renderCatalogue();
+    if(!catalogue.has(selected.rewards[0].id))buildCatalogue();
+    render();
     void preview.update();
   }
   $('case-show-crate').onclick=()=>inspect(null);
@@ -105,29 +142,49 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
     $('case-selected-skin').hidden=!showing;
     const owned=caseLoadout?.owned?.[showing?.id];
     const equipped=owned&&caseLoadout.equipped?.[showing.weaponId]===showing.id;
-    if(showing)$('case-selected-description').textContent=`${rarityById.get(showing.rarity).name} · ${equipped?'Экипирован':owned?'Получен':'Доступен в кейсе'}`;
+    if(showing){
+      const {name,chance}=rarityById.get(showing.rarity);
+      $('case-selected-description').textContent=`${name} · ${chance}% на редкость · ${equipped?'Экипирован':owned?'Получен':'Доступен в кейсе'}`;
+    }
     equipButton.hidden=!owned;
     equipButton.disabled=equipping||Boolean(opening);
     equipButton.textContent=equipped?'Снять скин':'Экипировать';
+  }
+
+  function bucket(typeId){
+    return snapshot?.availableByType?.[typeId]??(typeId===FIELD_RESERVE?snapshot:null);
   }
 
   function render(){
     const available=snapshot?.available??0;
     $('open-cases').hidden=!available;
     $('home-case-count').textContent=available;
-    $('case-inventory-count').textContent=snapshot?`В наличии ${available}`:'В наличии —';
-    open.disabled=!available||Boolean(opening)||equipping;
+    $('case-inventory-count').textContent=snapshot?`В наличии ${bucket(selected.id)?.available??0}`:'В наличии —';
+    open.disabled=!bucket(selected.id)?.nextCaseId||Boolean(opening)||equipping;
+    for(const [id,{button,count}] of choices){
+      count.textContent=snapshot?String(bucket(id)?.available??0):'—';
+      button.disabled=Boolean(opening)||equipping;
+      button.setAttribute('aria-pressed',String(selected.id===id));
+    }
     const recent=snapshot?.recent.map(item=>caseReward(item.rewardId)).filter(Boolean)??[];
     $('case-history').hidden=!recent.length;
-    $('case-history-list').replaceChildren(...recent.map(reward=>rewardLabel(reward,'li')));
+    $('case-history-list').replaceChildren(...recent.map(reward=>{
+      const label=rewardLabel(reward,'li');
+      label.append(node('span',getCaseType(reward.caseType).name));
+      return label;
+    }));
     renderCatalogue();
   }
 
   function apply(inventory,version){
     if(version!==epoch||inventory.revision<(snapshot?.revision??0))return false;
+    const first=!snapshot;
     snapshot=inventory;
     caseLoadout={owned:inventory.owned??{},equipped:inventory.equipped??{}};
-    render();
+    const stocked=first&&!selectionMade&&!bucket(selected.id)?.available&&
+      CASE_TYPES.find(type=>bucket(type.id)?.available);
+    if(stocked){selected=stocked;inspect(null);}
+    else render();
     readyEvents.dispatchEvent(new Event('change'));
     return true;
   }
@@ -198,11 +255,17 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
       })).filter(({key})=>hasClaim(key));
       const latest=pending.at(-1);
       if(!latest||version!==epoch)continue;
-      const previous=snapshot?.campaign[missionId]??0;
+      const previous=snapshot;
       const {inventory}=await requestCases(url,token,'case-campaign',{missionId,difficulty:latest.difficulty});
-      pending.forEach(({key})=>forgetClaim(key));
-      const awarded=(inventory.campaign[missionId]??0)-previous;
-      if(apply(inventory,version)&&awarded>0)notify(awarded===1?'Получен кейс «Полевой резерв»':'Получены 2 кейса «Полевой резерв»');
+      if((inventory.polarCampaign?.[missionId]??0)>=campaignCaseReward(missionId,latest.difficulty))
+        pending.forEach(({key})=>forgetClaim(key));
+      if(!apply(inventory,version))continue;
+      const awards=CASE_TYPES.flatMap(type=>{
+        const ledger=type.id===FIELD_RESERVE?'campaign':'polarCampaign';
+        const count=(inventory[ledger]?.[missionId]??0)-(previous?.[ledger]?.[missionId]??0);
+        return count>0?[`«${type.name}» ×${count}`]:[];
+      });
+      if(awards.length)notify(`Награда за миссию · ${awards.join(' и ')}`);
     }
   }
 
@@ -247,8 +310,9 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
   function showPrize(reward,version){
     roulette.hidden=false;
     const winner=29;
+    const rewards=getCaseType(reward.caseType).rewards;
     const strip=Array.from({length:35},(_,index)=>rewardLabel(
-      index===winner?reward:CASE_REWARDS[Math.floor(Math.random()*CASE_REWARDS.length)],
+      index===winner?reward:rewards[Math.floor(Math.random()*rewards.length)],
     ));
     tape.replaceChildren(...strip);
     const offset=roulette.clientWidth/2-strip[winner].offsetLeft-strip[winner].offsetWidth/2;
@@ -264,7 +328,7 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
     });
   }
 
-  async function openCase(caseId=snapshot?.nextCaseId){
+  async function openCase(caseId=bucket(selected.id)?.nextCaseId){
     if(!caseId||opening)return;
     const version=epoch;
     opening=caseId;
@@ -303,7 +367,7 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
     claimCampaign,
     equip,
     get loadout(){return caseLoadout;},
-    get campaign(){return snapshot?.campaign;},
+    get campaign(){return snapshot&&{[FIELD_RESERVE]:snapshot.campaign,[POLAR_CIRCUIT]:snapshot.polarCampaign};},
     events:readyEvents,
     open(){void preview.update();void refresh();},
     reset(){
@@ -311,10 +375,13 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
       snapshot=refreshing=opening=null;
       equipping=false;
       caseLoadout=null;
+      selectionMade=false;
+      selected=CASE_TYPES[0];
       animation?.cancel();
       animation=null;
       result.hidden=roulette.hidden=true;
-      render();
+      setStatus();
+      inspect(null);
       readyEvents.dispatchEvent(new Event('change'));
       void refresh();
     },

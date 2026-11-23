@@ -138,17 +138,236 @@ function save(id,canvas){
   if(result.status!==0)throw Error(result.stderr?.toString()||'WebP export failed for '+id);
 }
 
-for(const [i,[id,style,colors]] of camos.entries()){
-  const canvas=createCanvas(512,256);
-  camouflage(canvas,style,colors,1447+i*205);
-  save(id,canvas);
+const sourcePath=name=>fileURLToPath(new URL(name,import.meta.url));
+
+async function bakeFieldReserve(args){
+  for(const [i,[id,style,colors]] of camos.entries()){
+    const canvas=createCanvas(512,256);
+    camouflage(canvas,style,colors,1447+i*205);
+    save(id,canvas);
+  }
+  const [sheetPath=sourcePath('paint-source.webp'),portraitPath=sourcePath('nagant-source.webp')]=args;
+  const sheet=await loadImage(sheetPath),portrait=await loadImage(portraitPath);
+  for(let i=0;i<3;i++)save(`rare-${i+1}`,tile(sheet,i,0));
+  const hawk=tile(sheet,0,1),eclipse=tile(sheet,1,1),ribbons=tile(sheet,2,1),steel=tile(sheet,2,0);
+  save('legendary-1',artwork(steel,hawk,768,384,1.20));
+  save('legendary-2',eclipseFinish(eclipse));
+  save('ultra-1',artwork(ribbons,portrait,704,512,.55,-122));
 }
 
-const sourcePath=name=>fileURLToPath(new URL(name,import.meta.url));
-const [sheetPath=sourcePath('paint-source.webp'),portraitPath=sourcePath('nagant-source.webp')]=process.argv.slice(2);
-const sheet=await loadImage(sheetPath),portrait=await loadImage(portraitPath);
-for(let i=0;i<3;i++)save(`rare-${i+1}`,tile(sheet,i,0));
-const hawk=tile(sheet,0,1),eclipse=tile(sheet,1,1),ribbons=tile(sheet,2,1),steel=tile(sheet,2,0);
-save('legendary-1',artwork(steel,hawk,768,384,1.20));
-save('legendary-2',eclipseFinish(eclipse));
-save('ultra-1',artwork(ribbons,portrait,704,512,.55,-122));
+function finishCanvas(width,height,base){
+  const canvas=createCanvas(width,height);
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle=base;
+  ctx.fillRect(0,0,width,height);
+  return {canvas,ctx};
+}
+
+function grain(ctx,width,height,seed){
+  const random=rng(seed);
+  for(let i=0;i<9000;i++){
+    ctx.fillStyle=i%2?'#dcfff81e':'#1711222c';
+    ctx.fillRect(random()*width,random()*height,1+random()*2,1);
+  }
+}
+
+function cinnabarFinish(){
+  // One print for the M-50 slide, shroud and frame.
+  const {canvas,ctx}=finishCanvas(768,534,'#4b1622');
+  ctx.translate(380,210);
+  ctx.rotate(-.24);
+  const enamels=['#762334','#a63237','#c04e45','#92302e','#331b2c'];
+  for(let row=-4;row<7;row++){
+    for(let col=-7;col<8;col++){
+      const x=col*68+(row%2)*34,y=row*56;
+      ctx.beginPath();
+      ctx.moveTo(x-35,y);
+      ctx.quadraticCurveTo(x-34,y+35,x,y+58);
+      ctx.quadraticCurveTo(x+34,y+35,x+35,y);
+      ctx.quadraticCurveTo(x,y+13,x-35,y);
+      ctx.fillStyle=enamels[(row+col*2+30)%enamels.length];
+      ctx.fill();
+      ctx.strokeStyle='#f0ad75';
+      ctx.lineWidth=1.7;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x-24,y+14);
+      ctx.quadraticCurveTo(x-15,y+35,x,y+42);
+      ctx.strokeStyle='#fae0a281';
+      ctx.stroke();
+    }
+  }
+  ctx.resetTransform();
+  grain(ctx,768,534,211);
+  return canvas;
+}
+
+function sonarFinish(){
+  const {canvas,ctx}=finishCanvas(768,440,'#16162a');
+  for(let y=21;y<440;y+=26)for(let x=20;x<768;x+=26){
+    ctx.fillStyle=(x+y)%3?'#d0aac36b':'#c2b2e8a3';
+    ctx.fillRect(x,y,2,2);
+  }
+  for(const [x,y,r,rotation] of [[412,165,174,-.4],[75,382,124,.65],[770,306,133,-1.25]]){
+    for(let i=1;i<=5;i++){
+      ctx.beginPath();
+      ctx.arc(x,y,r*i/5,rotation,rotation+Math.PI*1.78);
+      ctx.strokeStyle=i%2?'#e5a0ef':'#816cbc';
+      ctx.lineWidth=i%2?3:1.3;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(x-r,y);
+    ctx.lineTo(x+r,y);
+    ctx.strokeStyle='#bda8eb91';
+    ctx.stroke();
+    ctx.fillStyle='#ffc487';
+    ctx.fillRect(x-4,y-4,8,8);
+  }
+  const wave=[0,0,13,-21,33,-44,49,-22,11,-7,0,0,0];
+  ctx.beginPath();
+  wave.forEach((y,i)=>ctx.lineTo(204+i*32,285+y));
+  ctx.lineWidth=3;
+  ctx.strokeStyle='#ffbb7e';
+  ctx.stroke();
+  grain(ctx,768,440,352);
+  return canvas;
+}
+
+function crystalFinish(){
+  const {canvas,ctx}=finishCanvas(768,534,'#203044');
+  const random=rng(9376);
+  for(let i=0;i<58;i++){
+    const x=random()*870-68,y=random()*584-39,len=44+random()*200,w=9+random()*54;
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(-.71+(random()-.5)*.88);
+    const facets=[[[0,-w/2],[len*.80,-w/3],[len,0],[len*.18,0]],
+      [[0,-w/2],[len*.18,0],[len*.1,w*.42],[-len*.08,0]],
+      [[len*.18,0],[len,0],[len*.73,w*.29],[len*.1,w*.42]]];
+    const colors=i%5===0?['#ccb9e7','#607b9b','#765687']:['#bfecf0','#76b5c9','#3986aa'];
+    for(const [facet,points] of facets.entries()){
+      ctx.beginPath();
+      for(const [px,py] of points)ctx.lineTo(px,py);
+      ctx.closePath();
+      ctx.fillStyle=colors[facet]+(i%3?'bf':'e8');
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  grain(ctx,768,534,771);
+  return canvas;
+}
+
+async function nautilusFinish(){
+  const image=await loadImage(sourcePath('nautilus-source.webp'));
+  const waves=await loadImage(sourcePath('nautilus-enamel-source.webp'));
+  // Two regions share the atlas. The 768 px receiver panel gets the shell,
+  // while the 832 px furniture panel can carry full-width waves.
+  const {canvas,ctx}=finishCanvas(1600,442,'#15273d');
+  ctx.globalAlpha=.70;
+  ctx.drawImage(waves,0,0,768,442);
+  ctx.globalAlpha=.93;
+  ctx.drawImage(waves,768,0,832,442);
+  ctx.globalAlpha=1;
+  const halo=ctx.createRadialGradient(288,181,70,288,181,215);
+  halo.addColorStop(0,'#102038dd');
+  halo.addColorStop(.5,'#10203890');
+  halo.addColorStop(1,'#10203800');
+  ctx.fillStyle=halo;
+  ctx.fillRect(0,0,768,442);
+  const seal=finishCanvas(270,238,'#162942');
+  seal.ctx.drawImage(image,206,45,1080,952,0,0,270,238);
+  seal.ctx.globalCompositeOperation='destination-in';
+  const fade=seal.ctx.createRadialGradient(135,119,91,135,119,132);
+  fade.addColorStop(0,'#000');
+  fade.addColorStop(1,'#0000');
+  seal.ctx.fillStyle=fade;
+  seal.ctx.fillRect(0,0,270,238);
+  ctx.drawImage(seal.canvas,153,62);
+  return canvas;
+}
+
+async function auroraFinish(){
+  const image=await loadImage(sourcePath('aurora-source.webp'));
+  // Receiver and handguard occupy .839 × .308 m in the shared projection.
+  const {canvas,ctx}=finishCanvas(1000,367,'#23263a');
+  const cropHeight=image.width*canvas.height/canvas.width;
+  ctx.drawImage(image,0,116,image.width,cropHeight,0,0,canvas.width,canvas.height);
+  return canvas;
+}
+
+async function sunstrikeFinish(){
+  const image=await loadImage(sourcePath('sunstrike-source.webp'));
+  // VK-45 lower housing has the uninterrupted broad side below its upper rail.
+  const {canvas,ctx}=finishCanvas(828,468,'#521823');
+  const random=rng(945);
+  for(let i=0;i<44;i++){
+    const y=random()*468,x=590+random()*274,length=45+random()*165;
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    ctx.lineTo(x+length,y-18-length*.18);
+    ctx.lineTo(x+length*.55,y-1);
+    ctx.fillStyle=['#ffb420','#ce432b','#ab2b2a','#361b27'][i%4];
+    ctx.fill();
+  }
+  for(let i=0;i<31;i++){
+    const angle=random()*Math.PI*2;
+    const near=.66+random()*.30,far=near+.22+random()*.28;
+    const x=Math.cos(angle)*205,y=Math.sin(angle)*118;
+    ctx.beginPath();
+    ctx.moveTo(324+x*near,242+y*near);
+    ctx.lineTo(324+x*far,242+y*far);
+    ctx.lineTo(324+x*near-y*.035,242+y*near+x*.035);
+    ctx.fillStyle=['#9d2e32','#77303a','#b14837','#441923'][i%4];
+    ctx.fill();
+  }
+  const portrait=finishCanvas(418,276,'#521823');
+  portrait.ctx.drawImage(image,20,10,384,256);
+  const mask=createCanvas(418,276),softEdge=mask.getContext('2d');
+  // Feather the impact art into the coating while keeping the glove, face
+  // and cape opaque inside their own contours.
+  for(const [x,y,rx,ry,core] of [[127,137,133,118,.71],[277,88,111,100,.64],[260,172,144,98,.51]]){
+    softEdge.save();
+    softEdge.translate(x,y);
+    softEdge.scale(rx,ry);
+    const fade=softEdge.createRadialGradient(0,0,0,0,0,1);
+    fade.addColorStop(core,'#000');
+    fade.addColorStop(.90,'#0004');
+    fade.addColorStop(1,'#0000');
+    softEdge.fillStyle=fade;
+    softEdge.fillRect(-1,-1,2,2);
+    softEdge.restore();
+  }
+  portrait.ctx.globalCompositeOperation='destination-in';
+  portrait.ctx.drawImage(mask,0,0);
+  ctx.drawImage(portrait.canvas,125,106);
+  grain(ctx,828,468,204);
+  return canvas;
+}
+
+async function bakePolarCircuit(){
+  const polarCamos=[
+    ['polar-common-1','blotch',['#303333','#645e58','#4b5254','#928b7a']],
+    ['polar-common-2','dune',['#8e9aa3','#c0cad0','#687881','#a7ada7']],
+    ['polar-common-3','reed',['#454c41','#807d5a','#343637','#646f5a']],
+    ['polar-uncommon-1','pixel',['#455679','#74889f','#232d43','#506680']],
+    ['polar-uncommon-2','blotch',['#3b302b','#694439','#202323','#a2604a']],
+    ['polar-uncommon-3','dune',['#c7d2ca','#e2e9df','#809496','#a8c2be']],
+  ];
+  for(const [i,[id,style,colors]] of polarCamos.entries()){
+    const canvas=createCanvas(640,320);
+    camouflage(canvas,style,colors,10322+i*251);
+    save(id,canvas);
+  }
+  save('polar-rare-1',cinnabarFinish());
+  save('polar-rare-2',sonarFinish());
+  save('polar-rare-3',crystalFinish());
+  save('polar-legendary-1',await nautilusFinish());
+  save('polar-legendary-2',await auroraFinish());
+  save('polar-ultra-1',await sunstrikeFinish());
+}
+
+const args=process.argv.slice(2);
+if(!args.includes('--polar'))await bakeFieldReserve(args);
+if(!args.length||args.includes('--polar'))await bakePolarCircuit();

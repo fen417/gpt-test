@@ -30,7 +30,7 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu menu-home">
-    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.36</span></span><div class="audio-controls"><button id="open-account" class="small-button account-open" type="button" aria-haspopup="dialog" hidden>Войти</button><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
+    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.37</span></span><div class="audio-controls"><button id="open-account" class="small-button account-open" type="button" aria-haspopup="dialog" hidden>Войти</button><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
     <div class="home-content">
       <section class="home-hero" aria-labelledby="home-title"><div class="home-kicker"><i></i> ПЕХОТА. ТЕХНИКА. ЗАХВАТ ТЕРРИТОРИИ.</div><h1 id="home-title">КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1><p>Свой отряд. Свой маршрут. Твой следующий бой.</p>
         <nav class="home-nav" aria-label="Главное меню">
@@ -139,6 +139,7 @@
         </section>
       </div>
       <section id="profile-view-cases" class="case-panel" role="tabpanel" aria-labelledby="profile-nav-cases" hidden>
+        <div id="case-type-picker" class="case-type-picker" role="group" aria-label="Выбор кейса"></div>
         <div class="case-hero">
           <div class="case-model-stage">
             <canvas id="case-preview" tabindex="0" aria-label="3D-просмотр кейса"></canvas>

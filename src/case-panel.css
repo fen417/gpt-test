@@ -3,6 +3,10 @@
 .profile-tabs { flex-wrap: wrap; }
 .case-panel { display: grid; gap: 1rem; }
 .case-panel[hidden], .home-case-link[hidden] { display: none; }
+.case-type-picker { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .55rem; }
+.case-type-picker button { display: flex; justify-content: space-between; align-items: center; gap: .6rem; text-align: left; }
+.case-type-picker button[aria-pressed=true] { border-color: #e6ae73; background: #392e27; }
+.case-type-picker span { color: #ebaf6c; font-variant-numeric: tabular-nums; }
 .case-hero { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.2rem; align-items: center; }
 .case-model-stage { position: relative; min-width: 0; background: radial-gradient(ellipse at 52% 45%, #354034 0%, #1e2720 48%, #111715 100%); border: 1px solid #66715a70; }
 .case-model-stage canvas { display: block; width: 100%; height: clamp(175px, 35vh, 260px); touch-action: none; cursor: grab; }
@@ -44,6 +48,7 @@
 .case-skins button:is(:hover,[aria-pressed=true]) { border-color: var(--rarity); background: #30382d; }
 .case-skins img { display: block; width: 100%; min-width: 0; height: 47px; object-fit: cover; border-radius: 2px; }
 .case-skins [data-skin="legendary-2"] img, .case-skins [data-skin="ultra-1"] img { object-position: center 8%; }
+.case-skins [data-skin="polar-ultra-1"] img { object-position: center 23%; }
 .case-skins small { color: var(--rarity); font-size: .7rem; }
 .case-skins strong, .case-tape strong { font-size: .87rem; }
 .case-skins span, .case-tape span, .case-history span, .case-result span { color: #c2cbbf; font-size: .74rem; }

@@ -1,5 +1,6 @@
-export const CASE_NAME = 'Полевой резерв';
-export const RELEASE_CASE_VERSION = '0.36';
+export const FIELD_RESERVE = 'field-reserve';
+export const POLAR_CIRCUIT = 'polar-circuit';
+export const RELEASE_CASE_VERSION = '0.37';
 export const MATCH_CASE_CHANCE = 14;
 export const TDM_CASE_CHANCE = 5;
 export const TDM_CASE_MIN_KILLS = 50;
@@ -25,8 +26,28 @@ const finishes={
   ultra:[['Леди Наган','sv98']],
 };
 
-export const CASE_REWARDS = CASE_RARITIES.flatMap(({id})=>
-  finishes[id].map(([name,weaponId],i)=>({id:id+'-'+(i+1),rarity:id,name,weaponId})));
+const polarFinishes={
+  common:[['Мерзлота','p19'],['Ледяной наст','ak12'],['Бурелом','sv98']],
+  uncommon:[['Сланец','mcx9'],['Горелый торф','pkp'],['Белая мгла','mg36']],
+  rare:[['Киноварь','m50'],['Эхолокация','ar416'],['Криогрань','dmr12']],
+  legendary:[['Наутилус','ar416'],['Розовая аврора','mg36']],
+  ultra:[['Один удар','vk45']],
+};
+
+function caseType(id,name,patterns,prefix=''){
+  const rewards=CASE_RARITIES.flatMap(({id:rarity})=>
+    patterns[rarity].map(([name,weaponId],i)=>({id:prefix+rarity+'-'+(i+1),caseType:id,rarity,name,weaponId})));
+  return {id,name,rewards};
+}
+
+export const CASE_TYPES = [
+  caseType(FIELD_RESERVE,'Полевой резерв',finishes),
+  caseType(POLAR_CIRCUIT,'Полярный контур',polarFinishes,'polar-'),
+];
+export const CASE_NAME = CASE_TYPES[0].name;
+const caseById=new Map(CASE_TYPES.map(type=>[type.id,type]));
+export const getCaseType=id=>caseById.get(id);
+export const CASE_REWARDS = CASE_TYPES.flatMap(type=>type.rewards);
 const rewardById=new Map(CASE_REWARDS.map(reward=>[reward.id,reward]));
 export const caseReward=id=>rewardById.get(id);
 

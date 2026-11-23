@@ -27,7 +27,22 @@ FINISHES = (
     ("legendary-2", "m50", "M-50  /  ECLIPSE"),
     ("ultra-1", "sv98", "SV-98M  /  LADY NAGANT"),
 )
-HEROES = {"legendary-1": "Receiver", "ultra-1": "Receiver"}
+POLAR_FINISHES = (
+    ("polar-common-1", "p19", "P-19  /  PERMAFROST"),
+    ("polar-common-2", "ak12m", "AK-12M  /  ICE CRUST"),
+    ("polar-common-3", "sv98", "SV-98M  /  WINDFALL"),
+    ("polar-uncommon-1", "mcx9", "MCX-9  /  SLATE"),
+    ("polar-uncommon-2", "pkp", "PKP  /  BURNT PEAT"),
+    ("polar-uncommon-3", "mg36", "MG-36  /  WHITEOUT"),
+    ("polar-rare-1", "m50", "M-50  /  CINNABAR"),
+    ("polar-rare-2", "ar416", "AR-416  /  ECHOLOCATION"),
+    ("polar-rare-3", "dmr12", "DMR-12  /  CRYOFACET"),
+    ("polar-legendary-1", "ar416", "AR-416  /  NAUTILUS"),
+    ("polar-legendary-2", "mg36", "MG-36  /  ROSE AURORA"),
+    ("polar-ultra-1", "vk45", "VK-45  /  ONE PUNCH"),
+)
+HEROES = {"legendary-1": "Receiver", "ultra-1": "Receiver",
+          "polar-legendary-1": "Receiver", "polar-ultra-1": "Lower"}
 SURFACE = {
     "common": (.74, .05), "uncommon": (.64, .16), "rare": (.45, .24),
     "legendary": (.32, .42), "ultra": (.30, .22),
@@ -42,7 +57,8 @@ def paint_material(skin, companion):
     material.use_nodes = True
     graph = material.node_tree
     shader = graph.nodes.get("Principled BSDF")
-    shader.inputs["Roughness"].default_value, shader.inputs["Metallic"].default_value = SURFACE[skin.split("-")[0]]
+    rarity = skin.removeprefix("polar-").split("-")[0]
+    shader.inputs["Roughness"].default_value, shader.inputs["Metallic"].default_value = SURFACE[rarity]
     tex = graph.nodes.new("ShaderNodeTexImage")
     tex.image = bpy.data.images.load(str(TEXTURES / f"{skin}.webp"), check_existing=True)
     tex.extension = "EXTEND"
@@ -53,7 +69,7 @@ def paint_material(skin, companion):
     return material
 
 
-def paint_mesh(obj, finish, companion, shared_bounds):
+def paint_mesh(obj, finish, companion, shared_bounds, skin):
     world = obj.matrix_world
     coords = [world @ vertex.co for vertex in obj.data.vertices]
     mins, maxs = shared_bounds or (
@@ -68,12 +84,17 @@ def paint_mesh(obj, finish, companion, shared_bounds):
         x,y,z = coords[loop.vertex_index]
         u = .025 + .95 * (maxs[1] - y) / depth
         v = .025 + .95 * (z - mins[2]) / height + .09 * x / width * abs(n.z)
-        uv.uv[loop.index].vector = (.02 + .28 * u, .11 + .78 * v) if companion else (u, v)
+        if skin == "polar-legendary-1":
+            u = .48 + .52 * u if companion else .48 * u
+        elif companion:
+            u = (.70 if skin == "polar-ultra-1" else .02) + .28 * u
+            v = .11 + .78 * v
+        uv.uv[loop.index].vector = u, v
     obj.data.materials.clear()
     obj.data.materials.append(finish)
 
 
-def add_weapon(skin, weapon, position, length):
+def add_weapon(skin, weapon, position, length, stock=None):
     prior = set(bpy.context.scene.objects)
     bpy.ops.import_scene.gltf(filepath=str(WEAPONS / f"{weapon}.glb"))
     imported = [obj for obj in bpy.context.scene.objects if obj not in prior]
@@ -84,13 +105,30 @@ def add_weapon(skin, weapon, position, length):
     accent = paint_material(skin, True) if hero else base
     panels = {mesh: mesh.name.split(".")[0] for mesh in meshes if mesh.name.split(".")[0] in PANELS}
     shared_bounds = None
-    if weapon == "m50":
-        points = [mesh.matrix_world @ Vector(point) for mesh in panels for point in mesh.bound_box]
+    if weapon == "m50" or skin == "polar-legendary-2":
+        points = [mesh.matrix_world @ Vector(point) for mesh, name in panels.items()
+                  if name != "Stock" for point in mesh.bound_box]
         shared_bounds = ([min(point[i] for point in points) for i in range(3)],
                          [max(point[i] for point in points) for i in range(3)])
     for mesh, name in panels.items():
         companion = bool(hero and name != hero)
-        paint_mesh(mesh, accent if companion else base, companion, shared_bounds)
+        paint_mesh(mesh, accent if companion else base, companion,
+                   shared_bounds if name != "Stock" else None, skin)
+
+    if stock:
+        original = next(mesh for mesh, name in panels.items() if name == "Stock")
+        mount = next(obj for obj in imported if obj.name.split(".")[0] == "Mount_Stock")
+        original.hide_render = True
+        geometry, pose = stock
+        replacement = bpy.data.objects.new("Preview stock", geometry.copy())
+        bpy.context.scene.collection.objects.link(replacement)
+        replacement.parent = mount
+        replacement.matrix_basis = pose
+        bpy.context.view_layer.update()
+        points = [original.matrix_world @ vertex.co for vertex in original.data.vertices]
+        bounds = ([min(point[i] for point in points) for i in range(3)],
+                  [max(point[i] for point in points) for i in range(3)])
+        paint_mesh(replacement, accent, bool(hero), bounds, skin)
 
     rotation = Matrix.Rotation(math.pi / 2, 4, "Z")
     points = [rotation @ obj.matrix_world @ Vector(point) for obj in meshes for point in obj.bound_box]
@@ -102,6 +140,17 @@ def add_weapon(skin, weapon, position, length):
     for obj in imported:
         if obj.parent not in imported:
             obj.matrix_world = transform @ obj.matrix_world
+
+
+def load_stock_variants(weapon):
+    previous = set(bpy.context.scene.objects)
+    bpy.ops.import_scene.gltf(filepath=str(WEAPONS / "weapon-upgrades.glb"))
+    names = [f"{module}_{weapon}_Frame" for module in ("light-stock", "stable-stock")]
+    frames = [bpy.data.objects[name] for name in names]
+    modes = [(frame.data, frame.matrix_local.copy()) for frame in frames]
+    for obj in set(bpy.context.scene.objects) - previous:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    return modes
 
 
 def aim(obj, target):
@@ -128,15 +177,26 @@ def title(label, x, z):
 
 
 output = Path(sys.argv[sys.argv.index("--") + 1])
-detail = "--detail" in sys.argv or "--eclipse" in sys.argv
+polar = "--polar" in sys.argv
+nautilus = "--nautilus" in sys.argv
+stock_variants = nautilus and "--stock-variants" in sys.argv
+detail = nautilus or "--detail" in sys.argv or "--eclipse" in sys.argv
+finishes = POLAR_FINISHES if polar else FINISHES
 lettering = bpy.data.materials.new("Neutral labels")
 lettering.diffuse_color = (.52, .59, .56, 1)
 if "--eclipse" in sys.argv:
     add_weapon(*FINISHES[-2][:2], (0, 0, 0), 2.35)
+elif nautilus:
+    skin, weapon = POLAR_FINISHES[-3][:2]
+    if stock_variants:
+        for row, stock in enumerate([None, *load_stock_variants(weapon)]):
+            add_weapon(skin, weapon, (0, 0, .88 - row * .88), 2.9, stock)
+    else:
+        add_weapon(skin, weapon, (0, 0, 0), 2.9)
 elif detail:
-    add_weapon(*FINISHES[-1][:2], (0, 0, 0), 2.9)
+    add_weapon(*finishes[-1][:2], (0, 0, 0), 2.9)
 else:
-    for index, (skin, weapon, label) in enumerate(FINISHES):
+    for index, (skin, weapon, label) in enumerate(finishes):
         column, row = index % 3, index // 3
         x,z = (column - 1) * 2.53, (1.5 - row) * 1.04
         add_weapon(skin, weapon, (x, 0, z + .12), 2.20 if weapon not in ("m50", "p19") else 1.33)
@@ -160,7 +220,13 @@ scene.render.engine = "CYCLES"
 scene.cycles.samples = 20
 scene.cycles.use_denoising = True
 scene.render.resolution_x = 1536
-scene.render.resolution_y = 1080 if "--eclipse" in sys.argv else 640 if detail else 960
+scene.render.resolution_y = 1080 if "--eclipse" in sys.argv else 960
+if detail and "--eclipse" not in sys.argv:
+    scene.render.resolution_y = 800 if polar or nautilus else 640
+if stock_variants:
+    scene.cycles.samples = 12
+    scene.render.resolution_x = 1280
+    scene.render.resolution_y = 1160
 scene.render.resolution_percentage = 100
 scene.render.filepath = str(output)
 bpy.ops.render.render(write_still=True)

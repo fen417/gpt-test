@@ -193,7 +193,7 @@ export class Multiplayer{
             this.publish();
           }
           if(data.type==='stats')this.updateStats(data);
-          if(data.type==='case-awarded')this.onCaseAward(this.url);
+          if(data.type==='case-awarded')this.onCaseAward(this.url,data.caseType);
           if(data.type==='weapon-skins')this.skinLoadouts=data.loadouts;
           const pending=this.requests.get(data.requestId);if(pending){clearTimeout(pending.timer);this.requests.delete(data.requestId);pending.resolve(data);}
         }catch(error){clearTimeout(timeout);if(!ready){reject(error);ws.close();}else{this.onStatus('Синхронизация восстанавливается…');this.send(new Uint8Array([MESSAGE.RESYNC]));}}

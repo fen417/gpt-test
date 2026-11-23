@@ -2,7 +2,7 @@ import {CampaignSession,readCampaignSave} from './session.js';
 import {CampaignPresentation} from './presentation.js';
 import {SIDEARMS,WEAPONS} from '../../shared/world.js';
 import {describeCampaignOutcome} from './outcome.js';
-import {CASE_NAME,campaignCaseReward} from '../../shared/cases.js';
+import {CASE_TYPES,campaignCaseReward} from '../../shared/cases.js';
 import {campaignCatalog,readCampaignProgress,saveCampaignProgress,setCampaignDifficulty,
   campaignStorageWarning,campaignMissionStatus,canStartCampaignMission} from './progress.js';
 import './style.css';
@@ -150,12 +150,15 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
     panel.hidden=!maxReward;
     if(!maxReward)return;
     const tier=campaignCaseReward(selected,selector.value);
-    const claimed=casePanel?.campaign?.[selected]??0;
-    const remaining=Math.max(0,tier-claimed);
-    panel.querySelector('.campaign-reward-tiers').textContent=`«${CASE_NAME}» · средняя 1 кейс · высокая ${maxReward} кейса суммарно`;
+    const history=casePanel?.campaign;
+    const remaining=CASE_TYPES.flatMap(({id,name})=>{
+      const count=tier-(history?.[id]?.[selected]??0);
+      return count>0?[`«${name}» ×${count}`]:[];
+    });
+    panel.querySelector('.campaign-reward-tiers').textContent=`${CASE_TYPES.map(type=>`«${type.name}»`).join(' и ')} · по 1 на средней · по ${maxReward} суммарно на высокой`;
     panel.querySelector('.campaign-reward-available').textContent=!tier?'На выбранной сложности награды нет':
-      !casePanel?.campaign?'Одно начисление на каждую ступень сложности':
-      !remaining?'Награда за эту сложность уже получена':`За прохождение на выбранной сложности · ${remaining} ${remaining===1?'кейс':'кейса'}`;
+      !history?'Остаток награды появится после загрузки инвентаря':
+      !remaining.length?'Награда за эту сложность уже получена':`Осталось получить · ${remaining.join(' и ')}`;
   };
   selector.onchange=()=>{setCampaignDifficulty(selector.value);progress=readCampaignProgress();paintReward();};
   const choose=id=>{

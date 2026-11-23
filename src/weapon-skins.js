@@ -14,13 +14,18 @@ const finishes={
   legendary:{roughness:.32,metalness:.42},
   ultra:{roughness:.30,metalness:.22},
 };
-const illustrationParts={'legendary-1':'Receiver','ultra-1':'Receiver'};
+const illustrationParts={'legendary-1':'Receiver','ultra-1':'Receiver',
+  'polar-legendary-1':'Receiver','polar-ultra-1':'Lower'};
+const nautilusFinish='polar-legendary-1';
+const nautilusPanelWidth=.48;
+const continuousFinish='polar-legendary-2';
 
 async function loadPaint(id){
   if(!textureCache.has(id)){
     const pending=new TextureLoader().loadAsync(weaponSkinUrl(id)).then(texture=>{
       texture.colorSpace=SRGBColorSpace;
-      texture.channel=1;
+      texture.channel=id===continuousFinish?2:1;
+      if(id===nautilusFinish)texture.repeat.x=nautilusPanelWidth;
       texture.anisotropy=4;
       return texture;
     }).catch(error=>{textureCache.delete(id);throw error;});
@@ -42,15 +47,20 @@ export function prepareSkinProjection(root,weaponId){
     const bounds=new Box3();
     const world=new Matrix4().multiplyMatrices(rootInverse,mesh.matrixWorld);
     for(let i=0;i<pos.count;i++)bounds.expandByPoint(point.fromBufferAttribute(pos,i).applyMatrix4(world));
-    sharedBounds.union(bounds);
-    panels.push({source,world,bounds});
+    if(weaponId==='m50'||weaponId==='mg36'&&mesh.name!=='Stock')sharedBounds.union(bounds);
+    panels.push({source,world,bounds,name:mesh.name});
   });
-  // The M-50 atlas is laid out over the entire side, at one texel scale.
-  for(const {source,world,bounds} of panels)
+  for(const {source,world,bounds,name} of panels){
     projectPaint(source,world,weaponId==='m50'?sharedBounds:bounds);
+    // Aurora crosses the receiver and handguard at one scale.
+    if(weaponId==='mg36'){
+      if(name==='Stock')source.setAttribute('uv2',source.getAttribute('uv1'));
+      else projectPaint(source,world,sharedBounds,'uv2');
+    }
+  }
 }
 
-function projectPaint(geometry,transform,bounds){
+function projectPaint(geometry,transform,bounds,attribute='uv1'){
   const {position,normal:normals}=geometry.attributes;
   const {min,max}=bounds;
   const depth=Math.max(.001,max.z-min.z),height=Math.max(.001,max.y-min.y);
@@ -64,8 +74,8 @@ function projectPaint(geometry,transform,bounds){
     values[i*2+1]=.025+.95*(point.y-min.y)/height+.09*(point.x/(max.x-min.x||1))*Math.abs(normal.y);
   }
   // Every clone of a given stock module shares the same paint UVs.
-  geometry.setAttribute('uv1',new BufferAttribute(values,2));
-  projections.set(geometry,bounds);
+  geometry.setAttribute(attribute,new BufferAttribute(values,2));
+  if(attribute==='uv1')projections.set(geometry,bounds);
 }
 
 function restorePaint(state,mesh){
@@ -82,7 +92,7 @@ function paintParts(state,root){
   root.traverse(mesh=>{
     if(!mesh.isMesh||!projections.has(mesh.geometry)||!mesh.material.isMeshStandardMaterial||state.materials.has(mesh))return;
     const original=mesh.material,painted=original.clone();
-    painted.map=hero&&mesh.name!==hero?companionPaint(state.texture):state.texture;
+    painted.map=hero&&mesh.name!==hero?companionPaint(state.texture,state.id):state.texture;
     painted.color.set(0xffffff);
     painted.vertexColors=false;
     painted.roughnessMap=null;
@@ -105,6 +115,8 @@ export function updateStockSkin(root,previous,part){
       const transform=new Matrix4().copy(root.matrixWorld).invert().multiply(replacement.matrixWorld);
       projectPaint(replacement.geometry,transform,bounds);
     }
+    if(original?.geometry.hasAttribute('uv2')&&replacement?.geometry.hasAttribute('uv1'))
+      replacement.geometry.setAttribute('uv2',replacement.geometry.getAttribute('uv1'));
   }
   const state=instances.get(root);
   if(!state?.texture)return;
@@ -140,13 +152,18 @@ export function setWeaponSkin(root,weaponId,rewardId){
 }
 
 const companions=new WeakMap();
-function companionPaint(texture){
+function companionPaint(texture,id){
   if(!companions.has(texture)){
     const companion=texture.clone();
     // Portrait and engraved emblems are reserved for their main panel.
     // The outer band of the print colours the remaining panels.
-    companion.repeat.set(.28,.78);
-    companion.offset.set(.02,.11);
+    if(id===nautilusFinish){
+      companion.repeat.set(1-nautilusPanelWidth,1);
+      companion.offset.set(nautilusPanelWidth,0);
+    }else{
+      companion.repeat.set(.28,.78);
+      companion.offset.set(id==='polar-ultra-1'?.70:.02,.11);
+    }
     companion.needsUpdate=true;
     companions.set(texture,companion);
   }

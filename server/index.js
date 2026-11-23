@@ -328,9 +328,9 @@ export function createGameServer(options={}){
       if(caseChance&&room.casePlayers.size>=2){
         const owners=new Set([...room.casePlayers.values()].filter(Boolean));
         const round={mode:sim.gameMode,killLimit:sim.killLimit,humanPlayers:room.casePlayers.size};
-        cases.awardRound(room.weaponRoundId,owners,caseChance,round,(owner,inventory,caseId)=>{
+        cases.awardRound(room.weaponRoundId,owners,caseChance,round,(owner,inventory,caseId,caseType)=>{
           const player=connected().find(s=>s.caseOwner===owner&&s.caseClient);
-          if(player)send(player.client,{type:'case-awarded',inventory,caseId});
+          if(player)send(player.client,{type:'case-awarded',inventory,caseId,caseType});
         });
       }
       roomsChanged();

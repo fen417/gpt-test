@@ -37,6 +37,7 @@ import {showCampaignOutcome} from './campaign/outcome.js';
 import {matchLoadingInfo,mountMatchLoading} from './match-loading.js';
 import {mountPlayerProfile} from './profile-menu.js';
 import {mountCasePanel} from './case-panel.js';
+import {CASE_NAME,getCaseType} from '../shared/cases.js';
 import {BINOCULAR_ZOOM} from '../shared/recon-optics.js';
 import {mountReconMarks} from './recon-marks.js';
 import './recon.css';
@@ -693,7 +694,10 @@ function trackWeaponProgress(next){
 }
 void restoreCollimatorTest().then(profile.refreshAttachments).catch(()=>{});
 const multiplayer=new Multiplayer({getProfileToken:profile.tokenForServer,predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);},
-  onCaseAward:()=>{toast('Получен кейс «Полевой резерв»');void casePanel.refresh(true);},
+  onCaseAward:(_url,type)=>{
+    toast(`Получен кейс «${getCaseType(type)?.name??CASE_NAME}»`);
+    void casePanel.refresh(true);
+  },
 });
 const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
