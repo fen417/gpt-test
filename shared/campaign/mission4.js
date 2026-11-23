@@ -2,7 +2,8 @@ import {Simulation,sanitizeInput} from '../simulation.js';
 import {ensureBotState} from '../bot-ai.js';
 import {moveBot,resetNavigation} from '../bot-navigation.js';
 import {activateGadget} from '../gadgets.js';
-import {BLACK_HAWK,BLACK_HAWK_GUN,VEHICLE_TYPES,vehiclePartPose,getVehicleSeatPose} from '../vehicles.js';
+import {aimBullet} from '../ballistics.js';
+import {BLACK_HAWK,BLACK_HAWK_GUN,VEHICLE_TYPES,blackHawkGunPose,vehiclePartPose,getVehicleSeatPose} from '../vehicles.js';
 import {WEAPONS,getSidearm} from '../world.js';
 import {NAHAR,NAHAR_AIR_POSTS,NAHAR_GATES,NAHAR_LANDING,NAHAR_SITES as sites} from './nahar.js';
 import {aimAt,departingPose,flightPath,LANDING_SECONDS,landingPose,orbitPose,targetInArc} from './mission4-flight.js';
@@ -243,7 +244,7 @@ class NaharDirector{
         const x=post.x+(i===0?-.6:i===1?-4:3.4),z=post.z+(i===0?-2.5:i===1?.8:1.7);
         const p=this.add(`roof-${++this.enemySerial}`,'Стрелок Корпуса',1,'assault','ar416',null,'roof');
         const pt=launcher&&i===0;
-        Object.assign(p,{x,y:post.y,z,grounded:true,airRole:pt?'pt':'rifle',airPost:id,rockets:pt?1:0,
+        Object.assign(p,{x,y:post.y,z,grounded:true,airRole:pt?'pt':'rifle',airPost:id,portTarget:post.portTarget??false,rockets:pt?1:0,
           hp:pt?57:p.hp,fireOffset:i*.37+this.enemySerial*.135,notBefore:this.time+.8+i*.55});
       }
     }
@@ -454,8 +455,8 @@ class NaharDirector{
     }
     if(p.airRole){
       if(p.pendingGadget){p.input=fixed(p,p.rocketYaw,p.rocketPitch);p.input.aim=true;return true;}
-      const v=this.stage==='right'?this.wing??craft:craft,target=vehiclePartPose(v,0,2,0);
-      const burst=(this.time+p.fireOffset)%3.2<.28;
+      const v=this.stage==='right'&&!p.portTarget?this.wing??craft:craft,target=vehiclePartPose(v,0,2,0);
+      const burst=(this.time+p.fireOffset)%3.2<(p.portTarget?.16:.28);
       p.input=sanitizeInput({...aimAt(eye(p),target),aim:p.aimAt!=null,
         fire:p.airRole==='rifle'&&this.airDanger&&burst&&dist(p,v)<145&&this.sim.lineClear(eye(p),target)});
       p.crouching=this.time<(p.suppressedUntil??0);
@@ -463,9 +464,19 @@ class NaharDirector{
     }
     if(p.vehicleId){
       const v=this.sim.vehicles.find(v=>v.id===p.vehicleId),seat=VEHICLE_TYPES[BLACK_HAWK].seats[p.vehicleSeat];
-      const target=this.airDanger&&(p.role==='wing'||p.role==='gunner')?this.airTargets().find(a=>a.airRole==='rifle'&&targetInArc(this.sim,v,p.vehicleSeat,a)):null;
-      const aim=target?aimAt(getVehicleSeatPose(v,p.vehicleSeat),eye(target,1.08)):{yaw:v.yaw+(seat.facing??0),pitch:0};
-      p.input=sanitizeInput({...aim,aim:Boolean(target),fire:Boolean(target)&&(this.time%3.6)<.45});return true;
+      const gunner=p.vehicleSeat===LEFT;
+      const target=this.airDanger&&(p.role==='wing'||p.role==='gunner')?this.airTargets().find(a=>
+        a.airRole==='rifle'&&Boolean(a.portTarget)===gunner&&targetInArc(this.sim,v,p.vehicleSeat,a)):null;
+      let aim={yaw:v.yaw+(seat.facing??0),pitch:0};
+      if(target){
+        aim=aimAt(getVehicleSeatPose(v,p.vehicleSeat),eye(target,1.08));
+        if(gunner){
+          const {muzzle}=blackHawkGunPose(v,aim.yaw,aim.pitch);
+          aim=aimBullet(muzzle,target,1.08,BLACK_HAWK_GUN.projectileSpeed);
+        }
+      }
+      const burst=gunner?(this.time+.8)%2.7<.58:this.time%3.6<.45;
+      p.input=sanitizeInput({...aim,aim:Boolean(target),fire:Boolean(target)&&burst});return true;
     }
     if(p===this.dispatcher&&p.rescued){
       p.input=fixed(p);

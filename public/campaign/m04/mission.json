@@ -136,6 +136,16 @@
             "line",
             3,
             true
+          ],
+          [
+            "north-yard",
+            3,
+            false
+          ],
+          [
+            "low-ward",
+            3,
+            false
           ]
         ]
       },
@@ -156,6 +166,31 @@
             "balcony",
             3,
             true
+          ],
+          [
+            "north-works",
+            3,
+            false
+          ],
+          [
+            "market-crossing",
+            3,
+            false
+          ]
+        ]
+      },
+      {
+        "at": 68,
+        "posts": [
+          [
+            "north-block",
+            3,
+            false
+          ],
+          [
+            "tram-terrace",
+            3,
+            false
           ]
         ]
       }
@@ -173,6 +208,16 @@
             "station",
             3,
             true
+          ],
+          [
+            "station-east",
+            3,
+            false
+          ],
+          [
+            "canal-west",
+            3,
+            false
           ]
         ]
       },
@@ -188,6 +233,11 @@
             "foundry",
             3,
             true
+          ],
+          [
+            "canal-workshops",
+            3,
+            false
           ]
         ]
       }
@@ -442,5 +492,5 @@
       ]
     ]
   },
-  "contentRevision": 4
+  "contentRevision": 5
 }

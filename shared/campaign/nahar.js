@@ -153,7 +153,6 @@ for(const [id,x,z,w,d,h,seed,tank] of [
   ['signal',-70,2,21,17,10.2,15,false],['foundry',-44,47,25,21,12.0,5,false],
 ])airPosts[id]={x,y:block(id,x,z,w,d,h,seed,{tank}),z};
 airPosts.station={x:33,y:10.07,z:33};
-export const NAHAR_AIR_POSTS=airPosts;
 
 const reserved=[
   {x:-68,z:-33,w:138,d:61},{x:-96,z:25,w:82,d:34},{x:12,z:13,w:108,d:104},
@@ -352,6 +351,22 @@ for(const [row,z] of [-149,-126,-74,-12,42,72,88,154,198,226].entries()){
     block(`side-street-${row}-${column}`,x,z,width,depth,4.8+seed%5,seed,{near,detailed,tint:masonry[(seed>>2)%masonry.length]});
   }
 }
+for(const [id,building,portTarget=false] of [
+  ['north-yard','building--3--4-0',true],
+  ['north-works','building--3--2-0',true],
+  ['north-block','building--3--1-0',true],
+  ['low-ward','building--1--4-1'],
+  ['tram-terrace','side-street-2-2'],
+  ['canal-west','side-street-6--1'],
+  ['station-east','side-street-4-2'],
+  ['canal-workshops','side-street-5--3'],
+]){
+  const roof=boxes.find(box=>box.id===building+'-roof');
+  airPosts[id]={x:roof.x,y:roof.baseY+roof.h+.005,z:roof.z,portTarget};
+}
+airPosts['market-crossing']={x:-195,y:terrain.heightAt(-195,-102),z:-102};
+export const NAHAR_AIR_POSTS=airPosts;
+
 export const NAHAR=registerLocalMap({
   id:'nahar',missionId:'m04',name:'Нахар',theme:'desert-village',campaign:true,size,width:1900,depth:1660,
   terrain,terrainPads,landforms,terrainMargin:90,navigationCell:2,navigationSize:744,navigationClearance:.78,
