@@ -936,12 +936,16 @@ export class Simulation {
     if(equipment)damageDeployable(this,equipment,weapon.damage*falloff,attacker);
     return false;
   }
+  hasUnlimitedReserve(){return false;}
   updateReload(p,weapon,dt){
     if(p.reloading){
       p.reloadTime-=dt;
       if(p.reloadTime<=0){
-        const amount=Math.max(0,Math.min(weapon.mag-p.ammo,p.reserve));
-        p.ammo+=amount;p.reserve-=amount;p.reloading=false;
+        const unlimited=this.hasUnlimitedReserve(p);
+        const amount=Math.max(0,Math.min(weapon.mag-p.ammo,unlimited?Infinity:p.reserve));
+        p.ammo+=amount;
+        if(!unlimited)p.reserve-=amount;
+        p.reloading=false;
       }
     }
     if((p.input.reload||p.ammo===0)&&!(this.gameMode==='tdm'&&!p.weaponId))this.startReload(p);
@@ -949,13 +953,14 @@ export class Simulation {
   firePersonalWeapon(p,weapon,pressed,firing,vehicle=null){
     if(!firing)return;
     if(p.bot||!weapon.semiAuto||pressed)this.shoot(p,vehicle);
-    if(pressed&&p.ammo===0&&p.reserve===0&&!p.reloading&&p.cooldown<=0){
+    if(pressed&&p.ammo===0&&p.reserve===0&&!p.reloading&&p.cooldown<=0&&!this.hasUnlimitedReserve(p)){
       this.event('dryFire',{playerId:p.id,classId:p.classId,x:p.x,z:p.z});
     }
   }
   startReload(p){
     const weapon = this.playerWeapon(p);
-    if(this.gameMode==='tdm'&&!p.weaponId||p.heldGadget||p.equipTime>0||p.reloading||p.ammo>=weapon.mag||p.reserve<=0)return;
+    if(this.gameMode==='tdm'&&!p.weaponId||p.heldGadget||p.equipTime>0||p.reloading||p.ammo>=weapon.mag||
+      p.reserve<=0&&!this.hasUnlimitedReserve(p))return;
     p.reloading=true;
     p.reloadTime=weapon.reload;
     this.event('reload',{playerId:p.id,classId:p.classId,weaponId:p.weaponId,duration:weapon.reload,empty:p.ammo===0,x:p.x,z:p.z});

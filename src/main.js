@@ -1769,7 +1769,8 @@ function hud(now,renderState){
   text('health',Math.ceil(player.hp));$('health-bar').style.width=`${player.hp}%`;
   if(personalWeapon){
     const tool=state.gameMode==='tdm'&&currentMap.tdmLoadout==='pickup'?null:player.heldGadget;
-    text('ammo',tool?(tool==='launcher'?player.rockets:'—'):((simulation?.client??multiplayer).prediction?.player?.weaponId===player.weaponId?(simulation?.client??multiplayer).prediction.player.ammo:player.ammo));text('reserve',tool?(tool==='launcher'?'РАКЕТЫ':'СНАРЯЖЕНИЕ'):player.reserve);
+    text('ammo',tool?(tool==='launcher'?player.rockets:'—'):((simulation?.client??multiplayer).prediction?.player?.weaponId===player.weaponId?(simulation?.client??multiplayer).prediction.player.ammo:player.ammo));
+    text('reserve',tool?(tool==='launcher'?'РАКЕТЫ':'СНАРЯЖЕНИЕ'):player.unlimitedReserve?'∞':player.reserve);
     const label=!player.weaponId?'БЕЗ ОРУЖИЯ':tool?GADGET_NAMES[tool]:`${player.weaponSlot||1} · ${weapon.name||weapon.weapon}`;
     text('weapon-name',mounted?.role==='passenger'?`ПАССАЖИР · ${label}`:label);
     if(state.gameMode==='tdm'&&!player.weaponId){text('ammo','—');text('reserve','—');}

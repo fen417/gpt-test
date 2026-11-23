@@ -42,6 +42,10 @@ export class Mission4Simulation extends Simulation{
   }
   balanceTeams(){}
   updateVehicleActions(){}
+  hasUnlimitedReserve(p){
+    return p.id==='local'&&p.weaponSlot===1&&p.vehicleId===MAIN&&
+      (p.vehicleSeat===3||p.vehicleSeat===4)&&this.campaign.airborne;
+  }
   setInput(id,input={}){
     super.setInput(id,input);
     if(id==='local'&&this.campaign)this.campaign.input={...this.players.get(id).input,use:input.use===true};
@@ -88,7 +92,8 @@ export class Mission4Simulation extends Simulation{
     const state=super.snapshot();
     state.players=state.players.filter(p=>!this.players.get(p.id).campaignHidden).map(p=>{
       const actor=this.players.get(p.id);
-      return {...p,role:actor.role,downed:Boolean(actor.wounded),medkits:actor.medkits??0};
+      return {...p,role:actor.role,downed:Boolean(actor.wounded),medkits:actor.medkits??0,
+        unlimitedReserve:this.hasUnlimitedReserve(actor)};
     });
     state.campaign=this.campaign.presentation();
     return state;

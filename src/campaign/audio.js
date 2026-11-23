@@ -18,7 +18,7 @@ export function usesCampaignRadio(missionId,speaker,key){
   if(missionId==='m01')return speaker==='orlov'&&!key.startsWith('m01.orlov.brief')||
     ['m01.officer.mid01','m01.officer.call','m01.bruno.sokol'].includes(key);
   if(missionId==='m02')return speaker!=='crew'&&speaker!=='vos';
-  if(missionId==='m04')return true;
+  if(missionId==='m04')return speaker!=='marten';
   if(['orlov','dargo'].includes(speaker))return true;
   if(missionId==='m03')return ['timo.road','timo.roofs','timo.window',
     'vos.meet','vos.village','vos.trapped','harranti.hold','harranti.truck'].includes(key);
@@ -112,9 +112,9 @@ export class CampaignAudio {
     source.connect(output);channel.sources.push(source);source.start(at,offset);
     source.onended=()=>{source.disconnect();channel.sources=channel.sources.filter(s=>s!==source);};
   }
-  async voice(channel,line,remaining,radio,spatial){
+  async voice(channel,line,remaining,{radio,spatial,transmit}){
     this.finishVoice(channel);const generation=channel.generation;
-    const [buffer,[opening,closing]]=await Promise.all([this.buffer(line.audio),radio?this.radioSwitches:[]]);
+    const [buffer,[opening,closing]]=await Promise.all([this.buffer(line.audio),radio||transmit?this.radioSwitches:[]]);
     if(!buffer||generation!==channel.generation||this.closed||this.paused)return;
     const late=(line.duration??4)-remaining;
     const offset=late>.22?late:0;
@@ -122,7 +122,7 @@ export class CampaignAudio {
     const now=Math.max(this.combat.ctx.currentTime,channel.radioEnd??0),start=now+(opening&&offset===0?opening.duration:0);
     if(opening&&offset===0)this.playVoiceBuffer(channel,opening,this.voiceBus,now);
     this.playVoiceBuffer(channel,buffer,radio?this.radioInput:spatial?channel.worldVoice:this.voiceBus,start,offset);
-    if(closing){
+    if(radio&&closing){
       const close=start+buffer.duration-offset;
       this.playVoiceBuffer(channel,closing,this.voiceBus,close);
       channel.radioEnd=close+closing.duration;
@@ -163,16 +163,18 @@ export class CampaignAudio {
   }
   updateDialogue(state,locale,cue,remaining,renderer,briefingPosition,channel=this){
     const key=cue?.serial??null,changed=key!==channel.key,line=locale.lines[cue?.key];
+    const missionId=state.campaign.missionId;
     if(changed){
       channel.speakingActorId=cue?.speakerId;
       channel.voicePositionReady=false;
-      channel.dialogueRadio=Boolean(line&&usesCampaignRadio(state.campaign.missionId,line.speaker,cue.key));
+      channel.dialogueRadio=Boolean(line&&usesCampaignRadio(missionId,line.speaker,cue.key));
     }
     const radio=channel.dialogueRadio;
-    const spatial=line&&!radio&&this.positionVoice(channel,state,renderer,line.speaker,briefingPosition);
+    const transmit=missionId==='m04'&&line?.speaker==='marten';
+    const spatial=line&&!radio&&!transmit&&this.positionVoice(channel,state,renderer,line.speaker,briefingPosition);
     if(changed){
       channel.key=key;
-      if(line?.audio)this.voice(channel,line,remaining??line.duration,radio,spatial);
+      if(line?.audio)this.voice(channel,line,remaining??line.duration,{radio,spatial,transmit});
       else this.finishVoice(channel);
     }
   }
