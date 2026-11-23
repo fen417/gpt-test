@@ -412,15 +412,27 @@ class Aircraft:
             self.panel("Tail rotor blade",DARK,[tail(*p) for p in [(.12,-.072),(1.02,-.115),
                        (1.11,.081),(.15,.100)]],.028)
         self.group = "Minigun"
-        self.box("Feed housing",METAL,(0,0,.03),(.29,.29,.43),.040)
-        self.box("Cradle",STEEL,(0,-.17,-.02),(.29,.07,.52),.021)
+        self.rod("Drive housing",METAL,(0,0,.19),(0,0,-.24),.113,sides=12)
+        self.rod("Rear plate",STEEL,(0,0,.197),(0,0,.225),.093,sides=12)
+        self.box("Drive motor",METAL,(.10,-.027,.018),(.10,.127,.29),.018)
+        self.box("Feed guide",STEEL,(-.095,-.017,-.07),(.12,.105,.23),.021)
+        self.box("Cradle",METAL,(0,-.134,-.027),(.24,.061,.43),.018)
+        self.rod("Spade grip crossbar",STEEL,(-.163,.019,.255),(.163,.019,.255),.016)
         for side in (-1,1):
-            self.rod("Spade grip", RUBBER,(side*.12,-.02,.24),(side*.12,.14,.25),.029)
-        self.rod("Barrel clamp",METAL,(0,0,-.93),(0,0,-.85),.101)
+            x = side*.153
+            self.rod("Spade grip",RUBBER,(x,-.076,.271),(x,.072,.243),.023)
+            self.box("Grip cap",METAL,(x,.077,.242),(.041,.025,.045),.006)
+            if self.level < 2:
+                self.rod("Receiver fastener",STEEL,(side*.063,.024,.223),(side*.063,.024,.233),.011,sides=6)
+        self.rod("Barrel hub",METAL,(0,0,-.25),(0,0,-.36),.104)
+        self.rod("Barrel brace",STEEL,(0,0,-.68),(0,0,-.70),.088)
+        self.rod("Muzzle clamp",METAL,(0,0,-1.064),(0,0,-1.094),.093)
         for i in range(6):
             t=i*math.tau/6
             x,y=.061*math.cos(t),.061*math.sin(t)
-            self.rod("Barrel",STEEL,(x,y,-.13),(x,y,-1.15),.023,sides=8 if self.level<2 else 5)
+            self.rod("Barrel",STEEL,(x,y,-.32),(x,y,-1.136),.019,sides=10 if self.level<2 else 6)
+            self.rod("Muzzle sleeve",METAL,(x,y,-1.106),(x,y,-1.151),.022,sides=10 if self.level<2 else 6)
+            self.rod("Bore",RUBBER,(x,y,-1.151),(x,y,-1.153),.013,sides=8 if self.level<2 else 6)
         self.group = "Cabin"
         self.rod("Pintle post",METAL,(-1.19,1.40,-.65),(-1.19,2.09,-.65),.058)
         if self.level < 2:

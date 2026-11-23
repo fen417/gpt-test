@@ -9,21 +9,25 @@
 .m04-warning{position:absolute;top:clamp(96px,20vh,158px);left:50%;transform:translateX(-50%);width:max-content;
   max-width:86vw;padding:7px 13px;background:#582c20e8;color:#ffdfc0;border-bottom:1px solid #e4a374;
   text-align:center;font:700 12px/1.4 monospace}
+.m04-minigun-reticle{position:absolute;width:23px;height:23px;transform:translate(-50%,-50%);
+  color:#f6edce;filter:drop-shadow(0 0 2px #14140d);pointer-events:none}
+.m04-minigun-reticle::before,.m04-minigun-reticle::after,.m04-minigun-reticle i{
+  content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:currentColor}
+.m04-minigun-reticle::before{width:100%;height:2px;mask-image:linear-gradient(90deg,#000 30%,transparent 30% 70%,#000 70%)}
+.m04-minigun-reticle::after{width:2px;height:100%;mask-image:linear-gradient(#000 30%,transparent 30% 70%,#000 70%)}
+.m04-minigun-reticle i{width:3px;height:3px;border-radius:50%}
 .m04-interaction{position:absolute;bottom:18vh;left:50%;transform:translateX(-50%);padding:7px 12px;
   background:#17202ae6;max-width:82vw;text-align:center;font:700 12px/1.4 monospace}
 .m04-interaction progress{display:block;margin:6px auto 0;width:min(185px,64vw);height:5px;accent-color:#d7b777}
-.m04-flight-status,.m04-squad{position:absolute;padding:8px 11px;background:#19242bd9;font:700 11px/1.45 monospace;color:#e9d5ac}
+.m04-flight-status{position:absolute;padding:8px 11px;background:#19242bd9;font:700 11px/1.45 monospace;color:#e9d5ac}
 .m04-flight-status{right:27px;top:39px;display:grid;gap:3px;min-width:137px;border-left:2px solid #bb9d65}
 .m04-flight-status meter{width:100%;height:7px;accent-color:#d3bb84}
-.m04-squad{left:26px;bottom:96px;max-width:84vw}
-.campaign-m04-active .squad-hud{display:none}
 .campaign-m04 .campaign-subtitle{bottom:22vh}
 .campaign-cinematic .campaign-m04 .campaign-subtitle{bottom:10vh}
 .m04-cinematic{position:absolute;inset:0;border-block:8vh solid #101421;box-shadow:inset 0 0 0 100vmax rgb(4 7 13 / var(--end-fade,0))}
 .campaign-m04 .campaign-ending{z-index:2}
 @media(max-width:700px){
   .m04-flight-status{right:9px;top:95px;min-width:92px;padding:5px 8px;font-size:9px}
-  .m04-squad{left:9px;bottom:103px;font-size:9px}
   .m04-marker,.m04-threat{padding:3px 5px;font-size:10px}
   .campaign-m04 .campaign-subtitle{left:50%;right:auto;transform:translateX(-50%);width:84vw}
 }

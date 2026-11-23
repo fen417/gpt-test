@@ -1,7 +1,7 @@
 import {CircleGeometry,Mesh,MeshBasicMaterial,Vector3} from 'three';
 import {getAssetColliders,rayCollider} from '../../shared/asset-colliders.js';
 import {rayVehicleArmor} from '../../shared/vehicle-combat.js';
-import {VEHICLE_TYPES} from '../../shared/vehicles.js';
+import {BLACK_HAWK,VEHICLE_TYPES,vehiclePartPose} from '../../shared/vehicles.js';
 import {campaignCharacter} from './outcome.js';
 
 function convoyCallsign(index){
@@ -43,9 +43,9 @@ export class CampaignActors {
   aim(renderer,state,self,paused){
     this.label.hidden=true;
     const mission=state?.campaign;
-    if(!mission||!self?.alive||paused||mission.cutscene||mission.failed||mission.complete)return;
+    if(!mission||!self?.alive||paused||mission.cutscene||mission.transfer!=null||mission.failed||mission.complete)return;
     const origin=renderer.camera.position,direction=renderer.camera.getWorldDirection(this.direction);
-    let best=mission.missionId==='m03'?150:55,head=null,name=null;
+    let best=mission.missionId==='m04'?360:mission.missionId==='m03'?150:55,head=null,name=null;
     for(const p of state.players){
       if(p.id===self.id||p.team!==self.team||!p.alive)continue;
       const rig=renderer.soldiers.get(p.id);
@@ -65,6 +65,12 @@ export class CampaignActors {
       best=hit;
       name=tank.team===self.team&&tank.hp>0&&tank.convoyIndex!==undefined?convoyCallsign(tank.convoyIndex):null;
       head={x:tank.x,y:tank.y+VEHICLE_TYPES.tank.height+.38,z:tank.z};
+    }
+    if(mission.missionId==='m04')for(const aircraft of state.vehicles){
+      if(aircraft.type!==BLACK_HAWK||aircraft.id===self.vehicleId||aircraft.team!==self.team||aircraft.hp<=0||!aircraft.callsign)continue;
+      const hit=rayVehicleArmor(origin,direction,aircraft,best);
+      if(hit>=best)continue;
+      best=hit;name=aircraft.callsign;head=vehiclePartPose(aircraft,0,4.65,0);
     }
     if(!name)return;
     const reach=best-.18;

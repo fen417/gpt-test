@@ -209,10 +209,10 @@
     {
       "id": "marten.secondPass",
       "speaker": "marten",
-      "duration": 3.7065,
+      "duration": 3.606542,
       "voiceId": "SOYHLrjzK2X1ezoPC6cr",
-      "spoken": "[short breath, focused] Справа ещё люди. Вижу стрелка у края крыши.",
-      "bytes": 10003
+      "spoken": "[urgent, raised voice] Справа ещё люди! Вижу \"/strʲɪɫˈka/\" у края крыши!",
+      "bytes": 9815
     },
     {
       "id": "marten.sky",
@@ -362,41 +362,41 @@
       "id": "pilot.again",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 4.806542,
-      "spoken": "Ещё один проход. Смотрите на крышу станции и на сигнальную будку.",
-      "bytes": 14579
+      "duration": 4.6065,
+      "spoken": "[tense, clipped] Ещё один проход. Смотрите на крышу станции и на сигнальную будку.",
+      "bytes": 12778
     },
     {
       "id": "pilot.backup",
       "speaker": "pilot",
-      "duration": 4.106542,
+      "duration": 4.3065,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[urgent, strained] Двор простреливают! В основной не полезу. Сажусь в ремонтном!",
-      "bytes": 12737
+      "spoken": "[shouts, tense] Двор простреливают! В основной не полезу. Сажусь в ремонтном!",
+      "bytes": 13263
     },
     {
       "id": "pilot.city",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 6.0065,
-      "spoken": "Наха́р впереди. Мартен, осмотрись справа. За крышами увидишь трамвайную линию.",
-      "bytes": 18478
+      "duration": 5.0065,
+      "spoken": "[tense, brisk callouts] Наха́р впереди! Мартен, осмотри правый борт. Трамвайные пути за крышами.",
+      "bytes": 14836
     },
     {
       "id": "pilot.clear",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 4.2065,
-      "spoken": "На земле. Санитар, первым. Мартен, выходи за ним.",
-      "bytes": 12855
+      "duration": 3.7065,
+      "spoken": "[breathless, brisk] На земле. Санитар, первым. Мартен, выходи за ним.",
+      "bytes": 10571
     },
     {
       "id": "pilot.contact",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 4.3065,
-      "spoken": "[urgent] Впереди огонь с крыш. Правый борт, прикройте второй вертолёт!",
-      "bytes": 12936
+      "duration": 4.2065,
+      "spoken": "[sharp, commanding] Впереди огонь с крыш. Правый борт, прикройте второй вертолёт!",
+      "bytes": 12017
     },
     {
       "id": "pilot.coverWing",
@@ -404,103 +404,119 @@
       "duration": 4.506542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
       "spoken": "[shouts, urgent] Второй борт, в сторону! Мартен, следи за теми, кто с трубами!",
-      "bytes": 12510
+      "bytes": 12504
     },
     {
       "id": "pilot.cross",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 4.406542,
-      "spoken": "Заходим вдоль трамвайной линии. Внимание, огонь слева!",
-      "bytes": 13327
+      "duration": 4.2065,
+      "spoken": "[clipped, alert] Заходим вдоль трамвайной линии. Внимание, огонь слева!",
+      "bytes": 11526
     },
     {
       "id": "pilot.descend",
       "speaker": "pilot",
-      "duration": 5.8065,
+      "duration": 4.906542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[focused] Снижаемся, держитесь. Второй борт впереди справа. Здесь крыши высокие.",
-      "bytes": 16261
+      "spoken": "[clipped, on edge] Снижаюсь! Второй борт справа впереди. Следите за высокими крышами!",
+      "bytes": 13720
     },
     {
       "id": "pilot.gunnerDown",
       "speaker": "pilot",
-      "duration": 5.4065,
+      "duration": 5.6065,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
       "spoken": "[shocked, voice cracks, then urgent] Грач?! Грач, ответь! Чёрт… Отхожу в сторону, держитесь!",
-      "bytes": 15406
+      "bytes": 15723
     },
     {
       "id": "pilot.hold",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 4.506542,
-      "spoken": "Держу круг. Мартен, займи левый миниган, когда будешь готов.",
-      "bytes": 13689
+      "duration": 4.5065,
+      "spoken": "[strained, decisive] Держу круг. Мартен, займи левый миниган, когда будешь готов.",
+      "bytes": 13768
     },
     {
       "id": "pilot.hull",
       "speaker": "pilot",
-      "duration": 5.406542,
+      "duration": 5.0065,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[shaken, strained then shouts] Нас задело! Держу борт… Мартен, не дай им выстрелить снова!",
-      "bytes": 14983
+      "spoken": "[winded, startled then forceful] Нас задело! Держу борт… Мартен, не дай им выстрелить снова!",
+      "bytes": 14009
     },
     {
       "id": "pilot.land",
       "speaker": "pilot",
-      "duration": 5.406542,
+      "duration": 5.2065,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[shouts, strained] Иду вниз! Подержите крыши! Всем оставаться на местах до касания!",
-      "bytes": 16046
+      "spoken": "[strained, voice raised] Иду вниз! Подержите крыши! Всем оставаться на местах до касания!",
+      "bytes": 14518
     },
     {
       "id": "pilot.orbit",
       "speaker": "pilot",
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "duration": 5.5065,
-      "spoken": "Депо внутри круга. Сначала пэ-тэ девяносто, потом очистите двор.",
-      "bytes": 16656
+      "duration": 6.206542,
+      "spoken": "[commanding, urgent] Депо внутри круга. Сначала \"/ˌpɛˈtɛ/\" девяносто, потом очистите двор.",
+      "bytes": 17322
     },
     {
       "id": "pilot.orbitTwo",
       "speaker": "pilot",
-      "duration": 7.006542,
+      "duration": 5.706542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[tense, clear] Повторяю круг. Слева сигнальная будка, дальше крыша цеха. Там ещё могут быть ракеты.",
-      "bytes": 19584
+      "spoken": "[out of breath, quick commands] Захожу ещё раз! Слева будка, дальше крыша цеха. Смотрите, там могут быть ракеты!",
+      "bytes": 16073
     },
     {
       "id": "pilot.rocket",
       "speaker": "pilot",
-      "duration": 3.106542,
+      "duration": 3.506542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[shouts, panic, clipped radio] Ракета! Ракета в воздухе! Держитесь!",
-      "bytes": 8775
+      "spoken": "[shouts, urgent] Ракета! Ракета в воздухе! Держитесь!",
+      "bytes": 10394
     },
     {
       "id": "pilot.roofDanger",
       "speaker": "pilot",
+      "duration": 3.506542,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[shouts, sharp] \"/ˌpɛˈtɛ/\" на крыше! Не выпускай его из прицела!",
+      "bytes": 9604
+    },
+    {
+      "id": "pilot.roofDangerEdge",
+      "speaker": "pilot",
+      "duration": 3.106542,
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "[tense, clipped command] \"/ˌpɛˈtɛ/\" у края крыши! Смотри выше!",
+      "bytes": 8515
+    },
+    {
+      "id": "pilot.roofDangerReady",
+      "speaker": "pilot",
       "duration": 3.3065,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[shouts, sharp] Пэ-тэ на крыше! Не выпускай его из прицела!",
-      "bytes": 9212
+      "spoken": "[alarmed, raises voice] На крыше — \"/ˌpɛˈtɛ/\"! Он уже целится!",
+      "bytes": 9253
     },
     {
       "id": "pilot.stationRoof",
       "speaker": "pilot",
-      "duration": 5.2065,
+      "duration": 5.5065,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[focused] Левый борт, у тебя вокзал. Смотри крышу над часами, я подведу ближе.",
-      "bytes": 14480
+      "spoken": "[tense, sharp callouts] Левый борт, смотри на часы вокзала! Крыша прямо над ними. Подвожу ближе!",
+      "bytes": 15410
     },
     {
       "id": "pilot.touchdown",
       "speaker": "pilot",
-      "duration": 5.4065,
+      "duration": 5.306542,
       "voiceId": "EXAVITQu4vr4xnSDxMaL",
-      "spoken": "[strained, then relieved, then shouts] Держу! Ещё чуть-чуть… Есть земля. Быстро, быстро, на выход!",
-      "bytes": 14962
+      "spoken": "[straining, then shouts with relief] Держу! Ещё чуть-чуть… Есть земля. Быстро, быстро, на выход!",
+      "bytes": 14718
     },
     {
       "id": "wing.blue",

@@ -4,12 +4,13 @@
   "title": "Под крышами",
   "map": "nahar",
   "audioBudgets": {
-    "music": 4600000,
+    "music": 12000000,
     "voice": 1000000,
     "sfx": 400000
   },
   "music": {
-    "flight": "music/flight.ogg"
+    "flight": "music/flight.ogg",
+    "ground": "music/ground.ogg"
   },
   "flight": {
     "approach": [
@@ -441,5 +442,5 @@
       ]
     ]
   },
-  "contentRevision": 3
+  "contentRevision": 4
 }

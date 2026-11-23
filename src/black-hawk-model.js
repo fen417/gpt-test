@@ -87,7 +87,8 @@ export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
   rotorDisk.visible=rig.rotorSpeed>19;
   rotorDisk.material.opacity=Math.min(.095,Math.max(0,rig.rotorSpeed-19)*.014);
   const ownGun=occupied&&player.vehicleSeat===BLACK_HAWK_GUN.index;
-  const aim=blackHawkGunAngles(vehicle,ownGun?(view.yaw??vehicle.aimYaw):vehicle.aimYaw??vehicle.yaw+BLACK_HAWK_GUN.restYaw,
+  const pose={...vehicle,yaw:group.rotation.y,bodyPitch:body.rotation.x,bodyRoll:body.rotation.z};
+  const aim=blackHawkGunAngles(pose,ownGun?(view.yaw??vehicle.aimYaw):vehicle.aimYaw??vehicle.yaw+BLACK_HAWK_GUN.restYaw,
     ownGun?(view.pitch??vehicle.aimPitch):vehicle.aimPitch??0);
   mount.rotation.y=aim.yaw;
   turret.gun.rotation.x=aim.pitch;

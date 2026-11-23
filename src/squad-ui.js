@@ -7,11 +7,14 @@ const get=id=>document.getElementById(id);
 export function getSquadHud(state,localId){
   const local=state?.players.find(p=>p.id===localId);if(!local)return null;
   const team=state.players.filter(p=>p.team===local.team),campaign=Boolean(state.campaign);
-  const members=campaign?(state.campaign.squadIds??[]).map(id=>team.find(p=>p.id===id)).filter(Boolean).map(p=>({...p,squadLeader:p.id==='duran'})):
+  const m04=state.campaign?.missionId==='m04';
+  const leader=m04?'local':'duran';
+  const members=campaign?(state.campaign.squadIds??[]).map(id=>team.find(p=>p.id===id)).filter(Boolean).map(p=>({...p,squadLeader:p.id===leader})):
     team.filter(p=>sameSquad(local,p)).sort((a,b)=>Number(b.squadLeader)-Number(a.squadLeader));
-  const order=campaign?({follow:'СЛЕДОВАТЬ ЗА ТОБОЙ',hold:'УДЕРЖИВАТЬ ПОЗИЦИЮ',radio:'ПРИКРЫТЬ РАДИСТА'}[state.campaign.order]??''):
+  const flight=m04&&state.campaign.airborne;
+  const order=campaign?(flight?'':({follow:'СЛЕДОВАТЬ ЗА ТОБОЙ',hold:'УДЕРЖИВАТЬ ПОЗИЦИЮ',radio:'ПРИКРЫТЬ РАДИСТА',assist:'ПОМОЧЬ ДИСПЕТЧЕРУ'}[state.campaign.order]??'')):
     local.orderKind==='follow'?'ЗА ЛИДЕРОМ':local.orderPointId?`${local.orderKind==='defend'?'ОБОРОНА':'ЗАХВАТ'} · ${local.orderPointId}`:'';
-  const title=campaign?`ОТРЯД ДЮРАНА · ${members.filter(p=>p.alive).length}/${members.length}`:`${SQUAD_NAMES[local.squadId-1]??'ОТРЯД'} · ${members.length}/${SQUAD_SIZE}`;
+  const title=campaign?`${m04?'ОТРЯД МАРТЕНА':'ОТРЯД ДЮРАНА'} · ${members.filter(p=>p.alive).length}/${members.length}`:`${SQUAD_NAMES[local.squadId-1]??'ОТРЯД'} · ${members.length}/${SQUAD_SIZE}`;
   return {local,team,members,title,order,campaign};
 }
 
@@ -33,7 +36,11 @@ export function mountSquadUI({getState,getLocalId,getKey,getOrderKeys,onOpen,onC
   function update(state=getState(),localId=getLocalId()){
     const view=getSquadHud(state,localId);if(!view)return;
     const {local,team,members:own,campaign}=view,keys=getOrderKeys();
-    const key=campaign?`${keys.order} · ПРИКАЗ`:`${getKey()} · ОТРЯДЫ`;
+    const mission=state.campaign;
+    const m04=mission?.missionId==='m04';
+    const dispatcherNeedsAid=m04&&state.players.some(p=>p.role==='dispatcher'&&p.alive&&p.downed);
+    const key=m04?(mission.airborne?'':`F1 / F2${dispatcherNeedsAid?' / Q':''} · ПРИКАЗ`):
+      campaign?`${keys.order} · ПРИКАЗ`:`${getKey()} · ОТРЯДЫ`;
     const sig=JSON.stringify(own.map(p=>[p.id,p.name,p.classId,p.hp,p.alive,p.squadLeader,memberStatus(p)]))+view.title+key+view.order;
     if(sig!==hudSignature){
       hudSignature=sig;get('squad-hud-name').textContent=view.title;

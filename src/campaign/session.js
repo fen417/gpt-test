@@ -97,7 +97,9 @@ export class CampaignSession {
     const t=(this.renderTime-a.time)/(b.time-a.time);
     const oldPlayers=new Map(a.players.map(p=>[p.id,p])),newPlayers=new Map(b.players.map(p=>[p.id,p]));
     const oldVehicles=new Map(a.vehicles.map(v=>[v.id,v])),newVehicles=new Map(b.vehicles.map(v=>[v.id,v]));
+    const campaign=this.state.campaign;
     return {...this.state,
+      campaign:campaign.transfer==null?campaign:{...campaign,transfer:lerp(a.campaign.transfer??0,b.campaign.transfer??0,t)},
       players:this.state.players.map(p=>{
         const a=oldPlayers.get(p.id),b=newPlayers.get(p.id);
         if(!a||!b||a.alive!==p.alive||b.alive!==p.alive||Math.hypot(a.x-b.x,a.z-b.z)>8)return p;

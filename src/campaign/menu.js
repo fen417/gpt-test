@@ -55,7 +55,7 @@ function buildScreen(){
   dialog.setAttribute('aria-labelledby','campaign-title');
   dialog.innerHTML=`<div class="campaign-map-paper">
     <header class="campaign-map-head"><button type="button" class="campaign-back" aria-label="Назад">← НАЗАД</button>
-      <div><small>ЭКСПЕДИЦИОННАЯ БРИГАДА / ОПЕРАЦИИ</small><h2 id="campaign-title">ПЕСОК И СТАЛЬ</h2><p class="campaign-development-note">КАМПАНИЯ В РАЗРАБОТКЕ · 4 ИЗ 8 МИССИЙ РЕАЛИЗОВАНЫ</p></div>
+      <div><small>ЭКСПЕДИЦИОННАЯ БРИГАДА / ОПЕРАЦИИ</small><h2 id="campaign-title">ПЕСОК И СТАЛЬ</h2></div>
       <label>СЛОЖНОСТЬ <select id="campaign-difficulty">
         <option value="recruit">Лёгкая</option><option value="regular">Нормальная</option><option value="veteran">Тяжёлая</option>
       </select></label></header>
@@ -81,7 +81,6 @@ function buildScreen(){
         <div class="campaign-mission-detail">
           <div class="campaign-mission-meta"><span class="campaign-mission-number"></span><span class="campaign-mission-state"></span></div>
           <h3 class="campaign-mission-title"></h3>
-          <div class="campaign-mission-readiness" hidden><span class="campaign-readiness-text"></span><progress class="campaign-readiness-progress" max="100" value="0"></progress></div>
           <p class="campaign-mission-kind"></p><p class="campaign-mission-description"></p>
           <aside class="campaign-mission-reward" aria-label="Награда за прохождение" hidden>
             <strong>Награда за прохождение</strong>
@@ -132,8 +131,7 @@ function paintCards(selected,progress,selectMission,unlocked){
       const title=document.createElement('span');title.className='campaign-mission-summary';
       const strong=document.createElement('strong');strong.textContent=status==='locked'?`Миссия ${mission.number}`:mission.title;
       const small=document.createElement('small');
-      const state=status==='locked'?'Пройдите предыдущую миссию':statusLabels[status];
-      small.textContent=Number.isFinite(mission.completionPercent)?`ГОТОВНОСТЬ ${mission.completionPercent}% · ${state}`:state;
+      small.textContent=status==='locked'?'Пройдите предыдущую миссию':statusLabels[status];
       title.append(strong,small);
       const icon=document.createElement('i');icon.textContent=status==='locked'?'▣':status==='complete'?'✓':status==='planned'?'—':'◆';
       btn.append(index,title,icon);btn.onclick=()=>selectMission(id);
@@ -176,12 +174,6 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
     showMissionPreview(mission,status);
     dialog.querySelector('.campaign-mission-state').textContent=statusLabels[status];
     dialog.querySelector('.campaign-mission-title').textContent=status==='locked'?`Миссия ${mission.number}`:mission.title;
-    const readiness=dialog.querySelector('.campaign-mission-readiness');
-    readiness.hidden=!Number.isFinite(mission.completionPercent);
-    if(!readiness.hidden){
-      dialog.querySelector('.campaign-readiness-text').textContent=`ГОТОВНОСТЬ МИССИИ: ${mission.completionPercent}% · В РАЗРАБОТКЕ`;
-      dialog.querySelector('.campaign-readiness-progress').value=mission.completionPercent;
-    }
     dialog.querySelector('.campaign-mission-kind').textContent=status==='locked'?'Сведения засекречены':`${mission.kind} · ${mission.character}`;
     dialog.querySelector('.campaign-mission-description').textContent=status==='locked'?'Пройдите предыдущую миссию, чтобы открыть это задание.':mission.preview;
     paintReward();

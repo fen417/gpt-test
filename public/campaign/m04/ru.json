@@ -29,8 +29,8 @@
   "lines": {
     "pilot.city": {
       "speaker": "pilot",
-      "duration": 6.29,
-      "text": "Нахар впереди. Мартен, осмотрись справа. За крышами увидишь трамвайную линию.",
+      "duration": 5.62,
+      "text": "Нахар впереди! Мартен, осмотри правый борт. Трамвайные пути за крышами.",
       "audio": "voice/pilot.city.ogg"
     },
     "orlov.inbound": {
@@ -47,7 +47,7 @@
     },
     "pilot.contact": {
       "speaker": "pilot",
-      "duration": 4.59,
+      "duration": 4.82,
       "text": "Впереди огонь с крыш. Правый борт, прикройте второй вертолёт!",
       "audio": "voice/pilot.contact.ogg"
     },
@@ -65,19 +65,19 @@
     },
     "pilot.rocket": {
       "speaker": "pilot",
-      "duration": 3.72,
+      "duration": 4.12,
       "text": "Ракета! Ракета в воздухе! Держитесь!",
       "audio": "voice/pilot.rocket.ogg"
     },
     "pilot.hull": {
       "speaker": "pilot",
-      "duration": 6.02,
+      "duration": 5.62,
       "text": "Нас задело! Держу борт… Мартен, не дай им выстрелить снова!",
       "audio": "voice/pilot.hull.ogg"
     },
     "pilot.cross": {
       "speaker": "pilot",
-      "duration": 4.69,
+      "duration": 4.82,
       "text": "Заходим вдоль трамвайной линии. Внимание, огонь слева!",
       "audio": "voice/pilot.cross.ogg"
     },
@@ -95,7 +95,7 @@
     },
     "pilot.hold": {
       "speaker": "pilot",
-      "duration": 4.79,
+      "duration": 5.12,
       "text": "Держу круг. Мартен, займи левый миниган, когда будешь готов.",
       "audio": "voice/pilot.hold.ogg"
     },
@@ -107,31 +107,31 @@
     },
     "pilot.orbit": {
       "speaker": "pilot",
-      "duration": 5.79,
+      "duration": 6.82,
       "text": "Депо внутри круга. Сначала ПТ-90, потом очистите двор.",
       "audio": "voice/pilot.orbit.ogg"
     },
     "pilot.again": {
       "speaker": "pilot",
-      "duration": 5.09,
+      "duration": 5.22,
       "text": "Ещё один проход. Смотрите на крышу станции и на сигнальную будку.",
       "audio": "voice/pilot.again.ogg"
     },
     "pilot.backup": {
       "speaker": "pilot",
-      "duration": 4.72,
+      "duration": 4.92,
       "text": "Двор простреливают! В основной не полезу. Сажусь в ремонтном!",
       "audio": "voice/pilot.backup.ogg"
     },
     "pilot.land": {
       "speaker": "pilot",
-      "duration": 6.02,
+      "duration": 5.82,
       "text": "Иду вниз! Подержите крыши! Всем оставаться на местах до касания!",
       "audio": "voice/pilot.land.ogg"
     },
     "pilot.clear": {
       "speaker": "pilot",
-      "duration": 4.49,
+      "duration": 4.32,
       "text": "На земле. Санитар, первым. Мартен, выходи за ним.",
       "audio": "voice/pilot.clear.ogg"
     },
@@ -317,8 +317,8 @@
     },
     "marten.secondPass": {
       "speaker": "marten",
-      "duration": 4.32,
-      "text": "Справа ещё люди. Вижу стрелка у края крыши.",
+      "duration": 4.22,
+      "text": "Справа ещё люди! Вижу стрелка у края крыши!",
       "audio": "voice/marten.secondPass.ogg"
     },
     "marten.sky": {
@@ -395,39 +395,51 @@
     },
     "pilot.descend": {
       "speaker": "pilot",
-      "duration": 6.42,
-      "text": "Снижаемся, держитесь. Второй борт впереди справа. Здесь крыши высокие.",
+      "duration": 5.52,
+      "text": "Снижаюсь! Второй борт справа впереди. Следите за высокими крышами!",
       "audio": "voice/pilot.descend.ogg"
     },
     "pilot.gunnerDown": {
       "speaker": "pilot",
-      "duration": 6.02,
+      "duration": 6.22,
       "text": "Грач?! Грач, ответь! Чёрт… Отхожу в сторону, держитесь!",
       "audio": "voice/pilot.gunnerDown.ogg"
     },
     "pilot.orbitTwo": {
       "speaker": "pilot",
-      "duration": 7.62,
-      "text": "Повторяю круг. Слева сигнальная будка, дальше крыша цеха. Там ещё могут быть ракеты.",
+      "duration": 6.32,
+      "text": "Захожу ещё раз! Слева будка, дальше крыша цеха. Смотрите, там могут быть ракеты!",
       "audio": "voice/pilot.orbitTwo.ogg"
     },
     "pilot.roofDanger": {
       "speaker": "pilot",
-      "duration": 3.92,
-      "text": "Пэ-тэ на крыше! Не выпускай его из прицела!",
+      "duration": 4.12,
+      "text": "ПТ на крыше! Не выпускай его из прицела!",
       "audio": "voice/pilot.roofDanger.ogg"
     },
     "pilot.stationRoof": {
       "speaker": "pilot",
-      "duration": 5.82,
-      "text": "Левый борт, у тебя вокзал. Смотри крышу над часами, я подведу ближе.",
+      "duration": 6.12,
+      "text": "Левый борт, смотри на часы вокзала! Крыша прямо над ними. Подвожу ближе!",
       "audio": "voice/pilot.stationRoof.ogg"
     },
     "pilot.touchdown": {
       "speaker": "pilot",
-      "duration": 6.02,
+      "duration": 5.92,
       "text": "Держу! Ещё чуть-чуть… Есть земля. Быстро, быстро, на выход!",
       "audio": "voice/pilot.touchdown.ogg"
+    },
+    "pilot.roofDangerEdge": {
+      "speaker": "pilot",
+      "duration": 3.72,
+      "text": "ПТ у края крыши! Смотри выше!",
+      "audio": "voice/pilot.roofDangerEdge.ogg"
+    },
+    "pilot.roofDangerReady": {
+      "speaker": "pilot",
+      "duration": 3.92,
+      "text": "На крыше — ПТ! Он уже целится!",
+      "audio": "voice/pilot.roofDangerReady.ogg"
     }
   }
 }

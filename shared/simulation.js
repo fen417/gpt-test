@@ -622,7 +622,10 @@ export class Simulation {
       const gunner=vehicle.type==='tank'?driver:this.players.get(vehicle.seats[gunnerIndex]);
       const machineGunner=vehicle.type==='tank'&&vehicle.controlScheme!=='wot'?this.players.get(vehicle.seats[1]):null;
       vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown-dt);
-      vehicle.heat=Math.max(0,vehicle.heat-dt*(vehicle.overheated?.28:.26));
+      // Keep the net heating rate at a quarter during a sustained minigun burst.
+      const firingMinigun=vehicle.type===BLACK_HAWK&&gunner?.alive&&gunner.input.fire;
+      const cooling=vehicle.overheated ? .28 : firingMinigun ? .065 : .26;
+      vehicle.heat=Math.max(0,vehicle.heat-dt*cooling);
       if(vehicle.overheated&&vehicle.heat<=.3)vehicle.overheated=false;
       if(vehicle.type==='tank'){
         vehicle.burning=vehicle.hp<vehicle.maxHp*.25&&this.time>=(vehicle.extinguishedUntil??0);

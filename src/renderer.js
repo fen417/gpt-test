@@ -1873,11 +1873,10 @@ export class GameRenderer {
     if (shake && seat.role==='driver') this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012, Math.abs(vehicle.speed) * .001) * (humvee ? .65 : 1);
     const gunner = seat.role === 'gunner';
     const roll = shake && seat.role==='driver' ? rig.body.rotation.z * (rig.blackHawk?.48:humvee?.62:1) : 0;
+    if(rig.blackHawk)this.blackHawkViewPose=pose;
     if(rig.blackHawk&&gunner){
-      const aim=blackHawkGunPose(pose,yaw,pitch);
-      const dx=-Math.sin(aim.yaw)*Math.cos(aim.pitch), dy=Math.sin(aim.pitch), dz=-Math.cos(aim.yaw)*Math.cos(aim.pitch);
-      this.camera.position.set(aim.muzzle.x-dx*1.48,aim.muzzle.y-dy*1.48+.25,aim.muzzle.z-dz*1.48);
-      this.camera.rotation.set(aim.pitch-.005,aim.yaw,rig.body.rotation.z*.35,'YXZ');
+      const aim=this.minigunAim=blackHawkGunPose(pose,yaw,pitch);
+      this.camera.rotation.set(aim.pitch,aim.yaw,shake?rig.body.rotation.z*.35:0,'YXZ');
     }else{
       const heading=rig.blackHawk&&seat.role==='driver'?yaw+rig.group.rotation.y-vehicle.yaw:yaw;
       this.camera.rotation.set(gunner ? clamp(pitch, TURRET_MIN_PITCH, TURRET_MAX_PITCH) : pitch, heading, roll, 'YXZ');
@@ -1895,6 +1894,8 @@ export class GameRenderer {
     this.scoped = false;
     this.binocularAiming=false;
     this.collimatorAiming = false;
+    this.blackHawkViewPose=null;
+    this.minigunAim=null;
     if (this.map.shoreX !== undefined && this.portWater) {
       this.portWater.offset.set((this.clock * .011) % 1, (this.clock * .017) % 1);
     }

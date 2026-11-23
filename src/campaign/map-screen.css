@@ -18,7 +18,6 @@ dialog.campaign-map-screen{
 .campaign-map-head small{font-size:10px;font-weight:800;letter-spacing:.21em;color:#755c3f}
 .campaign-map-head h2{font-family:Impact,"Arial Narrow",sans-serif;font-size:clamp(24px,3vw,43px);
   line-height:1;margin:3px 0 0;letter-spacing:.1em;color:#342f28}
-.campaign-development-note{margin:6px 0 0;font:800 10px/1.4 monospace;letter-spacing:.07em;color:#913e31}
 .campaign-map-head label{display:flex;gap:10px;align-items:center;font:800 11px monospace}
 .campaign-map-head select{background:#e1cda4;color:#3d2e24;border:1px solid #66513b;padding:9px}
 .campaign-back{background:none;border:0;border-bottom:1px solid #493c30;padding:8px 0;
@@ -56,13 +55,6 @@ dialog.campaign-map-screen{
 .campaign-mission-detail{padding:24px 35px 30px;display:flex;flex-direction:column;gap:9px}
 .campaign-mission-meta{display:flex;justify-content:space-between;font:800 10px monospace;letter-spacing:.14em}
 .campaign-mission-state{color:#854632}
-.campaign-mission-readiness{display:grid;gap:7px;margin:5px 0 8px;color:#854632}
-.campaign-mission-readiness[hidden]{display:none}
-.campaign-readiness-text{font:800 11px/1.4 monospace;letter-spacing:.06em}
-.campaign-readiness-progress{display:block;width:min(100%,360px);height:10px;appearance:none;border:1px solid #806344;background:#e2cc9f}
-.campaign-readiness-progress::-webkit-progress-bar{background:#e2cc9f}
-.campaign-readiness-progress::-webkit-progress-value{background:#916149}
-.campaign-readiness-progress::-moz-progress-bar{background:#916149}
 .campaign-mission-title{font:700 clamp(22px,2.5vw,38px)/1.1 Impact,"Arial Narrow",sans-serif;
   letter-spacing:.055em;margin:1px 0}
 .campaign-mission-kind{font:700 12px monospace;color:#845c43;margin:0}

@@ -9,7 +9,7 @@ const BLACK_HAWK_DOOR={x:1.31,minY:1.50,maxY:2.74,minZ:-1.21,maxZ:1.41};
 export const BLACK_HAWK_GUN = {
   index: 2, x: -1.19, y: 2.09, z: -.65, restYaw: Math.PI / 2,
   weapon: 'МИНИГАН «ЧЁРНОГО ЯСТРЕБА»', range: 240, damage: 29, interval: .065,
-  spread: .024, projectileSpeed: 420, minPitch: -.65, maxPitch: .46, heatPerShot: .032,
+  spread: .024, projectileSpeed: 420, minPitch: -.65, maxPitch: .46, heatPerShot: .008,
 };
 
 export const VEHICLE_TYPES = {

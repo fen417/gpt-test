@@ -1,23 +1,24 @@
 import * as THREE from 'three';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM} from '../../shared/campaign/nahar.js';
-import {getVehicleSeatPose,vehiclePartPose} from '../../shared/vehicles.js';
+import {bulletHeight} from '../../shared/ballistics.js';
+import {BLACK_HAWK_GUN,blackHawkGunPose,getVehicleSeatPose} from '../../shared/vehicles.js';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {placeCampaignMarker} from './markers.js';
 import './mission4.css';
 
 const orders={F1:'follow',F2:'hold',KeyQ:'assist'};
-const orderText={follow:'Следовать',hold:'Держать позицию',assist:'Помочь диспетчеру'};
 const clock=seconds=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
 const angle=value=>Math.atan2(Math.sin(value),Math.cos(value));
 const mix=THREE.MathUtils.lerp;
 const smooth=THREE.MathUtils.smoothstep;
 const names={primary:'Двор депо',alternate:'Ремонтный двор'};
 
-function flightMusic(state,definition){
+function naharMusic(state,definition){
   const m=state.campaign;
-  if(!m.airborne||m.stage==='disembark'||!definition.music?.flight)return {tracks:{},offset:0};
+  if(!m.airborne)return definition.music?.ground?{tracks:{ground:.84},offset:m.groundElapsed}:{tracks:{},offset:0};
+  if(m.stage==='disembark'||!definition.music?.flight)return {tracks:{},offset:0};
   const level=m.stage==='transfer'?.28:m.stage==='landing'?.48:.84;
   return {tracks:{flight:level},offset:m.time};
 }
@@ -28,7 +29,7 @@ export class Mission4Presentation{
       locale:session.locale,definition:session.definition});
     const rootUrl=new URL(`${import.meta.env.BASE_URL}campaign/m04/`,location.href);
     this.voice=new CampaignAudio(audio,rootUrl,this.definition);
-    this.score=new ColumnMusic(audio,rootUrl,this.definition,flightMusic);
+    this.score=new ColumnMusic(audio,rootUrl,this.definition,naharMusic);
     this.oldMusicOverride=audio.campaignMusicOverride;audio.campaignMusicOverride=true;
     this.root=document.createElement('section');this.root.className='campaign-ui campaign-m04';
     this.root.setAttribute('aria-label','Миссия 04 «Под крышами»');
@@ -36,7 +37,9 @@ export class Mission4Presentation{
       <div class="campaign-subtitle hidden" role="status" aria-live="polite"><b></b><span></span></div>
       <div class="m04-interaction" hidden><span></span><progress max="1" value="0" hidden></progress></div>
       <div class="m04-warning" hidden></div><div class="m04-flight-status" hidden><b></b><span></span><meter min="0" max="100"></meter></div>
-      <div class="m04-squad" hidden></div><span class="m04-marker" hidden></span><span class="m04-threat" hidden></span>
+      <span class="m04-marker" hidden></span><span class="m04-threat" hidden></span>
+      <div class="m04-minigun-reticle" hidden aria-hidden="true"><i></i></div>
+      <div class="campaign-injury" hidden><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div>
       <div class="m04-cinematic" hidden></div>
       <section class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div>
         <button class="campaign-retry">С контрольной точки</button><button class="campaign-exit">К экрану кампании</button></section>`;
@@ -44,6 +47,7 @@ export class Mission4Presentation{
     this.$=selector=>this.root.querySelector(selector);
     this.$('.campaign-exit').onclick=leave;this.$('.campaign-retry').onclick=()=>this.retry();
     this.marker=this.$('.m04-marker');this.threat=this.$('.m04-threat');
+    this.minigunReticle=this.$('.m04-minigun-reticle');this.aimPoint=new THREE.Vector3();
     this.dressing=new THREE.Group();this.dressing.name='nahar-interactives';renderer.worldRoot.add(this.dressing);
     this.sky=renderer.webgpu?renderer.atmosphere:renderer.atmosphere.sky.material.uniforms;
     this.cityFog=new THREE.Color('#c6ac91');this.stormFog=new THREE.Color('#ba8c64');
@@ -79,6 +83,7 @@ export class Mission4Presentation{
     const use=hint('interact','KeyE'),switchSeat=hint('switchSeat','KeyF');
     document.body.classList.add('campaign-active','campaign-m04-active');
     document.body.classList.toggle('campaign-cinematic',cinematic||m.transfer!=null);
+    document.body.classList.toggle('campaign-downed',p.downed&&!end);
     this.root.classList.toggle('campaign-ui-paused',paused&&!end);
     const objective=this.$('.campaign-objective');objective.hidden=end||cinematic||m.transfer!=null;
     objective.querySelector('strong').textContent=this.locale.objectives[m.objective];
@@ -93,7 +98,7 @@ export class Mission4Presentation{
     if(m.stage==='approach')prompt=`${switchSeat} · Сменить правое место`;
     if(m.transferReady)prompt=m.transfer!=null?'Переход к минигану':`${switchSeat} · Занять миниган`;
     if(m.disembarkReady)prompt=`${use} · Выйти из вертолёта`;
-    const action=this.$('.m04-interaction');action.hidden=!prompt||end||cinematic;
+    const action=this.$('.m04-interaction');action.hidden=!prompt||end||cinematic||p.downed;
     action.querySelector('span').textContent=prompt;
     const progress=action.querySelector('progress');progress.value=m.transfer??m.progress??0;
     progress.hidden=progress.value<=0;
@@ -107,9 +112,13 @@ export class Mission4Presentation{
       craft?.overheated?'МИНИГАН ПЕРЕГРЕТ':`НАГРЕВ ${Math.round((craft?.heat??0)*100)}%`:
       p.vehicleSeat===4?'ЗАДНЕЕ ПРАВОЕ':'ПЕРЕДНЕЕ ПРАВОЕ';
     const meter=flight.querySelector('meter');meter.value=m.hull??0;
-    const squad=this.$('.m04-squad'),dispatcher=state.players.find(a=>a.role==='dispatcher');
-    squad.hidden=m.airborne||cinematic||end;
-    squad.textContent=`${orderText[m.order]} · F1 ИДТИ · F2 ДЕРЖАТЬ${dispatcher?.alive&&dispatcher.downed?' · Q САНИТАР':''}`;
+    const injury=this.$('.campaign-injury');injury.hidden=!p.downed||end;
+    if(!injury.hidden){
+      injury.querySelector('strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;
+      const helper=state.players.find(a=>a.id===p.reviver);
+      injury.querySelector('span').textContent=helper?
+        `${helper.name} оказывает помощь · ${Math.floor(m.reviveProgress*100)}%`:'Дождитесь помощи союзника';
+    }
     const mat=this.$('.m04-cinematic');mat.hidden=!cinematic||Boolean(m.failed);
     if(cinematic)mat.style.setProperty('--end-fade',String(smooth(m.cutscene.elapsed,2.2,5.9)));
     const ending=this.$('.campaign-ending');ending.classList.toggle('hidden',!end);
@@ -189,13 +198,28 @@ export class Mission4Presentation{
     this.syncGates(m.gates);
     const p=state.players.find(a=>a.id==='local'),craft=state.vehicles.find(v=>v.id===p?.vehicleId);
     r.sunOffset.set(-140,86,-60);
+    const pose=r.blackHawkViewPose??craft;
     if(craft&&m.airborne&&m.transfer!=null){
-      const t=smooth(m.transfer,0,1),from=getVehicleSeatPose(craft,p.vehicleSeat),to=vehiclePartPose(craft,-.62,2.5,-.83);
-      r.camera.position.set(mix(from.x,to.x,t),mix(from.y,to.y,t)-Math.sin(Math.PI*t)*.22,mix(from.z,to.z,t));
-      const yaw=craft.yaw+mix(-Math.PI/2,Math.PI/2,t);
-      r.camera.rotation.set(-.105*Math.sin(Math.PI*t),yaw,0,'YXZ');r.weapon.visible=false;
-    }else if(craft&&m.airborne&&p.vehicleSeat>=3&&view.shake!==false){
-      r.camera.rotation.z=m.bodyRoll*.22;
+      const camera=r.camera;
+      if(!this.transferView){
+        const yaw=angle(camera.rotation.y-pose.yaw),turn=BLACK_HAWK_GUN.restYaw-yaw;
+        this.transferView={yaw,turn:Math.abs(turn-Math.PI)<.12?turn:angle(turn),pitch:camera.rotation.x,fov:camera.fov};
+      }
+      const start=this.transferView,t=THREE.MathUtils.smootherstep(m.transfer,0,1);
+      const from=getVehicleSeatPose(pose,p.vehicleSeat),to=getVehicleSeatPose(pose,BLACK_HAWK_GUN.index);
+      const aim=blackHawkGunPose(pose,craft.yaw+BLACK_HAWK_GUN.restYaw,0);
+      const yawOffset=angle(aim.yaw-pose.yaw-BLACK_HAWK_GUN.restYaw);
+      const roll=view.shake===false?0:pose.bodyRoll??0;
+      camera.position.set(mix(from.x,to.x,t),mix(from.y,to.y,t)-Math.sin(Math.PI*t)**2*.14,mix(from.z,to.z,t));
+      camera.rotation.set(mix(start.pitch,aim.pitch,t)-Math.sin(Math.PI*t)**2*.085,
+        pose.yaw+start.yaw+(start.turn+yawOffset)*t,roll*mix(.22,.35,t),'YXZ');
+      camera.fov=mix(start.fov,THREE.MathUtils.clamp(Number(view.fov)||85,65,105),smooth(m.transfer,0,.55));
+      camera.updateProjectionMatrix();
+      r.scoped=r.collimatorAiming=r.binocularAiming=false;
+      r.weapon.visible=false;
+    }else{
+      this.transferView=null;
+      if(craft&&m.airborne&&p.vehicleSeat>=3&&view.shake!==false)r.camera.rotation.z=(pose.bodyRoll??0)*.22;
     }
     if(m.cutscene?.id==='finale'){
       const e=NAHAR_SITES.exit,t=smooth(m.cutscene.elapsed,0,5.8);
@@ -204,6 +228,7 @@ export class Mission4Presentation{
     this.updateStorm(r,m.time,view.quality);
     r.camera.updateMatrixWorld();
     const show=!m.failed&&!m.complete&&!m.cutscene&&p;
+    this.placeMinigunReticle(r,show&&p.alive&&!p.downed&&!view.paused&&m.transfer==null?r.minigunAim:null);
     this.placeThreat(r,show?m.threat:null,p);
     const t=show&&m.target;
     this.placeMarker(this.marker,r,t?{...t,y:t.y+.8}:null,p,t?`◇ ${Math.round(Math.hypot(t.x-p.x,t.z-p.z))} М`:'');
@@ -212,6 +237,17 @@ export class Mission4Presentation{
       const a=r.clock*6;
       r.smoke(craft.x+Math.sin(a)*4,.45,craft.z+Math.cos(a)*4.5,2.4,1.75,0xb4a084,{opacity:.3,rise:.34,wind:1.1});
     }
+  }
+  placeMinigunReticle(r,aim){
+    const reticle=this.minigunReticle;
+    reticle.hidden=!aim;
+    if(!aim)return;
+    const distance=70,age=distance/BLACK_HAWK_GUN.projectileSpeed,horizontal=Math.cos(aim.pitch)*distance;
+    const point=this.aimPoint.set(aim.muzzle.x-Math.sin(aim.yaw)*horizontal,
+      bulletHeight(aim.muzzle.y,Math.sin(aim.pitch)*BLACK_HAWK_GUN.projectileSpeed,age),
+      aim.muzzle.z-Math.cos(aim.yaw)*horizontal).project(r.camera);
+    reticle.style.left=`${(point.x+1)*50}%`;
+    reticle.style.top=`${(1-point.y)*50}%`;
   }
   dispose(){
     this.voice.dispose();this.score.dispose();this.combat.campaignMusicOverride=this.oldMusicOverride;
@@ -222,6 +258,6 @@ export class Mission4Presentation{
     for(const {sprite} of this.dustBanks)sprite.material.dispose();
     for(const gate of Object.values(this.doorMeshes)){gate.geometry.dispose();gate.material.dispose();}
     this.dressing.removeFromParent();this.root.remove();
-    document.body.classList.remove('campaign-active','campaign-m04-active','campaign-cinematic');
+    document.body.classList.remove('campaign-active','campaign-m04-active','campaign-cinematic','campaign-downed');
   }
 }
