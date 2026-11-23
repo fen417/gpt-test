@@ -284,6 +284,26 @@ def horizon_scope():
     for face in housing.data.polygons:
         face.use_smooth=True
     housing.data.set_sharp_from_angle(angle=radians(40))
+
+    low=Assembly()
+    # Keep the original end profiles and open bore. The lenses and eye
+    # marker belong to the mount, so both housings use the same optics.
+    optic_shell(low,axis,[outer[i] for i in (0,1,3,5,6,7,9,11,12,13)],bore,STEEL,20)
+    low.box((0,.010,-.011),(.066,.028,.160),STEEL,.004)
+    for z in (-.068,.046):
+        low.box((0,.033,z),(.047,.030,.026),STEEL,.003)
+        sight_ring(low,axis,z,.0215,.0275,.021,EDGE)
+    for side in (-1,1):
+        low.box((side*.025,axis,-.009),(.012,.043,.043),STEEL,.002)
+        low.cylinder((side*.033,axis,-.009),.013,.017,'x',POLYMER,14)
+    low.box((0,axis+.025,-.009),(.042,.012,.043),STEEL,.002)
+    low.cylinder((0,axis+.034,-.009),.017,.017,'y',POLYMER,16)
+    sight_ring(low,axis,collar,.0295,.035,.022,EDGE)
+    low.box((.019,axis+.035,collar),(.009,.013,.013),POLYMER,.002)
+    housing_low=machined_part(low,'_HousingLow',group,{POLYMER:1,EDGE:2})
+    for face in housing_low.data.polygons:
+        face.use_smooth=True
+    housing_low.data.set_sharp_from_angle(angle=radians(40))
     for name,z,radius,coating in [
         ('_FrontLens',nose+.019,.035,front_coating),('_RearLens',back-.007,.027,rear_coating),
     ]:
@@ -394,6 +414,8 @@ for part, materials in source_finishes:
 
 for group, column, row in gallery:
     group.location = (column*.48, -row*1.16, 0)
+    if group.name == 'horizon-610_Shared':
+        bpy.data.objects[group.name+'_HousingLow'].hide_set(True)
 for screen in bpy.data.screens:
     for area in screen.areas:
         if area.type == "VIEW_3D":

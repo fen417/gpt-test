@@ -5,7 +5,7 @@ import {cloneWeaponModel,showWeaponUpgrades} from './weapon-models.js';
 const optics=new WeakMap();
 const loading=new WeakSet();
 
-export function attachmentPreviewItem(weaponId,attachments,refresh){
+export function attachmentPreviewItem(weaponId,attachments,refresh,lowDetail=false){
   if(!WEAPONS[weaponId])return null;
   return {
     key:'weapon:'+weaponId,
@@ -26,7 +26,7 @@ export function attachmentPreviewItem(weaponId,attachments,refresh){
         }
       }
       const opticChanged=optics.get(model)?.show(show);
-      const upgradesChanged=showWeaponUpgrades(model,weaponId,attachments);
+      const upgradesChanged=showWeaponUpgrades(model,weaponId,attachments,lowDetail);
       return opticChanged||upgradesChanged;
     },
   };

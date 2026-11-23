@@ -1194,13 +1194,15 @@ export class GameRenderer {
         // Distant infantry may have switched off their detailed body before
         // entering. Restore it when seated so the whole crew cannot disappear.
         const position=getVehicleSeatPose(vehicle,index),distSq=this.camera.position.distanceToSquared(this.scratchPosition.set(position.x,position.y,position.z))*viewScale**2;
-        setInfantryLod(soldier, distSq > lodLimits[2] ** 2 ? 3 : distSq > lodLimits[1] ** 2 ? 2 : distSq > lodLimits[0] ** 2 ? 1 : 0, !this.lowQuality && distSq < 48 ** 2);
+        setInfantryLod(soldier, distSq > lodLimits[2] ** 2 ? 3 : distSq > lodLimits[1] ** 2 ? 2 : distSq > lodLimits[0] ** 2 ? 1 : 0,
+          !this.lowQuality && distSq < 48 ** 2,this.detailLevel===0);
         this.soldierBounds.center.set(position.x,position.y-.4,position.z);
         group.visible=this.viewFrustum.intersectsSphere(this.soldierBounds)||Boolean(shadowFrustum?.intersectsSphere(this.soldierBounds)&&distSq<48**2);
         const control=seat.role==='driver'?rig.controls:seat.role==='gunner'?(rig.turret?.grips??rig.turret?.gun):null;
         const yawDelta=player.yaw-vehicle.yaw-seatYaw;
         infantrySeat(soldier,{vehicle,seat,index,control,relativeYaw:Math.atan2(Math.sin(yawDelta),Math.cos(yawDelta)),
-          pitch:player.pitch,aim:player.aim,shotSeq:player.shotSeq,dt});
+          pitch:player.pitch,aim:player.aim,shotSeq:player.shotSeq,dt,
+          attachmentFlags:player.weaponId===soldier.weaponId?player.attachmentFlags??0:undefined});
         // Keep the light-vehicle placeholder visible until the full soldier
         // rig is actually drawn; don't blank the seat if assets are still loading.
         if(rig.riders[index])rig.riders[index].visible=fallbackRiderVisible(vehicle,index,localId,group.parent===rig.body&&group.visible);
@@ -1259,7 +1261,8 @@ export class GameRenderer {
       let lod = soldier.lod;
       while (lod < 3 && projectedDistanceSq > (lodLimits[lod] * 1.07) ** 2) lod++;
       while (lod > 0 && projectedDistanceSq < (lodLimits[lod - 1] * .93) ** 2) lod--;
-      setInfantryLod(soldier, lod, lod < 2 && (this.quality === 'medium' ? distSq < 20 ** 2 : !this.lowQuality && distSq < 48 ** 2));
+      setInfantryLod(soldier, lod, lod < 2 && (this.quality === 'medium' ? distSq < 20 ** 2 : !this.lowQuality && distSq < 48 ** 2),
+        this.detailLevel===0);
       if (!alive) {
         infantryDeath(soldier, soldier.deathAge);
         continue;

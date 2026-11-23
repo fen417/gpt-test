@@ -6,7 +6,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { showWeaponUpgrades, weaponModelUrls } from './weapon-models.js';
-import { weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
+import { HORIZON_OPTIC_ID, weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
 
 const weaponNames = {
   ar416: 'ar416', ak12: 'ak12m', mcx9: 'mcx9', vk45: 'vk45',
@@ -237,13 +237,16 @@ function prepareWeapon(gltf, name) {
   return {
     model, distantWeapon: batchDistantWeapon(model), pistol: Boolean(fit.pistol), foregrip: Boolean(fit.foregrip),
     distantUpgrades,
-    getDistantUpgrade(weaponId, flags) {
-      if (!distantUpgrades.has(flags)) {
+    getDistantUpgrade(weaponId, flags, lowDetail) {
+      const slots=weaponAttachmentsFromFlags(flags);
+      const low=lowDetail&&slots?.optic===HORIZON_OPTIC_ID;
+      const key=low?'low:'+flags:flags;
+      if (!distantUpgrades.has(key)) {
         const upgraded = model.clone(true);
-        if (!showWeaponUpgrades(upgraded, weaponId, weaponAttachmentsFromFlags(flags))) return this.distantWeapon;
-        distantUpgrades.set(flags, batchDistantWeapon(upgraded));
+        if (!showWeaponUpgrades(upgraded,weaponId,slots,low)) return this.distantWeapon;
+        distantUpgrades.set(key,batchDistantWeapon(upgraded));
       }
-      return distantUpgrades.get(flags);
+      return distantUpgrades.get(key);
     },
     stock: new THREE.Vector3(0, .07, weaponBounds.max.z),
     support: from(fit.support).sub(primary).multiplyScalar(scale),

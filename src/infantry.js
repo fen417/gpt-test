@@ -356,13 +356,14 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.feedCover = rig.weaponModel.getObjectByName('FeedCover');
 }
 
-function updateInfantryUpgrades(rig, flags) {
-  if (flags === rig.attachmentFlags) return;
+function updateInfantryUpgrades(rig, flags, lowDetail=rig.lowWeaponDetail??false) {
+  if (flags===rig.attachmentFlags&&lowDetail===rig.lowWeaponDetail) return;
   const model = rig.weaponModel;
-  showWeaponUpgrades(model, rig.weaponId, weaponAttachmentsFromFlags(flags));
+  showWeaponUpgrades(model,rig.weaponId,weaponAttachmentsFromFlags(flags),lowDetail);
   rig.attachmentFlags = flags;
+  rig.lowWeaponDetail = lowDetail;
   const template = rig.weaponTemplate;
-  const distant = flags ? template.getDistantUpgrade(rig.weaponId, flags) : template.distantWeapon;
+  const distant = flags ? template.getDistantUpgrade(rig.weaponId,flags,lowDetail) : template.distantWeapon;
   rig.distantWeapon.geometry = distant.geometry;
   rig.distantWeapon.material = distant.material;
   if (upgradeMuzzle(model, rig.flash.position))
@@ -371,7 +372,8 @@ function updateInfantryUpgrades(rig, flags) {
   rig.flash.position.z -= .052;
 }
 
-export function setInfantryLod(rig, level, shadows) {
+export function setInfantryLod(rig, level, shadows, lowWeaponDetail=false) {
+  if(rig.lowWeaponDetail!==lowWeaponDetail)updateInfantryUpgrades(rig,rig.attachmentFlags,lowWeaponDetail);
   rig.lod = level;
   rig.weaponModel.visible = level < 2;
   rig.distantWeapon.visible = level >= 2;
@@ -881,7 +883,8 @@ function poseVehicleHands(rig, control, kind, seat) {
   neutralControl.removeFromParent();
 }
 
-export function infantrySeat(rig, { vehicle, seat, index, control, relativeYaw, pitch, aim, shotSeq, dt }) {
+export function infantrySeat(rig, { vehicle, seat, index, control, relativeYaw, pitch, aim, shotSeq, dt, attachmentFlags=rig.attachmentFlags }) {
+  updateInfantryUpgrades(rig,attachmentFlags);
   const { group, bones } = rig;
   rig.deathPose = null;
   const active = new Set(), atv = vehicle.type === 'atv', driving = seat.role === 'driver';

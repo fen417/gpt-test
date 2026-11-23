@@ -6,7 +6,7 @@ import {mountWeaponPreview} from './weapon-preview.js';
 import {attachmentPreviewItem} from './attachment-preview.js';
 import {weaponModuleMount} from './weapon-models.js';
 
-export function mountProfilePreview({getRenderer,getSelection}){
+export function mountProfilePreview({getRenderer,getSelection,getLowWeaponDetail}){
   const buttons=[...document.querySelectorAll('#profile-weapon-mounts button')];
   const position=new Vector3();
   const preview=mountWeaponPreview({
@@ -32,7 +32,7 @@ export function mountProfilePreview({getRenderer,getSelection}){
           };
         },
       };
-      return attachmentPreviewItem(weaponId,attachments,()=>preview.update());
+      return attachmentPreviewItem(weaponId,attachments,()=>preview.update(),getLowWeaponDetail());
     },
     afterDraw(model,camera){
       const visible=model&&getSelection()?.hotspots;

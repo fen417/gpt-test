@@ -76,6 +76,7 @@ function flushDamage(now){
 }
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
 let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality',fsrSharpness:40,frameGeneration:'off'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
+const getLowWeaponDetail=()=>(gfx.detail==='auto'?quality:gfx.detail)==='low';
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -596,7 +597,7 @@ function presentLocalShot(event){
   text('ammo',(simulation?.client??multiplayer).prediction.player.ammo);
 }
 const profile=mountPlayerProfile({
-  onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,
+  onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,getLowWeaponDetail,
 });
 const weaponIdByKillLabel=new Map(Object.values(WEAPONS).map(weapon=>[weapon.weapon,weapon.id]));
 const activeWeaponModules=()=>mode==='campaign'?local()?.weaponModules:(simulation?.client??multiplayer).weaponModules;
@@ -613,8 +614,12 @@ let localRoundId='',observedRound='',observedKills={},weaponResultRevision=0;
 const quickPreview=mountWeaponPreview({
   panelId:'quick-attachments',prefix:'quick-weapon-preview',
   getGpuDevice:()=>renderer?.webgpu?.device??null,
-  getItem:()=>attachmentPreviewItem(quickWeapon,quickPreviewSlots,()=>quickPreview.update()),
+  getItem:()=>attachmentPreviewItem(quickWeapon,quickPreviewSlots,()=>quickPreview.update(),getLowWeaponDetail()),
 });
+function refreshAttachmentPreviews(){
+  profile.refreshPreview();
+  void quickPreview.update();
+}
 const renderQuickPicker=setupAttachmentPicker(quickAttachments,{
   chartHost:$('quick-attachment-chart'),
   onSlot:slot=>{quickSlot=slot;updateQuickPicker();},
@@ -990,8 +995,22 @@ $('sensitivity').value=read('sensitivity','0.8');sensitivity=Number($('sensitivi
 $('sensitivity').addEventListener('input',event=>{sensitivity=Number(event.target.value);save('sensitivity',sensitivity);});
 $('quality').value=read('quality','high');quality=$('quality').value;
 document.body.classList.toggle('low-quality',quality!=='high');
-$('quality').addEventListener('change',event=>{quality=event.target.value;document.body.classList.toggle('low-quality',quality==='low');save('quality',quality);});
-for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution'],['gfx-detail','detail']]){const el=$(id);const stored=read(id,'auto');el.value=[...el.options].some(o=>o.value===stored)?stored:'auto';gfx[key]=el.value;el.addEventListener('change',event=>{gfx[key]=event.target.value;save(id,gfx[key]);});}
+$('quality').addEventListener('change',event=>{
+  quality=event.target.value;
+  document.body.classList.toggle('low-quality',quality==='low');
+  save('quality',quality);
+  refreshAttachmentPreviews();
+});
+for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution'],['gfx-detail','detail']]){
+  const el=$(id),stored=read(id,'auto');
+  el.value=[...el.options].some(o=>o.value===stored)?stored:'auto';
+  gfx[key]=el.value;
+  el.addEventListener('change',event=>{
+    gfx[key]=event.target.value;
+    save(id,gfx[key]);
+    if(key==='detail')refreshAttachmentPreviews();
+  });
+}
 for(const [id,key,fallback] of [['gfx-fsr','fsr','off'],['gfx-fsr-quality','fsrQuality','quality']]){
   const el=$(id),stored=read(id,fallback);
   el.value=[...el.options].some(o=>o.value===stored)?stored:fallback;

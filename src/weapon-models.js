@@ -36,6 +36,7 @@ const templates = new Map();
 const mountedParts = new WeakMap();
 const upgradeTemplates = new Map();
 const upgradeInstances = new WeakMap();
+const housingVariants = new WeakMap();
 let pending;
 
 export function loadWeaponModels() {
@@ -84,7 +85,15 @@ export function weaponModuleMount(root,slot) {
   return root.getObjectByName(moduleSlots[slot].mount)??null;
 }
 
-export function showWeaponUpgrades(root, weaponId, slots) {
+function setHousingDetail(part, lowDetail) {
+  const variant=housingVariants.get(part);
+  if(!variant||variant.low.visible===lowDetail&&variant.high.visible===!lowDetail)return false;
+  variant.low.visible=lowDetail;
+  variant.high.visible=!lowDetail;
+  return true;
+}
+
+export function showWeaponUpgrades(root, weaponId, slots, lowDetail=false) {
   if (!root) return false;
   let changed = false;
   for (const slot of ['barrel', 'magazine', 'stock', 'optic']) {
@@ -92,7 +101,11 @@ export function showWeaponUpgrades(root, weaponId, slots) {
     if (!socket) continue;
     const id = slots?.[slot], template = upgradeTemplates.get(id + '/' + weaponId);
     if (slot === 'optic' && id === 'collimator-15') continue;
-    if ((mountedParts.get(socket)?.part?.name ?? null) === (template?.name ?? null)) continue;
+    const mounted=mountedParts.get(socket)?.part;
+    if ((mounted?.name ?? null) === (template?.name ?? null)) {
+      if (setHousingDetail(mounted,lowDetail)) changed = true;
+      continue;
+    }
     let part = null;
     if (template) {
       let instances = upgradeInstances.get(socket);
@@ -100,6 +113,9 @@ export function showWeaponUpgrades(root, weaponId, slots) {
       part = instances.get(id);
       if (!part) {
         part = template.clone(true);
+        const low=part.getObjectByName(part.name+'_HousingLow');
+        const high=low&&part.getObjectByName(part.name+'_Housing');
+        if(high)housingVariants.set(part,{low,high});
         for (const name of moduleSlots[slot].stock) {
           const replacement = part.getObjectByName(template.name + '_' + name);
           const stock = root.getObjectByName(name);
@@ -107,6 +123,7 @@ export function showWeaponUpgrades(root, weaponId, slots) {
         }
         instances.set(id, part);
       }
+      setHousingDetail(part,lowDetail);
     }
     if (setWeaponModule(root, slot, part)) changed = true;
   }

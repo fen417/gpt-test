@@ -1177,7 +1177,7 @@ export function createWeaponRig(owner = {}) {
     activeOptic?.aim(aim>.75);
     const weaponRoot=rifle?.model??pistol?.root;
     const slots=collimator?{...attachments,optic:'collimator-15'}:attachments;
-    showWeaponUpgrades(weaponRoot,key,slots);
+    showWeaponUpgrades(weaponRoot,key,slots,owner.detailLevel===0);
     if(rifle&&slots?.barrel&&upgradeMuzzle(rifle.model,muzzleFlash.position))flashLight.position.copy(muzzleFlash.position);
     upgradeSight=rifle&&upgradeOpticEye(rifle.model,scopeEye)?{height:scopeEye.y,depth:-.25-scopeEye.z}:null;
     const usingSupply=usingTool&&(gadgetKind==='ammo'||gadgetKind==='medkit');

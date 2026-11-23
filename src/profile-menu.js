@@ -30,7 +30,7 @@ const authErrors={
 
 const formatTime=seconds=>Math.floor(seconds/60)+' мин '+String(Math.floor(seconds%60)).padStart(2,'0')+' с';
 
-export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRenderer}){
+export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRenderer,getLowWeaponDetail}){
   const $=id=>document.getElementById(id);
   const dialog=$('profile-panel'),authDialog=$('account-panel'),confirm=$('profile-confirm-reset');
   const form=$('profile-auth'),email=$('profile-email'),password=$('profile-password');
@@ -165,7 +165,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     if(!dialog.open||tab==='overview'||!getRenderer())return;
     if(preview){void preview.update();return;}
     if(!previewLoading)previewLoading=import('./profile-preview.js').then(({mountProfilePreview})=>{
-      preview=mountProfilePreview({getRenderer,getSelection:selection});return preview.update();
+      preview=mountProfilePreview({getRenderer,getSelection:selection,getLowWeaponDetail});return preview.update();
     }).catch(()=>set('profile-preview-hint','3D-просмотр недоступен.')).finally(()=>{previewLoading=null;});
   }
 
