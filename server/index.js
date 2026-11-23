@@ -11,7 +11,7 @@ import {XP_PER_WEAPON_KILL,weaponLevel} from '../shared/weapon-modules.js';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, sanitizeInput, sanitizeSpawnPoint } from '../shared/simulation.js';
-import { MAPS, MAP_LAYOUT_REVISION, PROTOCOL_VERSION, getMap, getPrimaryWeapon, getSidearm, CLASSES, DIFFICULTIES } from '../shared/world.js';
+import { MAPS, MAP_LAYOUT_REVISION, PROTOCOL_VERSION, WEAPONS, getMap, getPrimaryWeapon, getSidearm, CLASSES, DIFFICULTIES } from '../shared/world.js';
 import { MESSAGE, SnapshotEncoder, prepareSnapshot, decodeInput, encodeEvents, encodeControl, decodeControl } from '../shared/snapshot-codec.js';
 import { Reader, Writer } from '../shared/binary.js';
 
@@ -45,7 +45,7 @@ export function createGameServer(options={}){
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
   const server=http.createServer((req,res)=>{
-    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,caseInventory:true,room:room?.phase??'empty'}));return;}
+    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,caseInventory:true,weaponSkins:true,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
       if(!canReadMetrics(req,env)){res.writeHead(403);res.end('Forbidden');return;}
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(stats()));return;
@@ -69,6 +69,17 @@ export function createGameServer(options={}){
     if(kind==='snapshot'){totals.snapshots++;totals.snapshotBytes+=length;}return true;
   }
   function error(c,message,requestId,code='request'){send(c,{type:'error',message,requestId,code});}
+  function publishSkins(){
+    const loadouts=Object.fromEntries([...sessions.values()].filter(s=>s.weaponSkins&&Object.keys(s.weaponSkins).length)
+      .map(s=>[s.id,s.weaponSkins]));
+    for(const s of connected())if(s.skinClient)send(s.client,{type:'weapon-skins',loadouts});
+  }
+  function updateSkinLoadout(s,inventory){
+    if(sessions.get(s.id)!==s||inventory.revision<(s.skinRevision??0))return;
+    s.skinRevision=inventory.revision;
+    s.weaponSkins=inventory.equipped;
+    publishSkins();
+  }
   async function caseRequest(c,data){
     if(c.casePending)throw Error('Дождитесь ответа по кейсам.');
     c.casePending=true;
@@ -82,9 +93,15 @@ export function createGameServer(options={}){
       if(!owner)throw Error('Не удалось определить владельца кейсов.');
       if(data.type==='case-open')send(c,{type:data.type,requestId:data.requestId,...await cases.open(owner,data.caseId)});
       else{
-        const inventory=data.type==='case-campaign'
-          ?await cases.claimCampaign(owner,data.missionId,data.difficulty)
-          :await cases.list(owner);
+        let inventory;
+        if(data.type==='case-campaign')inventory=await cases.claimCampaign(owner,data.missionId,data.difficulty);
+        else if(data.type==='case-equip'){
+          if(typeof data.weaponId!=='string'||!Object.hasOwn(WEAPONS,data.weaponId))
+            throw Error('Скин недоступен для этого оружия.');
+          inventory=await cases.equip(owner,data.weaponId,data.rewardId);
+          const player=[...sessions.values()].find(s=>s.caseOwner===owner);
+          if(player)updateSkinLoadout(player,inventory);
+        }else inventory=await cases.list(owner,data.welcomeCase===true);
         send(c,{type:data.type,requestId:data.requestId,inventory});
       }
     }finally{c.casePending=false;}
@@ -136,14 +153,20 @@ export function createGameServer(options={}){
     }
     s.caseOwner??=inventoryOwner;
     s.caseClient=Boolean(data.caseKey);
+    s.skinClient=data.weaponSkins===true;
     s.client=c;s.detachedAt=0;c.session=s;c.profileUid=null;c.profileWeaponXp=null;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
     if(s.loadingReady)room.loading?.pending.add(s.id);
     identity(c,requestId);
+    if(s.skinClient){
+      publishSkins();
+      if(s.caseOwner)void cases.list(s.caseOwner).then(inventory=>updateSkinLoadout(s,inventory)).catch(()=>{});
+    }
     if(room.phase==='match'){initialize(s);startLoop();}lobbyChanged();
   }
   function remove(s){
     if(room?.sim)room.sim.removePlayer(s.id);sessions.delete(s.id);if(s.client){s.client.session=null;s.client=null;}
     if(room?.ownerId===s.id)room.ownerId=connected()[0]?.id??sessions.keys().next().value??null;
+    if(s.weaponSkins&&Object.keys(s.weaponSkins).length)publishSkins();
   }
   function detach(c,explicit=false){
     const s=c.session;if(!s)return;c.session=null;s.client=null;s.detachedAt=Date.now();s.inputQueue=[];
@@ -324,7 +347,7 @@ export function createGameServer(options={}){
   function stopLoop(){clearTimeout(timer);timer=null;accumulator=0;}
   wss.on('connection',ws=>{
     const c={ws,session:null,lastSeen:Date.now(),messages:0,window:Date.now(),alive:true};clients.add(c);
-    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),profileReset:Boolean(profiles),caseInventory:true,maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
+    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),profileReset:Boolean(profiles),caseInventory:true,weaponSkins:true,maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
     ws.on('pong',()=>{c.alive=true;c.lastSeen=Date.now();});
     ws.on('message',(raw,isBinary)=>{
       const now=Date.now();c.lastSeen=now;if(now-c.window>1000){c.window=now;c.messages=0;}if(++c.messages>160){ws.close(1008,'Rate limit');return;}
@@ -339,9 +362,11 @@ export function createGameServer(options={}){
           case 'case-list':
           case 'case-open':
           case 'case-campaign':
+          case 'case-equip':
             void caseRequest(c,data).catch(failure=>{
               const recognized=['Дождитесь ответа по кейсам.','Профиль недоступен.','Войдите в профиль заново.',
-                'Не удалось определить владельца кейсов.','Кейс не найден.','За это прохождение кейс не предусмотрен.'];
+                'Не удалось определить владельца кейсов.','Кейс не найден.','За это прохождение кейс не предусмотрен.',
+                'Скин недоступен для этого оружия.','Скин ещё не получен.'];
               const message=recognized.includes(failure?.message)
                 ?failure.message:'Склад кейсов недоступен. Попробуйте ещё раз.';
               error(c,message,requestId,'case');

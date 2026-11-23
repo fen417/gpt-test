@@ -1,0 +1,15 @@
+# Скины «Полевого резерва»
+
+Из корня проекта пересоберите текстуры командой `node art-source/weapon-skins/bake-finishes.mjs`. Шесть камуфляжей рисуются по палитрам и фиксированным параметрам в скрипте. Два исходника ImageGen лежат рядом. Игровые WebP выгружаются в `src/assets/weapon-skins`.
+
+Для проверки проекции на актуальной геометрии запустите `blender -b --python art-source/weapon-skins/render_finishes.py -- <абсолютный-путь-к-PNG>`. Параметр `--detail` выводит СВ-98М крупным планом, `--eclipse` показывает «Затмение» на М-50.
+
+## Запросы ImageGen
+
+**Портрет**
+
+> Use case: illustration-story. Asset: painted side decal in an original 3D video game fan-art weapon skin for the SV-98M. Draw Lady Nagant herself, Kaina Tsutsumi from My Hero Academia, recognizably accurate anime face, sharp violet eyes with weary confident expression, swept two-tone indigo and deep violet hair with distinctive warm pink/lavender streaks, recognizable burgundy tactical outfit and high collar. Original cel-shaded artwork with crisp readable contours. Landscape 3:2 canvas. Her head and upper torso dominate center, asymmetric wind-swept hair, visible face very large in central upper 2/3 so it will read as a small texture. Background flat dark royal violet (#241740) with unfussy lavender-pink atmospheric arcs, prominent light trim along strands, pink/copper detail. Full-bleed artwork with background to edges, no letters, no gun silhouette or other props, no logos or other people. Graphic print, no photorealism, no textured poster mockup.
+
+**Лист узоров и гравировок**
+
+> Use case: stylized-concept. Asset: graphic source artwork for five different in-game firearm paint finishes. Produce a landscape 3:2 flat raster swatch sheet exactly SIX equal RECTANGULAR edge-to-edge cells, an exact 3-column by 2-row grid. No frames, margins, separators, weapons, objects outside the tiles, text, or lighting. Give every cell a distinct deliberate design. Top LEFT marine teal and cobalt interference waves with intricately layered ripples and quiet dark areas (paint called Rябь). Top CENTER terracotta and ochre windswept sand striations inspired by desert wind, some cream accents on rusty dark base. Top RIGHT cool graphite tactical contour-map concentric lines, ice mint accent features, production-quality linework. Bottom LEFT legendary copper-inlaid engraving of a proud angular hawk in dark midnight jade, concentric arc inlays and fine machined decorative filigree, bold bird silhouette centered in tile. Bottom CENTER legendary eclipse engraved in blackened purple gunmetal, iridescent blue and amethyst, centered solar black disc and glowing warm magenta ring, tidy concentric decorative etched microdetail. Bottom RIGHT dark indigo, lavender and raspberry Japanese comic motion strokes and ribbons, no characters (companion finish for anime character decal). Contrasts can be bold on lower row. Each design extends independently to all four edges of its own cell; no bleed; don't repeat motifs between cells; meet exact grid evenly.

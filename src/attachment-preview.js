@@ -1,19 +1,21 @@
 import {WEAPONS} from '../shared/world.js';
 import {loadCollimatorModel,mountCollimator} from './collimator.js';
 import {cloneWeaponModel,showWeaponUpgrades} from './weapon-models.js';
+import {setWeaponSkin} from './weapon-skins.js';
 
 const optics=new WeakMap();
 const loading=new WeakSet();
 
-export function attachmentPreviewItem(weaponId,attachments,refresh,lowDetail=false){
+export function attachmentPreviewItem(weaponId,attachments,refresh,lowDetail=false,skinId=null){
   if(!WEAPONS[weaponId])return null;
   return {
-    key:'weapon:'+weaponId,
+    key:'weapon:'+weaponId+':'+(skinId??''),
     name:WEAPONS[weaponId].name,
-    load:()=>{
+    async load(){
       const model=cloneWeaponModel(weaponId);
       if(!model)throw Error('Weapon preview unavailable');
-      return {model};
+      if(skinId)await setWeaponSkin(model,weaponId,skinId);
+      return {model,dispose:skinId?()=>void setWeaponSkin(model,weaponId,null):undefined};
     },
     update(model){
       const show=attachments?.optic==='collimator-15';

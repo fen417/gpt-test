@@ -4,6 +4,7 @@ import { cloneInfantry, findInfantryBones, gaitClips, legNames } from './infantr
 import { CREW_CONTROLS } from './vehicles.js';
 import { LAUNCHER_POSE } from './gadget-poses.js';
 import { upgradeMuzzle, showWeaponUpgrades } from './weapon-models.js';
+import { setWeaponSkin } from './weapon-skins.js';
 import { weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
 
 const { clamp, damp, lerp, smoothstep } = THREE.MathUtils;
@@ -333,6 +334,7 @@ export function createInfantry({ template, gun, kit }, player) {
 }
 
 export function setInfantryWeapon(rig, template, weaponId) {
+  if(rig.weaponSkin)void setWeaponSkin(rig.weaponModel,rig.weaponId,null);
   rig.weaponModel?.removeFromParent();
   rig.distantWeapon?.removeFromParent();
   rig.weaponModel = template.model.clone(true);
@@ -340,6 +342,7 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.weaponTemplate = template;
   rig.attachmentFlags = 0;
   rig.weaponId = weaponId;
+  rig.weaponSkin = null;
   rig.pistol = template.pistol;
   rig.support.copy(template.support);
   rig.foregrip = template.foregrip;
@@ -354,6 +357,12 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.magazineRest = rig.magazine?.position.clone();
   rig.magazineContact = template.magazineContact;
   rig.feedCover = rig.weaponModel.getObjectByName('FeedCover');
+}
+
+export function setInfantrySkin(rig,skinId=null) {
+  if(rig.weaponSkin===skinId)return;
+  rig.weaponSkin=skinId;
+  void setWeaponSkin(rig.weaponModel,rig.weaponId,skinId).catch(error=>console.warn('Weapon skin unavailable',error));
 }
 
 function updateInfantryUpgrades(rig, flags, lowDetail=rig.lowWeaponDetail??false) {
@@ -385,6 +394,7 @@ export function setInfantryLod(rig, level, shadows, lowWeaponDetail=false) {
 }
 
 export function disposeInfantry(rig) {
+  setInfantrySkin(rig,null);
   rig.group.removeFromParent();
   rig.mixer.stopAllAction().uncacheRoot(rig.model);
   const skeletons = new Set();

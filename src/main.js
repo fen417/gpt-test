@@ -600,12 +600,17 @@ function presentLocalShot(event){
 const profile=mountPlayerProfile({
   onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,getLowWeaponDetail,
   onCasesOpen:()=>casePanel.open(),onCaseIdentityChange:()=>queueMicrotask(()=>casePanel.reset()),
+  getSkins:()=>casePanel.loadout,equipSkin:(weaponId,rewardId)=>casePanel.equip(weaponId,rewardId),
 });
 const casePanel=mountCasePanel({
   getUrl:async()=>normalizeServerUrl($('server-url').value.trim()||await configuredServerUrl()),
   getToken:profile.tokenForServer,getAccount:()=>profile.caseAccount,
   getGpuDevice:()=>renderer?.webgpu?.device??null,notify:toast,
 });
+casePanel.events.addEventListener('change',profile.refreshSkins);
+const weaponSkinFor=(playerId,weaponId)=>mode==='server'
+  ?multiplayer.skinLoadouts?.[playerId]?.[weaponId]
+  :playerId===localId?casePanel.loadout?.equipped?.[weaponId]:null;
 const weaponIdByKillLabel=new Map(Object.values(WEAPONS).map(weapon=>[weapon.weapon,weapon.id]));
 const activeWeaponModules=()=>mode==='campaign'?local()?.weaponModules:(simulation?.client??multiplayer).weaponModules;
 const equippedPersonalWeapon=(classId,weaponId)=>resolveWeaponModules(getWeapon(classId,weaponId),activeWeaponModules()?.[weaponId]);
@@ -621,7 +626,7 @@ let localRoundId='',observedRound='',observedKills={},weaponResultRevision=0;
 const quickPreview=mountWeaponPreview({
   panelId:'quick-attachments',prefix:'quick-weapon-preview',
   getGpuDevice:()=>renderer?.webgpu?.device??null,
-  getItem:()=>attachmentPreviewItem(quickWeapon,quickPreviewSlots,()=>quickPreview.update(),getLowWeaponDetail()),
+  getItem:()=>attachmentPreviewItem(quickWeapon,quickPreviewSlots,()=>quickPreview.update(),getLowWeaponDetail(),weaponSkinFor(localId,quickWeapon)),
 });
 function refreshAttachmentPreviews(){
   profile.refreshPreview();
@@ -1991,7 +1996,7 @@ function frame(now){
     try{
       const realBegin=performance.now();
       renderer.render(renderState,localId,renderDelta,{mapId:inLobby?state?.mapId:$('map-select').value,...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
-        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom:weaponScopeZoom(renderPlayer?.weaponId),hasCollimator,equippedAttachments,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
+        networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom:weaponScopeZoom(renderPlayer?.weaponId),hasCollimator,equippedAttachments,weaponSkinFor,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
       if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
     }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
   }

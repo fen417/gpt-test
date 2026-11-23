@@ -1,10 +1,11 @@
 import {createHash, randomInt, randomUUID} from 'node:crypto';
 import {mkdir, readFile, rename, writeFile} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
-import {CASE_RARITIES, CASE_REWARDS, campaignCaseReward} from '../shared/cases.js';
+import {CASE_RARITIES, caseReward, campaignCaseReward} from '../shared/cases.js';
 
 const guestPattern=/^[a-f0-9]{64}$/;
-const casePattern=/^(?:[A-Za-z0-9_-]{32}|m0[1-3]-[12])$/;
+const welcomeCaseId='welcome-035';
+const casePattern=/^(?:[A-Za-z0-9_-]{32}|m0[1-3]-[12]|welcome-035)$/;
 
 export function caseOwner(uid,guestKey){
   if(!uid&&(typeof guestKey!=='string'||!guestPattern.test(guestKey)))return null;
@@ -61,8 +62,10 @@ function view(inventory){
   const waiting=cases.filter(([,item])=>!item.rewardId).sort((a,b)=>a[1].createdAt-b[1].createdAt);
   const recent=cases.filter(([,item])=>item.rewardId).sort((a,b)=>b[1].openedAt-a[1].openedAt).slice(0,18)
     .map(([caseId,item])=>({caseId,rewardId:item.rewardId,openedAt:item.openedAt}));
+  const owned={};
+  for(const [,item] of cases)if(caseReward(item.rewardId))owned[item.rewardId]=(owned[item.rewardId]??0)+1;
   return {available:waiting.length,nextCaseId:waiting[0]?.[0]??null,recent,
-    campaign:inventory?.campaign??{},revision:inventory?.revision??0};
+    owned,equipped:inventory?.equipped??{},campaign:inventory?.campaign??{},revision:inventory?.revision??0};
 }
 
 function rollReward(){
@@ -104,7 +107,32 @@ export function createCaseInventory(db,env){
   }
   return {
     awardRound,flush,
-    async list(owner){return view(await store.get(owner));},
+    async list(owner,welcome=false){
+      const current=await store.get(owner);
+      if(!welcome||current?.cases?.[welcomeCaseId])return view(current);
+      const createdAt=Date.now();
+      const saved=await store.change(owner,inventory=>{
+        if(inventory?.cases?.[welcomeCaseId])return;
+        return {...inventory,revision:(inventory?.revision??0)+1,
+          cases:{...inventory?.cases,[welcomeCaseId]:{createdAt,source:'welcome'}}};
+      });
+      return view(saved);
+    },
+    async equip(owner,weaponId,rewardId){
+      const reward=caseReward(rewardId);
+      if(rewardId!==null&&reward?.weaponId!==weaponId)throw Error('Скин недоступен для этого оружия.');
+      const saved=await store.change(owner,current=>{
+        if(!current)return null;
+        const equipped={...current.equipped};
+        if(rewardId&&!Object.values(current.cases??{}).some(item=>item.rewardId===rewardId))return;
+        if((equipped[weaponId]??null)===rewardId)return;
+        if(rewardId)equipped[weaponId]=rewardId;
+        else delete equipped[weaponId];
+        return {...current,equipped,revision:(current.revision??0)+1};
+      });
+      if((saved?.equipped?.[weaponId]??null)!==rewardId)throw Error('Скин ещё не получен.');
+      return view(saved);
+    },
     async open(owner,caseId){
       if(typeof caseId!=='string'||!casePattern.test(caseId))throw Error('Кейс не найден.');
       const rewardId=rollReward(),openedAt=Date.now();
@@ -118,7 +146,7 @@ export function createCaseInventory(db,env){
           cases:{...current.cases,[caseId]:{...item,rewardId,openedAt}}};
       });
       const result=saved?.cases?.[caseId]?.rewardId;
-      if(!CASE_REWARDS.some(reward=>reward.id===result))throw Error('Кейс не найден.');
+      if(!caseReward(result))throw Error('Кейс не найден.');
       return {inventory:view(saved),rewardId:result};
     },
     async claimCampaign(owner,missionId,difficulty){

@@ -1,6 +1,7 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { LONG_BARREL_ID, WEAPON_MODULES } from '../shared/weapon-modules.js';
+import {prepareSkinProjection,unpaintedMaterial} from './weapon-skins.js';
 
 export const weaponModelUrls = {
   ak12: new URL('./assets/infantry/ak12m.glb', import.meta.url).href,
@@ -53,6 +54,7 @@ export function loadWeaponModels() {
           || scene.getObjectByName('MagazineBody')?.parent!==scene.getObjectByName('Magazine')) {
         throw new Error('Missing weapon module mounts');
       }
+      prepareSkinProjection(scene,id);
       templates.set(id, scene);
     } catch (error) {
       console.warn('Weapon model:', id, error);
@@ -119,7 +121,7 @@ export function showWeaponUpgrades(root, weaponId, slots, lowDetail=false) {
         for (const name of moduleSlots[slot].stock) {
           const replacement = part.getObjectByName(template.name + '_' + name);
           const stock = root.getObjectByName(name);
-          if (replacement?.isMesh && stock?.isMesh) replacement.material = stock.material;
+          if (replacement?.isMesh && stock?.isMesh) replacement.material = unpaintedMaterial(stock.material);
         }
         instances.set(id, part);
       }

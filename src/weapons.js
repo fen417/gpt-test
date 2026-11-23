@@ -9,6 +9,7 @@ import { createFPSHand, fpsHandTextures } from './fps-hands.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
 import { cloneWeaponModel, upgradeMuzzle, upgradeOpticEye, showWeaponUpgrades } from './weapon-models.js';
+import { setWeaponSkin } from './weapon-skins.js';
 import { mountCollimator } from './collimator.js';
 
 const rifleFits = {
@@ -1077,7 +1078,8 @@ export function createWeaponRig(owner = {}) {
   let activeOptic;
   const scopeEye = new THREE.Vector3();
   let upgradeSight;
-  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,attachments}={}){
+  let paintRoot,paintId;
+  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,attachments,skinId}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1176,6 +1178,11 @@ export function createWeaponRig(owner = {}) {
     }
     activeOptic?.aim(aim>.75);
     const weaponRoot=rifle?.model??pistol?.root;
+    if(paintRoot!==weaponRoot||paintId!==skinId){
+      paintRoot=weaponRoot;
+      paintId=skinId;
+      void setWeaponSkin(weaponRoot,key,skinId).catch(error=>console.warn('Weapon skin unavailable',error));
+    }
     const slots=collimator?{...attachments,optic:'collimator-15'}:attachments;
     showWeaponUpgrades(weaponRoot,key,slots,owner.detailLevel===0);
     if(rifle&&slots?.barrel&&upgradeMuzzle(rifle.model,muzzleFlash.position))flashLight.position.copy(muzzleFlash.position);
@@ -1260,6 +1267,8 @@ export function createWeaponRig(owner = {}) {
     flashLight.intensity = !usingTool&&kick > .65 ? 1.8 : 0;
   }
   function dispose(){
+    for(const [id,rig] of rifles)void setWeaponSkin(rig.model,id,null);
+    for(const [id,rig] of Object.entries(pistols))void setWeaponSkin(rig.root,id,null);
     for(const template of gadgetTemplates(equipmentPalette))template.traverse(mesh=>{if(mesh.geometry?.userData.owned)ownedGeometries.add(mesh.geometry);});
     for(const geometry of ownedGeometries)geometry.dispose();
     for(const material of ownedMaterials)material.dispose();

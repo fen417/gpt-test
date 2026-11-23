@@ -30,7 +30,7 @@
   <div class="screen-noise" aria-hidden="true"></div>
   <div class="vignette" aria-hidden="true"></div>
   <main id="menu" class="menu menu-home">
-    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.30</span></span><div class="audio-controls"><button id="open-account" class="small-button account-open" type="button" aria-haspopup="dialog" hidden>Войти</button><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
+    <header class="masthead"><a class="brand" href="./" aria-label="SECTOR 09 — главная"><span class="brand-mark">S/09</span><span>SECTOR <b>09</b></span></a><span class="build-label"><i></i> CONQUEST / <span id="build-version">0.35</span></span><div class="audio-controls"><button id="open-account" class="small-button account-open" type="button" aria-haspopup="dialog" hidden>Войти</button><button id="music-toggle" class="small-button music-button" aria-label="Включить музыку меню" aria-pressed="false"><span class="equalizer"><i></i><i></i><i></i><i></i></span><span id="music-label">ВКЛ. МУЗЫКУ</span></button><button id="sound-toggle" class="small-button" aria-label="Включить или выключить звук" aria-pressed="true">ЗВУК ВКЛ.</button></div></header>
     <div class="home-content">
       <section class="home-hero" aria-labelledby="home-title"><div class="home-kicker"><i></i> ПЕХОТА. ТЕХНИКА. ЗАХВАТ ТЕРРИТОРИИ.</div><h1 id="home-title">КАЖДЫЙ<br>МЕТР <em>ВАЖЕН.</em></h1><p>Свой отряд. Свой маршрут. Твой следующий бой.</p>
         <nav class="home-nav" aria-label="Главное меню">
@@ -125,7 +125,8 @@
         </section>
         <section id="profile-view-weapon" class="profile-option-panel profile-card" role="tabpanel" aria-labelledby="profile-nav-weapon" hidden>
           <label>Оружие<select id="profile-skin-weapon"></select></label>
-          <p class="profile-configuration">Заводская расцветка</p>
+          <label>Расцветка<select id="profile-skin-finish"></select></label>
+          <p id="profile-skin-status" class="profile-configuration" role="status"></p>
         </section>
         <section id="profile-view-attachments" class="attachment-controls" role="tabpanel" aria-labelledby="profile-nav-attachments" hidden>
           <label class="attachment-select">Оружие<select id="profile-attachment-weapon"></select></label>
@@ -145,7 +146,12 @@
           </div>
           <div class="case-summary">
             <h3 id="case-preview-name">Полевой резерв</h3>
-            <p>Ключ не нужен. Скины появятся в следующих обновлениях.</p>
+            <p>Ключ не нужен.</p>
+            <div id="case-selected-skin" class="case-selected-skin" hidden>
+              <span id="case-selected-description" aria-live="polite"></span>
+              <button type="button" id="case-equip-skin" class="panel-secondary" hidden>Экипировать</button>
+              <button id="case-show-crate" type="button" class="small-button">Осмотреть кейс</button>
+            </div>
             <div class="case-action">
               <button id="case-open" class="panel-primary" type="button" disabled>Открыть кейс</button>
               <span id="case-inventory-count">В наличии —</span>
@@ -156,6 +162,10 @@
         </div>
         <div id="case-roulette" class="case-roulette" aria-hidden="true" hidden><div id="case-tape" class="case-tape"></div></div>
         <div id="case-result" class="case-result" role="status" aria-live="polite" hidden></div>
+        <section class="case-contents" aria-labelledby="case-contents-title">
+          <h3 id="case-contents-title">Содержимое кейса</h3>
+          <div id="case-skins" class="case-skins" aria-label="Скины в кейсе"></div>
+        </section>
         <dl id="case-odds" class="case-odds" aria-label="Шансы выпадения по редкости"></dl>
         <section id="case-history" class="case-history" aria-labelledby="case-history-heading" hidden>
           <h3 id="case-history-heading">Недавние награды</h3><ul id="case-history-list"></ul>

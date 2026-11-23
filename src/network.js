@@ -63,6 +63,7 @@ export async function requestCases(url,token,type='case-list',details={}){
   try{
     await connection.open(url);
     if(!connection.hello?.caseInventory)throw Error('Игровой сервер пока не поддерживает кейсы.');
+    if(type==='case-equip'&&!connection.hello.weaponSkins)throw Error('Игровой сервер пока не поддерживает скины.');
     return await connection.request(type,{...details,token:token??null,caseKey:token?null:caseKey(url)});
   }finally{connection.close(false);}
 }
@@ -193,6 +194,7 @@ export class Multiplayer{
           }
           if(data.type==='stats')this.updateStats(data);
           if(data.type==='case-awarded')this.onCaseAward(this.url);
+          if(data.type==='weapon-skins')this.skinLoadouts=data.loadouts;
           const pending=this.requests.get(data.requestId);if(pending){clearTimeout(pending.timer);this.requests.delete(data.requestId);pending.resolve(data);}
         }catch(error){clearTimeout(timeout);if(!ready){reject(error);ws.close();}else{this.onStatus('Синхронизация восстанавливается…');this.send(new Uint8Array([MESSAGE.RESYNC]));}}
       };
@@ -246,7 +248,7 @@ export class Multiplayer{
       this.onStatus('Профиль не подтверждён. Статистика этого матча не сохранится.');
     }finally{clearTimeout(timeout);}
   }
-  caseJoinData(){return this.hello?.caseInventory?{caseKey:caseKey(this.url)}:{};}
+  caseJoinData(){return this.hello?.caseInventory?{caseKey:caseKey(this.url),weaponSkins:this.hello.weaponSkins===true}:{};}
   async host(options={}){await this.open(options.url);await this.authenticateProfile();await this.request('create',{...options,loadingReady:true,...this.caseJoinData()});return this.roomName;}
   async join(options={}){
     await this.open(options.url);await this.authenticateProfile();const saved=safeStorage.get('sector-resume:'+this.url);
@@ -455,5 +457,6 @@ export class Multiplayer{
     for(const pending of this.requests.values()){clearTimeout(pending.timer);pending.reject(Error('Подключение отменено.'));}this.requests.clear();
     if(forget&&this.url)safeStorage.set('sector-resume:'+this.url,null);
     this.token=null;this._mode='offline';this._phase='menu';this.reconnecting=false;this.connecting=null;this.decoder=null;this.prediction=null;this.state=null;this.frames=[];this.events=[];
+    this.skinLoadouts=null;
   }
 }

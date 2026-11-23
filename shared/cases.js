@@ -16,16 +16,18 @@ export const CASE_RARITIES = [
   {id:'ultra',name:'Ультраредкий',chance:1,count:1},
 ];
 
-const rewardNames={
-  common:['Пепел','Насыпь','Осадок'],
-  uncommon:['Кварц','Тальвег','Радиомаяк'],
-  rare:['Рябь','Суховей','Контур'],
-  legendary:['Рубеж','Затмение'],
-  ultra:['Чёрный янтарь'],
+const finishes={
+  common:[['Пепел','ar416'],['Насыпь','ak12'],['Мох','p19']],
+  uncommon:[['Кварц','mcx9'],['Тальвег','pkp'],['Радиомаяк','mg36']],
+  rare:[['Рябь','vk45'],['Суховей','dmr12'],['Контур','ar416']],
+  legendary:[['Медный ястреб','ak12'],['Затмение','m50']],
+  ultra:[['Леди Наган','sv98']],
 };
 
 export const CASE_REWARDS = CASE_RARITIES.flatMap(({id})=>
-  rewardNames[id].map((name,i)=>({id:id+'-'+(i+1),rarity:id,name})));
+  finishes[id].map(([name,weaponId],i)=>({id:id+'-'+(i+1),rarity:id,name,weaponId})));
+const rewardById=new Map(CASE_REWARDS.map(reward=>[reward.id,reward]));
+export const caseReward=id=>rewardById.get(id);
 
 export function campaignCaseReward(missionId,difficulty){
   if(!['m01','m02','m03'].includes(missionId))return 0;

@@ -40,7 +40,7 @@ import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,t
 import { lightVehicleModels } from './light-vehicle-models.js';
 import { BulletMarks } from './bullet-marks.js';
 import {
-  createInfantry, setInfantryWeapon, disposeInfantry, setInfantryLod, updateInfantry,
+  createInfantry, setInfantryWeapon, setInfantrySkin, disposeInfantry, setInfantryLod, updateInfantry,
   infantryHit, infantryAction, infantryDeath, infantrySeat, infantryTurnTolerance,
 } from './infantry.js';
 
@@ -1128,7 +1128,7 @@ export class GameRenderer {
     return mounted;
   }
 
-  updateSoldiers(state, localId, dt, networkInterpolated=false) {
+  updateSoldiers(state, localId, dt, networkInterpolated=false, weaponSkinFor) {
     if(!this.surfacesReady)return;
     if (!this.infantry) {
       this.infantry = new InfantryAssets(this.renderer);
@@ -1180,6 +1180,7 @@ export class GameRenderer {
         const asset = this.infantry.get(player.team, weaponId);
         if (asset) setInfantryWeapon(soldier, asset.gun, weaponId);
       }
+      setInfantrySkin(soldier,weaponSkinFor?.(player.id,soldier.weaponId));
       const { group } = soldier;
       if(player.vehicleId&&player.alive!==false){
         const vehicle=seatedVehicle,rig=this.vehicleRigs.get(player.vehicleId);
@@ -2127,6 +2128,7 @@ export class GameRenderer {
         weaponId: this.presentedWeaponId,
         collimator:equippedCollimator,
         attachments:view.equippedAttachments?.(this.presentedWeaponId),
+        skinId:view.weaponSkinFor?.(player.id,this.presentedWeaponId),
         unarmed: state.gameMode==='tdm'&&!player.weaponId,
         aim: this.aimAmount,
         reloadMotion,
@@ -2225,7 +2227,7 @@ export class GameRenderer {
         }
       }
     }
-    this.updateSoldiers(state, localId, dt, view.networkInterpolated); this.updatePoolWeapons(state); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
+    this.updateSoldiers(state, localId, dt, view.networkInterpolated, view.weaponSkinFor); this.updatePoolWeapons(state); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
     this.parachutes.update(this.worldRoot,state.players,dt,this.lowQuality);
     this.atmosphere.sky.position.copy(this.camera.position);
     if(view.warming){

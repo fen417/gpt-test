@@ -15,7 +15,7 @@ export function mountProfilePreview({getRenderer,getSelection,getLowWeaponDetail
     getItem(){
       const renderer=getRenderer(),selection=getSelection();
       if(!renderer||!selection)return null;
-      const {classId,team,weaponId,attachments}=selection;
+      const {classId,team,weaponId,attachments,skinId}=selection;
       if(classId)return {
         key:'soldier:'+classId+':'+team,name:CLASSES[classId].name,
         async load(){
@@ -32,7 +32,7 @@ export function mountProfilePreview({getRenderer,getSelection,getLowWeaponDetail
           };
         },
       };
-      return attachmentPreviewItem(weaponId,attachments,()=>preview.update(),getLowWeaponDetail());
+      return attachmentPreviewItem(weaponId,attachments,()=>preview.update(),getLowWeaponDetail(),skinId);
     },
     afterDraw(model,camera){
       const visible=model&&getSelection()?.hotspots;

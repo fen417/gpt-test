@@ -6,6 +6,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { showWeaponUpgrades, weaponModelUrls } from './weapon-models.js';
+import {prepareSkinProjection} from './weapon-skins.js';
 import { HORIZON_OPTIC_ID, weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
 
 const weaponNames = {
@@ -220,6 +221,7 @@ function prepareWeapon(gltf, name) {
   }
   model.scale.setScalar(scale);
   model.position.copy(primary).multiplyScalar(-scale);
+  prepareSkinProjection(model,name);
   model.updateMatrixWorld(true);
   const weaponBounds = new THREE.Box3().setFromObject(model, true);
   const magazine = model.getObjectByName('Magazine');

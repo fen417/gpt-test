@@ -5,6 +5,7 @@ import {PROFILE_MISSIONS,favorite,localCampaignSummary} from './profile-data.js'
 import {WEAPON_SLOTS,XP_PER_WEAPON_KILL,weaponLevelProgress} from '../shared/weapon-modules.js';
 import {collimatorTestEnabled,equipCollimator,hasCollimator,loadCollimatorModel} from './collimator.js';
 import {createWeaponProgress,weaponDevice} from './weapon-progress.js';
+import {CASE_REWARDS} from '../shared/cases.js';
 import {setupAttachmentPicker} from './weapon-attachment-ui.js';
 import './profile-menu.css';
 
@@ -30,7 +31,7 @@ const authErrors={
 
 const formatTime=seconds=>Math.floor(seconds/60)+' мин '+String(Math.floor(seconds%60)).padStart(2,'0')+' с';
 
-export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,defaultServerUrl,resetStats,getRenderer,getLowWeaponDetail}){
+export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,getSkins,equipSkin,defaultServerUrl,resetStats,getRenderer,getLowWeaponDetail}){
   const $=id=>document.getElementById(id);
   const dialog=$('profile-panel'),authDialog=$('account-panel'),confirm=$('profile-confirm-reset');
   const form=$('profile-auth'),email=$('profile-email'),password=$('profile-password');
@@ -43,6 +44,8 @@ export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,defa
     .map(weapon=>[weapon.id,weapon.name]);
   const soldierClass=$('profile-soldier-class'),soldierTeam=$('profile-soldier-team');
   const skinWeapon=$('profile-skin-weapon'),attachmentWeapon=$('profile-attachment-weapon');
+  const skinFinish=$('profile-skin-finish'),skinStatus=$('profile-skin-status');
+  let savingSkin=false;
   const progress=createWeaponProgress();
   let attachmentSlot='optic',loadout=progress.loadout(),inspectedWeapon,inspectedSlots;
   const mounts=$('profile-weapon-mounts');
@@ -158,7 +161,17 @@ export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,defa
     const weaponId=tab==='weapon'?skinWeapon.value:attachmentWeapon.value;
     const hotspots=tab==='attachments';
     const attachments=hotspots&&inspectedWeapon===weaponId?inspectedSlots:{...loadout[weaponId],optic:currentAttachment(weaponId,'optic')};
-    return {weaponId,attachments,hotspots};
+    return {weaponId,attachments,hotspots,skinId:getSkins()?.equipped?.[weaponId]};
+  }
+
+  function describeSkins(){
+    const weaponId=skinWeapon.value,loadout=getSkins();
+    const unlocked=CASE_REWARDS.filter(reward=>reward.weaponId===weaponId&&loadout?.owned?.[reward.id]);
+    skinFinish.replaceChildren(new Option('Заводская расцветка',''),
+      ...unlocked.map(reward=>new Option(reward.name,reward.id)));
+    skinFinish.value=loadout?.equipped?.[weaponId]??'';
+    skinFinish.disabled=savingSkin||!unlocked.length;
+    skinStatus.textContent=unlocked.length?'':'Скины для этого оружия можно получить из кейса.';
   }
 
   function refreshPreview(){
@@ -183,6 +196,7 @@ export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,defa
     dialog.scrollTop=0;
     mounts.hidden=tab!=='attachments';
     if(tab==='attachments')describeAttachments();
+    if(tab==='weapon')describeSkins();
     if(tab==='cases'&&dialog.open)onCasesOpen();
     if(focus)next.focus();
     refreshPreview();
@@ -290,7 +304,14 @@ export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,defa
       event.preventDefault();selectTab(tabs[next],true);
     });
   }
-  for(const select of [soldierTeam,soldierClass,skinWeapon])select.addEventListener('change',refreshPreview);
+  for(const select of [soldierTeam,soldierClass])select.addEventListener('change',refreshPreview);
+  skinWeapon.addEventListener('change',()=>{describeSkins();refreshPreview();});
+  skinFinish.addEventListener('change',async()=>{
+    savingSkin=true;
+    skinFinish.disabled=true;
+    try{await equipSkin(skinWeapon.value,skinFinish.value||null);}
+    finally{savingSkin=false;describeSkins();refreshPreview();}
+  });
   attachmentWeapon.addEventListener('change',()=>{describeAttachments();refreshPreview();});
   addEventListener('online',syncWeapons);
   refreshLoadout();
@@ -302,6 +323,7 @@ export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,defa
   }
   return {
     refreshPreview,
+    refreshSkins(){if(dialog.open){describeSkins();refreshPreview();}},
     refreshAttachments(){describeAttachments();refreshPreview();},
     creditWeaponKills(round,kills){
       if(!progress.credit(round,kills))return false;
