@@ -27,8 +27,7 @@ import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
-import { SCOPE_ZOOMS, scopeMagnification } from './scope-optics.js';
-import { COLLIMATOR_ZOOM } from './collimator.js';
+import { FULLSCREEN_SCOPE_ZOOM, opticZooms, scopeMagnification } from './scope-optics.js';
 import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE, BINOCULAR_POSE } from './gadget-poses.js';
 import { CLAYMORE_ARM_DELAY, CLAYMORE_LIFETIME, isPlacementGadget } from '../shared/gadgets.js';
@@ -1899,6 +1898,8 @@ export class GameRenderer {
     dt = Math.min(rawDt, 0.1); this.clock += dt;
     this.scoped = false;
     this.binocularAiming=false;
+    this.weaponOpticAiming=false;
+    this.aimZoom=1;
     this.collimatorAiming = false;
     this.blackHawkViewPose=null;
     this.minigunAim=null;
@@ -2086,22 +2087,29 @@ export class GameRenderer {
         { x: player.x, y: (player.y || 0) + height, z: player.z },
         { x: -Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: -Math.cos(yaw) * Math.cos(pitch) }, this.campaignCoverColliders??getAssetColliders(this.map), 1.6,
       );
-      const stow = passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
+      const sightTool=gadgetKind==='launcher'||gadgetKind==='binoculars';
+      const stow = sightTool&&view.aim ? 0 : passenger && !passengerCanFire ? .65 : clamp((1.45 - coverDistance) / 1.05, 0, 1);
       this.wallStow = lerp(this.wallStow, stow, 1 - Math.exp(-dt * 14));
-      const weapon = resolveWeaponModules(getWeapon(player.classId,player.weaponId),view.equippedAttachments?.(player.weaponId)??player.weaponModules?.[player.weaponId]);
-      const enteringAim = view.aim && isAlive && !this.weaponSwitch && !player.reloading && this.throwTimer <= 0 &&
-        (player.heldGadget||this.gadgetTimer<=0) && this.wallStow < .2;
+      const attachments=view.equippedAttachments?.(player.weaponId)??player.weaponModules?.[player.weaponId];
+      const weapon = resolveWeaponModules(getWeapon(player.classId,player.weaponId),attachments);
+      const readyToAim=isAlive&&!swap&&!player.parachuteOpen&&this.throwTimer<=0;
+      const enteringAim=view.aim&&readyToAim&&(sightTool
+        ? !mounted&&player.heldGadget===gadgetKind&&lowered<.1
+        : !player.reloading&&(player.heldGadget||this.gadgetTimer<=0)&&this.wallStow<.2);
       const aimTime = enteringAim && !gadgetKind ? weapon.aimTime ?? 1 : 1;
       this.aimAmount = lerp(this.aimAmount, Number(Boolean(enteringAim)), 1 - Math.exp(-dt * 15 / aimTime));
-      const opticId=view.equippedAttachments?.(player.weaponId)?.optic;
-      const optic=getWeaponModule(player.weaponId,'optic',opticId);
-      const scopedWeapon = !gadgetKind && Boolean(optic?.zooms??SCOPE_ZOOMS[player.weaponId]) && !this.weaponSwitch;
-      const binoculars=gadgetKind==='binoculars'&&!this.weaponSwitch&&!mounted;
       const equippedCollimator = !gadgetKind && Boolean(view.hasCollimator?.(this.presentedWeaponId));
-      this.scoped = isAlive && (scopedWeapon||binoculars) && this.aimAmount >= .92;
+      const opticId=equippedCollimator?'collimator-15':attachments?.optic;
+      const optic=getWeaponModule(player.weaponId,'optic',opticId);
+      const weaponOptic=!gadgetKind&&!swap&&Boolean(opticZooms(player.weaponId,opticId));
+      const binoculars=gadgetKind==='binoculars'&&!swap&&!mounted;
+      const opticZoom=binoculars?BINOCULAR_ZOOM:weaponOptic?scopeMagnification(player.weaponId,view.scopeZoom,opticId):1;
+      const scopedWeapon=weaponOptic&&opticZoom>=FULLSCREEN_SCOPE_ZOOM;
+      const fullscreenOptic=scopedWeapon||binoculars;
+      this.scoped = isAlive && fullscreenOptic && this.aimAmount >= .92;
       this.binocularAiming=Boolean(binoculars&&this.scoped);
-      const opticZoom = this.binocularAiming ? BINOCULAR_ZOOM : this.scoped ? scopeMagnification(player.weaponId,view.scopeZoom,opticId) :
-        equippedCollimator && !this.weaponSwitch ? COLLIMATOR_ZOOM : 1;
+      this.weaponOpticAiming=weaponOptic&&!equippedCollimator&&this.aimAmount>.8;
+      this.aimZoom=fullscreenOptic?(this.scoped?opticZoom:1):lerp(1,opticZoom,this.aimAmount);
       this.reloadAmount = lerp(this.reloadAmount, player.reloading ? 1 : 0, 1 - Math.exp(-dt * 12));
       // Local visual time must not be restarted by every authoritative snapshot.
       // Correct small clock differences gradually, never jumping hands backward.
@@ -2156,11 +2164,11 @@ export class GameRenderer {
       // Large iron-sighted machine guns need more visible surroundings than
       // rifles with close optics; don't narrow their ADS FOV as aggressively.
       const supportIron=!pistol&&!gadgetKind&&player.classId==='support';
-      const aimFov = scopedWeapon||opticZoom>1
+      const aimFov = weaponOptic||binoculars
         ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) / opticZoom))
         : baseFov - (gadgetKind==='launcher'?30:gadgetKind?10:pistol?13:supportIron?17:23);
       const hipFov = baseFov + this.sprintBlend * 6 + this.slideBlend*3;
-      const fov = scopedWeapon||binoculars ? (this.scoped ? aimFov : hipFov) : lerp(hipFov, aimFov, this.aimAmount);
+      const fov = fullscreenOptic ? (this.scoped ? aimFov : hipFov) : lerp(hipFov, aimFov, this.aimAmount);
       if (Math.abs(this.camera.fov - fov) > 0.03 || this.camera.near !== worldNear) {
         this.camera.fov = fov;
         this.camera.near = worldNear;
@@ -2178,6 +2186,7 @@ export class GameRenderer {
         team: player.team,
         weaponId: this.presentedWeaponId,
         collimator:equippedCollimator,
+        opticReticle:weaponOptic&&!equippedCollimator&&!scopedWeapon?optic?.reticle??'cross':null,
         attachments:view.equippedAttachments?.(this.presentedWeaponId),
         skinId:view.weaponSkinFor?.(player.id,this.presentedWeaponId),
         unarmed: state.gameMode==='tdm'&&!player.weaponId,

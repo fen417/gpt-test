@@ -120,7 +120,7 @@ export class Mission2Presentation {
     if(this.epoch!==m.epoch){this.epoch=m.epoch;this.stopMusic();this.sightTargetId=null;this.nextCallsignAt=0;}
     document.body.classList.add('campaign-active','campaign-m02-active');
     document.body.classList.toggle('campaign-cinematic',Boolean(m.cutscene));
-    const phase=this.locale.objectives[m.phase]??m.phase;
+    const phase=this.locale.objectives[m.objective]??this.locale.objectives[m.phase]??m.phase;
     this.$('.m02-objective-text').textContent=phase;
     this.$('.m02-mission-status').textContent=m.cutscene
       ?'АЛЬ-ХАДРА / 05:12 · БРИФИНГ'

@@ -100,7 +100,11 @@ export class Mission3Presentation{
     this.offered=offered;
     if(!offered)this.answerPending=false;
     choices.hidden=!offered||this.answerPending;
-    if(offered)m.choices.forEach((key,i)=>choices.children[i].textContent=`${i+1}. ${this.locale.lines[key]?.text??''}`);
+    if(offered)for(const [i,button] of Array.from(choices.children).entries()){
+      const line=this.locale.lines[m.choices[i]];
+      button.hidden=!line;
+      button.textContent=line?`${i+1}. ${line.text}`:'';
+    }
     const injury=this.$('.campaign-injury');injury.classList.toggle('hidden',!p.downed||end);
     injury.querySelector('strong').textContent=`${Math.max(0,Math.ceil(p.downedTimer))} с`;
     const medic=state.players.some(a=>a.team===p.team&&a.alive&&!a.downed&&a.fieldMedic);

@@ -16,6 +16,7 @@ const bearing=(from,to)=>Math.atan2(from.x-to.x,from.z-to.z);
 const angle=value=>Math.atan2(Math.sin(value),Math.cos(value));
 const INTRO_SPEED_LIMIT=25/3.6;
 const RESERVE_MARCH_SPEED=9.4;
+const RESERVE_FORWARD_ENTRY=4;
 const RESERVE_FIRE_RANGE=285;
 const RESERVE_INTERCEPT_RANGE=110;
 export const M02_SAVE_VERSION=2;
@@ -152,10 +153,10 @@ export class Mission2Simulation extends Simulation{
       for(const other of this.players.values())if(other.alive&&!other.vehicleId&&other.team===1&&distance(v,other)<500)enemy.push(other);
     let target=null,nearest=Infinity,best=Infinity;
     const from={x:v.x,y:(v.y??0)+2.4,z:v.z};
-    const fireRange=v.m02Rear?((v.m02Waypoint??0)>=3?RESERVE_FIRE_RANGE:RESERVE_INTERCEPT_RANGE):800;
+    const fireRange=v.m02Guard?340:v.m02Rear?((v.m02Waypoint??0)>=3?RESERVE_FIRE_RANGE:RESERVE_INTERCEPT_RANGE):800;
     for(const other of enemy){
       const d=distance(v,other);
-      if(d>(v.m02Rear?fireRange:850)||!this.campaign.visible(from,{x:other.x,y:other.y+1.2,z:other.z}))continue;
+      if(d>(v.m02Rear||v.m02Guard?fireRange:850)||!this.campaign.visible(from,{x:other.x,y:other.y+1.2,z:other.z}))continue;
       const assigned=this.vehicles.filter(t=>t.team===v.team&&t.hp>0&&t.id!==v.id&&t.m02TargetId===other.id).length;
       const score=d+assigned*280-(v.team===0&&c.order==='fire'&&c.orderTargetId===other.id?650:0);
       if(score<best){best=score;nearest=d;target=other;}
@@ -214,10 +215,11 @@ export class Mission2Simulation extends Simulation{
       else if(!v.m02Rear&&attack&&nearest<180)goal={x:v.x,z:v.z};
     }
     if(v.m02Withdraw&&this.time>=(v.m02DetourUntil??0))goal=v.m02Withdraw;
+    if(v.m02Guard)goal=v;
     const desired=bearing(v,goal),delta=angle(desired-v.yaw);
     const companySpeed=v.m02Rear||v.m02Withdraw?RESERVE_MARCH_SPEED:v.team===0?c.definition.friendlyCompany.speed:c.definition.enemyCompany.speed;
     const drive=distance(v,goal)>10&&Math.abs(delta)<1.15?companySpeed/VEHICLE_TYPES.tank.maxSpeed:0;
-    const turn=clamp(-delta*1.8,-1,1);
+    const turn=v.m02Guard?0:clamp(-delta*1.8,-1,1);
     if(this.time<(v.m02EscapeUntil??0)){
       const prior=p.input;
       p.input=sanitizeInput({...prior,forward:-.65,strafe:-v.m02EscapeSide,fire:false});
@@ -402,6 +404,7 @@ export class Mission2Director{
   get time(){return this.sim.time;}
   get tanksAlive(){return this.sim.vehicles.filter(v=>v.type==='tank'&&v.team===0&&v.hp>0).length;}
   get enemiesAlive(){return this.sim.vehicles.filter(v=>v.type==='tank'&&v.team===1&&v.hp>0).length;}
+  get reserveEnd(){const c=this.definition.enemyCompany;return c.total-c.villageGuard.length;}
   advanceBriefing(dt){
     if(!this.cutscene)return;
     this.cutscene.elapsed+=dt;
@@ -477,7 +480,13 @@ export class Mission2Director{
   }
   spawnEnemy(count){
     const c=this.definition.enemyCompany,rear=this.enemySerial>=c.firstWave;
-    const base=rear?M02_RESERVE_ROUTE[0]:c.contactStart,heading=rear?M02_RESERVE_ROUTE[1]:c.contactApproach;
+    let entry=rear?RESERVE_FORWARD_ENTRY:0;
+    while(entry>0){
+      const [x,z]=M02_RESERVE_ROUTE[entry];
+      if(!this.sim.vehicles.some(v=>v.team===0&&v.hp>0&&distance(v,{x,z})<=170))break;
+      entry--;
+    }
+    const base=rear?M02_RESERVE_ROUTE[entry]:c.contactStart,heading=rear?M02_RESERVE_ROUTE[entry+1]:c.contactApproach;
     const dirX=heading[0]-base[0],dirZ=heading[1]-base[1],
       norm=Math.max(1,Math.hypot(dirX,dirZ)),ux=dirX/norm,uz=dirZ/norm;
     for(let j=0;j<count;j++){
@@ -486,19 +495,31 @@ export class Mission2Director{
       const x=rear?base[0]-ux*row*22-uz*lane*20:base[0];
       const z=rear?base[1]-uz*row*22+ux*lane*20:base[1]+(i-(count-1)/2)*9;
       const yaw=Math.atan2(-ux,-uz);
-      const v=this.sim.createMapVehicle({id:`east-tank-${n+1}`,type:'tank',team:1,x,z,yaw});
-      Object.assign(v,{controlScheme:'wot',m02Waypoint:rear?1:0,m02Index:i,m02Rear:rear,
-        fireByHit:true,
-        cannonAmmo:48,campaignWeapons:this.definition.weapons,m02Shell:'ap',
-        shellAmmo:{ap:48,he:8},respawnIn:1e8,hp:c.maxHp,maxHp:c.maxHp,dispersion:.12,
-        m02FireAt:this.sim.time+(n%3)*.6});
+      const v=this.addEnemyTank(n,x,z,yaw,{m02Waypoint:rear?entry+1:0,m02Index:i,m02Rear:rear});
       if(!rear)Object.assign(v,{m02ApproachYaw:yaw,speed:c.speed});
-      this.sim.vehicles.push(v);
-      const driver=this.sim.addPlayer(`east-crew-${n+1}`,`Восточный корпус ${n+1}`,1,'assault','ak12','p19',true);
-      v.seats[0]=driver.id;
-      Object.assign(driver,{alive:true,hp:100,respawnIn:0,
-        vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0,campaignRole:'tank-driver'});
-      this.sim.syncVehicleSeat(driver,v);
+    }
+  }
+  addEnemyTank(n,x,z,yaw,formation){
+    const v=this.sim.createMapVehicle({id:`east-tank-${n+1}`,type:'tank',team:1,x,z,yaw});
+    const hp=this.definition.enemyCompany.maxHp;
+    Object.assign(v,{controlScheme:'wot',...formation,fireByHit:true,
+      cannonAmmo:48,campaignWeapons:this.definition.weapons,m02Shell:'ap',
+      shellAmmo:{ap:48,he:8},respawnIn:1e8,hp,maxHp:hp,dispersion:.12,
+      m02FireAt:this.time+(n%3)*.6});
+    this.sim.vehicles.push(v);
+    const driver=this.sim.addPlayer(`east-crew-${n+1}`,`Восточный корпус ${n+1}`,1,'assault','ak12','p19',true);
+    v.seats[0]=driver.id;
+    Object.assign(driver,{alive:true,hp:100,respawnIn:0,
+      vehicleId:v.id,vehicleSeat:0,invulnerableUntil:0,campaignRole:'tank-driver'});
+    this.sim.syncVehicleSeat(driver,v);
+    return v;
+  }
+  deployVillageGuard(){
+    const entry={x:-235,z:-248};
+    const company=this.definition.enemyCompany;
+    while(this.enemySerial<company.total){
+      const i=this.enemySerial-this.reserveEnd,[x,z]=company.villageGuard[i];
+      this.addEnemyTank(this.enemySerial++,x,z,bearing({x,z},entry),{m02Index:i,m02Guard:true});
     }
   }
   ensureVanguard(){if(this.enemySerial===0)this.spawnEnemy(this.definition.enemyCompany.firstWave);}
@@ -548,12 +569,13 @@ export class Mission2Director{
     if(!playerTank||playerTank.hp<=0||!this.player?.alive){this.failed='Танк «Сокол-7» уничтожен.';return;}
     if(this.elapsed>=13&&this.phase==='march'){this.phase='battle';this.stage=3;}
     const company=this.definition.enemyCompany;
-    if(this.phase==='battle'&&this.enemySerial===company.firstWave)this.withdrawVanguard(playerTank);
-    if(this.phase==='battle'&&this.enemySerial===company.firstWave&&this.enemiesAlive===0){
-      this.fired.add('enemyRear');this.spawnEnemy(company.total-this.enemySerial);
+    if(this.flags.enemyRetreat||this.phase==='battle'&&this.enemySerial===company.firstWave)this.withdrawVanguard(playerTank);
+    if(this.phase==='battle'&&this.enemySerial===company.firstWave&&(this.flags.enemyRetreat||this.enemiesAlive===0)){
+      this.fired.add('enemyRear');this.spawnEnemy(this.reserveEnd-this.enemySerial);
+      this.deployVillageGuard();
     }
     const allTanksDeployed=this.enemySerial===company.total;
-    const enemyDefeated=allTanksDeployed&&this.enemiesAlive===0;
+    const enemyDefeated=allTanksDeployed&&!this.sim.vehicles.some(v=>v.type==='tank'&&v.team===1&&v.hp>0&&!v.m02Withdraw);
     if(enemyDefeated&&!this.flags.village){
       this.flags.village=true;this.phase='village';this.stage=4;this.completedObjectives.push('armor');
       this.spawnVillageAttack();this.say('duran.support',5);this.save(2);
@@ -614,7 +636,7 @@ export class Mission2Director{
     for(let i=0;i<2;i++)this.spawnSoldier('m02-rifle-'+i,'Боец взвода',0,17,-12+i*7,'platoon');
   }
   withdrawVanguard(playerTank){
-    const vanguard=this.sim.vehicles.filter(v=>v.team===1&&!v.m02Rear&&v.hp>0);
+    const vanguard=this.sim.vehicles.filter(v=>v.team===1&&!v.m02Rear&&!v.m02Guard&&v.hp>0);
     if(vanguard.length&&vanguard.length<=3&&!this.flags.enemyRetreat){
       this.flags.enemyRetreat=true;
       const [x,z]=this.definition.enemyCompany.contactApproach;
@@ -668,9 +690,12 @@ export class Mission2Director{
     dropCampaignMedkit(this.sim,medic,()=>this.say(voice+'.medkitDrop',3));
   }
   spawnVillageAttack(){
-    for(const [i,[x,z]] of this.definition.villageApproachGuns.entries()){
+    for(const [i,[x,z,watchX,watchZ]] of this.definition.villageApproachGuns.entries()){
       const p=this.spawnSoldier('m02-atgun-'+i,'Расчёт ПТ-орудия',1,x,z,'atgun');
-      if(p)p.nextGunShot=this.time+8+i*2;
+      if(p){
+        p.yaw=bearing(p,{x:watchX,z:watchZ});p.input=sanitizeInput({yaw:p.yaw});
+        p.nextGunShot=this.time+8+i*2;
+      }
     }
   }
   spawnGroundWave(){
@@ -682,15 +707,18 @@ export class Mission2Director{
   }
   thinkGun(p){
     p.input=sanitizeInput({yaw:p.yaw});
-    if(!p.alive||this.time<(p.nextGunShot??0))return;
+    if(!p.alive||this.time<(p.nextGunTrack??0))return;
+    p.nextGunTrack=this.time+.12;
     const target=this.sim.vehicles.filter(v=>v.hp>0&&v.team===0&&distance(p,v)<175&&this.visible({x:p.x,y:p.y+1.5,z:p.z},{x:v.x,y:v.y+1,z:v.z})).sort((a,b)=>distance(p,a)-distance(p,b))[0];
     if(!target)return;
     const d=distance(p,target),yaw=bearing(p,target),pitch=zeroedBulletPitch(Math.atan2(target.y+1-p.y-1.5,d),d,300);
-    p.yaw=yaw;p.nextGunShot=this.time+8;
+    p.input.yaw=yaw;
+    if(this.time<(p.nextGunShot??0))return;
+    p.nextGunShot=this.time+8;
     this.sim.rockets.push({id:`at-shell-${p.id}-${++this.sim.eventId}`,kind:1,ownerId:p.id,team:1,x:p.x,y:p.y+1.5,z:p.z,
       vx:-Math.sin(yaw)*Math.cos(pitch)*300,vy:Math.sin(pitch)*300,vz:-Math.cos(yaw)*Math.cos(pitch)*300,life:5,
       campaignShell:'ap',campaignShellProfile:{damage:900,blastRadius:1.5}});
-    this.sim.event('cannonShot',{playerId:p.id,x:p.x,y:p.y+1.5,z:p.z});
+    this.sim.event('cannonShot',{playerId:p.id,x:p.x,y:p.y+1.5,z:p.z,shellType:'ap'});
   }
   visible(a,b){
     if(!this.sim.lineClear(a,b))return false;
@@ -767,11 +795,15 @@ export class Mission2Director{
       this.enemySerial=0;
     }
     if(this.started)this.ensureVanguard();
-    const missing=this.definition.enemyCompany.total-this.enemySerial;
-    if(this.phase==='battle'&&this.fired.has('enemyRear')&&missing>0)this.spawnEnemy(missing);
-    for(const [i,[x,z]] of this.definition.villageApproachGuns.entries()){
+    if(this.phase==='battle'&&this.fired.has('enemyRear')){
+      const missing=this.reserveEnd-this.enemySerial;
+      if(missing>0)this.spawnEnemy(missing);
+      this.deployVillageGuard();
+    }
+    for(const [i,[x,z,watchX,watchZ]] of this.definition.villageApproachGuns.entries()){
       const gun=this.sim.players.get('m02-atgun-'+i);
       if(gun?.alive&&distance(gun,{x,z})>20)Object.assign(gun,{x,z,home:{x,z},grounded:true});
+      if(gun?.alive){gun.yaw=bearing(gun,{x:watchX,z:watchZ});gun.input=sanitizeInput({yaw:gun.yaw});}
     }
     for(const p of this.sim.players.values()){
       const mounted=p.vehicleId&&this.sim.vehicles.find(v=>v.id===p.vehicleId);
@@ -790,11 +822,14 @@ export class Mission2Director{
     const fallen=this.definition.friendlyCompany.count-this.tanksAlive;
     const phase=this.phase;
     const wreck=this.sim.vehicles.find(v=>v.id==='east-tank-10');
+    const armor=phase==='battle'?this.sim.vehicles.filter(v=>v.type==='tank'&&v.team===1&&v.hp>0&&!v.m02Withdraw):[];
+    const villageGuard=armor.length&&armor.every(v=>v.m02Guard)?armor[0]:null;
     return {missionId:'m02',title:this.definition.title,stage:this.stage,
-      phase,objective:phase,flags:{...this.flags},order:this.order,cutscene:this.cutscene,
+      phase,objective:villageGuard?'villageGuard':phase,flags:{...this.flags},order:this.order,cutscene:this.cutscene,
       awaitingLoadout:false,failed:this.failed,complete:this.complete,checkpoint:this.checkpoint,
       epoch:this.epoch,time:this.elapsed,radio:this.radio,radioRemaining:Math.max(0,this.radioEnd-this.sim.time),
-      target:phase==='debrief'&&wreck?{x:wreck.x,z:wreck.z}:{x:17,z:0},tanksAlive:this.tanksAlive,enemyTanksAlive:this.flags.contact?this.enemiesAlive:0,
+      target:phase==='debrief'&&wreck?{x:wreck.x,z:wreck.z}:villageGuard?{x:villageGuard.x,z:villageGuard.z}:{x:17,z:0},
+      tanksAlive:this.tanksAlive,enemyTanksAlive:this.flags.contact?this.enemiesAlive:0,
       enemyTanksSpawned:this.flags.contact?this.enemySerial:0,alliedLosses:fallen,
       shell:v?.m02Shell??'ap',weaponMode:v?.weapon===1?'mg':v?.m02Shell??'ap',
       cruise:this.cruise,lockedTargetId:this.lockedTargetId,
@@ -814,7 +849,8 @@ export function validMission2Save(save,definition){
   const list=(v,max)=>Array.isArray(v)&&v.length<=max;
   if(!save||save.version!==M02_SAVE_VERSION||save.missionId!=='m02'||save.definitionVersion!==definition.version||
     !Number.isFinite(save.time)||save.time<0||!Number.isInteger(save.rngState)||
-    !Object.hasOwn(definition.difficulty,save.difficulty)||!list(save.vehicles,24)||!list(save.players,64))return false;
+    !Object.hasOwn(definition.difficulty,save.difficulty)||
+    !list(save.vehicles,definition.friendlyCompany.count+definition.enemyCompany.total)||!list(save.players,64))return false;
   if(!save.vehicles.every(v=>position(v)&&typeof v.id==='string')||!save.players.every(p=>position(p)&&typeof p.id==='string'))return false;
   const vehicles=new Map(save.vehicles.map(v=>[v.id,v])),players=new Map(save.players.map(p=>[p.id,p]));
   if(vehicles.size!==save.vehicles.length||players.size!==save.players.length||!vehicles.has('sokol-7')||!players.has('local'))return false;

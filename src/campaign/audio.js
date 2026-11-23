@@ -1,5 +1,7 @@
 import { Vector3 } from 'three';
+import { getAssetColliders } from '../../shared/asset-colliders.js';
 import { vehiclePartPose } from '../../shared/vehicles.js';
+import { distanceToCover } from '../viewmodel.js';
 
 // Voice recordings and five synchronized music stems are optional external
 // mission assets. Missing files keep subtitles and procedural ambience working.
@@ -20,8 +22,8 @@ export function usesCampaignRadio(missionId,speaker,key){
   if(missionId==='m02')return speaker!=='crew'&&speaker!=='vos';
   if(missionId==='m04')return speaker!=='marten';
   if(['orlov','dargo'].includes(speaker))return true;
-  if(missionId==='m03')return ['timo.road','timo.roofs','timo.window',
-    'vos.meet','vos.village','vos.trapped','harranti.hold','harranti.truck'].includes(key);
+  if(missionId==='m03')return speaker==='timo'||speaker==='rafa'||speaker==='vos'&&key!=='vos.final'||
+    ['harranti.hold','harranti.truck'].includes(key);
   return false;
 }
 
@@ -46,6 +48,8 @@ export class CampaignAudio {
   constructor(combat,root,definition){
     this.combat=combat;this.root=root;this.definition=definition;this.cache=new Map();this.missing=new Set();this.sources=[];this.stems=[];this.stemLoading=false;this.generation=0;this.key=null;this.epoch=-1;
     this.voicePosition=new Vector3();
+    this.voiceDirection=new Vector3();
+    this.spatialDialogue=definition.id==='m01'||definition.id==='m03';
     this.reactionVoice={sources:[],generation:0,key:null,voicePosition:new Vector3()};
   }
   async buffer(path){
@@ -73,11 +77,13 @@ export class CampaignAudio {
       panner.panningModel='HRTF';
       panner.distanceModel='inverse';
       panner.refDistance=3;
-      panner.rolloffFactor=.62;
+      panner.rolloffFactor=this.spatialDialogue?0:.62;
       panner.maxDistance=80;
+      const filter=channel.worldVoiceFilter=c.createBiquadFilter();
+      filter.type='lowpass';filter.frequency.value=19000;filter.Q.value=.65;
       channel.worldVoiceGain=c.createGain();
       channel.worldVoiceGain.gain.value=.54;
-      panner.connect(channel.worldVoiceGain).connect(this.voiceBus);
+      panner.connect(filter).connect(channel.worldVoiceGain).connect(this.voiceBus);
     }
     this.radioInput=c.createBiquadFilter();this.radioInput.type='highpass';this.radioInput.frequency.value=480;
     const radioHigh=c.createBiquadFilter();radioHigh.type='lowpass';radioHigh.frequency.value=2950;
@@ -112,7 +118,7 @@ export class CampaignAudio {
     source.connect(output);channel.sources.push(source);source.start(at,offset);
     source.onended=()=>{source.disconnect();channel.sources=channel.sources.filter(s=>s!==source);};
   }
-  async voice(channel,line,remaining,{radio,spatial,transmit,continuation}){
+  async voice(channel,line,remaining,{radio,worldInput,transmit,continuation}){
     if(continuation)this.stopVoice(channel);else this.finishVoice(channel);
     const generation=channel.generation;
     const [buffer,[opening,closing]]=await Promise.all([this.buffer(line.audio),radio||transmit?this.radioSwitches:[]]);
@@ -123,7 +129,7 @@ export class CampaignAudio {
     const open=opening&&offset===0&&!continuation;
     const now=Math.max(this.combat.ctx.currentTime,channel.radioEnd??0),start=now+(open?opening.duration:0);
     if(open)this.playVoiceBuffer(channel,opening,this.voiceBus,now);
-    this.playVoiceBuffer(channel,buffer,radio?this.radioInput:spatial?channel.worldVoice:this.voiceBus,start,offset);
+    this.playVoiceBuffer(channel,buffer,radio?this.radioInput:worldInput??this.voiceBus,start,offset);
     if(radio&&closing){
       const close=start+buffer.duration-offset;
       this.playVoiceBuffer(channel,closing,this.voiceBus,close);
@@ -143,15 +149,34 @@ export class CampaignAudio {
       const tankId=mission.missionId==='m02'&&['crew','vos'].includes(speaker)?'sokol-7':
         mission.missionId==='m04'&&speaker==='vos'?'sokol-crossing-1':null;
       const tank=tankId&&state.vehicles.find(v=>v.id===tankId);
-      if(!tank)return false;
+      if(!tank){
+        if(!this.spatialDialogue||speaker==='marten')return null;
+        const now=this.combat.ctx.currentTime;
+        channel.worldVoiceGain.gain.setTargetAtTime(.24,now,.055);
+        channel.worldVoiceFilter.frequency.setTargetAtTime(2900,now,.055);
+        return channel.worldVoiceFilter;
+      }
       vehiclePartPose(tank,-.35,1.95,.2,voicePosition);
     }
-    if(actor?.id==='local'&&renderer?.camera.position.distanceToSquared(voicePosition)<1)return false;
+    if(actor?.id==='local'&&renderer?.camera.position.distanceToSquared(voicePosition)<1)return null;
     const panner=channel.worldVoice,now=this.combat.ctx.currentTime;
     const distance=renderer?.camera.position.distanceTo(voicePosition)??0;
-    const gain=.54+.46*Math.min(1,Math.max(0,(distance-2)/12));
+    let gain=.54+.46*Math.min(1,Math.max(0,(distance-2)/12)),cutoff=19000;
+    if(this.spatialDialogue){
+      const fade=Math.max(0,Math.min(1,(56-distance)/20));
+      gain=.73*fade/(1+Math.max(0,distance-1.3)*.23);
+      cutoff=12500/(1+distance*.065);
+      if(renderer?.map&&distance>1.6){
+        const origin=renderer.camera.position;
+        const boxes=renderer.campaignCoverColliders??getAssetColliders(renderer.map);
+        const reach=distance-.45;
+        const direction=this.voiceDirection.copy(voicePosition).sub(origin).multiplyScalar(1/distance);
+        if(distanceToCover(origin,direction,boxes,reach)<reach){gain*=.40;cutoff=Math.min(cutoff,1500);}
+      }
+    }
     if(channel.voicePositionReady)channel.worldVoiceGain.gain.setTargetAtTime(gain,now,.06);
     else channel.worldVoiceGain.gain.setValueAtTime(gain,now);
+    channel.worldVoiceFilter.frequency.setTargetAtTime(cutoff,now,.06);
     if(panner.positionX){
       const values=[voicePosition.x,voicePosition.y,voicePosition.z];
       for(let i=0;i<3;i++){
@@ -161,7 +186,7 @@ export class CampaignAudio {
       }
     }else panner.setPosition(voicePosition.x,voicePosition.y,voicePosition.z);
     channel.voicePositionReady=true;
-    return true;
+    return panner;
   }
   updateDialogue(state,locale,cue,remaining,renderer,briefingPosition,channel=this){
     const key=cue?.serial??null,changed=key!==channel.key,line=locale.lines[cue?.key];
@@ -174,10 +199,10 @@ export class CampaignAudio {
     const radio=channel.dialogueRadio;
     const transmit=missionId==='m04'&&line?.speaker==='marten';
     const continuation=missionId==='m04'&&cue?.key==='gunner.cut';
-    const spatial=line&&!radio&&!transmit&&this.positionVoice(channel,state,renderer,line.speaker,briefingPosition);
+    const worldInput=line&&!radio&&!transmit?this.positionVoice(channel,state,renderer,line.speaker,briefingPosition):null;
     if(changed){
       channel.key=key;
-      if(line?.audio)this.voice(channel,line,remaining??line.duration,{radio,spatial,transmit,continuation});
+      if(line?.audio)this.voice(channel,line,remaining??line.duration,{radio,worldInput,transmit,continuation});
       else this.finishVoice(channel);
     }
   }
@@ -266,6 +291,6 @@ export class CampaignAudio {
   dispose(){this.closed=true;this.stopVoice();this.stopVoice(this.reactionVoice);this.musicGeneration=(this.musicGeneration??0)+1;try{this.wind?.stop();}catch{}for(const s of this.stems){try{s?.source.stop();}catch{}}
     try{this.radioDefence?.source.stop();}catch{}
     this.radioDefence?.source.disconnect();this.radioDefence?.gain.disconnect();
-    for(const channel of [this,this.reactionVoice]){channel.worldVoice?.disconnect();channel.worldVoiceGain?.disconnect();}
+    for(const channel of [this,this.reactionVoice]){channel.worldVoice?.disconnect();channel.worldVoiceFilter?.disconnect();channel.worldVoiceGain?.disconnect();}
     this.bus?.disconnect();this.cache.clear();}
 }

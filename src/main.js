@@ -2,7 +2,7 @@ import {loadFPSHands} from './fps-hands.js';
 import {loadWeaponModels} from './weapon-models.js';
 import {loadEquipmentModels} from './gadget-models.js';
 import {opticZooms,scopeMagnification} from './scope-optics.js';
-import {COLLIMATOR_ZOOM,collimatorTestEnabled,enableCollimatorTest,restoreCollimatorTest} from './collimator.js';
+import {collimatorTestEnabled,enableCollimatorTest,restoreCollimatorTest} from './collimator.js';
 import {getWeaponModule,resolveWeaponModules} from '../shared/weapon-modules.js';
 import {renderWeaponResults,weaponProgressId} from './weapon-progress.js';
 import {setupAttachmentPicker} from './weapon-attachment-ui.js';
@@ -1158,9 +1158,7 @@ document.addEventListener('mousemove',event=>{
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
-  const weaponId=player?.weaponId,opticId=equippedAttachments(weaponId)?.optic;
-  const opticZoom=renderer?.binocularAiming?BINOCULAR_ZOOM:player?.heldGadget?1:hasCollimator(weaponId)?COLLIMATOR_ZOOM:
-    renderer?.scoped?scopeMagnification(weaponId,weaponScopeZoom(weaponId,opticId),opticId):1;
+  const opticZoom=renderer?.aimZoom??1;
   const minigun=drivingVehicle?.type===BLACK_HAWK&&player.vehicleSeat===BLACK_HAWK_GUN.index;
   const aimScale = aim ? (minigun?.35:opticZoom>1 ? .70/opticZoom : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
@@ -1995,7 +1993,7 @@ function frame(now){
     }
   }
   const fgMeta={playerId:renderPlayer?.id??null,alive:Boolean(renderPlayer?.alive),
-    mapId:renderState?.mapId??null,weaponId:renderPlayer?.weaponId??null,
+    mapId:renderState?.mapId??null,weaponId:renderPlayer?.heldGadget??renderPlayer?.weaponId??null,
     vehicleId:renderPlayer?.vehicleId??null,seat:renderPlayer?.vehicleSeat??null,
     scoped:Boolean(renderer.scoped),aim,thirdPerson:vehicleThirdPerson,
     yaw:fgAngles.yaw,pitch:fgAngles.pitch,fov,
@@ -2053,14 +2051,15 @@ function frame(now){
   const scopedWeapon=WEAPONS[scopeId];
   const equippedOptic=equippedAttachments(scopeId)?.optic;
   const magnification=scopeMagnification(scopeId,weaponScopeZoom(scopeId,equippedOptic),equippedOptic);
-  const zoomHint=opticZooms(scopeId,equippedOptic)?.length>1?' · КОЛЕСО — ЗУМ':'';
+  const variableOptic=opticZooms(scopeId,equippedOptic)?.length>1;
   const scopeOverlay=$('scope-overlay');
   if(scoped&&!usingBinoculars){
     scopeOverlay.dataset.reticle=getWeaponModule(scopeId,'optic',equippedOptic)?.reticle??'cross';
-    scopeOverlay.classList.toggle('wide-lens',magnification===1);
   }
   const zero=scopedWeapon?.zeroRange?` · ПРИСТРЕЛКА ${scopedWeapon.zeroRange} М`:'';
-  text('scope-zoom',scoped?`${magnification}×${zero}${zoomHint}`:'');
+  const showOpticZoom=!usingBinoculars&&active&&(scoped||renderer.weaponOpticAiming&&variableOptic);
+  show('scope-zoom',showOpticZoom);
+  text('scope-zoom',showOpticZoom?`${magnification}×${zero}${variableOptic?' · КОЛЕСО — ЗУМ':''}`:'');
   document.body.classList.toggle('scoped',scoped);
   if(renderState)audio.events(renderState,renderPlayer);
   audio.update?.(dt,{quality,state:renderState??state,local:renderPlayer??local(),

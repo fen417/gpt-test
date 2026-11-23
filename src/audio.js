@@ -3,6 +3,7 @@ import { BULLET_GRAVITY } from '../shared/ballistics.js';
 import { getMap, getWeapon } from '../shared/world.js';
 import { TANK_CANNON } from '../shared/tank.js';
 import { BLACK_HAWK } from '../shared/vehicles.js';
+import campaignCatalog from '../shared/campaign/catalog.json' with {type:'json'};
 import RELOAD_CUES from './assets/audio/reload/cues.json' with {type:'json'};
 export const MENU_MUSIC_TITLE = 'Quiet Resolve';
 const MENU_MUSIC_URL=new URL('./assets/audio/music/quiet-resolve.m4a',import.meta.url);
@@ -28,7 +29,8 @@ const CLASS_SHOTS = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: '
 const recording=(url,fallback)=>({url,fallback});
 const campaignRecording=(mission,name)=>{
   const path=`${import.meta.env.BASE_URL}campaign/${mission}/sfx/${name}`;
-  return recording(path+'.ogg',path+'.m4a');
+  const revision=campaignCatalog.missions.find(row=>row.id===mission)?.contentRevision??1;
+  return recording(`${path}.ogg?v=${revision}`,`${path}.m4a?v=${revision}`);
 };
 const SHOT_SAMPLES = {
   'rifle-light': [
@@ -562,9 +564,11 @@ export class CombatAudio {
   _campaignCannon(event,local){
     const {distance,pan}=this._position(event,local);
     if(distance>680)return;
-    const gain=1/(1+distance*.014),time=this.ctx.currentTime+Math.min(.22,distance/343);
-    this._sample(event.shellType==='he'?'abrams-he':'abrams-ap',1.15*gain,{
-      time,pan,cutoff:Math.max(740,10500/(1+distance*.021)),send:.13,priority:2,
+    const own=Boolean(local&&event.playerId===local.id);
+    const gain=own?.96:.90/(1+distance*.009);
+    const time=this.ctx.currentTime+(own?0:Math.min(.33,distance/343));
+    this._sample(event.shellType==='he'?'abrams-he':'abrams-ap',gain,{
+      time,pan:own?0:pan,cutoff:distance<25?0:Math.max(1750,16000/(1+distance*.012)),send:own?.035:.08,priority:2,
     });
   }
   _queueReload(event,state,profile,duration,kind='handheld'){
@@ -961,7 +965,7 @@ export class CombatAudio {
     const listener=engineListener??local;
     const dialogue=state?.campaign?.radioRemaining>0;
     const armoredMission=state?.campaign?.missionId==='m02';
-    if(armoredMission)this.prepareVehicleRecordings('m02',['abrams-engine','abrams-ap','abrams-he']);
+    if(armoredMission)this.prepareVehicleRecordings('m02',['abrams-engine','abrams-tracks','abrams-ap','abrams-he']);
     if(state?.campaign?.missionId==='m04'||state?.vehicles?.some(vehicle=>vehicle.type===BLACK_HAWK))
       this.prepareVehicleRecordings('m04',['black-hawk-cabin','black-hawk-field','black-hawk-spool']);
     const mix=engineListener?(dialogue?.4:.65):1;
@@ -991,10 +995,6 @@ export class CombatAudio {
         source.connect(filter).connect(gain);if(pan)gain.connect(pan).connect(this._effects);else gain.connect(this._effects);
         source.start(0,(now*.83)%source.buffer.duration);
         channel={source,filter,gain,pan,speed:0,gear:1};this._engineChannels.set(channelId,channel);
-        if(vehicle.type==='tank'&&!recordedTank){
-          const trackSource=c.createBufferSource(),trackFilter=c.createBiquadFilter(),trackGain=c.createGain();trackSource.buffer=this._noiseBuffer('pink');trackSource.loop=true;trackFilter.type='bandpass';trackFilter.frequency.value=1350;trackFilter.Q.value=.65;trackGain.gain.value=0;
-          trackSource.connect(trackFilter).connect(trackGain);if(pan)trackGain.connect(pan);else trackGain.connect(this._effects);trackSource.start();Object.assign(channel,{trackSource,trackFilter,trackGain});
-        }
       }
       channel.stopAt=null;
       const speed=Math.abs(vehicle.speed);
@@ -1012,16 +1012,33 @@ export class CombatAudio {
         if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
         continue;
       }
+      if(vehicle.type==='tank'&&!channel.trackSource){
+        const track=recordedTank?this._foley.get('abrams-tracks'):this._noiseBuffer('pink');
+        if(track){
+          const c=this.ctx,source=c.createBufferSource(),filter=c.createBiquadFilter(),gain=c.createGain();
+          source.buffer=track;source.loop=true;gain.gain.value=0;
+          filter.type=recordedTank?'lowpass':'bandpass';filter.frequency.value=recordedTank?10500:1350;filter.Q.value=.65;
+          source.connect(filter).connect(gain).connect(channel.pan??this._effects);
+          source.start(0,recordedTank?(now*.61)%track.duration:0);
+          Object.assign(channel,{trackSource:source,trackFilter:filter,trackGain:gain});
+        }
+      }
       const gear=Math.min(4,1+Math.floor(speed/4.5)),load=(speed-(gear-1)*4.5)/4.5;
       const acceleration=Math.max(0,speed-channel.speed);
       const rate=recordedTank?.73+Math.min(.42,speed*.038):
         (vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);
       this._target(channel.source.playbackRate,rate,.12);
       this._target(channel.filter.frequency,(own?9500:6500)/(1+distance*.022),.1);
-      const engineGain=recordedTank?(own?.8:.46)*(dialogue?.7:1):own?.30:.18;
+      const engineGain=recordedTank?(own?.65:.40)*(dialogue?.69:1):own?.30:.18;
       this._target(channel.gain.gain,engineGain*mix/(1+distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
       if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
-      if(channel.trackGain){this._target(channel.trackGain.gain,Math.min(1,(speed+Math.abs(vehicle.steer??0)*2)/8)*(own?.045:.025)*mix/(1+distance*.042),.08);this._target(channel.trackSource.playbackRate,.7+Math.min(1.5,speed/9),.1);}
+      if(channel.trackGain){
+        const treadSpeed=speed+Math.abs(vehicle.steer??0)*2;
+        const treadGain=recordedTank?(own?.69:.45)*(dialogue?.68:1)*(1+Math.min(.3,acceleration*.65)):own?.045:.025;
+        this._target(channel.trackGain.gain,Math.min(1,treadSpeed/8)*treadGain*mix/(1+distance*.042),.08);
+        this._target(channel.trackSource.playbackRate,recordedTank?.70+Math.min(.47,treadSpeed*.037):.7+Math.min(1.5,speed/9),.1);
+        if(recordedTank)this._target(channel.trackFilter.frequency,(own?14500:9800)/(1+distance*.025),.09);
+      }
       if(own&&!recordedTank&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
       channel.speed=speed;channel.gear=gear;
     }

@@ -4,6 +4,7 @@ export const SCOPE_ZOOMS = {
   dmr12: [2],
   sv98: [2, 4],
 };
+export const FULLSCREEN_SCOPE_ZOOM=6;
 
 export function opticZooms(weaponId, opticId) {
   const optic=getWeaponModule(weaponId,'optic',opticId);

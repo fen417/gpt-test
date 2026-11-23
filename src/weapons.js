@@ -1086,9 +1086,27 @@ export function createWeaponRig(owner = {}) {
   const installedOptics=new Map();
   let activeOptic;
   const scopeEye = new THREE.Vector3();
+  const opticMarks=new THREE.Group();
+  weapon.add(opticMarks);
+  const markMaterial=new THREE.MeshBasicMaterial({color:0xeb8853,toneMapped:false,depthWrite:false});
+  ownedMaterials.add(markMaterial);
+  const bar=(width,height,x=0,y=0,rotation=0)=>{
+    const plane=new THREE.PlaneGeometry(width,height);
+    plane.rotateZ(rotation).translate(x,y,0);
+    return plane;
+  };
+  const reticleMeshes={};
+  const makeMark=(id,parts)=>{
+    reticleMeshes[id]=mesh(opticMarks,mergeGeometries(parts),markMaterial);
+    for(const part of parts)part.dispose();
+  };
+  makeMark('cross',[bar(.014,.00045),bar(.00045,.014)]);
+  makeMark('chevron',[bar(.0054,.00055,-.0022,-.0016,.63),bar(.0054,.00055,.0022,-.0016,-.63)]);
+  makeMark('ring',[new THREE.RingGeometry(.0054,.0059,32),new THREE.CircleGeometry(.00075,16)]);
+  makeMark('ladder',[bar(.015,.00045),bar(.00045,.014,0,-.004),bar(.007,.00045,0,-.004),bar(.004,.00045,0,-.007)]);
   let upgradeSight;
   let paintRoot,paintId;
-  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,attachments,skinId}={}){
+  function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,opticReticle=null,attachments,skinId}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
       previousTeam = team;
@@ -1150,7 +1168,7 @@ export function createWeaponRig(owner = {}) {
     }
     rifleAssembly.visible=!pistol&&!unarmed;
     for(const model of Object.values(pistols))model.root.visible=model===pistol&&!unarmed;
-    scope.visible = recon && aim < .92;
+    scope.visible = recon;
     suppressor.visible = recon;
     if(rifle?.muzzle)muzzleFlash.position.copy(rifle.muzzle);
     else muzzleFlash.position.set(0,pistol ? pistol.boreY : .015,pistol ? pistol.front : rifle?.fit.muzzleZ??weapon.userData.muzzleZ);
@@ -1195,7 +1213,16 @@ export function createWeaponRig(owner = {}) {
     const slots=collimator?{...attachments,optic:'collimator-15'}:attachments;
     showWeaponUpgrades(weaponRoot,key,slots,owner.detailLevel===0);
     if(rifle&&slots?.barrel&&upgradeMuzzle(rifle.model,muzzleFlash.position))flashLight.position.copy(muzzleFlash.position);
-    upgradeSight=rifle&&upgradeOpticEye(rifle.model,scopeEye)?{height:scopeEye.y,depth:-.25-scopeEye.z}:null;
+    const upgradedEye=rifle&&upgradeOpticEye(rifle.model,scopeEye);
+    upgradeSight=upgradedEye?{height:scopeEye.y,depth:-.25-scopeEye.z}:null;
+    const stockEye=rifle?.model.getObjectByName('Scope_Eye');
+    opticMarks.visible=Boolean(opticReticle&&aim>.75&&!usingTool&&!unarmed&&(upgradedEye||stockEye||recon));
+    if(opticMarks.visible){
+      opticMarks.position.copy(upgradedEye?scopeEye:stockEye?.position??scope.position);
+      if(!upgradedEye&&!stockEye)opticMarks.position.set(0,.169,.014);
+      opticMarks.position.z-=.035;
+      for(const [id,mark] of Object.entries(reticleMeshes))mark.visible=id===opticReticle;
+    }
     const usingBinoculars=usingTool&&gadgetKind==='binoculars';
     const usingSupply=usingTool&&(isPlacementGadget(gadgetKind)||usingBinoculars);
     const usingDefib=usingTool&&gadgetKind==='defibrillator';

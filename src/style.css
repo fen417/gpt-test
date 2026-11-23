@@ -10,17 +10,7 @@
 #scope-overlay::before,#scope-overlay::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#171d1e;box-shadow:0 0 1px #e5dcb580}
 #scope-overlay::before{width:58vmin;height:1px}
 #scope-overlay::after{width:1px;height:58vmin}
-#scope-overlay.wide-lens{background:radial-gradient(circle,transparent 40vmin,#080e12b8 42vmin,#05090c 44vmin)}
-#scope-overlay[data-reticle=chevron]::before{width:42vmin;background:linear-gradient(90deg,#191d1c 42%,transparent 42% 58%,#191d1c 58%);box-shadow:none}
-#scope-overlay[data-reticle=chevron]::after{display:none}
 .scope-mark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
-[data-reticle=chevron] .scope-mark{width:13px;height:13px;border:solid #e66f42;border-width:2px 0 0 2px;transform:translate(-50%,20.7%) rotate(45deg);filter:drop-shadow(0 0 2px #0d1211)}
-#scope-overlay[data-reticle=ring]::before{width:13vmin;height:13vmin;border:1px solid #c79352;border-radius:50%;background:none;box-shadow:0 0 2px #141613}
-#scope-overlay[data-reticle=ring]::after{display:none}
-[data-reticle=ring] .scope-mark{width:4px;height:4px;border-radius:50%;background:#ffc26b;box-shadow:0 0 2px #382919}
-#scope-overlay[data-reticle=ladder]::before{width:51vmin}
-#scope-overlay[data-reticle=ladder]::after{height:48vmin}
-[data-reticle=ladder] .scope-mark{width:6vmin;height:17vmin;transform:translate(-50%,0);background:repeating-linear-gradient(transparent 0 3.15vmin,#191e20 3.15vmin calc(3.15vmin + 1px));filter:drop-shadow(0 0 1px #b6aa8c)}
 #scope-overlay[data-reticle=precision]::before{width:52vmin;background:linear-gradient(90deg,#171d1e 47%,transparent 47% 53%,#171d1e 53%);box-shadow:none}
 #scope-overlay[data-reticle=precision]::after{height:48vmin;background:linear-gradient(#171d1e 46%,transparent 46% 54%,#171d1e 54%);box-shadow:none}
 [data-reticle=precision] .scope-mark{width:3px;height:3px;border-radius:50%;background:#ec7149;box-shadow:0 0 2px #1b1512}
@@ -203,7 +193,7 @@ body.team-1 .score-row.local{background:#a57b5f33}
 body:has(.menu:not(.hidden)){overflow-y:auto}
 .vehicle-prompt{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);padding:0;background:none;border:0;color:#e5e6d7;font-size:10px;letter-spacing:1px;text-align:center;white-space:pre-wrap;text-shadow:0 1px 4px #000;width:max-content;max-width:calc(100% - 32px)}
 
-#scope-zoom{position:absolute;top:calc(50% + 23vmin);left:50%;transform:translateX(-50%);color:#c5cbb1;font:11px monospace;text-shadow:0 1px 3px #000;letter-spacing:1px}
+#scope-zoom{position:fixed;z-index:3;pointer-events:none;top:calc(50% + 23vmin);left:50%;transform:translateX(-50%);color:#c5cbb1;font:11px monospace;text-shadow:0 1px 3px #000;letter-spacing:1px}
 .sidearm-picker {
   display: flex;
   align-items: center;

@@ -11,7 +11,7 @@ import {terrainHeightfield} from '../terrain-heightfield.js';
 export const ALHADRA_OFFSET=Object.freeze({x:150,z:105});
 export const M02_BOUNDS=Object.freeze({minX:-1000,maxX:1000,minZ:-600,maxZ:600});
 export const M02_RESERVE_ROUTE=Object.freeze([
-  [300,-235],[270,-315],[151,-345],[8,-332],[-162,-314],[-315,-350],[-520,-407],
+  [300,-235],[270,-315],[151,-345],[8,-332],[-370,-477],[-473,-456],[-562,-419],
 ]);
 const size=2000,cell=8,margin=112;
 const shift=object=>({...object,x:object.x-ALHADRA_OFFSET.x,z:object.z-ALHADRA_OFFSET.z});

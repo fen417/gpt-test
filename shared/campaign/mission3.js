@@ -522,8 +522,13 @@ class ColumnDirector{
       ensureBotState(sim,p);p.input=sanitizeInput({yaw:yawTo(p,wounded)});
       if(this.medicCanTreat(p,wounded))p.input.crouch=true;
       else{
-        const approach=this.routeDoor(p,wounded)??this.treatmentSpot(p,wounded);
-        moveBot(sim,p,approach,dt,{sprint:true,followSteps:true});
+        const door=this.routeDoor(p,wounded);
+        if(Boolean(door)!==p.medicAtDoor){
+          p.medicAtDoor=Boolean(door);this.resetTreatmentPath(p);
+        }
+        if(!door&&(this.time>=(p.medicApproach?.until??0)||distance(p.medicApproach?.patient??p,wounded)>1.2))
+          p.medicApproach={point:this.treatmentSpot(p,wounded),patient:{x:wounded.x,z:wounded.z},until:this.time+1.2};
+        moveBot(sim,p,door??p.medicApproach?.point,dt,{sprint:true,followSteps:true});
       }
       return true;
     }
@@ -538,7 +543,10 @@ class ColumnDirector{
     const door=doors.sort((a,b)=>cost(a)-cost(b))[0];
     if(!door||this.interactives[door.id]!=='closed')return null;
     const {x,z}=door.part,side=Math.sign(z-house.z),where={x,z:z+side*(current?-2.16:2.16),y:door.part.baseY};
-    if(distance(actor,where)<.65&&Math.abs(actor.y-where.y)<.65&&this.sim.lineClear(eye(actor),eye(where,1.15)))this.setPanel(door.id,'open');
+    if(distance(actor,where)<1.05&&Math.abs(actor.y-where.y)<.75&&this.sim.lineClear(eye(actor),eye(where,1.15))){
+      this.setPanel(door.id,'open');
+      return null;
+    }
     return where;
   }
   medicCanTreat(medic,patient){
@@ -555,13 +563,23 @@ class ColumnDirector{
     return medic.medicTarget===patient.id&&medic.medicProgress>0&&this.medicCanTreat(medic,patient);
   }
   treatmentSpot(medic,patient){
-    if(distance(medic,patient)>5||Math.abs(medic.y-patient.y)>.8)return patient;
+    let spot=patient,best=Infinity;
     for(let i=0;i<8;i++){
       const angle=Math.atan2(medic.z-patient.z,medic.x-patient.x)+Math.ceil(i/2)*Math.PI/4*(i%2?1:-1);
-      const at={x:patient.x+1.4*Math.cos(angle),y:patient.y,z:patient.z+1.4*Math.sin(angle)};
-      if(this.medicCanTreat(at,patient)&&walkableSegment(this.sim,medic,at))return at;
+      const at={x:patient.x+1.65*Math.cos(angle),y:patient.y,z:patient.z+1.65*Math.sin(angle)};
+      if(this.sim.collides(at.x,at.z,at.y+.03,.36,1.15)||this.sim.vehicleAt(at.x,at.z,at.y)||!this.medicCanTreat(at,patient))continue;
+      const range=distance(medic,at),clear=range<7&&walkableSegment(this.sim,medic,at);
+      const blocked=medic.ai?.blockedSpot;
+      const cost=range-(clear?12:0)+(blocked&&this.time<blocked.until&&distance(at,blocked)<1?8:0);
+      if(cost<best){best=cost;spot=at;}
     }
-    return patient;
+    return spot;
+  }
+  resetTreatmentPath(helper){
+    helper.botPath=[];helper.medicApproach=null;
+    const ai=helper.ai;if(!ai)return;
+    ai.pathJob?.return();ai.pathJob=null;ai.pathResult=null;
+    ai.pathGoal=null;ai.repathAt=0;ai.pathUntil=0;ai.goal=null;ai.goalUntil=0;
   }
   afterThink(p,dt){
     if(!p.ai)return;
@@ -776,43 +794,44 @@ class ColumnDirector{
     }
   }
   updateMedic(dt){
-    const allies=[...this.sim.players.values()].filter(p=>p.team===0&&p.alive),assigned=new Set();
-    const medics=allies.filter(p=>p.fieldMedic&&!p.downed),player=this.player;
-    const previous=this.playerMedic;
-    let lead=null;
-    if(player.downed){
-      if(previous?.medicTarget===player.id&&this.time>=(previous.medicProbe?.at??Infinity)+4){
-        if(distance(previous,previous.medicProbe)<.55&&!this.medicCanTreat(previous,player))previous.medicBlockedUntil=this.time+5;
-        previous.medicProbe={...eye(previous,0),at:this.time};
+    const player=this.player,allies=[...this.sim.players.values()].filter(p=>p.team===0&&p.alive);
+    const responders=allies.filter(p=>p.bot&&(p.squadMember||p.fieldMedic)&&!p.downed&&!p.vehicleId);
+    const patients=allies.filter(p=>p.downed&&(!p.rescue||p.downedTimer<=115)&&
+      !(p.reviver===player.id&&this.reviveInProgress(p))).sort((a,b)=>a===player?-1:b===player?1:a.downedTimer-b.downedTimer);
+    for(const helper of responders){
+      const patient=this.sim.players.get(helper.medicTarget),probe=helper.medicProbe;
+      if(!patient?.downed||!probe||this.time<probe.at+2.5)continue;
+      if(distance(helper,probe)<.85&&Math.abs(helper.y-probe.y)<.3&&!this.medicCanTreat(helper,patient)){
+        helper.medicBlockedPatient=patient.id;helper.medicBlockedUntil=this.time+4;
+        this.resetTreatmentPath(helper);
       }
-      const range=this.order==='revive'?60:MEDIC_RANGE;
-      const available=medics.filter(p=>distance(p,player)<range&&this.time>=(p.medicBlockedUntil??0));
-      const score=p=>distance(p,player)+Math.abs(p.y-player.y)*3-(this.medicCanTreat(p,player)?50:0)-(p===previous?7:0);
-      lead=available.sort((a,b)=>score(a)-score(b))[0]??null;
-      if(!lead)lead=allies.filter(p=>p!==player&&p.squadMember&&!p.downed&&!p.vehicleId&&
-        distance(p,player)<30&&this.time>=(p.medicBlockedUntil??0)).sort((a,b)=>score(a)-score(b))[0]??null;
+      helper.medicProbe={...eye(helper,0),at:this.time};
     }
-    this.playerMedic=lead;
-    if(previous&&previous!==lead&&player.reviver===previous.id)player.reviver=null;
-    const patients=allies.filter(p=>p!==player&&p.downed&&(!p.rescue||p.downedTimer<=115)&&!(p.reviver===player.id&&this.reviveInProgress(p)));
-    const responders=allies.filter(p=>p===lead||medics.includes(p)||p.medicTarget);
+    const assignments=new Map();this.playerMedic=null;
+    for(const patient of patients){
+      let best=null,bestCost=Infinity;
+      for(const helper of responders){
+        const medical=helper.classId==='medic';
+        const range=this.order==='revive'?(medical?60:42):(medical?MEDIC_RANGE:30);
+        const separation=distance(helper,patient);
+        if(separation>range||assignments.has(helper)||
+          helper.medicBlockedPatient===patient.id&&this.time<(helper.medicBlockedUntil??0))continue;
+        const cost=separation+Math.abs(helper.y-patient.y)*3-(medical?10:0)-
+          (this.medicCanTreat(helper,patient)?42:0)-(helper.medicTarget===patient.id?7:0);
+        if(cost<bestCost){best=helper;bestCost=cost;}
+      }
+      if(best){assignments.set(best,patient);if(patient===player)this.playerMedic=best;}
+    }
     for(const medic of responders){
-      const candidate=medic===lead?player:medic.fieldMedic&&!medic.downed?
-        patients.filter(p=>!assigned.has(p.id)&&distance(p,medic)<(this.order==='revive'?30:13))
-          .sort((a,b)=>distance(a,medic)-distance(b,medic))[0]:null;
+      const candidate=assignments.get(medic);
       if(candidate?.id!==medic.medicTarget){
         const previous=this.sim.players.get(medic.medicTarget);
         if(previous?.reviver===medic.id)previous.reviver=null;
         medic.medicProgress=0;medic.medicTarget=candidate?.id;
         medic.medicProbe={...eye(medic,0),at:this.time};
-        medic.botPath=[];
-        if(medic.ai){
-          medic.ai.pathJob?.return();medic.ai.pathJob=null;medic.ai.pathResult=null;medic.ai.repathAt=0;
-          medic.ai.goal=null;medic.ai.goalUntil=0;
-        }
+        medic.medicAtDoor=false;this.resetTreatmentPath(medic);
       }
       if(!candidate)continue;
-      assigned.add(candidate.id);
       if(!this.medicCanTreat(medic,candidate)){
         if(candidate.reviver===medic.id)candidate.reviver=null;
         medic.medicProgress=0;continue;
@@ -903,7 +922,8 @@ class ColumnDirector{
         if(!p.rescue&&p.rescuedBrigade!==false){p.rescuedBrigade=true;p.relief=false;p.squadMember=true;}
         if(p.rescuedBrigade&&p.alive&&!p.downed&&p.weaponSlot===2&&(p.stowedAmmo.ammo||p.stowedAmmo.reserve))sim.equipWeapon(p,1);
       }
-      p.medicTarget=null;p.medicProgress=0;p.medicProbe=null;p.medicBlockedUntil=0;p.reviver=null;
+      p.medicTarget=null;p.medicProgress=0;p.medicProbe=null;p.medicBlockedUntil=0;
+      p.medicBlockedPatient=null;p.medicApproach=null;p.medicAtDoor=false;p.reviver=null;
     }
     for(const key of ['grenades','rockets','bullets','deployables'])sim[key]=structuredClone(save[key]);
     sim.time=save.time;sim.rngState=save.rngState;sim.events=[];sim.eventId=0;sim.botTeams=null;sim.botTeamAt=0;
@@ -944,7 +964,7 @@ class ColumnDirector{
       alert:this.alert(),inside:Boolean(this.inside(p)),time:this.time,checkpoint:this.checkpoint,epoch:this.epoch,
       failed:this.failed,complete:this.complete,flags:{...this.flags},radio:this.radio,radioRemaining:Math.max(0,this.radioEnd-this.time),
       doorStates:this.packedPanels,doorRevision:this.doorRevision,roomStatus,smoke:this.smoke,prompt:this.prompt,progress:this.progress,
-      choices:this.choices?[this.choices[0],this.choices[2]]:null,order:this.order,charges:[...this.charges],
+      choices:this.choices?.filter((_,index)=>index%2===0)??null,order:this.order,charges:[...this.charges],
       skipHold:this.skipHold,smokeGrenades:p.smokeGrenades??0,syringes:p.syringes,medkits:p.medkits,limp:this.limp,
       fuseRemaining:this.fuseAt!==null&&!this.flags.breached?Math.max(0,this.fuseAt-this.time):null,
       wave:this.defenceWave,waveRemaining:this.nextWaveAt==null?null:Math.max(0,this.nextWaveAt-this.time),
