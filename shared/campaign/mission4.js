@@ -3,9 +3,10 @@ import {ensureBotState} from '../bot-ai.js';
 import {moveBot,resetNavigation} from '../bot-navigation.js';
 import {activateGadget} from '../gadgets.js';
 import {aimBullet} from '../ballistics.js';
+import {shotRandom} from '../fire-control.js';
 import {BLACK_HAWK,BLACK_HAWK_GUN,VEHICLE_TYPES,blackHawkGunPose,vehiclePartPose,getVehicleSeatPose} from '../vehicles.js';
 import {WEAPONS,getSidearm} from '../world.js';
-import {NAHAR,NAHAR_AIR_POSTS,NAHAR_GATES,NAHAR_LANDING,NAHAR_SITES as sites} from './nahar.js';
+import {NAHAR,NAHAR_AIR_POSTS,NAHAR_GATES,NAHAR_LANDING,NAHAR_RAIL_CROSSINGS,NAHAR_SITES as sites} from './nahar.js';
 import {aimAt,departingPose,flightPath,LANDING_SECONDS,landingPose,orbitPose,targetInArc} from './mission4-flight.js';
 import {dropCampaignMedkit,reviveDuration} from './medical.js';
 
@@ -39,6 +40,7 @@ const RADIO_CUES={
 };
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const close=(a,b,r=3)=>dist(a,b)<r&&Math.abs(a.y-(b.y??0))<1.55;
+const angleDiff=(to,from)=>Math.atan2(Math.sin(to-from),Math.cos(to-from));
 const eye=(p,h=1.45)=>({x:p.x,y:p.y+h,z:p.z});
 const fixed=(p,yaw=p.yaw,pitch=0)=>sanitizeInput({yaw,pitch});
 const emptyInput=p=>sanitizeInput({yaw:p.yaw,pitch:p.pitch});
@@ -77,6 +79,10 @@ export class Mission4Simulation extends Simulation{
   damage(p,amount,attacker,meta={}){
     const c=this.campaign;
     if(!p?.alive||p.campaignHidden||c.complete||c.stage==='finale'||attacker?.team===p.team&&attacker!==p)return;
+    if(attacker?.role==='escort-gunner'){
+      if(p.airRole!=='rifle')return;
+      amount*=.12;
+    }
     if(p.vehicleId&&(p.airCrew&&p.id!=='local'||p.id==='local'&&c.stage==='transfer'))return;
     if(p.id==='local'&&p.vehicleId===MAIN&&c.aircraft?.hp>0)amount*=meta.explosive?.32:.62;
     if(p.id==='dispatcher'&&p.wounded&&c.stage==='station'&&this.time<p.invulnerableUntil)return;
@@ -93,6 +99,15 @@ export class Mission4Simulation extends Simulation{
       }
     }
     super.damage(p,amount,attacker,meta);
+  }
+  launchBullet(p,weapon,origin,yaw,pitch,vehicle,trace){
+    if(p.role==='escort-gunner'&&vehicle?.id===WING){
+      const random=shotRandom(p.id,vehicle.gunSeq,'escort-cover');
+      const direction=random()*Math.PI*2,radius=Math.sqrt(random());
+      yaw+=Math.cos(direction)*radius*.067;
+      pitch+=Math.sin(direction)*radius*.043;
+    }
+    super.launchBullet(p,weapon,origin,yaw,pitch,vehicle,trace);
   }
   damageVehicle(v,amount,attacker,kind,origin,sourceVehicleId){
     const c=this.campaign;
@@ -164,8 +179,8 @@ class NaharDirector{
     const chosen=WEAPONS[this.options.loadout?.primary];
     const weapon=chosen&&!chosen.sidearm?chosen:WEAPONS.ar416;
     const sidearm=getSidearm(this.options.loadout?.sidearm);
-    const p=this.add('local','Ян Мартен',0,weapon.classId,weapon.id,null,'marten',false,sidearm.id);
-    p.medkits=2;
+    const p=this.add('local','Ян Мартен',0,'assault','ar416',null,'marten',false,sidearm.id);
+    Object.assign(p,{primaryWeaponId:weapon.id,weaponId:weapon.id,ammo:weapon.mag,reserve:weapon.reserve,medkits:2});
     this.addAircraft(MAIN);
     const pilot=this.add('pilot','Лида Соколова',0,'assault','ar416',null,'pilot');
     const gunner=this.add('gunner','Бортстрелок Грач',0,'support','mg36',null,'gunner');
@@ -202,6 +217,10 @@ class NaharDirector{
     if(helicopter&&!this.sim.players.has('escort-pilot')){
       const pilot=this.add('escort-pilot','Пилот второго борта',0,'assault','ar416',null,'escort');
       pilot.airCrew=true;this.seat(pilot,helicopter,0);
+    }
+    if(helicopter&&!helicopter.seats[LEFT]&&!this.sim.players.has('escort-gunner')){
+      const gunner=this.add('escort-gunner','Бортстрелок второго «Ястреба»',0,'support','mg36',null,'escort-gunner');
+      gunner.airCrew=true;this.seat(gunner,helicopter,LEFT);
     }
     for(const {id,name,classId,weapon,seat} of ESCORT_INFANTRY){
       if(this.sim.players.has(id))continue;
@@ -567,6 +586,47 @@ class NaharDirector{
     }
     return true;
   }
+  aimDoorGunner(p,vehicle,dt){
+    const escort=vehicle.id===WING;
+    if(!this.airDanger&&!(escort&&this.stage==='transfer'))return fixed(p,vehicle.yaw+BLACK_HAWK_GUN.restYaw);
+    const now=this.time;
+    const isTarget=actor=>actor?.alive&&!actor.campaignHidden&&actor.airRole==='rifle'&&(escort||actor.portTarget)&&
+      targetInArc(this.sim,vehicle,LEFT,actor);
+    let target=this.sim.players.get(p.doorTarget);
+    if(!isTarget(target)){
+      if(p.doorTarget){
+        p.doorTarget=null;p.doorBurstUntil=0;
+        p.doorNextBurst=now+.24+this.sim.random()*.27;
+      }
+      target=null;
+      if(now>=(p.doorScanAt??0)){
+        p.doorScanAt=now+.20;
+        let closest=Infinity;
+        for(const actor of this.sim.players.values()){
+          const range=dist(vehicle,actor);
+          if(range<closest&&isTarget(actor)){target=actor;closest=range;}
+        }
+        if(target){p.doorTarget=target.id;p.doorAimAt=now+.20+this.sim.random()*.24;}
+      }
+    }
+    const {yaw:currentYaw,pitch:currentPitch}=p.input;
+    let wanted={yaw:vehicle.yaw+BLACK_HAWK_GUN.restYaw,pitch:0};
+    if(target){
+      const fromSeat=aimAt(getVehicleSeatPose(vehicle,LEFT),eye(target,1.08));
+      const {muzzle}=blackHawkGunPose(vehicle,fromSeat.yaw,fromSeat.pitch);
+      wanted=aimBullet(muzzle,target,1.08,BLACK_HAWK_GUN.projectileSpeed);
+    }
+    const yawDelta=angleDiff(wanted.yaw,currentYaw),pitchDelta=wanted.pitch-currentPitch;
+    const turn=(delta,limit)=>Math.max(-limit,Math.min(limit,delta));
+    const yaw=currentYaw+turn(yawDelta,dt*3.1),pitch=currentPitch+turn(pitchDelta,dt*2.45);
+    const wantsShot=target&&Math.abs(yawDelta)<.12&&Math.abs(pitchDelta)<.10&&!vehicle.overheated;
+    if(wantsShot&&!p.doorBurstUntil&&now>=Math.max(p.doorAimAt??0,p.doorNextBurst??0)){
+      p.doorBurstUntil=now+1.25+this.sim.random()*1.40;
+      p.doorNextBurst=p.doorBurstUntil+.46+this.sim.random()*.73;
+    }
+    if(now>=(p.doorBurstUntil??0))p.doorBurstUntil=0;
+    return sanitizeInput({yaw,pitch,aim:Boolean(target),fire:Boolean(wantsShot&&p.doorBurstUntil)});
+  }
   think(p,dt){
     const craft=this.aircraft;
     if(p.campaignHidden||p.wounded||p.downed||this.stage==='finale'){p.input=fixed(p);return true;}
@@ -593,18 +653,11 @@ class NaharDirector{
     }
     if(p.vehicleId){
       const v=this.sim.vehicles.find(v=>v.id===p.vehicleId),seat=VEHICLE_TYPES[BLACK_HAWK].seats[p.vehicleSeat];
-      const gunner=p.vehicleSeat===LEFT;
-      const target=this.airDanger&&(p.role==='wing'||p.role==='gunner')?this.airTargets().find(a=>
-        a.airRole==='rifle'&&Boolean(a.portTarget)===gunner&&targetInArc(this.sim,v,p.vehicleSeat,a)):null;
-      let aim={yaw:v.yaw+(seat.facing??0),pitch:0};
-      if(target){
-        aim=aimAt(getVehicleSeatPose(v,p.vehicleSeat),eye(target,1.08));
-        if(gunner){
-          const {muzzle}=blackHawkGunPose(v,aim.yaw,aim.pitch);
-          aim=aimBullet(muzzle,target,1.08,BLACK_HAWK_GUN.projectileSpeed);
-        }
-      }
-      const burst=gunner?(this.time+.8)%2.7<.58:this.time%3.6<.45;
+      if(p.vehicleSeat===LEFT&&(p.role==='gunner'||p.role==='escort-gunner')){p.input=this.aimDoorGunner(p,v,dt);return true;}
+      const target=this.airDanger&&p.role==='wing'?this.airTargets().find(a=>
+        a.airRole==='rifle'&&!a.portTarget&&targetInArc(this.sim,v,p.vehicleSeat,a)):null;
+      const aim=target?aimAt(getVehicleSeatPose(v,p.vehicleSeat),eye(target,1.08)):{yaw:v.yaw+(seat.facing??0),pitch:0};
+      const burst=this.time%3.6<.45;
       p.input=sanitizeInput({...aim,aim:Boolean(target),fire:Boolean(target)&&burst});return true;
     }
     if(p===this.dispatcher&&p.rescued){
@@ -629,6 +682,15 @@ class NaharDirector{
     const player=this.player,offset=p.botSlot%3;
     if(this.stage==='tunnel'&&this.gates.tunnel)return sites.exit;
     if(this.order==='hold'&&p!==this.dispatcher)return p.holdAt??p;
+    if((this.stage==='depot'||this.stage==='station')&&p.x>-55&&p.x<51&&player.x>-55&&player.x<51){
+      const crossZ=player.z>=11&&p.z<10.9?11.7:player.z<=-8&&p.z>-7.7?-9.8:null;
+      if(crossZ!==null){
+        const cost=x=>Math.hypot(x-p.x,crossZ-p.z)+Math.hypot(x-player.x,crossZ-player.z)*.7;
+        const [west,east]=NAHAR_RAIL_CROSSINGS;
+        const x=cost(west)<=cost(east)?west:east;
+        return {x,y:this.sim.groundAt(x,crossZ),z:crossZ};
+      }
+    }
     if(Math.abs(p.y-player.y)>1.1)return player;
     const goal={x:player.x+Math.cos(offset*2.4)*3,z:player.z+Math.sin(offset*2.4)*3,y:player.y};
     return this.sim.collides(goal.x,goal.z,goal.y+.03)?player:goal;
@@ -810,6 +872,7 @@ class NaharDirector{
     }
     if(this.aircraft&&this.departAt!=null&&this.time-this.departAt>=DEPARTURE_DURATION){
       this.sim.removePlayer('pilot');this.sim.removePlayer('escort-pilot');
+      this.sim.removePlayer('escort-gunner');
       this.sim.vehicles=this.sim.vehicles.filter(v=>v.id!==MAIN&&v.id!==WING);
     }
     for(const p of this.airTargets())if(p.airRole==='pt'&&p.lastHurt>this.time-.04){
@@ -887,6 +950,9 @@ class NaharDirector{
     for(const actor of save.players){
       const p=sim.addPlayer(actor.id,actor.name,actor.team,actor.classId,actor.primaryWeaponId,actor.sidearmId,actor.bot);
       Object.assign(p,structuredClone(actor),{ai:null,damagers:new Map(),botPath:[],reviver:null,reviveProgress:0});
+      if(p.id==='local'&&p.classId!=='assault')Object.assign(p,{classId:'assault',rockets:Math.max(2,p.rockets??0),
+        heldGadget:null,pendingGadget:null,gadgetAction:null,gadgetTime:0,gadgetActionUntil:0,secondaryCooldown:0});
+      if(p.airPost==='siding'&&Math.abs(p.z)<5)p.z+=NAHAR_AIR_POSTS.siding.z;
     }
     for(const key of ['grenades','rockets','bullets','deployables'])sim[key]=structuredClone(save[key]);
     sim.time=save.time;sim.rngState=save.rngState;sim.events=[];sim.eventId=0;sim.botTeams=null;sim.botTeamAt=0;

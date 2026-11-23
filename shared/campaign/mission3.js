@@ -157,7 +157,7 @@ class ColumnDirector{
     const sidearm=getSidearm(this.options.loadout?.sidearm);
     Object.assign(p,{primaryWeaponId:primary.id,weaponId:primary.id,ammo:primary.mag,reserve:primary.reserve,
       sidearmId:sidearm.id,stowedAmmo:{ammo:sidearm.mag,reserve:sidearm.reserve},
-      medkits:2,syringes:2,rockets:0,squadMember:false});
+      medkits:2,syringes:2,squadMember:false});
     const count=Math.max(7,Math.min(9,Math.floor(this.carry.tanks_alive??8)));
     for(let n=0;n<count;n++){
       const v=sim.createMapVehicle({id:n===3?'sokol-7':`m03-tank-${n+1}`,type:'tank',team:0,...m03ConvoyPose(this.definition,n,0)});

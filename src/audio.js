@@ -27,6 +27,7 @@ const WEAPONS = {
 };
 const CLASS_SHOTS = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
 const recording=(url,fallback)=>({url,fallback});
+const M02_TANK_RECORDINGS=['tank-idle','tank-drive','tank-tracks','tank-cannon-ap','tank-cannon-he'];
 const campaignRecording=(mission,name)=>{
   const path=`${import.meta.env.BASE_URL}campaign/${mission}/sfx/${name}`;
   const revision=campaignCatalog.missions.find(row=>row.id===mission)?.contentRevision??1;
@@ -565,11 +566,17 @@ export class CombatAudio {
     const {distance,pan}=this._position(event,local);
     if(distance>680)return;
     const own=Boolean(local&&event.playerId===local.id);
-    const gain=own?.96:.90/(1+distance*.009);
-    const time=this.ctx.currentTime+(own?0:Math.min(.33,distance/343));
-    this._sample(event.shellType==='he'?'abrams-he':'abrams-ap',gain,{
-      time,pan:own?0:pan,cutoff:distance<25?0:Math.max(1750,16000/(1+distance*.012)),send:own?.035:.08,priority:2,
+    const gain=own?1.05:.87/(1+distance*.009);
+    const time=this.ctx.currentTime+(own?0:Math.min(.42,distance/343));
+    const sector=pan<-.33?0:pan>.33?2:1;
+    const reports=this._tankReports??=[-Infinity,-Infinity,-Infinity];
+    // Several tank reports arriving together in one direction read as one volley.
+    if(!own&&Math.abs(time-reports[sector])<.17)return;
+    const played=this._sample(event.shellType==='he'?'tank-cannon-he':'tank-cannon-ap',gain,{
+      time,pan:own?0:pan,cutoff:distance<25?0:Math.max(1450,14000/(1+distance*.015)),
+      bus:own?'localWeapon':'effects',priority:own?3:2,
     });
+    if(played){if(own)this._ownTankReportAt=time;else reports[sector]=time;}
   }
   _queueReload(event,state,profile,duration,kind='handheld'){
     const id=kind==='cannon'?event.vehicleId:event.playerId;
@@ -957,6 +964,51 @@ export class CombatAudio {
       }
     }));
   }
+  _newTankLayer(channel,buffer,cutoff,offset){
+    const ctx=this.ctx,source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();
+    source.buffer=buffer;source.loop=true;filter.type='lowpass';filter.frequency.value=cutoff;
+    gain.gain.value=0;source.connect(filter).connect(gain).connect(channel.pan??this._effects);
+    source.start(0,offset%buffer.duration);
+    return {source,filter,gain};
+  }
+  _mixCampaignTank(channel,vehicle,own,distance,mix,dialogue,now){
+    const drive=this._foley.get('tank-drive'),tracks=this._foley.get('tank-tracks');
+    if(drive&&!channel.drive)channel.drive=this._newTankLayer(channel,drive,6400,now*.67);
+    if(tracks&&!channel.treads)channel.treads=this._newTankLayer(channel,tracks,5100,now*.83);
+    const speed=Math.abs(vehicle.speed),turn=Math.abs(vehicle.steer??0);
+    const dt=clamp(now-(channel.mixedAt??now-.05),.025,.2);
+    const acceleration=clamp((speed-(channel.mixedAt===undefined?speed:channel.speed))/dt,0,3.8);
+    channel.speed=speed;channel.mixedAt=now;
+    const demand=clamp(speed/13*.72+turn*.23+acceleration*.19);
+    channel.driveLoad=(channel.driveLoad??demand)+(demand-(channel.driveLoad??demand))*(1-Math.exp(-dt*7));
+    const gear=clamp(1+Math.floor(speed/4.3),1,3);
+    if(gear!==channel.gear){channel.shiftAt=now;channel.gear=gear;}
+    const change=clamp(1-(now-(channel.shiftAt??-1))/.28);
+    const pedal=channel.driveLoad*(1-.42*change);
+    const shotAge=now-(this._ownTankReportAt??-5);
+    const duck=own?.28+.72*clamp((shotAge-.05)/.48):1;
+    const audible=mix*(dialogue?.73:1)*duck;
+    const engineLevel=audible*(own?.74:.46)/(1+distance*.062);
+    this._target(channel.gain.gain,engineLevel*(1-.66*pedal),.13);
+    this._target(channel.source.playbackRate,.92+.13*pedal,.16);
+    this._target(channel.filter.frequency,(own?3900:5600)/(1+distance*.016),.10);
+    if(channel.drive){
+      this._target(channel.drive.gain.gain,engineLevel*pedal*1.28,.12);
+      this._target(channel.drive.source.playbackRate,.84+speed*.018+pedal*.13-change*.075,.095);
+      this._target(channel.drive.filter.frequency,(own?4700:6500)/(1+distance*.022),.1);
+    }
+    if(channel.treads){
+      const roll=speed+turn*(speed<1.2?3.3:1.9);
+      this._target(channel.treads.gain.gain,audible*(own?.83:.57)*clamp(roll/7)/(1+distance*.049),.10);
+      this._target(channel.treads.source.playbackRate,.65+Math.min(.33,roll*.027),.10);
+      this._target(channel.treads.filter.frequency,(own?5300:6600)/(1+distance*.028),.1);
+    }
+  }
+  _stopEngineChannel(channel){
+    channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();
+    channel.trackSource?.stop();channel.trackSource?.disconnect();channel.trackFilter?.disconnect();channel.trackGain?.disconnect();
+    for(const layer of [channel.drive,channel.treads])if(layer){layer.source.stop();layer.source.disconnect();layer.filter.disconnect();layer.gain.disconnect();}
+  }
   _updateEngine(state,local,silent,engineListener){
     const now=this.ctx.currentTime;
     if(now<this._engineAt&&!silent)return;
@@ -965,7 +1017,7 @@ export class CombatAudio {
     const listener=engineListener??local;
     const dialogue=state?.campaign?.radioRemaining>0;
     const armoredMission=state?.campaign?.missionId==='m02';
-    if(armoredMission)this.prepareVehicleRecordings('m02',['abrams-engine','abrams-tracks','abrams-ap','abrams-he']);
+    if(armoredMission)this.prepareVehicleRecordings('m02',M02_TANK_RECORDINGS);
     if(state?.campaign?.missionId==='m04'||state?.vehicles?.some(vehicle=>vehicle.type===BLACK_HAWK))
       this.prepareVehicleRecordings('m04',['black-hawk-cabin','black-hawk-field','black-hawk-spool']);
     const mix=engineListener?(dialogue?.4:.65):1;
@@ -984,7 +1036,7 @@ export class CombatAudio {
       const inCabin=aircraft&&own;
       const recordedTank=armoredMission&&vehicle.type==='tank';
       const sample=aircraft?this._foley.get(inCabin?'black-hawk-cabin':'black-hawk-field'):
-        recordedTank?this._foley.get('abrams-engine'):buffer;
+        recordedTank?this._foley.get('tank-idle'):buffer;
       if(!sample)continue;
       const channelId=inCabin?`${vehicle.id}:cabin`:vehicle.id;
       active.add(channelId);let channel=this._engineChannels.get(channelId);
@@ -1012,40 +1064,44 @@ export class CombatAudio {
         if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
         continue;
       }
+      if(recordedTank){
+        this._mixCampaignTank(channel,vehicle,own,distance,mix,dialogue,now);
+        if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
+        continue;
+      }
       if(vehicle.type==='tank'&&!channel.trackSource){
-        const track=recordedTank?this._foley.get('abrams-tracks'):this._noiseBuffer('pink');
+        const track=this._noiseBuffer('pink');
         if(track){
           const c=this.ctx,source=c.createBufferSource(),filter=c.createBiquadFilter(),gain=c.createGain();
           source.buffer=track;source.loop=true;gain.gain.value=0;
-          filter.type=recordedTank?'lowpass':'bandpass';filter.frequency.value=recordedTank?10500:1350;filter.Q.value=.65;
+          filter.type='bandpass';filter.frequency.value=1350;filter.Q.value=.65;
           source.connect(filter).connect(gain).connect(channel.pan??this._effects);
-          source.start(0,recordedTank?(now*.61)%track.duration:0);
+          source.start();
           Object.assign(channel,{trackSource:source,trackFilter:filter,trackGain:gain});
         }
       }
       const gear=Math.min(4,1+Math.floor(speed/4.5)),load=(speed-(gear-1)*4.5)/4.5;
       const acceleration=Math.max(0,speed-channel.speed);
-      const rate=recordedTank?.73+Math.min(.42,speed*.038):
-        (vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);
+      const rate=(vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);
       this._target(channel.source.playbackRate,rate,.12);
       this._target(channel.filter.frequency,(own?9500:6500)/(1+distance*.022),.1);
-      const engineGain=recordedTank?(own?.65:.40)*(dialogue?.69:1):own?.30:.18;
+      const engineGain=own?.30:.18;
       this._target(channel.gain.gain,engineGain*mix/(1+distance*.07)*(1+Math.min(1,speed/14)*.55),.12);
       if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
       if(channel.trackGain){
         const treadSpeed=speed+Math.abs(vehicle.steer??0)*2;
-        const treadGain=recordedTank?(own?.69:.45)*(dialogue?.68:1)*(1+Math.min(.3,acceleration*.65)):own?.045:.025;
+        const treadGain=own?.045:.025;
         this._target(channel.trackGain.gain,Math.min(1,treadSpeed/8)*treadGain*mix/(1+distance*.042),.08);
-        this._target(channel.trackSource.playbackRate,recordedTank?.70+Math.min(.47,treadSpeed*.037):.7+Math.min(1.5,speed/9),.1);
-        if(recordedTank)this._target(channel.trackFilter.frequency,(own?14500:9800)/(1+distance*.025),.09);
+        this._target(channel.trackSource.playbackRate,.7+Math.min(1.5,speed/9),.1);
       }
-      if(own&&!recordedTank&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
+      if(own&&gear!==channel.gear&&speed>4)this._mechanic('seat',now,.15,.018);
       channel.speed=speed;channel.gear=gear;
     }
     for(const [id,channel] of this._engineChannels)if(!active.has(id)){
       this._target(channel.gain.gain,0,.1);channel.stopAt??=now+.5;
       if(channel.trackGain)this._target(channel.trackGain.gain,0,.08);
-      if(now>=channel.stopAt){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();channel.trackSource?.stop();channel.trackSource?.disconnect();channel.trackFilter?.disconnect();channel.trackGain?.disconnect();this._engineChannels.delete(id);}
+      for(const layer of [channel.drive,channel.treads])if(layer)this._target(layer.gain.gain,0,.1);
+      if(now>=channel.stopAt){this._stopEngineChannel(channel);this._engineChannels.delete(id);}
     }
   }
   click(){if(!this.ctx||!this._enabled)return;this._tone(860,.035,.065,{end:610});this._noise(.018,.028,{filter:'highpass',cutoff:3800});}
@@ -1068,7 +1124,7 @@ export class CombatAudio {
     for(const voice of [...this._voices,...this._fadingVoices])this._releaseVoice(voice,true);
     this._stopRocketAudio();
     this._shotBuffers.clear();this._foley.clear();this._reloads.clear();
-    for(const channel of this._engineChannels.values()){channel.source.stop();channel.source.disconnect();channel.filter.disconnect();channel.gain.disconnect();channel.pan?.disconnect();channel.trackSource?.stop();channel.trackSource?.disconnect();channel.trackFilter?.disconnect();channel.trackGain?.disconnect();}
+    for(const channel of this._engineChannels.values())this._stopEngineChannel(channel);
     this._engineChannels.clear();this._remoteSteps.clear();this._stepCounts.clear();
     for(const {source,nodes}of this._ambientSources){try{source.stop();source.disconnect();}catch{}for(const node of nodes){try{node.disconnect();}catch{}}}
     this._ambientSources=[];for(const node of this._nodes){try{node.disconnect();}catch{}}this._nodes=[];this._buffers.clear();

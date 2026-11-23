@@ -27,6 +27,15 @@ const terrain=makeTerrain(size,landforms,cell,terrainPads);
 export const NAHAR_LANDING={primary:{x:-35,z:-35},alternate:{x:-111,z:-38}};
 export const NAHAR_WATER={x:0,z:116,w:4096,d:21,y:-3.18};
 export const NAHAR_STORM={x:-50,z:5,innerX:640,innerZ:510,outerX:1080,outerZ:860};
+export const NAHAR_RAIL_CROSSINGS=[-18,19];
+const railHalfWidth=4.4,crossingWidth=7;
+function railZ(x){
+  const t=Math.max(0,Math.min(1,(x+56)/29));
+  return 1.5-20*(1-t*t*(3-2*t));
+}
+function nearRail(x,z,w,d){
+  return z+d/2+2>railZ(x-w/2-2)-railHalfWidth&&z-d/2-2<railZ(x+w/2+2)+railHalfWidth;
+}
 const roadPlan=[
   ['north-avenue',-142,-166,1080,13],['depot-road',-41,-13,210,7],
   ['station-road',5,64,206,8],['canal-road',91,153,740,8],['bridge-road',104,78,8,82],
@@ -149,7 +158,7 @@ const airPosts={};
 for(const [id,x,z,w,d,h,seed,tank] of [
   ['blue',-347,-113,24,23,12.8,2,true],['line',-255,-111,23,21,16.0,3,false],
   ['arcade',-162,-97,26,22,15.6,4,false],['corner',-68,-91,25,22,14.8,7,false],
-  ['balcony',38,-81,28,20,18.3,6,false],['siding',67,0,19,14,10.6,8,false],
+  ['balcony',38,-81,28,20,18.3,6,false],['siding',67,-25,19,14,10.6,8,false],
   ['signal',-70,2,21,17,10.2,15,false],['foundry',-44,47,25,21,12.0,5,false],
 ])airPosts[id]={x,y:block(id,x,z,w,d,h,seed,{tank}),z};
 airPosts.station={x:33,y:10.07,z:33};
@@ -167,7 +176,7 @@ for(let row=-8;row<=8;row++)for(let col=-11;col<=11;col++){
   for(let n=0;n<2;n++){
     const x=col*77+n*27-10+(seed%13-6),z=row*81+(n?9:-16)+(seed%17-8);
     const w=18+(seed+n*9)%15,d=17+(seed+n*5)%13;
-    if(reserved.some(b=>Math.abs(x-b.x)<(w+b.w)/2+4&&Math.abs(z-b.z)<(d+b.d)/2+4))continue;
+    if(nearRail(x,z,w,d)||reserved.some(b=>Math.abs(x-b.x)<(w+b.w)/2+4&&Math.abs(z-b.z)<(d+b.d)/2+4))continue;
     const near=Math.abs(x)<447&&Math.abs(z)<280,detailed=near||x>-770&&x<235&&z>-345&&z<40;
     const height=6+(seed+n*11)%(near?19:23)+(near?0:seed%9===0?26:0);
     block(`building-${row}-${col}-${n}`,x,z,w,d,height,seed+n,{near,detailed});
@@ -235,8 +244,7 @@ for(const [id,x,z,w,d] of [['shed-west',-104,23,30,19],['shed-east',-68,25,25,17
   for(const dz of [-5,5])part(id+'-workbench-'+dz,x-4,z+dz,6.5,1.12,.91,0,'#796747');
 }
 function railPoint(x,offset){
-  const t=Math.max(0,Math.min(1,(x+56)/29));
-  const z=offset-20*(1-t*t*(3-2*t));
+  const z=railZ(x)+(offset-1.5);
   return [x,terrain.heightAt(x,z),z];
 }
 function railStrip(id,a,b,width,height,color,surface){
@@ -246,7 +254,7 @@ function railStrip(id,a,b,width,height,color,surface){
 }
 for(let x=-2048;x<2048;){
   const next=Math.min(2048,x+((x>=-64&&x<-24)?4:16));
-  railStrip('ballast-'+x,railPoint(x,1.5),railPoint(next,1.5),8.8,.094,'#8f806c','village-sand');
+  railStrip('ballast-'+x,railPoint(x,1.5),railPoint(next,1.5),railHalfWidth*2,.094,'#8f806c','village-sand');
   for(const offset of [-1.68,-.32,3.32,4.68]){
     const a=railPoint(x,offset),b=railPoint(next,offset);
     a[1]+=.091;b[1]+=.091;
@@ -261,9 +269,20 @@ for(const z of [-1,4]){
   }
 }
 for(const [index,z] of [[0,-6],[1,9]]){
-  part('platform-'+index,14,z,88,3.15,.26,0,'#b0a18a',{kind:'village-floor'});
+  let from=-30;
+  for(const [section,to] of [...NAHAR_RAIL_CROSSINGS,58+crossingWidth/2].entries()){
+    const end=to-crossingWidth/2;
+    part(`platform-${index}-${section}`,(from+end)/2,z,end-from,3.15,.26,0,'#b0a18a',{kind:'village-floor'});
+    from=to+crossingWidth/2;
+  }
   part('platform-roof-'+index,12,z,62,3.9,.16,4.1,'#615f55',iron);
-  for(const x of [-18,-3,12,27,42])part(`platform-column-${index}-${x}`,x,z,.18,.18,4.1,.14,beam,iron);
+  for(const x of [-23,-3,12,27,42])part(`platform-column-${index}-${x}`,x,z,.18,.18,4.1,.14,beam,iron);
+}
+for(const x of NAHAR_RAIL_CROSSINGS){
+  paving(`rail-crossing-approach-${x}`,x,1.5,crossingWidth,25,'#bfa587','village-sand',2);
+  for(const [i,[z,depth]] of [[-2.76,2.08],[-1,1.24],[1.5,3.52],[4,1.24],[5.77,2.08]].entries())
+    part(`rail-crossing-deck-${x}-${i}`,x,z,crossingWidth,depth,.14,.035,'#7d6f59',{surface:'wood',noCollision:true});
+  for(let z=-11;z<=12;z++)navigationNodes.push({x,y:terrain.heightAt(x,z),z});
 }
 part('platform-bridge-deck',-1,1.5,3.35,19.7,.4,5.34,'#777469',iron);
 for(const dx of [-1.6,1.6]){
@@ -485,7 +504,7 @@ for(const [row,z] of [-149,-126,-74,-12,42,72,88,154,198,226].entries()){
     const x=column*43+(row%2)*20+seed%9-4;
     const width=11+seed%7,depth=9+(seed>>2)%6;
     const overlaps=(part,margin)=>Math.abs(x-part.x)<(width+part.w)/2+margin&&Math.abs(z-part.z)<(depth+part.d)/2+margin;
-    if(sightlines.some(b=>overlaps(b,4))||roads.some(b=>overlaps(b,2))||
+    if(nearRail(x,z,width,depth)||sightlines.some(b=>overlaps(b,4))||roads.some(b=>overlaps(b,2))||
       boxes.some(b=>b.h>.35&&!b.noCollision&&overlaps(b,3))||structures.some(b=>overlaps(b,2)))continue;
     const near=Math.abs(x)<355,detailed=near||z<75&&x>-535&&x<335;
     block(`side-street-${row}-${column}`,x,z,width,depth,4.8+seed%5,seed,{near,detailed,tint:masonry[(seed>>2)%masonry.length]});
