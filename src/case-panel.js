@@ -1,4 +1,4 @@
-import {CASE_NAME,CASE_RARITIES,CASE_REWARDS,caseReward,campaignCaseReward} from '../shared/cases.js';
+import {CASE_NAME,CASE_RARITIES,CASE_REWARDS,RELEASE_CASE_VERSION,caseReward,campaignCaseReward} from '../shared/cases.js';
 import {WEAPONS} from '../shared/world.js';
 import {requestCases} from './network.js';
 import {mountWeaponPreview} from './weapon-preview.js';
@@ -218,7 +218,7 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
           try{caseLoadout=JSON.parse(localStorage.getItem(loadoutKey(connection)));}catch{}
           if(caseLoadout){renderCatalogue();readyEvents.dispatchEvent(new Event('change'));}
         }
-        const {inventory}=await requestCases(connection.url,connection.token,'case-list',{welcomeCase:true});
+        const {inventory}=await requestCases(connection.url,connection.token,'case-list',{welcomeCase:true,releaseCase:RELEASE_CASE_VERSION});
         if(version!==epoch)return;
         if(apply(inventory,version))remember(connection);
         await syncCampaign(connection,version);

@@ -5,7 +5,8 @@ import {CASE_RARITIES, caseReward, campaignCaseReward} from '../shared/cases.js'
 
 const guestPattern=/^[a-f0-9]{64}$/;
 const welcomeCaseId='welcome-035';
-const casePattern=/^(?:[A-Za-z0-9_-]{32}|m0[1-3]-[12]|welcome-035)$/;
+const releaseCaseId='release-036';
+const casePattern=/^(?:[A-Za-z0-9_-]{32}|m0[1-3]-[12]|welcome-035|release-036)$/;
 
 export function caseOwner(uid,guestKey){
   if(!uid&&(typeof guestKey!=='string'||!guestPattern.test(guestKey)))return null;
@@ -95,6 +96,16 @@ export function createCaseInventory(db,env){
   const store=db?cloudStore(db):fileStore(env.CASE_INVENTORY_FILE??'data/case-inventory.json');
   const pending=new Map();
   let flushing;
+  async function grantLoginCases(owner,grants){
+    const createdAt=Date.now();
+    return store.change(owner,current=>{
+      const missing=grants.filter(([id])=>!current?.cases?.[id]);
+      if(!missing.length)return;
+      const cases={...current?.cases};
+      for(const [id,source] of missing)cases[id]={createdAt,source};
+      return {...current,cases,revision:(current?.revision??0)+1};
+    });
+  }
   function awardRound(roundId,owners,chance,round,notify){
     const createdAt=Date.now();
     for(const owner of owners){
@@ -121,16 +132,21 @@ export function createCaseInventory(db,env){
   }
   return {
     awardRound,flush,
-    async list(owner,welcome=false){
+    async list(owner,{welcome=false,release=false}={}){
       const current=await store.get(owner);
-      if(!welcome||current?.cases?.[welcomeCaseId])return view(current);
-      const createdAt=Date.now();
-      const saved=await store.change(owner,inventory=>{
-        if(inventory?.cases?.[welcomeCaseId])return;
-        return {...inventory,revision:(inventory?.revision??0)+1,
-          cases:{...inventory?.cases,[welcomeCaseId]:{createdAt,source:'welcome'}}};
-      });
-      return view(saved);
+      const welcomeDue=welcome&&!current?.cases?.[welcomeCaseId];
+      const releaseDue=release&&!current?.cases?.[releaseCaseId];
+      if(!welcomeDue&&!releaseDue)return view(current);
+      const grants=welcomeDue?[[welcomeCaseId,'welcome']]:[];
+      try{
+        return view(await grantLoginCases(owner,releaseDue?[...grants,[releaseCaseId,'release']]:grants));
+      }catch(error){
+        const denied=String(error?.code).toUpperCase().replaceAll('-','_')==='PERMISSION_DENIED';
+        if(!releaseDue||!denied)throw error;
+        // An older RTDB ruleset can reject the new patch gift. Keep the
+        // original welcome case and inventory available during deployment.
+        return view(welcomeDue?await grantLoginCases(owner,grants):await store.get(owner));
+      }
     },
     async equip(owner,weaponId,rewardId){
       const reward=caseReward(rewardId);

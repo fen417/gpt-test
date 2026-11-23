@@ -76,7 +76,7 @@
           ".read": "auth != null && auth.uid === 'sector09-pvp-writer'",
           ".write": "auth != null && auth.uid === 'sector09-pvp-writer' && !$uid.matches(/^case-(account|guest)-[a-f0-9]{64}$/)",
           "caseInventory": {
-            ".write": "auth != null && auth.uid === 'sector09-pvp-writer' && $uid.matches(/^case-(account|guest)-[a-f0-9]{64}$/) && newData.exists() && ((!data.exists() && newData.child('revision').val() === 1) || (data.exists() && newData.child('revision').val() === data.child('revision').val() + 1)) && (!data.child('cases/welcome-035').exists() || newData.child('cases/welcome-035').exists())",
+            ".write": "auth != null && auth.uid === 'sector09-pvp-writer' && $uid.matches(/^case-(account|guest)-[a-f0-9]{64}$/) && newData.exists() && ((!data.exists() && newData.child('revision').val() === 1) || (data.exists() && newData.child('revision').val() === data.child('revision').val() + 1)) && (!data.child('cases/welcome-035').exists() || newData.child('cases/welcome-035').exists()) && (!data.child('cases/release-036').exists() || newData.child('cases/release-036').exists())",
             ".validate": "newData.hasChildren(['revision', 'cases']) && (!data.child('campaign/m01').exists() || newData.child('campaign/m01').val() >= data.child('campaign/m01').val()) && (!data.child('campaign/m02').exists() || newData.child('campaign/m02').val() >= data.child('campaign/m02').val()) && (!data.child('campaign/m03').exists() || newData.child('campaign/m03').val() >= data.child('campaign/m03').val()) && newData.child('campaign/m01').exists() === newData.child('cases/m01-1').exists() && (newData.child('campaign/m01').val() === 2) === newData.child('cases/m01-2').exists() && newData.child('campaign/m02').exists() === newData.child('cases/m02-1').exists() && (newData.child('campaign/m02').val() === 2) === newData.child('cases/m02-2').exists() && newData.child('campaign/m03').exists() === newData.child('cases/m03-1').exists() && (newData.child('campaign/m03').val() === 2) === newData.child('cases/m03-2').exists()",
             "revision": {
               ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() % 1 === 0"
@@ -86,7 +86,7 @@
               "$case": {
                 ".validate": "newData.hasChildren(['createdAt', 'source']) && newData.child('rewardId').exists() === newData.child('openedAt').exists() && ((!data.exists() && !newData.child('rewardId').exists() && (newData.child('source').val() !== 'match' || newData.child('round').exists())) || (data.exists() && newData.child('source').val() === data.child('source').val() && newData.child('createdAt').val() === data.child('createdAt').val() && (!data.child('rewardId').exists() || (newData.child('rewardId').val() === data.child('rewardId').val() && newData.child('openedAt').val() === data.child('openedAt').val())) && newData.child('round/mode').val() === data.child('round/mode').val() && newData.child('round/killLimit').val() === data.child('round/killLimit').val() && newData.child('round/humanPlayers').val() === data.child('round/humanPlayers').val()))",
                 "source": {
-                  ".validate": "($case === 'welcome-035' && newData.val() === 'welcome') || ($case.matches(/^m0[1-3]-[12]$/) && newData.val() === 'campaign') || ($case.matches(/^[A-Za-z0-9_-]{32}$/) && newData.val() === 'match')"
+                  ".validate": "($case === 'welcome-035' && newData.val() === 'welcome') || ($case === 'release-036' && newData.val() === 'release') || ($case.matches(/^m0[1-3]-[12]$/) && newData.val() === 'campaign') || ($case.matches(/^[A-Za-z0-9_-]{32}$/) && newData.val() === 'match')"
                 },
                 "createdAt": {
                   ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() % 1 === 0 && newData.val() <= now + 60000"
@@ -116,7 +116,7 @@
             "skinCases": {
               ".validate": "newData.hasChildren()",
               "$reward": {
-                ".validate": "$reward.matches(/^(common-[1-3]|uncommon-[1-3]|rare-[1-3]|legendary-[12]|ultra-1)$/) && newData.isString() && newData.val().matches(/^(welcome-035|m0[1-3]-[12]|[A-Za-z0-9_-]{32})$/) && newData.parent().parent().child('cases').child(newData.val()).child('rewardId').val() === $reward"
+                ".validate": "$reward.matches(/^(common-[1-3]|uncommon-[1-3]|rare-[1-3]|legendary-[12]|ultra-1)$/) && newData.isString() && newData.val().matches(/^(welcome-035|release-036|m0[1-3]-[12]|[A-Za-z0-9_-]{32})$/) && newData.parent().parent().child('cases').child(newData.val()).child('rewardId').val() === $reward"
               }
             },
             "equipped": {

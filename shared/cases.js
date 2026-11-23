@@ -1,4 +1,5 @@
 export const CASE_NAME = 'Полевой резерв';
+export const RELEASE_CASE_VERSION = '0.36';
 export const MATCH_CASE_CHANCE = 14;
 export const TDM_CASE_CHANCE = 5;
 export const TDM_CASE_MIN_KILLS = 50;

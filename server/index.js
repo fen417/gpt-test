@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import {canReadMetrics} from './metrics-access.js';
 import {createProfileStats} from './profile-stats.js';
 import {caseOwner,createCaseInventory} from './case-inventory.js';
-import {matchCaseChance} from '../shared/cases.js';
+import {matchCaseChance,RELEASE_CASE_VERSION} from '../shared/cases.js';
 import {GAME_VERSION} from '../shared/releases.js';
 import {canSeeReconMark,RECON_MARK_LIFETIME} from '../shared/recon-optics.js';
 import {networkWeaponXpCap} from './weapon-progress.js';
@@ -47,7 +47,7 @@ export function createGameServer(options={}){
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
   const server=http.createServer((req,res)=>{
-    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,version:GAME_VERSION,protocol:PROTOCOL_VERSION,caseInventory:true,caseStorage:profiles?.caseDatabase?'rtdb':'file',weaponSkins:true,reconMarks:true,room:room?.phase??'empty'}));return;}
+    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,version:GAME_VERSION,protocol:PROTOCOL_VERSION,caseInventory:true,caseStorage:profiles?.caseDatabase?'rtdb':'file',releaseCase:RELEASE_CASE_VERSION,weaponSkins:true,reconMarks:true,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
       if(!canReadMetrics(req,env)){res.writeHead(403);res.end('Forbidden');return;}
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(stats()));return;
@@ -103,7 +103,7 @@ export function createGameServer(options={}){
           inventory=await cases.equip(owner,data.weaponId,data.rewardId);
           const player=[...sessions.values()].find(s=>s.caseOwner===owner);
           if(player)updateSkinLoadout(player,inventory);
-        }else inventory=await cases.list(owner,data.welcomeCase===true);
+        }else inventory=await cases.list(owner,{welcome:data.welcomeCase===true,release:data.releaseCase===RELEASE_CASE_VERSION});
         send(c,{type:data.type,requestId:data.requestId,inventory});
       }
     }finally{c.casePending=false;}
