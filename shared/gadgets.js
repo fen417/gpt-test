@@ -217,13 +217,14 @@ export function blast(sim,origin,owner,kind='grenade',directVehicle=null,team=ow
     if(!player.alive||(player.team===team&&player.id!==owner?.id))continue;
     const d=Math.hypot(distance(origin,player),origin.y-player.y-.8);
     const vehicle=sim.vehicles.find(v=>v.id===player.vehicleId);
-    const enclosed=vehicle?.type==='humvee'&&player.vehicleSeat!==1;
+    const protection=vehicle?.type==='black-hawk'?(player.vehicleSeat<2?.36:.55):
+      vehicle?.type==='humvee'&&player.vehicleSeat!==1?.28:1;
     if(d<radius&&sim.lineClear(origin,center(player,.8))){
       const before=player.hp,roomBoost=room&&sim.campaign.inside(player)===room?1.15:1;
       const damage=shellProfile?.infantryDamage
         ?d<3?shellProfile.infantryDamage:Math.max(100,shellProfile.infantryDamage*(1-d/radius))
         :(rocket||cannon?150:140)*(1-d/radius);
-      sim.damage(player,damage*(enclosed?.28:1)*roomBoost,owner,
+      sim.damage(player,damage*protection*roomBoost,owner,
         {weapon:cannon?'ТАНКОВОЕ ОРУДИЕ':rocket?'ПТ-90':'ГРАНАТА',explosive:true,vehicleId:sourceVehicleId});confirmed||=player.hp<before;
     }
   }

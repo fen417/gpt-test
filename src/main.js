@@ -30,7 +30,7 @@ import './lobby.css';
 import {captureGameKeyboard} from './keyboard-capture.js';
 import {sameSquad,SQUAD_COLOR} from '../shared/squads.js';
 import './squads.css';
-import {VEHICLE_TYPES,TURRET_WEAPON,canFirePassengerWeapon,getVehicleBoardingSeat} from '../shared/vehicles.js';
+import {BLACK_HAWK,BLACK_HAWK_GUN,VEHICLE_TYPES,blackHawkGunPose,blackHawkParked,canFirePassengerWeapon,getVehicleBoardingSeat,vehicleTurretWeapon} from '../shared/vehicles.js';
 import {M02_BINDINGS} from '../shared/campaign/tank-controls.js';
 import {CampaignActors} from './campaign/actors.js';
 import {showCampaignOutcome} from './campaign/outcome.js';
@@ -52,6 +52,7 @@ let campaignActors,columnHeading=null;
 let squadUI,weaponPreview,lobbyWeaponPreview;
 let tankHud,tankHudLoading,vehicleThirdPerson=true,campaignTankZoom=2.5;
 const vehicleLook={id:null,yaw:0,pitch:-.12};
+const hasVehicleChaseCamera=vehicle=>vehicle?.type==='tank'||vehicle?.type===BLACK_HAWK;
 let currentMap=getMap(DEFAULT_MAP_ID);
 let selectedClass='assault',yaw=0,pitch=0,locked=false,aim=false,fire=false;
 let lobbyTeamRequest=null,lobbyTeamMessage='';
@@ -113,7 +114,7 @@ const BIND_LABELS=[
   ['score','Таблица счёта'],
   ['interact','Сесть в технику / выйти'],
   ['switchSeat','Сменить место в технике'],
-  ['vehicleCamera','Камера водителя танка'],
+  ['vehicleCamera','Камера танка / вертолёта'],
   ['squad','Открыть отряды'],
   ['order','Отряд: команда по наведению / за мной'],
   ['horn','Сигнал / позвать ботов в транспорт'],
@@ -488,10 +489,11 @@ function receive(next){
   if(active&&player)trackWeaponProgress(legacyRound?{weaponRoundId:legacyRound,weaponKills:{}}:next);
   const vehicle=next.vehicles?.find(v=>v.id===player?.vehicleId);
   if(vehicle&&player?.alive){
-    const role=VEHICLE_TYPES[vehicle.type]?.seats[player.vehicleSeat]?.role;
-    if(previousVehicle?.id!==vehicle.id){
-      yaw=vehicle.yaw;pitch=0;recoilPitch=0;recoilYaw=0;
-    }else if(role!=='gunner'&&next.campaign?.missionId!=='m02'){
+    const seat=VEHICLE_TYPES[vehicle.type]?.seats[player.vehicleSeat];
+    const role=seat?.role;
+    if(previousVehicle?.id!==vehicle.id||vehicle.type===BLACK_HAWK&&previousPlayer?.vehicleSeat!==player.vehicleSeat){
+      yaw=vehicle.yaw+(seat?.facing??0);pitch=0;recoilPitch=0;recoilYaw=0;
+    }else if((role!=='gunner'||vehicle.type===BLACK_HAWK)&&next.campaign?.missionId!=='m02'){
       const turn=vehicle.yaw-previousVehicle.yaw;
       yaw+=Math.atan2(Math.sin(turn),Math.cos(turn));
     }
@@ -1099,7 +1101,7 @@ document.addEventListener('mousemove',event=>{
   if(!locked&&!(unlocked&&!unlockedPaused&&active&&aim))return;
   const player=local();
   const drivingVehicle=state?.vehicles.find(v=>v.id===player?.vehicleId);
-  if(vehicleThirdPerson&&player?.vehicleSeat===0&&drivingVehicle?.type==='tank'){
+  if(vehicleThirdPerson&&player?.vehicleSeat===0&&hasVehicleChaseCamera(drivingVehicle)){
     vehicleLook.yaw-=event.movementX*.0022*sensitivity;
     vehicleLook.pitch=Math.max(-.65,Math.min(.5,vehicleLook.pitch-event.movementY*.0022*sensitivity));return;
   }
@@ -1109,6 +1111,10 @@ document.addEventListener('mousemove',event=>{
   const aimScale = aim ? (opticZoom>1 ? .70/opticZoom : .65) : 1;
   const factor=.0022*sensitivity*aimScale;
   yaw-=event.movementX*factor;pitch=Math.max(-1.45,Math.min(1.45,pitch-event.movementY*factor));
+  if(drivingVehicle?.type===BLACK_HAWK&&player.vehicleSeat===BLACK_HAWK_GUN.index){
+    const angles=blackHawkGunPose(drivingVehicle,yaw,pitch);
+    yaw=angles.yaw;pitch=angles.pitch;
+  }
 });
 let lastFireClick=0;
 document.addEventListener('wheel',event=>{
@@ -1136,11 +1142,22 @@ document.addEventListener('keydown',event=>{
   if(active&&$('pause').classList.contains('hidden')&&campaignPresentation?.key(event)){event.preventDefault();return;}
   if(active&&mode==='campaign'&&event.code==='Escape'&&!locked&&!unlocked){event.preventDefault();show('pause',$('pause').classList.contains('hidden'));clearControls();return;}
   if(active&&mode==='campaign'&&isBound('squad',event.code)){event.preventDefault();return;}
+  if(active&&!event.repeat&&isBound('vehicleCamera',event.code)){
+    const p=local(),v=state?.vehicles.find(v=>v.id===p?.vehicleId);
+    if(p?.vehicleSeat===0&&hasVehicleChaseCamera(v)&&(mode!=='campaign'||v.type===BLACK_HAWK)){
+      event.preventDefault();
+      vehicleThirdPerson=!vehicleThirdPerson;
+      if(!vehicleThirdPerson&&v.type===BLACK_HAWK){yaw=v.yaw;pitch=0;}
+      save('vehicle-camera',vehicleThirdPerson?'third':'first');return;
+    }
+  }
   if(active&&mode==='campaign'&&['KeyZ','KeyV','KeyH','KeyX'].includes(event.code)&&
+    !(event.code==='KeyH'&&isBound('horn',event.code)&&local()?.vehicleSeat===0&&
+      state?.vehicles.some(v=>v.id===local().vehicleId&&v.type===BLACK_HAWK))&&
     !(event.code==='KeyX'&&['m01','m04'].includes(state?.campaign?.missionId)&&!local()?.downed)){
     if(locked||unlocked&&!unlockedPaused){event.preventDefault();keys.add(event.code);}return;
   }
-  if(active&&!event.repeat&&isBound('vehicleCamera',event.code)){const p=local(),v=state?.vehicles.find(v=>v.id===p?.vehicleId);if(v?.type==='tank'&&p.vehicleSeat===0){event.preventDefault();vehicleThirdPerson=!vehicleThirdPerson;save('vehicle-camera',vehicleThirdPerson?'third':'first');return;}}
+  if(active&&!event.repeat&&mode==='campaign'&&isBound('vehicleCamera',event.code)){const p=local(),v=state?.vehicles.find(v=>v.id===p?.vehicleId);if(v?.type==='tank'&&p.vehicleSeat===0){event.preventDefault();vehicleThirdPerson=!vehicleThirdPerson;save('vehicle-camera',vehicleThirdPerson?'third':'first');return;}}
   if(document.querySelector('dialog.menu-dialog[open]'))return;
   if(listeningAction){
     event.preventDefault();
@@ -1383,7 +1400,7 @@ function initializeMapPickers(){
     const map=getMap($('map-select').value);
     text('menu-map-name',map.name.toUpperCase());
     text('menu-map-points',String(map.points.length).padStart(2,'0'));
-    text('menu-map-info',map.size+' × '+map.size+' м · '+(map.tdmLoadout?'Командный бой':map.points.length+' позиций')+(map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
+    text('menu-map-info',map.size+' × '+map.size+' м · '+(map.tdmLoadout?'Командный бой':map.points.length+' позиций')+(map.vehicleSpawns?.some(v=>v.type===BLACK_HAWK)?' · Наземная техника и вертолёты':map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
     save('map',map.id);
   };
   $('map-select').addEventListener('change',update);
@@ -1647,26 +1664,31 @@ function updateVehicleHud(player,renderState){
     return vehicle?VEHICLE_TYPES.tank.seats[0]:null;
   }
   const key=formatKeyCode(keybinds.interact);
-  const nearby=!vehicle&&player.alive&&Math.abs(player.y-(currentMap.terrain?.heightAt(player.x,player.z)??0))<=.8&&getVehicleBoardingSeat(player,vehicles);
+  const nearby=!vehicle&&player.alive&&Math.abs(player.y-(currentMap.terrain?.heightAt(player.x,player.z)??0))<=.8&&getVehicleBoardingSeat(player,vehicles,currentMap.terrain);
   const seat=VEHICLE_TYPES[vehicle?.type]?.seats[player.vehicleSeat];
   show('vehicle-prompt',!!(nearby||seat));
   if(nearby)text('vehicle-prompt',key+' · СЕСТЬ В ТЕХНИКУ — '+VEHICLE_TYPES[nearby.vehicle.type].name.toUpperCase());
   if(!seat)return null;
   const displayed=renderState?.vehicles.find(v=>v.id===vehicle.id)??vehicle;
-  const swap=vehicle.seats.includes(null)&&Math.abs(displayed.speed)<(vehicle.type==='tank'?3:4.5);
+  const aircraft=vehicle.type===BLACK_HAWK;
+  const parked=!aircraft||blackHawkParked(displayed,currentMap.terrain);
+  const swap=vehicle.seats.includes(null)&&(aircraft?parked:Math.abs(displayed.speed)<(vehicle.type==='tank'?3:4.5));
   const look=aimAngles();
   const canFire=canFirePassengerWeapon(displayed,player.vehicleSeat,look.yaw,look.pitch);
-  const controls=key+' · ВЫЙТИ'+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':'');
-  const windowHint=seat.role==='passenger'&&!canFire?(vehicle.type==='tank'?'\nСТРЕЛЯЙТЕ НАРУЖУ СО СВОЕГО БОРТА':'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО'):'';
+  const controls=(parked?key+' · ВЫЙТИ':'ВЫХОД ПОСЛЕ ПОСАДКИ')+(swap?'     '+formatKeyCode(keybinds.switchSeat)+' · СМЕНИТЬ МЕСТО':'');
+  const windowHint=seat.role==='passenger'&&!canFire?(vehicle.type==='tank'||aircraft?'\nСТРЕЛЯЙТЕ НАРУЖУ СО СВОЕГО БОРТА':'\nНАПРАВЬТЕ ОРУЖИЕ В БОКОВОЕ ИЛИ ЛОБОВОЕ ОКНО'):'';
   const tankControls=vehicle.type==='tank'&&player.vehicleSeat<2?'     ПКМ · ПРИЦЕЛ     ЛКМ · ОГОНЬ':'';
-  text('vehicle-prompt',controls+(seat.role==='driver'?'     '+formatKeyCode(keybinds.horn)+' · СИГНАЛ / ПОЗВАТЬ БОТОВ':'')+(seat.role==='driver'&&vehicle.type==='tank'?'     '+formatKeyCode(keybinds.vehicleCamera)+' · КАМЕРА':'')+tankControls+windowHint);
+  const pilotControls=aircraft&&seat.role==='driver'?`\n${formatKeyCode(keybinds.jump)} · НАБОР ВЫСОТЫ     ${formatKeyCode(keybinds.crouch)} · СНИЖЕНИЕ`:'';
+  const crew=aircraft?`МЕСТО ${player.vehicleSeat+1}/5 · ${seat.name.toUpperCase()}\n`:'';
+  text('vehicle-prompt',crew+controls+(seat.role==='driver'&&(!aircraft||parked)?'     '+formatKeyCode(keybinds.horn)+' · ПОЗВАТЬ БОТОВ':'')+(seat.role==='driver'&&hasVehicleChaseCamera(vehicle)?'     '+formatKeyCode(keybinds.vehicleCamera)+' · КАМЕРА':'')+tankControls+pilotControls+windowHint);
   if(seat.role==='passenger')return {role:seat.role,canFire};
   text('weapon-name',VEHICLE_TYPES[vehicle.type].name.toUpperCase()+' · '+seat.name.toUpperCase());
   const hp=Math.ceil(vehicle.hp/vehicle.maxHp*100);
   text('ammo',seat.role==='gunner'?Math.round(displayed.heat*100)+'%':Math.round(Math.abs(displayed.speed)*3.6));
   text('reserve',seat.role==='gunner'?'НАГРЕВ':'КМ/Ч');
-  text('ammo-status',vehicle.overheated&&seat.role==='gunner'?'ПЕРЕГРЕВ · КОРПУС '+hp+'%':'КОРПУС '+hp+'% · ЭКИПАЖ '+vehicle.seats.filter(Boolean).length+'/'+vehicle.seats.length);
-  return seat;
+  const altitude=Math.max(0,Math.round(displayed.y-(currentMap.terrain?.heightAt(displayed.x,displayed.z)??0)));
+  text('ammo-status',vehicle.overheated&&seat.role==='gunner'?'ПЕРЕГРЕВ · КОРПУС '+hp+'%':'КОРПУС '+hp+'% · '+(aircraft&&seat.role!=='gunner'?`ВЫСОТА ${altitude} М`:'ЭКИПАЖ '+vehicle.seats.filter(Boolean).length+'/'+vehicle.seats.length));
+  return seat.role==='gunner'?{...seat,spread:vehicleTurretWeapon(vehicle).spread}:seat;
 }
 function hud(now,renderState){
   if(state?.campaign)show('scoreboard',false);
@@ -1767,7 +1789,7 @@ function hud(now,renderState){
     feedEl.replaceChildren(...feed.map(e=>{const row=document.createElement('div'),a=document.createElement('b'),b=document.createElement('em');row.classList.toggle('enemy-kill',e.team!==player.team);a.textContent=e.killer;b.textContent=e.victim;row.append(a,document.createTextNode(`  [${e.weapon||'ГРАНАТА'}]  `),b);return row;}));
   }
   const crosshair=$('crosshair');
-  const spread=mounted?.role==='gunner'?TURRET_WEAPON.spread:player.spread??weapon.spread*.66;
+  const spread=mounted?.spread??player.spread??weapon.spread*.66;
   const projectedSpread=Math.tan(spread)*renderer.viewportHeight/(2*Math.tan(renderer.camera.fov*Math.PI/360));
   const gap=`${Math.max(4,Math.min(28,projectedSpread)).toFixed(1)}px`;
   if(crosshair.dataset.gap!==gap){crosshair.dataset.gap=gap;crosshair.style.setProperty('--spread-gap',gap);}
@@ -1894,10 +1916,14 @@ function frame(now){
   const renderState=active?(simulation?simulation.sample(now):multiplayer.sample(now)):null;
   const renderPlayer=renderState?.players.find(p=>p.id===localId);
   const driven=renderPlayer?.vehicleSeat===0?renderState?.vehicles.find(v=>v.id===renderPlayer.vehicleId):null;
-  if(vehicleThirdPerson&&driven?.type==='tank'){
+  if(vehicleThirdPerson&&hasVehicleChaseCamera(driven)){
     if(vehicleLook.id!==driven.id){
       vehicleLook.id=driven.id;vehicleLook.yaw=driven.yaw;vehicleLook.pitch=-.12;
+    }else if(driven.type===BLACK_HAWK){
+      const delta=driven.yaw-vehicleLook.heading;
+      vehicleLook.yaw+=Math.atan2(Math.sin(delta),Math.cos(delta));
     }
+    vehicleLook.heading=driven.yaw;
     yaw=vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
   const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;

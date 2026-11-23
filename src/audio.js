@@ -2,6 +2,7 @@
 import { BULLET_GRAVITY } from '../shared/ballistics.js';
 import { getMap, getWeapon } from '../shared/world.js';
 import { TANK_CANNON } from '../shared/tank.js';
+import { BLACK_HAWK } from '../shared/vehicles.js';
 import RELOAD_CUES from './assets/audio/reload/cues.json' with {type:'json'};
 export const MENU_MUSIC_TITLE = 'Quiet Resolve';
 const MENU_MUSIC_URL=new URL('./assets/audio/music/quiet-resolve.m4a',import.meta.url);
@@ -9,6 +10,16 @@ const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, Number(v) || 0));
 const midi = n => 440 * 2 ** ((n - 69) / 12);
 const EPSILON = .00001, MAX_VOICES = 56, MUSIC_VOICES = 14;
 const VOICE_FADE = .012, MAX_FADING_VOICES = 8;
+function blackHawkRotorLoop(ctx){
+  const buffer=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),samples=buffer.getChannelData(0);
+  for(let i=0;i<samples.length;i++){
+    const t=i/ctx.sampleRate,phase=2*Math.PI*17*t,pulse=(.5+.5*Math.cos(phase))**8;
+    const rotor=.23*Math.sin(phase)+.15*Math.sin(2*phase)+pulse*.21*Math.sin(phase*3);
+    const turbine=.055*Math.sin(2*Math.PI*217*t)+.022*Math.sin(2*Math.PI*379*t);
+    samples[i]=rotor*(.88+.12*Math.cos(2*Math.PI*2*t))+turbine;
+  }
+  return buffer;
+}
 const WEAPONS = {
   ar416: { sample: 'rifle-light', rate: 1, gain: .92, cutoff: 17000 },
   ak12: { sample: 'rifle-heavy', rate: 1, gain: .94, cutoff: 16000 },
@@ -947,23 +958,25 @@ export class CombatAudio {
     const listener=engineListener??local;
     const dialogue=state?.campaign?.radioRemaining>0;
     const mix=engineListener?(dialogue?.4:.65):1;
-    const candidates=buffer&&local?.alive&&!silent?(state?.vehicles??[])
-      .filter(vehicle=>vehicle.hp>0&&vehicle.seats[0])
+    const candidates=local?.alive&&!silent?(state?.vehicles??[])
+      .filter(vehicle=>vehicle.hp>0&&vehicle.seats[0]&&(vehicle.type===BLACK_HAWK||buffer))
       .map(vehicle=>({
         vehicle,
         own:vehicle.id===listener.vehicleId,
-        distance:Math.hypot(vehicle.x-listener.x,vehicle.z-listener.z,engineListener?vehicle.y-listener.y:0),
+        distance:Math.hypot(vehicle.x-listener.x,vehicle.z-listener.z,engineListener||vehicle.type===BLACK_HAWK?vehicle.y-listener.y:0),
       }))
-      .filter(entry=>entry.distance<(engineListener?95:65))
+      .filter(entry=>entry.distance<(entry.vehicle.type===BLACK_HAWK?235:engineListener?95:65))
       .sort((a,b)=>Number(b.own)-Number(a.own)||a.distance-b.distance).slice(0,3):[];
     const active=new Set();
     for(const {vehicle,own,distance} of candidates){
+      const aircraft=vehicle.type===BLACK_HAWK;
       active.add(vehicle.id);let channel=this._engineChannels.get(vehicle.id);
       if(!channel){
         const c=this.ctx,source=c.createBufferSource(),filter=c.createBiquadFilter(),gain=c.createGain(),pan=c.createStereoPanner?c.createStereoPanner():null;
-        source.buffer=buffer;source.loop=true;filter.type='lowpass';filter.Q.value=.707;gain.gain.value=0;
+        source.buffer=aircraft?(this._blackHawkRotor??=blackHawkRotorLoop(c)):buffer;
+        source.loop=true;filter.type='lowpass';filter.Q.value=.707;gain.gain.value=0;
         source.connect(filter).connect(gain);if(pan)gain.connect(pan).connect(this._effects);else gain.connect(this._effects);
-        source.start(0,(now*.83)%buffer.duration);
+        source.start(0,(now*.83)%source.buffer.duration);
         channel={source,filter,gain,pan,speed:0,gear:1};this._engineChannels.set(vehicle.id,channel);
         if(vehicle.type==='tank'){
           const trackSource=c.createBufferSource(),trackFilter=c.createBiquadFilter(),trackGain=c.createGain();trackSource.buffer=this._noiseBuffer('pink');trackSource.loop=true;trackFilter.type='bandpass';trackFilter.frequency.value=1350;trackFilter.Q.value=.65;trackGain.gain.value=0;
@@ -972,6 +985,13 @@ export class CombatAudio {
       }
       channel.stopAt=null;
       const speed=Math.abs(vehicle.speed);
+      if(aircraft){
+        this._target(channel.source.playbackRate,.94+Math.min(.16,speed*.004),.15);
+        this._target(channel.filter.frequency,(own?520:950)/(1+distance*.012),.1);
+        this._target(channel.gain.gain,(own?.42:.36)*mix/(1+distance*.018),.15);
+        if(channel.pan)this._target(channel.pan.pan,own?0:this._position(vehicle,listener).pan,.1);
+        continue;
+      }
       const gear=Math.min(4,1+Math.floor(speed/4.5)),load=(speed-(gear-1)*4.5)/4.5;
       const acceleration=Math.max(0,speed-channel.speed);
       const rate=(vehicle.type==='atv'?1.06:vehicle.type==='tank'?.45:.68)+load*(vehicle.type==='atv'?.74:vehicle.type==='tank'?.3:.48)+Math.min(.15,acceleration*.3);

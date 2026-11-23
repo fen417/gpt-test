@@ -32,7 +32,8 @@ import { COLLIMATOR_ZOOM } from './collimator.js';
 import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE } from './gadget-poses.js';
 import { drawFlagBanner } from './logos.js';
-import { canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
+import { BLACK_HAWK, blackHawkGunPose, canFirePassengerWeapon, getVehicleSeatPose, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES, isEnclosedTankCrew } from '../shared/vehicles.js';
+import { placeTankDriverCamera } from './tank-camera.js';
 import { tankMachineGunMuzzle, tankMuzzle, TANK_MG } from '../shared/tank.js';
 import { createVehicleRig, disposeVehicleRig, updateVehicleRig, warmTankAssets,tankAssetsReady,placeTankCamera, fallbackRiderVisible } from './vehicles.js';
 import { lightVehicleModels } from './light-vehicle-models.js';
@@ -1060,11 +1061,14 @@ export class GameRenderer {
       if(vehicle.type==='tank'&&!tankAssetsReady())continue;
       const model=lightVehicleModels[vehicle.type];
       if(model&&!model.ready())model.load();
+      if(vehicle.type===BLACK_HAWK&&!model.ready())continue;
       active.add(vehicle.id);
       let rig = this.vehicleRigs.get(vehicle.id);
       const local = player?.vehicleId === vehicle.id && player.alive !== false;
-      const distance = player ? Math.hypot(vehicle.x - player.x, vehicle.z - player.z) : 0;
-      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > (vehicle.type==='tank'?(state.campaign?.missionId==='m02'?1000:this.lowQuality?320:600):190))) {
+      const distance = player ? Math.hypot(vehicle.x - player.x,vehicle.type===BLACK_HAWK?vehicle.y-player.y:0,vehicle.z - player.z) : 0;
+      const drawDistance=vehicle.type===BLACK_HAWK?(this.lowQuality?420:680):
+        vehicle.type==='tank'?(state.campaign?.missionId==='m02'?1000:this.lowQuality?320:600):190;
+      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > drawDistance)) {
         if (rig) {
           rig.group.visible = false;
           rig.initialized = false;
@@ -1105,8 +1109,9 @@ export class GameRenderer {
       const damaged = vehicle.hp < vehicle.maxHp * .33;
       if (damaged && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
         rig.nextSmoke = this.clock + (vehicle.hp > 0 ? .35 : .16);
-        const atv = vehicle.type === 'atv', z = atv ? -.79 : -1.74;
-        this.smoke(vehicle.x + Math.sin(vehicle.yaw)*z, (vehicle.y ?? 0) + (atv ? .88 : 1.20),
+        const atv = vehicle.type === 'atv', aircraft=vehicle.type===BLACK_HAWK;
+        const z = aircraft?1.6:atv?-.79:-1.74;
+        this.smoke(vehicle.x + Math.sin(vehicle.yaw)*z, (vehicle.y ?? 0) + (aircraft?3.3:atv?.88:1.20),
           vehicle.z + Math.cos(vehicle.yaw)*z, local ? .19 : vehicle.hp > 0 ? .34 : .68,
           local ? .62 : 1.6, 0x50504a);
       }
@@ -1142,7 +1147,8 @@ export class GameRenderer {
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
     for (const player of state.players) {
       const cinematicPlayer=state.campaign?.missionId==='m03'&&state.campaign.cutscene?.id==='finale';
-      if (player.id === localId&&!cinematicPlayer&&!(this.tankThirdPerson&&player.vehicleSeat===0&&state.vehicles.find(v=>v.id===player.vehicleId)?.type==='tank')) continue;
+      if (player.id === localId&&!cinematicPlayer&&!(this.tankThirdPerson&&player.vehicleSeat===0&&
+        ['tank',BLACK_HAWK].includes(state.vehicles.find(v=>v.id===player.vehicleId)?.type))) continue;
       active.add(player.id);
       // Only the tank's enclosed driver and gunner are hidden under its armour.
       // Exposed tank riders and all light-vehicle crew must still be rendered.
@@ -1178,7 +1184,7 @@ export class GameRenderer {
         if(group.parent!==rig.body)rig.body.add(group);
         group.userData.seatedActor=true;
         const seatYaw=rig.tank?(index===2?Math.PI/2:index===3?-Math.PI/2:Math.PI):
-          seat.role==='gunner'?rig.turretYaw??0:0;
+          rig.blackHawk?seat.facing??0:seat.role==='gunner'?rig.turretYaw??0:0;
         group.position.set(seat.x,seat.height,seat.z);
         group.rotation.set(0,seatYaw,0);
         // Distant infantry may have switched off their detailed body before
@@ -1187,7 +1193,7 @@ export class GameRenderer {
         setInfantryLod(soldier, distSq > lodLimits[2] ** 2 ? 3 : distSq > lodLimits[1] ** 2 ? 2 : distSq > lodLimits[0] ** 2 ? 1 : 0, !this.lowQuality && distSq < 48 ** 2);
         this.soldierBounds.center.set(position.x,position.y-.4,position.z);
         group.visible=this.viewFrustum.intersectsSphere(this.soldierBounds)||Boolean(shadowFrustum?.intersectsSphere(this.soldierBounds)&&distSq<48**2);
-        const control=seat.role==='driver'?rig.controls:seat.role==='gunner'?rig.turret?.gun:null;
+        const control=seat.role==='driver'?rig.controls:seat.role==='gunner'?(rig.turret?.grips??rig.turret?.gun):null;
         const yawDelta=player.yaw-vehicle.yaw-seatYaw;
         infantrySeat(soldier,{vehicle,seat,index,control,relativeYaw:Math.atan2(Math.sin(yawDelta),Math.cos(yawDelta)),
           pitch:player.pitch,aim:player.aim,shotSeq:player.shotSeq,dt});
@@ -1817,12 +1823,20 @@ export class GameRenderer {
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
     const humvee = vehicle.type === 'humvee';
     const index=VEHICLE_TYPES[vehicle.type].seats.indexOf(seat);
-    const eye=getVehicleSeatPose({ ...vehicle,x:rig.group.position.x,y:rig.group.position.y,z:rig.group.position.z,yaw:rig.group.rotation.y,bodyPitch:rig.body.rotation.x,bodyRoll:rig.body.rotation.z },index);
+    const pose={ ...vehicle,x:rig.group.position.x,y:rig.group.position.y,z:rig.group.position.z,yaw:rig.group.rotation.y,bodyPitch:rig.body.rotation.x,bodyRoll:rig.body.rotation.z };
+    const eye=getVehicleSeatPose(pose,index);
     this.camera.position.set(eye.x,eye.y,eye.z);
     if (shake && seat.role==='driver') this.camera.position.y += Math.sin(this.clock * 28) * Math.min(.012, Math.abs(vehicle.speed) * .001) * (humvee ? .65 : 1);
     const gunner = seat.role === 'gunner';
     const roll = shake && seat.role==='driver' ? rig.body.rotation.z * (humvee ? .62 : 1) : 0;
-    this.camera.rotation.set(gunner ? clamp(pitch, TURRET_MIN_PITCH, TURRET_MAX_PITCH) : pitch, yaw, roll, 'YXZ');
+    if(rig.blackHawk&&gunner){
+      const aim=blackHawkGunPose(pose,yaw,pitch);
+      const dx=-Math.sin(aim.yaw)*Math.cos(aim.pitch), dy=Math.sin(aim.pitch), dz=-Math.cos(aim.yaw)*Math.cos(aim.pitch);
+      this.camera.position.set(aim.muzzle.x-dx*1.48,aim.muzzle.y-dy*1.48+.25,aim.muzzle.z-dz*1.48);
+      this.camera.rotation.set(aim.pitch-.005,aim.yaw,rig.body.rotation.z*.35,'YXZ');
+    }else{
+      this.camera.rotation.set(gunner ? clamp(pitch, TURRET_MIN_PITCH, TURRET_MAX_PITCH) : pitch, yaw, roll, 'YXZ');
+    }
     this.cameraPlayerId = null;
     this.cameraAlive = true;
     this.updateSunShadow(vehicle.x, vehicle.z);
@@ -1969,6 +1983,7 @@ export class GameRenderer {
         this.updateSunShadow(vehicle.x,vehicle.z);
       }
       else if(tank&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankCamera(this,mounted,view,dt);
+      else if(mounted.rig.blackHawk&&seat.role==='driver'&&view.vehicleThirdPerson!==false)placeTankDriverCamera(this,mounted,view,dt,{radius:15,height:3});
       else{if(this.tankCamera)this.tankCamera.initialized=false;this.placeVehicleCamera(mounted, seat, view.yaw ?? player.yaw, view.pitch ?? player.pitch, shake);}
       this.weapon.visible = false;
       this.viewWeaponTarget = null;

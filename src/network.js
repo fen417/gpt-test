@@ -390,7 +390,7 @@ export class Multiplayer{
         const vehicle=this.prediction.sampleVehicle(this.accumulator,this.input,dt);
         if(vehicle)render.vehicles[index]=vehicle.type==='tank'
           ?{...vehicle,gunAimYaw:remote.gunAimYaw,gunAimPitch:remote.gunAimPitch,gunSeq:remote.gunSeq,heat:remote.heat,overheated:remote.overheated}
-          :vehicle;
+          :vehicle.type==='black-hawk'?{...vehicle,aimYaw:remote.aimYaw,aimPitch:remote.aimPitch,gunSeq:remote.gunSeq,heat:remote.heat,overheated:remote.overheated}:vehicle;
       }else if(remote?.type==='tank'&&predicted.vehicleSeat===1){
         const vehicle=this.prediction.world.vehicles.find(v=>v.id===predicted.vehicleId);
         if(vehicle)for(const key of ['gunAimYaw','gunAimPitch','gunSeq','heat','overheated'])remote[key]=vehicle[key];

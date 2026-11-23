@@ -237,6 +237,7 @@ body:has(.menu:not(.hidden)){overflow-y:auto}
 .patch summary small { color: var(--cyan); font-size: 8px; letter-spacing: 1px; }
 .patch summary:focus-visible { outline: 2px solid var(--orange); outline-offset: 5px; }
 .patch-content { display: grid; gap: 20px; padding-top: 22px; }
+.patch-photo { display: block; width: 100%; height: auto; border-radius: 4px; }
 .patch-content h3 { font-size: 12px; color: var(--cyan); margin: 0 0 9px; }
 .patch-content ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; color: #c5d0d0; font-size: 12px; line-height: 1.65; }
 @media (max-width: 600px) { .patch-header { padding: 20px; } .patch-list { padding: 0 20px 16px; } .patch summary small { width: 100%; } }

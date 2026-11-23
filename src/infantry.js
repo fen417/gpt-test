@@ -853,12 +853,14 @@ const ridingPose = {
   atvPassenger: { hips: 1.07, ankle: [.38, .64, -.14] },
   humveeCabin: { hips: 1.02, ankle: [.18, .86, -.44] },
   humveeGunner: { hips: 1.61, ankle: [.16, .86, .06] },
+  blackHawk: { hips: 1.73, ankle: [.16, 1.42, -.36] },
 };
 const neutralControl = new THREE.Object3D();
 const controlGrip = new THREE.Vector3();
 const controlFrames = [-1, 1].map(side => ({
   atv: handBasis(new THREE.Vector3(0, -.42, -1), new THREE.Vector3(-side, 0, 0), new THREE.Quaternion()),
   driver: handBasis(new THREE.Vector3(-side * .45, 0, -.89), flatNormal, new THREE.Quaternion()),
+  pilot: handBasis(new THREE.Vector3(-side * .45, 0, -.89), flatNormal, new THREE.Quaternion()),
   gunner: handBasis(new THREE.Vector3(0, -.12, -1), flatNormal, new THREE.Quaternion()),
 }));
 
@@ -883,9 +885,10 @@ export function infantrySeat(rig, { vehicle, seat, index, control, relativeYaw, 
   const { group, bones } = rig;
   rig.deathPose = null;
   const active = new Set(), atv = vehicle.type === 'atv', driving = seat.role === 'driver';
-  const gunner = seat.role === 'gunner', controls = driving || gunner;
+  const gunner = seat.role === 'gunner', copilot=seat.role==='copilot', controls = driving || gunner;
+  const blackHawk=vehicle.type==='black-hawk';
   const pose = vehicle.type === 'tank' ? (index === 4 ? ridingPose.tankRear : ridingPose.tankSide) :
-    atv ? (driving ? ridingPose.atvDriver : ridingPose.atvPassenger) :
+    blackHawk ? ridingPose.blackHawk : atv ? (driving ? ridingPose.atvDriver : ridingPose.atvPassenger) :
     gunner ? ridingPose.humveeGunner : ridingPose.humveeCabin;
   play(rig, active, 'ready_idle', false, .2, 1);
   play(rig, active, controls ? 'interact' : 'ready_idle', true, .22, 1);
@@ -925,7 +928,9 @@ export function infantrySeat(rig, { vehicle, seat, index, control, relativeYaw, 
     rig.recoil = 1;
   } else rig.shotAge += dt;
   if (controls) {
-    poseVehicleHands(rig, control, gunner ? 'gunner' : atv ? 'atv' : 'driver', seat);
+    poseVehicleHands(rig, control, gunner ? 'gunner' : blackHawk?'pilot':atv ? 'atv' : 'driver', seat);
+    rig.rifle.visible = rig.flash.visible = false;
+  } else if(copilot){
     rig.rifle.visible = rig.flash.visible = false;
   } else {
     // On the tandem seat, carry the rifle to the side of the driver until aiming.

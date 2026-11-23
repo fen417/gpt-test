@@ -2,8 +2,8 @@ import {Simulation,sanitizeInput} from '../simulation.js';
 import {thinkInfantryBot,ensureBotState} from '../bot-ai.js';
 import {moveBot,prepareNavigation} from '../bot-navigation.js';
 import {DIFFICULTIES,SIDEARMS,WEAPONS} from '../world.js';
-import {aimCrew} from '../vehicle-ai.js';
-import {vehicleBoardingRange} from '../vehicles.js';
+import {aimCrew, thinkVehicleBot} from '../vehicle-ai.js';
+import {BLACK_HAWK, getVehicleBoardingSeat, vehicleBoardingRange} from '../vehicles.js';
 import {ALHADRA,COURIER_SERVICE_ROAD,ROUTES} from './alhadra.js';
 import {MissionRuntime} from './mission-runtime.js';
 import {resolveWeaponModules} from '../weapon-modules.js';
@@ -61,6 +61,8 @@ export class CampaignSimulation extends Simulation {
   }
   thinkBot(p,dt){
     ensureBotState(this,p);
+    const vehicleId=p.vehicleId??p.botBoarding?.vehicleId;
+    if(vehicleId&&this.vehicles.some(v=>v.id===vehicleId&&v.type===BLACK_HAWK)&&thinkVehicleBot(this,p,dt))return;
     if(this.campaign.thinkBot(p,dt))return;
     thinkInfantryBot(this,p,dt);this.campaign.afterThink(p,dt);
   }
@@ -160,6 +162,14 @@ export class CampaignDirector {
     // front of the player when the wounded courier reaches the east road.
     const evac=this.createCourierEvac();
     this.sim.vehicles.push(evac);
+    for(const spawn of (this.definition.blackHawks??[]).slice(0,2)){
+      if(!spawn.id||![0,1].includes(spawn.team)||![spawn.x,spawn.z,spawn.yaw].every(Number.isFinite)||
+        this.sim.vehicles.some(v=>v.id===spawn.id))continue;
+      const aircraft=this.sim.createMapVehicle({
+        id:spawn.id,type:BLACK_HAWK,team:spawn.team,x:spawn.x,z:spawn.z,yaw:spawn.yaw,noRespawn:true,
+      });
+      if(!this.sim.vehicleCollides(aircraft,aircraft.x,aircraft.z,aircraft.yaw))this.sim.vehicles.push(aircraft);
+    }
     this.dialogue={queue:[],active:null,remaining:0};
     this.startCutscene('briefing');
     this.initialSave=null;
@@ -575,7 +585,21 @@ export class CampaignDirector {
     if(p.downed){this.sim.equipWeapon(p,2);p.input.weaponSlot=2;p.input.toolSlot=0;p.input.grenade=false;}
     if(p.lastMoveX===undefined){p.lastMoveX=p.x;p.lastMoveZ=p.z;}
     if(distance(p,{x:p.lastMoveX,z:p.lastMoveZ})>.3){p.lastMovedAt=this.time;p.lastMoveX=p.x;p.lastMoveZ=p.z;}
-    this.interactions(dt);
+    const aircraft=this.sim.vehicles.find(v=>v.type===BLACK_HAWK&&v.id===p.vehicleId);
+    if(aircraft&&!p.downed){
+      this.prompt=null;
+      this.progress=0;
+      p.input.interact=i.interact;
+      p.input.switchSeat=i.switchSeat;
+      p.input.horn=i.horn;
+    }else{
+      this.interactions(dt);
+      if(!p.downed&&!p.vehicleId&&!this.prompt&&i.interact&&
+        getVehicleBoardingSeat(p,this.sim.vehicles,this.sim.map.terrain)?.vehicle.type===BLACK_HAWK){
+        p.prone=false;
+        p.input.interact=true;
+      }
+    }
     this.flushSpawns();
   }
   afterStep(dt){
@@ -799,6 +823,6 @@ export function validCampaignSave(save,definition){
   if(!['night','alarm','dawn'].includes(m.light)||!['follow','hold','radio'].includes(m.order)||!Number.isInteger(m.checkpoint)||m.checkpoint<0||m.checkpoint>4)return false;
   if(!list(m.chargeSites,2)||m.chargeSites.length!==2||!m.chargeSites.every(s=>position(s)&&typeof s.planted==='boolean')||!list(m.fuel,8)||m.fuel.length!==8||!m.fuel.every(f=>position(f)&&typeof f.destroyed==='boolean')||!list(m.trucks,3)||m.trucks.length!==3||!m.trucks.every(t=>position(t)&&typeof t.destroyed==='boolean'))return false;
   if(m.cutscene&&(!Object.hasOwn(definition.cutscenes,m.cutscene.id)||!Number.isFinite(m.cutscene.elapsed)||!Number.isInteger(m.cutscene.line)))return false;
-  if(!list(save.vehicles,4)||!save.vehicles.every(v=>position(v)&&v.type==='humvee'&&Number.isFinite(v.hp)&&Array.isArray(v.seats)&&position(v.home)))return false;
+  if(!list(save.vehicles,6)||!save.vehicles.every(v=>position(v)&&[BLACK_HAWK,'humvee'].includes(v.type)&&Number.isFinite(v.hp)&&Array.isArray(v.seats)&&position(v.home)))return false;
   return list(save.grenades,64)&&save.grenades.every(position)&&list(save.rockets,64)&&save.rockets.every(position)&&list(save.deployables,64)&&save.deployables.every(position);
 }

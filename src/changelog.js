@@ -15,6 +15,17 @@ export function mountChangelog() {
     }
     article.append(summary);
     const content = document.createElement('div'); content.className = 'patch-content';
+    if (patch.image) {
+      const photo = document.createElement('img');
+      photo.className = 'patch-photo';
+      photo.src = import.meta.env.BASE_URL + patch.image.src;
+      photo.alt = patch.image.alt;
+      photo.width = 1080;
+      photo.height = 720;
+      photo.loading = 'lazy';
+      photo.decoding = 'async';
+      content.append(photo);
+    }
     for (const [key, label] of categories) {
       const entries = patch[key];
       if (!Array.isArray(entries) || entries.length === 0) continue;

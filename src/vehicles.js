@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { getVehicleDimensions, vehicleAimDirection, HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
+import { BLACK_HAWK, getVehicleDimensions, vehicleAimDirection, HUMVEE_SIDE_WINDOWS, TURRET_MAX_PITCH, TURRET_MIN_PITCH, VEHICLE_TYPES } from '../shared/vehicles.js';
 import { atvModel, humveeModel } from './light-vehicle-models.js';
+import { createBlackHawkRig, updateBlackHawkRig } from './black-hawk-model.js';
 
 const upAxis = new THREE.Vector3(0, 1, 0);
 const turretHeading = new THREE.Quaternion();
@@ -18,6 +19,7 @@ export const CREW_CONTROLS = {
   atv: { origin: [0, 1.06, -.48], grip: [.33, .045, .01] },
   driver: { origin: [-.54, 1.24, -.825], grip: [.19, .024, 0] },
   gunner: { origin: [0, 2.18, .19], grip: [.11, -.012, .07] },
+  pilot: { origin: [-.59, 1.77, -2.45], grip: [.07, .015, 0] },
 };
 let tankLibrary,tankLoading,tankMaterialFactory=null;const tankPool=[];
 export function warmTankAssets(renderer,scene,camera,prepare){return tankLoading??=import('./tank-model.js').then(async library=>{
@@ -442,6 +444,7 @@ const riderColors = [
 ];
 
 export function createVehicleRig(type, material, teamColors) {
+  if(type===BLACK_HAWK)return createBlackHawkRig();
   if(type==='tank'){
     if(tankLibrary)return tankPool.pop()??tankLibrary.createTankRig(tankMaterialFactory);
     const group=new THREE.Group(),body=new THREE.Group(),m=new THREE.MeshLambertMaterial({color:0x788368});group.add(body);const hull=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.4,7),m);hull.position.y=1;body.add(hull);
@@ -502,6 +505,7 @@ export function fallbackRiderVisible(vehicle,index,localId,fullModelVisible=fals
 }
 
 export function updateVehicleRig(rig, vehicle, player, dt, blend, view, quality, terrain) {
+  if(rig.blackHawk){updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain);return;}
   if(rig.tank){tankLibrary.updateTankRig(rig,vehicle,player,dt,blend,view,quality,terrain);return;}
   const {group,body,controls,wheels,turret,riders,paintMeshes,materials,teamColors}=rig;
   group.scale.set(vehicle.modelScale?.x??1,vehicle.modelScale?.y??1,vehicle.modelScale?.z??1);

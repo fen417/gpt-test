@@ -1,5 +1,5 @@
 import { affineBox, inverseMatrix, multiplyMatrix, rayAffineBox, rotationMatrix, transformVector } from './geometry.js';
-import { VEHICLE_TYPES, vehicleAimDirection,TANK_TURRET_BASE_Y, isEnclosedTankCrew, vehicleShape } from './vehicles.js';
+import { BLACK_HAWK, VEHICLE_TYPES, vehicleAimDirection,TANK_TURRET_BASE_Y, isEnclosedTankCrew, vehicleShape } from './vehicles.js';
 
 // Local-space armour follows the visible hull, leaving real window apertures.
 // The movement footprint remains solid; only projectile/visibility rays use it.
@@ -24,9 +24,26 @@ const atv=[box(0,.58,.02,.64,.50,1.48),box(0,.82,-.65,.83,.29,.85,.13),box(0,.73
   ...[-1,1].flatMap(side=>[-1,1].map(end=>box(side*.54,.31,end*.73,.28,.60,.60)))];
 const tank=[box(0,.95,.45,3,1,5),box(0,1.1,-2.65,2.94,.43,1.7,-.33),box(0,.91,3.12,2.85,.63,.5,.45),box(-1.5,.44,.05,.6,.88,6.8),box(1.5,.44,.05,.6,.88,6.8)];
 const tankTurret=[box(0,.29,.04,2.5,.55,1.5),box(0,.26,-.95,2,.43,.8),box(0,.28,1.01,1.9,.4,.7),box(0,.34,-2.95,.22,.22,4.2)];
-const crew=Object.fromEntries(Object.entries(VEHICLE_TYPES).map(([type,spec])=>[type,spec.seats.map(seat=>[
-  box(seat.x,seat.height-.005,seat.z-.028,.26,.28,.25),box(seat.x,seat.height-.32,seat.z+.02,.43,.49,.31),
-  box(seat.x,seat.height-.67,seat.z-.12,.45,.27,.44)])]));
+const blackHawk=[
+  box(0,1.21,-.29,2.38,.51,7.46),box(0,1.89,-3.79,1.71,.24,.52),
+  box(0,2.94,-.15,2.08,.25,4.69),box(0,3.36,-.02,2.55,.78,3.18),
+  box(0,2.12,2.32,2.14,1.48,1.6),box(0,2.19,5.48,.99,1.08,4.25,-.09),
+  box(-.32,3.52,7.13,.38,1.98,.67),box(0,2.44,6.94,4.04,.13,.70),
+  ...[-1,1].flatMap(side=>[
+    box(side*1.25,2.12,1.54,.13,1.32,.17),box(side*1.26,2.12,-1.29,.13,1.36,.13),
+    box(side*1.38,.46,-1.91,.35,.87,.88), box(side*1.29,1.05,-.65,.48,.11,1.01),
+  ]),
+  box(0,.32,6.15,.26,.64,.64),
+];
+const armor = { tank, humvee, atv, [BLACK_HAWK]: blackHawk };
+const crew=Object.fromEntries(Object.entries(VEHICLE_TYPES).map(([type,spec])=>[type,spec.seats.map(seat=>{
+  const matrix=rotationMatrix({y:seat.facing??0});
+  const part=(y,z,w,h,d)=>{
+    const offset=transformVector(matrix,{x:0,y,z});
+    return affineBox({x:seat.x+offset.x,y:seat.height+offset.y,z:seat.z+offset.z},[w/2,h/2,d/2],matrix);
+  };
+  return [part(-.005,-.028,.26,.28,.25),part(-.32,.02,.43,.49,.31),part(-.67,-.12,.45,.27,.44)];
+})]));
 const frames=new WeakMap();
 function frame(v){
   const key=[v.x,v.y,v.z,v.yaw,v.bodyPitch,v.bodyRoll,v.modelScale?.x,v.modelScale?.y,v.modelScale?.z].join('/');
@@ -42,7 +59,7 @@ export function vehicleRay(v,origin,direction){
 export function rayVehicleArmor(origin,direction,v,maximum){
   if(v.compactWreck&&v.hp<=0)return rayAffineBox(origin,direction,vehicleShape(v),maximum);
   const ray=vehicleRay(v,origin,direction);let hit=Infinity;
-  for(const shape of v.type==='tank'?tank:v.type==='humvee'?humvee:atv)hit=Math.min(hit,rayAffineBox(ray.origin,ray.direction,shape,Math.min(hit,maximum)));
+  for(const shape of armor[v.type])hit=Math.min(hit,rayAffineBox(ray.origin,ray.direction,shape,Math.min(hit,maximum)));
   if(v.type==='tank'){
     const yaw=(v.aimYaw??v.yaw)-v.yaw,c=Math.cos(yaw),s=Math.sin(yaw),x=ray.origin.x,z=ray.origin.z+.4;
     const local={x:x*c-z*s,y:ray.origin.y-TANK_TURRET_BASE_Y,z:x*s+z*c},dir={x:ray.direction.x*c-ray.direction.z*s,y:ray.direction.y,z:ray.direction.x*s+ray.direction.z*c};

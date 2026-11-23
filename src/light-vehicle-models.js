@@ -54,4 +54,35 @@ export const atvModel = vehicleModel(new URL('./assets/atv/atv.glb',import.meta.
   'Body','BodyDetail','Controls','ControlDetail','Wheel','WheelLow','Badge',
 ],'Body');
 
-export const lightVehicleModels = {atv:atvModel,humvee:humveeModel};
+let blackHawkScene, blackHawkLoading;
+export const blackHawkModel = {
+  load() {
+    return blackHawkLoading ??= loader.loadAsync(new URL('./assets/black-hawk/black-hawk.glb',import.meta.url).href)
+      .then(({scene})=>{
+        for(let lod=0;lod<3;lod++){
+          for(const part of ['Airframe','Cabin','MainRotor','TailRotor','Minigun']){
+            if(!scene.getObjectByName(`LOD${lod}_${part}`))throw Error(`Missing Black Hawk part ${part} in LOD${lod}`);
+          }
+        }
+        scene.traverse(mesh=>{
+          if(!mesh.isMesh)return;
+          mesh.geometry.userData.sharedVehicleGeometry=true;
+          const high=mesh.material;
+          if(high.transparent){
+            high.side=THREE.DoubleSide;
+            high.depthWrite=false;
+          }
+          mesh.castShadow=mesh.receiveShadow=!high.transparent;
+          pairMaterials(high,new THREE.MeshLambertMaterial({
+            color:high.color,map:high.map,emissive:high.emissive,emissiveIntensity:high.emissiveIntensity,
+            transparent:high.transparent,opacity:high.opacity,depthWrite:high.depthWrite,side:high.side,
+          }));
+        });
+        blackHawkScene=scene;
+      }).catch(error=>{blackHawkLoading=null;console.error('Black Hawk model:',error);});
+  },
+  ready:()=>Boolean(blackHawkScene),
+  clone:()=>blackHawkScene.clone(true),
+};
+
+export const lightVehicleModels = {atv:atvModel,humvee:humveeModel,'black-hawk':blackHawkModel};

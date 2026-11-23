@@ -1,6 +1,7 @@
 ﻿import { getMap, CLASSES, CLASS_WEAPONS, DIFFICULTIES, PLAYER_RADIUS, EYE_HEIGHT, CAPTURE_RADIUS, defaultWeaponId, getWeapon } from './world.js';
 
-import { canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, TURRET_WEAPON, VEHICLE_TYPES, vehicleLocalPoint, isEnclosedTankCrew, vehicleCollisionSize } from './vehicles.js';
+import { BLACK_HAWK, blackHawkGroundHeight, blackHawkGunPose, blackHawkParked, canFirePassengerWeapon, createVehicle, getVehicleBoardingSeat, getVehicleSeatPose, getVehicleDimensions, vehicleBoardingRange, vehicleBodyTilt, vehicleShape, vehicleTurretWeapon, VEHICLE_TYPES, vehicleLocalPoint, isEnclosedTankCrew, vehicleCollisionSize } from './vehicles.js';
+import { blackHawkCollides, blackHawkShapes, fallBlackHawk, moveBlackHawk } from './black-hawk-flight.js';
 import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, prepareVehicleRoutes, BOT_VEHICLE_GRACE_SECONDS } from './vehicle-ai.js';
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
@@ -250,12 +251,13 @@ export class Simulation {
       p.tdmSpawn=safe[Math.floor(this.random()*safe.length)];
       pointId=undefined;
     }
-    if(this.gameMode!=='tdm'&&p.bot&&!pointId&&!shouldSpawnVehicleBotAtBase(this,p))pointId=botSpawnPoint(this,p)??undefined;
+    const vehicleBase=this.gameMode!=='tdm'&&p.bot&&!pointId&&shouldSpawnVehicleBotAtBase(this,p);
+    if(this.gameMode!=='tdm'&&p.bot&&!pointId&&!vehicleBase)pointId=botSpawnPoint(this,p)??undefined;
     const beacons=(this.gameMode==='tdm'?[]:liveBeacons(this,p.team)).filter(item=>![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,item)<8));
-    if(p.bot&&!pointId&&beacons.length&&this.random()<.32)pointId=beacons[Math.floor(this.random()*beacons.length)].id;
+    if(p.bot&&!pointId&&!vehicleBase&&beacons.length&&this.random()<.32)pointId=beacons[Math.floor(this.random()*beacons.length)].id;
     const beacon=beacons.find(item=>item.id===pointId);
     if(pointId?.startsWith('beacon:')&&!beacon)return false;
-    if(p.bot&&!pointId&&!shouldSpawnVehicleBotAtBase(this,p)){const safe=this.points.filter(q=>canSpawnAtPoint(q,p.team)&&![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,q)<25)).sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z));pointId=safe[0]?.id;}
+    if(p.bot&&!pointId&&!vehicleBase){const safe=this.points.filter(q=>canSpawnAtPoint(q,p.team)&&![...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,q)<25)).sort((a,b)=>Math.hypot(a.x,a.z)-Math.hypot(b.x,b.z));pointId=safe[0]?.id;}
     const point=this.points.find(q=>q.id===pointId);
     if(point&&(!canSpawnAtPoint(point,p.team)||[...this.players.values()].some(enemy=>enemy.alive&&enemy.team!==p.team&&dist(enemy,point)<CAPTURE_RADIUS)))return false;
     if(validClass(classId))p.classId=classId;
@@ -323,7 +325,10 @@ export class Simulation {
     }
     return height;
   }
-  createMapVehicle(spawn){return {...createVehicle(spawn),y:this.groundAt(spawn.x,spawn.z),...vehicleBodyTilt(spawn,this.map.terrain)};}
+  createMapVehicle(spawn){
+    if(spawn.type===BLACK_HAWK)return {...createVehicle(spawn),y:blackHawkGroundHeight(spawn,this.map.terrain),bodyPitch:0,bodyRoll:0,wreckFallSpeed:0,botPatrol:null};
+    return {...createVehicle(spawn),y:this.groundAt(spawn.x,spawn.z),...vehicleBodyTilt(spawn,this.map.terrain)};
+  }
   collides(x,z,y=this.groundAt(x,z),radius=this.playerRadius,height=EYE_HEIGHT){
     const limit=this.map.size/2-2;
     if(Math.abs(x)>limit||Math.abs(z)>limit||x<(this.map.shoreX??-Infinity)+radius)return true;
@@ -398,6 +403,7 @@ export class Simulation {
     return true;
   }
   vehicleCollides(vehicle,x,z,yaw){
+    if(vehicle.type===BLACK_HAWK)return blackHawkCollides(this,vehicle,{...vehicle,x,z,yaw,y:blackHawkGroundHeight({x,z,yaw},this.map.terrain),bodyPitch:0,bodyRoll:0});
     const body=footprint(vehicle,x,z,yaw);
     const c=Math.abs(body.cos),s=Math.abs(body.sin);
     const dx=body.w*c+body.d*s,dz=body.w*s+body.d*c;
@@ -406,8 +412,9 @@ export class Simulation {
     const area=this.map.playArea;
     if(area&&(x-dx<area.minX||x+dx>area.maxX||z-dz<area.minZ||z+dz>area.maxZ))return true;
     const tilted=Boolean(vehicle.modelRotation?.x||vehicle.modelRotation?.z);
+    const nearAircraft=other=>other.type===BLACK_HAWK&&Math.abs(other.x-x)<15&&Math.abs(other.z-z)<15;
     const needsShape=tilted||this.hasRotatedGeometry||
-      this.vehicles.some(other=>other.modelRotation?.x||other.modelRotation?.z||other.compactWreck&&other.wreckTime>0);
+      this.vehicles.some(other=>nearAircraft(other)||other.modelRotation?.x||other.modelRotation?.z||other.compactWreck&&other.wreckTime>0);
     const pose=needsShape?{...vehicle,x,z,yaw,y:this.groundAt(x,z)}:null;
     const shape=pose?vehicleShape({...pose,...vehicleBodyTilt(pose,this.map.terrain)}):null;
     const bounds=shape?boxBounds({obb:shape}):null;
@@ -424,12 +431,16 @@ export class Simulation {
       if(overlaps(body,{x:box.x,z:box.z,w:box.w/2,d:box.d/2,cos:1,sin:0}))return true;
     }
     return this.vehicles.some(other=>other!==vehicle&&(other.hp>0||other.wreckTime>0)&&
-      (tilted||other.modelRotation?.x||other.modelRotation?.z||other.compactWreck&&other.hp<=0
+      (other.type===BLACK_HAWK
+        ?nearAircraft(other)&&Math.abs(other.y-pose.y)<8&&blackHawkShapes(other).some(part=>overlapsAffine(shape,part))
+        :tilted||other.modelRotation?.x||other.modelRotation?.z||other.compactWreck&&other.hp<=0
         ?overlapsAffine(shape,vehicleShape(other)):overlaps(body,footprint(other))));
   }
   vehicleAt(x,z,y,radius=PLAYER_RADIUS){
     return this.vehicles.some(v=>{
       if(v.hp<=0&&!(v.wreckTime>0))return false;
+      if(v.type===BLACK_HAWK)return Math.abs(v.x-x)<10&&Math.abs(v.y-y)<8&&Math.abs(v.z-z)<10&&
+        blackHawkShapes(v).some(part=>overlapsAffine(uprightBox(x,y,z,radius,EYE_HEIGHT),part));
       if(v.modelRotation?.x||v.modelRotation?.z||v.compactWreck&&v.hp<=0)return overlapsAffine(uprightBox(x,y,z,radius,EYE_HEIGHT),vehicleShape(v));
       const body=footprint(v),dx=x-v.x,dz=z-v.z;
       return y<(v.y??0)+body.h && Math.abs(dx*body.cos-dz*body.sin)<body.w+radius
@@ -445,6 +456,7 @@ export class Simulation {
     if(!p.alive||p.vehicleId||vehicle.hp<=0||vehicle.seats[seat]!==null||
       Math.abs(vehicle.speed)>3||Math.abs(p.y-this.groundAt(p.x,p.z))>.8||dist(p,vehicle)>vehicleBoardingRange(vehicle)||
       (vehicle.team!==p.team&&vehicle.seats.some(Boolean)))return false;
+    if(vehicle.type===BLACK_HAWK&&!blackHawkParked(vehicle,this.map.terrain))return false;
     if(!this.lineClear({x:p.x,y:p.y+1.25,z:p.z},{x:vehicle.x,y:vehicle.y+1.25,z:vehicle.z}))return false;
     vehicle.team=p.team;
     vehicle.seats[seat]=p.id;
@@ -461,6 +473,13 @@ export class Simulation {
   dismountVehicle(p,force=false){
     if(!p.vehicleId)return false;
     const vehicle=this.vehicles.find(v=>v.id===p.vehicleId),seat=p.vehicleSeat;
+    if(vehicle?.type===BLACK_HAWK&&!blackHawkParked(vehicle,this.map.terrain)){
+      if(!force)return false;
+      vehicle.seats[seat]=null;
+      this.event('vehicleExit',{playerId:p.id,vehicleId:vehicle.id,seat});
+      Object.assign(p,{vehicleId:null,vehicleSeat:null,grounded:false,vy:0,moveSpeed:0});
+      return true;
+    }
     if(vehicle){
       const spec=VEHICLE_TYPES[vehicle.type],position=spec.seats[seat];
       const dimensions=getVehicleDimensions(vehicle);
@@ -491,14 +510,14 @@ export class Simulation {
           const free=v.seats.findIndex((id,index)=>index>0&&id===null);
           if(free>=0){v.seats[free]=driver.id;v.seats[0]=null;driver.vehicleSeat=free;driver.botJourney=null;}
         }
-        const boarding=getVehicleBoardingSeat(p,this.vehicles);
+        const boarding=getVehicleBoardingSeat(p,this.vehicles,this.map.terrain);
         if(boarding)this.mountVehicle(p,boarding.vehicle,boarding.seat);
       }
     }
     if(switchSeat&&!p.switchSeatHeld&&p.vehicleId){
       const vehicle=this.vehicles.find(v=>v.id===p.vehicleId);
       const oldSeat=p.vehicleSeat;
-      if(Math.abs(vehicle.speed)<(vehicle.type==='tank'?3:4.5)&&this.time>=(p.nextSeatSwitch??0)){
+      if((vehicle.type===BLACK_HAWK?blackHawkParked(vehicle,this.map.terrain):Math.abs(vehicle.speed)<(vehicle.type==='tank'?3:4.5))&&this.time>=(p.nextSeatSwitch??0)){
         for(let n=1;n<vehicle.seats.length;n++){
           const seat=(oldSeat+n)%vehicle.seats.length;
           if(vehicle.seats[seat]!==null)continue;
@@ -515,6 +534,7 @@ export class Simulation {
     p.interactHeld=interact;p.switchSeatHeld=switchSeat;
   }
   moveVehicle(vehicle,input,dt){
+      if(vehicle.type===BLACK_HAWK){moveBlackHawk(this,vehicle,input,dt);return;}
       if(vehicle.type==='tank'){moveTank(this,vehicle,input,dt);Object.assign(vehicle,vehicleBodyTilt(vehicle,this.map.terrain));return;}
       const spec=VEHICLE_TYPES[vehicle.type];
       const throttle=input?.forward??0, steering=input?.strafe??0;
@@ -538,10 +558,10 @@ export class Simulation {
   updateVehicles(dt){
     for(const vehicle of this.vehicles){
       if(vehicle.hp<=0){
-        vehicle.wreckTime=Math.max(0,vehicle.wreckTime-dt);
+        if(vehicle.wreckTime>0&&(vehicle.type!==BLACK_HAWK||!fallBlackHawk(this,vehicle,dt)))vehicle.wreckTime=Math.max(0,vehicle.wreckTime-dt);
         vehicle.respawnIn=Math.max(0,vehicle.respawnIn-dt);
         const home=vehicle.home;
-        if(vehicle.respawnIn<=0&&!this.vehicleCollides(vehicle,home.x,home.z,home.yaw)&&
+        if(vehicle.respawnIn<=0&&!home.noRespawn&&!this.vehicleCollides(vehicle,home.x,home.z,home.yaw)&&
           ![...this.players.values()].some(p=>p.alive&&dist(p,home)<2.8)){
           Object.assign(vehicle,this.createMapVehicle(home));
         }
@@ -568,7 +588,8 @@ export class Simulation {
       }
       // Campaign tanks combine steering and gunnery in one seat. Multiplayer
       // gives the driver the cannon and seat two an independent machine gun.
-      const gunner=vehicle.type==='tank'?driver:spec.seats[1].role==='gunner'?this.players.get(vehicle.seats[1]):null;
+      const gunnerIndex=spec.seats.findIndex(seat=>seat.role==='gunner');
+      const gunner=vehicle.type==='tank'?driver:this.players.get(vehicle.seats[gunnerIndex]);
       const machineGunner=vehicle.type==='tank'&&vehicle.controlScheme!=='wot'?this.players.get(vehicle.seats[1]):null;
       vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown-dt);
       vehicle.heat=Math.max(0,vehicle.heat-dt*(vehicle.overheated?.28:.26));
@@ -581,9 +602,13 @@ export class Simulation {
           yaw:vehicle.wantedYaw??vehicle.aimYaw,pitch:vehicle.wantedPitch??vehicle.aimPitch}}:gunner;
         advanceTankSystems(this,vehicle,aimingGunner?.alive?aimingGunner:null,dt,machineGunner);continue;
       }
-      if(gunner?.alive){
+      if(vehicle.type===BLACK_HAWK){
+        const pose=blackHawkGunPose(vehicle,gunner?.input.yaw,gunner?.input.pitch);
+        vehicle.aimYaw=pose.yaw;vehicle.aimPitch=pose.pitch;
+      }else if(gunner?.alive){
+        const weapon=vehicleTurretWeapon(vehicle);
         vehicle.aimYaw=gunner.input.yaw;
-        vehicle.aimPitch=clamp(gunner.input.pitch,TURRET_WEAPON.minPitch,TURRET_WEAPON.maxPitch);
+        vehicle.aimPitch=clamp(gunner.input.pitch,weapon.minPitch,weapon.maxPitch);
       }else{
         vehicle.aimYaw=vehicle.yaw;vehicle.aimPitch=0;
       }
@@ -596,15 +621,18 @@ export class Simulation {
     const speed=Math.max(Math.abs(before.speed),Math.abs(vehicle.speed),travelled/dt);
     if(speed<2.5)return;
     const turn=angleDifference(vehicle.yaw,before.yaw);
-    const dimensions=getVehicleDimensions(vehicle),reach=Math.hypot(dimensions.width,dimensions.length)/2+PLAYER_RADIUS;
+    const dimensions=getVehicleDimensions(vehicle),aircraft=vehicle.type===BLACK_HAWK;
+    const reach=(aircraft?8:Math.hypot(dimensions.width,dimensions.length)/2)+PLAYER_RADIUS;
     const steps=Math.max(1,Math.ceil(travelled/.3),Math.ceil(Math.abs(turn)/.08));
     // Sweep the actual body, including height, so fast vehicles cannot tunnel
     // through infantry or hit someone standing above/below the vehicle.
     const shapes=[];
     for(let n=0;n<=steps;n++){
       const t=n/steps;
-      shapes.push(vehicleShape({...vehicle,x:before.x+(vehicle.x-before.x)*t,
-        y:before.y+(vehicle.y-before.y)*t,z:before.z+(vehicle.z-before.z)*t,yaw:before.yaw+turn*t}));
+      const pose={...vehicle,x:before.x+(vehicle.x-before.x)*t,
+        y:before.y+(vehicle.y-before.y)*t,z:before.z+(vehicle.z-before.z)*t,yaw:before.yaw+turn*t};
+      if(aircraft)shapes.push(...blackHawkShapes(pose));
+      else shapes.push(vehicleShape(pose));
     }
     vehicle.runOverHits??=new Map();
     for(const [id,until] of vehicle.runOverHits)if(until<=this.time)vehicle.runOverHits.delete(id);
@@ -633,7 +661,7 @@ export class Simulation {
     if(kind==='blast')vehicle.lastBlastAt=this.time;
     vehicle.hp=Math.max(0,vehicle.hp-amount*(kind==='bullet'?spec.bulletArmor:spec.blastArmor)*zoneMultiplier);
     if(vehicle.hp>0)return{ricochet:false,amount:previousHp-vehicle.hp};
-    vehicle.speed=0;vehicle.steer=0;vehicle.respawnIn=spec.respawn;vehicle.wreckTime=vehicle.type==='tank'?20:8;
+    vehicle.speed=0;vehicle.steer=0;vehicle.respawnIn=spec.respawn;vehicle.wreckTime=vehicle.type==='tank'||vehicle.type===BLACK_HAWK?20:8;
     for(const id of [...vehicle.seats]){
       const passenger=this.players.get(id);
       if(!passenger)continue;
@@ -773,23 +801,24 @@ export class Simulation {
   }
   shootTurret(p,vehicle,dt){
     if(!p.input.fire||vehicle.overheated||vehicle.gunCooldown>0)return;
-    vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown)+TURRET_WEAPON.interval;
-    vehicle.heat=Math.min(1,vehicle.heat+TURRET_WEAPON.heatPerShot);
+    const weapon=vehicleTurretWeapon(vehicle);
+    vehicle.gunCooldown=Math.max(-dt,vehicle.gunCooldown)+weapon.interval;
+    vehicle.heat=Math.min(1,vehicle.heat+weapon.heatPerShot);
     if(vehicle.heat>=1)vehicle.overheated=true;
     vehicle.gunSeq++;
-    const spread=TURRET_WEAPON.spread*(1+vehicle.heat*.6+Math.abs(vehicle.speed)*.034);
+    const spread=weapon.spread*(1+vehicle.heat*.6+Math.abs(vehicle.speed)*.034);
     const random=shotRandom(p.id,vehicle.gunSeq,'turret'),angle=random()*Math.PI*2,radius=Math.sqrt(random())*spread;
     const yaw=vehicle.aimYaw+Math.cos(angle)*radius,pitch=vehicle.aimPitch+Math.sin(angle)*radius;
-    const origin=getVehicleSeatPose(vehicle,1);
-    this.launchBullet(p,TURRET_WEAPON,origin,yaw,pitch,vehicle);
+    const origin=vehicle.type===BLACK_HAWK?blackHawkGunPose(vehicle,vehicle.aimYaw,vehicle.aimPitch).muzzle:getVehicleSeatPose(vehicle,p.vehicleSeat);
+    this.launchBullet(p,weapon,origin,yaw,pitch,vehicle);
   }
   launchBullet(p,weapon,origin,yaw,pitch,firingVehicle=null,trace=false){
     const speed=weapon.projectileSpeed, horizontal=speed*Math.cos(pitch);
     const velocity={vx:-Math.sin(yaw)*horizontal,vy:Math.sin(pitch)*speed,vz:-Math.cos(yaw)*horizontal};
     const life=weapon.range/speed,mounted=Boolean(firingVehicle&&
-      (p.vehicleSeat===1||firingVehicle.controlScheme==='wot'&&p.vehicleSeat===0));
+      (VEHICLE_TYPES[firingVehicle.type].seats[p.vehicleSeat]?.role==='gunner'||firingVehicle.controlScheme==='wot'&&p.vehicleSeat===0));
     const shotSeq=mounted?firingVehicle.gunSeq:p.shotSeq;
-    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:mounted&&firingVehicle.type==='tank'?'tank-mg':p.weaponId,team:p.team,shotSeq,...origin,
+    this.event('shot',{playerId:p.id,classId:p.classId,weaponId:mounted&&firingVehicle.type==='tank'?'tank-mg':mounted&&firingVehicle.type===BLACK_HAWK?'black-hawk-minigun':p.weaponId,team:p.team,shotSeq,...origin,
       ...(trace||shotSeq%3===0?{...velocity,life}:{}),...(firingVehicle?{vehicleId:firingVehicle.id,mounted}:{})});
     this.bullets.push({...origin,...velocity,life,weapon,age:0,time:this.time,shotId:this.eventId,
       playerId:p.id,team:p.team,vehicleId:firingVehicle?.id,rewind:!p.bot?Math.max(0,Math.min(.2,p.shotRewind??0)):0});

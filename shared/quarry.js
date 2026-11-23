@@ -120,6 +120,7 @@ for(const [x,z,w,d,h,kind] of yards){
   pair(x,z,w,d,h,kind,coverColors[kind],options);
 }
 for(const sign of [-1,1]){add(0,sign*377,65,2,4);for(const x of [-42,42])add(x,sign*350,15,26,7,'warehouse','#8c806b');}
+for(const sign of [-1,1])pads.push({x:sign*18,z:sign*365,w:16,d:20,blend:4});
 for(let i=0;i<28;i++){
   const x=-370+(i%7)*105,z=-285+Math.floor(i/7)*110,w=9+i%3*3,d=7+i%4*2;
   if(Math.hypot(x,z)<70||!roadClear(x,z,w,d,5)||boxes.some(b=>Math.hypot(x-b.x,z-b.z)<22))continue;
@@ -148,4 +149,13 @@ for(const n of navigationNodes)n.y=terrain.heightAt(n.x,n.z);
 const vehicleSpawns=[];
 for(const team of [0,1]){const n=nodes.find(n=>n.id===(team?'north':'south')+'-tank');vehicleSpawns.push({id:n.id,type:'tank',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
 for(const team of [0,1])for(const type of ['atv','atv-2','humvee','humvee-2']){const end=team?'north':'south',n=nodes.find(n=>n.id===end+'-'+type);vehicleSpawns.push({id:n.id,type:type.startsWith('atv')?'atv':'humvee',team,x:n.x,z:n.z,yaw:team?Math.PI:0});}
-export const QUARRY_MAP={id:'quarry',layoutVersion:2,name:'Карьер «Перевал»',size,fogDensity:.00195,terrain,terrainPads,landforms,boxes,structures,roads,points,navigationNodes,supplySpawns:points.flatMap(p=>p.id==='C'?[-1,1].map(s=>({id:'map-ammo-C-'+s,x:0,z:s*14})):[{id:'map-ammo-'+p.id,x:p.x,z:p.z+(p.id==='A'||p.id==='B'?14:-14)}]),spawns:[{x:0,z:358},{x:0,z:-358}],vehicleSpawns,vehicleRoutes:{nodes,edges,objectives,stops:{}},landmarks:[],districts:points,signs:[{x:0,z:-380,name:'ПЕРЕВАЛ',note:'СЕВЕРНЫЙ ПАРК',baseSign:true,yaw:0},{x:0,z:380,name:'ПЕРЕВАЛ',note:'ЮЖНЫЙ ПАРК',baseSign:true,yaw:Math.PI}]};
+for(const team of [0,1]){const sign=team?-1:1;vehicleSpawns.push({id:team?'north-black-hawk':'south-black-hawk',type:'black-hawk',team,x:sign*18,z:sign*365,yaw:team?Math.PI:0});}
+const patrolWaypoints=ids=>ids.map(id=>{
+  const {x,z}=points.find(point=>point.id===id);
+  return {x,z};
+});
+const airPatrols={
+  'south-black-hawk':{altitude:41,routes:[patrolWaypoints(['D','A','C','E']),patrolWaypoints(['E','B','A','D'])]},
+  'north-black-hawk':{altitude:30,routes:[patrolWaypoints(['B','E','C','A']),patrolWaypoints(['A','D','E','B'])]},
+};
+export const QUARRY_MAP={id:'quarry',layoutVersion:2,name:'Карьер «Перевал»',size,fogDensity:.00195,terrain,terrainPads,landforms,boxes,structures,roads,points,navigationNodes,supplySpawns:points.flatMap(p=>p.id==='C'?[-1,1].map(s=>({id:'map-ammo-C-'+s,x:0,z:s*14})):[{id:'map-ammo-'+p.id,x:p.x,z:p.z+(p.id==='A'||p.id==='B'?14:-14)}]),spawns:[{x:0,z:358},{x:0,z:-358}],vehicleSpawns,airPatrols,vehicleRoutes:{nodes,edges,objectives,stops:{}},landmarks:[],districts:points,signs:[{x:0,z:-380,name:'ПЕРЕВАЛ',note:'СЕВЕРНЫЙ ПАРК',baseSign:true,yaw:0},{x:0,z:380,name:'ПЕРЕВАЛ',note:'ЮЖНЫЙ ПАРК',baseSign:true,yaw:Math.PI}]};
