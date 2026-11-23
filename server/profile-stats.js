@@ -74,7 +74,7 @@ export function createProfileStats(env){
     return saving;
   }
   return {
-    weapons,
+    weapons,caseDatabase:db,
     async identify(token){
       const {uid}=await auth.verifyIdToken(token);
       if(uid===WRITER_UID)throw Error('Invalid player identity');

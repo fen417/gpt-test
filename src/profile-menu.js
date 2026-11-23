@@ -30,7 +30,7 @@ const authErrors={
 
 const formatTime=seconds=>Math.floor(seconds/60)+' мин '+String(Math.floor(seconds%60)).padStart(2,'0')+' с';
 
-export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRenderer,getLowWeaponDetail}){
+export function mountPlayerProfile({onOpen,onCasesOpen,onCaseIdentityChange,defaultServerUrl,resetStats,getRenderer,getLowWeaponDetail}){
   const $=id=>document.getElementById(id);
   const dialog=$('profile-panel'),authDialog=$('account-panel'),confirm=$('profile-confirm-reset');
   const form=$('profile-auth'),email=$('profile-email'),password=$('profile-password');
@@ -162,7 +162,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
   }
 
   function refreshPreview(){
-    if(!dialog.open||tab==='overview'||!getRenderer())return;
+    if(!dialog.open||tab==='overview'||tab==='cases'||!getRenderer())return;
     if(preview){void preview.update();return;}
     if(!previewLoading)previewLoading=import('./profile-preview.js').then(({mountProfilePreview})=>{
       preview=mountProfilePreview({getRenderer,getSelection:selection,getLowWeaponDetail});return preview.update();
@@ -177,12 +177,13 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
       button.tabIndex=selected?0:-1;
       $(button.getAttribute('aria-controls')).hidden=!selected;
     }
-    $('profile-preview-frame').hidden=tab==='overview';
+    $('profile-preview-frame').hidden=tab==='overview'||tab==='cases';
     $('profile-attachment-chart').hidden=tab!=='attachments';
     dialog.classList.toggle('attachment-workspace',tab==='attachments');
     dialog.scrollTop=0;
     mounts.hidden=tab!=='attachments';
     if(tab==='attachments')describeAttachments();
+    if(tab==='cases'&&dialog.open)onCasesOpen();
     if(focus)next.focus();
     refreshPreview();
   }
@@ -193,8 +194,13 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     authMessage='';
     connecting=import('./profile-firebase.js').then(({createPlayerProfile})=>{
       cloud=createPlayerProfile();
+      let accountId=null;
       cloud.subscribe(()=>{
         const {user,loading,weaponProgress,networkWeaponXp}=cloud.state;
+        if((user?.uid??null)!==accountId){
+          accountId=user?.uid??null;
+          onCaseIdentityChange();
+        }
         progress.updateAccount(user?.uid??null,weaponProgress,networkWeaponXp);
         refreshLoadout();
         if(user&&!loading)syncWeapons();
@@ -256,9 +262,12 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
   });
   $('open-account').addEventListener('click',()=>{onOpen();openAuth();});
 
-  $('open-profile').addEventListener('click',()=>{
+  function openProfile(target){
     onOpen();message='';dialog.showModal();renderProfile();
-  });
+    selectTab(tabs.find(button=>button.dataset.profileTab===target));
+  }
+  $('open-profile').addEventListener('click',()=>openProfile(tab));
+  $('open-cases').addEventListener('click',()=>openProfile('cases'));
   $('profile-sign-out').addEventListener('click',()=>void profileAction(async()=>{
     guest=true;await cloud.signOut();dialog.close();email.value='';guest=false;openAuth();
   }));
@@ -304,6 +313,7 @@ export function mountPlayerProfile({onOpen,defaultServerUrl,resetStats,getRender
     currentAttachment,
     networkLoadout:progress.loadout,
     get loadout(){return loadout;},
+    get caseAccount(){return cloud?.state.user?.uid??null;},
     async tokenForServer(url){
       if(!firebaseWebConfig||!url.startsWith('wss://')||url!==await defaultServerUrl())return null;
       return (await connect())?.idToken()??null;

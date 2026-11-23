@@ -4,6 +4,8 @@ import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import {canReadMetrics} from './metrics-access.js';
 import {createProfileStats} from './profile-stats.js';
+import {caseOwner,createCaseInventory} from './case-inventory.js';
+import {matchCaseChance} from '../shared/cases.js';
 import {networkWeaponXpCap} from './weapon-progress.js';
 import {XP_PER_WEAPON_KILL,weaponLevel} from '../shared/weapon-modules.js';
 import { pathToFileURL } from 'node:url';
@@ -24,9 +26,10 @@ const wireBytes=length=>length+(length<126?2:length<65536?4:10);
 export function createGameServer(options={}){
   const env={...process.env,...options};
   const profiles=createProfileStats(env);
-  const flushProfiles=()=>void Promise.all([profiles?.flush(),profiles?.weapons.flush()]);
-  const profileFlush=profiles&&setInterval(flushProfiles,15000);
-  profileFlush?.unref();
+  const cases=createCaseInventory(profiles?.caseDatabase,env);
+  const flushProfiles=()=>void Promise.all([profiles?.flush(),profiles?.weapons.flush(),cases.flush()]);
+  const profileFlush=setInterval(flushProfiles,15000);
+  profileFlush.unref();
   const config={port:bounded(env.PORT,0,65535,8080),tickHz:bounded(env.TICK_HZ,30,60,60),snapshotHz:bounded(env.SNAPSHOT_HZ,10,30,30),
     maxPlayers:Math.floor(bounded(env.MAX_PLAYERS,2,7,7)),maxBots:Math.floor(bounded(env.MAX_BOTS,0,30,30)),defaultBots:Math.floor(bounded(env.BOTS,0,30,8)),
     reconnectMs:bounded(env.RECONNECT_SECONDS,5,120,30)*1000,emptyMs:bounded(env.EMPTY_ROOM_SECONDS,10,300,60)*1000};
@@ -42,7 +45,7 @@ export function createGameServer(options={}){
     skippedSnapshots:totals.skippedSnapshots,overruns:totals.overruns,droppedSimulationSeconds:+totals.droppedSeconds.toFixed(3),config,
     players:[...sessions.values()].map(s=>({id:s.id,connected:!!s.client,inputQueue:s.inputQueue.length,inputReceived:s.inputReceived??0,inputAck:s.inputAck??0,bytesPerSecond:s.bps??0,totalBytes:s.bytes,averageSnapshotBytes:s.snapshotCount?Math.round(s.snapshotBytes/s.snapshotCount):0}))});
   const server=http.createServer((req,res)=>{
-    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,room:room?.phase??'empty'}));return;}
+    if(req.url==='/health'){res.writeHead(stopping?503:200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:!stopping,protocol:PROTOCOL_VERSION,caseInventory:true,room:room?.phase??'empty'}));return;}
     if(req.url==='/metrics'){
       if(!canReadMetrics(req,env)){res.writeHead(403);res.end('Forbidden');return;}
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(stats()));return;
@@ -66,6 +69,26 @@ export function createGameServer(options={}){
     if(kind==='snapshot'){totals.snapshots++;totals.snapshotBytes+=length;}return true;
   }
   function error(c,message,requestId,code='request'){send(c,{type:'error',message,requestId,code});}
+  async function caseRequest(c,data){
+    if(c.casePending)throw Error('Дождитесь ответа по кейсам.');
+    c.casePending=true;
+    try{
+      let uid=null;
+      if(data.token!==null&&data.token!==undefined){
+        if(!profiles||typeof data.token!=='string'||data.token.length>5000)throw Error('Профиль недоступен.');
+        uid=await profiles.identify(data.token).catch(()=>{throw Error('Войдите в профиль заново.');});
+      }
+      const owner=caseOwner(uid,data.caseKey);
+      if(!owner)throw Error('Не удалось определить владельца кейсов.');
+      if(data.type==='case-open')send(c,{type:data.type,requestId:data.requestId,...await cases.open(owner,data.caseId)});
+      else{
+        const inventory=data.type==='case-campaign'
+          ?await cases.claimCampaign(owner,data.missionId,data.difficulty)
+          :await cases.list(owner);
+        send(c,{type:data.type,requestId:data.requestId,inventory});
+      }
+    }finally{c.casePending=false;}
+  }
   function listing(){return room?[{id:room.id,name:room.name,mapId:room.mapId,map:getMap(room.mapId).name,mode:room.mode,killLimit:room.killLimit,difficulty:room.difficulty,ownerId:room.ownerId,maxPlayers:room.maxPlayers,players:connected().length,reserved:sessions.size,bots:room.bots,status:room.phase==='lobby'?'Ожидание игроков':room.sim?.winner!==null?'Матч завершён':'В бою'}]:[];}
   function roomsChanged(){const data={type:'rooms',rooms:listing()};for(const c of clients)send(c,data);}
   function lobby(){
@@ -98,17 +121,21 @@ export function createGameServer(options={}){
   }
   function join(c,data,requestId,resume=false){
     if(c.session)throw Error('Вы уже в комнате.');if(!room)throw Error('Комната уже закрыта. Создайте новую.');
+    const inventoryOwner=caseOwner(c.profileUid,data.caseKey);
     let s;if(resume){s=[...sessions.values()].find(x=>x.token===data.token);if(!s)throw Error('Время переподключения истекло. Войдите в комнату заново.');if(s.client)throw Error('Этот игрок уже подключён.');if(s.profileUid&&s.profileUid!==c.profileUid)throw Error('Для восстановления матча войдите в тот же профиль.');}
     else{
       if(data.roomId&&data.roomId!==room.id)throw Error('Комната уже закрыта.');
       if(sessions.size>=room.maxPlayers)throw Error('Комната заполнена. Место отключившегося игрока временно зарезервировано.');
       if(c.profileUid&&[...sessions.values()].some(session=>session.profileUid===c.profileUid))throw Error('Этот профиль уже в комнате.');
+      if(inventoryOwner&&[...sessions.values()].some(session=>session.caseOwner===inventoryOwner))throw Error('Этот игрок уже в комнате.');
       const counts=[0,0];for(const q of sessions.values())counts[q.team]++;
       s={id:'p'+(++nextPlayer),token:token(),profileUid:c.profileUid??null,name:clean(data.name,'Боец',20),team:counts[0]<=counts[1]?0:1,bytes:0,intervalBytes:0,snapshotBytes:0,snapshotCount:0,inputQueue:[],
-        weaponXp:c.profileWeaponXp??{},persistWeaponXp:Boolean(c.profileWeaponXp),weaponKillsCredited:{}};loadout(s,data);sessions.set(s.id,s);
+        weaponXp:c.profileWeaponXp??{},persistWeaponXp:Boolean(c.profileWeaponXp),weaponKillsCredited:{},caseOwner:inventoryOwner};loadout(s,data);sessions.set(s.id,s);
       if(!room.ownerId)room.ownerId=s.id;
       if(room.sim)room.sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
     }
+    s.caseOwner??=inventoryOwner;
+    s.caseClient=Boolean(data.caseKey);
     s.client=c;s.detachedAt=0;c.session=s;c.profileUid=null;c.profileWeaponXp=null;room.emptyAt=0;s.loadingReady=data.loadingReady===true;
     if(s.loadingReady)room.loading?.pending.add(s.id);
     identity(c,requestId);
@@ -147,6 +174,7 @@ export function createGameServer(options={}){
     sim.pathRequestsPerTick=1;sim.pathExpansionLimit=2200;sim.pathBudgetMs=1.0;
     room.sim=sim;room.phase='match';room.epoch++;room.events=[];room.lastEvent=0;room.eventFloor=0;room.prepared=null;room.profileSeconds=0;
     room.weaponRoundId=token();
+    room.casePlayers=new Map();
     for(const s of sessions.values()){
       s.weaponKillsCredited={};
       sim.addPlayer(s.id,s.name,s.team,s.classId,s.weaponId,s.sidearmId);
@@ -219,6 +247,7 @@ export function createGameServer(options={}){
       p.shotRewind=frames.at(-1)?.rewindSeconds??p.shotRewind??0;
       p.networkControlled=true;p.networkIdle=!s.client||now-s.lastInput>350;
       p.networkFrames=frames.length?frames:null;
+      if(frames.length&&s.client&&p.alive&&!p.networkIdle)room.casePlayers.set(s.caseOwner??s.id,s.caseOwner);
       const orderFrame=frames.find(f=>f.input.order);
       p.orderAim=orderFrame?{yaw:orderFrame.input.yaw,pitch:orderFrame.input.pitch}:null;
       if(controls)sim.setInput(s.id,controls);
@@ -264,7 +293,21 @@ export function createGameServer(options={}){
         s.weaponKillsSent=kills;
     }
     if(snapshotClock>=1/effectiveSnapshotHz){snapshotClock%=1/effectiveSnapshotHz;const prepared=preparedSnapshot();for(const s of connected())snapshot(s,prepared);}
-    if(sim.winner!==null&&!room.ended){room.ended=true;const final=preparedSnapshot();for(const s of connected())snapshot(s,final);roomsChanged();flushProfiles();}
+    if(sim.winner!==null&&!room.ended){
+      room.ended=true;
+      const final=preparedSnapshot();
+      for(const s of connected())snapshot(s,final);
+      const caseChance=matchCaseChance(sim.gameMode,sim.killLimit);
+      if(caseChance&&room.casePlayers.size>=2){
+        const owners=new Set([...room.casePlayers.values()].filter(Boolean));
+        cases.awardRound(room.weaponRoundId,owners,caseChance,(owner,inventory,caseId)=>{
+          const player=connected().find(s=>s.caseOwner===owner&&s.caseClient);
+          if(player)send(player.client,{type:'case-awarded',inventory,caseId});
+        });
+      }
+      roomsChanged();
+      flushProfiles();
+    }
     const elapsed=performance.now()-begin;tickSamples.add(elapsed);totals.ticks++;totals.tickMs+=elapsed;totals.tickMaxMs=Math.max(totals.tickMaxMs,elapsed);intervalTicks++;intervalTickMs+=elapsed;intervalMax=Math.max(intervalMax,elapsed);
   }
   function pump(){
@@ -281,7 +324,7 @@ export function createGameServer(options={}){
   function stopLoop(){clearTimeout(timer);timer=null;accumulator=0;}
   wss.on('connection',ws=>{
     const c={ws,session:null,lastSeen:Date.now(),messages:0,window:Date.now(),alive:true};clients.add(c);
-    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),profileReset:Boolean(profiles),maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
+    send(c,{type:'hello',protocol:PROTOCOL_VERSION,layout:MAP_LAYOUT_REVISION,profileStats:Boolean(profiles),profileReset:Boolean(profiles),caseInventory:true,maxPlayers:config.maxPlayers,maxBots:config.maxBots,defaultBots:Math.min(config.defaultBots,config.maxBots)});send(c,{type:'rooms',rooms:listing()});
     ws.on('pong',()=>{c.alive=true;c.lastSeen=Date.now();});
     ws.on('message',(raw,isBinary)=>{
       const now=Date.now();c.lastSeen=now;if(now-c.window>1000){c.window=now;c.messages=0;}if(++c.messages>160){ws.close(1008,'Rate limit');return;}
@@ -293,6 +336,17 @@ export function createGameServer(options={}){
         if(c.profilePending&&['create','join','resume'].includes(data.type))throw Error('Подождите, пока проверяется профиль.');
         switch(data.type){
           case 'list':send(c,{type:'rooms',requestId,rooms:listing()});break;
+          case 'case-list':
+          case 'case-open':
+          case 'case-campaign':
+            void caseRequest(c,data).catch(failure=>{
+              const recognized=['Дождитесь ответа по кейсам.','Профиль недоступен.','Войдите в профиль заново.',
+                'Не удалось определить владельца кейсов.','Кейс не найден.','За это прохождение кейс не предусмотрен.'];
+              const message=recognized.includes(failure?.message)
+                ?failure.message:'Склад кейсов недоступен. Попробуйте ещё раз.';
+              error(c,message,requestId,'case');
+            });
+            break;
           case 'profile-reset':
             if(!profiles||s||c.profilePending||typeof data.token!=='string'||data.token.length>5000)
               throw Error('Сброс статистики сейчас недоступен.');
@@ -373,7 +427,8 @@ export function createGameServer(options={}){
     listen:()=>new Promise(resolve=>server.listen(config.port,'0.0.0.0',()=>resolve(server.address()))),
     close:async()=>{stopping=true;stopLoop();clearMatchLoading();clearInterval(maintenance);clearInterval(profileFlush);
       for(const c of clients)c.ws.terminate();
-      await Promise.all([new Promise(resolve=>wss.close(resolve)),profiles?.close()]);
+      const caseFlush=Promise.race([cases.flush(),new Promise(resolve=>setTimeout(resolve,1200).unref())]);
+      await Promise.all([new Promise(resolve=>wss.close(resolve)),caseFlush.then(()=>profiles?.close())]);
       if(server.listening)await new Promise(resolve=>server.close(resolve));
     }
   };

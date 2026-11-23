@@ -16,6 +16,20 @@ const noop=()=>{},clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const difference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 const pulses=['jump','reload','gadget','secondaryGadget','grenade','drop','interact','switchSeat','horn','order'];
 const safeStorage={get(key){try{return sessionStorage.getItem(key);}catch{return null;}},set(key,value){try{value?sessionStorage.setItem(key,value):sessionStorage.removeItem(key);}catch{}}};
+const guestCaseKeys=new Map();
+function caseKey(url){
+  if(guestCaseKeys.has(url))return guestCaseKeys.get(url);
+  const key='sector09-case-key:'+url;
+  const create=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),byte=>byte.toString(16).padStart(2,'0')).join('');
+  let guestCaseKey;
+  try{
+    const saved=localStorage.getItem(key);
+    guestCaseKey=/^[a-f0-9]{64}$/.test(saved)?saved:create();
+    if(saved!==guestCaseKey)localStorage.setItem(key,guestCaseKey);
+  }catch{guestCaseKey??=create();}
+  guestCaseKeys.set(url,guestCaseKey);
+  return guestCaseKey;
+}
 export function normalizeServerUrl(value){
   const url=new URL(String(value).trim());if(!['ws:','wss:'].includes(url.protocol)||url.username||url.password)throw Error('Укажите публичный WSS-адрес игрового сервера.');
   if(globalThis.location?.protocol==='https:'&&url.protocol!=='wss:')throw Error('Для GitHub Pages нужен защищённый адрес wss://.');
@@ -40,6 +54,16 @@ export async function resetNetworkProfile(token){
     await connection.open(url);
     if(!connection.hello?.profileReset)throw Error('Игровой сервер пока не поддерживает сброс статистики.');
     await connection.request('profile-reset',{token});
+  }finally{connection.close(false);}
+}
+
+export async function requestCases(url,token,type='case-list',details={}){
+  if(!url)throw Error('Укажите игровой сервер для кейсов.');
+  const connection=new Multiplayer();
+  try{
+    await connection.open(url);
+    if(!connection.hello?.caseInventory)throw Error('Игровой сервер пока не поддерживает кейсы.');
+    return await connection.request(type,{...details,token:token??null,caseKey:token?null:caseKey(url)});
   }finally{connection.close(false);}
 }
 
@@ -126,8 +150,8 @@ export class Prediction{
 
 // The room creator uses exactly the same connection and prediction as every guest.
 export class Multiplayer{
-  constructor({onState=noop,onIdentity=noop,onStatus=noop,onError=noop,onRooms=noop,onLocalShot=noop,getProfileToken=noop,predictShots=true}={}){
-    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms,onLocalShot,getProfileToken,predictShots});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;this.recoveries=0;this.lastRecovery=null;
+  constructor({onState=noop,onIdentity=noop,onStatus=noop,onError=noop,onRooms=noop,onLocalShot=noop,onCaseAward=noop,getProfileToken=noop,predictShots=true}={}){
+    Object.assign(this,{onState,onIdentity,onStatus,onError,onRooms,onLocalShot,onCaseAward,getProfileToken,predictShots});this._mode='offline';this._phase='menu';this.requests=new Map();this.generation=0;this.requestId=0;this.frames=[];this.events=[];this.rooms=[];this.rtt=0;this.jitter=0;this.interpolationMs=100;this.receivedBytes=0;this.recoveries=0;this.lastRecovery=null;
   }
   get mode(){return this._mode;}get phase(){return this._phase;}get canResume(){return !!(this.token||safeStorage.get('sector-resume:'+this.url));}get roomNameLabel(){return this.roomName??'';}
   async browse(url){await this.open(url);await this.request('list');return this.rooms;}
@@ -168,6 +192,7 @@ export class Multiplayer{
             this.publish();
           }
           if(data.type==='stats')this.updateStats(data);
+          if(data.type==='case-awarded')this.onCaseAward(this.url);
           const pending=this.requests.get(data.requestId);if(pending){clearTimeout(pending.timer);this.requests.delete(data.requestId);pending.resolve(data);}
         }catch(error){clearTimeout(timeout);if(!ready){reject(error);ws.close();}else{this.onStatus('Синхронизация восстанавливается…');this.send(new Uint8Array([MESSAGE.RESYNC]));}}
       };
@@ -187,7 +212,7 @@ export class Multiplayer{
     while(!this.manual&&generation===this.generation&&performance.now()-started<28000){
       await new Promise(resolve=>setTimeout(resolve,1000));
       if(this.manual||generation!==this.generation)break;
-      try{await this.connectSocket(generation);await this.authenticateProfile();await this.request('resume',{token:this.token,loadingReady:true});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{if(!this.manual&&generation===this.generation)this.ws?.close();}
+      try{await this.connectSocket(generation);await this.authenticateProfile();await this.request('resume',{token:this.token,loadingReady:true,...this.caseJoinData()});this.reconnecting=false;this.onStatus('Соединение восстановлено');return;}catch{if(!this.manual&&generation===this.generation)this.ws?.close();}
     }
     this.reconnecting=false;if(!this.manual&&generation===this.generation){this.token=null;safeStorage.set('sector-resume:'+this.url,null);this.onError('Время переподключения истекло. Войдите в комнату заново.');}
   }
@@ -221,11 +246,12 @@ export class Multiplayer{
       this.onStatus('Профиль не подтверждён. Статистика этого матча не сохранится.');
     }finally{clearTimeout(timeout);}
   }
-  async host(options={}){await this.open(options.url);await this.authenticateProfile();await this.request('create',{...options,loadingReady:true});return this.roomName;}
+  caseJoinData(){return this.hello?.caseInventory?{caseKey:caseKey(this.url)}:{};}
+  async host(options={}){await this.open(options.url);await this.authenticateProfile();await this.request('create',{...options,loadingReady:true,...this.caseJoinData()});return this.roomName;}
   async join(options={}){
     await this.open(options.url);await this.authenticateProfile();const saved=safeStorage.get('sector-resume:'+this.url);
-    if(saved){try{await this.request('resume',{token:saved,loadingReady:true});return this.roomName;}catch{safeStorage.set('sector-resume:'+this.url,null);}}
-    await this.request('join',{...options,loadingReady:true});return this.roomName;
+    if(saved){try{await this.request('resume',{token:saved,loadingReady:true,...this.caseJoinData()});return this.roomName;}catch{safeStorage.set('sector-resume:'+this.url,null);}}
+    await this.request('join',{...options,loadingReady:true,...this.caseJoinData()});return this.roomName;
   }
   setLobbyLoadout(data){this.control('loadout',data);}
   chooseLobbyTeam(team){return this.request('loadout',{team});}

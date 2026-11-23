@@ -139,7 +139,7 @@
 }
 @media (max-width: 690px) {
   .attachment-workspace .profile-content { padding: 12px; }
-  .attachment-workspace .profile-tabs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 2px; padding-inline: 10px; }
+  .attachment-workspace .profile-tabs { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 2px; padding-inline: 10px; }
   .attachment-workspace .profile-tabs button { padding: 10px 3px; font-size: 11px; }
   .attachment-workspace .profile-customization,.attachment-quick-layout { grid-template-columns: minmax(0,1fr); }
   .attachment-workspace .profile-preview-frame,.attachment-quick-model { display: contents; }

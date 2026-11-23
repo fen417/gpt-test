@@ -15,7 +15,7 @@ export function readCampaignSave(missionId='m01'){
 }
 
 export class CampaignSession {
-  constructor({definition,locale,save,...options},{onState=()=>{},onError=()=>{},onSaveError=()=>{}}={}){
+  constructor({definition,locale,save,...options},{onState=()=>{},onError=()=>{},onSaveError=()=>{},onComplete=()=>{}}={}){
     this.definition=definition;this.locale=locale;this.missionId=definition.id??'m01';
     this.completionNoted=false;this.paused=true;this.closed=false;
     this.frames=[];
@@ -57,6 +57,7 @@ export class CampaignSession {
               m.state.campaign.flags;
           markCampaignComplete(this.missionId,{elapsedSeconds:stats.elapsedSeconds??m.state.time,
             losses:stats.losses??m.state.campaign.alliedLosses??0,stealth:stats.stealth??null,outcome:campaignOutcome(m.state)},flags);
+          onComplete(this.missionId,save?.difficulty??options.difficulty);
           if(['m03','m04'].includes(this.missionId))try{localStorage.removeItem(saveKey(this.missionId));}catch{}
         }
         if(!this.started){this.started=true;clearTimeout(this.timer);this.resolve(this.state);}else onState(this.state);

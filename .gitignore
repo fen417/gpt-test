@@ -7,3 +7,4 @@ dist/
 .DS_Store
 .perf-local/
 .perf-ci/
+data/case-inventory.json*

@@ -40,6 +40,7 @@
           <div class="home-tools">
             <button id="open-profile" class="home-tool" type="button" aria-haspopup="dialog">Профиль игрока</button>
             <button id="menu-settings" class="home-tool" type="button" aria-haspopup="dialog">Настройки</button>
+            <button id="open-cases" class="home-tool home-case-link" type="button" aria-haspopup="dialog" hidden>Кейсы <span id="home-case-count"></span></button>
           </div>
         </nav>
       </section>
@@ -78,6 +79,7 @@
       <button type="button" id="profile-nav-soldier" role="tab" data-profile-tab="soldier" aria-controls="profile-view-soldier" aria-selected="false" tabindex="-1">Скины бойца</button>
       <button type="button" id="profile-nav-weapon" role="tab" data-profile-tab="weapon" aria-controls="profile-view-weapon" aria-selected="false" tabindex="-1">Скины оружия</button>
       <button type="button" id="profile-nav-attachments" role="tab" data-profile-tab="attachments" aria-controls="profile-view-attachments" aria-selected="false" tabindex="-1">Обвесы</button>
+      <button type="button" id="profile-nav-cases" role="tab" data-profile-tab="cases" aria-controls="profile-view-cases" aria-selected="false" tabindex="-1">Кейсы</button>
     </div>
     <div class="profile-content">
       <div id="profile-view-overview" role="tabpanel" aria-labelledby="profile-nav-overview">
@@ -135,6 +137,30 @@
           <div class="attachment-option-list" data-attachment-options></div>
         </section>
       </div>
+      <section id="profile-view-cases" class="case-panel" role="tabpanel" aria-labelledby="profile-nav-cases" hidden>
+        <div class="case-hero">
+          <div class="case-model-stage">
+            <canvas id="case-preview" tabindex="0" aria-label="3D-просмотр кейса"></canvas>
+            <div class="case-model-controls"><small id="case-preview-hint"></small><button id="case-preview-reset" type="button" class="small-button">Сбросить ракурс</button></div>
+          </div>
+          <div class="case-summary">
+            <h3 id="case-preview-name">Полевой резерв</h3>
+            <p>Ключ не нужен. Скины появятся в следующих обновлениях.</p>
+            <div class="case-action">
+              <button id="case-open" class="panel-primary" type="button" disabled>Открыть кейс</button>
+              <span id="case-inventory-count">В наличии —</span>
+            </div>
+            <p id="case-status" role="status" aria-live="polite"></p>
+            <button id="case-retry" class="profile-text-button" type="button" hidden>Повторить</button>
+          </div>
+        </div>
+        <div id="case-roulette" class="case-roulette" aria-hidden="true" hidden><div id="case-tape" class="case-tape"></div></div>
+        <div id="case-result" class="case-result" role="status" aria-live="polite" hidden></div>
+        <dl id="case-odds" class="case-odds" aria-label="Шансы выпадения по редкости"></dl>
+        <section id="case-history" class="case-history" aria-labelledby="case-history-heading" hidden>
+          <h3 id="case-history-heading">Недавние награды</h3><ul id="case-history-list"></ul>
+        </section>
+      </section>
       <p id="profile-status" class="profile-status" role="status" aria-live="polite"></p>
     </div>
   </dialog>

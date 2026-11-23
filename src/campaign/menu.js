@@ -2,6 +2,7 @@ import {CampaignSession,readCampaignSave} from './session.js';
 import {CampaignPresentation} from './presentation.js';
 import {SIDEARMS,WEAPONS} from '../../shared/world.js';
 import {describeCampaignOutcome} from './outcome.js';
+import {CASE_NAME,campaignCaseReward} from '../../shared/cases.js';
 import {campaignCatalog,readCampaignProgress,saveCampaignProgress,setCampaignDifficulty,
   campaignStorageWarning,campaignMissionStatus,canStartCampaignMission} from './progress.js';
 import './style.css';
@@ -79,6 +80,11 @@ function buildScreen(){
           <h3 class="campaign-mission-title"></h3>
           <div class="campaign-mission-readiness" hidden><span class="campaign-readiness-text"></span><progress class="campaign-readiness-progress" max="100" value="0"></progress></div>
           <p class="campaign-mission-kind"></p><p class="campaign-mission-description"></p>
+          <aside class="campaign-mission-reward" aria-label="Награда за прохождение" hidden>
+            <strong>Награда за прохождение</strong>
+            <span class="campaign-reward-tiers"></span>
+            <small class="campaign-reward-available"></small>
+          </aside>
           <div class="campaign-mission-brief"><div><small>ЗАДАЧА</small><strong class="campaign-mission-objective"></strong></div>
           <div><small>ОПЕРАЦИЯ</small><strong class="campaign-mission-duration"></strong></div></div>
           <fieldset class="campaign-mission-loadout" hidden>
@@ -129,16 +135,29 @@ function paintCards(selected,progress,selectMission,unlocked){
     }
   }
 }
-export async function openCampaignMenu(onStart,{unlockAll=false}={}){
+export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
   buildScreenIfNeeded();
   const unlocked=unlockAll||debugUnlock();
   let progress=readCampaignProgress();
   const selector=dialog.querySelector('#campaign-difficulty');
   selector.value=progress.difficulty??'regular';
-  selector.onchange=()=>{setCampaignDifficulty(selector.value);progress=readCampaignProgress();};
   let selected=campaignCatalog.missions.find(m=>
     canStartCampaignMission(m.id,progress,unlocked)&&!progress.completed.includes(m.id))?.id??'m01';
   let launching=false;
+  const paintReward=()=>{
+    const panel=dialog.querySelector('.campaign-mission-reward');
+    const maxReward=campaignCaseReward(selected,'veteran');
+    panel.hidden=!maxReward;
+    if(!maxReward)return;
+    const tier=campaignCaseReward(selected,selector.value);
+    const claimed=casePanel?.campaign?.[selected]??0;
+    const remaining=Math.max(0,tier-claimed);
+    panel.querySelector('.campaign-reward-tiers').textContent=`«${CASE_NAME}» · средняя 1 кейс · высокая ${maxReward} кейса суммарно`;
+    panel.querySelector('.campaign-reward-available').textContent=!tier?'На выбранной сложности награды нет':
+      !casePanel?.campaign?'Одно начисление на каждую ступень сложности':
+      !remaining?'Награда за эту сложность уже получена':`За прохождение на выбранной сложности · ${remaining} ${remaining===1?'кейс':'кейса'}`;
+  };
+  selector.onchange=()=>{setCampaignDifficulty(selector.value);progress=readCampaignProgress();paintReward();};
   const choose=id=>{
     selected=id;progress=readCampaignProgress();
     paintCards(id,progress,choose,unlocked);
@@ -156,6 +175,7 @@ export async function openCampaignMenu(onStart,{unlockAll=false}={}){
     }
     dialog.querySelector('.campaign-mission-kind').textContent=status==='locked'?'Сведения засекречены':`${mission.kind} · ${mission.character}`;
     dialog.querySelector('.campaign-mission-description').textContent=status==='locked'?'Пройдите предыдущую миссию, чтобы открыть это задание.':mission.preview;
+    paintReward();
     dialog.querySelector('.campaign-mission-objective').textContent=status==='locked'?'???':mission.objective;
     dialog.querySelector('.campaign-mission-duration').textContent=mission.duration;
     const outcome=progress.outcomes?.[id],best=progress.best[id];
@@ -211,6 +231,10 @@ export async function openCampaignMenu(onStart,{unlockAll=false}={}){
     }
   };
   choose(selected);
+  if(casePanel){
+    casePanel.events.addEventListener('change',paintReward);
+    dialog.addEventListener('close',()=>casePanel.events.removeEventListener('change',paintReward),{once:true});
+  }
   dialog.showModal();
 }
 function buildScreenIfNeeded(){if(!dialog)buildScreen();}

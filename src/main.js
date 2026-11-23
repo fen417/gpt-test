@@ -36,6 +36,7 @@ import {CampaignActors} from './campaign/actors.js';
 import {showCampaignOutcome} from './campaign/outcome.js';
 import {matchLoadingInfo,mountMatchLoading} from './match-loading.js';
 import {mountPlayerProfile} from './profile-menu.js';
+import {mountCasePanel} from './case-panel.js';
 
 const $=id=>document.getElementById(id);
 mountChangelog();
@@ -598,6 +599,12 @@ function presentLocalShot(event){
 }
 const profile=mountPlayerProfile({
   onOpen:()=>{unlockAudio();audio.click();},defaultServerUrl,resetStats:resetNetworkProfile,getRenderer:()=>renderer,getLowWeaponDetail,
+  onCasesOpen:()=>casePanel.open(),onCaseIdentityChange:()=>queueMicrotask(()=>casePanel.reset()),
+});
+const casePanel=mountCasePanel({
+  getUrl:async()=>normalizeServerUrl($('server-url').value.trim()||await configuredServerUrl()),
+  getToken:profile.tokenForServer,getAccount:()=>profile.caseAccount,
+  getGpuDevice:()=>renderer?.webgpu?.device??null,notify:toast,
 });
 const weaponIdByKillLabel=new Map(Object.values(WEAPONS).map(weapon=>[weapon.weapon,weapon.id]));
 const activeWeaponModules=()=>mode==='campaign'?local()?.weaponModules:(simulation?.client??multiplayer).weaponModules;
@@ -675,7 +682,9 @@ function trackWeaponProgress(next){
   if(quickAttachments.open)updateQuickPicker();
 }
 void restoreCollimatorTest().then(profile.refreshAttachments).catch(()=>{});
-const multiplayer=new Multiplayer({getProfileToken:profile.tokenForServer,predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);}});
+const multiplayer=new Multiplayer({getProfileToken:profile.tokenForServer,predictShots:new URLSearchParams(location.search).get('predictShots')!=='0',onLocalShot:presentLocalShot,onState:receive,onRooms:renderRooms,onIdentity:id=>{localId=id;},onStatus:message=>{status(message);if(active&&message)toast(message);},onError:message=>{leave(false);status(message,true);toast(message);},
+  onCaseAward:()=>{toast('Получен кейс «Полевой резерв»');void casePanel.refresh(true);},
+});
 const roomBrowser=mountRoomBrowser({getPing:()=>multiplayer.rtt,canResume:()=>multiplayer.canResume,onJoin:joinRoom,onRefresh:refreshRooms});
 
 function prepare(which){
@@ -713,6 +722,7 @@ async function requestControl(allowPendingSpawn=false){
 }
 function leave(resetStatus=true,showAbandonedResults=false){
   const completedCampaign=mode==='campaign'&&Boolean(state?.campaign?.complete);
+  const leftNetwork=mode==='server';
   const player=local();
   const abandoned=showAbandonedResults&&active&&!finished&&!inLobby&&player&&
     !state?.campaign?.complete&&!state?.campaign?.failed;
@@ -730,6 +740,7 @@ function leave(resetStatus=true,showAbandonedResults=false){
   show('scoreboard',false);if(resetStatus)status('Сектор готов к высадке.');
   if(abandoned)$('abandoned-results').showModal();
   if(completedCampaign)queueMicrotask(showCampaignMenu);
+  if(leftNetwork)void casePanel.refresh(true);
 }
 function beginMatchLoad(which,mapId,missionId){
   closeMatchLoad();active=false;setBusy(true);
@@ -840,7 +851,8 @@ async function startCampaign(options){
     const [,presentations,depotAsset]=await Promise.all([map,presentation,depot]);
     signal.throwIfAborted();
     const session=new CampaignSession({...options,...data},{onState:receive,
-      onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast});
+      onError:message=>{leave(false);status(message,true);toast(message);},onSaveError:toast,
+      onComplete:(missionId,difficulty)=>void casePanel.claimCampaign(missionId,difficulty)});
     simulation=session;
     await session.ready;
     signal.throwIfAborted();
@@ -870,7 +882,8 @@ let unlockCampaignMissions=false;
 async function showCampaignMenu(){
   try{
     const {openCampaignMenu}=await import('./campaign/menu.js');
-    await openCampaignMenu(startCampaign,{unlockAll:unlockCampaignMissions});
+    await openCampaignMenu(startCampaign,{unlockAll:unlockCampaignMissions,casePanel});
+    void casePanel.refresh();
   }catch(error){status(error.message,true);}
 }
 campaignButton.onclick=()=>{if(!busy)showCampaignMenu();};
@@ -919,7 +932,11 @@ async function refreshRooms(){
   try{await multiplayer.browse(await serverAddress());}
   catch(error){text('rooms-note',error.message);status(error.message,true);}
 }
-configuredServerUrl().then(url=>{$('server-url').value=url;}).catch(()=>{});
+configuredServerUrl().then(url=>{
+  if(!$('server-url').value)$('server-url').value=url;
+  void casePanel.refresh();
+}).catch(()=>{});
+$('server-url').addEventListener('change',()=>casePanel.reset());
 const syncRoomMode=()=>filterModeMaps('room-map','room-mode','room-kill-limit');
 $('room-mode').addEventListener('change',syncRoomMode);
 syncRoomMode();
