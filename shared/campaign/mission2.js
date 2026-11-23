@@ -630,11 +630,16 @@ export class Mission2Director{
   medicInVillage(){
     return this.sim.players.get('m02-lasko')??this.sim.players.get('m02-field-medic');
   }
+  canTreat(medic,patient){
+    return distance(medic,patient)<2.5&&Math.abs(medic.y-patient.y)<1.4&&
+      this.sim.lineClear({x:medic.x,y:medic.y+1.4,z:medic.z},{x:patient.x,y:patient.y+.4,z:patient.z});
+  }
   thinkMedic(p,dt){
     const patient=this.sim.players.get(this.medicPatientId);
     if(p!==this.medicInVillage()||!patient?.downed||!patient.alive)return false;
-    p.input=sanitizeInput({yaw:bearing(p,patient),crouch:distance(p,patient)<2.4});
-    if(distance(p,patient)>=2.4){
+    const treating=this.canTreat(p,patient);
+    p.input=sanitizeInput({yaw:bearing(p,patient),crouch:treating});
+    if(!treating){
       ensureBotState(this.sim,p);moveBot(this.sim,p,patient,dt,{sprint:true,followSteps:true});
     }
     return true;
@@ -647,8 +652,7 @@ export class Mission2Director{
     const patient=couldRescue?casualties.filter(p=>p!==medic&&distance(p,medic)<44).sort((a,b)=>distance(a,medic)-distance(b,medic))[0]:null;
     this.medicPatientId=patient?.id??null;
     for(const p of casualties){
-      if(p===patient&&distance(p,medic)<2.5&&Math.abs(p.y-medic.y)<1.4&&
-        this.sim.lineClear({x:medic.x,y:medic.y+1.4,z:medic.z},{x:p.x,y:p.y+.4,z:p.z})){
+      if(p===patient&&this.canTreat(medic,p)){
         if(!p.reviver)this.say(voice+'.revive',2);
         p.reviver=medic.id;p.reviveProgress=(p.reviveProgress??0)+dt/reviveDuration(medic,8);
         if(p.reviveProgress>=1){

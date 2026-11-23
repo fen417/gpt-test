@@ -473,7 +473,7 @@ class NaharDirector{
   findRescuer(p){
     let best=null,bestCost=Infinity;
     for(const helper of this.sim.players.values()){
-      if(helper===p||helper.team!==p.team||!helper.alive||helper.wounded||helper.downed||helper.campaignHidden)continue;
+      if(helper===p||!helper.bot||helper.team!==p.team||!helper.alive||helper.wounded||helper.downed||helper.campaignHidden)continue;
       if(p.vehicleId?helper.vehicleId!==p.vehicleId||helper.vehicleSeat===0:helper.vehicleId)continue;
       const distance=dist(helper,p);
       const medic=helper.classId==='medic';
@@ -488,7 +488,8 @@ class NaharDirector{
   }
   rescueApproach(helper,patient){
     const previous=this.rescueGoal;
-    if(previous?.helperId===helper.id&&dist(previous.patient,patient)<.8&&Math.abs(previous.patient.y-patient.y)<.35)
+    if(previous?.helperId===helper.id&&previous.patient.id===patient.id&&
+      dist(previous.patient,patient)<.8&&Math.abs(previous.patient.y-patient.y)<.35)
       return previous.point;
     let point=patient,nearest=Infinity;
     for(let step=0;step<8;step++){
@@ -499,28 +500,43 @@ class NaharDirector{
         !this.canReachCasualty(candidate,patient))continue;
       nearest=distance;point=candidate;
     }
-    this.rescueGoal={helperId:helper.id,patient:{x:patient.x,y:patient.y,z:patient.z},point};
+    this.rescueGoal={helperId:helper.id,patient:{id:patient.id,x:patient.x,y:patient.y,z:patient.z},point};
     return point;
   }
-  updateMartenRevive(dt){
-    const p=this.player,helper=this.sim.players.get(this.rescuerId);
-    if(!p.downed)return;
-    if(helper?.alive&&!helper.wounded&&!helper.downed&&(helper.vehicleId??null)===(p.vehicleId??null)&&this.canReachCasualty(helper,p)){
-      if(p.reviver!==helper.id)p.reviveProgress=0;
-      p.reviver=helper.id;
-      p.reviveProgress+=dt/reviveDuration(helper,8);
-      if(p.reviveProgress>=1){
-        this.revive(p,helper);
-        this.rescuerId=null;
-        if(this.stage==='disembark')this.unseatInfantry(this.aircraft);
-      }
-    }else this.bleed(p,dt);
+  assignRescue(player){
+    this.rescuePatientId=null;this.rescuerId=null;
+    if(this.stage==='finale')return;
+    const casualties=player.downed?[player]:[...this.sim.players.values()]
+      .filter(p=>p.squadMember&&p.alive&&p.downed&&!(p.id===this.squadPatientId&&this.input.use))
+      .sort((a,b)=>a.downedTimer-b.downedTimer);
+    for(const patient of casualties){
+      const helper=this.findRescuer(patient);
+      if(!helper)continue;
+      this.rescuePatientId=patient.id;this.rescuerId=helper.id;
+      return;
+    }
+  }
+  updateAlliedRevive(patient,dt){
+    const helper=this.sim.players.get(this.rescuerId);
+    if(patient.id!==this.rescuePatientId||!helper?.alive||helper.wounded||helper.downed||
+      (helper.vehicleId??null)!==(patient.vehicleId??null)||!this.canReachCasualty(helper,patient)){
+      this.bleed(patient,dt);
+      return;
+    }
+    if(patient.reviver!==helper.id)patient.reviveProgress=0;
+    patient.reviver=helper.id;
+    patient.reviveProgress+=dt/reviveDuration(helper,8);
+    if(patient.reviveProgress>=1){
+      this.revive(patient,helper);
+      this.rescuePatientId=null;this.rescuerId=null;
+      if(patient.id==='local'&&this.stage==='disembark')this.unseatInfantry(this.aircraft);
+    }
   }
   revive(p,helper){
     Object.assign(p,{hp:40,downed:false,prone:false,downedTimer:0,reviver:null,reviveProgress:0,
       lastHurt:this.time,invulnerableUntil:this.time+2,reviveSeq:(p.reviveSeq??0)+1});
     this.sim.event('revive',{playerId:p.id,medicId:helper.id,x:p.x,z:p.z});
-    if(p.id==='local')this.rescueGoal=null;
+    if(this.rescueGoal?.patient.id===p.id)this.rescueGoal=null;
   }
   bleed(p,dt){
     p.reviver=null;p.reviveProgress=0;
@@ -554,8 +570,8 @@ class NaharDirector{
   think(p,dt){
     const craft=this.aircraft;
     if(p.campaignHidden||p.wounded||p.downed||this.stage==='finale'){p.input=fixed(p);return true;}
-    if(this.player.downed&&p.id===this.rescuerId){
-      const patient=this.player;
+    const patient=p.id===this.rescuerId?this.sim.players.get(this.rescuePatientId):null;
+    if(patient?.downed&&patient.id!==this.squadPatientId){
       p.input=fixed(p,aimAt(eye(p),patient).yaw);
       if(!p.vehicleId){
         if(this.canReachCasualty(p,patient))p.input.crouch=true;
@@ -736,8 +752,8 @@ class NaharDirector{
   beforeStep(dt){
     const p=this.player,swap=this.input.switchSeat&&!this.lastSwap;
     this.lastSwap=Boolean(this.input.switchSeat);this.prompt='';
+    this.assignRescue(p);
     if(p.downed){
-      this.rescuerId=this.findRescuer(p)?.id??null;
       const {yaw,pitch,forward,strafe,aim,fire,reload}=p.input;
       p.input=p.vehicleId?fixed(p,yaw,pitch):sanitizeInput({
         yaw,pitch,forward,strafe,aim,fire,reload,crouch:true,weaponSlot:2,
@@ -782,11 +798,11 @@ class NaharDirector{
   }
   afterStep(dt){
     const lostAircraft=this.airborne&&this.aircraft?.hp<=0;
-    if(!lostAircraft)this.updateMartenRevive(dt);
     const player=this.player;
-    for(const ally of this.sim.players.values()){
-      if(ally===player||!ally.downed||!ally.alive)continue;
-      if(ally.id!==this.squadPatientId||player.downed||!this.canReachCasualty(player,ally,2.7))this.bleed(ally,dt);
+    if(!lostAircraft)for(const ally of this.sim.players.values()){
+      if(!ally.downed||!ally.alive)continue;
+      const playerHelping=ally.id===this.squadPatientId&&!player.downed&&this.canReachCasualty(player,ally,2.7);
+      if(!playerHelping)this.updateAlliedRevive(ally,dt);
     }
     if(!this.player.alive||lostAircraft){
       this.failed=lostAircraft?'Вертолёт потерян. Вернитесь к контрольной точке.':'Мартен погиб. Вернитесь к контрольной точке.';
@@ -878,7 +894,7 @@ class NaharDirector{
     for(const key of SAVE_FIELDS)this[key]=structuredClone(save.mission[key]);
     Object.assign(this,{failed:null,complete:false,input:{},lastSwap:false,lastOrder:false,
       switchAt:null,threatId:null,prompt:'',progress:0,interaction:null,medicCare:0,exitAt:null,
-      landingClearSince:null,rescuerId:null,rescueGoal:null,disembark:null,squadPatientId:null});
+      landingClearSince:null,rescuerId:null,rescuePatientId:null,rescueGoal:null,disembark:null,squadPatientId:null});
     this.eventsDone=new Set(save.mission.eventsDone);this.syncGates();
     this.addEscort();
     this.latestSave=this.checkpoint?structuredClone(save):null;this.saveRevision++;this.epoch++;
