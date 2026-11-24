@@ -1149,7 +1149,7 @@ apiSelector.addEventListener('change',()=>{
   try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
   location.reload();
 });
-$('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off','fxaa','msaa'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
+$('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off','fxaa','msaa2','msaa4'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
 $('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);makeGraphicsCustom();if(renderer)renderer.postPass.antialias=event.target.value;});
 $('graphics-reset').addEventListener('click',()=>{
   try{
@@ -2166,13 +2166,18 @@ try{
     ]);
     const instance=await createWebGpuRenderer(canvas,{
       antialias:read('gfx-aa','auto'),
+      timings:perfPanel.enabled||graphicsEffects(quality,gfx.customGraphics).adaptiveTarget!=='off',
       onDeviceLost:recoverWebGpu,
     });
     gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,
       GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer,
-      FrameGeneration:WebGpuFrameGeneration,Cascades:(await import('./webgpu-cascades.js')).WebGpuCascades};
+      FrameGeneration:WebGpuFrameGeneration,Cascades:(await import('./webgpu-cascades.js')).WebGpuCascades,
+      ...await import('./webgpu-campaign-fire.js')};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
+  const msaa2=$('gfx-aa').querySelector('option[value="msaa2"]');
+  msaa2.disabled=renderer.api==='webgpu'||!renderer.postPass.supportedSamples?.includes(2);
+  msaa2.title=msaa2.disabled?'При недоступности используется FXAA':'';
   fgSelector.disabled=renderer.api!=='webgpu';
   fgSelector.title=renderer.api!=='webgpu'?'Для Frame Generation нужен аппаратный WebGPU':'';
   if(gpuOptions){

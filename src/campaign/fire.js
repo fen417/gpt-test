@@ -16,6 +16,8 @@ const flameFragment=`
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
+const uniforms=material=>material.userData.fireUniforms??material.uniforms;
+
 export class CampaignFire {
   constructor(renderer,parent,emitters){
     this.renderer=renderer;this.root=new THREE.Group();parent.add(this.root);this.emitters=[];
@@ -27,17 +29,19 @@ export class CampaignFire {
       pixels.data.set([255,255,255,Math.round(Math.max(0,1-r*r)*Math.max(0,1-r)*grain*190)],i);
     }
     ctx.putImageData(pixels,0,0);this.smokeTexture=new THREE.CanvasTexture(smokeCanvas);
-    const smokeMaterial=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{map:{value:this.smokeTexture},tint:{value:new THREE.Color('#62605a')}},vertexShader:'attribute float smokeOpacity;varying float opacitySmoke;varying vec2 uvSmoke;void main(){uvSmoke=uv;opacitySmoke=smokeOpacity;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}',fragmentShader:'uniform sampler2D map;uniform vec3 tint;varying float opacitySmoke;varying vec2 uvSmoke;void main(){float a=texture2D(map,uvSmoke).a*opacitySmoke;if(a<.01)discard;gl_FragColor=vec4(tint,a);}'});
+    const gpu=renderer.webgpu;
+    const smokeMaterial=gpu?.webGpuCampaignSmoke(this.smokeTexture)??new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{map:{value:this.smokeTexture},tint:{value:new THREE.Color('#62605a')}},vertexShader:'attribute float smokeOpacity;varying float opacitySmoke;varying vec2 uvSmoke;void main(){uvSmoke=uv;opacitySmoke=smokeOpacity;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}',fragmentShader:'uniform sampler2D map;uniform vec3 tint;varying float opacitySmoke;varying vec2 uvSmoke;void main(){float a=texture2D(map,uvSmoke).a*opacitySmoke;if(a<.01)discard;gl_FragColor=vec4(tint,a);}'});
     this.smokeMaterial=smokeMaterial;this.materials.push(smokeMaterial);this.smokeGeometry=this.plane.clone();
     this.opacities=new THREE.InstancedBufferAttribute(new Float32Array(48),1);this.smokeGeometry.setAttribute('smokeOpacity',this.opacities);
     this.smoke=new THREE.InstancedMesh(this.smokeGeometry,smokeMaterial,48);this.smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.smoke.frustumCulled=false;this.smoke.count=0;this.root.add(this.smoke);
     const add=(id,x,z,width,height)=>{
       const y=renderer.map.terrain.heightAt(x,z),group=new THREE.Group();group.position.set(x,y,z);this.root.add(group);
       const planes=[];for(let i=0;i<2;i++){
-        const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,uniforms:{time:{value:0},seed:{value:this.emitters.length*3+i*4.2}},vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:flameFragment});
+        const seed=this.emitters.length*3+i*4.2;
+        const material=gpu?.webGpuCampaignFlame(seed)??new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,uniforms:{time:{value:0},seed:{value:seed}},vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:flameFragment});
         this.materials.push(material);const mesh=new THREE.Mesh(this.plane,material);mesh.scale.set(width,height,1);mesh.position.y=height*.48;group.add(mesh);planes.push(mesh);
       }
-      const glowMaterial=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{strength:{value:.2}},vertexShader:'varying vec2 uvGlow;void main(){uvGlow=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'varying vec2 uvGlow;uniform float strength;void main(){float a=pow(max(0.,1.-length(uvGlow-.5)*2.),2.)*strength;gl_FragColor=vec4(1.,.28,.025,a);}'});
+      const glowMaterial=gpu?.webGpuCampaignGlow()??new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{strength:{value:.2}},vertexShader:'varying vec2 uvGlow;void main(){uvGlow=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'varying vec2 uvGlow;uniform float strength;void main(){float a=pow(max(0.,1.-length(uvGlow-.5)*2.),2.)*strength;gl_FragColor=vec4(1.,.28,.025,a);}'});
       this.materials.push(glowMaterial);const glow=new THREE.Mesh(this.plane,glowMaterial);glow.rotation.x=-Math.PI/2;glow.position.y=.05;glow.scale.setScalar(width*4.2);group.add(glow);
       this.emitters.push({id,x,y,z,width,height,group,planes,glow});
     };
@@ -52,8 +56,8 @@ export class CampaignFire {
     for(const [index,e] of this.emitters.entries()){
       const active=activeIds?activeIds.has(e.id):e.id.startsWith('fuel')?mission.fuel.some(f=>f.destroyed&&Math.hypot(f.x-e.x,f.z-e.z)<8):mission.trucks.some(t=>t.id===e.id&&t.destroyed);
       e.group.visible=active;if(!active)continue;
-      e.planes.forEach((mesh,i)=>{mesh.material.uniforms.time.value=time;mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*.07);});
-      e.glow.material.uniforms.strength.value=.16+Math.sin(time*5+index)*.025;
+      e.planes.forEach((mesh,i)=>{uniforms(mesh.material).time.value=time;mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*.07);});
+      uniforms(e.glow.material).strength.value=.16+Math.sin(time*5+index)*.025;
       for(let n=0;n<8;n++){
         const phase=((time*.12+n/8+index*.117)%1),age=phase*8,spread=e.width*(.45+phase*.7);
         this.dummy.position.set(e.x+Math.sin(index*11+n*3.1)*spread+age*.32,e.y+e.height*.7+age*1.45,e.z+Math.cos(index*7+n*2.3)*spread+age*.12);
@@ -62,7 +66,7 @@ export class CampaignFire {
       }
     }
     this.smoke.count=count;this.smoke.instanceMatrix.needsUpdate=true;this.opacities.needsUpdate=true;
-    this.smokeMaterial.uniforms.tint.value.set(mission.light==='dawn'?'#514b41':'#77716a');
+    uniforms(this.smokeMaterial).tint.value.set(mission.light==='dawn'?'#514b41':'#77716a');
   }
   dispose(){this.root.removeFromParent();this.plane.dispose();this.smokeGeometry.dispose();this.smokeTexture.dispose();for(const m of this.materials)m.dispose();this.smoke.dispose();}
 }

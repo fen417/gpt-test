@@ -11,7 +11,12 @@ export class PostPass {
     this.worldEffects=new WorldPost(renderer,THREE.WebGLRenderTarget,webGlWorldStages);
     this.maxSamples=Math.min(4,renderer.capabilities?.maxSamples??0);
     const gl=renderer.getContext?.();
-    if(gl?.getInternalformatParameter){const supported=gl.getInternalformatParameter(gl.RENDERBUFFER,gl.RGBA16F,gl.SAMPLES);this.maxSamples=Math.max(0,...Array.from(supported??[]).filter(value=>value<=this.maxSamples));}
+    this.supportedSamples=[];
+    if(gl?.getInternalformatParameter){
+      const supported=gl.getInternalformatParameter(gl.RENDERBUFFER,gl.RGBA16F,gl.SAMPLES);
+      this.supportedSamples=Array.from(supported??[]).filter(value=>value<=this.maxSamples);
+      this.maxSamples=Math.max(0,...this.supportedSamples);
+    }
     // FXAA must compare tone-mapped display luminance, not linear HDR values.
     const fragment=('#include <tonemapping_pars_fragment>\nuniform float useFxaa;uniform float sharpen;uniform float grain;uniform float time;uniform vec3 gradeTint;uniform vec2 grading;uniform float vignetteGain;\n'+FXAAShader.fragmentShader)
       .replace('return texture( tex2D, uv );','vec4 texel=texture(tex2D,uv);vec3 color=ACESFilmicToneMapping(texel.rgb); if(grading.x!=1.||grading.y!=1.||any(notEqual(gradeTint,vec3(1.)))){color=(color-.32)*grading.x+.32; color=max(mix(vec3(dot(color,vec3(.2126,.7152,.0722))),color,grading.y)*gradeTint,vec3(0.));} return linearToOutputTexel(vec4(color,texel.a));')
@@ -64,7 +69,9 @@ export class PostPass {
     this.grainSetting=grade.grain;
   }
   begin(quality='high'){
-    const samples=this.antialias==='msaa'||quality==='high'&&['auto','on'].includes(this.antialias)?this.maxSamples:0;
+    const mode=this.antialias;
+    const samples=mode==='msaa2'?(this.supportedSamples.includes(2)?2:0)
+      : mode==='msaa4'||quality==='high'&&(mode==='auto'||mode==='on')?this.maxSamples:0;
     if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
     const fsr=this.fsrQuality!=='off'&&this.fsrScale<0.995;
     this.material.uniforms.useFxaa.value=this.antialias==='off'?0:samples>0?0:1;

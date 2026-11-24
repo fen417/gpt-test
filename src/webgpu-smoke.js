@@ -1,14 +1,23 @@
-import { Vector3 } from 'three';
+import { Vector2, Vector3 } from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { attribute, materialColor, uv, vec2, vec3, uniform, Fn, If, sin, normalize, dot, max } from 'three/tsl';
+import { attribute, materialColor, uv, vec2, vec3, uniform, Fn, If, sin, normalize, dot, max, texture as textureNode, screenUV, positionView, wgslFn } from 'three/tsl';
 
 // The WebGL path uses a GLSL camera-facing vertex shader. WebGPU uses the
 // identical instancing/sorting buffers but rotates quads on CPU at write time.
-export function createWebGpuSmokeMaterial(texture) {
+const softSmokeFade=wgslFn(`
+fn softSmokeFade(depth: texture_depth_2d, uv: vec2f, screen: vec2f, clip: vec2f, particle: f32) -> f32 {
+  let at=vec2i(clamp(uv*screen,vec2f(0.),screen-1.));
+  let nativeDepth=textureLoad(depth,at,0);
+  let surface=(clip.x*clip.y)/(clip.y-nativeDepth*(clip.y-clip.x));
+  return smoothstep(.01,.48,surface-particle);
+}`);
+export function createWebGpuSmokeMaterial(texture, depth=null, shared=null) {
   const material=new MeshBasicNodeMaterial({
     map:texture,transparent:true,depthWrite:false,fog:true,
   });
-  const smokeLight=uniform(new Vector3()),smokeMotion=uniform(0),smokeTime=uniform(0);
+  const {smokeLight,smokeMotion,smokeTime}=shared??{
+    smokeLight:uniform(new Vector3()),smokeMotion:uniform(0),smokeTime:uniform(0),
+  };
   material.userData.smokeUniforms={smokeLight,smokeMotion,smokeTime};
   const sampleUV=Fn(()=>{
     const st=uv().toVar();
@@ -26,7 +35,15 @@ export function createWebGpuSmokeMaterial(texture) {
     });
     return rgba;
   })();
-  material.opacityNode=attribute('instanceAlpha','float');
+  const alpha=attribute('instanceAlpha','float');
+  material.opacityNode=alpha;
+  if(depth){
+    const worldDepth=textureNode(depth),frameSize=uniform(new Vector2()),clipRange=uniform(new Vector2());
+    material.userData.softSmokeUniforms={worldDepth,frameSize,clipRange};
+    material.opacityNode=alpha.mul(softSmokeFade({
+      depth:worldDepth,uv:screenUV,screen:frameSize,clip:clipRange,particle:positionView.z.negate(),
+    }));
+  }
   material.toneMapped=true;
   return material;
 }

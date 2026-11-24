@@ -20,7 +20,7 @@ for(const surface of ['concrete','rock','sand','earth','asphalt','ceramic']){
   for(const channel of channels){
     const image=await loadImage(input+'/'+(surface==='ceramic'?'ceramic-ao.png':(surface==='earth'?'sand':surface)+'-'+channel+'.jpg'));
     for(const size of sizes){
-      if(size===256&&channel!=='arm')continue;
+      if(size===256&&channel!=='arm'||surface==='ceramic'&&size===512)continue;
       const canvas=createCanvas(size,size), ctx=canvas.getContext('2d');
       ctx.imageSmoothingQuality='high';
       ctx.drawImage(image,0,0,size,size);

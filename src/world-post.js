@@ -32,12 +32,12 @@ export class WorldPost {
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];
     const reflections=this.reflector?(reflectionSteps[effects?.reflections]??0):0;
     const mask=ao+contact+atmosphere>0;
-    const depth=mask||reflections>0;
+    const depth=mask||reflections>0||this.softSmoke;
     if (!depth && !levels) {
       if (this.world) this.dispose();
       return false;
     }
-    const key = mask + '/' + Boolean(reflections) + '/' + levels;
+    const key = Boolean(depth) + '/' + mask + '/' + Boolean(reflections) + '/' + levels;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
@@ -58,7 +58,7 @@ export class WorldPost {
     this.state.reflectionSteps=reflections;
     this.state.depthSize.set(width, height);
     this.state.bloomGain = gain;
-    this.passes = 1 + levels + Number(mask) + Number(Boolean(reflections));
+    this.passes = 1 + levels + Number(mask) + Number(Boolean(reflections)) + Number(Boolean(this.softSmoke));
     this.memory = width * height * (12 + worldSamples * 12);
     if (this.mask) {
       const divisor=ao<=4&&contact<=4&&atmosphere<=1?4:2;

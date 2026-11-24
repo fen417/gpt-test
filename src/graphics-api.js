@@ -12,7 +12,10 @@ export function graphicsApiName(api) {
   return api === 'webgpu' ? 'WebGPU' : 'WebGL 2';
 }
 
-export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDeviceLost } = {}) {
+export async function createWebGpuRenderer(canvas, {
+  antialias = 'auto', onDeviceLost,
+  timings = new URLSearchParams(globalThis.location?.search ?? '').has('perf'),
+} = {}) {
   if (!globalThis.isSecureContext || !navigator.gpu) {
     throw new Error('WebGPU требует HTTPS и поддержки браузера.');
   }
@@ -30,8 +33,7 @@ export async function createWebGpuRenderer(canvas, { antialias = 'auto', onDevic
   if(/swiftshader|llvmpipe|softpipe|lavapipe|software rasterizer|microsoft basic render/i.test(adapterDescription)){
     throw new Error('WebGPU обнаружил программный адаптер ('+adapterDescription+'). Выбран аппаратный WebGL 2.');
   }
-  // Request no optional extensions: weak GPUs must be able to start at Low.
-  const timings = new URLSearchParams(globalThis.location?.search ?? '').has('perf');
+  // Request timestamps only for diagnostics or a saved adaptive quality target.
   const requiredFeatures = timings && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
   const device = await adapter.requestDevice({ requiredFeatures });
   if (!device) throw new Error('Не удалось создать WebGPU device.');

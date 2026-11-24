@@ -3,14 +3,14 @@ const legacy = Object.freeze({
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
   sky: 'legacy', water: 'legacy', reflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
-  smoke:'legacy', explosions:'legacy', particleLighting:'off',
+  smoke:'legacy', softParticles:'off', explosions:'legacy', particleLighting:'off',
   adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
 
 const ultra = Object.freeze({
   ...legacy, surfaceDetail:'high',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
-  sky: 'high', water: 'high', reflections:'high', smoke:'high', explosions:'high', particleLighting:'high',
+  sky: 'high', water: 'high', reflections:'high', smoke:'high', softParticles:'high', explosions:'high', particleLighting:'high',
 });
 
 export const GRAPHICS_PRESETS = Object.freeze({ low: legacy, medium: legacy, high: legacy, ultra });
@@ -55,6 +55,7 @@ export const GRAPHICS_CONTROLS = [
   ]],
   ['Эффекты', [
     ['smoke','Дым','Добавляет неоднородность и движение мелких облаков дыма.',choices(old,high)],
+    ['softParticles','Мягкие частицы','Плавно скрывает дым при пересечении с поверхностями. Добавляет проход при наличии дыма.',choices(off,high)],
     ['particleLighting','Освещение дыма','Имитирует рассеивание света на частицах со стороны солнца.',choices(off,high)],
     ['explosions','Взрывы','Добавляет короткую HDR-вспышку и детализированный шлейф дыма.',choices(old,high)],
   ]],

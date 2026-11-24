@@ -1,7 +1,7 @@
 // WebGPU counterpart of the original GLSL track UV scrolling and camouflage.
 // Instancing/LOD/rigging remain in tank-model.js. No additional draw passes.
 import {MeshLambertNodeMaterial} from 'three/webgpu';
-import {attribute,uv,texture,materialReference,vertexColor,uniform,vec2,vec4,
+import {attribute,uv,texture,reference,vertexColor,uniform,vec2,vec4,
   abs,select,smoothstep,mix,clamp} from 'three/tsl';
 import * as THREE from 'three';
 
@@ -16,7 +16,9 @@ export function createWebGpuTankMaterial({atlas,travel,desertCamo,desertSand,des
   const offset=select(abs(side).greaterThan(.5),
     select(side.lessThan(0),travelNode.x,travelNode.y),0);
   const sampled=texture(atlas,uv().add(vec2(0,offset)));
-  const color=materialReference('color','color');
+  // The shadow pipeline evaluates the material's alpha with a temporary
+  // override material. Its uniform must still reference the tank material.
+  const color=reference('color','color',material);
   const shade=smoothstep(.34,.60,sampled.r);
   const paint=smoothstep(.08,.17,vertexColor().r).mul(desertNode);
   const camo=mix(uniform(desertBrown.value),uniform(desertSand.value),shade)

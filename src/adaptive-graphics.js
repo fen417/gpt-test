@@ -6,6 +6,7 @@ const gpuSteps = [
   ['shadows',{ultra:'very-high','very-high':'high',high:'medium'}],
   ['explosions',{high:'legacy'}],
   ['smoke',{high:'legacy'}],
+  ['softParticles',{high:'off'}],
   ['bloom',{ultra:'high',high:'medium',medium:'low',low:'off'}],
   ['ao',{low:'off'}],
 ];
@@ -92,6 +93,6 @@ export class AdaptiveGraphics {
 }
 
 function gpuEffectName(previous,next) {
-  const names={reflections:'отражения',atmosphere:'атмосфера',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',bloom:'свечение'};
+  const names={reflections:'отражения',atmosphere:'атмосфера',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',softParticles:'мягкие частицы',bloom:'свечение'};
   return Object.keys(names).map(key=>previous[key]!==next[key]?names[key]:null).find(Boolean)??'эффекты';
 }

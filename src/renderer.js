@@ -1,5 +1,6 @@
 import {batchStaticWorld} from './static-batching.js';
 import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, GEOMETRY_QUALITY} from './graphics-settings.js';
+import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {WaterAppearance} from './water-appearance.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {applyTextureFiltering} from './texture-quality.js';
@@ -180,7 +181,12 @@ export class GameRenderer {
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
     this.waterReflectionPlane=new THREE.Vector2();
     this.finishWorldEffects=()=>{
-      this.postPass.worldEffects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock);
+      const effects=this.postPass.worldEffects;
+      effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock);
+      if(effects.softSmoke&&effects.world.depthTexture){
+        this.softSmokePass??=new SoftSmokePass(this,effects.world.depthTexture);
+        this.softSmokePass.render(this,effects.world);
+      }
     };
     this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40, frameGeneration:'off' };
     this.clock = 0;
@@ -1943,6 +1949,11 @@ export class GameRenderer {
     this.postPass.worldEffects.reflector=this.waterAppearance
       ? this.waterReflectionPlane.set(this.map.shoreX,this.portWaterMesh.position.y) : null;
     const smoke=this.effectBatches.smoke;
+    const softSmoke=this.graphicsEffects?.softParticles==='high'&&smoke.count>0;
+    this.postPass.worldEffects.softSmoke=softSmoke;
+    if(!softSmoke&&this.softSmokePass){
+      this.softSmokePass.dispose();this.softSmokePass=null;
+    }
     if(smoke.count){
       if(this.graphicsEffects?.particleLighting==='high'){
         this.camera.updateMatrixWorld();
@@ -1957,6 +1968,7 @@ export class GameRenderer {
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
     if(!menu&&!warming)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
+    if(softSmoke)smoke.layers.set(SOFT_PARTICLE_LAYER);
     try{
       const generator=this.frameGeneration;
       try{
@@ -1979,7 +1991,13 @@ export class GameRenderer {
         this.postPass.end(this.clock,this.quality);
       }
     }
-    finally{this.renderer.setRenderTarget(null);if(timing)this.gpuTimer.end();this.gpuTimer.poll?.();this.interiorVisibility.restore();}
+    finally{
+      if(softSmoke)smoke.layers.set(0);
+      this.renderer.setRenderTarget(null);
+      if(timing)this.gpuTimer.end();
+      this.gpuTimer.poll?.();
+      this.interiorVisibility.restore();
+    }
   }
 
   placeVehicleCamera({ vehicle, rig }, seat, yaw, pitch, shake) {
@@ -2520,6 +2538,7 @@ export class GameRenderer {
     this.disposed=true;
     this.waterAppearance?.dispose();
     this.explosionTexture?.dispose();
+    this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();
     this.villageModel.dispose();
     this.alhadraModel.dispose();
