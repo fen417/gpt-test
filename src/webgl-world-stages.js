@@ -1,5 +1,6 @@
 import {heatDistortionGLSL} from './webgl-heat-distortion.js';
 import {cameraEffectsGLSL} from './webgl-camera-effects.js';
+import {volumeSunGLSL} from './volume-sun.js';
 import * as THREE from 'three';
 
 const vertex = 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}';
@@ -16,12 +17,12 @@ vec2 depthCenter(vec2 uv){return (clamp(floor(uv*depthSize),vec2(0.),depthSize-1
 vec3 viewAt(vec2 uv){vec2 at=depthCenter(uv);return viewPosition(at,readDepth(at));}
 bool offscreen(vec2 uv){return any(lessThanEqual(uv,vec2(0.)))||any(greaterThanEqual(uv,vec2(1.)));}
 `;
-const mask = `
+const mask = (cascadeCount) => `
 varying vec2 vUv;
 uniform vec3 steps,sunView,upView;
 uniform vec2 sunScreen;
 uniform float atmosphereStrength,cameraY;
-` + reconstruct + `
+` + reconstruct + volumeSunGLSL(cascadeCount) + `
 // Cosine-weighted integral between the two horizon angles of a view slice.
 vec2 integrateHorizon(vec2 cosine) {
   cosine=clamp(cosine,vec2(-1.),vec2(1.));
@@ -118,16 +119,18 @@ void main(){
       }
     }
     float haze=0.;
-    if(steps.z>1. && depth<.999999){
-      float stepSize=min(length(pos),130.)/steps.z;
+    if(steps.z>1. ${cascadeCount ? '' : '&& depth<.999999'}){
+      float stepSize=min(length(pos),${cascadeCount ? 'volumeSplits['+(cascadeCount-1)+']' : '130.'})/steps.z;
       float density=0.;
       float slope=dot(direction,upView);
       for(int i=0;i<12;i++){
         if(float(i)>=steps.z)break;
-        float height=max(0.,cameraY+stepSize*(float(i)+.5)*slope);
-        density+=exp(-height*.048)*stepSize;
+        float distance=stepSize*(float(i)+.5);
+        float height=max(0.,cameraY+distance*slope);
+        float light=${cascadeCount ? '.22+.78*volumeSun(direction*distance)' : '1.'};
+        density+=light*exp(-height*.048)*stepSize;
       }
-      haze=.18*(1.-exp(-density*.012));
+      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*.012));
     }
     shaft=(haze+.52*angular*visible/steps.z)*atmosphereStrength;
   }
@@ -268,12 +271,12 @@ export function webGlWorldStages(post) {
     return material;
   };
   const uniforms = Object.fromEntries(Object.entries(state).map(([key,value])=>[key,{value}]));
-  const depth = post.mask ? stage(mask, {...uniforms, sceneDepth:{value:world.depthTexture}}) : null;
+  const masks = [];
   const reflected=post.reflection ? stage(reflection, {...uniforms,sceneDepth:{value:world.depthTexture},source:{value:world.texture}}) : null;
   const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
     source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
   }));
-  const output = stage(composite(Boolean(depth),blurs.length,Boolean(reflected),post.cameraFX,post.hasHeat), {
+  const output = stage(composite(Boolean(post.mask),blurs.length,Boolean(reflected),post.cameraFX,post.hasHeat), {
     ...uniforms, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},reflection:{value:post.reflection?.texture},
     ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
   });
@@ -293,7 +296,13 @@ export function webGlWorldStages(post) {
       uniforms.heatTime.value=state.heatTime;
       uniforms.reflectionSteps.value=state.reflectionSteps;
       if(reflected)draw(post.reflection,reflected);
-      if(depth)draw(post.mask,depth);
+      if(post.mask){
+        const count=post.shadowMaps.length;
+        const depth=masks[count]??=stage(mask(count),{...uniforms,sceneDepth:{value:world.depthTexture},
+          ...Object.fromEntries(post.shadowMaps.map((map,i)=>['volumeMap'+i,{value:map}]))});
+        for(let i=0;i<count;i++)depth.uniforms['volumeMap'+i].value=post.shadowMaps[i];
+        draw(post.mask,depth);
+      }
       for(let i=0;i<blurs.length;i++){
         const src=i===0?world:post.bloom[i-1];
         blurs[i].uniforms.pixel.value.set(1/src.width,1/src.height);

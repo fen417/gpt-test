@@ -3,6 +3,7 @@ import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, 
 import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {WaterAppearance} from './water-appearance.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
+import {LocalReflections} from './local-reflections.js';
 import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
 import * as THREE from 'three';
@@ -182,9 +183,10 @@ export class GameRenderer {
     this.canvas = canvas;
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
     this.waterReflectionPlane=new THREE.Vector2();
+    this.localReflections=new LocalReflections();
     this.finishWorldEffects=()=>{
       const effects=this.postPass.worldEffects;
-      effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock);
+      effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock,this.cascades);
       if(effects.softSmoke&&effects.world.depthTexture){
         this.softSmokePass??=new SoftSmokePass(this,effects.world.depthTexture);
         this.softSmokePass.render(this,effects.world);
@@ -742,6 +744,7 @@ export class GameRenderer {
   }
 
   invalidateBakedVisibility() {
+    this.localReflections.dispose();
     this.interiorVisibility.root=null;
     this.cachedShadows.invalidate(true);
     this.cascades?.invalidate(true);
@@ -778,6 +781,7 @@ export class GameRenderer {
       buildMapScene(this,map,{skipObjectives:true,skipPortWater:true});
       this.mergeStaticWorld(new Set());
     }finally{Object.assign(this,live);}
+    world.fallback=fallback;
     world.portLabels?.removeFromParent();
     this.installBakedLayer(world,fallback);
   }
@@ -2002,13 +2006,16 @@ export class GameRenderer {
       values.smokeMotion.value=Number(this.graphicsEffects?.smoke==='high');
       values.smokeTime.value=this.clock;
     }
+    this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
+    const environment=this.scene.environment;
+    const localEnvironment=this.localReflections.prepare(this,menu,warming);
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene);
     this.cascades?.update();
-    this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
     if(!menu&&!warming)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
     if(softSmoke)smoke.layers.set(SOFT_PARTICLE_LAYER);
     try{
+      if(localEnvironment)this.scene.environment=localEnvironment;
       const generator=this.frameGeneration;
       try{
         // No simulated gameplay frames exist in menu. Keep the ordinary
@@ -2032,6 +2039,7 @@ export class GameRenderer {
     }
     finally{
       if(softSmoke)smoke.layers.set(0);
+      this.scene.environment=environment;
       this.renderer.setRenderTarget(null);
       if(timing)this.gpuTimer.end();
       this.gpuTimer.poll?.();
@@ -2559,6 +2567,7 @@ export class GameRenderer {
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
+      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
@@ -2581,6 +2590,7 @@ export class GameRenderer {
   dispose() {
     this.disposed=true;
     this.waterAppearance?.dispose();
+    this.localReflections.dispose();
     this.explosionTexture?.dispose();
     this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();

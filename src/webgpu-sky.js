@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial, PMREMGenerator } from 'three/webgpu';
+export { PMREMGenerator } from 'three/webgpu';
 import { Fn, vec2, vec3, vec4, uniform, positionLocal, cubeTexture,
   floor, fract, dot, sin, mix, pow, max, smoothstep, normalize, exp, clamp, If } from 'three/tsl';
 

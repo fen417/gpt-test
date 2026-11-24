@@ -24,7 +24,10 @@ export class WorldPost {
       cameraEffects:new THREE.Vector3(), chromaticGain:0, previousClipFromView:new THREE.Matrix4(),
       heatSources:new THREE.Matrix4(), heatStrength:new THREE.Vector4(), heatTime:0,
       atmosphereStrength: 0, bloomGain: 0,
+      volumeSplits: new THREE.Vector3(),
+      volumeMatrix0: new THREE.Matrix4(), volumeMatrix1: new THREE.Matrix4(), volumeMatrix2: new THREE.Matrix4(),
     };
+    this.shadowMaps=[];
     this.heat=new HeatSources(this.state,webgpu);
     this.previousViewProjection=new THREE.Matrix4();
     this.previousProjection=new THREE.Matrix4();
@@ -105,7 +108,7 @@ export class WorldPost {
     if (target.width !== width || target.height !== height) target.setSize(width, height);
   }
 
-  apply(output, camera, scene, sunOffset, sun, campaign, time) {
+  apply(output, camera, scene, sunOffset, sun, campaign, time, cascades) {
     const r = this.renderer, state = this.state;
     if (this.mask||this.reflection||this.cameraFX||this.hasHeat) {
       state.projection.copy(camera.projectionMatrix);
@@ -120,6 +123,19 @@ export class WorldPost {
       state.sunColor.copy(sun.color);
       state.fogColor.copy(scene.fog.color);
       state.atmosphereStrength = campaign ? 0 : Math.min(1, sun.intensity / 3);
+    }
+    const cascade = state.steps.z>=7&&state.atmosphereStrength>0 ? cascades?.csm : null;
+    this.shadowMaps.length=0;
+    if(cascade && cascade.lights.length===cascade.cascades){
+      const far=Math.min(cascade.maxFar,camera.far);
+      for(let i=0;i<cascade.lights.length;i++){
+        const shadow=cascade.lights[i].shadow;
+        const map=this.webgpu?cascade._shadowNodes[i]?.shadowMap?.depthTexture:shadow.map?.texture;
+        if(!map){this.shadowMaps.length=0;break;}
+        this.shadowMaps.push(map);
+        state['volumeMatrix'+i].multiplyMatrices(shadow.matrix,camera.matrixWorld);
+        state.volumeSplits.setComponent(i,(far-camera.near)*cascade.breaks[i]+(this.webgpu?camera.near:0));
+      }
     }
     if(state.cameraEffects.x){
       const elapsed=time-(this.previousClock??time);
@@ -156,6 +172,7 @@ export class WorldPost {
     this.reflection?.dispose();
     for (const target of this.bloom ?? []) target.dispose();
     this.world = this.mask = this.reflection = this.bloom = this.stages = this.key = null;
+    this.shadowMaps.length=0;
     this.previousClock=undefined;
     this.passes = this.memory = 0;
   }

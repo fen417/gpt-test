@@ -1,5 +1,6 @@
 import {makeHeatDistortionWGSL} from './webgpu-heat-distortion.js';
 import {makeCameraEffectsWGSL} from './webgpu-camera-effects.js';
+import {volumeSunWGSL} from './volume-sun.js';
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, wgslFn, vec2, vec4 } from 'three/tsl';
@@ -64,10 +65,19 @@ fn worldHorizonOcclusion(at: vec2f, sceneDepth: texture_depth_2d, inverseProject
   return min(.72,occlusion*.45);
 }`,[viewAt,integrateHorizon]);
 
-const mask = wgslFn(`
+const maskVariants=[];
+function mask(cascadeCount){
+  if(maskVariants[cascadeCount])return maskVariants[cascadeCount];
+  const volume=volumeSunWGSL(cascadeCount);
+  const includes=[viewAt,horizonOcclusion];
+  if(cascadeCount){
+    const [tap,sun]=volume.source.trim().split(/\n(?=fn worldVolumeSun)/);
+    includes.push(wgslFn(sun,[wgslFn(tap)]));
+  }
+  return maskVariants[cascadeCount]=wgslFn(`
 fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f,
   inverseProjection: mat4x4f, depthSize: vec2f, steps: vec3f, sunView: vec3f,
-  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32) -> vec4f {
+  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32${volume.parameters}) -> vec4f {
   let center=worldDepthCenter(at,depthSize);
   let depth=worldReadDepth(sceneDepth,center,depthSize);
   let pos=worldViewPosition(inverseProjection,center,depth);
@@ -135,21 +145,24 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
       }
     }
     var haze=0.;
-    if(steps.z>1. && depth<.999999){
-      let stepSize=min(length(pos),130.)/steps.z;
+    if(steps.z>1. ${cascadeCount ? '' : '&& depth<.999999'}){
+      let stepSize=min(length(pos),${cascadeCount ? `volumeSplits[${cascadeCount-1}]` : '130.'})/steps.z;
       var density=0.;
       let slope=dot(direction,upView);
       for(var i=0; i<12; i++){
         if(f32(i)>=steps.z){break;}
-        let height=max(0.,cameraY+stepSize*(f32(i)+.5)*slope);
-        density+=exp(-height*.048)*stepSize;
+        let distance=stepSize*(f32(i)+.5);
+        let height=max(0.,cameraY+distance*slope);
+        let light=${cascadeCount ? `.22+.78*${volume.sample}` : '1.'};
+        density+=light*exp(-height*.048)*stepSize;
       }
-      haze=.18*(1.-exp(-density*.012));
+      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*.012));
     }
     shaft=(haze+.52*angular*visible/steps.z)*atmosphereStrength;
   }
   return vec4f(ao,contact,shaft,range);
-}`,[viewAt,horizonOcclusion]);
+}`,includes);
+}
 
 const applyDepthEffects = wgslFn(`
 fn worldCompositeDepth(at: vec2f, rgb: vec3f, sceneDepth: texture_depth_2d, effectsMask: texture_2d<f32>,
@@ -273,10 +286,11 @@ export function webGpuWorldStages(post, geometry, camera) {
   const params=Object.fromEntries(Object.entries(state).map(([key,value])=>[key,uniform(value)]));
   const at=uv(), source=texture(world.texture);
   const depthParams=world.depthTexture && {at, sceneDepth:texture(world.depthTexture), inverseProjection:params.inverseProjection, depthSize:params.depthSize};
-  const depth=post.mask && make(mask({
+  const masks=post.mask && [];
+  const maskParams=post.mask && {
     ...depthParams, projection:params.projection, steps:params.steps, sunView:params.sunView,
     upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,
-  }));
+  };
   const waterParams={shore:params.shore,upView:params.upView,worldXView:params.worldXView,cameraY:params.cameraY,cameraX:params.cameraX};
   const reflected=post.reflection && make(reflection({...depthParams,...waterParams,source,sourceSampler:source,
     projection:params.projection,waterPixel:params.waterPixel,time:params.time,reflectionSteps:params.reflectionSteps}));
@@ -292,7 +306,7 @@ export function webGpuWorldStages(post, geometry, camera) {
     sunScreen:params.sunScreen,sunView:params.sunView,sunColor:params.sunColor});
   if(post.hasHeat)rgb=heatDistortion({...depthParams,color:rgb,source,sourceSampler:source,
     heatSources:params.heatSources,heatStrength:params.heatStrength,heatTime:params.heatTime});
-  if(depth)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
+  if(post.mask)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
     effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor});
   for(let i=0;i<post.bloom.length;i++){
     rgb=rgb.add(texture(post.bloom[i].texture).sample(at).rgb.mul(params.bloomGain).mul([.62,.23,.1,.05][i]));
@@ -314,7 +328,21 @@ export function webGpuWorldStages(post, geometry, camera) {
       params.reflectionSteps.value=state.reflectionSteps;
       if(reflected)draw(post.reflection,reflected);
       params.atmosphereStrength.value=state.atmosphereStrength;
-      if(depth)draw(post.mask,depth);
+      if(masks){
+        const count=post.shadowMaps.length;
+        const entry=masks[count]??=(()=>{
+          const maps=post.shadowMaps.map(map=>texture(map));
+          const values={...maskParams};
+          if(count)values.volumeSplits=params.volumeSplits;
+          for(let i=0;i<count;i++){
+            values['volumeMap'+i]=maps[i];
+            values['volumeMatrix'+i]=params['volumeMatrix'+i];
+          }
+          return {scene:make(mask(count)(values)),maps};
+        })();
+        for(let i=0;i<count;i++)entry.maps[i].value=post.shadowMaps[i];
+        draw(post.mask,entry.scene);
+      }
       for(let i=0;i<blurs.length;i++){
         const {scene,pixel,src}=blurs[i];
         pixel.value.set(1/src.width,1/src.height);

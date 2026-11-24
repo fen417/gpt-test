@@ -3,7 +3,7 @@ const legacy = Object.freeze({
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
-  sky: 'legacy', water: 'legacy', reflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
+  sky: 'legacy', water: 'legacy', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
   smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off',
   adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
@@ -11,7 +11,7 @@ const legacy = Object.freeze({
 const ultra = Object.freeze({
   ...legacy, surfaceDetail:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
-  sky: 'high', water: 'high', reflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high',
+  sky: 'high', water: 'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high',
 });
 
 export const GRAPHICS_PRESETS = Object.freeze({ legacy, low: legacy, medium: legacy, high: legacy, ultra });
@@ -36,7 +36,7 @@ export const GRAPHICS_CONTROLS = [
     ['ao', 'Экранное затенение (SSAO)', 'Делает заметнее стыки и углубления. GTAO оценивает перекрытие по горизонту.', choices(off, ['low', 'SSAO · низкое'], ['high', 'SSAO · высокое'], ['gtao', 'GTAO'])],
     ['bakedAO', 'Запечённое AO материалов', 'Добавляет затенение в порах, швах и углублениях. Расходует текстурную память.', choices(off, low, high)],
     ['contact', 'Контактные тени', 'Уточняет мелкие тени рядом с камерой. Стоимость растёт с числом шагов.', choices(off, low, medium, high)],
-    ['atmosphere', 'Атмосферное рассеивание', 'Добавляет высотную дымку и экранные солнечные лучи. Дорогой эффект на высоких уровнях.', choices(off, low, medium, high, ['ultra','Ультра'])],
+    ['atmosphere', 'Атмосферное рассеивание', 'Добавляет высотную дымку и солнечные лучи. Высокие уровни учитывают перекрытие света при включённых каскадных тенях.', choices(off, low, medium, high, ['ultra','Ультра'])],
     ['shadowFilter', 'Фильтрация теней', 'Мягкая фильтрация сглаживает края теней.', choices(auto, ['hard', 'Жёсткая'], ['pcf', 'PCF'], ['soft', 'Мягкая PCF'], ['pcss', 'Переменная мягкость · PCSS'])],
     ['shadowDistance', 'Область динамических теней', 'Дальняя область покрывает больше сцены и снижает детализацию карты теней.', choices(auto, ['near', 'Ближе'], ['far', 'Дальше'])],
   ]],
@@ -46,7 +46,8 @@ export const GRAPHICS_CONTROLS = [
     ['relief','Параллакс-рельеф','Добавляет видимую глубину камню и бетону при включённых фактурах окружения.',choices(off,['basic','Базовый'],['low','POM · 8 шагов'],['high','POM · 16 шагов'])],
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
     ['sky', 'Небо', 'Добавляет солнечный диск и атмосферное рассеивание. Умеренная нагрузка.', choices(old, high)],
-    ['reflections', 'Экранные отражения воды', 'Отражает близкое окружение на воде в порту. Другие карты используют отражение неба.', choices(off,low,medium,high)],
+    ['reflections', 'Экранные отражения воды', 'Отражает видимые в кадре объекты на воде в порту.', choices(off,low,medium,high)],
+    ['localReflections', 'Локальные отражения', 'Отражает окружение на воде, стекле и металле в отдельных зонах порта, «Лагуны» и Linden Estate.', choices(off,high)],
     ['water', 'Вода', 'Добавляет нормали волн и отражение неба там, где есть вода.', choices(old, high)],
   ]],
   ['Постобработка', [

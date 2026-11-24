@@ -50,6 +50,7 @@ document.body.append(panel);
       `AA: ${data.worldSamples??0}× MSAA мира · AA: ${data.smaa?'SMAA':data.fxaa?'FXAA':'—'} · AF: ${data.anisotropy??'—'}×`,
       `Постпроходы: ${data.postPasses??1} · Доп. буферы: ${ms((data.extraTargetBytes??0)/1048576)} МБ · Новые текстуры: ${ms((data.extraTextureBytes??0)/1048576)} МБ · Каскады: ${data.shadowCascades??0}`,
       `AO: ${data.graphicsEffects?.ao??'off'} · Контактные тени: ${data.graphicsEffects?.contact??'off'} · Bloom: ${data.graphicsEffects?.bloom??'off'} · Атмосфера: ${data.graphicsEffects?.atmosphere??'off'}`,
+      `Каскады объёмных теней: ${data.volumetricCascades??0} · Локальное отражение: ${data.localReflection??'—'}`,
       `Адаптивное качество: ${data.adaptive?.reason??(data.adaptive?'по цели FPS':'выкл.')}`,
       `Геометрии: ${data.geometries} · Текстуры: ${data.textures} · Масштаб: ${ms(data.pixelRatio)}`,
       `JS heap: ${data.heapBytes==null?'н/д':(data.heapBytes/1048576).toFixed(1)+' МБ'}`,
