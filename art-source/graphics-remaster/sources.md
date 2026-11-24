@@ -9,3 +9,5 @@ The photographic source textures are distributed under [Poly Haven's CC0 license
 - Laguna ceramic uses an original ambient-occlusion bake from Blender. It contains shadows from the bevelled tile edges onto the grout. The tile pitch follows the existing ceramic texture.
 
 Run `blender -b --python art-source/graphics-remaster/bake-ceramic-ao.py -- .perf-local/remaster-source/ceramic-ao.png` for the AO source. Run `node art-source/graphics-remaster/pack-surfaces.mjs .perf-local/remaster-source` from the project root with the input files named `<concrete|rock|sand|asphalt>-<diff|nor_gl|arm>.jpg`.
+
+Для параллакса используются карты Displacement из тех же CC0-наборов. Имена файлов для сборки — `concrete-disp.jpg` и `rock-disp.jpg`.

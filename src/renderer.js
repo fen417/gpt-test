@@ -6,6 +6,8 @@ import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
 import * as THREE from 'three';
+import {WebGlPenumbra} from './webgl-penumbra.js';
+import {directionalPenumbraScale} from './directional-penumbra.js';
 import {WebGlCascades, shadowCascadeOptions} from './shadow-cascades.js';
 import { CachedShadows } from './cached-shadows.js';
 import { InfantryAssets } from './infantry-assets.js';
@@ -546,6 +548,7 @@ export class GameRenderer {
     if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
+    this.postPass.worldEffects.previousClock=undefined;
     for(const type of new Set(map.vehicleSpawns?.map(vehicle=>vehicle.type)))lightVehicleModels[type]?.load();
     let world = this.worlds.get(map.id);
     if (!world) {
@@ -1811,7 +1814,8 @@ export class GameRenderer {
     const requestedMode = this.adaptiveGraphics?.shadowOverride??this.gfx.shadows;
     const mode = requestedMode==='auto'&&this.graphicsEffects?.cascades ? this.graphicsEffects.cascades : requestedMode;
     const filter = this.graphicsEffects?.shadowFilter;
-    const filterType = {hard:THREE.BasicShadowMap,pcf:THREE.PCFShadowMap,soft:THREE.PCFSoftShadowMap}[filter]
+    const pcss=filter==='pcss';
+    const filterType = {pcss:THREE.BasicShadowMap,hard:THREE.BasicShadowMap,pcf:THREE.PCFShadowMap,soft:THREE.PCFSoftShadowMap}[filter]
       ?? (this.integratedGpu ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap);
     if(this.renderer.shadowMap.type!==filterType){
       this.renderer.shadowMap.type=filterType;
@@ -1832,7 +1836,21 @@ export class GameRenderer {
     }
     const level = mode === 'auto' ? (this.quality==='low'?'off':this.quality==='medium'?'low':this.integratedGpu?'medium':'high') : mode;
     const cascaded = level==='very-high'||level==='ultra';
-    const cascadeKey=cascaded?[level,this.graphicsEffects?.shadowDistance,filterType].join('/'):'';
+    if(!this.webgpu&&pcss)this.penumbra??=new WebGlPenumbra();
+    this.penumbra?.setEnabled(pcss);
+    const gpuFilter=pcss?this.webgpu?.webGpuPcss:undefined;
+    if(this.webgpu&&this.sun.shadow.filterNode!==gpuFilter){
+      this.cascades?.dispose();this.cascades=null;this.cascadeKey=undefined;
+      const previous=this.sun;
+      this.sun=previous.clone();
+      this.sun.shadow.filterNode=gpuFilter;
+      this.scene.remove(previous,previous.target);
+      this.scene.add(this.sun,this.sun.target);
+      previous.dispose();
+      this.lastShadowTx=undefined;
+    }
+    this.pcssShadows=pcss;
+    const cascadeKey=cascaded?[level,this.graphicsEffects?.shadowDistance,filter].join('/'):'';
     if(this.cascadeKey!==cascadeKey){
       this.cascades?.dispose();
       this.cascades=null;this.cascadeKey=cascadeKey;
@@ -1855,6 +1873,7 @@ export class GameRenderer {
       this.sun.shadow.map=null;
       this.lastShadowTx = undefined;
     }
+    this.sun.shadow.radius=pcss?directionalPenumbraScale(this.sun.shadow):1;
     if (on) {
       this.sun.shadow.needsUpdate = true;
       this.renderer.shadowMap.needsUpdate = true;
@@ -1883,7 +1902,7 @@ export class GameRenderer {
   refreshSurfaceEnhancements(){
     const settings=this.graphicsEffects;
     if(!settings)return;
-    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off')this.enhancedSurfaces??=new EnhancedSurfaces();
+    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off')this.enhancedSurfaces??=new EnhancedSurfaces(this.webgpu?.setWebGpuRelief);
     this.enhancedSurfaces?.update(this.staticRoot,settings,this.textureAnisotropy);
   }
 
@@ -1950,7 +1969,10 @@ export class GameRenderer {
       ? this.waterReflectionPlane.set(this.map.shoreX,this.portWaterMesh.position.y) : null;
     const smoke=this.effectBatches.smoke;
     const softSmoke=this.graphicsEffects?.softParticles==='high'&&smoke.count>0;
-    this.postPass.worldEffects.softSmoke=softSmoke;
+    const worldFX=this.postPass.worldEffects;
+    worldFX.inMenu=menu;worldFX.cinematic=this.cinematicCamera;
+    worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
+    worldFX.softSmoke=softSmoke;
     if(!softSmoke&&this.softSmokePass){
       this.softSmokePass.dispose();this.softSmokePass=null;
     }
@@ -1964,6 +1986,7 @@ export class GameRenderer {
       values.smokeMotion.value=Number(this.graphicsEffects?.smoke==='high');
       values.smokeTime.value=this.clock;
     }
+    if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene);
     this.cascades?.update();
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
     if(!menu&&!warming)this.interiorVisibility.apply(this);
@@ -2044,6 +2067,8 @@ export class GameRenderer {
     this.quality=baseGraphicsQuality(view.quality);
     const selectedEffects=graphicsEffects(view.quality,gfx?.customGraphics);
     this.presentingCampaign=Boolean(state?.campaign);
+    this.cinematicCamera=Boolean(state?.campaign?.cutscene);
+    this.cameraEffectsAim=Boolean(view.aim);
     this.gpuTimer.enabled=this.perfEnabled||selectedEffects.adaptiveTarget!=='off';
     if(selectedEffects.adaptiveTarget!=='off'){
       const adaptive=this.adaptiveGraphics??=new AdaptiveGraphics();
@@ -2518,6 +2543,7 @@ export class GameRenderer {
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       postPasses:1+post.worldEffects.passes+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
+      shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
       extraTextureBytes:this.enhancedSurfaces?.estimatedBytes()??0,
       visibleLights:this.perfEnabled?this.scene.children.filter(object=>object.isLight&&object.visible&&object.intensity>0).length:null,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
@@ -2540,6 +2566,7 @@ export class GameRenderer {
     this.explosionTexture?.dispose();
     this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();
+    this.penumbra?.setEnabled(false);
     this.villageModel.dispose();
     this.alhadraModel.dispose();
     this.alhadraDesertModel.dispose();

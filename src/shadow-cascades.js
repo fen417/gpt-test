@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { CSMShader } from 'three/addons/csm/CSMShader.js';
+import {setWebGlShaderPatch} from './webgl-shader-patches.js';
+import { directionalPenumbraScale } from './directional-penumbra.js';
 import { CachedShadows } from './cached-shadows.js';
 
 export function shadowCascadeOptions(level, distance) {
@@ -31,7 +33,7 @@ export class WebGlCascades {
       ...options.data, camera:owner.camera, parent:owner.scene, lightNear:1, lightFar:295, shadowBias:-.00025,
     });
     this.csm.fade=true;
-    this.materials=new Map();
+    this.materials=new Set();
     this.uniforms={CSM_cascades:{value:[]},cameraNear:{value:0},shadowFar:{value:0}};
     this.axis=new THREE.Vector3();
     this.right=new THREE.Vector3();
@@ -60,17 +62,13 @@ export class WebGlCascades {
     defs.USE_CSM=1;
     defs.CSM_CASCADES=this.csm.cascades;
     defs.CSM_FADE='';
-    const original=material.onBeforeCompile;
-    const csmCompile=(shader,renderer)=>{
+    setWebGlShaderPatch(material,'cascades',shader=>{
       Object.assign(shader.uniforms,this.uniforms);
       shader.fragmentShader=shader.fragmentShader
         .replace('#include <lights_pars_begin>',CSMShader.lights_pars_begin)
         .replace('#include <lights_fragment_begin>',CSMShader.lights_fragment_begin);
-      original.call(material,shader,renderer);
-    };
-    material.onBeforeCompile=csmCompile;
-    material.needsUpdate=true;
-    this.materials.set(material,original);
+    });
+    this.materials.add(material);
   }
 
   update() {
@@ -82,6 +80,9 @@ export class WebGlCascades {
       csm._getExtendedBreaks(uniforms.CSM_cascades.value);
       uniforms.cameraNear.value=camera.near;
       uniforms.shadowFar.value=Math.min(csm.maxFar,camera.far);
+      if(owner.pcssShadows){
+        for(const light of csm.lights)light.shadow.radius=directionalPenumbraScale(light.shadow);
+      }
       this.invalidate();
     }
     csm.lightDirection.copy(owner.sunOffset).negate().normalize();
@@ -122,8 +123,8 @@ export class WebGlCascades {
     this.csm.remove();
     for(const light of this.csm.lights)light.dispose();
     for(const cache of this.caches)cache.dispose();
-    for(const [material,original] of this.materials){
-      material.onBeforeCompile=original;
+    for(const material of this.materials){
+      setWebGlShaderPatch(material,'cascades',null);
       delete material.defines.USE_CSM;
       delete material.defines.CSM_CASCADES;
       delete material.defines.CSM_FADE;

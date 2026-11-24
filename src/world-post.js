@@ -1,3 +1,4 @@
+import {cameraModes} from './camera-effects.js';
 import * as THREE from 'three';
 
 const aoSteps = { off: 0, low: 4, high: 12, gtao: 24 };
@@ -19,8 +20,13 @@ export class WorldPost {
       depthSize: new THREE.Vector2(), effectPixel: new THREE.Vector2(),
       steps: new THREE.Vector3(), reflectionSteps:0, shore:new THREE.Vector2(), waterPixel:new THREE.Vector2(),
       worldXView:new THREE.Vector3(), cameraX:0, time:0,
+      cameraEffects:new THREE.Vector3(), chromaticGain:0, previousClipFromView:new THREE.Matrix4(),
       atmosphereStrength: 0, bloomGain: 0,
     };
+    this.previousViewProjection=new THREE.Matrix4();
+    this.previousProjection=new THREE.Matrix4();
+    this.previousPosition=new THREE.Vector3();
+    this.previousOrientation=new THREE.Quaternion();
     this.passes = 0;
     this.memory = 0;
   }
@@ -32,12 +38,18 @@ export class WorldPost {
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];
     const reflections=this.reflector?(reflectionSteps[effects?.reflections]??0):0;
     const mask=ao+contact+atmosphere>0;
-    const depth=mask||reflections>0||this.softSmoke;
+    const blur=(this.inMenu||this.cinematic)?cameraModes.blur[effects?.motionBlur]??0:0;
+    const dof=(this.cinematic&&(effects?.depthOfField??'off')!=='off')||(this.inMenu&&effects?.depthOfField==='on');
+    const flare=this.aiming?0:cameraModes.flare[effects?.lensFlare]??0;
+    const chromatic=this.aiming?0:cameraModes.chromatic[effects?.chromatic]??0;
+    this.cameraFX=Boolean(blur||dof||flare||chromatic);
+    const depth=mask||reflections>0||this.softSmoke||this.cameraFX;
+    if(!blur)this.previousClock=undefined;
     if (!depth && !levels) {
       if (this.world) this.dispose();
       return false;
     }
-    const key = Boolean(depth) + '/' + mask + '/' + Boolean(reflections) + '/' + levels;
+    const key = Boolean(depth) + '/' + this.cameraFX + '/' + mask + '/' + Boolean(reflections) + '/' + levels;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
@@ -55,6 +67,8 @@ export class WorldPost {
     if (world.samples !== worldSamples) { world.dispose(); world.samples = worldSamples; }
     this.resize(world, width, height);
     this.state.steps.set(ao, contact, atmosphere);
+    this.state.cameraEffects.set(blur,Number(dof),flare);
+    this.state.chromaticGain=chromatic;
     this.state.reflectionSteps=reflections;
     this.state.depthSize.set(width, height);
     this.state.bloomGain = gain;
@@ -89,7 +103,7 @@ export class WorldPost {
 
   apply(output, camera, scene, sunOffset, sun, campaign, time) {
     const r = this.renderer, state = this.state;
-    if (this.mask||this.reflection) {
+    if (this.mask||this.reflection||this.cameraFX) {
       state.projection.copy(camera.projectionMatrix);
       state.inverseProjection.copy(camera.projectionMatrixInverse);
       state.sunView.copy(sunOffset).transformDirection(camera.matrixWorldInverse);
@@ -102,6 +116,21 @@ export class WorldPost {
       state.sunColor.copy(sun.color);
       state.fogColor.copy(scene.fog.color);
       state.atmosphereStrength = campaign ? 0 : Math.min(1, sun.intensity / 3);
+    }
+    if(state.cameraEffects.x){
+      const elapsed=time-(this.previousClock??time);
+      const stableView=elapsed>0&&elapsed<=.12&&this.previousProjection.equals(camera.projectionMatrix)
+        &&this.previousPosition.distanceToSquared(camera.position)<5
+        &&Math.abs(this.previousOrientation.dot(camera.quaternion))>.998;
+      if(stableView){
+        state.previousClipFromView.multiplyMatrices(this.previousViewProjection,camera.matrixWorld);
+        state.cameraEffects.x*=Math.min(1,(1/60)/elapsed);
+      }else state.cameraEffects.x=0;
+      this.previousClock=time;
+      this.previousProjection.copy(camera.projectionMatrix);
+      this.previousViewProjection.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+      this.previousPosition.copy(camera.position);
+      this.previousOrientation.copy(camera.quaternion);
     }
     if(this.reflection){
       state.shore.copy(this.reflector);
@@ -123,6 +152,7 @@ export class WorldPost {
     this.reflection?.dispose();
     for (const target of this.bloom ?? []) target.dispose();
     this.world = this.mask = this.reflection = this.bloom = this.stages = this.key = null;
+    this.previousClock=undefined;
     this.passes = this.memory = 0;
   }
 }

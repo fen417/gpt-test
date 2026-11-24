@@ -1,3 +1,4 @@
+import {cameraEffectsGLSL} from './webgl-camera-effects.js';
 import * as THREE from 'three';
 
 const vertex = 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}';
@@ -204,21 +205,24 @@ void main(){
   }
 }`;
 
-function composite(depth, levels, reflections) {
+function composite(depth, levels, reflections, cameraFX) {
   return `
 varying vec2 vUv;
 uniform sampler2D source;
-${depth||reflections ? reconstruct : ''}
+${depth||reflections||cameraFX ? reconstruct : ''}
 ${reflections ? reflectors+'uniform sampler2D reflection;' : ''}
 ${depth ? `
 uniform sampler2D mask;
 uniform vec2 effectPixel;
-uniform vec3 sunColor,fogColor;
+uniform vec3 fogColor;
+${cameraFX?'':'uniform vec3 sunColor;'}
 ` : ''}
 ${levels ? 'uniform float bloomGain;' : ''}
 ${Array.from({length:levels}, (_, i) => 'uniform sampler2D bloom'+i+';').join('\n')}
+${cameraFX?cameraEffectsGLSL:''}
 void main(){
   vec3 color=texture2D(source,vUv).rgb;
+  ${cameraFX?'color=applyCameraEffects(vUv,color);':''}
   ${depth ? `
   float raw=readDepth(vUv);
   float distance=-viewPosition(vUv,raw).z;
@@ -266,7 +270,7 @@ export function webGlWorldStages(post) {
   const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
     source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
   }));
-  const output = stage(composite(Boolean(depth),blurs.length,Boolean(reflected)), {
+  const output = stage(composite(Boolean(depth),blurs.length,Boolean(reflected),post.cameraFX), {
     ...uniforms, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},reflection:{value:post.reflection?.texture},
     ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
   });
@@ -281,6 +285,7 @@ export function webGlWorldStages(post) {
       uniforms.cameraY.value=state.cameraY;
       uniforms.bloomGain.value=state.bloomGain;
       uniforms.cameraX.value=state.cameraX;
+      uniforms.chromaticGain.value=state.chromaticGain;
       uniforms.time.value=state.time;
       uniforms.reflectionSteps.value=state.reflectionSteps;
       if(reflected)draw(post.reflection,reflected);

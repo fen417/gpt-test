@@ -1,3 +1,4 @@
+import {makeCameraEffectsWGSL} from './webgpu-camera-effects.js';
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, wgslFn, vec2, vec4 } from 'three/tsl';
@@ -253,6 +254,7 @@ fn ${first?'bloomPrefilter':'bloomDownsample'}(source: texture_2d<f32>, sourceSa
 }
 
 const prefilter = blurShader(true), downsample = blurShader(false);
+const cameraEffects=makeCameraEffectsWGSL(viewAt,readDepth);
 
 export function webGpuWorldStages(post, geometry, camera) {
   const { renderer, world, state } = post;
@@ -283,6 +285,9 @@ export function webGpuWorldStages(post, geometry, camera) {
     return {scene:make(shader({source:tex,sourceSampler:tex,at,pixel})),pixel,src};
   });
   let rgb=source.sample(at).rgb;
+  if(post.cameraFX)rgb=cameraEffects({...depthParams,original:rgb,source,sourceSampler:source,
+    previousClipFromView:params.previousClipFromView,cameraEffects:params.cameraEffects,chromaticGain:params.chromaticGain,
+    sunScreen:params.sunScreen,sunView:params.sunView,sunColor:params.sunColor});
   if(depth)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
     effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor});
   for(let i=0;i<post.bloom.length;i++){
@@ -299,6 +304,7 @@ export function webGpuWorldStages(post, geometry, camera) {
       params.bloomGain.value=state.bloomGain;
       params.cameraY.value=state.cameraY;
       params.cameraX.value=state.cameraX;
+      params.chromaticGain.value=state.chromaticGain;
       params.time.value=state.time;
       params.reflectionSteps.value=state.reflectionSteps;
       if(reflected)draw(post.reflection,reflected);

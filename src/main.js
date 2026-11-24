@@ -13,7 +13,7 @@ import { drawBotDebug } from './bot-debug.js';
 import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isPlacementGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
-import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, graphicsEffects, validateCustomGraphics} from './graphics-settings.js';
+import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, LEGACY_GRAPHICS_DEFAULTS, graphicsEffects, validateCustomGraphics} from './graphics-settings.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
@@ -1091,6 +1091,7 @@ presetSelector.addEventListener('change',()=>{
   delete gfx.customGraphics;
   save('gfx-custom','null');
   save('quality',quality);
+  if(quality==='legacy')restoreLegacyGraphics();
   syncGraphicsPreset();
   refreshAttachmentPreviews();
 });
@@ -1151,6 +1152,21 @@ apiSelector.addEventListener('change',()=>{
 });
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off','fxaa','msaa2','msaa4'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
 $('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);makeGraphicsCustom();if(renderer)renderer.postPass.antialias=event.target.value;});
+function restoreLegacyGraphics(){
+  const settings=[
+    ['gfx-shadows','shadows'],['gfx-resolution','resolution'],['gfx-detail','detail'],['gfx-fsr','fsr'],
+    ['gfx-fsr-quality','fsrQuality'],['gfx-fsr-sharpness','fsrSharpness'],['gfx-frame-generation','frameGeneration'],['gfx-aa','aa'],
+  ];
+  for(const [id,key] of settings){
+    const value=LEGACY_GRAPHICS_DEFAULTS[key];
+    if(key!=='aa')gfx[key]=value;
+    $(id).value=String(value);
+    save(id,value);
+  }
+  if(renderer)renderer.postPass.antialias=LEGACY_GRAPHICS_DEFAULTS.aa;
+  fsrSharpnessOutput.textContent=gfx.fsrSharpness+'%';
+  syncFsrSettings();
+}
 $('graphics-reset').addEventListener('click',()=>{
   try{
     for(const key of ['quality','gfx-custom','gfx-shadows','gfx-resolution','gfx-detail','gfx-fsr','gfx-fsr-quality','gfx-fsr-sharpness','gfx-frame-generation','gfx-api','gfx-aa','brightness']){
@@ -2172,7 +2188,9 @@ try{
     gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,
       GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer,
       FrameGeneration:WebGpuFrameGeneration,Cascades:(await import('./webgpu-cascades.js')).WebGpuCascades,
-      ...await import('./webgpu-campaign-fire.js')};
+      ...await import('./webgpu-campaign-fire.js'),
+      ...await import('./webgpu-surface-relief.js'),
+      ...await import('./webgpu-penumbra.js')};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
   const msaa2=$('gfx-aa').querySelector('option[value="msaa2"]');

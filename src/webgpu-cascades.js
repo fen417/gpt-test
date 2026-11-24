@@ -1,3 +1,4 @@
+import { directionalPenumbraScale } from './directional-penumbra.js';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 
 class SizedCsm extends CSMShadowNode {
@@ -6,6 +7,8 @@ class SizedCsm extends CSMShadowNode {
     for(let i=0;i<this.lights.length;i++){
       this.lights[i].shadow.mapSize.setScalar(this.sizes[i]);
       this.lights[i].shadow.needsUpdate=true;
+      this.lights[i].shadow.filterNode=this.light.shadow.filterNode;
+      if(this.light.shadow.filterNode)this.lights[i].shadow.radius=directionalPenumbraScale(this.lights[i].shadow);
       this.lights[i].shadow.normalBias=.025+.025*i;
     }
   }
@@ -17,6 +20,7 @@ export class WebGpuCascades {
     const sun=owner.sun;
     const light=this.light=sun.clone();
     light.shadow.autoUpdate=false;
+    light.shadow.filterNode=sun.shadow.filterNode;
     light.shadow.camera.near=1;
     light.shadow.camera.far=295;
     light.shadow.camera.updateProjectionMatrix();
@@ -42,6 +46,9 @@ export class WebGpuCascades {
     if(csm.camera&&!this.projection.equals(camera.projectionMatrix)){
       this.projection.copy(camera.projectionMatrix);
       csm.updateFrustums();
+      if(light.shadow.filterNode){
+        for(const caster of csm.lights)caster.shadow.radius=directionalPenumbraScale(caster.shadow);
+      }
       this.invalidated=true;
     }
     for(let i=0;i<csm.lights.length;i++){

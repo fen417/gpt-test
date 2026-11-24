@@ -17,6 +17,7 @@ const palette={
 };
 for(const surface of ['concrete','rock','sand','earth','asphalt','ceramic']){
   const channels=surface==='ceramic'?['arm']:surface==='earth'?['diff']:['diff','nor_gl','arm'];
+  if(surface==='concrete'||surface==='rock')channels.push('disp');
   for(const channel of channels){
     const image=await loadImage(input+'/'+(surface==='ceramic'?'ceramic-ao.png':(surface==='earth'?'sand':surface)+'-'+channel+'.jpg'));
     for(const size of sizes){

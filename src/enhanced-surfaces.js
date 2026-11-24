@@ -1,3 +1,5 @@
+import {RELIEF_DEPTH, RELIEF_STEPS} from './surface-relief.js';
+import {setWebGlRelief} from './webgl-surface-relief.js';
 import * as THREE from 'three';
 
 const urls=import.meta.glob('./assets/remaster/*.webp',{eager:true,query:'?url',import:'default'});
@@ -7,6 +9,10 @@ export class EnhancedSurfaces {
   originals=new Map();
   textures=new Map();
   loadedRefresh=false;
+
+  constructor(setRelief=setWebGlRelief) {
+    this.setRelief=setRelief;
+  }
 
   scheduleRefresh() {
     if(this.loadedRefresh)return;
@@ -79,6 +85,10 @@ export class EnhancedSurfaces {
         material.needsUpdate=true;
       }
       material.aoMapIntensity=aoSize&&pack?(settings.ao==='off'?.8:.5):base.aoMapIntensity;
+      const steps=RELIEF_STEPS[settings.relief];
+      const scale=RELIEF_DEPTH[surface];
+      const relief=ready&&steps&&scale&&!material.userData.groundShadowPatched&&!material.transparent;
+      this.setRelief(material,relief?get(surface,'disp',Math.min(size,steps>8?1024:512)):null,steps,scale);
     };
     root.traverse(object=>{
       if(!object.isMesh||!object.geometry.hasAttribute('uv'))return;
@@ -87,6 +97,7 @@ export class EnhancedSurfaces {
     });
     for(const [material,base] of this.originals){
       if(updated.has(material))continue;
+      this.setRelief(material,null);
       Object.assign(material,base);material.needsUpdate=true;
       this.originals.delete(material);
     }
@@ -106,7 +117,10 @@ export class EnhancedSurfaces {
 
   dispose() {
     this.latest=null;
-    for(const [material,base] of this.originals){Object.assign(material,base);material.needsUpdate=true;}
+    for(const [material,base] of this.originals){
+      this.setRelief(material,null);
+      Object.assign(material,base);material.needsUpdate=true;
+    }
     for(const tex of this.textures.values())tex.dispose();
     this.originals.clear();this.textures.clear();
   }
