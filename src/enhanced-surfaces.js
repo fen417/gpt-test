@@ -96,6 +96,14 @@ export class EnhancedSurfaces {
     }
   }
 
+  estimatedBytes() {
+    let bytes=0;
+    for(const tex of this.textures.values()){
+      if(tex.image)bytes+=tex.image.width*tex.image.height*4*4/3;
+    }
+    return Math.round(bytes);
+  }
+
   dispose() {
     this.latest=null;
     for(const [material,base] of this.originals){Object.assign(material,base);material.needsUpdate=true;}

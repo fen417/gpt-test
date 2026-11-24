@@ -1,8 +1,11 @@
 const gpuSteps = [
-  ['atmosphere',{high:'low',low:'off'}],
+  ['reflections',{high:'medium',medium:'low',low:'off'}],
+  ['atmosphere',{ultra:'high',high:'medium',medium:'low',low:'off'}],
   ['ao',{gtao:'high',high:'low'}],
   ['contact',{high:'medium',medium:'low',low:'off'}],
   ['shadows',{ultra:'very-high','very-high':'high',high:'medium'}],
+  ['explosions',{high:'legacy'}],
+  ['smoke',{high:'legacy'}],
   ['bloom',{ultra:'high',high:'medium',medium:'low',low:'off'}],
   ['ao',{low:'off'}],
 ];
@@ -30,11 +33,11 @@ export class AdaptiveGraphics {
     let next={...settings,shadows:requestedShadows};
     this.tiers=[next];
     for(const [key,levels] of gpuSteps){
-      const nextLevel=levels[next[key]];
-      if(!nextLevel)continue;
-      if(settings.adaptiveFloor==='balanced'&&nextLevel==='off')continue;
-      next={...next,[key]:nextLevel};
-      this.tiers.push(next);
+      for(let lower=levels[next[key]];lower;lower=levels[lower]){
+        if(settings.adaptiveFloor==='balanced'&&lower==='off')break;
+        next={...next,[key]:lower};
+        this.tiers.push(next);
+      }
     }
     this.effects=settings;
     this.shadowOverride=null;
@@ -89,6 +92,6 @@ export class AdaptiveGraphics {
 }
 
 function gpuEffectName(previous,next) {
-  const names={atmosphere:'атмосфера',ao:'AO',contact:'контактные тени',shadows:'каскады',bloom:'свечение'};
+  const names={reflections:'отражения',atmosphere:'атмосфера',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',bloom:'свечение'};
   return Object.keys(names).map(key=>previous[key]!==next[key]?names[key]:null).find(Boolean)??'эффекты';
 }

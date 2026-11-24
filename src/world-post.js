@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 
 const aoSteps = { off: 0, low: 4, high: 12, gtao: 24 };
+const reflectionSteps={off:0,low:8,medium:13,high:21};
 const contactSteps = { off: 0, low: 4, medium: 7, high: 12 };
-const atmosphereSteps = { off: 0, low: 1, high: 6 };
+const atmosphereSteps = { off: 0, low: 1, medium: 3, high: 7, ultra: 12 };
 const bloomSettings = { off: [0, 0], low: [1, .075], medium: [2, .11], high: [3, .155], ultra: [4, .19] };
 
 export class WorldPost {
@@ -16,7 +17,9 @@ export class WorldPost {
       sunView: new THREE.Vector3(), sunScreen: new THREE.Vector2(), sunColor: new THREE.Color(),
       fogColor: new THREE.Color(), cameraY: 0, upView: new THREE.Vector3(),
       depthSize: new THREE.Vector2(), effectPixel: new THREE.Vector2(),
-      steps: new THREE.Vector3(), atmosphereStrength: 0, bloomGain: 0,
+      steps: new THREE.Vector3(), reflectionSteps:0, shore:new THREE.Vector2(), waterPixel:new THREE.Vector2(),
+      worldXView:new THREE.Vector3(), cameraX:0, time:0,
+      atmosphereStrength: 0, bloomGain: 0,
     };
     this.passes = 0;
     this.memory = 0;
@@ -27,18 +30,21 @@ export class WorldPost {
     const contact = contactSteps[effects?.contact] ?? 0;
     const atmosphere = atmosphereSteps[effects?.atmosphere] ?? 0;
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];
-    const depth = ao + contact + atmosphere > 0;
+    const reflections=this.reflector?(reflectionSteps[effects?.reflections]??0):0;
+    const mask=ao+contact+atmosphere>0;
+    const depth=mask||reflections>0;
     if (!depth && !levels) {
       if (this.world) this.dispose();
       return false;
     }
-    const key = depth + '/' + levels;
+    const key = mask + '/' + Boolean(reflections) + '/' + levels;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
       this.world = new this.Target(1, 1, { type: THREE.HalfFloatType, depthBuffer: true,
-        depthTexture: depth ? new THREE.DepthTexture(1, 1, THREE.UnsignedIntType) : null });
-      if (depth) this.mask = this.colorTarget(true);
+        depthTexture: depth ? new THREE.DepthTexture(1, 1, THREE.FloatType) : null });
+      if (mask) this.mask = this.colorTarget(true);
+      if (reflections) this.reflection=this.colorTarget();
       this.bloom = Array.from({ length: levels }, () => this.colorTarget());
       this.stages = this.createStages(this);
     }
@@ -49,15 +55,21 @@ export class WorldPost {
     if (world.samples !== worldSamples) { world.dispose(); world.samples = worldSamples; }
     this.resize(world, width, height);
     this.state.steps.set(ao, contact, atmosphere);
+    this.state.reflectionSteps=reflections;
     this.state.depthSize.set(width, height);
     this.state.bloomGain = gain;
-    this.passes = 1 + levels + Number(depth);
+    this.passes = 1 + levels + Number(mask) + Number(Boolean(reflections));
     this.memory = width * height * (12 + worldSamples * 12);
     if (this.mask) {
       const divisor=ao<=4&&contact<=4&&atmosphere<=1?4:2;
       this.resize(this.mask, Math.ceil(width / divisor), Math.ceil(height / divisor));
       this.state.effectPixel.set(1 / this.mask.width, 1 / this.mask.height);
       this.memory += this.mask.width * this.mask.height * 8;
+    }
+    if(this.reflection){
+      this.resize(this.reflection,Math.ceil(width/2),Math.ceil(height/2));
+      this.state.waterPixel.set(1/this.reflection.width,1/this.reflection.height);
+      this.memory+=this.reflection.width*this.reflection.height*8;
     }
     for (let i = 0; i < levels; i++) {
       this.resize(this.bloom[i], Math.ceil(width / (4 << i)), Math.ceil(height / (4 << i)));
@@ -75,9 +87,9 @@ export class WorldPost {
     if (target.width !== width || target.height !== height) target.setSize(width, height);
   }
 
-  apply(output, camera, scene, sunOffset, sun, campaign) {
+  apply(output, camera, scene, sunOffset, sun, campaign, time) {
     const r = this.renderer, state = this.state;
-    if (this.mask) {
+    if (this.mask||this.reflection) {
       state.projection.copy(camera.projectionMatrix);
       state.inverseProjection.copy(camera.projectionMatrixInverse);
       state.sunView.copy(sunOffset).transformDirection(camera.matrixWorldInverse);
@@ -91,6 +103,12 @@ export class WorldPost {
       state.fogColor.copy(scene.fog.color);
       state.atmosphereStrength = campaign ? 0 : Math.min(1, sun.intensity / 3);
     }
+    if(this.reflection){
+      state.shore.copy(this.reflector);
+      state.worldXView.set(1,0,0).transformDirection(camera.matrixWorldInverse);
+      state.cameraX=camera.position.x;
+      state.time=time;
+    }
     try {
       this.stages.render(output);
     } finally {
@@ -102,8 +120,9 @@ export class WorldPost {
     this.stages?.dispose();
     this.world?.dispose();
     this.mask?.dispose();
+    this.reflection?.dispose();
     for (const target of this.bloom ?? []) target.dispose();
-    this.world = this.mask = this.bloom = this.stages = this.key = null;
+    this.world = this.mask = this.reflection = this.bloom = this.stages = this.key = null;
     this.passes = this.memory = 0;
   }
 }

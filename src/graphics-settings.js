@@ -2,19 +2,22 @@ const legacy = Object.freeze({
   materials: 'auto', surfaceDetail:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', ao: 'off', contact: 'off',
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
-  sky: 'legacy', water: 'legacy', shadowFilter: 'auto', shadowDistance: 'auto',
+  sky: 'legacy', water: 'legacy', reflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
+  smoke:'legacy', explosions:'legacy', particleLighting:'off',
   adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
 
 const ultra = Object.freeze({
   ...legacy, surfaceDetail:'high',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
-  atmosphere: 'high', grade: 'natural', vignette: 'off', grain: 'off',
-  sky: 'high', water: 'high',
+  atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
+  sky: 'high', water: 'high', reflections:'high', smoke:'high', explosions:'high', particleLighting:'high',
 });
 
 export const GRAPHICS_PRESETS = Object.freeze({ low: legacy, medium: legacy, high: legacy, ultra });
 export const baseGraphicsQuality = value => value === 'ultra' ? 'high' : Object.hasOwn(GRAPHICS_PRESETS, value) ? value : 'high';
-export const isHighGraphics = value => baseGraphicsQuality(value) === 'high';
+export const GEOMETRY_QUALITY = Object.freeze(['low','medium','high']);
+export const geometryQuality = (preset, detail='auto') =>
+  GEOMETRY_QUALITY.includes(detail)?detail:baseGraphicsQuality(preset);
 
 export function graphicsEffects(preset, custom) {
   return custom ?? GRAPHICS_PRESETS[preset] ?? legacy;
@@ -29,7 +32,7 @@ export const GRAPHICS_CONTROLS = [
     ['ao', 'Экранное затенение (SSAO)', 'Делает заметнее стыки и углубления. GTAO оценивает перекрытие по горизонту.', choices(off, ['low', 'SSAO · низкое'], ['high', 'SSAO · высокое'], ['gtao', 'GTAO'])],
     ['bakedAO', 'Запечённое AO материалов', 'Добавляет затенение в порах, швах и углублениях. Расходует текстурную память.', choices(off, low, high)],
     ['contact', 'Контактные тени', 'Уточняет мелкие тени рядом с камерой. Стоимость растёт с числом шагов.', choices(off, low, medium, high)],
-    ['atmosphere', 'Атмосферное рассеивание', 'Усиливает перспективу и ореол у солнца. Высокое качество проверяет перекрытие по глубине.', choices(off, low, high)],
+    ['atmosphere', 'Атмосферное рассеивание', 'Добавляет высотную дымку и экранные солнечные лучи. Дорогой эффект на высоких уровнях.', choices(off, low, medium, high, ['ultra','Ультра'])],
     ['shadowFilter', 'Фильтрация теней', 'Мягкая фильтрация сглаживает края теней.', choices(auto, ['hard', 'Жёсткая'], ['pcf', 'PCF'], ['soft', 'Мягкая PCF'])],
     ['shadowDistance', 'Область динамических теней', 'Дальняя область покрывает больше сцены и снижает детализацию карты теней.', choices(auto, ['near', 'Ближе'], ['far', 'Дальше'])],
   ]],
@@ -38,6 +41,7 @@ export const GRAPHICS_CONTROLS = [
     ['surfaceDetail', 'Фактуры окружения', 'Карты цвета, рельефа и шероховатости для камня, песка, бетона и асфальта.', choices(off, ['medium', '512 px'], ['high', '1024 px'])],
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
     ['sky', 'Небо', 'Добавляет солнечный диск и атмосферное рассеивание. Умеренная нагрузка.', choices(old, high)],
+    ['reflections', 'Экранные отражения воды', 'Отражает близкое окружение на воде в порту. Другие карты используют отражение неба.', choices(off,low,medium,high)],
     ['water', 'Вода', 'Добавляет нормали волн и отражение неба там, где есть вода.', choices(old, high)],
   ]],
   ['Постобработка', [
@@ -48,6 +52,11 @@ export const GRAPHICS_CONTROLS = [
     ['saturation', 'Насыщенность', 'Насыщенность после тонального преобразования.', [0, 150]],
     ['vignette', 'Виньетка', 'Затемняет края изображения.', choices(old, off, low, high)],
     ['grain', 'Зерно', 'Добавляет мелкое зерно поверх изображения.', choices(old, off, low, high)],
+  ]],
+  ['Эффекты', [
+    ['smoke','Дым','Добавляет неоднородность и движение мелких облаков дыма.',choices(old,high)],
+    ['particleLighting','Освещение дыма','Имитирует рассеивание света на частицах со стороны солнца.',choices(off,high)],
+    ['explosions','Взрывы','Добавляет короткую HDR-вспышку и детализированный шлейф дыма.',choices(old,high)],
   ]],
   ['Производительность', [
     ['adaptiveTarget', 'Адаптивное качество', 'После устойчивой нагрузки уменьшает качество отдельных эффектов.', choices(off, ...[30,45,60,90,120].map(n=>[String(n),n+' FPS']))],

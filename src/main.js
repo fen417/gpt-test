@@ -1149,8 +1149,8 @@ apiSelector.addEventListener('change',()=>{
   try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
   location.reload();
 });
-$('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
-$('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);makeGraphicsCustom();toast('Сглаживание применится после перезагрузки страницы.');});
+$('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off','fxaa','msaa'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
+$('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);makeGraphicsCustom();if(renderer)renderer.postPass.antialias=event.target.value;});
 $('graphics-reset').addEventListener('click',()=>{
   try{
     for(const key of ['quality','gfx-custom','gfx-shadows','gfx-resolution','gfx-detail','gfx-fsr','gfx-fsr-quality','gfx-fsr-sharpness','gfx-frame-generation','gfx-api','gfx-aa','brightness']){
@@ -2010,7 +2010,7 @@ function frame(now){
     const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);
     const renderStats={...renderer.getStats?.(),frameMs:frameTimes.summary(),cpuMs:cpuTimes.summary(),renderMs:renderTimes.summary(),simulationMs:simulationTimes.summary()};
     canvas.dataset.renderStats=JSON.stringify(renderStats);
-    perfPanel.update({...renderStats,active:active&&$('pause').classList.contains('hidden')&&$('death').classList.contains('hidden')&&!document.hidden,mapId:renderer.map?.id??currentMap.id,quality,mode,settings:{...gfx,fov},population:state?.players.length??0,network,audio:audioStats,heapBytes:performance.memory?.usedJSHeapSize??null,viewport:{width:innerWidth,height:innerHeight}});
+    perfPanel.update({...renderStats,active:active&&$('pause').classList.contains('hidden')&&$('death').classList.contains('hidden')&&!document.hidden,mapId:renderer.map?.id??currentMap.id,quality:gfx.customGraphics?'custom':quality,mode,settings:{...gfx,fov},population:state?.players.length??0,network,audio:audioStats,heapBytes:performance.memory?.usedJSHeapSize??null,viewport:{width:innerWidth,height:innerHeight}});
     if(network)canvas.dataset.networkStats=JSON.stringify(network);else delete canvas.dataset.networkStats;
   }
   const paused=document.hidden||!$('pause').classList.contains('hidden')||quickAttachments.open;

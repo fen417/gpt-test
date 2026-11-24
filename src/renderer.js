@@ -1,5 +1,5 @@
 import {batchStaticWorld} from './static-batching.js';
-import {baseGraphicsQuality, graphicsEffects, gradeParameters, isHighGraphics} from './graphics-settings.js';
+import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, GEOMETRY_QUALITY} from './graphics-settings.js';
 import {WaterAppearance} from './water-appearance.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {applyTextureFiltering} from './texture-quality.js';
@@ -178,8 +178,9 @@ export class GameRenderer {
     this.gpuName=webgpu?.gpuName??null;
     this.canvas = canvas;
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
+    this.waterReflectionPlane=new THREE.Vector2();
     this.finishWorldEffects=()=>{
-      this.postPass.worldEffects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign);
+      this.postPass.worldEffects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock);
     };
     this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40, frameGeneration:'off' };
     this.clock = 0;
@@ -384,9 +385,10 @@ export class GameRenderer {
     const smokeGeometry = new THREE.PlaneGeometry(1, 1);
     smokeGeometry.setAttribute('instanceAlpha', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
     smokeGeometry.setAttribute('instanceRotation', new THREE.InstancedBufferAttribute(new Float32Array(160), 1).setUsage(THREE.DynamicDrawUsage));
+    const smokeLight=this.smokeLight=new THREE.Vector3();
     const smokeMaterial = webgpu?webgpu.createSmokeMaterial(this.smokeTexture):new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, fog: true,
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: this.smokeTexture } }]),
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: this.smokeTexture },smokeLight:{value:smokeLight},smokeMotion:{value:0},smokeTime:{value:0} }]),
       vertexShader: `
         attribute float instanceAlpha; attribute float instanceRotation;
         varying vec2 smokeUv; varying vec4 smokeColor;
@@ -401,10 +403,19 @@ export class GameRenderer {
           #include <fog_vertex>
         }`,
       fragmentShader: `
-        uniform sampler2D map; varying vec2 smokeUv; varying vec4 smokeColor;
+        uniform sampler2D map; uniform vec3 smokeLight; uniform float smokeMotion,smokeTime; varying vec2 smokeUv; varying vec4 smokeColor;
         #include <fog_pars_fragment>
         void main() {
-          gl_FragColor = texture2D(map,smokeUv) * smokeColor;
+          vec2 st=smokeUv;
+          if(smokeMotion>0.){
+            vec2 center=st-.5;
+            st+=.038*sin(vec2(11.,8.)*center.yx+vec2(smokeTime*1.3,-smokeTime*.8));
+          }
+          gl_FragColor = texture2D(map,st) * smokeColor;
+          if(dot(smokeLight,smokeLight)>.001){
+            vec3 puff=normalize(vec3((smokeUv-.5)*2.,.64));
+            gl_FragColor.rgb*=.84+.37*max(0.,dot(puff,smokeLight));
+          }
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
           #include <fog_fragment>
@@ -640,7 +651,7 @@ export class GameRenderer {
     const model=this.bakedMapModel(getMap(mapId));
     if(!model)return;
     const base=await model.loadBase();
-    if(base&&isHighGraphics(quality)&&['auto','high'].includes(gfx?.detail??'auto'))await model.loadDetail();
+    if(base&&geometryQuality(quality,gfx?.detail)==='high')await model.loadDetail();
     await model.textureLoader.ready();
   }
 
@@ -649,7 +660,7 @@ export class GameRenderer {
     signal.throwIfAborted();
     this.setMap(mapId);
     const world=this.worlds.get(this.map.id);
-    const detail=isHighGraphics(view.quality)&&['auto','high'].includes(view.gfx?.detail??'auto');
+    const detail=geometryQuality(view.quality,view.gfx?.detail)==='high';
     if(world.model)this.updateBakedDetail(world,detail);
     if(this.map.id==='quarry')this.updateQuarryDetail(world,this.map,detail);
     await Promise.allSettled([this.surfaces.ready,this.groundShadows.textureLoader.ready(),world.quarryLoad,this.tankWarmup]);
@@ -1161,7 +1172,7 @@ export class GameRenderer {
       this.sun.shadow.updateMatrices(this.sun);
       shadowFrustum = this.sun.shadow.getFrustum();
     }
-    const lodLimits = this.quality === 'high' ? [24, 53, 105] : this.quality === 'medium' ? [14, 32, 76] : [9, 22, 50];
+    const lodLimits = this.geometryQuality === 'high' ? [24, 53, 105] : this.geometryQuality === 'medium' ? [14, 32, 76] : [9, 22, 50];
     // Use projected size so magnification keeps distant targets detailed.
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
@@ -1271,7 +1282,7 @@ export class GameRenderer {
       this.soldierBounds.center.copy(group.position);
       this.soldierBounds.center.y += .9;
       const distSq = local ? (player.x - local.x) ** 2 + (player.z - local.z) ** 2 : 0;
-      const shadowVisible = (this.quality==='medium'?distSq<20**2:!this.lowQuality&&distSq<48**2) && shadowFrustum?.intersectsSphere(this.soldierBounds);
+      const shadowVisible = (this.geometryQuality==='medium'?distSq<20**2:this.geometryQuality==='high'&&distSq<48**2) && shadowFrustum?.intersectsSphere(this.soldierBounds);
       const visible = externalScene || ((alive || soldier.deathAge < 4.1) &&
         (this.viewFrustum.intersectsSphere(this.soldierBounds) || shadowVisible));
       if (!visible) {
@@ -1285,7 +1296,7 @@ export class GameRenderer {
       let lod = soldier.lod;
       while (lod < 3 && projectedDistanceSq > (lodLimits[lod] * 1.07) ** 2) lod++;
       while (lod > 0 && projectedDistanceSq < (lodLimits[lod - 1] * .93) ** 2) lod--;
-      setInfantryLod(soldier, lod, lod < 2 && (this.quality === 'medium' ? distSq < 20 ** 2 : !this.lowQuality && distSq < 48 ** 2),
+      setInfantryLod(soldier, lod, lod < 2 && (this.geometryQuality === 'medium' ? distSq < 20 ** 2 : this.geometryQuality === 'high' && distSq < 48 ** 2),
         this.detailLevel===0);
       if (!alive) {
         infantryDeath(soldier, soldier.deathAge);
@@ -1401,11 +1412,32 @@ export class GameRenderer {
     if(state.time-event.time>.6||this.camera.position.distanceToSquared(this.scratchPosition.set(x,y,z))>180**2)return;
     this.effectBounds.center.set(x,y,z);
     if(!this.viewFrustum.intersectsSphere(this.effectBounds))return;
-    const reduced=this.lowQuality||this.integratedGpu,count=reduced?8:13;
+    const enhanced=this.graphicsEffects?.explosions==='high';
+    const reduced=this.lowQuality||this.integratedGpu,count=enhanced?17:reduced?8:13;
     const scale=event.kind==='claymore'?.62:1;
     for(let i=0;i<count;i++)this.smoke(x+(this.random()-.5)*2*scale,y+this.random()*2*scale,z+(this.random()-.5)*2*scale,(1.1+this.random()*1.4)*scale,2.5+this.random()*2,i<3?0xffb668:0x535953);
+    if(enhanced)this.explosionGlow(x,y+.6*scale,z,scale);
     this.blastFlash(x,y+scale,z);
     for(let i=0;i<(reduced?6:14);i++)this.spark(x,y+.3,z,3*scale);
+  }
+
+  explosionGlow(x,y,z,scale) {
+    const pool=this.effectPools.flash??(this.effectPools.flash=[]);
+    if(this.effects.filter(effect=>effect.type==='flash').length>=6)return;
+    if(!this.explosionTexture){
+      this.explosionTexture=canvasTexture(64,(ctx,size)=>{
+        const half=size/2,gradient=ctx.createRadialGradient(half,half,0,half,half,half);
+        gradient.addColorStop(0,'#fff5d8');gradient.addColorStop(.2,'rgba(255,228,172,.92)');
+        gradient.addColorStop(.53,'rgba(252,113,40,.34)');gradient.addColorStop(1,'rgba(184,54,12,0)');
+        ctx.fillStyle=gradient;ctx.fillRect(0,0,size,size);
+      });
+    }
+    const effect=pool.pop()??{type:'flash',mesh:new THREE.Sprite(new THREE.SpriteMaterial({
+      map:this.explosionTexture,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,
+    }))};
+    effect.age=0;effect.life=.25;effect.size=scale;
+    effect.mesh.position.set(x,y,z);effect.mesh.scale.setScalar(scale);
+    this.worldRoot.add(effect.mesh);this.effects.push(effect);
   }
 
   blastFlash(x, y, z) {
@@ -1495,6 +1527,11 @@ export class GameRenderer {
         const p = effect.mesh.position, view = this.camera.matrixWorldInverse.elements;
         effect.sortDepth = view[2]*p.x + view[6]*p.y + view[10]*p.z + view[14];
         this.smokeOrder.push(effect);
+      } else if(effect.type==='flash'){
+        effect.mesh.scale.setScalar((3.6-2.8*alpha)*effect.size);
+        const energy=3.8*alpha*alpha;
+        effect.mesh.material.color.setRGB(energy,energy*.92,energy*.76);
+        effect.mesh.material.opacity=alpha;
       } else if (effect.type === 'spark' || effect.type === 'shell') {
         effect.vy -= dt * 9.8; effect.mesh.position.x += effect.vx * dt; effect.mesh.position.y += effect.vy * dt; effect.mesh.position.z += effect.vz * dt;
         effect.mesh.rotation.x += dt * (effect.spin || 9); effect.mesh.rotation.z += dt * (effect.spin || 6);
@@ -1903,6 +1940,19 @@ export class GameRenderer {
       this.waterAppearance.dispose();
       this.waterAppearance=null;
     }
+    this.postPass.worldEffects.reflector=this.waterAppearance
+      ? this.waterReflectionPlane.set(this.map.shoreX,this.portWaterMesh.position.y) : null;
+    const smoke=this.effectBatches.smoke;
+    if(smoke.count){
+      if(this.graphicsEffects?.particleLighting==='high'){
+        this.camera.updateMatrixWorld();
+        this.smokeLight.copy(this.sunOffset).transformDirection(this.camera.matrixWorldInverse);
+      }else this.smokeLight.set(0,0,0);
+      const values=smoke.material.uniforms??smoke.material.userData.smokeUniforms;
+      values.smokeLight.value.copy(this.smokeLight);
+      values.smokeMotion.value=Number(this.graphicsEffects?.smoke==='high');
+      values.smokeTime.value=this.clock;
+    }
     this.cascades?.update();
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
     if(!menu&&!warming)this.interiorVisibility.apply(this);
@@ -1976,6 +2026,7 @@ export class GameRenderer {
     this.quality=baseGraphicsQuality(view.quality);
     const selectedEffects=graphicsEffects(view.quality,gfx?.customGraphics);
     this.presentingCampaign=Boolean(state?.campaign);
+    this.gpuTimer.enabled=this.perfEnabled||selectedEffects.adaptiveTarget!=='off';
     if(selectedEffects.adaptiveTarget!=='off'){
       const adaptive=this.adaptiveGraphics??=new AdaptiveGraphics();
       const shadows=gfx?.shadows??'auto';
@@ -2009,13 +2060,14 @@ export class GameRenderer {
       }
       this.postPass.setImage(this.graphicsEffects,gradeParameters(this.graphicsEffects,this.map));
     }
-    const detail=(gfx?.detail??'auto')==='auto'?this.quality:gfx.detail;
+    const detail=geometryQuality(view.quality,gfx?.detail);
     const detailLevel=Math.max(0,(detail==='high'?2:detail==='medium'?1:0)-(this.adaptiveGraphics?.cpuStep??0));
+    this.geometryQuality=GEOMETRY_QUALITY[detailLevel];
     if(this.detailLevel!==detailLevel||previousQuality!==this.quality){
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
       const world=this.worlds.get(this.map.id);
-      const highDetail=this.quality==='high'&&detailLevel===2;
+      const highDetail=detailLevel===2;
       if(world?.model)this.updateBakedDetail(world,highDetail);
       if(world&&this.map.id==='quarry')this.updateQuarryDetail(world,this.map,highDetail);
     }
@@ -2438,16 +2490,18 @@ export class GameRenderer {
     const r=this.renderer,post=this.postPass,isGPU=this.api==='webgpu';
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
-      postSamples:post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
+      postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
       anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
       worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
       triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
-      graphicsEffects:this.graphicsEffects,
+      graphicsEffects:this.graphicsEffects,geometryQuality:this.geometryQuality,
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       postPasses:1+post.worldEffects.passes+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
+      extraTextureBytes:this.enhancedSurfaces?.estimatedBytes()??0,
+      visibleLights:this.perfEnabled?this.scene.children.filter(object=>object.isLight&&object.visible&&object.intensity>0).length:null,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
       fsrScale:post.fsrScale,fsrSharpness:this.gfx.fsrSharpness,sceneWidth:post.target.width,sceneHeight:post.target.height,
@@ -2465,6 +2519,7 @@ export class GameRenderer {
   dispose() {
     this.disposed=true;
     this.waterAppearance?.dispose();
+    this.explosionTexture?.dispose();
     this.enhancedSurfaces?.dispose();
     this.villageModel.dispose();
     this.alhadraModel.dispose();

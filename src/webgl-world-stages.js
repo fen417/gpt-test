@@ -10,7 +10,8 @@ vec3 viewPosition(vec2 uv,float depth){
   vec4 p=inverseProjection*vec4(uv*2.-1.,depth*2.-1.,1.);
   return p.xyz/p.w;
 }
-vec3 viewAt(vec2 uv){return viewPosition(uv,readDepth(uv));}
+vec2 depthCenter(vec2 uv){return (clamp(floor(uv*depthSize),vec2(0.),depthSize-1.)+.5)/depthSize;}
+vec3 viewAt(vec2 uv){vec2 at=depthCenter(uv);return viewPosition(at,readDepth(at));}
 bool offscreen(vec2 uv){return any(lessThanEqual(uv,vec2(0.)))||any(greaterThanEqual(uv,vec2(1.)));}
 `;
 const mask = `
@@ -58,13 +59,14 @@ float horizonOcclusion(vec3 pos,vec3 n,vec2 foot,float rotation) {
   return min(.72,occlusion*.45);
 }
 void main(){
-  float depth=readDepth(vUv);
-  vec3 pos=viewPosition(vUv,depth);
+  vec2 center=depthCenter(vUv);
+  float depth=readDepth(center);
+  vec3 pos=viewPosition(center,depth);
   float range=-pos.z, ao=0., contact=0., shaft=0.;
   if(depth<.999999 && range<95. && (steps.x>0. || steps.y>0.)){
     vec2 dx=vec2(1./depthSize.x,0.), dy=vec2(0.,1./depthSize.y);
-    vec3 left=pos-viewAt(vUv-dx), right=viewAt(vUv+dx)-pos;
-    vec3 down=pos-viewAt(vUv-dy), top=viewAt(vUv+dy)-pos;
+    vec3 left=pos-viewAt(center-dx), right=viewAt(center+dx)-pos;
+    vec3 down=pos-viewAt(center-dy), top=viewAt(center+dy)-pos;
     vec3 n=normalize(cross(abs(left.z)<abs(right.z)?left:right,abs(down.z)<abs(top.z)?down:top));
     if(steps.x>0.){
       float radius=.83, sum=0.;
@@ -82,7 +84,7 @@ void main(){
         sum+=max(0.,dot(n,d)/max(.001,distance)-.12)*(1.-smoothstep(.07,radius,distance));
       }
       if(steps.x<=12.)ao=clamp(sum*2.6/steps.x,0.,.65);
-      ao*=1.-smoothstep(58.,95.,range);
+      ao*=1.-smoothstep(27.,48.,range);
     }
     if(steps.y>0. && dot(n,sunView)>.08 && range<46.){
       for(int i=1;i<=12;i++){
@@ -102,19 +104,29 @@ void main(){
       }
     }
   }
-  if(steps.z>0. && atmosphereStrength>0. && sunView.z<-.07){
+  if(steps.z>0. && atmosphereStrength>0.){
     vec3 direction=normalize(pos);
     float angular=pow(max(0.,dot(direction,sunView)),10.);
     float visible=0.;
-    if(angular>.008){
-      for(int i=1;i<=6;i++){
+    if(angular>.008 && sunView.z<-.07){
+      for(int i=1;i<=12;i++){
         if(float(i)>steps.z)break;
         vec2 at=mix(vUv,sunScreen,float(i)/steps.z);
         if(!offscreen(at))visible+=smoothstep(.99999,.9999995,readDepth(at));
       }
     }
-    float height=max(0.,cameraY+dot(pos,upView)*.4);
-    float haze=.20*(1.-exp(-range*.006))*exp(-height*.021);
+    float haze=0.;
+    if(steps.z>1. && depth<.999999){
+      float stepSize=min(length(pos),130.)/steps.z;
+      float density=0.;
+      float slope=dot(direction,upView);
+      for(int i=0;i<12;i++){
+        if(float(i)>=steps.z)break;
+        float height=max(0.,cameraY+stepSize*(float(i)+.5)*slope);
+        density+=exp(-height*.048)*stepSize;
+      }
+      haze=.18*(1.-exp(-density*.012));
+    }
     shaft=(haze+.52*angular*visible/steps.z)*atmosphereStrength;
   }
   gl_FragColor=vec4(ao,contact,shaft,range);
@@ -136,11 +148,69 @@ void main(){
   gl_FragColor=vec4(result,1.);
 }`;
 
-function composite(depth, levels) {
+const reflectors = `
+uniform vec2 shore;
+uniform vec3 upView,worldXView;
+uniform float cameraY,cameraX;
+bool waterSurface(vec3 pos){
+  return cameraX+dot(pos,worldXView)<shore.x-.12 && abs(cameraY+dot(pos,upView)-shore.y)<.075;
+}
+`;
+
+const reflection = `
+varying vec2 vUv;
+uniform sampler2D source;
+uniform float reflectionSteps,time;
+uniform vec2 waterPixel;
+` + reconstruct + reflectors + `
+void main(){
+  vec3 pos=viewAt(vUv);
+  gl_FragColor=vec4(0.);
+  if(-pos.z>145. || !waterSurface(pos))return;
+  vec3 normal=normalize(upView+worldXView*sin(pos.x*.7+time*1.5)*.025);
+  vec3 ray=reflect(normalize(pos),normal);
+  float noV=max(0.,-dot(normalize(pos),normal));
+  float fresnel=pow(1.-noV,3.);
+  if(fresnel<.035 || dot(ray,upView)<=.001)return;
+  float lastTravel=.12;
+  for(int i=1;i<=21;i++){
+    if(float(i)>reflectionSteps)break;
+    float t=float(i)/reflectionSteps, travel=.15+63.*t*t;
+    vec3 point=pos+normal*.12+ray*travel;
+    vec4 clip=projection*vec4(point,1.);
+    if(clip.w<=0.)break;
+    vec2 at=clip.xy/clip.w*.5+.5;
+    if(offscreen(at))break;
+    vec3 hit=viewAt(at);
+    float delta=hit.z-point.z;
+    if(delta>0. && delta<1.3+travel*.084 && !waterSurface(hit)){
+      float lo=lastTravel, hi=travel;
+      for(int j=0;j<3;j++){
+        float mid=(lo+hi)*.5;
+        vec3 samplePoint=pos+normal*.12+ray*mid;
+        vec4 p=projection*vec4(samplePoint,1.);
+        at=p.xy/p.w*.5+.5;
+        if(viewAt(at).z>samplePoint.z)hi=mid;else lo=mid;
+      }
+      vec2 margin=min(at,1.-at);
+      float fade=smoothstep(0.,.11,min(margin.x,margin.y))*(1.-smoothstep(38.,64.,travel));
+      vec2 blur=waterPixel*(1.+travel*.023);
+      vec3 color=texture2D(source,at).rgb*.5;
+      color+=(texture2D(source,at+blur).rgb+texture2D(source,at-blur).rgb)*.25;
+      gl_FragColor=vec4(color,fade*fresnel*.56);
+      return;
+    }
+    lastTravel=travel;
+  }
+}`;
+
+function composite(depth, levels, reflections) {
   return `
 varying vec2 vUv;
 uniform sampler2D source;
-${depth ? reconstruct + `
+${depth||reflections ? reconstruct : ''}
+${reflections ? reflectors+'uniform sampler2D reflection;' : ''}
+${depth ? `
 uniform sampler2D mask;
 uniform vec2 effectPixel;
 uniform vec3 sunColor,fogColor;
@@ -168,6 +238,10 @@ void main(){
   color+=effects.z*mix(fogColor,sunColor,.44)*.24;
   ` : ''}
   ${Array.from({length:levels}, (_, i) => 'color+=texture2D(bloom'+i+',vUv).rgb*bloomGain*'+([.62,.23,.10,.05][i].toFixed(2))+';').join('\n')}
+  ${reflections ? `if(waterSurface(viewAt(vUv))){
+    vec4 reflected=texture2D(reflection,vUv);
+    color=mix(color,reflected.rgb,reflected.a);
+  }` : ''}
   gl_FragColor=vec4(color,1.);
 }`;
 }
@@ -188,11 +262,12 @@ export function webGlWorldStages(post) {
   };
   const uniforms = Object.fromEntries(Object.entries(state).map(([key,value])=>[key,{value}]));
   const depth = post.mask ? stage(mask, {...uniforms, sceneDepth:{value:world.depthTexture}}) : null;
+  const reflected=post.reflection ? stage(reflection, {...uniforms,sceneDepth:{value:world.depthTexture},source:{value:world.texture}}) : null;
   const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
     source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
   }));
-  const output = stage(composite(Boolean(depth),blurs.length), {
-    ...uniforms, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},
+  const output = stage(composite(Boolean(depth),blurs.length,Boolean(reflected)), {
+    ...uniforms, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},reflection:{value:post.reflection?.texture},
     ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
   });
   function draw(target, material) {
@@ -205,6 +280,10 @@ export function webGlWorldStages(post) {
       uniforms.atmosphereStrength.value=state.atmosphereStrength;
       uniforms.cameraY.value=state.cameraY;
       uniforms.bloomGain.value=state.bloomGain;
+      uniforms.cameraX.value=state.cameraX;
+      uniforms.time.value=state.time;
+      uniforms.reflectionSteps.value=state.reflectionSteps;
+      if(reflected)draw(post.reflection,reflected);
       if(depth)draw(post.mask,depth);
       for(let i=0;i<blurs.length;i++){
         const src=i===0?world:post.bloom[i-1];

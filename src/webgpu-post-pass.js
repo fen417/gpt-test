@@ -98,10 +98,10 @@ export class WebGpuPostPass {
   begin(quality='high'){
     // FG never changes the world render target or its MSAA policy.
     // There is no velocity MRT, so the normal scene AA is safe to retain.
-    const samples=quality==='high'&&this.antialias!=='off'?this.maxSamples:0;
+    const samples=this.antialias==='msaa'||quality==='high'&&['auto','on'].includes(this.antialias)?this.maxSamples:0;
     if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
     const fsr=this.fsrQuality!=='off'&&this.fsrScale<.995;
-    this.useFxaa.value=this.antialias==='off'?0:quality==='high'&&samples>0?0:1;
+    this.useFxaa.value=this.antialias==='off'?0:samples>0?0:1;
     this.sharpen.value=fsr?0:quality==='high'?0:.12;
     const r=this.renderer;r.getDrawingBufferSize(this.size);
     const w=Math.max(1,Math.round(this.size.x*(fsr?this.fsrScale:1)));
@@ -121,7 +121,7 @@ export class WebGpuPostPass {
       this.inputSize.value.set(w,h);
     }
     const effects=this.worldEffects.configure(this.effects,w,h,samples);
-    if(effects&&this.worldEffects.mask&&this.antialias!=='off')this.useFxaa.value=1;
+    if(effects&&this.worldEffects.world.depthTexture&&this.antialias!=='off')this.useFxaa.value=1;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
   end(time,quality){

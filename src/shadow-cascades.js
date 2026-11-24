@@ -38,6 +38,7 @@ export class WebGlCascades {
     this.up=new THREE.Vector3();
     this.vertical=new THREE.Vector3(0,1,0);
     this.caches=this.csm.lights.map((light,index)=>{
+      light.layers.mask=owner.sun.layers.mask;
       light.shadow.mapSize.setScalar(options.sizes[index]);
       light.shadow.normalBias=.025+.025*index;
       light.shadow.autoUpdate=false;

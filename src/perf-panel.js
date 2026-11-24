@@ -48,7 +48,7 @@ document.body.append(panel);
       `Draw calls: ${data.calls} · Треугольники: ${data.triangles} · Видимые объекты: ${data.visibleObjects??'н/д'}`,
       `Рендер: ${data.sceneWidth}×${data.sceneHeight} · FSR: ${data.fsr??'off'} · ×${ms(data.fsrScale)} · RCAS: ${data.fsrSharpness??'—'}%`,
       `AA: ${data.postSamples??0}× MSAA · FXAA: ${data.fxaa?'да':'нет'} · AF: ${data.anisotropy??'—'}×`,
-      `Постпроходы: ${data.postPasses??1} · Доп. буферы: ${ms((data.extraTargetBytes??0)/1048576)} МБ · Каскады: ${data.shadowCascades??0}`,
+      `Постпроходы: ${data.postPasses??1} · Доп. буферы: ${ms((data.extraTargetBytes??0)/1048576)} МБ · Новые текстуры: ${ms((data.extraTextureBytes??0)/1048576)} МБ · Каскады: ${data.shadowCascades??0}`,
       `AO: ${data.graphicsEffects?.ao??'off'} · Контактные тени: ${data.graphicsEffects?.contact??'off'} · Bloom: ${data.graphicsEffects?.bloom??'off'} · Атмосфера: ${data.graphicsEffects?.atmosphere??'off'}`,
       `Адаптивное качество: ${data.adaptive?.reason??(data.adaptive?'по цели FPS':'выкл.')}`,
       `Геометрии: ${data.geometries} · Текстуры: ${data.textures} · Масштаб: ${ms(data.pixelRatio)}`,
