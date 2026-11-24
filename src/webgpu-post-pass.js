@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { WorldPost } from './world-post.js';
 import { renderTimed } from './gpu-pass-timing.js';
-import { webGpuWorldStages } from './webgpu-world-stages.js';
+import { webGpuWorldStages, makeGpuReflectionReceiver } from './webgpu-world-stages.js';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, vec2, vec3, vec4, Fn, If, min, max, distance,
   smoothstep, dot, sin, fract, clamp, acesFilmicToneMapping } from 'three/tsl';
@@ -83,7 +83,7 @@ export class WebGpuPostPass {
     const rcas=stage(geometry,rcasNode(texture(this.upscaledTarget.texture),this.outputSize,this.rcasSharpness));
     this.rcasScene=rcas.scene;this.rcasMaterial=rcas.material;
     this.camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
-    this.worldEffects=new WorldPost(renderer,THREE.RenderTarget,post=>webGpuWorldStages(post,this.geometry,this.camera),true);
+    this.worldEffects=new WorldPost(renderer,THREE.RenderTarget,post=>webGpuWorldStages(post,this.geometry,this.camera),true,makeGpuReflectionReceiver);
   }
   setUpscaling(quality='off',adaptive=1,sharpness=40){
     this.fsrQuality=quality;
@@ -177,6 +177,7 @@ export class WebGpuPostPass {
   }
   dispose(){
     this.disposeSmaa();
+    this.worldEffects.receivers.dispose();
     this.worldEffects.dispose();
     this.nativeTarget.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
     this.geometry.dispose();this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();

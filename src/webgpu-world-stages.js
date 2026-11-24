@@ -2,9 +2,26 @@ import {makeHeatDistortionWGSL} from './webgpu-heat-distortion.js';
 import {makeCameraEffectsWGSL} from './webgpu-camera-effects.js';
 import {volumeSunWGSL} from './volume-sun.js';
 import {renderTimed} from './gpu-pass-timing.js';
+import {puddleField} from './reflection-receivers.js';
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { texture, uv, uniform, wgslFn, vec2, vec4 } from 'three/tsl';
+import { texture, uv, uniform, wgslFn, vec2, vec4, normalViewGeometry, positionView, positionWorld, faceDirection } from 'three/tsl';
+
+const encodeReceiver=wgslFn(`
+fn encodeReflectionReceiver(normal:vec3f, point:vec3f, range:f32, roughness:f32) -> vec4f {
+  var kind=roughness;
+  if(kind==1.){${puddleField('wgsl','point.xz','vec2f')} if(coverage<.04){discard;} kind=1.+coverage;}
+  let n=normal/(abs(normal.x)+abs(normal.y)+abs(normal.z));
+  let oct=select((1.-abs(n.yx))*select(vec2f(-1.),vec2f(1.),n.xy>=vec2f(0.)),n.xy,n.z>=0.);
+  return vec4f(oct,kind,range);
+}`);
+
+export function makeGpuReflectionReceiver(roughness,side){
+  const material=new MeshBasicNodeMaterial({side,toneMapped:false,fog:false});
+  material.fragmentNode=encodeReceiver({normal:normalViewGeometry.mul(faceDirection),point:positionWorld,
+    range:positionView.z.negate(),roughness:uniform(roughness)});
+  return material;
+}
 
 const readDepth = wgslFn(`
 fn worldReadDepth(sceneDepth: texture_depth_2d, at: vec2f, size: vec2f) -> f32 {
@@ -204,63 +221,105 @@ fn worldCompositeDepth(at: vec2f, rgb: vec3f, sceneDepth: texture_depth_2d, effe
 
 const waterSurface = wgslFn(`
 fn worldWaterSurface(pos: vec3f, shore: vec2f, upView: vec3f, worldXView: vec3f,
-  cameraY: f32,cameraX: f32) -> bool {
-  return cameraX+dot(pos,worldXView)<shore.x-.12 && abs(cameraY+dot(pos,upView)-shore.y)<.075;
+  cameraY: f32,cameraX: f32,waterActive:f32) -> bool {
+  return waterActive>0. && cameraX+dot(pos,worldXView)<shore.x-.12 && abs(cameraY+dot(pos,upView)-shore.y)<.075;
 }`);
 
-const reflection = wgslFn(`
+const decodeReflectionNormal=wgslFn(`
+fn decodeReflectionNormal(oct:vec2f) -> vec3f {
+  let z=1.-abs(oct.x)-abs(oct.y);
+  let xy=oct+select(vec2f(1.),vec2f(-1.),oct>=vec2f(0.))*max(0.,-z);
+  return normalize(vec3f(xy,z));
+}`);
+
+const readReceiver=wgslFn(`
+fn readReflectionReceiver(receiverMask:texture_2d<f32>, at:vec2f, range:f32, receiverActive:f32) -> vec4f {
+  if(receiverActive<.5){return vec4f(0.);}
+  let size=vec2f(textureDimensions(receiverMask,0));
+  let receiver=textureLoad(receiverMask,vec2i(clamp(at*size,vec2f(0.),size-1.)),0);
+  let tolerance=.045+.005*receiver.a;
+  let difference=range-receiver.a;
+  if(receiver.a<=0.||receiver.a>75.||difference < -tolerance || (receiver.b>0.&&difference>tolerance)){return vec4f(0.);}
+  return receiver;
+}`);
+
+function reflectionShaders(receivers){
+  const fields=receivers?', receiverMask:texture_2d<f32>, receiverActive:f32':'';
+  const read=receivers?'readReflectionReceiver(receiverMask,at,-pos.z,receiverActive)':'vec4f(0.)';
+  const includes=receivers?[viewAt,waterSurface,readReceiver]:[viewAt,waterSurface];
+  const reflection = wgslFn(`
 fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, sceneDepth: texture_depth_2d,
   inverseProjection: mat4x4f, projection: mat4x4f, depthSize: vec2f, waterPixel: vec2f,
-  shore: vec2f, upView: vec3f, worldXView: vec3f, cameraY: f32, cameraX: f32, time: f32, reflectionSteps: f32) -> vec4f {
-  let pos=worldViewAt(sceneDepth,inverseProjection,at,depthSize);
-  if(-pos.z>145. || !worldWaterSurface(pos,shore,upView,worldXView,cameraY,cameraX)){return vec4f(0.);}
-  let normal=normalize(upView+worldXView*sin(pos.x*.7+time*1.5)*.025);
+  shore: vec2f, upView: vec3f, worldXView: vec3f, cameraY: f32, cameraX: f32, waterActive:f32, time: f32, reflectionSteps: f32${fields}) -> vec4f {
+  var pos=worldViewAt(sceneDepth,inverseProjection,at,depthSize);
+  let water=worldWaterSurface(pos,shore,upView,worldXView,cameraY,cameraX,waterActive);
+  let receiver=${read};
+  if((!water && receiver.b==0.)||(water&&-pos.z>145.)){return vec4f(0.);}
+  if(!water&&receiver.b<0.){pos*=receiver.a/max(.001,-pos.z);}
+  let wet=receiver.b>1.;
+  let roughness=select(select(abs(receiver.b),mix(.38,.15,receiver.b-1.),wet),.21,water);
+  let normal=select(decodeReflectionNormal(receiver.rg),normalize(upView+worldXView*sin(pos.x*.7+time*1.5)*.025),water);
   let ray=reflect(normalize(pos),normal);
   let noV=max(0.,-dot(normalize(pos),normal));
   let fresnel=pow(1.-noV,3.);
-  if(fresnel<.035 || dot(ray,upView)<=.001){return vec4f(0.);}
-  var lastTravel=.12;
+  if(water&&(fresnel<.035 || dot(ray,upView)<=.001)){return vec4f(0.);}
+  let reach=select(mix(43.,24.,roughness),64.,water);
+  let bias=select(.045,.12,water);
+  var lastTravel=bias;
   for(var i=1;i<=21;i++){
     if(f32(i)>reflectionSteps){break;}
     let t=f32(i)/reflectionSteps;
-    let travel=.15+63.*t*t;
-    let point=pos+normal*.12+ray*travel;
+    let travel=.15+(reach-1.)*t*t;
+    let point=pos+normal*bias+ray*travel;
     let clip=projection*vec4f(point,1.);
     if(clip.w<=0.){break;}
     var sampleAt=clip.xy/clip.w*vec2f(.5,-.5)+.5;
     if(any(sampleAt<=vec2f(0.))||any(sampleAt>=vec2f(1.))){break;}
     let hit=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize);
     let delta=hit.z-point.z;
-    if(delta>0. && delta<1.3+travel*.084 && !worldWaterSurface(hit,shore,upView,worldXView,cameraY,cameraX)){
+    if(delta>0. && delta<select(.35,1.3,water)+travel*.084 && !worldWaterSurface(hit,shore,upView,worldXView,cameraY,cameraX,waterActive)
+        && (water||dot(hit-pos,normal)>.06)){
       var lo=lastTravel;
       var hi=travel;
       for(var j=0;j<3;j++){
         let mid=(lo+hi)*.5;
-        let samplePoint=pos+normal*.12+ray*mid;
+        let samplePoint=pos+normal*bias+ray*mid;
         let p=projection*vec4f(samplePoint,1.);
         sampleAt=p.xy/p.w*vec2f(.5,-.5)+.5;
         if(worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize).z>samplePoint.z){hi=mid;}else{lo=mid;}
       }
       let margin=min(sampleAt,1.-sampleAt);
-      let fade=smoothstep(0.,.11,min(margin.x,margin.y))*(1.-smoothstep(38.,64.,travel));
-      let blur=waterPixel*(1.+travel*.023);
+      let refined=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize);
+      if(!water&&(dot(refined-pos,normal)<.045||abs(refined.z-(pos+normal*bias+ray*hi).z)>.4+travel*.044)){
+        lastTravel=travel;
+        continue;
+      }
+      let fade=smoothstep(0.,.11,min(margin.x,margin.y))*(1.-smoothstep(reach*.58,reach,travel));
+      let blur=waterPixel*(.58+roughness*2.+travel*.023);
       let color=textureSampleLevel(source,sourceSampler,sampleAt,0.).rgb*.5
         +(textureSampleLevel(source,sourceSampler,sampleAt+blur,0.).rgb+textureSampleLevel(source,sourceSampler,sampleAt-blur,0.).rgb)*.25;
-      return vec4f(color,fade*fresnel*.56);
+      let gain=select((.19+.57*fresnel)*(1.-roughness*.8),fresnel*.56,water);
+      let opacity=fade*gain*select(1.,receiver.b-1.,wet&&!water);
+      return vec4f(color*opacity,opacity);
     }
     lastTravel=travel;
   }
   return vec4f(0.);
-}`,[viewAt,waterSurface]);
+}`,[...includes,decodeReflectionNormal]);
 
-const applyReflection = wgslFn(`
+  const applyReflection = wgslFn(`
 fn worldApplyReflection(at: vec2f, rgb: vec3f, reflected: vec4f, sceneDepth: texture_depth_2d,
   inverseProjection: mat4x4f, depthSize: vec2f, shore: vec2f, upView: vec3f,
-  worldXView: vec3f, cameraY: f32, cameraX: f32) -> vec3f {
+  worldXView: vec3f, cameraY: f32, cameraX: f32, waterActive:f32${fields}) -> vec3f {
+  if(waterActive==0. ${receivers?'&& receiverActive==0.':''}){return rgb;}
   let pos=worldViewAt(sceneDepth,inverseProjection,at,depthSize);
-  if(!worldWaterSurface(pos,shore,upView,worldXView,cameraY,cameraX)){return rgb;}
-  return mix(rgb,reflected.rgb,reflected.a);
-}`,[viewAt,waterSurface]);
+  let receiver=${read};
+  if(receiver.b==0.&&!worldWaterSurface(pos,shore,upView,worldXView,cameraY,cameraX,waterActive)){return rgb;}
+  return rgb*(1.-.17*max(0.,receiver.b-1.))*(1.-reflected.a)+reflected.rgb;
+}`,includes);
+  return {reflection,applyReflection};
+}
+const onlyWater=reflectionShaders(false), withReceivers=reflectionShaders(true);
 
 function blurShader(first) {
   const tap = wgslFn(`
@@ -307,7 +366,10 @@ export function webGpuWorldStages(post, geometry, camera) {
     ...depthParams, projection:params.projection, steps:params.steps, sunView:params.sunView,
     upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,
   };
-  const waterParams={shore:params.shore,upView:params.upView,worldXView:params.worldXView,cameraY:params.cameraY,cameraX:params.cameraX};
+  const {reflection,applyReflection}=post.receiverMask?withReceivers:onlyWater;
+  const receiverParams=post.receiverMask?{receiverMask:texture(post.receiverMask.texture),receiverActive:params.receiverActive}:{};
+  const waterParams={...receiverParams,shore:params.shore,upView:params.upView,worldXView:params.worldXView,
+    cameraY:params.cameraY,cameraX:params.cameraX,waterActive:params.waterActive};
   const reflected=post.reflection && make(reflection({...depthParams,...waterParams,source,sourceSampler:source,
     projection:params.projection,waterPixel:params.waterPixel,time:params.time,reflectionSteps:params.reflectionSteps}));
   const blurs=post.bloom.map((_,i)=>{
@@ -342,7 +404,9 @@ export function webGpuWorldStages(post, geometry, camera) {
       params.time.value=state.time;
       params.heatTime.value=state.heatTime;
       params.reflectionSteps.value=state.reflectionSteps;
-      if(reflected)draw(post.reflection,reflected,profiler,'reflections');
+      params.waterActive.value=state.waterActive;
+      params.receiverActive.value=state.receiverActive;
+      if(reflected&&(state.waterActive||state.receiverActive))draw(post.reflection,reflected,profiler,'reflections');
       params.atmosphereStrength.value=state.atmosphereStrength;
       if(masks){
         const count=post.shadowMaps.length;

@@ -46,7 +46,7 @@ export const GRAPHICS_CONTROLS = [
     ['relief','Параллакс-рельеф','Добавляет видимую глубину камню и бетону при включённых фактурах окружения.',choices(off,['basic','Базовый'],['low','POM · 8 шагов'],['high','POM · 16 шагов'])],
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
     ['sky', 'Небо', 'Добавляет солнечный диск и атмосферное рассеивание. Умеренная нагрузка.', choices(old, high)],
-    ['reflections', 'Экранные отражения воды', 'Отражает видимые в кадре объекты на воде в порту.', choices(off,low,medium,high)],
+    ['reflections', 'Экранные отражения', 'Отражает видимое окружение на воде и отмеченных глянцевых поверхностях.', choices(off,low,medium,high)],
     ['localReflections', 'Локальные отражения', 'Отражает окружение на воде, стекле и металле в отдельных зонах порта, «Лагуны» и Linden Estate.', choices(off,high)],
     ['water', 'Вода', 'Добавляет нормали волн и отражение неба там, где есть вода.', choices(old, high)],
   ]],
@@ -77,6 +77,49 @@ export const GRAPHICS_CONTROLS = [
     ['adaptiveClarity', 'Приоритет чёткости', 'Удерживает масштаб изображения при адаптивном качестве.', choices(['on','Вкл.'],off)],
   ]],
 ];
+
+export const GRAPHICS_GROUPS = [
+  ['smallShadows','Мелкие тени','Экранное и запечённое затенение, контактные тени.', ['ao','contact','bakedAO'], {
+    off:['Выкл.','off','off','off'], low:['Низкие','low','low','low'],
+    high:['Высокие','high','medium','high'], ultra:['Ультра','gtao','high','high'],
+  }],
+  ['shadowStyle','Мягкость и дальность теней','Фильтр и размер области динамических теней.', ['shadowFilter','shadowDistance'], {
+    auto:['Авто','auto','auto'], fast:['Ближние', 'hard','near'], soft:['Мягкие','soft','auto'], far:['Мягкие дальние','pcss','far'],
+  }],
+  ['surfaceQuality','Качество поверхностей','Материалы, чёткость фактур и глубина рельефа.', ['materials','surfaceDetail','relief'], {
+    auto:['Как раньше','auto','off','off'], low:['Облегчённое','low','off','off'], medium:['Среднее','auto','medium','basic'],
+    high:['Высокое','auto','high','low'], ultra:['Ультра','auto','high','high'],
+  }],
+  ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere'], {
+    legacy:['Как раньше','legacy','off'], low:['Низкое','high','low'], medium:['Среднее','high','medium'], high:['Высокое','high','high'], ultra:['Ультра','high','ultra'],
+  }],
+  ['reflectionQuality','Вода и отражения','Волны, экранные отражения и местное окружение.', ['reflections','localReflections','water'], {
+    legacy:['Как раньше','off','off','legacy'], local:['Локальные','off','high','high'],
+    low:['Низкие','low','high','high'], medium:['Средние','medium','high','high'], high:['Высокие','high','high','high'],
+  }],
+  ['cinematicCamera','Камера в заставках','Смаз движения и глубина резкости.', ['motionBlur','depthOfField'], {
+    off:['Выкл.','off','off'], low:['Лёгкий эффект','low','cinematics'], high:['Заставки и меню','medium','on'],
+  }],
+  ['lens','Эффекты объектива','Солнечные блики и цветное разделение по краям кадра.', ['lensFlare','chromatic'], {
+    off:['Выкл.','off','off'], low:['Слабые','low','off'], high:['Выраженные','high','low'],
+  }],
+  ['film','Виньетка и зерно','Затемнение краёв и текстура кадра.', ['vignette','grain'], {
+    legacy:['Как раньше','legacy','legacy'], off:['Выкл.','off','off'], low:['Слабые','low','low'], high:['Выраженные','high','high'],
+  }],
+  ['smokeQuality','Качество дыма','Детализация, освещение и мягкие края частиц.', ['smoke','softParticles','particleLighting'], {
+    legacy:['Как раньше','legacy','off','off'], medium:['Среднее','high','off','high'], high:['Высокое','high','high','high'],
+  }],
+  ['explosionQuality','Взрывы и марево','Вспышки, шлейфы и искажение воздуха над огнём.', ['explosions','heatDistortion'], {
+    legacy:['Как раньше','legacy','off'], medium:['Среднее','high','off'], high:['Высокое','high','high'],
+  }],
+  ['adaptivePolicy','Приоритет адаптации','До какого уровня можно упрощать эффекты и масштаб.', ['adaptiveFloor','adaptiveMinScale','adaptiveClarity'], {
+    clarity:['Чёткость','balanced','65','on'], balanced:['Баланс','balanced','65','off'], fps:['Частота кадров','minimum','50','off'],
+  }],
+];
+
+export function graphicsGroupValue(fields, modes, settings) {
+  return Object.keys(modes).find(mode=>fields.every((field,index)=>settings[field]===modes[mode][index+1]))??'mixed';
+}
 
 export function validateCustomGraphics(values, preset) {
   const clean = {...graphicsEffects(preset)};

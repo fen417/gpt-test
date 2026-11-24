@@ -134,6 +134,7 @@ export class PostPass {
     }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
   }
   dispose(){
+    this.worldEffects.receivers.dispose();
     this.worldEffects.dispose();
     this.smaa?.dispose();
     this.target.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();

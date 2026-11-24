@@ -1,5 +1,6 @@
 import {HeatSources} from './heat-sources.js';
 import {cameraModes} from './camera-effects.js';
+import {ReflectionReceivers, makeGlReflectionReceiver} from './reflection-receivers.js';
 import * as THREE from 'three';
 
 const aoSteps = { off: 0, low: 4, high: 12, gtao: 24 };
@@ -9,11 +10,12 @@ const atmosphereSteps = { off: 0, low: 1, medium: 3, high: 7, ultra: 12 };
 const bloomSettings = { off: [0, 0], low: [1, .075], medium: [2, .11], high: [3, .155], ultra: [4, .19] };
 
 export class WorldPost {
-  constructor(renderer, Target, createStages, webgpu = false) {
+  constructor(renderer, Target, createStages, webgpu = false, createReceiver=makeGlReflectionReceiver) {
     this.renderer = renderer;
     this.Target = Target;
     this.createStages = createStages;
     this.webgpu = webgpu;
+    this.receivers=new ReflectionReceivers(createReceiver);
     this.state = {
       projection: new THREE.Matrix4(), inverseProjection: new THREE.Matrix4(),
       sunView: new THREE.Vector3(), sunScreen: new THREE.Vector2(), sunColor: new THREE.Color(),
@@ -21,6 +23,7 @@ export class WorldPost {
       depthSize: new THREE.Vector2(), effectPixel: new THREE.Vector2(),
       steps: new THREE.Vector3(), reflectionSteps:0, shore:new THREE.Vector2(), waterPixel:new THREE.Vector2(),
       worldXView:new THREE.Vector3(), cameraX:0, time:0,
+      waterActive:0, receiverActive:0,
       cameraEffects:new THREE.Vector3(), chromaticGain:0, previousClipFromView:new THREE.Matrix4(),
       heatSources:new THREE.Matrix4(), heatStrength:new THREE.Vector4(), heatTime:0,
       atmosphereStrength: 0, bloomGain: 0,
@@ -42,7 +45,8 @@ export class WorldPost {
     const contact = contactSteps[effects?.contact] ?? 0;
     const atmosphere = atmosphereSteps[effects?.atmosphere] ?? 0;
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];
-    const reflections=this.reflector?(reflectionSteps[effects?.reflections]??0):0;
+    const reflections=this.reflector||this.receiverMode?(reflectionSteps[effects?.reflections]??0):0;
+    const receiverMask=Boolean(reflections&&this.receiverMode);
     const mask=ao+contact+atmosphere>0;
     const blur=(this.inMenu||this.cinematic)?cameraModes.blur[effects?.motionBlur]??0:0;
     const dof=(this.cinematic&&(effects?.depthOfField??'off')!=='off')||(this.inMenu&&effects?.depthOfField==='on');
@@ -56,7 +60,7 @@ export class WorldPost {
       if (this.world) this.dispose();
       return false;
     }
-    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + levels;
+    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + receiverMask + '/' + levels;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
@@ -64,6 +68,8 @@ export class WorldPost {
         depthTexture: depth ? new THREE.DepthTexture(1, 1, THREE.FloatType) : null });
       if (mask) this.mask = this.colorTarget(true);
       if (reflections) this.reflection=this.colorTarget();
+      if (receiverMask) this.receiverMask=new this.Target(1,1,{type:THREE.HalfFloatType,depthBuffer:true,
+        minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
       this.bloom = Array.from({ length: levels }, () => this.colorTarget());
       this.stages = this.createStages(this);
     }
@@ -79,7 +85,9 @@ export class WorldPost {
     this.state.reflectionSteps=reflections;
     this.state.depthSize.set(width, height);
     this.state.bloomGain = gain;
-    this.passes = 1 + levels + Number(mask) + Number(Boolean(reflections)) + Number(Boolean(this.softSmoke));
+    this.state.waterActive=Number(Boolean(this.reflector));
+    this.state.receiverActive=Number(receiverMask&&this.receivers.count>0);
+    this.passes = 1 + levels + Number(mask) + Number(Boolean(reflections&&(this.state.waterActive||this.state.receiverActive))) + this.state.receiverActive + Number(Boolean(this.softSmoke));
     this.memory = width * height * (12 + worldSamples * 12);
     if (this.mask) {
       const divisor=ao<=4&&contact===0&&atmosphere<=1?4:2;
@@ -88,9 +96,14 @@ export class WorldPost {
       this.memory += this.mask.width * this.mask.height * 8;
     }
     if(this.reflection){
-      this.resize(this.reflection,Math.ceil(width/2),Math.ceil(height/2));
+      const divisor=effects.reflections==='low'?4:2;
+      this.resize(this.reflection,Math.ceil(width/divisor),Math.ceil(height/divisor));
       this.state.waterPixel.set(1/this.reflection.width,1/this.reflection.height);
       this.memory+=this.reflection.width*this.reflection.height*8;
+      if(this.receiverMask){
+        this.resize(this.receiverMask,this.reflection.width,this.reflection.height);
+        this.memory+=this.receiverMask.width*this.receiverMask.height*12;
+      }
     }
     for (let i = 0; i < levels; i++) {
       this.resize(this.bloom[i], Math.ceil(width / (4 << i)), Math.ceil(height / (4 << i)));
@@ -153,12 +166,13 @@ export class WorldPost {
       this.previousOrientation.copy(camera.quaternion);
     }
     if(this.reflection){
-      state.shore.copy(this.reflector);
+      if(this.reflector)state.shore.copy(this.reflector);
       state.worldXView.set(1,0,0).transformDirection(camera.matrixWorldInverse);
       state.cameraX=camera.position.x;
       state.time=time;
     }
     try {
+      if(state.receiverActive)this.receivers.render(r,this.receiverMask,camera,profiler);
       this.stages.render(output,profiler);
     } finally {
       r.setRenderTarget(output);
@@ -170,8 +184,9 @@ export class WorldPost {
     this.world?.dispose();
     this.mask?.dispose();
     this.reflection?.dispose();
+    this.receiverMask?.dispose();
     for (const target of this.bloom ?? []) target.dispose();
-    this.world = this.mask = this.reflection = this.bloom = this.stages = this.key = null;
+    this.world = this.mask = this.reflection = this.receiverMask = this.bloom = this.stages = this.key = null;
     this.shadowMaps.length=0;
     this.previousClock=undefined;
     this.passes = this.memory = 0;

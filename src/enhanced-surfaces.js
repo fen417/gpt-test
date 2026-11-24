@@ -77,7 +77,7 @@ export class EnhancedSurfaces {
         maps.normalMap=ready?normal:base.normalMap;
         maps.roughnessMap=ready?pack:base.roughnessMap;
         material.normalScale.copy(base.normalScale);
-        if(ready)material.normalScale.multiplyScalar(surface==='rock'?2.6:1.75);
+        if(ready)material.normalScale.multiplyScalar(surface==='rock'?2.6:surface==='sand'?.92:1.75);
         material.roughness=ready?1:base.roughness;
       }
       if(Object.entries(maps).some(([key,value])=>material[key]!==value)){

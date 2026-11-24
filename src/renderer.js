@@ -746,6 +746,7 @@ export class GameRenderer {
 
   invalidateBakedVisibility() {
     this.localReflections.dispose();
+    this.postPass.worldEffects.receivers.invalidate();
     this.interiorVisibility.root=null;
     this.cachedShadows.invalidate(true);
     this.cascades?.invalidate(true);
@@ -2013,6 +2014,8 @@ export class GameRenderer {
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene);
     this.cascades?.update();
     if(!menu&&!warming)this.interiorVisibility.apply(this);
+    worldFX.receiverMode=worldFX.receivers.update(this.map.id,this.staticRoot,this.camera,
+      !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'));
     const timing=this.gpuTimer.begin();
     const profiler=this.perfEnabled?this.gpuTimer:null;
     if(softSmoke)smoke.layers.set(SOFT_PARTICLE_LAYER);
@@ -2576,6 +2579,7 @@ export class GameRenderer {
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
       volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,
+      reflectionReceivers:post.worldEffects.receivers.count,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',

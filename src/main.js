@@ -13,7 +13,7 @@ import { drawBotDebug } from './bot-debug.js';
 import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isPlacementGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
-import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, LEGACY_GRAPHICS_DEFAULTS, graphicsEffects, validateCustomGraphics} from './graphics-settings.js';
+import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, GRAPHICS_GROUPS, LEGACY_GRAPHICS_DEFAULTS, graphicsEffects, graphicsGroupValue, validateCustomGraphics} from './graphics-settings.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
@@ -1039,6 +1039,7 @@ try{
   if(saved)gfx.customGraphics=validateCustomGraphics(saved,quality);
 }catch{}
 const advancedControls=new Map();
+const groupControls=[];
 function syncGraphicsPreset(){
   presetSelector.value=gfx.customGraphics?'custom':quality;
   document.body.classList.toggle('low-quality',quality==='low');
@@ -1047,38 +1048,62 @@ function syncGraphicsPreset(){
     control.value=values[key];
     if(value)value.textContent=control.value+'%';
   }
+  for(const {control,fields,modes} of groupControls)control.value=graphicsGroupValue(fields,modes,values);
 }
-function makeGraphicsCustom(key,value){
-  gfx.customGraphics=validateCustomGraphics({...graphicsEffects(quality,gfx.customGraphics),[key]:value},quality);
+function makeGraphicsCustom(changes){
+  gfx.customGraphics=validateCustomGraphics({...graphicsEffects(quality,gfx.customGraphics),...changes},quality);
   save('gfx-custom',JSON.stringify(gfx.customGraphics));
   syncGraphicsPreset();
 }
+function addGraphicsControl(parent,id,name,help,options,onChange){
+  const row=document.createElement('label'), description=document.createElement('span'), controlBox=document.createElement('span');
+  const label=document.createElement('b'), detail=document.createElement('small');
+  label.textContent=name;detail.textContent=help;description.append(label,detail);
+  row.className='setting-row';controlBox.className='setting-control';
+  const range=Array.isArray(options);
+  const control=document.createElement(range?'input':'select');
+  control.id=id;row.htmlFor=id;
+  let value=null;
+  if(range){
+    control.type='range';[control.min,control.max]=options;control.step=1;
+    value=document.createElement('output');value.htmlFor=id;
+  }else{
+    for(const [key,text] of Object.entries(options))control.add(new Option(text,key));
+  }
+  controlBox.append(control);
+  if(value)controlBox.append(value);
+  row.append(description,controlBox);parent.append(row);
+  control.addEventListener(range?'input':'change',()=>onChange(control.value));
+  return {control,value};
+}
+function graphicsHeading(title){
+  const heading=document.createElement('h4');
+  heading.className='settings-section';heading.textContent=title;
+  return heading;
+}
+const groupStarts=new Map(GRAPHICS_GROUPS.map(group=>[group[3][0],group]));
+const groupedFields=new Set(GRAPHICS_GROUPS.flatMap(group=>group[3]));
 for(const [index,[title,rows]] of GRAPHICS_CONTROLS.entries()){
   const group=index===0?$('graphics-lighting'):index===1?$('graphics-materials'):document.createElement('div');
   if(!group.parentNode)$('graphics-advanced').append(group);
-  const heading=document.createElement('h4');
-  heading.className='settings-section';heading.textContent=title;
-  group.prepend(heading);
+  group.prepend(graphicsHeading(title));
+  const fine=document.createElement('div');
+  fine.append(graphicsHeading(title));
+  $('graphics-fine').append(fine);
   for(const [key,name,help,options] of rows){
-    const row=document.createElement('label'), description=document.createElement('span'), controlBox=document.createElement('span');
-    const label=document.createElement('b'), detail=document.createElement('small');
-    label.textContent=name;detail.textContent=help;description.append(label,detail);
-    row.className='setting-row';controlBox.className='setting-control';
-    const range=Array.isArray(options);
-    const control=document.createElement(range?'input':'select');
-    control.id='gfx-advanced-'+key;row.htmlFor=control.id;
-    let value=null;
-    if(range){
-      control.type='range';[control.min,control.max]=options;control.step=1;
-      value=document.createElement('output');value.htmlFor=control.id;
-    }else{
-      for(const [id,label] of Object.entries(options))control.add(new Option(label,id));
+    const bundle=groupStarts.get(key);
+    if(bundle){
+      const [id,title,description,fields,modes]=bundle;
+      const labels=Object.fromEntries(Object.entries(modes).map(([id,[label]])=>[id,label]));
+      const {control}=addGraphicsControl(group,'gfx-group-'+id,title,description,{...labels,mixed:'Смешанные'},mode=>{
+        if(!Object.hasOwn(modes,mode))return;
+        makeGraphicsCustom(Object.fromEntries(fields.map((field,index)=>[field,modes[mode][index+1]])));
+      });
+      control.querySelector('option[value="mixed"]').disabled=true;
+      groupControls.push({control,fields,modes});
     }
-    controlBox.append(control);
-    if(value)controlBox.append(value);
-    row.append(description,controlBox);group.append(row);
-    control.addEventListener(range?'input':'change',()=>makeGraphicsCustom(key,control.value));
-    advancedControls.set(key,{control,value});
+    const parent=groupedFields.has(key)?fine:group;
+    advancedControls.set(key,addGraphicsControl(parent,'gfx-advanced-'+key,name,help,options,value=>makeGraphicsCustom({[key]:value})));
   }
 }
 syncGraphicsPreset();
