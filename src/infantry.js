@@ -60,6 +60,7 @@ function newLeg(bones, side) {
     upper: bones[side + 'UpLeg'], knee: bones[side + 'Leg'],
     foot, toe, side: side === 'Left' ? -1 : 1,
     bootRotation: foot.getWorldQuaternion(new THREE.Quaternion()),
+    toeRotation: toe.quaternion.clone(),
     bootYaw: Math.atan2(-offset.x, -offset.z),
     bootPitch: Math.atan2(offset.y, Math.hypot(offset.x, offset.z)),
     ankleHeight: clamp(foot.getWorldPosition(new THREE.Vector3()).y, .08, .16),
@@ -81,8 +82,8 @@ function bootPitchFor(leg) {
   return Math.atan2(offset.y, Math.hypot(offset.x, offset.z));
 }
 
-function alignBoot(rig, leg, pitch, weight) {
-  const yaw = rig.group.rotation.y - leg.side * .12;
+function alignBoot(rig, leg, pitch, weight, toeOut = .12) {
+  const yaw = rig.group.rotation.y - leg.side * toeOut;
   const tilt = clamp(pitch - leg.bootPitch, -.50, .76);
   shoeSide.set(Math.cos(yaw), 0, -Math.sin(yaw));
   shoeRotation.setFromAxisAngle(flatNormal, yaw - leg.bootYaw).multiply(leg.bootRotation);
@@ -510,7 +511,7 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
     if (leg.anchor.distanceToSquared(leg.solved) > lerp(.24, .40, crouch) ** 2 ||
       leg.anchor.distanceToSquared(a) > (reachLimit + .065) ** 2) leg.locked = false;
     leg.weight = damp(leg.weight, leg.locked ? 1 : 0, leg.locked ? 48 : 22, dt);
-    if (rig.lod > 1 && !lowered && !leg.pathWeight) continue;
+    if (rig.lod > 1 && !lowered && !leg.pathWeight && crouch < .02) continue;
     saveRotation(rig, leg.upper, leg.knee, leg.foot);
     if (lowered || leg.pathWeight > .001) {
       // Lower the torso without lowering the boot paths through the ground.
@@ -527,11 +528,14 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
       if (Number.isFinite(ground) && Math.abs(ground - group.position.y) < .23) target.y = ground + leg.ankleHeight;
       reach(leg.upper, leg.knee, leg.foot, target, blend, kneePole(rig, leg));
     }
-    // Keep the authored heel lift within the shoe's sagittal plane. A raw
-    // toe track can roll the shoe sideways or point it back during swing.
     const support = Math.max(stance, leg.weight);
-    const nextPitch = lerp(clamp(leg.pitch, -.95, .33), leg.bootPitch, support);
-    alignBoot(rig, leg, nextPitch, 1);
+    const swingPitch = clamp(leg.pitch, lerp(-.95, leg.bootPitch - .30, crouch),
+      lerp(.33, leg.bootPitch + .28, crouch));
+    alignBoot(rig, leg, lerp(swingPitch, leg.bootPitch, support), 1, lerp(.12, .06, crouch));
+    if (crouch > .02) {
+      saveRotation(rig, leg.toe);
+      leg.toe.quaternion.slerp(leg.toeRotation, smoothstep(crouch, .02, .82));
+    }
   }
 }
 
@@ -637,13 +641,13 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
       landAge: Infinity, slideAge: Infinity, actionAge: Infinity, slideExit: Infinity, gripAim: Number(Boolean(player.aim)) });
   }
   const dx = group.position.x - motion.x, dz = group.position.z - motion.z;
-  const distance = Math.hypot(dx, dz);
   motion.x = group.position.x;
   motion.z = group.position.z;
   motion.vx = damp(motion.vx, dx / dt, 17, dt);
   motion.vz = damp(motion.vz, dz / dt, 17, dt);
-  motion.speed = damp(motion.speed, distance / dt, 14, dt);
-  motion.moving = damp(motion.moving, smoothstep(motion.speed, .06, .60), 14, dt);
+  const speed = Math.hypot(motion.vx, motion.vz);
+  motion.speed = damp(motion.speed, speed, 21, dt);
+  motion.moving = damp(motion.moving, smoothstep(motion.speed, .16, .68), 15, dt);
   const crouched = Boolean(player.crouch || player.crouching);
   const prone = Boolean(player.prone || player.downed);
   const requested = locomotionWeights(rig.requested ??= new Map(), motion.speed, group.rotation.y,
@@ -665,14 +669,14 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   }
   // Increase distance per cycle when the game outruns a captured gait.
   // Resolve the remaining discrepancy where the boot touches the ground.
-  const maxCyclesPerSecond = crouched ? lerp(1.6, 2.1, smoothstep(motion.speed, .55, 3.15)) :
+  const maxCyclesPerSecond = crouched ? lerp(1.45, 1.9, smoothstep(motion.speed, .55, 3.15)) :
     lerp(1.95, 2.40, smoothstep(motion.speed, 2.6, 6.4));
   const measured = weightSum ? stride / weightSum : 1;
   const cycleDistance = Math.max(measured, motion.speed / maxCyclesPerSecond);
   motion.cycleDistance = cycleDistance;
   // Smooth packet-sized changes in travel over the same short window used
   // for the blend. Its integral still tracks rendered travel at steady pace.
-  if (weightSum && motion.speed > .035) motion.phase = cycle(motion.phase + motion.speed * dt / cycleDistance);
+  if (weightSum && motion.speed > .12) motion.phase = cycle(motion.phase + motion.speed * dt / cycleDistance);
 
   const active = new Set();
   const contacts = [0, 0];

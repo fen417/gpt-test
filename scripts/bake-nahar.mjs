@@ -1,7 +1,7 @@
 import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {NAHAR,NAHAR_WATER} from '../shared/campaign/nahar.js';
+import {NAHAR} from '../shared/campaign/nahar.js';
 import {villageLayoutKey} from '../src/village-layout-key.js';
 import {packMap} from './pack-map.mjs';
 
@@ -17,7 +17,7 @@ for(let z=-limit;z<=limit;z+=spacing){
   heights.push(row);
 }
 const plan=resolve(stage,'plan.json');
-await writeFile(plan,JSON.stringify({spacing,limit,heights,water:NAHAR_WATER,parts:NAHAR.boxes.filter(b=>!b.missionDynamic)}));
+await writeFile(plan,JSON.stringify({spacing,limit,heights,parts:NAHAR.boxes.filter(b=>!b.missionDynamic)}));
 const result=spawnSync(blender,['--background','--factory-startup','--python-exit-code','1','--python',
   resolve('art-source/nahar/build_nahar.py'),'--',plan,stage,stage,...options],{stdio:'inherit',windowsHide:true});
 if(result.error)throw result.error;

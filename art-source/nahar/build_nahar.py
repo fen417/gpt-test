@@ -235,11 +235,6 @@ def main():
 
     bake_terrain(plan,batches)
 
-    water = plan['water']
-    for i in range(12):
-        x = water['x'] + (i - 5.5) * water['w'] / 12
-        batches['Base', 'unlit', False, i, 40].block({**water, 'x':x, 'w':water['w']/12, 'h':.015,
-                                                    'baseY':water['y']}, color('#4e655d'))
     for (category, surface, cast, x, z), batch in batches.items():
         batch.make_mesh(f'{category}-{surface}-{x}-{z}-{int(cast)}', surface, cast, groups[category], preview_mat)
 

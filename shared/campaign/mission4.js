@@ -5,7 +5,7 @@ import {activateGadget} from '../gadgets.js';
 import {aimBullet} from '../ballistics.js';
 import {shotRandom} from '../fire-control.js';
 import {BLACK_HAWK,BLACK_HAWK_GUN,VEHICLE_TYPES,blackHawkGunPose,vehiclePartPose,getVehicleSeatPose} from '../vehicles.js';
-import {WEAPONS,getSidearm} from '../world.js';
+import {CROUCH_EYE_HEIGHT,EYE_HEIGHT,WEAPONS,getSidearm} from '../world.js';
 import {NAHAR,NAHAR_AIR_POSTS,NAHAR_GATES,NAHAR_LANDING,NAHAR_RAIL_CROSSINGS,NAHAR_SITES as sites} from './nahar.js';
 import {aimAt,departingPose,flightPath,LANDING_SECONDS,landingPose,orbitPose,targetInArc} from './mission4-flight.js';
 import {dropCampaignMedkit,reviveDuration} from './medical.js';
@@ -19,6 +19,8 @@ const ESCORT_INFANTRY=[
   {id:'escort-rudin',name:'Илья Рудин',classId:'assault',weapon:'ar416',seat:3},
   {id:'escort-volkov',name:'Семён Волков',classId:'support',weapon:'mg36',seat:4},
 ];
+const SQUAD_SLOTS=[['duran','wing'],['lasko','medic'],['bruno'],['escort-rudin'],['escort-volkov'],['dispatcher']];
+const RELAY_WAVE_TIMINGS=[0,.31,.62];
 const LEFT=BLACK_HAWK_GUN.index;
 const KNOCKOUT_SECONDS={recruit:35,regular:25,veteran:18};
 const DEPARTURE_DELAY=4,DEPARTURE_DURATION=24.5;
@@ -151,6 +153,7 @@ class NaharDirector{
     this.input={};this.radio=null;this.radioEnd=0;this.radioSerial=0;this.queue=[];this.eventsDone=new Set();
     this.gates={service:false,tunnel:false};this.progress=0;this.supplyUsed=false;this.enemySerial=0;
     this.order='follow';this.knowledge={log:false,recording:false};this.sent=0;this.waves=0;this.power=false;
+    this.nextReinforcementCheck=0;
     const {approach,right,turn,orbit}=definition.flight;
     this.approachSeconds=approach.at(-1)[0];
     const turnAt=this.approachSeconds+right.at(-1)[0];
@@ -169,6 +172,7 @@ class NaharDirector{
   get wing(){return this.sim.vehicles.find(v=>v.id===WING);}
   get escortPad(){return NAHAR_LANDING[this.landing.kind==='primary'?'alternate':'primary'];}
   get dispatcher(){return this.sim.players.get('dispatcher');}
+  get stationItemsAvailable(){return this.stage==='station'&&!this.dispatcher?.alive;}
   get airborne(){return STAGES.indexOf(this.stage)<STAGES.indexOf('depot');}
   get airDanger(){return ['right','orbit','landing'].includes(this.stage);}
   get wingSpeaker(){return this.sim.players.get('duran')?.alive?'duran':'wing';}
@@ -679,25 +683,47 @@ class NaharDirector{
     return this.sim.lineClear(eye(a),eye(b,(b.wounded||b.downed)?.55:1.2));
   }
   squadGoal(p){
-    const player=this.player,offset=p.botSlot%3;
+    const player=this.player,slot=SQUAD_SLOTS.findIndex(ids=>ids.includes(p.id));
+    const ownPosition={x:p.x,y:p.y,z:p.z},leaderPosition={x:player.x,y:player.y,z:player.z};
     if(this.stage==='tunnel'&&this.gates.tunnel)return sites.exit;
-    if(this.order==='hold'&&p!==this.dispatcher)return p.holdAt??p;
+    if(this.order==='hold'&&p!==this.dispatcher)return p.holdAt??ownPosition;
     if((this.stage==='depot'||this.stage==='station')&&p.x>-55&&p.x<51&&player.x>-55&&player.x<51){
       const crossZ=player.z>=11&&p.z<10.9?11.7:player.z<=-8&&p.z>-7.7?-9.8:null;
       if(crossZ!==null){
         const cost=x=>Math.hypot(x-p.x,crossZ-p.z)+Math.hypot(x-player.x,crossZ-player.z)*.7;
         const [west,east]=NAHAR_RAIL_CROSSINGS;
-        const x=cost(west)<=cost(east)?west:east;
+        const x=(cost(west)<=cost(east)?west:east)+(Math.max(0,slot)-2.5)*.8;
         return {x,y:this.sim.groundAt(x,crossZ),z:crossZ};
       }
     }
-    if(Math.abs(p.y-player.y)>1.1)return player;
-    const goal={x:player.x+Math.cos(offset*2.4)*3,z:player.z+Math.sin(offset*2.4)*3,y:player.y};
-    return this.sim.collides(goal.x,goal.z,goal.y+.03)?player:goal;
+    if(Math.abs(p.y-player.y)>1.1)return leaderPosition;
+    const angle=Math.max(0,slot)*Math.PI*2/SQUAD_SLOTS.length;
+    for(const arc of [0,.28,-.28]){
+      const x=player.x+Math.cos(angle+arc)*4.2,z=player.z+Math.sin(angle+arc)*4.2;
+      if(!this.sim.collides(x,z,player.y+.03,this.sim.playerRadius+.15)&&
+        this.sim.lineClear(eye(player,1),{x,y:player.y+1,z}))return {x,y:player.y,z};
+    }
+    return close(p,player,5.2)?ownPosition:leaderPosition;
+  }
+  followSquad(p,dt){
+    if(p.team!==0||!p.squadMember||p.ai.pressure>.3||['recover','search','retreat','cover'].includes(p.ai.mode))return false;
+    const goal=this.squadGoal(p),distance=dist(p,goal);
+    const settled=p.ai.formationSettled;
+    const vertical=Math.abs(p.y-(goal.y??0));
+    p.ai.formationSettled=vertical<.35&&distance<(settled?1.65:.8);
+    p.ai.mode='formation';p.ai.goal=p.botGoal=goal;
+    if(!p.ai.formationSettled){
+      moveBot(this.sim,p,goal,dt,{sprint:distance>13,followSteps:true});
+      const pace=Math.max(.37,Math.min(1,(distance-.45)/2.9));
+      p.input.forward*=pace;p.input.strafe*=pace;
+    }else{
+      p.ai.probe=null;p.ai.blockedSince=null;p.ai.yieldUntil=0;
+    }
+    return true;
   }
   botGoal(p){
     if(p.team===0)return this.squadGoal(p);
-    if(p.assaultGoal&&dist(p,p.assaultGoal)>3)return p.assaultGoal;
+    if(p.assaultGoal)return p.assaultGoal;
     return dist(p,p.home)>9?p.home:{x:p.home.x+Math.sin(this.time*.12+p.botSlot)*3,z:p.home.z+Math.cos(p.botSlot)*3,y:p.home.y};
   }
   spawnGround(key,points=this.definition.ground[key]){
@@ -706,9 +732,38 @@ class NaharDirector{
       const weapon=cls==='support'?'mg36':cls==='recon'?'dmr12':'ar416';
       const p=this.add(`nahar-enemy-${++this.enemySerial}`,'Боец Корпуса',1,cls,weapon,{x,y,z},key);
       p.home={x:p.x,y:p.y,z:p.z};p.grenades=i%5===3?1:0;p.rockets=0;
-      if(key==='relay')p.assaultGoal=i%2?sites.relay:sites.power;
-      if(key==='tunnel')p.assaultGoal={x:172,z:190};
+      if(key==='relay'||key==='tunnel'){
+        const goal=key==='tunnel'?{x:172,z:190}:i%2?sites.relay:sites.power;
+        const offset=i*2.4,x=goal.x+Math.cos(offset)*2.2,z=goal.z+Math.sin(offset)*2.2;
+        const y=this.sim.groundAt(x,z);
+        p.assaultGoal=this.sim.collides(x,z,y+.023)?goal:{x,y,z};
+      }
     }
+  }
+  spawnReinforcements(key,preferred,alternates){
+    if(this.time<this.nextReinforcementCheck)return false;
+    this.nextReinforcementCheck=this.time+.65;
+    const sim=this.sim,player=this.player;
+    const observer=eye(player,player.crouching?CROUCH_EYE_HEIGHT:EYE_HEIGHT);
+    const actors=[...sim.players.values()].filter(p=>p.alive&&!p.vehicleId&&!p.campaignHidden);
+    const selected=[];
+    for(const [x,z] of [...preferred,...alternates.flat()]){
+      const y=sim.groundAt(x,z),point={x,y,z};
+      if(dist(player,point)<42||selected.some(([sx,sz])=>Math.hypot(x-sx,z-sz)<2.3)||
+        actors.some(p=>close(p,point,p.team===0?10:2.3))||
+        sim.collides(x,z,y+.023)||sim.vehicleAt(x,z,y))continue;
+      const dx=x-player.x,dz=z-player.z,length=Math.hypot(dx,dz);
+      const shoulderX=dz/length*.36,shoulderZ=-dx/length*.36;
+      if(sim.lineClear(observer,eye(point,EYE_HEIGHT))||sim.lineClear(observer,eye(point,.98))||
+        sim.lineClear(observer,{x:x+shoulderX,y:y+.98,z:z+shoulderZ})||
+        sim.lineClear(observer,{x:x-shoulderX,y:y+.98,z:z-shoulderZ}))continue;
+      selected.push([x,z,y]);
+      if(selected.length===preferred.length){
+        this.spawnGround(key,selected);
+        return true;
+      }
+    }
+    return false;
   }
   openGate(name){
     if(this.gates[name])return;
@@ -751,6 +806,10 @@ class NaharDirector{
     }
     if(this.stage==='station'&&this.knowledge.log&&this.knowledge.recording)this.acquire('recording');
     if(this.stage==='relay'&&this.transmitting)this.updateTransmission(dt);
+    if(this.stage==='tunnel'&&!this.eventsDone.has('tunnel-reinforcements')&&!close(p,sites.exit,8)&&
+      this.spawnReinforcements('tunnel',this.definition.ground.tunnel,this.definition.ground.relay)){
+      this.eventsDone.add('tunnel-reinforcements');
+    }
     if(this.stage==='tunnel'&&this.gates.tunnel&&close(p,sites.exit,5)){
       this.exitAt??=this.time;
       if(this.time-this.exitAt>3||[...this.sim.players.values()].every(a=>!a.alive||a.team!==0||!a.squadMember||close(a,sites.exit,9))){
@@ -763,11 +822,12 @@ class NaharDirector{
   updateTransmission(dt){
     const length=this.settings.hold;
     const waves=this.definition.ground.relay;
-    if(this.waves<waves.length&&this.sent>=length*[0,.31,.62][this.waves]){
-      this.spawnGround('relay',waves[this.waves]);this.waves++;
+    if(!this.power||dist(this.player,sites.relay)>32)return;
+    if(this.waves<waves.length&&this.sent>=length*RELAY_WAVE_TIMINGS[this.waves]&&
+      this.spawnReinforcements('relay',waves[this.waves],waves.filter((_,index)=>index!==this.waves))){
+      this.waves++;
       this.say(`${this.wingSpeaker}.pressure`);
     }
-    if(!this.power||dist(this.player,sites.relay)>32)return;
     const threat=[...this.sim.players.values()].find(p=>p.team===1&&p.alive&&p.role==='relay'&&close(p,sites.power,5.5));
     if(threat&&this.sent>length*.37&&!this.eventsDone.has('power-cut')){
       this.power=false;this.eventsDone.add('power-cut');this.say(`${this.wingSpeaker}.broken`,true);return;
@@ -777,7 +837,7 @@ class NaharDirector{
       this.eventsDone.add('signal-almost');this.say('orlov.signalAlmost');
     }
     if(this.sent>=length){
-      this.flags.m4_signal_sent=true;this.setStage('tunnel');this.spawnGround('tunnel');
+      this.flags.m4_signal_sent=true;this.setStage('tunnel');this.nextReinforcementCheck=0;
       this.say('orlov.received',true);
       if(this.dispatcher?.alive&&this.dispatcher.rescued){this.say('dispatcher.gate');this.openGate('tunnel');}
     }
@@ -796,7 +856,7 @@ class NaharDirector{
     }
     if(current==='station'&&patient?.alive&&patient.wounded)
       options.push(['dispatcher','Помочь диспетчеру',patient,3,()=>this.reviveDispatcher()]);
-    if(current==='station'&&!patient?.alive){
+    if(this.stationItemsAvailable){
       if(!this.knowledge.log)options.push(['log','Забрать журнал рейсов',sites.log,1.25,()=>{this.knowledge.log=true;}]);
       if(!this.knowledge.recording)options.push(['recording','Забрать запись',sites.recording,1.25,()=>{this.knowledge.recording=true;}]);
     }
@@ -851,7 +911,9 @@ class NaharDirector{
     if(this.input.order&&!this.lastOrder)this.command({type:'order',order:'follow'});
     this.lastOrder=Boolean(this.input.order);
     if(this.helpSquad(dt))return;
-    const use=this.candidates().filter(([, ,point])=>close(p,point,2.7)).sort((a,b)=>dist(p,a[2])-dist(p,b[2]))[0];
+    const use=this.candidates().filter(([, ,point])=>close(p,point,2.7)&&
+      (point.surfaceY==null||this.sim.lineClear(eye(p,p.crouching?CROUCH_EYE_HEIGHT:EYE_HEIGHT),{...point,y:point.surfaceY+.065})))
+      .sort((a,b)=>dist(p,a[2])-dist(p,b[2]))[0];
     if(!use){this.interaction=null;this.progress=0;return;}
     const [id,label,,seconds,action]=use;this.prompt=label;
     if(this.interaction!==id){this.interaction=id;this.progress=0;}
@@ -919,7 +981,8 @@ class NaharDirector{
       disembarkReady:this.stage==='disembark'&&this.age>=1.4,landing:this.landing?.kind??null,
       hull:craft?Math.ceil(craft.hp/craft.maxHp*100):null,bodyRoll:craft?.bodyRoll??0,
       threat:threat?.alive?{...eye(threat,2.45),label:ptWarning,time:Math.max(0,(threat.aimAt??this.time)-this.time)}:null,
-      target:target?{x:target.x,y:target.y??0,z:target.z}:null,gates:{...this.gates},
+      target:target?{x:target.x,y:target.surfaceY??target.y??0,z:target.z}:null,gates:{...this.gates},
+      stationPickups:{...this.knowledge,available:this.stationItemsAvailable},
       prompt:this.prompt,progress:this.progress,order:this.order,power:this.power,transmitting:this.transmitting??false,
       sent:this.sent/this.settings.hold,source:this.source??null,flags:{...this.flags},
       squadIds:['local',this.sim.players.has('duran')?'duran':'wing',this.medic?.id??'medic','bruno',...ESCORT_INFANTRY.map(p=>p.id)],
@@ -960,7 +1023,7 @@ class NaharDirector{
     for(const key of SAVE_FIELDS)this[key]=structuredClone(save.mission[key]);
     Object.assign(this,{failed:null,complete:false,input:{},lastSwap:false,lastOrder:false,
       switchAt:null,threatId:null,prompt:'',progress:0,interaction:null,medicCare:0,exitAt:null,
-      landingClearSince:null,rescuerId:null,rescuePatientId:null,rescueGoal:null,disembark:null,squadPatientId:null});
+      landingClearSince:null,rescuerId:null,rescuePatientId:null,rescueGoal:null,disembark:null,squadPatientId:null,nextReinforcementCheck:0});
     this.eventsDone=new Set(save.mission.eventsDone);this.syncGates();
     this.addEscort();
     this.latestSave=this.checkpoint?structuredClone(save):null;this.saveRevision++;this.epoch++;

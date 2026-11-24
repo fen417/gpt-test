@@ -107,7 +107,12 @@ export class CampaignSession {
       players:this.state.players.map(p=>{
         const a=oldPlayers.get(p.id),b=newPlayers.get(p.id);
         if(!a||!b||a.alive!==p.alive||b.alive!==p.alive||Math.hypot(a.x-b.x,a.z-b.z)>8)return p;
-        return {...p,x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),z:lerp(a.z,b.z,t)};
+        const pose={...p,x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),z:lerp(a.z,b.z,t)};
+        if(campaign.missionId==='m04'&&p.id!=='local'&&!p.vehicleId){
+          pose.yaw=lerpAngle(a.yaw,b.yaw,t);
+          pose.pitch=lerp(a.pitch,b.pitch,t);
+        }
+        return pose;
       }),
       vehicles:this.state.vehicles.map(v=>{
         const a=oldVehicles.get(v.id),b=newVehicles.get(v.id);

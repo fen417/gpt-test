@@ -25,7 +25,7 @@ const terrainPads=[{x:0,z:116,w:4136,d:24,height:-4.2,blend:8}];
 const terrain=makeTerrain(size,landforms,cell,terrainPads);
 
 export const NAHAR_LANDING={primary:{x:-35,z:-35},alternate:{x:-111,z:-38}};
-export const NAHAR_WATER={x:0,z:116,w:4096,d:21,y:-3.18};
+export const NAHAR_WATER={x:0,z:116,w:4096,d:32,y:-3.165};
 export const NAHAR_STORM={x:-50,z:5,innerX:640,innerZ:510,outerX:1080,outerZ:860};
 export const NAHAR_RAIL_CROSSINGS=[-18,19];
 const railHalfWidth=4.4,crossingWidth=7;
@@ -47,7 +47,8 @@ const roadPlan=[
 export const NAHAR_SITES={
   supplyPrimary:{x:-52,z:-12},supplyAlternate:{x:-93,z:-15},workshop:{x:-76,z:20},
   platforms:{x:2,z:-1},station:{x:19,z:13},dispatcher:{x:33,y:3.12,z:31},
-  log:{x:25,y:3.12,z:27},recording:{x:37,z:42},freight:{x:37,z:58},
+  log:{x:24.21,y:3.12,z:25.83,surfaceY:4.17,yaw:.06},
+  recording:{x:37,y:0,z:42,surfaceY:.68,yaw:-.3},freight:{x:37,z:58},
   bridge:{x:104,z:93},power:{x:124,z:164},relay:{x:142,z:157},
   tunnelGate:{x:177,z:194},exit:{x:209,z:194},
 };

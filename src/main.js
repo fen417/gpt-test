@@ -874,7 +874,10 @@ async function startCampaign(options){
     await session.ready;
     signal.throwIfAborted();
     state=session.snapshot();
-    await prepareMatchMap(ticket,state.mapId);
+    const [,stationPickups]=await Promise.all([
+      prepareMatchMap(ticket,state.mapId),fourth?presentations.loadStationPickups():null,
+    ]);
+    signal.throwIfAborted();
     if(second){
       campaignPresentation=new presentations.Mission2Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
@@ -883,7 +886,7 @@ async function startCampaign(options){
       campaignPresentation=new presentations.Mission3Presentation(session,{renderer,audio,leave,clearControls,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
     }else if(fourth){
-      campaignPresentation=new presentations.Mission4Presentation(session,{renderer,audio,leave,clearControls,
+      campaignPresentation=new presentations.Mission4Presentation(session,{renderer,audio,leave,clearControls,stationPickups,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
     }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,depotAsset,
       resume:()=>requestControl(true)});

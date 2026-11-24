@@ -428,12 +428,15 @@ export function thinkInfantryBot(sim,p,dt){
     }
   }else{
     if(p.weaponSlot===2&&(p.stowedAmmo.ammo+p.stowedAmmo.reserve)>0)p.input.weaponSlot=1;
-    if(ai.goal)moveBot(sim,p,ai.goal,dt,{sprint:ai.mode==='advance'||ai.mode==='retreat',cautious:ai.mode==='search'});
-    if(ai.mode==='recover'&&ai.goal&&distance(p,ai.goal)<3){p.input.forward=p.input.strafe=0;p.input.crouch=true;}
-    if(ai.cover&&distance(p,ai.cover)<1&&(p.hp<65||ai.pressure>.3))p.input.crouch=true;
-    if(ai.memory){const wanted=Math.atan2(-(ai.memory.x-p.x),-(ai.memory.z-p.z))+(distance(p,ai.memory)<3?Math.sin((sim.time-ai.memory.at)*1.8)*.7:0);
-      p.input.yaw=p.yaw+clamp(angle(wanted-p.yaw),-dt*sim.botSettings.turnSpeed,dt*sim.botSettings.turnSpeed);}
-    else if(ai.goal&&distance(p,ai.goal)<1){p.input.yaw=p.yaw+Math.sin(sim.time*.7+p.botSlot)*dt*.35;p.input.crouch=ai.role==='overwatch'||ai.role==='anchor';}
+    const following=sim.campaign?.followSquad?.(p,dt);
+    if(!following){
+      if(ai.goal)moveBot(sim,p,ai.goal,dt,{sprint:ai.mode==='advance'||ai.mode==='retreat',cautious:ai.mode==='search'});
+      if(ai.mode==='recover'&&ai.goal&&distance(p,ai.goal)<3){p.input.forward=p.input.strafe=0;p.input.crouch=true;}
+      if(ai.cover&&distance(p,ai.cover)<1&&(p.hp<65||ai.pressure>.3))p.input.crouch=true;
+      if(ai.memory){const wanted=Math.atan2(-(ai.memory.x-p.x),-(ai.memory.z-p.z))+(distance(p,ai.memory)<3?Math.sin((sim.time-ai.memory.at)*1.8)*.7:0);
+        p.input.yaw=p.yaw+clamp(angle(wanted-p.yaw),-dt*sim.botSettings.turnSpeed,dt*sim.botSettings.turnSpeed);}
+      else if(ai.goal&&distance(p,ai.goal)<1){p.input.yaw=p.yaw+Math.sin(sim.time*.7+p.botSlot)*dt*.35;p.input.crouch=ai.role==='overwatch'||ai.role==='anchor';}
+    }
     if(p.ammo<getWeapon(p.classId,p.weaponId).mag*.45&&p.reserve>0)p.input.reload=true;
     if(ai.role==='anchor'&&ai.memory&&sim.time-ai.memory.at<1.8&&ai.pressure<.5&&p.ammo>15&&!p.reloading){
       aim(sim,p,{...ai.memory,height:ai.memory.height??1.05,velocityX:0,velocityZ:0},dt);ai.mode='suppress';p.input.sprint=false;

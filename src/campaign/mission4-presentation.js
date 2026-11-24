@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM} from '../../shared/campaign/nahar.js';
 import {bulletHeight} from '../../shared/ballistics.js';
@@ -8,6 +9,7 @@ import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {placeCampaignMarker} from './markers.js';
 import {InfantryMinimap} from './minimap.js';
+import {NaharWater} from './nahar-water.js';
 import './mission4.css';
 
 const orders={F1:'follow',F2:'hold',KeyQ:'assist'};
@@ -16,6 +18,12 @@ const angle=value=>Math.atan2(Math.sin(value),Math.cos(value));
 const mix=THREE.MathUtils.lerp;
 const smooth=THREE.MathUtils.smoothstep;
 const names={primary:'Двор депо',alternate:'Ремонтный двор'};
+const stationPickupsUrl=new URL('../assets/nahar/station-pickups.glb',import.meta.url).href;
+
+export async function loadStationPickups(){
+  const {scene}=await new GLTFLoader().loadAsync(stationPickupsUrl);
+  return scene;
+}
 
 function naharMusic(state,definition){
   const m=state.campaign;
@@ -26,7 +34,7 @@ function naharMusic(state,definition){
 }
 
 export class Mission4Presentation{
-  constructor(session,{renderer,audio,leave,clearControls,resume,getBindings,keyLabel}){
+  constructor(session,{renderer,audio,leave,clearControls,resume,getBindings,keyLabel,stationPickups}){
     Object.assign(this,{session,renderer,combat:audio,clearControls,resume,getBindings,keyLabel,
       locale:session.locale,definition:session.definition});
     const rootUrl=new URL(`${import.meta.env.BASE_URL}campaign/m04/`,location.href);
@@ -53,6 +61,24 @@ export class Mission4Presentation{
     this.casualtyMarkers=new Map();
     this.minimap=new InfantryMinimap(renderer);
     this.dressing=new THREE.Group();this.dressing.name='nahar-interactives';renderer.worldRoot.add(this.dressing);
+    this.water=new NaharWater(renderer,this.dressing);
+    this.dressing.add(stationPickups);
+    this.stationPickups=['log','recording'].map(id=>{
+      const model=stationPickups.getObjectByName(id),site=NAHAR_SITES[id];
+      const materials=new Set(),geometries=new Set();
+      model.position.set(site.x,site.surfaceY+.003,site.z);model.rotation.y=site.yaw;
+      model.traverse(mesh=>{
+        if(!mesh.isMesh)return;
+        geometries.add(mesh.geometry);
+        for(const material of [mesh.material].flat()){
+          material.emissive.setHex(0x9c854b);
+          material.emissiveIntensity=0;
+          materials.add(material);
+        }
+        mesh.receiveShadow=true;
+      });
+      return {id,model,materials,geometries};
+    });
     this.sky=renderer.webgpu?renderer.atmosphere:renderer.atmosphere.sky.material.uniforms;
     this.cityFog=new THREE.Color('#c6ac91');this.stormFog=new THREE.Color('#ba8c64');
     this.dustBanks=Array.from({length:25},(_,index)=>{
@@ -203,6 +229,11 @@ export class Mission4Presentation{
   render(r,state,dt,view){
     const m=state.campaign;if(m?.missionId!=='m04')return;
     this.syncGates(m.gates);
+    const pickupGlow=m.stationPickups.available?.22:0;
+    for(const {id,model,materials} of this.stationPickups){
+      model.visible=!m.airborne&&!m.stationPickups[id];
+      for(const material of materials)material.emissiveIntensity=pickupGlow;
+    }
     const p=state.players.find(a=>a.id==='local'),craft=state.vehicles.find(v=>v.id===p?.vehicleId);
     r.sunOffset.set(-140,86,-60);
     const pose=r.blackHawkViewPose??craft;
@@ -236,6 +267,7 @@ export class Mission4Presentation{
       r.camera.position.set(e.x-6+t*3,1.78,e.z+2.3-t*.8);r.camera.lookAt(e.x+9,1.34,e.z-.4);r.weapon.visible=false;
     }
     this.updateStorm(r,m.time,view.quality);
+    this.water.update(r.clock,r.scene.fog.density,r.lowQuality);
     r.camera.updateMatrixWorld();
     const show=!m.failed&&!m.complete&&!m.cutscene&&p;
     this.placeMinigunReticle(r,show&&p.alive&&!p.downed&&!view.paused&&m.transfer==null&&!m.disembark?r.minigunAim:null);
@@ -303,6 +335,11 @@ export class Mission4Presentation{
     this.sky.hazeAmount.value=o.haze;this.sky.hazeTint.value.copy(o.hazeTint);
     for(const {sprite} of this.dustBanks)sprite.material.dispose();
     for(const gate of Object.values(this.doorMeshes)){gate.geometry.dispose();gate.material.dispose();}
+    this.water.dispose();
+    for(const {geometries,materials} of this.stationPickups){
+      for(const geometry of geometries)geometry.dispose();
+      for(const material of materials)material.dispose();
+    }
     this.dressing.removeFromParent();this.root.remove();
     document.body.classList.remove('campaign-active','campaign-m04-active','campaign-cinematic','campaign-downed');
   }
