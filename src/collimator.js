@@ -59,7 +59,9 @@ export function mountCollimator(weaponId,root,pistolMatrix){
   const scale=scales[weaponId]??1;
   optic.scale.setScalar(scale);
   const eye=template.getObjectByName('SightEye').position;
-  const sightPoint=root.worldToLocal(socket.localToWorld(eye.clone().multiplyScalar(scale)));
+  // SightEye is centered inside the housing. Frame ADS from its rear rim.
+  const rear=eye.clone();rear.z+=.048;
+  const sightPoint=root.worldToLocal(socket.localToWorld(rear.multiplyScalar(scale)));
   if(pistolMatrix)sightPoint.applyMatrix4(pistolMatrix);
   dotGeometry??=new CircleGeometry(.0007,16);
   dotMaterial??=new MeshBasicMaterial({color:0xff4029,toneMapped:false,depthWrite:false});
@@ -69,7 +71,7 @@ export function mountCollimator(weaponId,root,pistolMatrix){
   optic.add(dot);
   let installed=false;
   return {
-    height:sightPoint.y,depth:-(pistolMatrix ? .30 : .235)-sightPoint.z,
+    height:sightPoint.y,eyeZ:sightPoint.z,
     show(visible){
       if(visible===installed)return false;
       installed=visible;

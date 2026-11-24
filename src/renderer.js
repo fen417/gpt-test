@@ -2208,16 +2208,22 @@ export class GameRenderer {
       const rifleSight=this.weaponRig.rifleSight;
       const collimatorSight=this.weaponRig.collimatorSight;
       this.collimatorAiming=Boolean(this.weapon.visible&&collimatorSight&&this.aimAmount>.8);
+      const eyeZ=collimatorSight?.eyeZ??rifleSight?.eyeZ;
+      const inModelOptic=eyeZ!=null&&!scopedWeapon&&(weaponOptic||collimatorSight!=null);
+      const eyeRelief=Math.max(.095,worldNear+.050);
       // A little extra eye relief makes the MG/PKP aperture less dominant
       // without moving the centred sight line or changing bullet trajectories.
-      const adsZ=collimatorSight?.depth??(pistol?-.46:closeOptic?-.13:rifleSight?.depth??(scopedWeapon?-.32:supportIron?-.288:-.27));
+      const adsZ=inModelOptic?-eyeRelief-eyeZ:(pistol?-.46:closeOptic?-.13:rifleSight?.depth??(scopedWeapon?-.32:supportIron?-.288:-.27));
       const adsY=-(collimatorSight?.height??(pistol?this.weaponRig.pistolSightHeight:rifleSight?.height??.167));
       const rifleSprint=pistol?0:this.sprintBlend;
       const weaponBob=bob*(pistol?1-this.sprintBlend*.55:1);
+      // Close optics have less room for sideways motion and rearward recoil
+      // before the housing occludes the lens or reaches the near plane.
+      const opticMovement=inModelOptic?lerp(1,.30,this.aimAmount):1;
       this.weapon.position.set(
-        lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * weaponBob - this.swayX + rifleSprint * .035 + actionTilt * .055 + lowered * .06,
-        lerp(pistol ? -.105 : -.23, adsY, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
-        lerp(pistol ? -.50 : -.42, adsZ, this.aimAmount) + kick * .056 + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
+        lerp(pistol ? .15 : .26, 0, this.aimAmount) + Math.sin(cycle) * .015 * weaponBob - this.swayX * opticMovement + rifleSprint * .035 + actionTilt * .055 + lowered * .06,
+        lerp(pistol ? -.105 : -.23, adsY, this.aimAmount) + Math.cos(cycle * 2) * .01 * weaponBob - this.swayY * opticMovement - reloadMotion * .10 - rifleSprint * .07 - this.landDip * .75 - actionTilt * .065 - lowered * .42,
+        lerp(pistol ? -.50 : -.42, adsZ, this.aimAmount) + kick * .056 * opticMovement + reloadMotion * .06 + actionTilt * .04 + lowered * .14,
       );
       this.weapon.rotation.set(
         kick * (pistol ? .089 : .062) - reloadMotion * .39 - rifleSprint * .25 + Math.cos(cycle) * weaponBob * .022 - actionTilt * .18 - lowered * .72,

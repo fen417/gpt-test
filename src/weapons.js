@@ -23,6 +23,7 @@ const rifleFits = {
   dmr12: {ejection:[.052,.034,-.133]},
   sv98: {ejection:[.055,.010,-.088], rotatingBolt:true},
 };
+const fallbackScopeSight={height:.169,eyeZ:.023};
 
 // This viewmodel uses ordinary opaque depth-tested geometry. It is rendered in
 // its own depth pass by GameRenderer; no material is allowed to see through it.
@@ -637,7 +638,7 @@ export function createWeaponRig(owner = {}) {
     const cover=model.getObjectByName('FeedCover');
     const chargePoint=model.getObjectByName('Charge_Grip')?.position;
     const scopeEye=model.getObjectByName('Scope_Eye')?.position;
-    const sight=scopeEye?{height:scopeEye.y,depth:-.25-scopeEye.z}:fit.sight;
+    const sight=scopeEye?{height:scopeEye.y,depth:-.25-scopeEye.z,eyeZ:scopeEye.z}:fit.sight;
     rifles.set(id,{model,bolt,ejection,muzzle,magazine,magazineHome:magazine.position.clone(),cover,
       chargePoint,sight,scoped:Boolean(scopeEye),rotatingBolt:fit.rotatingBolt,fit});
   }
@@ -1214,7 +1215,7 @@ export function createWeaponRig(owner = {}) {
     showWeaponUpgrades(weaponRoot,key,slots,owner.detailLevel===0);
     if(rifle&&slots?.barrel&&upgradeMuzzle(rifle.model,muzzleFlash.position))flashLight.position.copy(muzzleFlash.position);
     const upgradedEye=rifle&&upgradeOpticEye(rifle.model,scopeEye);
-    upgradeSight=upgradedEye?{height:scopeEye.y,depth:-.25-scopeEye.z}:null;
+    upgradeSight=upgradedEye?{height:scopeEye.y,depth:-.25-scopeEye.z,eyeZ:scopeEye.z}:null;
     const stockEye=rifle?.model.getObjectByName('Scope_Eye');
     opticMarks.visible=Boolean(opticReticle&&aim>.75&&!usingTool&&!unarmed&&(upgradedEye||stockEye||recon));
     if(opticMarks.visible){
@@ -1326,7 +1327,7 @@ export function createWeaponRig(owner = {}) {
   }
   return {weapon,handguard,bolt,get ejection(){return visibleRifle?.ejection??visiblePistol?.ejection??bolt;},
     get collimatorSight(){return activeOptic;},
-    get rifleSight(){return upgradeSight??visibleRifle?.sight;},
+    get rifleSight(){return upgradeSight??visibleRifle?.sight??(rifleAssembly.visible&&scope.visible?fallbackScopeSight:null);},
     get sightType(){return visibleRifle?.scoped?'scope':visiblePistol||visibleRifle?'iron':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
     barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
