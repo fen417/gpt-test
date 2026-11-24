@@ -1,5 +1,6 @@
 import { GAME_VERSION } from '../shared/releases.js';
 import { PROTOCOL_VERSION } from '../shared/world.js';
+import { gpuPassLabels } from './gpu-pass-timing.js';
 import './perf-panel.css';
 
 export function mountPerfPanel({reset,simulatePause}={}){
@@ -45,6 +46,10 @@ document.body.append(panel);
       `FPS средний: ${data.frameMs?.avg>0?(1000/data.frameMs.avg).toFixed(1):'н/д'}`,
       `Кадр avg/p95/p99: ${ms(data.frameMs.avg)} / ${ms(data.frameMs.p95)} / ${ms(data.frameMs.p99)} мс`,
       `CPU avg/p95: ${ms(data.cpuMs.avg)} / ${ms(data.cpuMs.p95)} мс · GPU avg/p95: ${ms(data.gpuMs?.avg)} / ${ms(data.gpuMs?.p95)} мс`,
+      ...Object.entries(gpuPassLabels).flatMap(([pass,label])=>{
+        const sample=data.gpuPassMs?.[pass];
+        return sample?[`GPU ${label} · avg/p95: ${ms(sample.avg)} / ${ms(sample.p95)} мс (${sample.count})`]:[];
+      }),
       `Draw calls: ${data.calls} · Треугольники: ${data.triangles} · Видимые объекты: ${data.visibleObjects??'н/д'}`,
       `Рендер: ${data.sceneWidth}×${data.sceneHeight} · FSR: ${data.fsr??'off'} · ×${ms(data.fsrScale)} · RCAS: ${data.fsrSharpness??'—'}%`,
       `AA: ${data.worldSamples??0}× MSAA мира · AA: ${data.smaa?'SMAA':data.fxaa?'FXAA':'—'} · AF: ${data.anisotropy??'—'}×`,

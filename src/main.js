@@ -50,7 +50,7 @@ const text=(id,value)=>{const node=$(id),next=String(value);if(node.textContent!
 const audio=new CombatAudio();
 const canvas=$('game');
 const reconMarks=mountReconMarks($('recon-markers'));
-const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),reset:()=>{for(const samples of [frameTimes,cpuTimes,renderTimes,simulationTimes])samples.reset();renderer?.gpuTimer.samples.reset();}});
+const perfPanel=mountPerfPanel({simulatePause:ms=>multiplayer.ws?.pause?.(ms),reset:()=>{for(const samples of [frameTimes,cpuTimes,renderTimes,simulationTimes])samples.reset();renderer?.gpuTimer.reset();}});
 let renderer,simulation=null,state=null,localId=null,active=false,busy=false;
 let matchLoad=null,enteredNetworkEpoch=null;
 const loadingScreen=mountMatchLoading(()=>leave());

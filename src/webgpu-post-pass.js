@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WorldPost } from './world-post.js';
+import { renderTimed } from './gpu-pass-timing.js';
 import { webGpuWorldStages } from './webgpu-world-stages.js';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, vec2, vec3, vec4, Fn, If, min, max, distance,
@@ -137,7 +138,7 @@ export class WebGpuPostPass {
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.useFxaa.value=1;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
-  end(time,quality){
+  end(time,quality,profiler){
     const r=this.renderer,reset=r.info.autoReset,oldToneMapping=r.toneMapping;
     r.info.autoReset=false;
     // ACES is already applied in postColor. Disable the automatic tone map,
@@ -149,18 +150,24 @@ export class WebGpuPostPass {
       const finalTarget=this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null;
       const output=this.smaaActive?this.smaa.input:finalTarget;
       if(this.fsrQuality!=='off'&&this.fsrScale<.995){
-        r.setRenderTarget(this.ldrTarget);r.render(this.scene,this.camera);
-        r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-        r.setRenderTarget(output);
-        r.render(this.rcasScene,this.camera);
+        r.setRenderTarget(this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        const timing=profiler?.beginPass('fsr');
+        try{
+          r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
+          r.setRenderTarget(output);r.render(this.rcasScene,this.camera);
+        }finally{if(timing)profiler.endPass();}
       }else {
         r.setRenderTarget(output);
-        r.render(this.scene,this.camera);
+        renderTimed(r,this.scene,this.camera,profiler,'display');
       }
       if(this.smaaActive){
-        r.setRenderTarget(finalTarget);r.render(this.smaa.scene,this.camera);
+        r.setRenderTarget(finalTarget);renderTimed(r,this.smaa.scene,this.camera,profiler,'smaa');
       }
-      this.frameGeneration?.presentReal();
+      if(this.frameGeneration?.enabled){
+        const timing=profiler?.beginPass('realPresent');
+        try{this.frameGeneration.presentReal();}
+        finally{if(timing)profiler.endPass();}
+      }
     }finally{r.setRenderTarget(null);r.toneMapping=oldToneMapping;r.info.autoReset=reset;}
   }
   disposeSmaa(){

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderTimed } from './gpu-pass-timing.js';
 
 export const SOFT_PARTICLE_LAYER=2;
 
@@ -29,7 +30,7 @@ export class SoftSmokePass {
     this.material.depthTest=false;
   }
 
-  render(owner, target) {
+  render(owner, target, profiler) {
     const {renderer,scene,camera}=owner, smoke=owner.effectBatches.smoke;
     const mask=camera.layers.mask, background=scene.background;
     const autoClear=renderer.autoClear, shadows=renderer.shadowMap.enabled;
@@ -44,7 +45,7 @@ export class SoftSmokePass {
       renderer.autoClear=false;
       renderer.shadowMap.enabled=false;
       smoke.material=this.material;
-      renderer.render(scene,camera);
+      renderTimed(renderer,scene,camera,profiler,'softParticles');
     }finally{
       smoke.material=base;
       camera.layers.mask=mask;

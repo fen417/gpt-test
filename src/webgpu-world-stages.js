@@ -1,6 +1,7 @@
 import {makeHeatDistortionWGSL} from './webgpu-heat-distortion.js';
 import {makeCameraEffectsWGSL} from './webgpu-camera-effects.js';
 import {volumeSunWGSL} from './volume-sun.js';
+import {renderTimed} from './gpu-pass-timing.js';
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, wgslFn, vec2, vec4 } from 'three/tsl';
@@ -313,12 +314,12 @@ export function webGpuWorldStages(post, geometry, camera) {
   }
   if(reflected)rgb=applyReflection({...depthParams,...waterParams,rgb,reflected:texture(post.reflection.texture).sample(at)});
   const composite=make(vec4(rgb,1));
-  function draw(target,scene) {
+  function draw(target,scene,profiler,pass) {
     renderer.setRenderTarget(target);
-    renderer.render(scene,camera);
+    renderTimed(renderer,scene,camera,profiler,pass);
   }
   return {
-    render(target) {
+    render(target,profiler) {
       params.bloomGain.value=state.bloomGain;
       params.cameraY.value=state.cameraY;
       params.cameraX.value=state.cameraX;
@@ -326,7 +327,7 @@ export function webGpuWorldStages(post, geometry, camera) {
       params.time.value=state.time;
       params.heatTime.value=state.heatTime;
       params.reflectionSteps.value=state.reflectionSteps;
-      if(reflected)draw(post.reflection,reflected);
+      if(reflected)draw(post.reflection,reflected,profiler,'reflections');
       params.atmosphereStrength.value=state.atmosphereStrength;
       if(masks){
         const count=post.shadowMaps.length;
@@ -341,14 +342,19 @@ export function webGpuWorldStages(post, geometry, camera) {
           return {scene:make(mask(count)(values)),maps};
         })();
         for(let i=0;i<count;i++)entry.maps[i].value=post.shadowMaps[i];
-        draw(post.mask,entry.scene);
+        draw(post.mask,entry.scene,profiler,'depthEffects');
       }
-      for(let i=0;i<blurs.length;i++){
-        const {scene,pixel,src}=blurs[i];
-        pixel.value.set(1/src.width,1/src.height);
-        draw(post.bloom[i],scene);
+      if(blurs.length){
+        const timing=profiler?.beginPass('bloom');
+        try{
+          for(let i=0;i<blurs.length;i++){
+            const {scene,pixel,src}=blurs[i];
+            pixel.value.set(1/src.width,1/src.height);
+            draw(post.bloom[i],scene);
+          }
+        }finally{if(timing)profiler.endPass();}
       }
-      draw(target,composite);
+      draw(target,composite,profiler,'worldComposite');
     },
     dispose() { for(const material of materials)material.dispose(); },
   };

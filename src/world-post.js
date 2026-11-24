@@ -108,7 +108,7 @@ export class WorldPost {
     if (target.width !== width || target.height !== height) target.setSize(width, height);
   }
 
-  apply(output, camera, scene, sunOffset, sun, campaign, time, cascades) {
+  apply(output, camera, scene, sunOffset, sun, campaign, time, cascades, profiler) {
     const r = this.renderer, state = this.state;
     if (this.mask||this.reflection||this.cameraFX||this.hasHeat) {
       state.projection.copy(camera.projectionMatrix);
@@ -159,7 +159,7 @@ export class WorldPost {
       state.time=time;
     }
     try {
-      this.stages.render(output);
+      this.stages.render(output,profiler);
     } finally {
       r.setRenderTarget(output);
     }

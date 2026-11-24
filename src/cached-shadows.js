@@ -21,14 +21,18 @@ export class CachedShadows {
     this.native=owner.renderer.shadowMap.render;
     owner.renderer.shadowMap.render=(lights,scene,camera)=>{
       if(scene!==owner.scene||!owner.worldRoot?.visible||!owner.renderer.shadowMap.enabled)return native(lights,scene,camera);
-      if(owner.shadowDynamicOnly){
-        const casters=[];owner.staticRoot?.traverse(mesh=>{if(mesh.castShadow){casters.push(mesh);mesh.castShadow=false;}});
-        try{return native(lights,scene,camera);}finally{for(const mesh of casters)mesh.castShadow=true;}
-      }
-      // Run inside WebGLRenderer.render, with its render-state stack active.
-      const hidden=owner.interiorVisibility.hidden;
-      for(const mesh of hidden)mesh.visible=true;
-      try{if(owner.cascades)owner.cascades.render(native);else this.render(owner,native);}finally{for(const mesh of hidden)mesh.visible=false;}
+      const timer=owner.perfEnabled?owner.gpuTimer:null;
+      const timing=timer?.beginPass('shadows');
+      try{
+        if(owner.shadowDynamicOnly){
+          const casters=[];owner.staticRoot?.traverse(mesh=>{if(mesh.castShadow){casters.push(mesh);mesh.castShadow=false;}});
+          try{return native(lights,scene,camera);}finally{for(const mesh of casters)mesh.castShadow=true;}
+        }
+        // Run inside WebGLRenderer.render, with its render-state stack active.
+        const hidden=owner.interiorVisibility.hidden;
+        for(const mesh of hidden)mesh.visible=true;
+        try{if(owner.cascades)owner.cascades.render(native);else this.render(owner,native);}finally{for(const mesh of hidden)mesh.visible=false;}
+      }finally{if(timing)timer.endPass();}
     };
   }
   uninstall(){if(this.installed){this.installed.render=this.native;this.installed=null;}}

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WorldPost } from './world-post.js';
+import { renderTimed } from './gpu-pass-timing.js';
 import { webGlWorldStages } from './webgl-world-stages.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { FSR1_VERTEX, FSR1_EASU_FRAGMENT, FSR1_RCAS_FRAGMENT, fsr1RenderScale } from './fsr1.js';
@@ -107,7 +108,7 @@ export class PostPass {
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.material.uniforms.useFxaa.value=1;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
-  end(time,quality){
+  end(time,quality,profiler){
     const r=this.renderer;r.setRenderTarget(null);const reset=r.info.autoReset;r.info.autoReset=false;
     this.material.uniforms.time.value=time;this.material.uniforms.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.material.uniforms.toneMappingExposure.value=r.toneMappingExposure;
@@ -116,13 +117,20 @@ export class PostPass {
       if(this.fsrQuality!=='off'&&this.fsrScale<0.995){
         // Display-referred low-resolution image -> EASU at native resolution
         // -> RCAS sharpening at native resolution. Keep the HTML HUD native.
-        r.setRenderTarget(this.ldrTarget);r.render(this.scene,this.camera);
-        r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-        r.setRenderTarget(output);r.render(this.rcasScene,this.camera);
+        r.setRenderTarget(this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        const timing=profiler?.beginPass('fsr');
+        try{
+          r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
+          r.setRenderTarget(output);r.render(this.rcasScene,this.camera);
+        }finally{if(timing)profiler.endPass();}
       }else{
-        r.setRenderTarget(output);r.render(this.scene,this.camera);
+        r.setRenderTarget(output);renderTimed(r,this.scene,this.camera,profiler,'display');
       }
-      if(this.smaaActive)this.smaa.render(r);
+      if(this.smaaActive){
+        const timing=profiler?.beginPass('smaa');
+        try{this.smaa.render(r);}
+        finally{if(timing)profiler.endPass();}
+      }
     }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
   }
   dispose(){

@@ -1,6 +1,7 @@
 import { rayCollider } from '../shared/asset-colliders.js';
 import { boxBounds } from '../shared/geometry.js';
 import { SpatialIndex } from '../shared/spatial-index.js';
+import { renderTimed } from './gpu-pass-timing.js';
 const coverIndices=new WeakMap(),coverCandidates=[];
 // View models get their own depth pass, while retaining normal self-occlusion.
 export const VIEWMODEL_LAYER=1;
@@ -29,7 +30,7 @@ export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   return closest;
 }
 
-export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,finishWorld){
+export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,finishWorld,profiler){
   const mask=camera.layers.mask,autoClear=renderer.autoClear,autoReset=renderer.info.autoReset;
   const background=scene.background;
   const shadowAutoUpdate=renderer.shadowMap?.autoUpdate;
@@ -37,9 +38,9 @@ export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,fin
   const updateWorld=scene.matrixWorldAutoUpdate;
   renderer.info.autoReset=false;renderer.info.reset();
   try{
-    renderer.autoClear=true;camera.layers.set(0);renderer.render(scene,camera);
+    renderer.autoClear=true;camera.layers.set(0);renderTimed(renderer,scene,camera,profiler,'world');
     if(renderer.info.render)renderer.info.worldRender={...renderer.info.render};
-    finishWorld?.();
+    finishWorld?.(profiler);
     if(weapon?.visible){
       // A solid scene background forces Three.js to clear color even with autoClear off.
       scene.background=null;
@@ -47,7 +48,7 @@ export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,fin
       if(worldRoot)worldRoot.visible=false;
       // Both passes share a camera and transforms. The first pass already updated them.
       scene.matrixWorldAutoUpdate=false;
-      renderer.autoClear=false;renderer.clearDepth();camera.layers.set(VIEWMODEL_LAYER);renderer.render(scene,camera);
+      renderer.autoClear=false;renderer.clearDepth();camera.layers.set(VIEWMODEL_LAYER);renderTimed(renderer,scene,camera,profiler,'viewModel');
     }
   }finally{
     scene.background=background;

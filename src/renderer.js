@@ -184,12 +184,12 @@ export class GameRenderer {
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
     this.waterReflectionPlane=new THREE.Vector2();
     this.localReflections=new LocalReflections();
-    this.finishWorldEffects=()=>{
+    this.finishWorldEffects=profiler=>{
       const effects=this.postPass.worldEffects;
-      effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock,this.cascades);
+      effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock,this.cascades,profiler);
       if(effects.softSmoke&&effects.world.depthTexture){
         this.softSmokePass??=new SoftSmokePass(this,effects.world.depthTexture);
-        this.softSmokePass.render(this,effects.world);
+        this.softSmokePass.render(this,effects.world,profiler);
       }
     };
     this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40, frameGeneration:'off' };
@@ -264,7 +264,7 @@ export class GameRenderer {
       onError?.(error);
       throw error;
     }
-    this.gpuTimer=webgpu?new webgpu.GpuTimer(this.renderer):new GpuTimer(this.renderer.getContext());
+    this.gpuTimer=webgpu?new webgpu.GpuTimer(this.renderer,this.perfEnabled):new GpuTimer(this.renderer.getContext(),this.perfEnabled);
     this.postPass=webgpu?new webgpu.PostPass(this.renderer,{antialias}):new PostPass(this.renderer,{antialias});
     this.frameGeneration=webgpu?new webgpu.FrameGeneration(this.renderer,this.postPass):null;
     if(this.frameGeneration)this.postPass.frameGeneration=this.frameGeneration;
@@ -275,7 +275,8 @@ export class GameRenderer {
         event.preventDefault();
       }, false);
       canvas.addEventListener('webglcontextrestored', () => {
-        const enabled=this.gpuTimer.enabled;this.gpuTimer=new GpuTimer(this.renderer.getContext());this.gpuTimer.enabled=enabled;
+        const enabled=this.gpuTimer.enabled;
+        this.gpuTimer=new GpuTimer(this.renderer.getContext(),this.perfEnabled);this.gpuTimer.enabled=enabled;
         this.cachedShadows.disposeTargets();this.cachedShadows.size=null;this.cachedShadows.install(this);
         this.cachedShadows.invalidate();
         this.sun.shadow.needsUpdate = true;
@@ -2013,6 +2014,7 @@ export class GameRenderer {
     this.cascades?.update();
     if(!menu&&!warming)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
+    const profiler=this.perfEnabled?this.gpuTimer:null;
     if(softSmoke)smoke.layers.set(SOFT_PARTICLE_LAYER);
     try{
       if(localEnvironment)this.scene.environment=localEnvironment;
@@ -2025,16 +2027,16 @@ export class GameRenderer {
         this.postPass.begin(this.quality);
         try {
           generator?.beginWorld(this.scene);
-          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null);
+          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null,profiler);
         } finally {generator?.endWorld();}
-        this.postPass.end(this.clock,this.quality);
+        this.postPass.end(this.clock,this.quality,profiler);
       }catch(error){
         if(!generator?.enabled)throw error;
         // A bad pipeline/unsupported MRT disables only FG, not the whole WebGPU game.
         generator.error(error);
         this.postPass.begin(this.quality);
-        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null);
-        this.postPass.end(this.clock,this.quality);
+        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null,profiler);
+        this.postPass.end(this.clock,this.quality,profiler);
       }
     }
     finally{
@@ -2549,13 +2551,19 @@ export class GameRenderer {
   shouldGenerateFrame(now,meta){return this.frameGeneration?.shouldGenerate(now,meta)??false;}
   presentGeneratedFrame(now,meta){
     if(!this.frameGeneration?.enabled)return false;
+    const profiler=this.perfEnabled?this.gpuTimer:null;
+    const timing=profiler?.beginPass('frameGeneration');
     try{return this.frameGeneration.generate(now,meta);}
     catch(error){this.frameGeneration.error(error);return false;}
+    finally{if(timing){profiler.endPass();profiler.poll(false);}}
   }
   noteRealFrame(now,meta,elapsedMs){this.frameGeneration?.noteReal(now,meta,elapsedMs);}
 
   getStats() {
     const r=this.renderer,post=this.postPass,isGPU=this.api==='webgpu';
+    const gpuPassMs=this.perfEnabled?this.gpuTimer.passSamples.summary():null;
+    const frameGeneration=this.frameGeneration?.stats()??null;
+    if(frameGeneration?.enabled)frameGeneration.gpuMs=gpuPassMs?.frameGeneration?.p95??null;
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
       postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
@@ -2576,7 +2584,7 @@ export class GameRenderer {
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
       fsrScale:post.fsrScale,fsrSharpness:this.gfx.fsrSharpness,sceneWidth:post.target.width,sceneHeight:post.target.height,
-      frameGeneration:this.frameGeneration?.stats()??null,
+      frameGeneration,gpuPassMs,
       integratedGpu:this.integratedGpu,gpuMs:this.gpuTimer.summary(),gpuTimerSupported:Boolean(this.gpuTimer.ext)
     };
   }

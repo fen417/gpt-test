@@ -1,6 +1,7 @@
 import {heatDistortionGLSL} from './webgl-heat-distortion.js';
 import {cameraEffectsGLSL} from './webgl-camera-effects.js';
 import {volumeSunGLSL} from './volume-sun.js';
+import {renderTimed} from './gpu-pass-timing.js';
 import * as THREE from 'three';
 
 const vertex = 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}';
@@ -280,13 +281,13 @@ export function webGlWorldStages(post) {
     ...uniforms, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},reflection:{value:post.reflection?.texture},
     ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
   });
-  function draw(target, material) {
+  function draw(target, material, profiler, pass) {
     mesh.material=material;
     renderer.setRenderTarget(target);
-    renderer.render(scene,camera);
+    renderTimed(renderer,scene,camera,profiler,pass);
   }
   return {
-    render(target) {
+    render(target,profiler) {
       uniforms.atmosphereStrength.value=state.atmosphereStrength;
       uniforms.cameraY.value=state.cameraY;
       uniforms.bloomGain.value=state.bloomGain;
@@ -295,20 +296,25 @@ export function webGlWorldStages(post) {
       uniforms.time.value=state.time;
       uniforms.heatTime.value=state.heatTime;
       uniforms.reflectionSteps.value=state.reflectionSteps;
-      if(reflected)draw(post.reflection,reflected);
+      if(reflected)draw(post.reflection,reflected,profiler,'reflections');
       if(post.mask){
         const count=post.shadowMaps.length;
         const depth=masks[count]??=stage(mask(count),{...uniforms,sceneDepth:{value:world.depthTexture},
           ...Object.fromEntries(post.shadowMaps.map((map,i)=>['volumeMap'+i,{value:map}]))});
         for(let i=0;i<count;i++)depth.uniforms['volumeMap'+i].value=post.shadowMaps[i];
-        draw(post.mask,depth);
+        draw(post.mask,depth,profiler,'depthEffects');
       }
-      for(let i=0;i<blurs.length;i++){
-        const src=i===0?world:post.bloom[i-1];
-        blurs[i].uniforms.pixel.value.set(1/src.width,1/src.height);
-        draw(post.bloom[i],blurs[i]);
+      if(blurs.length){
+        const timing=profiler?.beginPass('bloom');
+        try{
+          for(let i=0;i<blurs.length;i++){
+            const src=i===0?world:post.bloom[i-1];
+            blurs[i].uniforms.pixel.value.set(1/src.width,1/src.height);
+            draw(post.bloom[i],blurs[i]);
+          }
+        }finally{if(timing)profiler.endPass();}
       }
-      draw(target,output);
+      draw(target,output,profiler,'worldComposite');
     },
     dispose() { geometry.dispose(); for(const material of materials)material.dispose(); },
   };
