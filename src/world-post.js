@@ -82,7 +82,7 @@ export class WorldPost {
     this.passes = 1 + levels + Number(mask) + Number(Boolean(reflections)) + Number(Boolean(this.softSmoke));
     this.memory = width * height * (12 + worldSamples * 12);
     if (this.mask) {
-      const divisor=ao<=4&&contact<=4&&atmosphere<=1?4:2;
+      const divisor=ao<=4&&contact===0&&atmosphere<=1?4:2;
       this.resize(this.mask, Math.ceil(width / divisor), Math.ceil(height / divisor));
       this.state.effectPixel.set(1 / this.mask.width, 1 / this.mask.height);
       this.memory += this.mask.width * this.mask.height * 8;

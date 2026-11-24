@@ -90,22 +90,34 @@ void main(){
       if(steps.x<=12.)ao=clamp(sum*2.6/steps.x,0.,.65);
       ao*=1.-smoothstep(27.,48.,range);
     }
-    if(steps.y>0. && dot(n,sunView)>.08 && range<46.){
-      for(int i=1;i<=12;i++){
-        if(float(i)>steps.y)break;
-        float t=float(i)/steps.y, rayLength=.055+.95*t*t;
-        vec3 ray=pos+n*.025+sunView*rayLength;
+    float sunFacing=dot(n,sunView);
+    if(steps.y>0. && sunFacing>.08 && range<36.){
+      float pixelWorld=2.*range/(projection[1][1]*depthSize.y);
+      float bias=clamp(pixelWorld*1.2,.012,.06);
+      vec3 origin=pos+n*bias;
+      for(int i=0;i<12;i++){
+        if(float(i)>=steps.y)break;
+        float t=(float(i)+.5)/steps.y;
+        float rayLength=.035+.88*t*t;
+        vec3 ray=origin+sunView*rayLength;
         vec4 clip=projection*vec4(ray,1.);
         if(clip.w<=0.)break;
         vec2 at=clip.xy/clip.w*.5+.5;
         if(offscreen(at))break;
-        float hit=ray.z-viewAt(at).z;
-        if(hit>.024 && hit<.065+rayLength*.12){
-          vec2 margin=min(at,1.-at);
-          contact=(1.-.7*t)*smoothstep(0.,.045,min(margin.x,margin.y))*(1.-smoothstep(26.,46.,range));
-          break;
-        }
+        vec3 surface=viewAt(at);
+        // The ray must be behind a visible surface, and the surface must
+        // rise above the receiver plane to avoid shadowing the receiver itself.
+        float hit=surface.z-ray.z;
+        float thickness=.045+.11*rayLength+min(pixelWorld,.045);
+        float above=dot(surface-pos,n);
+        float overlap=smoothstep(.003,max(.012,bias*.8),hit)*(1.-smoothstep(thickness*.6,thickness,hit));
+        float blocker=smoothstep(bias*.8,bias*1.65,above);
+        vec2 margin=min(at,1.-at);
+        float edge=smoothstep(0.,.04,min(margin.x,margin.y));
+        contact=max(contact,overlap*blocker*edge*(1.-smoothstep(.12,.91,rayLength)));
+        if(contact>.96)break;
       }
+      contact*=smoothstep(.08,.27,sunFacing)*(1.-smoothstep(18.,36.,range));
     }
   }
   if(steps.z>0. && atmosphereStrength>0.){
@@ -234,19 +246,23 @@ void main(){
   float raw=readDepth(vUv);
   float distance=-viewPosition(vUv,raw).z;
   vec2 grid=vUv/effectPixel-.5, f=fract(grid), base=(floor(grid)+.5)*effectPixel;
-  vec3 effects=vec3(0.);
-  float weights=0.;
+  vec2 effects=vec2(0.);
+  float weights=0., contact=0., contactWeights=0.;
   for(int i=0;i<4;i++){
     vec2 c=vec2(float(i%2),float(i/2));
     vec4 v=texture2D(mask,base+c*effectPixel);
     vec2 s=mix(1.-f,f,c);
-    float w=s.x*s.y*exp(-abs(v.a-distance)/(.08+.021*distance));
-    effects+=v.rgb*w;
+    float depthWeight=exp(-abs(v.a-distance)/(.08+.021*distance));
+    float w=s.x*s.y*depthWeight;
+    float contactWeight=w*depthWeight*depthWeight*depthWeight;
+    effects+=v.rb*w;
     weights+=w;
+    contact+=v.g*contactWeight;
+    contactWeights+=contactWeight;
   }
   effects/=max(.12,weights);
-  color*=1.-(.43*effects.x+.29*effects.y);
-  color+=effects.z*mix(fogColor,sunColor,.44)*.24;
+  color*=(1.-.43*effects.x)*(1.-.23*contact/max(.12,contactWeights));
+  color+=effects.y*mix(fogColor,sunColor,.44)*.24;
   ` : ''}
   ${Array.from({length:levels}, (_, i) => 'color+=texture2D(bloom'+i+',vUv).rgb*bloomGain*'+([.62,.23,.10,.05][i].toFixed(2))+';').join('\n')}
   ${reflections ? `if(waterSurface(viewAt(vUv))){

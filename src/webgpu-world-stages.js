@@ -113,23 +113,32 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
       }
       ao*=1.-smoothstep(27.,48.,range);
     }
-    if(steps.y>0. && dot(n,sunView)>.08 && range<46.){
-      for(var i=1; i<=12; i++){
-        if(f32(i)>steps.y){break;}
-        let t=f32(i)/steps.y;
-        let rayLength=.055+.95*t*t;
-        let ray=pos+n*.025+sunView*rayLength;
+    let sunFacing=dot(n,sunView);
+    if(steps.y>0. && sunFacing>.08 && range<36.){
+      let pixelWorld=2.*range/(projection[1][1]*depthSize.y);
+      let bias=clamp(pixelWorld*1.2,.012,.06);
+      let origin=pos+n*bias;
+      for(var i=0; i<12; i++){
+        if(f32(i)>=steps.y){break;}
+        let t=(f32(i)+.5)/steps.y;
+        let rayLength=.035+.88*t*t;
+        let ray=origin+sunView*rayLength;
         let clip=projection*vec4f(ray,1.);
         if(clip.w<=0.){break;}
         let sampleAt=clip.xy/clip.w*vec2f(.5,-.5)+.5;
         if(any(sampleAt<=vec2f(0.))||any(sampleAt>=vec2f(1.))){break;}
-        let hit=ray.z-worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize).z;
-        if(hit>.024 && hit<.065+rayLength*.12){
-          let margin=min(sampleAt,1.-sampleAt);
-          contact=(1.-.7*t)*smoothstep(0.,.045,min(margin.x,margin.y))*(1.-smoothstep(26.,46.,range));
-          break;
-        }
+        let surface=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize);
+        let hit=surface.z-ray.z;
+        let thickness=.045+.11*rayLength+min(pixelWorld,.045);
+        let above=dot(surface-pos,n);
+        let overlap=smoothstep(.003,max(.012,bias*.8),hit)*(1.-smoothstep(thickness*.6,thickness,hit));
+        let blocker=smoothstep(bias*.8,bias*1.65,above);
+        let margin=min(sampleAt,1.-sampleAt);
+        let edge=smoothstep(0.,.04,min(margin.x,margin.y));
+        contact=max(contact,overlap*blocker*edge*(1.-smoothstep(.12,.91,rayLength)));
+        if(contact>.96){break;}
       }
+      contact*=smoothstep(.08,.27,sunFacing)*(1.-smoothstep(18.,36.,range));
     }
   }
   if(steps.z>0. && atmosphereStrength>0.){
@@ -173,18 +182,24 @@ fn worldCompositeDepth(at: vec2f, rgb: vec3f, sceneDepth: texture_depth_2d, effe
   let f=fract(grid);
   let base=vec2i(floor(grid));
   let size=vec2i(textureDimensions(effectsMask,0));
-  var effects=vec3f(0.);
+  var effects=vec2f(0.);
   var weights=0.;
+  var contact=0.;
+  var contactWeights=0.;
   for(var i=0; i<4; i++){
     let c=vec2i(i%2,i/2);
     let v=textureLoad(effectsMask,clamp(base+c,vec2i(0),size-1),0);
     let s=mix(1.-f,f,vec2f(c));
-    let w=s.x*s.y*exp(-abs(v.a-distance)/(.08+.021*distance));
-    effects+=v.rgb*w;
+    let depthWeight=exp(-abs(v.a-distance)/(.08+.021*distance));
+    let w=s.x*s.y*depthWeight;
+    let contactWeight=w*depthWeight*depthWeight*depthWeight;
+    effects+=v.rb*w;
     weights+=w;
+    contact+=v.g*contactWeight;
+    contactWeights+=contactWeight;
   }
   effects/=max(.12,weights);
-  return rgb*(1.-(.43*effects.x+.29*effects.y))+effects.z*mix(fogColor,sunColor,.44)*.24;
+  return rgb*(1.-.43*effects.x)*(1.-.23*contact/max(.12,contactWeights))+effects.y*mix(fogColor,sunColor,.44)*.24;
 }`,[readDepth,viewPosition]);
 
 const waterSurface = wgslFn(`
