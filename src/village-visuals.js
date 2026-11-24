@@ -342,6 +342,8 @@ export function villageTerrainSpan(map){
 
 export function addVillageGround(owner, map, assets = true) {
   const m = palette(owner), span = villageTerrainSpan(map), terrain = map.terrain.baseSurface ?? map.terrain;
+  const sand=map.campaign?clonePairedMaterial(m.sand,m.sand.color):m.sand;
+  if(map.campaign)sand.userData.remasterSurface=sand._lowMaterial.userData.remasterSurface='sand';
   const segments=Math.ceil(span/map.terrain.cell);
   const geometry = new THREE.PlaneGeometry(span, span, segments, segments);
   const vertices = geometry.attributes.position;
@@ -349,13 +351,13 @@ export function addVillageGround(owner, map, assets = true) {
   geometry.computeVertexNormals();
   const uv = geometry.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * span / 7, uv.getY(i) * span / 7);
-  const ground = new THREE.Mesh(geometry, m.sand);
+  const ground = new THREE.Mesh(geometry, sand);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   owner.scene.add(ground);
-  const roads = terrainRoads(owner, ground, span, map.roads, m.sand, '#bda17a');
+  const roads = terrainRoads(owner, ground, span, map.roads, sand, '#bda17a');
   partitionTerrain(owner.scene, geometry);
-  if (map.terrainApron) addDesertHorizon(owner.scene, m.sand, span, map.terrainApron);
+  if (map.terrainApron) addDesertHorizon(owner.scene, sand, span, map.terrainApron);
   if (assets) {
     createVillageModelBuilder(owner)(map.boxes, map.structures, [], terrain);
     if (map.ship) createPortModelBuilder(owner)({ ship: map.ship });
