@@ -174,10 +174,20 @@ def scope(module, reach, rear, front, kind):
              (back-.009,rear),(back,rear*.97)]
     bore = [(nose,front_bore),(nose+.016,front_bore),(nose+.045,waist*.80),
             (back-.041,waist*.80),(back-.016,rear_bore),(back,rear_bore)]
+    if kind==0:
+        # The prismatic body keeps its octagonal bezel and rear eye position.
+        # A shorter, flared passage clears the view through both lenses.
+        nose, waist = -.065, .0335
+        front_bore, rear_bore = .0343, .0276
+        outer = [(nose,.0365),(nose+.007,front),(nose+.025,.037),
+                 (nose+.043,waist),(back-.023,.0322),(back-.009,.031),(back,rear)]
+        bore = [(nose,front_bore),(nose+.014,front_bore),(nose+.043,.030),
+                (back-.023,.029),(back-.010,rear_bore),(back,rear_bore)]
     optic_shell(mesh,axis,outer,bore,STEEL,sides,aspect,phase)
     mount_length = min(reach*.71,.145)
     mesh.box((0,.006,0),(.069,.024,mount_length),STEEL,.004)
-    mesh.box((0,.022,0),(.046,.020,mount_length*.87),POLYMER,.004)
+    saddle_y, saddle_height = (.018,.010) if kind==0 else (.022,.020)
+    mesh.box((0,saddle_y,0),(.046,saddle_height,mount_length*.87),POLYMER,.004)
     for z in (-mount_length*.31,mount_length*.31):
         for x in (-.035,.035):
             mesh.cylinder((x,.010,z),.0056,.007,'x',EDGE,14)
@@ -188,10 +198,10 @@ def scope(module, reach, rear, front, kind):
         mesh.box((.011*cos(angle),axis+waist+.007,-.011+.011*sin(angle)),
                  (.004,.007,.004),EDGE,.0006)
     if kind==0:
-        for x in (-.026,.026):
-            side_profile(mesh, [(nose+.006,axis-.017),(nose+.017,axis+.016),
-                                (back-.024,axis+.011),(back-.019,axis-.015)], .019,POLYMER,x)
-            mesh.box((x*1.37,axis+.006,nose+.035),(.002,.002,.018),MARK,.0003)
+        for x in (-.039,.039):
+            side_profile(mesh, [(nose+.007,axis-.017),(nose+.016,axis+.014),
+                                (nose+.042,axis+.010),(nose+.051,axis-.013)], .006,POLYMER,x)
+            mesh.box((x*1.09,axis+.006,nose+.029),(.001,.002,.015),MARK,.0003)
     if kind==1:
         dial = back-.020
         sight_ring(mesh,axis,dial,rear*.83,rear+.002,.019,POLYMER)
