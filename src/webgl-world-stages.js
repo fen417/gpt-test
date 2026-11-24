@@ -1,3 +1,4 @@
+import {heatDistortionGLSL} from './webgl-heat-distortion.js';
 import {cameraEffectsGLSL} from './webgl-camera-effects.js';
 import * as THREE from 'three';
 
@@ -205,11 +206,11 @@ void main(){
   }
 }`;
 
-function composite(depth, levels, reflections, cameraFX) {
+function composite(depth, levels, reflections, cameraFX, hasHeat) {
   return `
 varying vec2 vUv;
 uniform sampler2D source;
-${depth||reflections||cameraFX ? reconstruct : ''}
+${depth||reflections||cameraFX||hasHeat ? reconstruct : ''}
 ${reflections ? reflectors+'uniform sampler2D reflection;' : ''}
 ${depth ? `
 uniform sampler2D mask;
@@ -220,9 +221,11 @@ ${cameraFX?'':'uniform vec3 sunColor;'}
 ${levels ? 'uniform float bloomGain;' : ''}
 ${Array.from({length:levels}, (_, i) => 'uniform sampler2D bloom'+i+';').join('\n')}
 ${cameraFX?cameraEffectsGLSL:''}
+${hasHeat?heatDistortionGLSL:''}
 void main(){
   vec3 color=texture2D(source,vUv).rgb;
   ${cameraFX?'color=applyCameraEffects(vUv,color);':''}
+  ${hasHeat?'color=distortHeat(vUv,color);':''}
   ${depth ? `
   float raw=readDepth(vUv);
   float distance=-viewPosition(vUv,raw).z;
@@ -270,7 +273,7 @@ export function webGlWorldStages(post) {
   const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
     source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
   }));
-  const output = stage(composite(Boolean(depth),blurs.length,Boolean(reflected),post.cameraFX), {
+  const output = stage(composite(Boolean(depth),blurs.length,Boolean(reflected),post.cameraFX,post.hasHeat), {
     ...uniforms, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},reflection:{value:post.reflection?.texture},
     ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
   });
@@ -287,6 +290,7 @@ export function webGlWorldStages(post) {
       uniforms.cameraX.value=state.cameraX;
       uniforms.chromaticGain.value=state.chromaticGain;
       uniforms.time.value=state.time;
+      uniforms.heatTime.value=state.heatTime;
       uniforms.reflectionSteps.value=state.reflectionSteps;
       if(reflected)draw(post.reflection,reflected);
       if(depth)draw(post.mask,depth);

@@ -1150,7 +1150,7 @@ apiSelector.addEventListener('change',()=>{
   try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
   location.reload();
 });
-$('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off','fxaa','msaa2','msaa4'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
+$('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off','fxaa','smaa','msaa2','msaa4'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
 $('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);makeGraphicsCustom();if(renderer)renderer.postPass.antialias=event.target.value;});
 function restoreLegacyGraphics(){
   const settings=[

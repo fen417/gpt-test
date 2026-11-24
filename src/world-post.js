@@ -1,3 +1,4 @@
+import {HeatSources} from './heat-sources.js';
 import {cameraModes} from './camera-effects.js';
 import * as THREE from 'three';
 
@@ -21,8 +22,10 @@ export class WorldPost {
       steps: new THREE.Vector3(), reflectionSteps:0, shore:new THREE.Vector2(), waterPixel:new THREE.Vector2(),
       worldXView:new THREE.Vector3(), cameraX:0, time:0,
       cameraEffects:new THREE.Vector3(), chromaticGain:0, previousClipFromView:new THREE.Matrix4(),
+      heatSources:new THREE.Matrix4(), heatStrength:new THREE.Vector4(), heatTime:0,
       atmosphereStrength: 0, bloomGain: 0,
     };
+    this.heat=new HeatSources(this.state,webgpu);
     this.previousViewProjection=new THREE.Matrix4();
     this.previousProjection=new THREE.Matrix4();
     this.previousPosition=new THREE.Vector3();
@@ -43,13 +46,14 @@ export class WorldPost {
     const flare=this.aiming?0:cameraModes.flare[effects?.lensFlare]??0;
     const chromatic=this.aiming?0:cameraModes.chromatic[effects?.chromatic]??0;
     this.cameraFX=Boolean(blur||dof||flare||chromatic);
-    const depth=mask||reflections>0||this.softSmoke||this.cameraFX;
+    this.hasHeat=effects?.heatDistortion==='high'&&(mask||reflections>0||this.heat.count>0||this.hasHeat);
+    const depth=mask||reflections>0||this.softSmoke||this.cameraFX||this.hasHeat;
     if(!blur)this.previousClock=undefined;
     if (!depth && !levels) {
       if (this.world) this.dispose();
       return false;
     }
-    const key = Boolean(depth) + '/' + this.cameraFX + '/' + mask + '/' + Boolean(reflections) + '/' + levels;
+    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + levels;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
@@ -103,7 +107,7 @@ export class WorldPost {
 
   apply(output, camera, scene, sunOffset, sun, campaign, time) {
     const r = this.renderer, state = this.state;
-    if (this.mask||this.reflection||this.cameraFX) {
+    if (this.mask||this.reflection||this.cameraFX||this.hasHeat) {
       state.projection.copy(camera.projectionMatrix);
       state.inverseProjection.copy(camera.projectionMatrixInverse);
       state.sunView.copy(sunOffset).transformDirection(camera.matrixWorldInverse);

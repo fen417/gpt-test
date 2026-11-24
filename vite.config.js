@@ -14,6 +14,7 @@ export default defineConfig({
           // Keep WebGPU nodes and backend out of the original WebGL boot payload.
           // Core scene/geometry/math modules remain shared, not duplicated.
           if(id.endsWith('/three/examples/jsm/csm/CSMShadowNode.js')||/\/three\/(?:src\/(?:nodes\/|materials\/nodes\/|renderers\/(?:common\/|webgpu\/|webgl-fallback\/)|Three\.(?:WebGPU|TSL)\.js)|examples\/jsm\/tsl\/|build\/three\.(?:webgpu|tsl)\.js)/.test(id))return 'vendor-three-webgpu';
+          if(id.endsWith('/SMAAPass.js')||id.endsWith('/SMAAShader.js'))return 'vendor-three-smaa';
           return 'vendor-three';
         }
         if(id.includes('/node_modules/meshoptimizer/'))return 'vendor-meshopt';

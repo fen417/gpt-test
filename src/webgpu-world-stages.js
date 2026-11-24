@@ -1,3 +1,4 @@
+import {makeHeatDistortionWGSL} from './webgpu-heat-distortion.js';
 import {makeCameraEffectsWGSL} from './webgpu-camera-effects.js';
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
@@ -255,6 +256,7 @@ fn ${first?'bloomPrefilter':'bloomDownsample'}(source: texture_2d<f32>, sourceSa
 
 const prefilter = blurShader(true), downsample = blurShader(false);
 const cameraEffects=makeCameraEffectsWGSL(viewAt,readDepth);
+const heatDistortion=makeHeatDistortionWGSL(viewAt);
 
 export function webGpuWorldStages(post, geometry, camera) {
   const { renderer, world, state } = post;
@@ -288,6 +290,8 @@ export function webGpuWorldStages(post, geometry, camera) {
   if(post.cameraFX)rgb=cameraEffects({...depthParams,original:rgb,source,sourceSampler:source,
     previousClipFromView:params.previousClipFromView,cameraEffects:params.cameraEffects,chromaticGain:params.chromaticGain,
     sunScreen:params.sunScreen,sunView:params.sunView,sunColor:params.sunColor});
+  if(post.hasHeat)rgb=heatDistortion({...depthParams,color:rgb,source,sourceSampler:source,
+    heatSources:params.heatSources,heatStrength:params.heatStrength,heatTime:params.heatTime});
   if(depth)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
     effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor});
   for(let i=0;i<post.bloom.length;i++){
@@ -306,6 +310,7 @@ export function webGpuWorldStages(post, geometry, camera) {
       params.cameraX.value=state.cameraX;
       params.chromaticGain.value=state.chromaticGain;
       params.time.value=state.time;
+      params.heatTime.value=state.heatTime;
       params.reflectionSteps.value=state.reflectionSteps;
       if(reflected)draw(post.reflection,reflected);
       params.atmosphereStrength.value=state.atmosphereStrength;

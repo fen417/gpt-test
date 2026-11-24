@@ -35,7 +35,7 @@ import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
 import { createWeaponRig } from './weapons.js';
-import { FULLSCREEN_SCOPE_ZOOM, opticZooms, scopeMagnification } from './scope-optics.js';
+import { opticZooms, scopeMagnification, usesFullscreenScope } from './scope-optics.js';
 import {sameSquad} from '../shared/squads.js';
 import { LAUNCHER_POSE, SUPPLY_POSE, DEFIB_POSE, BINOCULAR_POSE } from './gadget-poses.js';
 import { CLAYMORE_ARM_DELAY, CLAYMORE_LIFETIME, isPlacementGadget } from '../shared/gadgets.js';
@@ -217,6 +217,7 @@ export class GameRenderer {
     this.gadgetTimer = 0;
     this.gadgetDuration = 0.65;
     this.effects = [];
+    this.activeHeatFires=[];
     this.bulletMarks = new BulletMarks();
     this.effectPools = { tracer: [], shell: [], smoke: [], spark: [] };
     this.seenEvents = new Set();
@@ -1973,6 +1974,21 @@ export class GameRenderer {
     worldFX.inMenu=menu;worldFX.cinematic=this.cinematicCamera;
     worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
     worldFX.softSmoke=softSmoke;
+    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(this.effects.length||this.activeHeatFires.length)){
+      const heat=worldFX.heat;
+      heat.begin(this.camera,this.clock);
+      for(const {type,age,life,size,mesh} of this.effects){
+        if(type!=='flash')continue;
+        const {x,y,z}=mesh.position;
+        heat.add(x,y+size*.8,z,size*2.2,.78*Math.max(0,1-age/life));
+      }
+      for(const fire of this.activeHeatFires){
+        heat.add(fire.x,fire.y+fire.height*1.25,fire.z,fire.width*1.4,.58);
+      }
+    }else if(worldFX.heat.count){
+      worldFX.heat.count=0;
+      worldFX.state.heatStrength.set(0,0,0,0);
+    }
     if(!softSmoke&&this.softSmokePass){
       this.softSmokePass.dispose();this.softSmokePass=null;
     }
@@ -2068,6 +2084,7 @@ export class GameRenderer {
     const selectedEffects=graphicsEffects(view.quality,gfx?.customGraphics);
     this.presentingCampaign=Boolean(state?.campaign);
     this.cinematicCamera=Boolean(state?.campaign?.cutscene);
+    this.activeHeatFires.length=0;
     this.cameraEffectsAim=Boolean(view.aim);
     this.gpuTimer.enabled=this.perfEnabled||selectedEffects.adaptiveTarget!=='off';
     if(selectedEffects.adaptiveTarget!=='off'){
@@ -2304,7 +2321,7 @@ export class GameRenderer {
       const weaponOptic=!gadgetKind&&!swap&&Boolean(opticZooms(player.weaponId,opticId));
       const binoculars=gadgetKind==='binoculars'&&!swap&&!mounted;
       const opticZoom=binoculars?BINOCULAR_ZOOM:weaponOptic?scopeMagnification(player.weaponId,view.scopeZoom,opticId):1;
-      const scopedWeapon=weaponOptic&&opticZoom>=FULLSCREEN_SCOPE_ZOOM;
+      const scopedWeapon=weaponOptic&&usesFullscreenScope(player.weaponId,opticId,opticZoom);
       const fullscreenOptic=scopedWeapon||binoculars;
       this.scoped = isAlive && fullscreenOptic && this.aimAmount >= .92;
       this.binocularAiming=Boolean(binoculars&&this.scoped);
@@ -2541,7 +2558,8 @@ export class GameRenderer {
       graphicsEffects:this.graphicsEffects,geometryQuality:this.geometryQuality,
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
-      postPasses:1+post.worldEffects.passes+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
+      smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
+      postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
       extraTextureBytes:this.enhancedSurfaces?.estimatedBytes()??0,

@@ -4,6 +4,7 @@ import { webGpuWorldStages } from './webgpu-world-stages.js';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, vec2, vec3, vec4, Fn, If, min, max, distance,
   smoothstep, dot, sin, fract, clamp, acesFilmicToneMapping } from 'three/tsl';
+import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { fsr1RenderScale } from './fsr1.js';
 import { easuNode, rcasNode } from './webgpu-fsr1.js';
@@ -114,6 +115,16 @@ export class WebGpuPostPass {
       this.frameGeneration?.reset();
     }
     this.frameGeneration?.resize(this.size.x,this.size.y);
+    if(mode==='smaa'){
+      if(!this.smaa){
+        const input=new THREE.RenderTarget(1,1,{depthBuffer:false});
+        const node=smaa(texture(input.texture));
+        this.smaa={input,node,...stage(this.geometry,node)};
+      }
+      const {input}=this.smaa;
+      if(input.width!==this.size.x||input.height!==this.size.y)input.setSize(this.size.x,this.size.y);
+    }else this.disposeSmaa();
+    this.smaaActive=Boolean(this.smaa?.node._areaTexture.version&&this.smaa.node._searchTexture.version);
     this.invSize.value.set(1/w,1/h);
     this.outputSize.value.copy(this.size);
     if(fsr){
@@ -122,7 +133,8 @@ export class WebGpuPostPass {
       this.inputSize.value.set(w,h);
     }
     const effects=this.worldEffects.configure(this.effects,w,h,samples);
-    if(effects&&this.worldEffects.world.depthTexture&&this.antialias!=='off')this.useFxaa.value=1;
+    if(this.smaaActive)this.useFxaa.value=0;
+    else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.useFxaa.value=1;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
   end(time,quality){
@@ -134,19 +146,30 @@ export class WebGpuPostPass {
     this.time.value=time;this.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.exposure.value=r.toneMappingExposure;
     try {
+      const finalTarget=this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null;
+      const output=this.smaaActive?this.smaa.input:finalTarget;
       if(this.fsrQuality!=='off'&&this.fsrScale<.995){
         r.setRenderTarget(this.ldrTarget);r.render(this.scene,this.camera);
         r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-        r.setRenderTarget(this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null);
+        r.setRenderTarget(output);
         r.render(this.rcasScene,this.camera);
       }else {
-        r.setRenderTarget(this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null);
+        r.setRenderTarget(output);
         r.render(this.scene,this.camera);
+      }
+      if(this.smaaActive){
+        r.setRenderTarget(finalTarget);r.render(this.smaa.scene,this.camera);
       }
       this.frameGeneration?.presentReal();
     }finally{r.setRenderTarget(null);r.toneMapping=oldToneMapping;r.info.autoReset=reset;}
   }
+  disposeSmaa(){
+    if(!this.smaa)return;
+    this.smaa.material.dispose();this.smaa.node.dispose();this.smaa.input.dispose();
+    this.smaa=null;
+  }
   dispose(){
+    this.disposeSmaa();
     this.worldEffects.dispose();
     this.nativeTarget.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
     this.geometry.dispose();this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();

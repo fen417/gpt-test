@@ -56,6 +56,7 @@ export class CampaignFire {
     for(const [index,e] of this.emitters.entries()){
       const active=activeIds?activeIds.has(e.id):e.id.startsWith('fuel')?mission.fuel.some(f=>f.destroyed&&Math.hypot(f.x-e.x,f.z-e.z)<8):mission.trucks.some(t=>t.id===e.id&&t.destroyed);
       e.group.visible=active;if(!active)continue;
+      if(this.renderer.graphicsEffects?.heatDistortion==='high')this.renderer.activeHeatFires.push(e);
       e.planes.forEach((mesh,i)=>{uniforms(mesh.material).time.value=time;mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*.07);});
       uniforms(e.glow.material).strength.value=.16+Math.sin(time*5+index)*.025;
       for(let n=0;n<8;n++){

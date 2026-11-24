@@ -4,7 +4,7 @@ export const SCOPE_ZOOMS = {
   dmr12: [2],
   sv98: [2, 4],
 };
-export const FULLSCREEN_SCOPE_ZOOM=6;
+const FULLSCREEN_SCOPE_ZOOM=6;
 
 export function opticZooms(weaponId, opticId) {
   const optic=getWeaponModule(weaponId,'optic',opticId);
@@ -14,4 +14,9 @@ export function opticZooms(weaponId, opticId) {
 export function scopeMagnification(weaponId, selected, opticId) {
   const zooms = opticZooms(weaponId, opticId);
   return zooms?.includes(selected) ? selected : zooms?.[0] ?? 1;
+}
+
+export function usesFullscreenScope(weaponId, opticId, magnification) {
+  return magnification>=FULLSCREEN_SCOPE_ZOOM
+    || weaponId==='sv98'&&!getWeaponModule(weaponId,'optic',opticId);
 }

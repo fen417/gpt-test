@@ -81,6 +81,20 @@ export class PostPass {
     const h=Math.max(1,Math.round(this.size.y*(fsr?this.fsrScale:1)));
     if(this.target.width!==w||this.target.height!==h)this.target.setSize(w,h);
     this.material.uniforms.resolution.value.set(1/w,1/h);
+    if(mode==='smaa'){
+      if(!this.smaaClass){
+        this.smaaLoad??=import('./webgl-smaa.js')
+          .then(({WebGlSmaa})=>{this.smaaClass=WebGlSmaa;})
+          .catch(error=>console.warn('SMAA resources unavailable',error));
+      }else{
+        this.smaa??=new this.smaaClass();
+        this.smaa.resize(this.size);
+      }
+    }else if(this.smaa){
+      this.smaa.dispose();
+      this.smaa=null;
+    }
+    this.smaaActive=Boolean(this.smaa?.ready);
     if(fsr){
       if(this.ldrTarget.width!==w||this.ldrTarget.height!==h)this.ldrTarget.setSize(w,h);
       if(this.upscaledTarget.width!==this.size.x||this.upscaledTarget.height!==this.size.y)this.upscaledTarget.setSize(this.size.x,this.size.y);
@@ -89,7 +103,8 @@ export class PostPass {
       this.rcasMaterial.uniforms.outputSize.value.copy(this.size);
     }
     const effects=this.worldEffects.configure(this.effects,w,h,samples);
-    if(effects&&this.worldEffects.world.depthTexture&&this.antialias!=='off')this.material.uniforms.useFxaa.value=1;
+    if(this.smaaActive)this.material.uniforms.useFxaa.value=0;
+    else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.material.uniforms.useFxaa.value=1;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
   end(time,quality){
@@ -97,17 +112,22 @@ export class PostPass {
     this.material.uniforms.time.value=time;this.material.uniforms.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.material.uniforms.toneMappingExposure.value=r.toneMappingExposure;
     try{
+      const output=this.smaaActive?this.smaa.input:null;
       if(this.fsrQuality!=='off'&&this.fsrScale<0.995){
         // Display-referred low-resolution image -> EASU at native resolution
         // -> RCAS sharpening at native resolution. Keep the HTML HUD native.
         r.setRenderTarget(this.ldrTarget);r.render(this.scene,this.camera);
         r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-        r.setRenderTarget(null);r.render(this.rcasScene,this.camera);
-      }else r.render(this.scene,this.camera);
+        r.setRenderTarget(output);r.render(this.rcasScene,this.camera);
+      }else{
+        r.setRenderTarget(output);r.render(this.scene,this.camera);
+      }
+      if(this.smaaActive)this.smaa.render(r);
     }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
   }
   dispose(){
     this.worldEffects.dispose();
+    this.smaa?.dispose();
     this.target.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
     this.scene.children[0].geometry.dispose();
     this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();
