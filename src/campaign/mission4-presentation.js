@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
-import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM} from '../../shared/campaign/nahar.js';
+import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM,NAHAR_WATER} from '../../shared/campaign/nahar.js';
 import {bulletHeight} from '../../shared/ballistics.js';
 import {BLACK_HAWK_GUN,blackHawkGunPose,getVehicleSeatPose,vehiclePartPose} from '../../shared/vehicles.js';
 import {EYE_HEIGHT} from '../../shared/world.js';
@@ -167,7 +167,38 @@ export class Mission4Presentation{
     this.ended=end;
     this.minimap.update(state,p,{hidden:m.airborne||paused||end||cinematic});
     this.voice.update(state,this.locale,paused||end,this.renderer);
+    this.updateCanalAudio(p,p.alive&&!paused&&!end&&!cinematic&&!m.airborne);
     this.score.update(state,paused||end);
+  }
+  updateCanalAudio(player,active){
+    const context=this.combat.ctx;
+    if(!context||!this.voice.bus)return;
+    const canal=NAHAR_WATER,dz=canal.z-player.z;
+    const distance=Math.hypot(Math.max(0,Math.abs(player.x-canal.x)-canal.w/2),
+      Math.max(0,Math.abs(dz)-canal.d/2+2),Math.max(0,player.y+EYE_HEIGHT-canal.y));
+    const audible=active&&this.combat.enabled;
+    const level=audible ? .19*(1-smooth(distance,4,23))**1.5 : 0;
+    if(level>0&&!this.canalAudioLoading){
+      this.canalAudioLoading=true;
+      void this.loadCanalAudio(context);
+    }
+    const channel=this.canalAudio;
+    if(!channel)return;
+    channel.gain.gain.setTargetAtTime(level*this.combat.effectsVolume,context.currentTime,.24);
+    const pan=-Math.sin(player.yaw)*THREE.MathUtils.clamp(dz/10,-1,1)*.36;
+    channel.pan?.pan.setTargetAtTime(pan,context.currentTime,.15);
+  }
+  async loadCanalAudio(context){
+    const buffer=await this.voice.buffer('sfx/canal-current.ogg')??await this.voice.buffer('sfx/canal-current.m4a');
+    if(!buffer||this.voice.closed||context.state==='closed')return;
+    const source=context.createBufferSource(),gain=context.createGain();
+    const pan=context.createStereoPanner?.();
+    source.buffer=buffer;source.loop=true;gain.gain.value=0;
+    source.connect(gain);
+    if(pan)gain.connect(pan).connect(this.voice.bus);
+    else gain.connect(this.voice.bus);
+    this.canalAudio={source,gain,pan};
+    source.start();
   }
   syncGates(gates){
     const key=`${gates.service}:${gates.tunnel}`;
@@ -328,6 +359,10 @@ export class Mission4Presentation{
     reticle.style.top=`${(1-point.y)*50}%`;
   }
   dispose(){
+    if(this.canalAudio){
+      const {source,gain,pan}=this.canalAudio;
+      source.stop();source.disconnect();gain.disconnect();pan?.disconnect();
+    }
     this.voice.dispose();this.score.dispose();this.minimap.dispose();this.combat.campaignMusicOverride=this.oldMusicOverride;
     const r=this.renderer,o=this.original;r.sun.intensity=o.sun;r.sunOffset.copy(o.sunOffset);
     r.hemiLight.intensity=o.hemi;r.ambientLight.intensity=o.ambient;r.campaignCoverColliders=null;
