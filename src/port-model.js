@@ -75,6 +75,7 @@ export class PortModel {
       metalness: name === 'metal' || name === 'painted' ? .27 : name === 'glazing' ? .16 : 0,
     });
     let low = new THREE.MeshLambertMaterial(options);
+    if(name==='deck'||name==='concrete'||name==='asphalt')high.userData.remasterSurface=low.userData.remasterSurface=name==='deck'?'concrete':name;
     if (name === 'deck' || name === 'asphalt') {
       const shadows = this.owner.groundShadows;
       high = shadows.apply(high) ?? high;

@@ -13,6 +13,7 @@ import { drawBotDebug } from './bot-debug.js';
 import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isPlacementGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
+import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, graphicsEffects, validateCustomGraphics} from './graphics-settings.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
@@ -1030,12 +1031,67 @@ async function triggerRespawn(){
 $('respawn').addEventListener('click',triggerRespawn);
 $('sensitivity').value=read('sensitivity','0.8');sensitivity=Number($('sensitivity').value);
 $('sensitivity').addEventListener('input',event=>{sensitivity=Number(event.target.value);save('sensitivity',sensitivity);});
-$('quality').value=read('quality','high');quality=$('quality').value;
-document.body.classList.toggle('low-quality',quality!=='high');
-$('quality').addEventListener('change',event=>{
-  quality=event.target.value;
+const presetSelector=$('quality');
+const savedQuality=read('quality','high');
+quality=Object.hasOwn(GRAPHICS_PRESETS,savedQuality)?savedQuality:'high';
+try{
+  const saved=JSON.parse(read('gfx-custom','null'));
+  if(saved)gfx.customGraphics=validateCustomGraphics(saved,quality);
+}catch{}
+const advancedControls=new Map();
+function syncGraphicsPreset(){
+  presetSelector.value=gfx.customGraphics?'custom':quality;
   document.body.classList.toggle('low-quality',quality==='low');
+  const values=graphicsEffects(quality,gfx.customGraphics);
+  for(const [key,{control,value}] of advancedControls){
+    control.value=values[key];
+    if(value)value.textContent=control.value+'%';
+  }
+}
+function makeGraphicsCustom(key,value){
+  gfx.customGraphics=validateCustomGraphics({...graphicsEffects(quality,gfx.customGraphics),[key]:value},quality);
+  save('gfx-custom',JSON.stringify(gfx.customGraphics));
+  syncGraphicsPreset();
+}
+for(const [index,[title,rows]] of GRAPHICS_CONTROLS.entries()){
+  const group=index===0?$('graphics-lighting'):index===1?$('graphics-materials'):document.createElement('div');
+  if(!group.parentNode)$('graphics-advanced').append(group);
+  const heading=document.createElement('h4');
+  heading.className='settings-section';heading.textContent=title;
+  group.prepend(heading);
+  for(const [key,name,help,options] of rows){
+    const row=document.createElement('label'), description=document.createElement('span'), controlBox=document.createElement('span');
+    const label=document.createElement('b'), detail=document.createElement('small');
+    label.textContent=name;detail.textContent=help;description.append(label,detail);
+    row.className='setting-row';controlBox.className='setting-control';
+    const range=Array.isArray(options);
+    const control=document.createElement(range?'input':'select');
+    control.id='gfx-advanced-'+key;row.htmlFor=control.id;
+    let value=null;
+    if(range){
+      control.type='range';[control.min,control.max]=options;control.step=1;
+      value=document.createElement('output');value.htmlFor=control.id;
+    }else{
+      for(const [id,label] of Object.entries(options))control.add(new Option(label,id));
+    }
+    controlBox.append(control);
+    if(value)controlBox.append(value);
+    row.append(description,controlBox);group.append(row);
+    control.addEventListener(range?'input':'change',()=>makeGraphicsCustom(key,control.value));
+    advancedControls.set(key,{control,value});
+  }
+}
+syncGraphicsPreset();
+presetSelector.addEventListener('change',()=>{
+  if(presetSelector.value==='custom'){
+    makeGraphicsCustom();
+    return;
+  }
+  quality=presetSelector.value;
+  delete gfx.customGraphics;
+  save('gfx-custom','null');
   save('quality',quality);
+  syncGraphicsPreset();
   refreshAttachmentPreviews();
 });
 for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution'],['gfx-detail','detail']]){
@@ -1045,6 +1101,7 @@ for(const [id,key] of [['gfx-shadows','shadows'],['gfx-resolution','resolution']
   el.addEventListener('change',event=>{
     gfx[key]=event.target.value;
     save(id,gfx[key]);
+    makeGraphicsCustom();
     if(key==='detail')refreshAttachmentPreviews();
   });
 }
@@ -1053,7 +1110,7 @@ for(const [id,key,fallback] of [['gfx-fsr','fsr','off'],['gfx-fsr-quality','fsrQ
   el.value=[...el.options].some(o=>o.value===stored)?stored:fallback;
   gfx[key]=el.value;
   el.addEventListener('change',event=>{
-    gfx[key]=event.target.value;save(id,gfx[key]);syncFsrSettings();
+    gfx[key]=event.target.value;save(id,gfx[key]);syncFsrSettings();makeGraphicsCustom();
   });
 }
 const fsrSharpnessControl=$('gfx-fsr-sharpness');
@@ -1064,7 +1121,7 @@ const fsrSharpnessOutput=$('gfx-fsr-sharpness-value');
 function updateFsrSharpness(){
   gfx.fsrSharpness=Number(fsrSharpnessControl.value);
   fsrSharpnessOutput.textContent=gfx.fsrSharpness+'%';
-  save('gfx-fsr-sharpness',gfx.fsrSharpness);
+  save('gfx-fsr-sharpness',gfx.fsrSharpness);makeGraphicsCustom();
 }
 fsrSharpnessControl.addEventListener('input',updateFsrSharpness);
 fsrSharpnessOutput.textContent=gfx.fsrSharpness+'%';
@@ -1081,7 +1138,7 @@ if(!['off','auto','1.5','2'].includes(fgSelector.value))fgSelector.value='off';
 gfx.frameGeneration=fgSelector.value;
 fgSelector.addEventListener('change',event=>{
   gfx.frameGeneration=event.target.value;
-  save('gfx-frame-generation',gfx.frameGeneration);
+  save('gfx-frame-generation',gfx.frameGeneration);makeGraphicsCustom();
   if(renderer?.api!=='webgpu')toast('Для генерации кадров выбери WebGPU.');
 });
 const apiSelector=$('gfx-api');
@@ -1093,7 +1150,16 @@ apiSelector.addEventListener('change',()=>{
   location.reload();
 });
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
-$('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);toast('Сглаживание применится после перезагрузки страницы.');});
+$('gfx-aa').addEventListener('change',event=>{save('gfx-aa',event.target.value);makeGraphicsCustom();toast('Сглаживание применится после перезагрузки страницы.');});
+$('graphics-reset').addEventListener('click',()=>{
+  try{
+    for(const key of ['quality','gfx-custom','gfx-shadows','gfx-resolution','gfx-detail','gfx-fsr','gfx-fsr-quality','gfx-fsr-sharpness','gfx-frame-generation','gfx-api','gfx-aa','brightness']){
+      localStorage.removeItem('sector09-'+key);
+    }
+    sessionStorage.removeItem('sector09-webgpu-failed');
+  }catch{}
+  location.reload();
+});
 $('volume').value=read('volume','0.5');audio.volume=Number($('volume').value);
 $('volume').addEventListener('input',event=>{audio.volume=Number(event.target.value);save('volume',audio.volume);});
 for(const [id,fallback,min,max,assign] of [['fov',85,70,100,value=>fov=value],['brightness',1,.8,1.3,value=>brightness=value],['music-volume',.45,0,1,value=>{musicVolume=value;setMusic();}],['effects-volume',.7,0,1,value=>{effectsVolume=value;audio.setEffectsVolume?.(value);}]]){
@@ -2104,7 +2170,7 @@ try{
     });
     gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,
       GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer,
-      FrameGeneration:WebGpuFrameGeneration};
+      FrameGeneration:WebGpuFrameGeneration,Cascades:(await import('./webgpu-cascades.js')).WebGpuCascades};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
   fgSelector.disabled=renderer.api!=='webgpu';
@@ -2133,7 +2199,7 @@ try{
   if(new URLSearchParams(location.search).has('poolScreenshot')){
     window.__S09_POOL_REVIEW={renderer,snapshot:()=>state};
   }
-  if(!read('quality','')&&renderer.integratedGpu){quality='low';$('quality').value='low';document.body.classList.toggle('low-quality',true);}
+  if(!read('quality','')&&renderer.integratedGpu){quality='low';syncGraphicsPreset();}
   initializeMapPickers();
   setBattleMap(DEFAULT_MAP_ID,true);
   selectClass(selectedClass,false);updateKeybindUI();audio.setMode?.('menu');status('Сектор готов к высадке.');requestAnimationFrame(frame);

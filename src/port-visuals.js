@@ -97,6 +97,7 @@ export function addPortWater(owner, map) {
   );
   const width = 1200;
   const water = new THREE.Mesh(new THREE.PlaneGeometry(width, 1600), material);
+  water.name='Port water';
   water.rotation.x = -Math.PI / 2;
   water.position.set(map.shoreX - width / 2, -1.6, 0);
   water.receiveShadow = true;

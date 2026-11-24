@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { WorldPost } from './world-post.js';
+import { webGpuWorldStages } from './webgpu-world-stages.js';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture, uv, uniform, vec2, vec3, vec4, Fn, If, min, max, distance,
   smoothstep, dot, sin, fract, clamp, acesFilmicToneMapping } from 'three/tsl';
@@ -36,6 +38,7 @@ export class WebGpuPostPass {
     for(const target of [this.ldrTarget,this.upscaledTarget])target.texture.colorSpace=THREE.NoColorSpace;
     this.fsrQuality='off';this.fsrScale=1;this.size=new THREE.Vector2();
     this.useFxaa=uniform(1);this.sharpen=uniform(.12);this.grain=uniform(.0015);
+    this.gradeTint=uniform(new THREE.Vector3(1,1,1));this.grading=uniform(new THREE.Vector2(1,1));this.vignetteGain=uniform(.08);
     this.time=uniform(0);this.exposure=uniform(1.06);this.invSize=uniform(new THREE.Vector2(1,1));
     this.inputSize=uniform(new THREE.Vector2(1,1));this.outputSize=uniform(new THREE.Vector2(1,1));
     this.rcasSharpness=uniform(.4);
@@ -58,8 +61,13 @@ export class WebGpuPostPass {
         const lo=min(color,min(min(a,b),min(c,d))),hi=max(color,max(max(a,b),max(c,d)));
         color.assign(clamp(color.add(color.sub(a.add(b).add(c).add(d).mul(.25)).mul(this.sharpen)),lo,hi));
       });
-      const mapped=acesFilmicToneMapping(color,this.exposure);
-      const vignette=vec3(1).mul(smoothstep(.1,.8,distance(uv(),vec2(.5)))).mul(-.08).add(1);
+      const mapped=acesFilmicToneMapping(color,this.exposure).toVar();
+      If(this.grading.x.notEqual(1).or(this.grading.y.notEqual(1)).or(this.gradeTint.x.notEqual(1)),()=>{
+        const adjusted=mapped.sub(.32).mul(this.grading.x).add(.32);
+        const luma=dot(adjusted,vec3(.2126,.7152,.0722));
+        mapped.assign(max(vec3(0),vec3(luma).add(adjusted.sub(luma).mul(this.grading.y)).mul(this.gradeTint)));
+      });
+      const vignette=smoothstep(.1,.8,distance(uv(),vec2(.5))).mul(this.vignetteGain.negate()).add(1);
       const pixel=uv().mul(this.outputSize);
       const noise=fract(sin(dot(pixel.add(this.time),vec2(12.9898,78.233))).mul(43758.5453)).sub(.5).mul(this.grain);
       // WebGPU Renderer r181 does its own color-space output pass on
@@ -73,11 +81,19 @@ export class WebGpuPostPass {
     const rcas=stage(geometry,rcasNode(texture(this.upscaledTarget.texture),this.outputSize,this.rcasSharpness));
     this.rcasScene=rcas.scene;this.rcasMaterial=rcas.material;
     this.camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+    this.worldEffects=new WorldPost(renderer,THREE.RenderTarget,post=>webGpuWorldStages(post,this.geometry,this.camera),true);
   }
   setUpscaling(quality='off',adaptive=1,sharpness=40){
     this.fsrQuality=quality;
     this.fsrScale=quality==='off'?1:fsr1RenderScale(quality,adaptive);
     this.rcasSharpness.value=Math.max(0,Math.min(1,Number(sharpness)/100||0));
+  }
+  setImage(effects,grade){
+    this.effects=effects;
+    this.gradeTint.value.fromArray(grade.tint);
+    this.grading.value.set(grade.contrast,grade.saturation);
+    this.vignetteGain.value=grade.vignette;
+    this.grainSetting=grade.grain;
   }
   begin(quality='high'){
     // FG never changes the world render target or its MSAA policy.
@@ -104,7 +120,9 @@ export class WebGpuPostPass {
       if(this.upscaledTarget.width!==this.size.x||this.upscaledTarget.height!==this.size.y)this.upscaledTarget.setSize(this.size.x,this.size.y);
       this.inputSize.value.set(w,h);
     }
-    r.setRenderTarget(this.target);
+    const effects=this.worldEffects.configure(this.effects,w,h,samples);
+    if(effects&&this.worldEffects.mask&&this.antialias!=='off')this.useFxaa.value=1;
+    r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
   end(time,quality){
     const r=this.renderer,reset=r.info.autoReset,oldToneMapping=r.toneMapping;
@@ -112,7 +130,7 @@ export class WebGpuPostPass {
     // ACES is already applied in postColor. Disable the automatic tone map,
     // but keep automatic sRGB conversion for final screen presentations.
     r.toneMapping=THREE.NoToneMapping;
-    this.time.value=time;this.grain.value=quality==='low'?0:.0015;
+    this.time.value=time;this.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.exposure.value=r.toneMappingExposure;
     try {
       if(this.fsrQuality!=='off'&&this.fsrScale<.995){
@@ -128,6 +146,7 @@ export class WebGpuPostPass {
     }finally{r.setRenderTarget(null);r.toneMapping=oldToneMapping;r.info.autoReset=reset;}
   }
   dispose(){
+    this.worldEffects.dispose();
     this.nativeTarget.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
     this.geometry.dispose();this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();
   }

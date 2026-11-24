@@ -1,0 +1,218 @@
+import * as THREE from 'three';
+
+const vertex = 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}';
+const reconstruct = `
+uniform sampler2D sceneDepth;
+uniform mat4 projection, inverseProjection;
+uniform vec2 depthSize;
+float readDepth(vec2 uv){return texture2D(sceneDepth,clamp(uv,vec2(0.),vec2(1.))).r;}
+vec3 viewPosition(vec2 uv,float depth){
+  vec4 p=inverseProjection*vec4(uv*2.-1.,depth*2.-1.,1.);
+  return p.xyz/p.w;
+}
+vec3 viewAt(vec2 uv){return viewPosition(uv,readDepth(uv));}
+bool offscreen(vec2 uv){return any(lessThanEqual(uv,vec2(0.)))||any(greaterThanEqual(uv,vec2(1.)));}
+`;
+const mask = `
+varying vec2 vUv;
+uniform vec3 steps,sunView,upView;
+uniform vec2 sunScreen;
+uniform float atmosphereStrength,cameraY;
+` + reconstruct + `
+// Cosine-weighted integral between the two horizon angles of a view slice.
+vec2 integrateHorizon(vec2 cosine) {
+  cosine=clamp(cosine,vec2(-1.),vec2(1.));
+  vec2 sine=sqrt(max(vec2(0.),1.-cosine*cosine));
+  return .5*vec2(acos(cosine.y)-acos(cosine.x)+sine.x*cosine.x-sine.y*cosine.y,
+    2.-dot(cosine,cosine));
+}
+float horizonOcclusion(vec3 pos,vec3 n,vec2 foot,float rotation) {
+  vec3 view=normalize(-pos);
+  float occlusion=0.;
+  for(int i=0;i<3;i++){
+    float angle=rotation+float(i)*1.04719755;
+    vec2 axis=vec2(cos(angle),sin(angle));
+    vec3 side=normalize(cross(vec3(axis,0.),view)), tangent=cross(view,side);
+    vec3 planeNormal=normalize(n-side*dot(n,side)+.00001*view);
+    vec2 localNormal=vec2(dot(planeNormal,tangent),dot(planeNormal,view));
+    vec2 open=vec2(-localNormal.x,localNormal.x);
+    vec2 horizons=open;
+    for(int j=1;j<=4;j++){
+      float t=(float(j)-.22)/4.;
+      vec2 offset=axis*foot*(.09+.91*t*t);
+      for(int signIndex=0;signIndex<2;signIndex++){
+        float sign=signIndex==0?1.:-1.;
+        vec2 at=vUv+sign*offset;
+        if(offscreen(at))continue;
+        vec3 delta=viewAt(at)-pos;
+        float len=length(delta);
+        float rise=dot(view,delta)/max(len,.001);
+        float weight=smoothstep(.015,.07,len)*(1.-smoothstep(.22,.83,len));
+        horizons[signIndex]=max(horizons[signIndex],mix(open[signIndex],rise,weight));
+      }
+    }
+    float exposure=dot(localNormal,integrateHorizon(open));
+    float visible=dot(localNormal,integrateHorizon(horizons));
+    occlusion+=clamp((exposure-visible)/max(.22,exposure),0.,1.);
+  }
+  return min(.72,occlusion*.45);
+}
+void main(){
+  float depth=readDepth(vUv);
+  vec3 pos=viewPosition(vUv,depth);
+  float range=-pos.z, ao=0., contact=0., shaft=0.;
+  if(depth<.999999 && range<95. && (steps.x>0. || steps.y>0.)){
+    vec2 dx=vec2(1./depthSize.x,0.), dy=vec2(0.,1./depthSize.y);
+    vec3 left=pos-viewAt(vUv-dx), right=viewAt(vUv+dx)-pos;
+    vec3 down=pos-viewAt(vUv-dy), top=viewAt(vUv+dy)-pos;
+    vec3 n=normalize(cross(abs(left.z)<abs(right.z)?left:right,abs(down.z)<abs(top.z)?down:top));
+    if(steps.x>0.){
+      float radius=.83, sum=0.;
+      vec2 footprint=vec2(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
+      float rotation=6.283185*fract(dot(floor(gl_FragCoord.xy),vec2(.75487766,.56984029)));
+      if(steps.x>12.) ao=horizonOcclusion(pos,n,footprint,rotation);
+      else for(int i=0;i<12;i++){
+        if(float(i)>=steps.x)break;
+        float angle=float(i)*2.399963+rotation;
+        float spread=.18+.82*sqrt((float(i)+.5)/steps.x);
+        vec2 at=vUv+vec2(cos(angle),sin(angle))*footprint*spread;
+        if(offscreen(at))continue;
+        vec3 d=viewAt(at)-pos;
+        float distance=length(d);
+        sum+=max(0.,dot(n,d)/max(.001,distance)-.12)*(1.-smoothstep(.07,radius,distance));
+      }
+      if(steps.x<=12.)ao=clamp(sum*2.6/steps.x,0.,.65);
+      ao*=1.-smoothstep(58.,95.,range);
+    }
+    if(steps.y>0. && dot(n,sunView)>.08 && range<46.){
+      for(int i=1;i<=12;i++){
+        if(float(i)>steps.y)break;
+        float t=float(i)/steps.y, rayLength=.055+.95*t*t;
+        vec3 ray=pos+n*.025+sunView*rayLength;
+        vec4 clip=projection*vec4(ray,1.);
+        if(clip.w<=0.)break;
+        vec2 at=clip.xy/clip.w*.5+.5;
+        if(offscreen(at))break;
+        float hit=ray.z-viewAt(at).z;
+        if(hit>.024 && hit<.065+rayLength*.12){
+          vec2 margin=min(at,1.-at);
+          contact=(1.-.7*t)*smoothstep(0.,.045,min(margin.x,margin.y))*(1.-smoothstep(26.,46.,range));
+          break;
+        }
+      }
+    }
+  }
+  if(steps.z>0. && atmosphereStrength>0. && sunView.z<-.07){
+    vec3 direction=normalize(pos);
+    float angular=pow(max(0.,dot(direction,sunView)),10.);
+    float visible=0.;
+    if(angular>.008){
+      for(int i=1;i<=6;i++){
+        if(float(i)>steps.z)break;
+        vec2 at=mix(vUv,sunScreen,float(i)/steps.z);
+        if(!offscreen(at))visible+=smoothstep(.99999,.9999995,readDepth(at));
+      }
+    }
+    float height=max(0.,cameraY+dot(pos,upView)*.4);
+    float haze=.20*(1.-exp(-range*.006))*exp(-height*.021);
+    shaft=(haze+.52*angular*visible/steps.z)*atmosphereStrength;
+  }
+  gl_FragColor=vec4(ao,contact,shaft,range);
+}`;
+
+const bloom = (first) => `
+varying vec2 vUv;
+uniform sampler2D source;
+uniform vec2 pixel;
+vec3 tap(vec2 uv) {
+  vec3 color=texture2D(source,uv).rgb;
+  ${first ? 'float lum=max(color.r,max(color.g,color.b)); float knee=clamp(lum-1.1,0.,.7); float scale=max(lum-1.8,knee*knee/.7)/max(lum,.001); return min(color,vec3(12.))*scale;' : 'return color;'}
+}
+void main(){
+  vec2 d=pixel*${first ? '1.35' : '.8'};
+  vec3 result=tap(vUv)*.28;
+  result+=.12*(tap(vUv+d*vec2(-1.,-1.))+tap(vUv+d*vec2(1.,-1.))+tap(vUv+d*vec2(-1.,1.))+tap(vUv+d));
+  result+=.06*(tap(vUv+vec2(d.x,0.))+tap(vUv-vec2(d.x,0.))+tap(vUv+vec2(0.,d.y))+tap(vUv-vec2(0.,d.y)));
+  gl_FragColor=vec4(result,1.);
+}`;
+
+function composite(depth, levels) {
+  return `
+varying vec2 vUv;
+uniform sampler2D source;
+${depth ? reconstruct + `
+uniform sampler2D mask;
+uniform vec2 effectPixel;
+uniform vec3 sunColor,fogColor;
+` : ''}
+${levels ? 'uniform float bloomGain;' : ''}
+${Array.from({length:levels}, (_, i) => 'uniform sampler2D bloom'+i+';').join('\n')}
+void main(){
+  vec3 color=texture2D(source,vUv).rgb;
+  ${depth ? `
+  float raw=readDepth(vUv);
+  float distance=-viewPosition(vUv,raw).z;
+  vec2 grid=vUv/effectPixel-.5, f=fract(grid), base=(floor(grid)+.5)*effectPixel;
+  vec3 effects=vec3(0.);
+  float weights=0.;
+  for(int i=0;i<4;i++){
+    vec2 c=vec2(float(i%2),float(i/2));
+    vec4 v=texture2D(mask,base+c*effectPixel);
+    vec2 s=mix(1.-f,f,c);
+    float w=s.x*s.y*exp(-abs(v.a-distance)/(.08+.021*distance));
+    effects+=v.rgb*w;
+    weights+=w;
+  }
+  effects/=max(.12,weights);
+  color*=1.-(.43*effects.x+.29*effects.y);
+  color+=effects.z*mix(fogColor,sunColor,.44)*.24;
+  ` : ''}
+  ${Array.from({length:levels}, (_, i) => 'color+=texture2D(bloom'+i+',vUv).rgb*bloomGain*'+([.62,.23,.10,.05][i].toFixed(2))+';').join('\n')}
+  gl_FragColor=vec4(color,1.);
+}`;
+}
+
+export function webGlWorldStages(post) {
+  const { renderer, world, state } = post;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));
+  geometry.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,2,0,0,2],2));
+  const scene=new THREE.Scene(), camera=new THREE.Camera();
+  const mesh=new THREE.Mesh(geometry);
+  scene.add(mesh);
+  const materials=[];
+  const stage = (fragmentShader, uniforms) => {
+    const material=new THREE.ShaderMaterial({vertexShader:vertex, fragmentShader, uniforms, toneMapped:false, depthTest:false, depthWrite:false});
+    materials.push(material);
+    return material;
+  };
+  const uniforms = Object.fromEntries(Object.entries(state).map(([key,value])=>[key,{value}]));
+  const depth = post.mask ? stage(mask, {...uniforms, sceneDepth:{value:world.depthTexture}}) : null;
+  const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
+    source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
+  }));
+  const output = stage(composite(Boolean(depth),blurs.length), {
+    ...uniforms, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},
+    ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
+  });
+  function draw(target, material) {
+    mesh.material=material;
+    renderer.setRenderTarget(target);
+    renderer.render(scene,camera);
+  }
+  return {
+    render(target) {
+      uniforms.atmosphereStrength.value=state.atmosphereStrength;
+      uniforms.cameraY.value=state.cameraY;
+      uniforms.bloomGain.value=state.bloomGain;
+      if(depth)draw(post.mask,depth);
+      for(let i=0;i<blurs.length;i++){
+        const src=i===0?world:post.bloom[i-1];
+        blurs[i].uniforms.pixel.value.set(1/src.width,1/src.height);
+        draw(post.bloom[i],blurs[i]);
+      }
+      draw(target,output);
+    },
+    dispose() { geometry.dispose(); for(const material of materials)material.dispose(); },
+  };
+}

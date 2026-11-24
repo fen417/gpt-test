@@ -298,7 +298,7 @@ export class Mission4Presentation{
       r.camera.position.set(e.x-6+t*3,1.78,e.z+2.3-t*.8);r.camera.lookAt(e.x+9,1.34,e.z-.4);r.weapon.visible=false;
     }
     this.updateStorm(r,m.time,view.quality);
-    this.water.update(r.clock,r.scene.fog.density,r.lowQuality);
+    this.water.update(r.clock,r.scene.fog.density,r.lowQuality,r.graphicsEffects?.water);
     r.camera.updateMatrixWorld();
     const show=!m.failed&&!m.complete&&!m.cutscene&&p;
     this.placeMinigunReticle(r,show&&p.alive&&!p.downed&&!view.paused&&m.transfer==null&&!m.disembark?r.minigunAim:null);

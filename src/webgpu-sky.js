@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial, PMREMGenerator } from 'three/webgpu';
 import { Fn, vec2, vec3, vec4, uniform, positionLocal, cubeTexture,
-  floor, fract, dot, sin, mix, pow, max, smoothstep, normalize } from 'three/tsl';
+  floor, fract, dot, sin, mix, pow, max, smoothstep, normalize, exp, clamp, If } from 'three/tsl';
 
 const hash = Fn(([p]) => fract(sin(dot(p, vec2(127.1,311.7))).mul(43758.5453)));
 const noise = Fn(([p]) => {
@@ -55,16 +55,43 @@ export function makeWebGpuSky(scene, renderer) {
   scene.environment=pmremTarget.texture;
   scene.environmentIntensity=.45;
   generator.dispose();envMesh.geometry.dispose();sourceMaterial.dispose();
+  const advancedSky=uniform(0), liveSun=uniform(new THREE.Vector3()), skyTime=uniform(0);
   const baked=new MeshBasicNodeMaterial({side:THREE.BackSide,depthWrite:false,fog:false});
   baked.toneMapped=false;
   baked.fragmentNode=Fn(()=>{
     const direction=normalize(positionLocal);
-    const sampled=cubeTexture(cubeTarget.texture,direction).rgb;
+    const sampled=vec3(0).toVar();
+    If(advancedSky.greaterThan(0),()=>{
+      const daylight=smoothstep(-.03,.34,liveSun.y);
+      const mu=max(0,dot(direction,liveSun)).toVar();
+      const zenith=mix(vec3(.12,.19,.33),vec3(.071,.225,.48),daylight);
+      const horizon=mix(vec3(.50,.325,.27),vec3(.54,.65,.73),daylight);
+      const air=exp(max(0,direction.y).mul(-5.5));
+      const sky=mix(zenith,horizon,air).toVar();
+      const sunlight=mix(vec3(1,.48,.23),vec3(1,.86,.64),daylight);
+      sky.addAssign(sunlight.mul(pow(mu,12)).mul(air.mul(.17).add(.12)));
+      const p=direction.xz.div(max(.10,direction.y.add(.12))).mul(2.1).add(vec2(skyTime.mul(.004),skyTime.mul(.0009)));
+      const field=fbm(p).toVar();
+      const cloud=smoothstep(.39,.65,field).mul(smoothstep(.008,.17,direction.y)).toVar();
+      const edge=fbm(p.add(liveSun.xz.mul(.21))).sub(field);
+      const cloudShade=mix(vec3(.31,.38,.45),vec3(.85,.87,.84),clamp(edge.mul(4).add(mu.mul(.36)).add(.41),0,1));
+      sky.assign(mix(sky,cloudShade,cloud.mul(.94)));
+      const disk=smoothstep(.999984,.999991,mu);
+      sky.addAssign(sunlight.mul(disk.mul(8).add(pow(mu,110).mul(.20))).mul(cloud.oneMinus()));
+      sampled.assign(mix(horizon,sky,smoothstep(-.09,.035,direction.y)));
+    }).Else(()=>{sampled.assign(cubeTexture(cubeTarget.texture,direction).rgb);});
     const haze=hazeAmount.mul(vec2(1).x.sub(max(direction.y,0)));
     return vec4(mix(sampled,hazeTint,haze),1);
   })();
   const sky=new THREE.Mesh(new THREE.SphereGeometry(700,20,12),baked);
   sky.renderOrder=1000;sky.frustumCulled=false;sky.userData.noBatch=true;scene.add(sky);
   return {sky,hazeAmount,hazeTint,envTexture:pmremTarget.texture,
+    update(mode, direction, time) {
+      advancedSky.value=mode==='high'?1:0;
+      if(mode==='high'){
+        liveSun.value.copy(direction).normalize();
+        skyTime.value=time;
+      }
+    },
     target:{dispose(){pmremTarget.dispose();cubeTarget.dispose();baked.dispose();}}};
 }

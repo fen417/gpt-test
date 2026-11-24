@@ -29,7 +29,7 @@ export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   return closest;
 }
 
-export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot){
+export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,finishWorld){
   const mask=camera.layers.mask,autoClear=renderer.autoClear,autoReset=renderer.info.autoReset;
   const background=scene.background;
   const shadowAutoUpdate=renderer.shadowMap?.autoUpdate;
@@ -39,6 +39,7 @@ export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot){
   try{
     renderer.autoClear=true;camera.layers.set(0);renderer.render(scene,camera);
     if(renderer.info.render)renderer.info.worldRender={...renderer.info.render};
+    finishWorld?.();
     if(weapon?.visible){
       // A solid scene background forces Three.js to clear color even with autoClear off.
       scene.background=null;

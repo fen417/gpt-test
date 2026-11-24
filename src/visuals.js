@@ -171,6 +171,8 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
       bumpScale: useBump ? bump : 0,
     });
     const lowMat = new THREE.MeshLambertMaterial({ map, color });
+    const enhanced=map===concrete?'concrete':map===asphalt?'asphalt':map===ground?'earth':null;
+    if(enhanced)highMat.userData.remasterSurface=lowMat.userData.remasterSurface=enhanced;
     highMat.userData.tileSize = tile;
     lowMat.userData.tileSize = tile;
     return pairMaterials(highMat, lowMat);
@@ -250,17 +252,64 @@ export function makeSky(scene, renderer) {
 
   const bakedShader = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { skyMap: { value: cubeTarget.texture }, hazeAmount: { value: 0 }, hazeTint: { value: new THREE.Color(.79,.68,.51) } },
+    uniforms: { skyMap: { value: cubeTarget.texture }, advancedSky:{value:0}, liveSun:{value:new THREE.Vector3()}, skyTime:{value:0}, hazeAmount: { value: 0 }, hazeTint: { value: new THREE.Color(.79,.68,.51) } },
     vertexShader: 'varying vec3 direction; void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_Position.z=gl_Position.w;}',
-    fragmentShader: 'varying vec3 direction; uniform samplerCube skyMap; uniform float hazeAmount; uniform vec3 hazeTint; void main(){vec4 sky=textureCube(skyMap,direction);float haze=hazeAmount*(1.-max(normalize(direction).y,0.));sky.rgb=mix(sky.rgb,hazeTint,haze);gl_FragColor=sky;}',
+    fragmentShader: `
+      varying vec3 direction;
+      uniform samplerCube skyMap;
+      uniform float hazeAmount,advancedSky,skyTime;
+      uniform vec3 hazeTint,liveSun;
+      float cloudHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float cloudNoise(vec2 p){
+        vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+        return mix(mix(cloudHash(i),cloudHash(i+vec2(1,0)),f.x),mix(cloudHash(i+vec2(0,1)),cloudHash(i+1.),f.x),f.y);
+      }
+      float clouds(vec2 p){
+        float sum=0.,amp=.5;
+        for(int i=0;i<5;i++){sum+=amp*cloudNoise(p);p=p*2.03+vec2(4.2,7.8);amp*=.5;}
+        return sum;
+      }
+      void main(){
+        vec3 d=normalize(direction);
+        float up=max(d.y,0.), haze=hazeAmount*(1.-up);
+        vec3 sky;
+        if(advancedSky>0.){
+          float daylight=smoothstep(-.03,.34,liveSun.y);
+          float mu=max(0.,dot(d,liveSun));
+          vec3 zenith=mix(vec3(.12,.19,.33),vec3(.071,.225,.48),daylight);
+          vec3 horizon=mix(vec3(.50,.325,.27),vec3(.54,.65,.73),daylight);
+          float air=exp(-up*5.5);
+          sky=mix(zenith,horizon,air);
+          vec3 sunlight=mix(vec3(1.,.48,.23),vec3(1.,.86,.64),daylight);
+          sky+=sunlight*pow(mu,12.)*(.12+.17*air);
+          vec2 p=d.xz/max(.10,d.y+.12)*2.1+vec2(skyTime*.004,skyTime*.0009);
+          float field=clouds(p);
+          float cloud=smoothstep(.39,.65,field)*smoothstep(.008,.17,d.y);
+          float edge=clouds(p+liveSun.xz*.21)-field;
+          vec3 cloudShade=mix(vec3(.31,.38,.45),vec3(.85,.87,.84),clamp(.41+edge*4.+.36*mu,0.,1.));
+          sky=mix(sky,cloudShade,cloud*.94);
+          float disk=smoothstep(.999984,.999991,mu);
+          sky+=sunlight*(disk*8.+.20*pow(mu,110.))*(1.-cloud);
+          sky=mix(horizon,sky,smoothstep(-.09,.035,d.y));
+        }else sky=textureCube(skyMap,direction).rgb;
+        gl_FragColor=vec4(mix(sky,hazeTint,haze),1.);
+      }`,
   });
   const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 20, 12), bakedShader);
   sky.renderOrder = 1000; sky.frustumCulled = false; sky.userData.noBatch = true; scene.add(sky);
   const target = {
     texture: pmremTarget.texture,
-    dispose() { pmremTarget.dispose(); cubeTarget.dispose(); },
+    dispose() { pmremTarget.dispose(); cubeTarget.dispose(); bakedShader.dispose(); },
   };
-  return { sky, target, envTexture: pmremTarget.texture };
+  return { sky, target, envTexture: pmremTarget.texture,
+    update(mode, direction, time) {
+      bakedShader.uniforms.advancedSky.value=mode==='high'?1:0;
+      if(mode==='high'){
+        bakedShader.uniforms.liveSun.value.copy(direction).normalize();
+        bakedShader.uniforms.skyTime.value=time;
+      }
+    },
+  };
 }
 
 export function addWarehouseDetails(owner, structures = []) {

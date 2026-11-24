@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {makeWaveNormal} from '../water-appearance.js';
 import {NAHAR_WATER} from '../../shared/campaign/nahar.js';
 
 function rippleMap() {
@@ -106,6 +107,7 @@ export class NaharWater {
       normalMap: this.ripples, normalScale: new THREE.Vector2(.22, .17),
       roughness: .41, metalness: .03, envMap: renderer.atmosphere.envTexture, envMapIntensity: .53,
     });
+    this.material=material;
     this.surface = new THREE.Mesh(geometry.water, material);
     this.surface.name = 'Nahar canal surface';
     this.surface.renderOrder = -1;
@@ -117,11 +119,32 @@ export class NaharWater {
     parent.add(this.banks, this.surface);
   }
 
-  update(clock, fogDensity, lowQuality) {
+  update(clock, fogDensity, lowQuality, quality) {
+    const advanced=quality==='high';
+    if(advanced&&!this.capillary){
+      const base=this.material;
+      this.surface.material=new THREE.MeshPhysicalMaterial({
+        vertexColors:base.vertexColors,transparent:base.transparent,alphaTest:base.alphaTest,
+        normalMap:base.normalMap,normalScale:base.normalScale,metalness:base.metalness,
+      });
+      this.capillary=makeWaveNormal(true);
+      this.capillary.repeat.set(2.7,2.7);
+      this.surface.material.clearcoatNormalMap=this.capillary;
+      this.surface.material.clearcoatNormalScale.set(.28,.24);
+      this.surface.material.clearcoatRoughness=.21;
+      this.surface.material.clearcoat=.55;
+      this.surface.material.ior=1.333;
+      this.surface.material.needsUpdate=true;
+    }else if(!advanced&&this.capillary){
+      this.capillary.dispose();this.capillary=null;
+      this.surface.material.dispose();
+      this.surface.material=this.material;
+    }
+    if(advanced)this.capillary.offset.set((clock*-.05)%1,(clock*.06)%1);
     this.ripples.offset.set((clock * .033) % 1, (clock * .003) % 1);
     const haze = THREE.MathUtils.smoothstep(fogDensity, .00172, .0047);
-    this.surface.material.roughness = .41 + haze * .1;
-    this.surface.material.envMapIntensity = .53 - haze * .23;
+    this.surface.material.roughness = (advanced?.28:.41) + haze * .1;
+    this.surface.material.envMapIntensity = (advanced?.70:.53) - haze * .23;
     this.surface.receiveShadow = !lowQuality;
     this.banks.receiveShadow = !lowQuality;
   }
@@ -132,6 +155,8 @@ export class NaharWater {
       mesh.geometry.dispose();
       mesh.material.dispose();
     }
+    if(this.surface.material!==this.material)this.material.dispose();
     this.ripples.dispose();
+    this.capillary?.dispose();
   }
 }

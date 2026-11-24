@@ -28,14 +28,14 @@ export class CachedShadows {
       // Run inside WebGLRenderer.render, with its render-state stack active.
       const hidden=owner.interiorVisibility.hidden;
       for(const mesh of hidden)mesh.visible=true;
-      try{this.render(owner,native);}finally{for(const mesh of hidden)mesh.visible=false;}
+      try{if(owner.cascades)owner.cascades.render(native);else this.render(owner,native);}finally{for(const mesh of hidden)mesh.visible=false;}
     };
   }
   uninstall(){if(this.installed){this.installed.render=this.native;this.installed=null;}}
-  render(owner,renderShadow) {
-    const {renderer,scene,camera,sun,staticRoot,flags}=owner;
+  render(owner,renderShadow,sun=owner.sun) {
+    const {renderer,scene,camera,staticRoot,flags}=owner;
     if(!renderer.shadowMap.enabled||!staticRoot)return;
-    const size=owner.shadowMapSize;
+    const size=sun.shadow.mapSize.x;
     if(this.size!==size){
       this.disposeTargets();this.size=size;
       this.combined=new THREE.WebGLRenderTarget(size,size,{minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:false});
@@ -48,7 +48,7 @@ export class CachedShadows {
         this.casters.push(o);
       });this.casterSet=new Set(this.casters);this.invalidate();
     }
-    const key=[sun.position.x,sun.position.y,sun.position.z,size].join('/');
+    const key=[sun.position.x,sun.position.y,sun.position.z,sun.target.position.x,sun.target.position.y,sun.target.position.z,size].join('/');
     const mask=camera.layers.mask;camera.layers.set(0);
     const target=renderer.getRenderTarget(),autoClear=renderer.autoClear;
     try {

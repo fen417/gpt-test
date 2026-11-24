@@ -1,11 +1,16 @@
 import {batchStaticWorld} from './static-batching.js';
+import {baseGraphicsQuality, graphicsEffects, gradeParameters, isHighGraphics} from './graphics-settings.js';
+import {WaterAppearance} from './water-appearance.js';
+import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
 import * as THREE from 'three';
+import {WebGlCascades, shadowCascadeOptions} from './shadow-cascades.js';
 import { CachedShadows } from './cached-shadows.js';
 import { InfantryAssets } from './infantry-assets.js';
 import {GroundShadows} from './ground-shadows.js';
 import {PostPass} from './post-pass.js';
+import {AdaptiveGraphics} from './adaptive-graphics.js';
 import {AdaptiveResolution} from './adaptive-resolution.js';
 import { GpuTimer } from './gpu-timer.js';
 import { ReloadTimeline } from './reload-timeline.js';
@@ -173,6 +178,9 @@ export class GameRenderer {
     this.gpuName=webgpu?.gpuName??null;
     this.canvas = canvas;
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
+    this.finishWorldEffects=()=>{
+      this.postPass.worldEffects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign);
+    };
     this.gfx = { shadows: 'auto', resolution: 'auto', fsr: 'off', fsrQuality: 'quality', fsrSharpness: 40, frameGeneration:'off' };
     this.clock = 0;
     this.frameCount = 0;
@@ -595,6 +603,7 @@ export class GameRenderer {
     if(this.webgpu)this.atmosphere.hazeAmount.value=map.theme==='desert-village'?.16:0;
     else this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
     this.staticRoot = world.root;
+    this.portWaterMesh=world.water?world.root.getObjectByName('Port water'):null;
     this.mapDetails=world.details;this.detailLevel=undefined;
     this.groundShadows.setMap(map);
     const shadowMaterials=new Map();
@@ -623,6 +632,7 @@ export class GameRenderer {
       if (next) object.material = next;
     });
     this.staticMenuShadows = false;
+    this.cascades?.invalidate(true);
     this.cameraPlayerId = null;
   }
 
@@ -630,7 +640,7 @@ export class GameRenderer {
     const model=this.bakedMapModel(getMap(mapId));
     if(!model)return;
     const base=await model.loadBase();
-    if(base&&quality==='high'&&['auto','high'].includes(gfx?.detail??'auto'))await model.loadDetail();
+    if(base&&isHighGraphics(quality)&&['auto','high'].includes(gfx?.detail??'auto'))await model.loadDetail();
     await model.textureLoader.ready();
   }
 
@@ -639,7 +649,7 @@ export class GameRenderer {
     signal.throwIfAborted();
     this.setMap(mapId);
     const world=this.worlds.get(this.map.id);
-    const detail=view.quality==='high'&&['auto','high'].includes(view.gfx.detail);
+    const detail=isHighGraphics(view.quality)&&['auto','high'].includes(view.gfx?.detail??'auto');
     if(world.model)this.updateBakedDetail(world,detail);
     if(this.map.id==='quarry')this.updateQuarryDetail(world,this.map,detail);
     await Promise.allSettled([this.surfaces.ready,this.groundShadows.textureLoader.ready(),world.quarryLoad,this.tankWarmup]);
@@ -706,12 +716,14 @@ export class GameRenderer {
       object.matrixWorldAutoUpdate=false;
     });
     this.updateTextureFiltering();
+    this.refreshSurfaceEnhancements();
     this.invalidateBakedVisibility();
   }
 
   invalidateBakedVisibility() {
     this.interiorVisibility.root=null;
     this.cachedShadows.invalidate(true);
+    this.cascades?.invalidate(true);
     this.sun.shadow.needsUpdate=true;
     this.renderer.shadowMap.needsUpdate=true;
     this.staticMenuShadows=false;
@@ -1753,16 +1765,51 @@ export class GameRenderer {
   }
 
   applyShadows() {
-    const mode = this.gfx.shadows;
-    const level = mode === 'auto' ? (this.quality==='medium'?'low':this.lowQuality?'off':this.integratedGpu?'medium':'high') : mode;
+    const requestedMode = this.adaptiveGraphics?.shadowOverride??this.gfx.shadows;
+    const mode = requestedMode==='auto'&&this.graphicsEffects?.cascades ? this.graphicsEffects.cascades : requestedMode;
+    const filter = this.graphicsEffects?.shadowFilter;
+    const filterType = {hard:THREE.BasicShadowMap,pcf:THREE.PCFShadowMap,soft:THREE.PCFSoftShadowMap}[filter]
+      ?? (this.integratedGpu ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap);
+    if(this.renderer.shadowMap.type!==filterType){
+      this.renderer.shadowMap.type=filterType;
+      this.cachedShadows.invalidate();
+      this.cascades?.invalidate();
+      this.scene.traverse(object=>{
+        const materials=Array.isArray(object.material)?object.material:[object.material];
+        for(const material of materials)if(material)material.needsUpdate=true;
+      });
+    }
+    const extent = {near:42,far:112}[this.graphicsEffects?.shadowDistance] ?? 72;
+    if(this.shadowExtent!==extent){
+      this.shadowExtent=extent;
+      Object.assign(this.sun.shadow.camera,{left:-extent,right:extent,bottom:-extent,top:extent});
+      this.sun.shadow.camera.updateProjectionMatrix();
+      this.lastShadowTx=undefined;
+      this.cachedShadows.invalidate();
+    }
+    const level = mode === 'auto' ? (this.quality==='low'?'off':this.quality==='medium'?'low':this.integratedGpu?'medium':'high') : mode;
+    const cascaded = level==='very-high'||level==='ultra';
+    const cascadeKey=cascaded?[level,this.graphicsEffects?.shadowDistance,filterType].join('/'):'';
+    if(this.cascadeKey!==cascadeKey){
+      this.cascades?.dispose();
+      this.cascades=null;this.cascadeKey=cascadeKey;
+      if(cascaded){
+        const Cascades=this.webgpu?.Cascades??WebGlCascades;
+        this.cascades=new Cascades(this,shadowCascadeOptions(level,this.graphicsEffects?.shadowDistance));
+      }
+      this.cachedShadows.invalidate(true);
+    }
+    this.shadowMode=level;
     const size = { low: 512, medium: 1024, high: 2048 }[level] || 0;
-    const on = size > 0;
+    const on = size > 0||cascaded;
+    this.shadowDynamicOnly=this.quality==='medium'&&!cascaded;
     this.renderer.shadowMap.enabled = on;
     this.sun.castShadow = on;
-    if (on && size !== this.shadowMapSize) {
+    if (size && size !== this.shadowMapSize) {
       this.shadowMapSize = size;
       this.sun.shadow.mapSize.set(size, size);
       this.sun.shadow.dispose();
+      this.sun.shadow.map=null;
       this.lastShadowTx = undefined;
     }
     if (on) {
@@ -1790,11 +1837,18 @@ export class GameRenderer {
     this.resize();
   }
 
+  refreshSurfaceEnhancements(){
+    const settings=this.graphicsEffects;
+    if(!settings)return;
+    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off')this.enhancedSurfaces??=new EnhancedSurfaces();
+    this.enhancedSurfaces?.update(this.staticRoot,settings,this.textureAnisotropy);
+  }
+
   maxAnisotropy(){return this.renderer.capabilities?.getMaxAnisotropy?.()??this.renderer.getMaxAnisotropy?.()??1;}
 
   updateTextureFiltering(){
     if(!this.surfaces)return;
-    this.textureAnisotropy=applyTextureFiltering([this.scene,...[...this.worlds.values()].map(world=>world.root)],Object.values(this.surfaces).filter(value=>value?.isMaterial),this.quality??'high',this.maxAnisotropy());
+    this.textureAnisotropy=applyTextureFiltering([this.scene,...[...this.worlds.values()].map(world=>world.root)],Object.values(this.surfaces).filter(value=>value?.isMaterial),this.quality??'high',this.maxAnisotropy(),this.graphicsEffects?.anisotropy);
   }
 
   resize() {
@@ -1842,6 +1896,15 @@ export class GameRenderer {
         this.renderer.shadowMap.needsUpdate = true;
       }
     }
+    if(this.graphicsEffects?.water==='high'&&this.portWaterMesh){
+      this.waterAppearance??=new WaterAppearance();
+      this.waterAppearance.update(this.clock,this.portWaterMesh);
+    }else if(this.waterAppearance){
+      this.waterAppearance.dispose();
+      this.waterAppearance=null;
+    }
+    this.cascades?.update();
+    this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
     if(!menu&&!warming)this.interiorVisibility.apply(this);
     const timing=this.gpuTimer.begin();
     try{
@@ -1854,7 +1917,7 @@ export class GameRenderer {
         this.postPass.begin(this.quality);
         try {
           generator?.beginWorld(this.scene);
-          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
+          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null);
         } finally {generator?.endWorld();}
         this.postPass.end(this.clock,this.quality);
       }catch(error){
@@ -1862,7 +1925,7 @@ export class GameRenderer {
         // A bad pipeline/unsupported MRT disables only FG, not the whole WebGPU game.
         generator.error(error);
         this.postPass.begin(this.quality);
-        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot);
+        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null);
         this.postPass.end(this.clock,this.quality);
       }
     }
@@ -1906,16 +1969,48 @@ export class GameRenderer {
     if (this.map.shoreX !== undefined && this.portWater) {
       this.portWater.offset.set((this.clock * .011) % 1, (this.clock * .017) % 1);
     }
-    const previousQuality=this.quality;this.quality=view.quality??'high';this.shadowDynamicOnly=this.quality==='medium';
-    this.groundShadows.uniforms.groundShadowStrength.value=this.quality==='high'?0:.32;
-    const low = this.quality !== 'high';
-    if(previousQuality!==this.quality){this.applyShadows();this.updateTextureFiltering();}
-    if (this.lowQuality !== low) {
-      this.applyQuality(low);
+    const previousQuality=this.quality;
+    const previousEffects=this.graphicsEffects, previousShadowOverride=this.adaptiveGraphics?.shadowOverride;
+    const gfx=view.gfx;
+    const dynamicResolution=gfx?.fsr==='on'?gfx.fsrQuality==='auto':(gfx?.resolution??'auto')==='auto';
+    this.quality=baseGraphicsQuality(view.quality);
+    const selectedEffects=graphicsEffects(view.quality,gfx?.customGraphics);
+    this.presentingCampaign=Boolean(state?.campaign);
+    if(selectedEffects.adaptiveTarget!=='off'){
+      const adaptive=this.adaptiveGraphics??=new AdaptiveGraphics();
+      const shadows=gfx?.shadows??'auto';
+      const selectedShadows=shadows==='auto'?(selectedEffects.cascades??(this.quality==='low'?'off':this.quality==='medium'?'low':this.integratedGpu?'medium':'high')):shadows;
+      adaptive.configure(selectedEffects,selectedShadows);
+      if(state?.players&&!view.paused)adaptive.sample(rawDt,this.lastCpuMs??0,this.gpuTimer,dynamicResolution);
+      this.graphicsEffects=adaptive.effects;
+    }else{
+      this.adaptiveGraphics=null;
+      this.graphicsEffects=selectedEffects;
     }
-    const gfx = view.gfx;
+    this.groundShadows.uniforms.groundShadowStrength.value=this.quality==='high'?0:.32;
+    const materialQuality=this.graphicsEffects.materials;
+    const low = materialQuality==='auto' ? this.quality!=='high' : materialQuality==='low';
+    if(previousQuality!==this.quality||previousShadowOverride!==this.adaptiveGraphics?.shadowOverride||
+      previousEffects?.shadowDistance!==this.graphicsEffects.shadowDistance||previousEffects?.shadowFilter!==this.graphicsEffects.shadowFilter||
+      previousEffects?.cascades!==this.graphicsEffects.cascades)this.applyShadows();
+    if(previousQuality!==this.quality||previousEffects?.anisotropy!==this.graphicsEffects.anisotropy)this.updateTextureFiltering();
+    if (this.lowQuality !== low) this.applyQuality(low);
+    if(previousEffects!==this.graphicsEffects||this.gradedMap!==this.map){
+      this.gradedMap=this.map;
+      this.refreshSurfaceEnhancements();
+      if(!this.presentingCampaign){
+        const enhanced=this.graphicsEffects.lighting==='enhanced';
+        const hemi=this.map?.hemisphereLightIntensity??(low?2.35:2.0);
+        const ambient=this.map?.ambientLightIntensity??(low?.38:.2);
+        const interiors=this.map.theme==='pool-day'||this.map.theme==='linden-estate';
+        this.hemiLight.intensity=hemi*(enhanced?(interiors?.96:.86):1);
+        this.ambientLight.intensity=ambient*(enhanced?(interiors?1:.86):1);
+        this.sun.intensity=(this.map?.sunIntensity??3.5)*(enhanced?1.10:1);
+      }
+      this.postPass.setImage(this.graphicsEffects,gradeParameters(this.graphicsEffects,this.map));
+    }
     const detail=(gfx?.detail??'auto')==='auto'?this.quality:gfx.detail;
-    const detailLevel=detail==='high'?2:detail==='medium'?1:0;
+    const detailLevel=Math.max(0,(detail==='high'?2:detail==='medium'?1:0)-(this.adaptiveGraphics?.cpuStep??0));
     if(this.detailLevel!==detailLevel||previousQuality!==this.quality){
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
@@ -1930,8 +2025,18 @@ export class GameRenderer {
       if(shadowChanged)this.applyShadows();
       this.updatePixelRatio();
     }
-    const dynamicResolution=this.gfx.fsr==='on'?this.gfx.fsrQuality==='auto':this.gfx.resolution==='auto';
-    if(state?.players&&!view.paused&&dynamicResolution&&this.resolutionController.update(rawDt,this.lastCpuMs??0,this.gpuTimer.summary()?.p95??null)){
+    if(this.adaptiveGraphics){
+      const scale=this.adaptiveGraphics.scale;
+      if(this.resolutionController.scale!==scale){
+        this.resolutionController.scale=scale;
+        this.adaptiveScale=scale;
+        this.updatePixelRatio();
+      }
+    }else if(previousEffects?.adaptiveTarget!=='off'&&previousEffects?.adaptiveTarget){
+      this.resolutionController=new AdaptiveResolution();
+      this.adaptiveScale=1;
+      this.updatePixelRatio();
+    }else if(state?.players&&!view.paused&&dynamicResolution&&this.resolutionController.update(rawDt,this.lastCpuMs??0,this.gpuTimer.summary()?.p95??null)){
       this.adaptiveScale=this.resolutionController.scale;
       if(this.gfx.fsr!=='on')this.updatePixelRatio();
     }
@@ -2334,10 +2439,15 @@ export class GameRenderer {
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
       postSamples:post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
-      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.gfx.shadows,
+      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
       worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
       triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
+      graphicsEffects:this.graphicsEffects,
+      adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
+        cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
+      postPasses:1+post.worldEffects.passes+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
+      extraTargetBytes:post.worldEffects.memory,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
       fsrScale:post.fsrScale,fsrSharpness:this.gfx.fsrSharpness,sceneWidth:post.target.width,sceneHeight:post.target.height,
@@ -2354,6 +2464,8 @@ export class GameRenderer {
 
   dispose() {
     this.disposed=true;
+    this.waterAppearance?.dispose();
+    this.enhancedSurfaces?.dispose();
     this.villageModel.dispose();
     this.alhadraModel.dispose();
     this.alhadraDesertModel.dispose();
@@ -2369,6 +2481,7 @@ export class GameRenderer {
     this.poolWeaponRig?.dispose();
     this.poolWeaponTemplates?.clear();
     this.poolWeaponModels?.clear();
+    this.cascades?.dispose();
     this.cachedShadows.dispose();
     this.bulletMarks.dispose();
     this.clearVehicles();

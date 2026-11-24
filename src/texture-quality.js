@@ -1,5 +1,5 @@
-export function applyTextureFiltering(roots,materials,quality,maxAnisotropy){
-  const limit=quality==='high'?maxAnisotropy:Math.min(maxAnisotropy,quality==='medium'?4:2);
+export function applyTextureFiltering(roots,materials,quality,maxAnisotropy,override='auto'){
+  const limit=override==='auto'?(quality==='high'?maxAnisotropy:Math.min(maxAnisotropy,quality==='medium'?4:2)):Math.min(maxAnisotropy,Number(override));
   const visited=new Set(),textures=new Set();
   function apply(material){
     if(!material||visited.has(material))return;visited.add(material);
