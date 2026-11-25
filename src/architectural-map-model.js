@@ -77,14 +77,8 @@ export class ArchitecturalMapModel {
   surface(name){
     if(this.materials.has(name))return this.materials.get(name);
     const estate=this.assets.key==='estate',plaster=estate&&name==='concrete',foliage=name==='foliage';
-    const source=foliage||plaster?null:this.owner.surfaces[texturedSurfaces[name]??name];
-    let map=source?.map??null;
-    if(plaster){
-      const data=new Uint8Array(64*64*4);
-      for(let i=0;i<64*64;i++){const n=242+((Math.imul(i+17,2654435761)>>>25)%13);data.set([n,n,n,255],i*4);}
-      map=new THREE.DataTexture(data,64,64,THREE.RGBAFormat);map.colorSpace=THREE.SRGBColorSpace;
-      map.wrapS=map.wrapT=THREE.RepeatWrapping;map.generateMipmaps=true;map.minFilter=THREE.LinearMipmapLinearFilter;map.magFilter=THREE.LinearFilter;map.needsUpdate=true;this.textures.push(map);
-    }
+    const source=foliage?null:this.owner.surfaces[texturedSurfaces[name]??name];
+    let map=plaster?(this.owner.surfaces.maps?.['village-stucco']??source?.map):source?.map??null;
     const url=architectureTextures[name];
     if(url){
       map=this.textureLoader.load(url);
@@ -99,17 +93,21 @@ export class ArchitecturalMapModel {
       ...(lamp?{emissive:0xffe6bc,emissiveIntensity:estate?.85:.16}:{}),
     };
     const high=new THREE.MeshStandardMaterial({
-      ...options,normalMap:source?.normalMap??null,normalScale:new THREE.Vector2(estate?.13:.28,estate?.13:.28),
+      ...options,normalMap:plaster?(this.owner.surfaces.villageNormals?.stucco??source?.normalMap??null):source?.normalMap??null,normalScale:new THREE.Vector2(.28,.28),
       roughness:water?.21:name==='metal'?.68:name==='ceramic'?.79:.9,metalness:name==='metal'?.23:0,
     });
     const enhanced={ceramic:'ceramic',stone:'rock',concrete:'concrete',garden:'grass',roof:'metal',metal:'metal',brick:'brick',wood:'wood',cloth:'cloth',asphalt:'asphalt',ground:'earth',plaster:'stucco'}[name];
     const low=new THREE.MeshLambertMaterial(options);
-    if(enhanced&&!plaster&&!foliage)high.userData.remasterSurface=low.userData.remasterSurface=estate&&name==='stone'?'concrete':enhanced;
+    if(enhanced&&!foliage)high.userData.remasterSurface=low.userData.remasterSurface=plaster?'stucco':estate&&name==='stone'?'concrete':enhanced;
     if(estate){for(const m of [high,low]){
       m.userData.estateFinish=true;
       if(plaster)m.userData.weatherSurface='stucco';
-      if(name==='brick'){m.color.lerp(new THREE.Color(0xe9e0d0),.18);m.userData.disableRelief=true;}
-      if(['wood','stone','concrete','ceramic','brick'].includes(name)){m.userData.preserveAlbedo=true;m.userData.disableRelief=true;}
+      // Estate GLBs already contain authored vertex paint. Scanned albedo
+      // multiplies that paint, so compensate the scan's mean brightness in
+      // linear space rather than removing its detail or brightening the map.
+      m.userData.scanGain={concrete:1.27,stone:1.48,brick:1.65,wood:1.52}[name]??1;
+      m.userData.reliefFactor={concrete:.46,stone:.45,brick:.48,wood:.40}[name]??1;
+      if(name==='ceramic')m.userData.disableRelief=true;
       if(foliage)m.userData.noGI=true;
     }}
     if(name==='fabric')high.userData.weatherSurface=low.userData.weatherSurface='cloth';

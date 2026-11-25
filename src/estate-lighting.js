@@ -36,7 +36,7 @@ export function relightEstateAtlas(texture,charts,candidates,map){
         if(!estateInterior(sample.x,sample.y,sample.z))continue;
         let warm=0;
         for(const lamp of visible){ray.subVectors(lamp,sample);const d=ray.length();if(d>.001)warm+=lampContribution(d,normal.dot(ray)/d);}
-        const off=((y+j)*size+x+i0)*4,bounce=.064+.035*(data[off+3]/255);
+        const off=((y+j)*size+x+i0)*4,bounce=.050+.030*(data[off+3]/255);
         data[off]=Math.min(255,Math.round(data[off]+255*(bounce+warm)));
         data[off+1]=Math.min(255,Math.round(data[off+1]+255*(bounce+warm*.88)));
         data[off+2]=Math.min(255,Math.round(data[off+2]+255*(bounce+warm*.72)));

@@ -136,7 +136,7 @@ export class EnhancedSurfaces {
       updated.add(material);
       const standard=material.isMeshStandardMaterial;
       if(!this.originals.has(material)){
-        this.originals.set(material,{map:material.map,aoMap:material.aoMap,aoMapIntensity:material.aoMapIntensity,
+        this.originals.set(material,{map:material.map,color:material.color.clone(),aoMap:material.aoMap,aoMapIntensity:material.aoMapIntensity,
           ...(standard?{normalMap:material.normalMap,roughnessMap:material.roughnessMap,metalnessMap:material.metalnessMap,
             bumpMap:material.bumpMap,roughness:material.roughness,metalness:material.metalness,normalScale:material.normalScale.clone()}:{}),
         });
@@ -148,22 +148,24 @@ export class EnhancedSurfaces {
       const normal=detail?get(surface,'nor_gl',size):null;
       const ready=Boolean(color&&normal&&pack);
       const maps={map:ready&&!material.userData.preserveAlbedo?color:base.map,aoMap:aoSize&&pack?pack:base.aoMap};
+      material.color.copy(base.color);
+      if(ready&&!material.userData.preserveAlbedo&&material.userData.scanGain)material.color.multiplyScalar(material.userData.scanGain);
       if(standard){
         maps.normalMap=ready?normal:base.normalMap;
         maps.roughnessMap=ready?pack:base.roughnessMap;
         maps.metalnessMap=ready&&surface==='metal'?pack:base.metalnessMap;
         maps.bumpMap=ready?null:base.bumpMap;
         material.normalScale.copy(base.normalScale);
-        if(ready)material.normalScale.multiplyScalar(surface==='rock'?2.6:surface==='sand'?.92:surface==='cloth'?1.2:1.75);
+        if(ready)material.normalScale.multiplyScalar(material.userData.estateFinish?(surface==='brick'?1.60:surface==='stucco'?1.20:1.45):surface==='rock'?2.6:surface==='sand'?.92:surface==='cloth'?1.2:1.75);
         material.roughness=ready?1:base.roughness;
         material.metalness=ready&&surface==='metal'?1:base.metalness;
       }
       if(Object.entries(maps).some(([key,value])=>material[key]!==value)){
         Object.assign(material,maps);material.needsUpdate=true;
       }
-      material.aoMapIntensity=aoSize&&pack?(material.userData.estateFinish?.24:settings.architectureAO!=='off'?.38:settings.ao==='off'?.8:.5):base.aoMapIntensity;
+      material.aoMapIntensity=aoSize&&pack?(material.userData.estateFinish?.36:settings.architectureAO!=='off'?.38:settings.ao==='off'?.8:.5):base.aoMapIntensity;
       this.suspendWeathering(material);
-      const steps=RELIEF_STEPS[settings.relief],scale=RELIEF_DEPTH[surface];
+      const steps=RELIEF_STEPS[settings.relief],scale=RELIEF_DEPTH[surface]*(material.userData.reliefFactor??1);
       const relief=ready&&steps&&scale&&!['sand','earth','grass'].includes(surface)&&!material.userData.groundShadowPatched&&!material.userData.disableRelief;
       this.setRelief(material,relief?get(surface,'disp',Math.min(size,steps>8?1024:512)):null,steps,scale,RELIEF_RANGE[settings.relief]);
       const params=weather?weatherParameters(mapId,weatherSurface,settings.mapWeathering):null;
@@ -189,8 +191,9 @@ export class EnhancedSurfaces {
   restore(material,base){
     this.setWeathering(material,null);
     this.setRelief(material,null);
-    const {normalScale,...values}=base;
+    const {normalScale,color,...values}=base;
     Object.assign(material,values);
+    if(color)material.color.copy(color);
     if(normalScale)material.normalScale.copy(normalScale);
     material.needsUpdate=true;
   }

@@ -30,7 +30,7 @@ export function meshGeometryKey(mesh,geometry=mesh.geometry){
 }
 export function architectureAOAmount(quality,{estate=false,screenAO=false,gi=false}={}){
   const base=quality==='high'?.78:quality==='low'?.43:0;
-  return base*(estate?.56:1)*(screenAO?.80:1)*(gi?.90:1);
+  return base*(estate?.70:1)*(screenAO?.80:1)*(gi?.90:1);
 }
 export function architectureIntensity(quality,{campaign=false,nightVision=false,sun=3.5,hemi=2,estate=false}={}){
   const base=quality==='high'?(estate?1.85:.85):quality==='low'?(estate?1.05:.45):0;
