@@ -1,37 +1,66 @@
-import {tankFlameCenter} from '../combat-visuals.js';
 import * as THREE from 'three';
 import {makeParticleTexture} from '../effect-art.js';
 
-const flameFragment=`
-  varying vec2 uvFire;uniform float time;uniform float seed;uniform float detail;uniform float vehicleFire;
-  void main(){
-    vec2 p=uvFire;float y=p.y;
-    float t=time*.62;
-    float wobble=sin(y*5.8-t*2.1+seed)*.085*y+sin(y*13.-t*3.7+seed*2.)*.045*y;
-    float width=(1.-y)*.40+.065;
-    float x=abs(p.x-.5+wobble);
-    float edge=1.-smoothstep(width*.38,width,x);
-    // Continuous domain-warped bands flow upward; independent scales split
-    // the upper silhouette into tongues instead of pulsing a circular sprite.
-    float flow=y*12.-t*3.8+seed;
-    float warp=sin(p.x*13.+sin(flow)*1.3+seed);
-    float tongues=.69+.16*warp+.12*sin(p.x*29.-flow*.82+seed)+.06*sin(p.x*51.+flow*.43);
-    float alpha=edge*(1.-smoothstep(tongues-.13,tongues+.12,y))*smoothstep(0.,.09,y);
-    float cells=.5+.5*sin(p.x*24.+sin(flow)*2.1+flow*.67)*sin(p.x*13.-flow*.91);
-    alpha*=.77+.23*cells;
-    vec3 color=mix(vec3(1.,.72,.19),vec3(.96,.14,.012),smoothstep(.10,.85,y));
-    if(detail>.5){
-      float fine=.5+.5*sin(p.x*49.+sin(flow*1.2)*1.7-flow)*sin(p.x*33.+flow*.71);
-      float hot=smoothstep(.40,.88,cells*.74+fine*.26)*(1.-smoothstep(.26,.84,y));
-      alpha*=.78+.22*fine;color=mix(color,vec3(1.,.94,.52),hot*.83);
+// The flame silhouette is a real curved, closed-in-cross-section 3D mesh,
+// not a camera-facing plane. Only smoke retains conventional billboards.
+const SIDES=12,RINGS=12,TAU=Math.PI*2;
+export function createFlameGeometry(){
+  const geometry=new THREE.BufferGeometry();
+  const positions=new Float32Array((SIDES+1)*(RINGS+1)*3),uv=new Float32Array((SIDES+1)*(RINGS+1)*2),indices=[];
+  for(let j=0;j<=RINGS;j++)for(let i=0;i<=SIDES;i++){
+    const n=j*(SIDES+1)+i;uv[n*2]=i/SIDES;uv[n*2+1]=j/RINGS;
+    if(j<RINGS&&i<SIDES){const a=n,b=n+SIDES+1;indices.push(a,b,a+1,a+1,b,b+1);}
+  }
+  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3).setUsage(THREE.DynamicDrawUsage));
+  geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));geometry.setIndex(indices);
+  geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,.5,0),1.05);
+  animateFlameGeometry(geometry,0,0);
+  return geometry;
+}
+export function animateFlameGeometry(geometry,time,seed){
+  const pos=geometry.attributes.position,t=time*.8;
+  for(let j=0;j<=RINGS;j++){
+    const y=j/RINGS,tip=Math.pow(y,1.65);
+    const cx=tip*(.19*Math.sin(t*1.7+y*4.2+seed)+.09*Math.sin(y*8.2-t*2.3+seed));
+    const cz=tip*(.17*Math.cos(t*1.3+y*3.8+seed)+.08*Math.sin(y*7.6-t*1.9+seed*1.3));
+    const radius=(.025+.33*Math.pow(Math.max(0,1-y),.78))*(.82+.18*Math.sin(y*7.1-t*2.2+seed));
+    for(let i=0;i<=SIDES;i++){
+      const angle=i/SIDES*TAU,warp=1+.17*Math.sin(angle*3+y*5.2-t*2+seed)+.10*Math.sin(angle*2-y*8+t*1.7);
+      pos.setXYZ(j*(SIDES+1)+i,cx+Math.cos(angle)*radius*warp,y,cz+Math.sin(angle)*radius*warp*.78);
     }
-    if(alpha<.025)discard;
-    if(vehicleFire>.5){
-      // Normal alpha blending retains orange flames against bright sky.
-      vec3 orange=mix(vec3(1.,.48,.055),vec3(.88,.085,.008),smoothstep(.10,.85,y));
-      color=mix(orange,color,.72);
-      gl_FragColor=vec4(color,alpha*.86);
-    }else gl_FragColor=vec4(color*1.5,alpha*.85);
+  }
+  pos.needsUpdate=true;geometry.computeVertexNormals();
+  // Weld the UV seam normals, retaining wrapped UVs for the shader.
+  const normal=geometry.attributes.normal;
+  for(let j=0;j<=RINGS;j++){
+    const a=j*(SIDES+1),b=a+SIDES,x=normal.getX(a)+normal.getX(b),y=normal.getY(a)+normal.getY(b),z=normal.getZ(a)+normal.getZ(b),l=Math.hypot(x,y,z)||1;
+    normal.setXYZ(a,x/l,y/l,z/l);normal.setXYZ(b,x/l,y/l,z/l);
+  }
+  normal.needsUpdate=true;
+}
+
+const flameFragment=`
+  varying vec2 uvFire;varying vec3 fireNormal;varying vec3 fireView;
+  uniform float time;uniform float seed;uniform float detail;uniform float vehicleFire;
+  void main(){
+    float y=uvFire.y,a=uvFire.x*6.2831853,t=time*.62;
+    float flow=y*10.-t*3.5+seed;
+    float bands=.5+.5*sin(a*3.+sin(flow)*1.4-flow*.72);
+    float eddies=.5+.5*sin(a*5.-flow*1.1+sin(a*2.+flow)*1.2);
+    float density=smoothstep(.16,.78,bands*.68+eddies*.32);
+    if(detail>.5){
+      float fine=.5+.5*sin(a*8.+flow*1.7+sin(a*4.-flow));
+      density*=.78+.22*fine;
+    }
+    float rim=smoothstep(.04,.72,abs(dot(normalize(fireNormal),normalize(fireView))));
+    float tip=.78+.12*sin(a*2.+flow*.65)+.07*sin(a*3.-flow);
+    float alpha=(.24+.76*density)*rim*smoothstep(0.,.10,y)*(1.-smoothstep(tip-.18,tip+.11,y));
+    vec3 color=mix(vec3(1.,.60,.10),vec3(.83,.075,.006),smoothstep(.14,.92,y));
+    float hot=smoothstep(.52,.88,bands)*(1.-smoothstep(.2,.72,y));
+    color=mix(color,vec3(1.,.88,.37),hot*.72);
+    alpha*=vehicleFire>.5?.56:.63;
+    if(alpha<.008)discard;
+    gl_FragColor=vec4(color,alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
@@ -39,29 +68,39 @@ const uniforms=material=>material.userData.fireUniforms??material.uniforms;
 
 function flameMaterial(renderer,seed,vehicle){
   return renderer.webgpu?.webGpuCampaignFlame(seed,vehicle)??new THREE.ShaderMaterial({
-    transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:vehicle?THREE.NormalBlending:THREE.AdditiveBlending,
+    transparent:true,depthWrite:false,side:THREE.FrontSide,blending:THREE.NormalBlending,toneMapped:false,
     uniforms:{time:{value:0},seed:{value:seed},detail:{value:0},vehicleFire:{value:Number(vehicle)}},
-    vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    vertexShader:'varying vec2 uvFire;varying vec3 fireNormal;varying vec3 fireView;void main(){uvFire=uv;vec4 p=modelViewMatrix*vec4(position,1.);fireNormal=normalMatrix*normal;fireView=-p.xyz;gl_Position=projectionMatrix*p;}',
     fragmentShader:flameFragment,
   });
 }
+const tongueOffsets=[[0,0,1,.90],[-.28,.13,.73,.72],[.26,-.18,.84,.68],[.08,.31,.55,.60]];
+function setTongues(planes,e,time,reduced=false,distance=0){
+  const phase=(e.x*.037+e.z*.029),yaw=e.yaw??phase;
+  const layers=reduced||distance>55**2?2:4;
+  for(const [i,mesh] of planes.entries()){
+    mesh.visible=i<layers;if(!mesh.visible)continue;
+    const [x,z,h,w]=tongueOffsets[i];
+    const height=e.height*h*(1+.12*Math.sin(time*1.45+phase+i*2.1)+.045*Math.sin(time*2.8+phase+i));
+    mesh.position.set(x*e.width,e.vehicle?-.12:-.035,z*e.width);
+    mesh.rotation.y=yaw+i*1.83;
+    mesh.scale.set(e.width*w,height,e.width*w);
+  }
+}
 
-// Fixed pool for ordinary wrecks. Unlike transient blast sprites, these
-// flame cards remain visible for the entire lifetime of the wreck.
 export class WreckFire {
   constructor(renderer,parent){
     this.renderer=renderer;this.root=new THREE.Group();parent.add(this.root);
-    this.geometry=new THREE.PlaneGeometry(1,1);this.slots=[];this.sources=[];
-    this.materials=Array.from({length:6},(_,i)=>flameMaterial(renderer,i*3.71,true));
+    this.geometries=Array.from({length:4},()=>createFlameGeometry());this.slots=[];this.sources=[];
+    this.materials=Array.from({length:4},(_,i)=>flameMaterial(renderer,i*3.71,true));
   }
   begin(){this.sources.length=0;}
   add(source){this.sources.push(source);}
   slot(index){
     if(this.slots[index])return this.slots[index];
     const group=new THREE.Group();this.root.add(group);
-    const planes=Array.from({length:3},(_,i)=>{
-      const mesh=new THREE.Mesh(this.geometry,this.materials[(index*3+i)%this.materials.length]);
-      group.add(mesh);return mesh;
+    const planes=this.geometries.map((geometry,i)=>{
+      const mesh=new THREE.Mesh(geometry,this.materials[i]);group.add(mesh);return mesh;
     });
     return this.slots[index]={group,planes};
   }
@@ -69,37 +108,25 @@ export class WreckFire {
     const distance=e=>(e.x-camera.position.x)**2+(e.y-camera.position.y)**2+(e.z-camera.position.z)**2;
     this.sources.sort((a,b)=>distance(a)-distance(b));
     const count=Math.min(this.sources.length,reduced?5:9);
-    for(const [i,material] of this.materials.entries()){
+    if(count)for(const [i,material] of this.materials.entries()){
       const u=uniforms(material);u.time.value=time+i*.37;u.detail.value=Number(!reduced);
+      animateFlameGeometry(this.geometries[i],time,i*3.71);
     }
     for(let i=0;i<count;i++){
-      const e=this.sources[i],slot=this.slot(i),d=distance(e);
+      const e=this.sources[i],slot=this.slot(i);
       slot.group.visible=true;slot.group.position.set(e.x,e.y,e.z);
-      const yaw=Math.atan2(camera.position.x-e.x,camera.position.z-e.z);
-      const phase=e.x*.037+e.z*.029,angle=time*1.35+phase;
-      const layers=d>45**2?1:reduced?2:3;
-      for(const [j,mesh] of slot.planes.entries()){
-        mesh.visible=j<layers;
-        if(!mesh.visible)continue;
-        const side=j===0?0:j===1?-.28:.31;
-        const height=e.height*(j===0?1:j===1?.79:.88)*(1+.10*Math.sin(angle+j*2.1)+.045*Math.sin(time*2.7+phase+j));
-        const width=e.width*(j===0?1.02:.74);
-        mesh.rotation.y=yaw+(j===0?0:j===1?.92:-.88);
-        mesh.position.set(Math.cos(yaw)*side*e.width,height*.5-.08,-Math.sin(yaw)*side*e.width);
-        mesh.scale.set(width,height,1);
-      }
+      setTongues(slot.planes,e,time,reduced,distance(e));
     }
     for(let i=count;i<this.slots.length;i++)this.slots[i].group.visible=false;
   }
   clear(){this.sources.length=0;for(const slot of this.slots)slot.group.visible=false;}
-  dispose(){this.root.removeFromParent();this.geometry.dispose();for(const material of this.materials)material.dispose();}
+  dispose(){this.root.removeFromParent();for(const geometry of this.geometries)geometry.dispose();for(const material of this.materials)material.dispose();}
 }
-
 
 export class CampaignFire {
   constructor(renderer,parent,emitters){
     this.renderer=renderer;this.root=new THREE.Group();parent.add(this.root);this.emitters=[];
-    this.plane=new THREE.PlaneGeometry(1,1);this.materials=[];this.dummy=new THREE.Object3D();
+    this.plane=new THREE.PlaneGeometry(1,1);this.flameGeometries=Array.from({length:4},()=>createFlameGeometry());this.materials=[];this.dummy=new THREE.Object3D();
     const smokeCanvas=document.createElement('canvas');smokeCanvas.width=smokeCanvas.height=96;
     const ctx=smokeCanvas.getContext('2d'),pixels=ctx.createImageData(96,96);
     for(let y=0;y<96;y++)for(let x=0;x<96;x++){
@@ -114,10 +141,10 @@ export class CampaignFire {
     this.smoke=new THREE.InstancedMesh(this.smokeGeometry,smokeMaterial,48);this.smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.smoke.frustumCulled=false;this.smoke.count=0;this.root.add(this.smoke);
     const add=(id,x,z,width,height,vehicle=false)=>{
       const y=renderer.map.terrain.heightAt(x,z),group=new THREE.Group();group.position.set(x,y,z);this.root.add(group);
-      const planes=[];for(let i=0;i<2;i++){
+      const planes=[];for(let i=0;i<4;i++){
         const seed=this.emitters.length*3+i*4.2;
         const material=flameMaterial(renderer,seed,vehicle);
-        this.materials.push(material);const mesh=new THREE.Mesh(this.plane,material);mesh.scale.set(width,height,1);mesh.position.y=vehicle?tankFlameCenter(height):height*.48;group.add(mesh);planes.push(mesh);
+        this.materials.push(material);const mesh=new THREE.Mesh(this.flameGeometries[i],material);group.add(mesh);planes.push(mesh);
       }
       const glowMaterial=gpu?.webGpuCampaignGlow()??new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{strength:{value:.2}},vertexShader:'varying vec2 uvGlow;void main(){uvGlow=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'varying vec2 uvGlow;uniform float strength;void main(){float a=pow(max(0.,1.-length(uvGlow-.5)*2.),2.)*strength;gl_FragColor=vec4(1.,.28,.025,a);}'});
       this.materials.push(glowMaterial);const glow=new THREE.Mesh(this.plane,glowMaterial);glow.rotation.x=-Math.PI/2;glow.position.y=.05;glow.scale.setScalar(width*4.2);group.add(glow);glow.visible=!vehicle;
@@ -141,6 +168,7 @@ export class CampaignFire {
       if(this.renderer.webgpu){const mat=this.renderer.webgpu.webGpuCampaignSmoke(tex);this.smoke.material=this.smokeMaterial=mat;this.materials[this.materials.indexOf(old)]=mat;old.dispose();}
       else old.uniforms.map.value=tex;
     }
+    for(const [i,geometry] of this.flameGeometries.entries())animateFlameGeometry(geometry,time,i*3.71);
     for(const [index,e] of this.emitters.entries()){
       const active=activeIds?activeIds.has(e.id):e.id.startsWith('fuel')?mission.fuel.some(f=>f.destroyed&&Math.hypot(f.x-e.x,f.z-e.z)<8):mission.trucks.some(t=>t.id===e.id&&t.destroyed);
       const anchor=e.vehicle?anchorFor?.(e.id):null;
@@ -148,7 +176,8 @@ export class CampaignFire {
       if(anchor){e.x=anchor.x;e.y=anchor.y;e.z=anchor.z;e.group.position.copy(anchor);}
       if(this.renderer.graphicsEffects?.heatDistortion==='high')this.renderer.activeHeatFires.push(e);
       if(this.renderer.graphicsEffects?.fireLighting==='high')this.renderer.activeFireLights.push(e);
-      e.planes.forEach((mesh,i)=>{const u=uniforms(mesh.material);u.time.value=time;u.detail.value=Number(high);mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*1.65+index+i)*(high?.10:.06));if(e.vehicle)mesh.position.y=tankFlameCenter(mesh.scale.y);});
+      e.planes.forEach(mesh=>{const u=uniforms(mesh.material);u.time.value=time;u.detail.value=Number(high);});
+      setTongues(e.planes,e,time,!high,(camera.position.x-e.x)**2+(camera.position.z-e.z)**2);
       uniforms(e.glow.material).strength.value=.16+Math.sin(time*1.7+index)*.025;
       for(let n=0;n<8&&count<this.smoke.instanceMatrix.count;n++){
         const phase=((time*.12+n/8+index*.117)%1),age=phase*8,spread=e.width*(.45+phase*.7);
@@ -160,5 +189,5 @@ export class CampaignFire {
     this.smoke.count=count;this.smoke.instanceMatrix.needsUpdate=true;this.opacities.needsUpdate=true;
     uniforms(this.smokeMaterial).tint.value.set(mission.light==='dawn'?'#514b41':'#77716a');
   }
-  dispose(){this.root.removeFromParent();this.plane.dispose();this.smokeGeometry.dispose();this.smokeTexture.dispose();this.detailedSmoke?.dispose();for(const m of this.materials)m.dispose();this.smoke.dispose();}
+  dispose(){this.root.removeFromParent();this.plane.dispose();for(const geometry of this.flameGeometries)geometry.dispose();this.smokeGeometry.dispose();this.smokeTexture.dispose();this.detailedSmoke?.dispose();for(const m of this.materials)m.dispose();this.smoke.dispose();}
 }

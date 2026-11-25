@@ -1417,10 +1417,10 @@ export class GameRenderer {
       const scripted=scriptedTankFire(vehicle,state.campaign?.missionId);
       if(damaged&&vehicle.hp<=0&&!scripted&&this.graphicsEffects?.fireEffects==='high'&&distance<100){
         const tank=vehicle.type==='tank';
-        const width=vehicle.type==='atv'?1.15:tank?2.05:2.15,height=vehicle.type===BLACK_HAWK?3.2:vehicle.type==='atv'?1.35:tank?2.45:2.25;
+        const width=vehicle.type==='atv'?1.05:tank?1.85:1.9,height=vehicle.type===BLACK_HAWK?2.8:vehicle.type==='atv'?1.25:tank?2.05:1.95;
         const origin=tank?tankFireAnchor(vehicle,rig,this.wreckFirePosition):vehicle;
         const x=origin.x,z=origin.z,y=origin.y??this.map.terrain.heightAt(x,z);
-        const source={x,y,z,width,height};
+        const source={x,y,z,width,height,yaw:vehicle.yaw,vehicle:true};
         this.wreckFire??=new WreckFire(this,this.worldRoot);
         this.wreckFire.add(source);
         if(this.graphicsEffects?.fireLighting==='high')this.activeFireLights.push(source);

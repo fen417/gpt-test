@@ -544,3 +544,20 @@ test('consolidated graphics groups preserve valid settings and have FPS impact h
   for(const field of GRAPHICS_FINE_ONLY){assert.ok(controls.has(field));assert.ok(!seen.has(field));}
   for(const field of controls.keys())assert.ok(GRAPHICS_IMPACT[field],field);
 });
+
+
+test('wreck flames are animated 3D meshes, independent of view rotation',async()=>{
+  const {WreckFire,createFlameGeometry,animateFlameGeometry}=await import('../src/campaign/fire.js');
+  const g=createFlameGeometry(),p=g.attributes.position;
+  assert.ok(p.count>100);
+  assert.ok([...p.array].some((v,i)=>i%3===2&&Math.abs(v)>.1));
+  const before=Array.from(p.array);animateFlameGeometry(g,1,0);assert.notDeepEqual(Array.from(p.array),before);g.dispose();
+  const root=new THREE.Group(),fire=new WreckFire({},root),camera=new THREE.PerspectiveCamera();
+  fire.add({x:0,y:0,z:0,width:1.8,height:2,yaw:.4,vehicle:true});
+  camera.position.set(5,2,0);fire.update(camera,1);
+  const slot=fire.slots[0],angles=slot.planes.map(m=>m.rotation.y),positions=slot.planes.map(m=>m.position.toArray());
+  camera.position.set(0,2,5);fire.update(camera,1);
+  assert.deepEqual(slot.planes.map(m=>m.rotation.y),angles);
+  assert.deepEqual(slot.planes.map(m=>m.position.toArray()),positions);
+  fire.dispose();
+});
