@@ -1,4 +1,4 @@
-import {texture,uniform,vec2,vec4,positionWorld,materialAO,materialEmissive,diffuseColor,materialMetalness,clamp,mix,step,smoothstep,floor,fract} from 'three/tsl';
+import {texture,uniform,vec2,vec4,positionWorld,materialAO,materialEmissive,diffuseColor,float,clamp,mix,step,smoothstep,floor,fract} from 'three/tsl';
 const bindings=new WeakMap();
 export function setWebGpuGI(material,field){
   const old=bindings.get(material);
@@ -10,18 +10,18 @@ export function setWebGpuGI(material,field){
     material.needsUpdate=true;
   }
   if(!field)return;
-  const bounds=uniform(field.bounds),grid=uniform(field.grid),strength=uniform(field.strength.value),quality=uniform(field.quality.value),tint=uniform(field.sunTint);
+  const bounds=uniform(field.bounds),grid=uniform(field.grid),strength=uniform(field.strength.value),tint=uniform(field.sunTint);
   // All materials use the same live uniform nodes per field.
-  field.gpu??={strength,quality};const power=field.gpu.strength,q=field.gpu.quality;
+  field.gpu??={strength};const power=field.gpu.strength;
   const uv=positionWorld.xz.sub(bounds.xy).div(bounds.zw),edge=vec2(.5).div(grid.xy);
   const cell=clamp(uv,edge,edge.oneMinus());
   const sample=layer=>texture(field.texture).sample(cell.add(vec2(layer.mod(2),floor(layer.mul(.5)))).mul(.5));
-  const h=sample(floor(q.mul(0).add(3))).rg;
+  const h=sample(float(3)).rg;
   const altitude=positionWorld.y.sub(grid.z).sub(h.r.mul(65280).add(h.g.mul(255)).div(65535).mul(grid.w));
   const level=clamp(altitude.sub(.65).div(2.55),0,1).add(clamp(altitude.sub(3.2).div(5.3),0,1));
-  const low=sample(floor(level.add(.5))),high=mix(sample(floor(level)),sample(floor(level).add(1).min(2)),fract(level));
+  const value=field.quality.value<1.5?sample(floor(level.add(.5))):mix(sample(floor(level)),sample(floor(level).add(1).min(2)),fract(level));
   const fade=smoothstep(9,17,altitude).oneMinus().mul(step(0,uv.x)).mul(step(0,uv.y)).mul(step(uv.x,1)).mul(step(uv.y,1));
-  const probe=mix(vec4(0,0,0,1),mix(low,high,step(1.5,q)),fade).toVar();
+  const probe=mix(vec4(0,0,0,1),value,fade).toVar();
   const baseAO=material.aoNode,baseEmissive=material.emissiveNode,cache=material.customProgramCacheKey;
   const originalAO=baseAO??(material.aoMap?materialAO:vec2(1).x);
   const ao=originalAO.mul(probe.a.oneMinus().mul(-.34).mul(power.min(1)).add(1));

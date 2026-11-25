@@ -137,6 +137,22 @@ async function run(api){
     assert.ok(moving.changed>.01,api+' clouds do not move');
     assert.ok(fog.changed>.015,api+' height fog not visible');
     assert.ok(reset.mean<.5,api+' atmosphere did not restore baseline');
+    const gi={};
+    for(const q of ['off','low','high','offAgain']){
+      const result=await page.evaluate(q=>window.drawGISmoke(q==='offAgain'?'off':q),q);
+      assert.deepEqual(result.errors,[],api+' GI GPU validation errors');
+      assert.deepEqual(networkErrors,[],api+' GI resource loading errors');
+      assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' GI shader/browser errors');
+      if(result.lost){
+        if(api==='webgpu'&&info.software)return {inconclusive:'software device lost during GI '+q+': '+result.lost};
+        assert.fail(api+' GPU lost: '+result.lost);
+      }
+      gi[q]=await pixels(page);
+    }
+    const giLow=compare(gi.off,gi.low),giHigh=compare(gi.off,gi.high),giReset=compare(gi.off,gi.offAgain);
+    console.log('GI',api,JSON.stringify({low:giLow,high:giHigh,reset:giReset}));
+    assert.ok(giLow.changed>.01&&giHigh.changed>.01,api+' baked probe lighting not visible on real lit materials');
+    assert.ok(giReset.mean<.5,api+' GI did not restore original shading');
     return {passed:true};
   }finally{await browser.close();}
 }

@@ -5,7 +5,7 @@ export class IndirectLighting{
   invalidate(){this.dirty=true;}
   // Suspend before enhanced-surface material edits (POM modifies aoNode).
   suspend(){for(const m of this.materials)this.setMaterial(m,null);this.materials.clear();this.dirty=true;}
-  clear(){this.serial++;this.suspend();this.field?.texture.dispose();this.field=null;this.map=null;this.pending=false;this.failed=false;}
+  clear(){this.serial++;this.suspend();this.field?.texture.dispose();this.field=null;this.map=null;this.quality=null;this.pending=false;this.failed=false;}
   async load(map,serial){
     try{
       const base=new URL('gi-v1/',document.baseURI);
@@ -27,15 +27,16 @@ export class IndirectLighting{
     if(this.map!==map){this.clear();this.map=map;this.pending=true;this.load(map,this.serial);}
     if(!this.field)return;
     const field=this.field;
+    if(this.quality!==quality){this.suspend();this.quality=quality;}
     field.strength.value=giStrength(owner.sun,quality);field.quality.value=level;
     field.sunTint.copy(owner.sun.color).lerp(owner.hemiLight.color,.6).lerp({r:1,g:1,b:1},.32);
-    if(field.gpu){field.gpu.strength.value=field.strength.value;field.gpu.quality.value=level;}
+    if(field.gpu)field.gpu.strength.value=field.strength.value;
     // Scan only when a map model changes, or periodically to catch new
     // soldiers/vehicles. No ray tracing or material traversal every frame.
     if(!this.dirty&&owner.clock<(this.nextScan??0))return;
     this.dirty=false;this.nextScan=owner.clock+.8;
     const eligible=new Set();
-    owner.scene.traverseVisible(o=>{
+    owner.scene.traverse(o=>{
       if(!o.isMesh||o.userData.waterReflection||o.userData.waterSurface||o.userData.architecturalSurface==='water'||o.name==='Port water')return;
       for(const m of Array.isArray(o.material)?o.material:[o.material]){
         if(!m||m.transparent||!(m.isMeshStandardMaterial||m.isMeshLambertMaterial)||m.transmission>0||m.userData?.noGI)continue;

@@ -2253,6 +2253,9 @@ export class GameRenderer {
     }
     this.groundShadows.uniforms.groundShadowStrength.value=this.quality==='high'?0:.32;
     this.configureEffects();
+    // The old FPV core and the new HDR halo overlap. Reduce the core only
+    // in the remastered mode; legacy preserves the prior artwork.
+    if(this.weaponRig?.flashMaterial)this.weaponRig.flashMaterial.opacity=this.graphicsEffects.muzzleEffects==='high'?.69:.92;
     const materialQuality=this.graphicsEffects.materials;
     const low = materialQuality==='auto' ? this.quality!=='high' : materialQuality==='low';
     if(previousQuality!==this.quality||previousShadowOverride!==this.adaptiveGraphics?.shadowOverride||

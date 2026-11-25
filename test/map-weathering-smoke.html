@@ -12,6 +12,9 @@ import {graphicsEffects,gradeParameters} from '../src/graphics-settings.js';
 import {PostPass} from '../src/post-pass.js';
 import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
 import {getMap} from '../shared/world.js';
+import {bakeProbeField,makeProbeTexture,probeUniforms} from '../src/gi-probes.js';
+import {setWebGlGI} from '../src/webgl-gi.js';
+import {setWebGpuGI} from '../src/webgpu-gi.js';
 import {makeSky} from '../src/visuals.js';
 import {makeWebGpuSky} from '../src/webgpu-sky.js';
 import {atmosphereProfile} from '../src/atmosphere-profile.js';
@@ -187,5 +190,35 @@ window.drawAtmosphereSmoke=async mode=>{
     airPost.end(1,'high',null);
   });
   return {...result,fog:airPost.worldEffects.heightFog,mask:Boolean(airPost.worldEffects.mask),passes:airPost.worldEffects.passes};
+};
+let giScene,giCamera,giMaterials,giField;
+window.drawGISmoke=async quality=>{
+  if(!giScene){
+    giScene=new THREE.Scene();giScene.background=new THREE.Color(0x24313d);
+    giCamera=new THREE.PerspectiveCamera(46,1.5,.1,80);
+    giCamera.position.set(0,2,10);giCamera.lookAt(0,1.65,0);
+    giScene.add(new THREE.HemisphereLight(0xe1e9f0,0xaaa095,.68));
+    const geometry=new THREE.BoxGeometry(5,3,.5);
+    const left=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0xbababa,roughness:.95}));
+    const right=new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({color:0xbababa}));
+    left.position.set(-2.6,1.5,0);right.position.set(2.6,1.5,0);giScene.add(left,right);
+    const floor=new THREE.Mesh(new THREE.PlaneGeometry(18,18),new THREE.MeshStandardMaterial({color:0x939393,roughness:1}));floor.rotation.x=-Math.PI/2;giScene.add(floor);
+    const block=new THREE.Mesh(new THREE.BoxGeometry(.8,1,.8),new THREE.MeshStandardMaterial({color:0x999999}));block.position.set(-2,.5,2);giScene.add(block);
+    const map={id:'gi-fixture',size:24,terrain:{heightAt:()=>0},boxes:[
+      {x:-3,z:1,w:9,d:10,baseY:3.5,h:.4,color:'#c95b39',kind:'roof'},
+      {x:-6.8,z:1,w:.4,d:10,baseY:0,h:3.5,color:'#d76c38',kind:'wall'},
+      {x:-2.6,z:0,w:5,d:.5,baseY:0,h:3,color:'#b5a9a0',kind:'wall'},
+      {x:2.6,z:0,w:5,d:.5,baseY:0,h:3,color:'#929ca4',kind:'wall'},
+    ]};
+    const baked=bakeProbeField(map,{spacing:.75,maxCells:32});
+    giField=probeUniforms(baked,makeProbeTexture(baked));giMaterials=[left.material,right.material,floor.material,block.material];
+  }
+  const applyGI=device?setWebGpuGI:setWebGlGI;
+  for(const material of giMaterials)applyGI(material,null);
+  giField.strength.value=quality==='off'?0:1;giField.quality.value=quality==='high'?2:1;
+  if(giField.gpu)giField.gpu.strength.value=giField.strength.value;
+  if(quality!=='off')for(const material of giMaterials)applyGI(material,giField);
+  const result=await renderChecked(async()=>{await renderer.compileAsync(giScene,giCamera);renderer.render(giScene,giCamera);});
+  return {...result,materials:giMaterials.length};
 };
 </script></body></html>
