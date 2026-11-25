@@ -169,10 +169,14 @@ export class ShaderWarmup{
     const previous=r.getRenderTarget(),mask=camera.layers.mask,visible=worldRoot.visible,background=scene.background;
     try{
       r.setRenderTarget(postPass.worldEffects.world??postPass.target);camera.layers.set(0);
-      await r.compileAsync(scene,camera);signal.throwIfAborted();
+      if(r.isWebGLRenderer)await r.compileAsync(worldRoot,camera,scene);
+      else await r.compileAsync(scene,camera);
+      signal.throwIfAborted();
       if(weapon.visible){
         worldRoot.visible=false;scene.background=null;camera.layers.set(1);r.setRenderTarget(postPass.target);
-        await r.compileAsync(scene,camera);signal.throwIfAborted();
+        if(r.isWebGLRenderer)await r.compileAsync(weapon,camera,scene);
+        else await r.compileAsync(scene,camera);
+        signal.throwIfAborted();
       }
     }finally{r.setRenderTarget(previous);camera.layers.mask=mask;worldRoot.visible=visible;scene.background=background;}
   }

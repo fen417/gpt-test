@@ -284,6 +284,26 @@ export class GameRenderer {
       throw error;
     }
     this.gpuTimer=webgpu?new webgpu.GpuTimer(this.renderer,this.perfEnabled):new GpuTimer(this.renderer.getContext(),this.perfEnabled);
+    if(this.perfEnabled&&!webgpu&&typeof this.renderer.renderBufferDirect==='function'){
+      const owner=this,native=this.renderer.renderBufferDirect;
+      this.renderer.renderBufferDirect=function(camera,scene,geometry,material,object,group){
+        const trace=owner.shaderBuildTrace;
+        if(!trace)return native.call(this,camera,scene,geometry,material,object,group);
+        const before=this.info.programs.length;
+        try{return native.call(this,camera,scene,geometry,material,object,group);}
+        finally{
+          if(this.info.programs.length>before&&trace.length<48){
+            const program=this.properties.get(material).currentProgram;
+            trace.push({count:this.info.programs.length-before,program:program?.id??null,
+              object:object.name||object.type,material:material.name||material.type,
+              materialType:material.type,skin:!!object.isSkinnedMesh,instances:!!object.isInstancedMesh,
+              receiveShadow:!!object.receiveShadow,layer:camera.layers.mask,
+              envHeight:(material.envMap??scene?.environment)?.image?.height??null,
+              attributes:Object.keys(geometry.attributes),key:String(program?.cacheKey??'').slice(0,240)});
+          }
+        }
+      };
+    }
     this.postPass=webgpu?new webgpu.PostPass(this.renderer,{antialias}):new PostPass(this.renderer,{antialias});
     this.frameGeneration=webgpu?new webgpu.FrameGeneration(this.renderer,this.postPass):null;
     if(this.frameGeneration)this.postPass.frameGeneration=this.frameGeneration;
@@ -2354,6 +2374,7 @@ export class GameRenderer {
     const record=(name,ms)=>{if(parts)parts[name]=(parts[name]??0)+ms;};
     const checkpoint=name=>{if(parts){const now=performance.now();record(name,now-last);last=now;}};
     const beforePrograms=trace?this.renderer.info.programs?.length??null:null;
+    if(trace&&!this.webgpu)this.shaderBuildTrace=[];
     this.frameCount++;
     if(this.renderer.shadowMap.enabled){
       this.sun.shadow.needsUpdate=true;
@@ -2496,12 +2517,14 @@ export class GameRenderer {
       if(trace){
         profiler.recordCpuPass=null;
         const total=performance.now()-started;
+        const builds=this.shaderBuildTrace??[];this.shaderBuildTrace=null;
         if(total>=40){
           const log=this.renderStalls??=[];
           if(log.length>=16)log.shift();
           log.push({at:new Date().toISOString(),frame:this.frameCount,totalMs:Math.round(total*10)/10,
             parts:Object.fromEntries(Object.entries(parts).map(([k,v])=>[k,Math.round(v*10)/10])),
             programsBefore:beforePrograms,programsAfter:this.renderer.info.programs?.length??null,
+            shaderBuilds:builds,
             environment:this.localReflections.active,smoke:smoke.count,heat:worldFX.heat.count,
             giMaterials:this.indirectLighting.materials.size,shadowMode:this.shadowMode});
         }

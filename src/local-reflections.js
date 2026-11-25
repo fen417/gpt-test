@@ -19,6 +19,16 @@ function preserveSkyIrradiance(renderer, sky, local) {
   renderer.copyTextureToTexture(sky,local,region,new THREE.Vector2(first,localY));
 }
 
+// WebGL r181 includes envMapCubeUVHeight in its program key. Keep the sky
+// and room probes on one atlas layout so crossing a zone swaps a texture
+// uniform, not the shader program. WebGPU retains its existing quality tiers.
+export function localProbeSize(skyTexture,quality,webgpu=false){
+  const requested=quality==='high'?128:64;
+  if(webgpu)return requested;
+  const size=skyTexture?.image?.height/4;
+  return Number.isInteger(size)&&size>=requested&&size<=512&&(size&(size-1))===0?size:requested;
+}
+const atlasKey=texture=>texture?.image?texture.image.width+'x'+texture.image.height:null;
 export class LocalReflections {
   targets=new Map();
   failed=new Set();
@@ -33,10 +43,11 @@ export class LocalReflections {
   async prewarm(owner,signal,yieldFrame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),fence=async()=>{}){
     const quality=this.requested(owner);
     if(!quality)return;
+    const skyKey=owner.webgpu?null:atlasKey(owner.atmosphere.envTexture);
     const map=owner.map,world=owner.worlds.get(map.id);
     if(!world||world.model&&!world.model.base&&!world.fallback)return;
-    if(this.map!==map||this.quality!==quality||this.dirty){
-      this.dispose();this.map=map;this.quality=quality;this.zones=zonesFor(map);
+    if(this.map!==map||this.quality!==quality||this.skyKey!==skyKey||this.dirty){
+      this.dispose();this.map=map;this.quality=quality;this.skyKey=skyKey;this.zones=zonesFor(map);
     }
     const start=performance.now();
     for(const zone of this.zones){
@@ -73,14 +84,15 @@ export class LocalReflections {
     // Sky and local CubeUV atlases can have different dimensions and shader
     // variants. One representative per atlas size suffices for local probes.
     const variants=[null],sizes=new Set();
+    if(this.skyKey)sizes.add(this.skyKey);
     for(const target of this.targets.values()){
-      const texture=target.texture,key=texture.image?.width+'x'+texture.image?.height;
-      if(sizes.has(key))continue;sizes.add(key);variants.push(texture);
+      const texture=target.texture,key=atlasKey(texture);
+      if(key&&sizes.has(key))continue;if(key)sizes.add(key);variants.push(texture);
     }
     return variants;
   }
 
-  stats(){return {ready:this.targets.size,total:this.zones?.length??0,failed:this.failed.size,dirty:!!this.dirty,warmupMs:this.warmupMs??0};}
+  stats(){return {ready:this.targets.size,total:this.zones?.length??0,failed:this.failed.size,dirty:!!this.dirty,warmupMs:this.warmupMs??0,skyAtlas:this.skyKey??null,probeAtlases:[...new Set([...this.targets.values()].map(target=>atlasKey(target.texture)))]};}
 
   capture(owner, zone) {
     const {renderer,scene,staticRoot,worldRoot}=owner, sky=owner.atmosphere.sky;
@@ -94,7 +106,7 @@ export class LocalReflections {
     const intensities=keyLights.map(light=>light.intensity);
     const transient=scene.children.filter(light=>light.isPointLight),transientIntensity=transient.map(light=>light.intensity);
     // Keep capture cost bounded: one static capture per zone/quality, no per-frame cube render.
-    const cube=new THREE.WebGLCubeRenderTarget(this.quality==='high'?128:64,{type:THREE.HalfFloatType});
+    const cube=new THREE.WebGLCubeRenderTarget(localProbeSize(owner.atmosphere.envTexture,this.quality,Boolean(owner.webgpu)),{type:THREE.HalfFloatType});
     const camera=new THREE.CubeCamera(.15,180,cube);
     camera.position.set(zone.x,zone.y,zone.z);
     const Generator=owner.webgpu?.PMREMGenerator??THREE.PMREMGenerator;
@@ -133,6 +145,6 @@ export class LocalReflections {
     for(const target of this.targets.values())target.dispose();
     this.targets.clear();
     this.failed.clear();
-    this.active=this.map=this.quality=null;this.zones=[];this.dirty=false;this.warmupMs=0;
+    this.active=this.map=this.quality=this.skyKey=null;this.zones=[];this.dirty=false;this.warmupMs=0;
   }
 }
