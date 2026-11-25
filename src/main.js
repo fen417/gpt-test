@@ -2226,6 +2226,7 @@ try{
       ...await import('./webgpu-surface-relief.js'),
       ...await import('./webgpu-map-weathering.js'),
       ...await import('./webgpu-gi.js'),
+      ...await import('./webgpu-vegetation.js'),
       ...await import('./webgpu-penumbra.js')};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});

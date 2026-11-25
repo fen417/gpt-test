@@ -4,6 +4,12 @@ const gpuSteps = [
   ['water',{high:'medium',medium:'low',low:'legacy'}],
   ['localReflections',{high:'medium',medium:'off'}],
   ['gi',{high:'low',low:'off'}],
+  ['vegetationShadows',{high:'low',low:'off'}],
+  ['grassDistance',{'100':'70','70':'45','45':'20'}],
+  ['grassDensity',{'100':'50','50':'25','25':'off'}],
+  ['vegetation',{ultra:'high',high:'medium',medium:'low',low:'legacy'}],
+  ['vegetationWind',{high:'low',low:'off'}],
+  ['foliageTransmission',{high:'off'}],
   ['atmosphere',{ultra:'high',high:'medium',medium:'low',low:'off'}],
   ['clouds',{high:'medium',medium:'low',low:'off'}],
   ['heightFog',{high:'low',low:'off'}],
@@ -106,6 +112,6 @@ export class AdaptiveGraphics {
 }
 
 function gpuEffectName(previous,next) {
-  const names={reflections:'отражения',waterRefraction:'преломление воды',water:'вода',localReflections:'локальные отражения',gi:'непрямое освещение',atmosphere:'атмосфера',clouds:'облака',heightFog:'высотный туман',relief:'параллакс-рельеф',mapWeathering:'износ поверхностей',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',muzzleLights:'свет выстрелов',fireLighting:'свет огня',dust:'пыль',fireEffects:'огонь',muzzleEffects:'дульная вспышка',softParticles:'мягкие частицы',bloom:'свечение'};
+  const names={reflections:'отражения',waterRefraction:'преломление воды',water:'вода',localReflections:'локальные отражения',gi:'непрямое освещение',vegetation:'растительность',grassDistance:'дальность травы',grassDensity:'густота травы',vegetationShadows:'тени растений',vegetationWind:'ветер',foliageTransmission:'просвечивание листвы',atmosphere:'атмосфера',clouds:'облака',heightFog:'высотный туман',relief:'параллакс-рельеф',mapWeathering:'износ поверхностей',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',muzzleLights:'свет выстрелов',fireLighting:'свет огня',dust:'пыль',fireEffects:'огонь',muzzleEffects:'дульная вспышка',softParticles:'мягкие частицы',bloom:'свечение'};
   return Object.keys(names).map(key=>previous[key]!==next[key]?names[key]:null).find(Boolean)??'эффекты';
 }

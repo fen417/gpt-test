@@ -265,3 +265,35 @@ test('GI material patch restores shader and TSL material nodes',()=>{
   setWebGpuGI(gpu,field);assert.notEqual(gpu.aoNode,ao);assert.notEqual(gpu.emissiveNode,emissive);
   setWebGpuGI(gpu,null);assert.equal(gpu.aoNode,ao);assert.equal(gpu.emissiveNode,emissive);tex.dispose();gl.dispose();gpu.dispose();
 });
+
+import {foliagePixels,makeFoliageTexture,foliageGeometry} from '../src/vegetation-art.js';
+import {createPlacement,grassTile,authoredPlants,foliageLOD,FOLIAGE_LEVEL} from '../src/vegetation-placement.js';
+import {Vegetation} from '../src/vegetation.js';
+
+test('vegetation is opt-in and the legacy maps remain the default',()=>{
+  for(const p of ['legacy','low','medium','high']){const e=graphicsEffects(p);assert.equal(e.vegetation,'legacy');assert.equal(e.grassDensity,'off');}
+  const e=graphicsEffects('ultra');assert.equal(e.vegetation,'ultra');assert.equal(e.grassDensity,'100');assert.equal(validateCustomGraphics({grassDistance:'45',vegetation:'medium'},'ultra').grassDistance,'45');
+  assert.equal(FOLIAGE_LEVEL.legacy,0);assert.equal(foliageLOD(4,'high'),0);assert.equal(foliageLOD(220,'high'),2);
+});
+test('vegetation art has alpha-cutout silhouettes, deterministic textures and decreasing LOD triangle counts',()=>{
+  for(const kind of ['grass','scrub','broadleaf','palm','palm-impostor']){
+    const pixels=foliagePixels(kind,64);assert.deepEqual(pixels,foliagePixels(kind,64));assert.equal(pixels[3],0);assert.ok(pixels.some((x,i)=>i%4===3&&x>180));
+    const t=makeFoliageTexture(kind);assert.ok(t.generateMipmaps);t.dispose();
+  }
+  const meshes=[0,1,2].map(i=>foliageGeometry('palm',i));assert.ok(meshes[0].index.count>meshes[1].index.count&&meshes[1].index.count>meshes[2].index.count);
+  for(const g of meshes){assert.equal(g.attributes.s09Wind.count,g.attributes.position.count);g.dispose();}
+});
+test('grass placement excludes roads, walls, water and objectives; density is deterministic',()=>{
+  const map={id:'village',size:96,terrain:{heightAt:()=>0},boxes:[{x:10,z:10,w:8,d:8,h:3}],roads:[{x:0,z:0,w:6,d:40,yaw:0}],points:[{x:-12,z:12}]};
+  const placement=createPlacement(map);assert.equal(placement.allowed(0,0),false);assert.equal(placement.allowed(10,10),false);assert.equal(placement.allowed(-12,12),false);assert.equal(placement.allowed(18,18),true);
+  const a=grassTile(map,placement,0,0,1),b=grassTile(map,placement,0,0,.25);assert.deepEqual(a,grassTile(map,placement,0,0,1));assert.ok(a.length>=b.length);assert.ok(a.every(p=>placement.allowed(p.x,p.z)));
+  assert.equal(createPlacement({...map,id:'fy_pool_day'}).allowed(18,18),false);
+  assert.equal(authoredPlants({...map,boxes:[{kind:'village-palm',x:3,z:4,h:7.6,baseY:2}]} )[0].y,9.6);
+});
+test('vegetation switching preserves legacy leaf layers and releases instance batches',()=>{
+  const map={id:'village',size:64,terrain:{heightAt:()=>0},boxes:[{kind:'village-palm',x:3,z:4,h:7.6,baseY:0}]};
+  const root=new THREE.Group(),world=new THREE.Group();world.add(root);const leaf=new THREE.Mesh(new THREE.PlaneGeometry(),new THREE.MeshBasicMaterial());leaf.userData.legacyPalmLeaf=true;root.add(leaf);
+  const camera=new THREE.PerspectiveCamera();camera.updateMatrixWorld();const owner={map,staticRoot:root,worldRoot:world,camera,clock:1,sun:{intensity:3},sunOffset:new THREE.Vector3(1,2,1),graphicsEffects:{vegetation:'high',grassDensity:'off',grassDistance:'20',vegetationWind:'high',vegetationShadows:'low'}};
+  const veg=new Vegetation();veg.update(owner);assert.equal(leaf.layers.mask,0);assert.equal(veg.stats().authored,1);
+  owner.graphicsEffects={vegetation:'legacy'};veg.update(owner);assert.equal(leaf.layers.mask,1);assert.equal(veg.stats().authored,0);veg.dispose();leaf.geometry.dispose();leaf.material.dispose();
+});

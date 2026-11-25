@@ -31,7 +31,7 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
       if(material._lowMaterial?.color&&!material.color.equals(material._lowMaterial.color))continue;
       const surface=materialKey(material),sector=mapSector(object.matrixWorld,sectorSize);
       const attributes=Object.keys(object.geometry.attributes).filter(name=>name!=='color').sort().join(',');
-      const key=`${surface}/${object.castShadow}/${object.receiveShadow}/${sector}/${attributes}/${detailLevel}`;
+      const key=`${surface}/${object.castShadow}/${object.receiveShadow}/${sector}/${attributes}/${detailLevel}/${Boolean(object.userData.legacyPalmLeaf)}`;
       if(!batches.has(key))batches.set(key,{surface,material,parts:[],detailLevel});
       batches.get(key).parts.push({object,group});
     }
@@ -61,6 +61,7 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
     geometry.computeBoundingSphere();geometry.userData.owned=true;
     const first=parts[0].object,mesh=new THREE.Mesh(geometry,combinedMaterial);mesh.castShadow=first.castShadow;mesh.receiveShadow=first.receiveShadow;
     if(detailLevel)mesh.userData.detailLevel=detailLevel;
+    if(first.userData.legacyPalmLeaf)mesh.userData.legacyPalmLeaf=true;
     root.add(mesh);
     for(const {object,group} of parts){
       // An array-material mesh may have groups that were not merged. Keep only

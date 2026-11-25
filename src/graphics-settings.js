@@ -1,5 +1,5 @@
 const legacy = Object.freeze({
-  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', gi:'off', ao: 'off', contact: 'off',
+  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', vegetation:'legacy', grassDensity:'off', grassDistance:'20', vegetationWind:'off', vegetationShadows:'off', foliageTransmission:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', gi:'off', ao: 'off', contact: 'off',
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
@@ -9,7 +9,7 @@ const legacy = Object.freeze({
 });
 
 const ultra = Object.freeze({
-  ...legacy, surfaceDetail:'ultra',mapWeathering:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', ao: 'gtao', contact: 'high', bloom: 'high',
+  ...legacy, surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
   sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
@@ -56,6 +56,14 @@ export const GRAPHICS_CONTROLS = [
     ['waterRefraction','Преломление воды','Физическая передача света через поверхность бассейнов на высоком качестве воды. Дополнительный проход.',choices(off,high)],
     ['waterFoam','Береговая пена','Нерегулярные светлые полосы на мелководье и у берега. Высокое качество воды.',choices(off,high)],
   ]],
+  ['Растительность', [
+    ['vegetation','Качество растительности','Новые пальмовые кроны, кустарники и листья с дистанционным LOD. Исходное сохраняет прежнюю карту.',choices(old,low,medium,high,['ultra','Ультра'])],
+    ['grassDensity','Густота травы','Количество небольших пучков на подходящей земле.',choices(off,['25','25%'],['50','50%'],['100','100%'])],
+    ['grassDistance','Дальность травы','Дальность потоковой загрузки секторов вокруг камеры.',choices(['20','20 м'],['45','45 м'],['70','70 м'],['100','100 м'])],
+    ['vegetationWind','Ветер','Колебание вершин на GPU, с неподвижными корнями.',choices(off,low,high)],
+    ['vegetationShadows','Тени растительности','Ближние тени крупных растений или полные с ближней травой.',choices(off,low,high)],
+    ['foliageTransmission','Просвечивание листвы','Приближённая подсветка тонких листьев со стороны солнца.',choices(off,high)],
+  ]],
   ['Постобработка', [
     ['bloom', 'Свечение HDR', 'Смягчает яркие блики и эмиссивные источники. Чем выше качество, тем шире свечение.', choices(off, low, medium, high, ['ultra', 'Ультра'])],
     ['grade', 'Цветокоррекция', 'Профили слегка меняют баланс цветов с учётом карты.', choices(off, ['standard', 'Стандартная'], ['natural', 'Естественная'], ['cinematic', 'Кинематографическая'])],
@@ -100,6 +108,9 @@ export const GRAPHICS_GROUPS = [
   ['surfaceQuality','Качество поверхностей','Материалы, чёткость фактур и глубина рельефа.', ['materials','surfaceDetail','relief','mapWeathering'], {
     auto:['Как раньше','auto','off','off','off'], low:['Облегчённое','low','off','off','off'], medium:['Среднее','auto','standard','basic','low'],
     high:['Высокое','auto','high','low','high'], ultra:['Ультра','auto','ultra','high','high'],
+  }],
+  ['vegetationQuality','Растительность','Кроны, трава, ветер и тени.', ['vegetation','grassDensity','grassDistance','vegetationWind','vegetationShadows','foliageTransmission'], {
+    legacy:['Как раньше','legacy','off','20','off','off','off'],low:['Низкое','low','25','20','off','off','off'],medium:['Среднее','medium','50','45','low','low','off'],high:['Высокое','high','100','70','high','low','high'],ultra:['Ультра','ultra','100','100','high','high','high'],
   }],
   ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere','clouds','heightFog'], {
     legacy:['Как раньше','legacy','off','off','off'], low:['Низкое','high','low','low','off'], medium:['Среднее','high','medium','medium','low'], high:['Высокое','high','high','high','low'], ultra:['Ультра','high','ultra','high','high'],

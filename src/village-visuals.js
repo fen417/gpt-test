@@ -78,6 +78,7 @@ function palm(owner, m, box) {
     frond.setIndex(indices);
     frond.computeVertexNormals();
     const mesh = new THREE.Mesh(frond, m.leaves);
+    mesh.userData.legacyPalmLeaf=true;
     mesh.castShadow = true;
     owner.scene.add(mesh);
   }

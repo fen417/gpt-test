@@ -5,6 +5,7 @@ import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './e
 import {EffectLights} from './effect-lights.js';
 import {WaterAppearance} from './water-appearance.js';
 import {IndirectLighting} from './indirect-lighting.js';
+import {Vegetation} from './vegetation.js';
 import {atmosphereProfile} from './atmosphere-profile.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {LocalReflections} from './local-reflections.js';
@@ -189,6 +190,7 @@ export class GameRenderer {
     this.waterReflectionPlane=new THREE.Vector2();
     this.localReflections=new LocalReflections();
     this.indirectLighting=new IndirectLighting(webgpu?.setWebGpuGI);
+    this.vegetation=new Vegetation(webgpu?.makeWebGpuFoliageMaterial);
     this.finishWorldEffects=profiler=>{
       const effects=this.postPass.worldEffects;
       effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock,this.cascades,profiler);
@@ -566,6 +568,7 @@ export class GameRenderer {
     if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
+    this.vegetation?.clear();
     this.indirectLighting?.clear();
     this.enhancedSurfaces?.clear(); // Never clone a shared material with temporary PBR textures.
     this.waterAppearance?.restore();
@@ -765,6 +768,7 @@ export class GameRenderer {
     this.waterAppearance?.invalidate();
     this.localReflections.dispose();
     this.indirectLighting?.invalidate();
+    this.vegetation?.invalidate();
     this.postPass.worldEffects.receivers.invalidate();
     this.interiorVisibility.root=null;
     this.cachedShadows.invalidate(true);
@@ -2097,6 +2101,10 @@ export class GameRenderer {
         this.renderer.shadowMap.needsUpdate = true;
       }
     }
+    if(this.vegetation.update(this)){
+      this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);this.localReflections.dispose();
+      this.sun.shadow.needsUpdate=true;this.renderer.shadowMap.needsUpdate=true;
+    }
     const waterQuality=this.lowQuality?'legacy':this.graphicsEffects?.water;
     const waterKey=[this.map.id,waterQuality,this.graphicsEffects?.waterRefraction,this.graphicsEffects?.waterFoam].join('/');
     if(this.waterKey!==waterKey){this.waterKey=waterKey;this.postPass.worldEffects.receivers.invalidate();}
@@ -2725,7 +2733,7 @@ export class GameRenderer {
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
-      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),
+      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),vegetation:this.vegetation.stats(),
       effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
@@ -2750,6 +2758,7 @@ export class GameRenderer {
   dispose() {
     this.disposed=true;
     this.waterAppearance?.dispose();
+    this.vegetation?.dispose();
     this.indirectLighting?.dispose();
     this.localReflections.dispose();
     this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
