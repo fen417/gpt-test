@@ -1,4 +1,4 @@
-import { directionalPenumbraScale } from './directional-penumbra.js';
+import { directionalPenumbraScale,applyCascadeShadowBias } from './directional-penumbra.js';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 
 class SizedCsm extends CSMShadowNode {
@@ -9,7 +9,7 @@ class SizedCsm extends CSMShadowNode {
       this.lights[i].shadow.needsUpdate=true;
       this.lights[i].shadow.filterNode=this.light.shadow.filterNode;
       if(this.light.shadow.filterNode)this.lights[i].shadow.radius=directionalPenumbraScale(this.lights[i].shadow);
-      this.lights[i].shadow.normalBias=.025+.025*i;
+      applyCascadeShadowBias(this.lights[i].shadow,Boolean(this.light.shadow.filterNode));
     }
   }
 }
@@ -46,8 +46,9 @@ export class WebGpuCascades {
     if(csm.camera&&!this.projection.equals(camera.projectionMatrix)){
       this.projection.copy(camera.projectionMatrix);
       csm.updateFrustums();
-      if(light.shadow.filterNode){
-        for(const caster of csm.lights)caster.shadow.radius=directionalPenumbraScale(caster.shadow);
+      for(const caster of csm.lights){
+        applyCascadeShadowBias(caster.shadow,Boolean(light.shadow.filterNode));
+        if(light.shadow.filterNode)caster.shadow.radius=directionalPenumbraScale(caster.shadow);
       }
       this.invalidated=true;
     }

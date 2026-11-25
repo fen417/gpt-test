@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { CSMShader } from 'three/addons/csm/CSMShader.js';
 import {setWebGlShaderPatch} from './webgl-shader-patches.js';
-import { directionalPenumbraScale } from './directional-penumbra.js';
+import { directionalPenumbraScale,applyCascadeShadowBias } from './directional-penumbra.js';
 import { CachedShadows } from './cached-shadows.js';
 import {StaticMaterialVisitor} from './render-work.js';
 
@@ -43,7 +43,7 @@ export class WebGlCascades {
     this.caches=this.csm.lights.map((light,index)=>{
       light.layers.mask=owner.sun.layers.mask;
       light.shadow.mapSize.setScalar(options.sizes[index]);
-      light.shadow.normalBias=.025+.025*index;
+      applyCascadeShadowBias(light.shadow,owner.pcssShadows);
       light.shadow.autoUpdate=false;
       return new CachedShadows();
     });
@@ -81,8 +81,9 @@ export class WebGlCascades {
       csm._getExtendedBreaks(uniforms.CSM_cascades.value);
       uniforms.cameraNear.value=camera.near;
       uniforms.shadowFar.value=Math.min(csm.maxFar,camera.far);
-      if(owner.pcssShadows){
-        for(const light of csm.lights)light.shadow.radius=directionalPenumbraScale(light.shadow);
+      for(const light of csm.lights){
+        applyCascadeShadowBias(light.shadow,owner.pcssShadows);
+        if(owner.pcssShadows)light.shadow.radius=directionalPenumbraScale(light.shadow);
       }
       this.invalidate();
     }

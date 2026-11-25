@@ -16,7 +16,7 @@ import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
 import * as THREE from 'three';
 import {WebGlPenumbra} from './webgl-penumbra.js';
-import {directionalPenumbraScale} from './directional-penumbra.js';
+import {directionalPenumbraScale,applyCascadeShadowBias} from './directional-penumbra.js';
 import {WebGlCascades, shadowCascadeOptions} from './shadow-cascades.js';
 import { CachedShadows } from './cached-shadows.js';
 import { InfantryAssets } from './infantry-assets.js';
@@ -2030,6 +2030,10 @@ export class GameRenderer {
       this.lastShadowTx = undefined;
     }
     this.sun.shadow.radius=pcss?directionalPenumbraScale(this.sun.shadow):1;
+    // Preserve historical fixed biases in legacy modes. Only opt-in PCSS
+    // and CSM use world-texel-scaled bias.
+    if(pcss&&size)applyCascadeShadowBias(this.sun.shadow,true);
+    else{this.sun.shadow.bias=-.0003;this.sun.shadow.normalBias=.05;}
     if (on) {
       this.sun.shadow.needsUpdate = true;
       this.renderer.shadowMap.needsUpdate = true;

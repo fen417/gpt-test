@@ -14,22 +14,27 @@ fn s09DepthAt(depthMap: texture_depth_2d, uv: vec2f, size: vec2f) -> f32 {
 const filter=wgslFn(`
 fn s09ShadowPcss(depthMap: texture_depth_2d, point: vec3f, size: vec2f, spread: f32) -> f32 {
   let texel=1./size;
-  let turn=6.283185*fract(dot(floor(point.xy*size),vec2f(.754877666,.569840296)));
+  let turn=.73;
+  let depthPerTexel=.024/max(spread,.01);
   var blockers=0.;
   var average=0.;
   for(var i=0;i<${p.blockerTaps};i++){
-    let uv=point.xy+s09ShadowDisk(i,${p.blockerTaps}.,turn)*texel*${p.searchRadius};
+    let offset=s09ShadowDisk(i,${p.blockerTaps}.,turn)*${p.searchRadius};
+    let uv=point.xy+offset*texel;
     let depth=s09DepthAt(depthMap,uv,size);
-    if(depth<point.z){average+=depth;blockers+=1.;}
+    // No screen derivatives inside a possibly divergent CSM branch in WGSL.
+    // Use a conservative texel-scaled tolerance instead.
+    if(depth<point.z-depthPerTexel*(.45+.22*length(offset))){average+=depth;blockers+=1.;}
   }
   let center=s09DepthAt(depthMap,point.xy,size);
-  if(center<point.z){average+=center;blockers+=1.;}
+  if(center<point.z-.45*depthPerTexel){average+=center;blockers+=1.;}
   if(blockers==0.){return 1.;}
   let penumbra=clamp((point.z-average/blockers)*spread,${p.minRadius},${p.maxRadius}.);
   var visibility=0.;
   for(var i=0;i<${p.filterTaps};i++){
-    let uv=point.xy+s09ShadowDisk(i,${p.filterTaps}.,turn+1.1)*texel*penumbra;
-    visibility+=step(point.z,s09DepthAt(depthMap,uv,size));
+    let offset=s09ShadowDisk(i,${p.filterTaps}.,turn+1.1)*penumbra;
+    let uv=point.xy+offset*texel;
+    visibility+=step(point.z-depthPerTexel*(.28+.22*length(offset)),s09DepthAt(depthMap,uv,size));
   }
   return visibility/${p.filterTaps}.;
 }`,[disk,sampleDepth]);
