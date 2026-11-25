@@ -2764,6 +2764,7 @@ export class GameRenderer {
     if(frameGeneration?.enabled)frameGeneration.gpuMs=gpuPassMs?.frameGeneration?.p95??null;
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
+      occlusion:{candidates:this.interiorVisibility.items?.length??0,occluders:this.interiorVisibility.wallCount??0,checks:this.interiorVisibility.lastChecks??0,hidden:this.interiorVisibility.lastHidden??0},
       postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
       anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,cascadeSchedule:this.cascades?.stats?.()??null,
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,

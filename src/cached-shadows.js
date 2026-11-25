@@ -24,16 +24,16 @@ export class CachedShadows {
       if(scene!==owner.scene||!owner.worldRoot?.visible||!owner.renderer.shadowMap.enabled)return native(lights,scene,camera);
       const timer=owner.perfEnabled?owner.gpuTimer:null;
       const timing=timer?.beginPass('shadows');
+      const hidden=owner.interiorVisibility.hidden;
+      for(const mesh of hidden)mesh.visible=true;
       try{
         if(owner.shadowDynamicOnly){
           if(this.mediumRoot!==owner.staticRoot||this.mediumRevision!==owner.staticMaterialRevision){this.mediumRoot=owner.staticRoot;this.mediumRevision=owner.staticMaterialRevision;this.mediumCasters=collectStaticCasters(owner.staticRoot);}
           return withoutCasters(this.mediumCasters,()=>native(lights,scene,camera));
         }
         // Run inside WebGLRenderer.render, with its render-state stack active.
-        const hidden=owner.interiorVisibility.hidden;
-        for(const mesh of hidden)mesh.visible=true;
-        try{if(owner.cascades)owner.cascades.render(native);else this.render(owner,native);}finally{for(const mesh of hidden)mesh.visible=false;}
-      }finally{if(timing)timer.endPass();}
+        if(owner.cascades)owner.cascades.render(native);else this.render(owner,native);
+      }finally{for(const mesh of hidden)mesh.visible=false;if(timing)timer.endPass();}
     };
   }
   uninstall(){if(this.installed){this.installed.render=this.native;this.installed=null;}}
