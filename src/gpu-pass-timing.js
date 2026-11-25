@@ -24,7 +24,11 @@ export class GpuPassSamples {
 }
 
 export function renderTimed(renderer,scene,camera,timer,pass) {
+  const start=timer?.recordCpuPass?performance.now():0;
   const timing=timer?.beginPass(pass);
   try{renderer.render(scene,camera);}
-  finally{if(timing)timer.endPass();}
+  finally{
+    if(timing)timer.endPass();
+    if(start)timer.recordCpuPass(pass,performance.now()-start);
+  }
 }

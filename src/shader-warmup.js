@@ -127,12 +127,21 @@ export class ShaderWarmup{
         await stage(.85,'Подготовка графических проходов');
         // Render actual world/FPV/post targets (incl. depth, shadows and
         // soft particles) rather than relying on compileAsync for all passes.
-        const t=performance.now();owner.drawWarmupScene();stats.drawMs=performance.now()-t;
-        await this.fence(signal);
-        if(owner.graphicsEffects?.softParticles==='high'&&owner.graphicsEffects?.softParticleResolution!=='full'){
-          owner.forceHalfSmokeWarmup=true;
-          try{owner.drawWarmupScene();await this.fence(signal);}finally{owner.forceHalfSmokeWarmup=false;}
+        const t=performance.now(),environments=owner.localReflections.warmupEnvironments();
+        stats.environmentVariants=environments.length;
+        for(const environment of environments){
+          signal.throwIfAborted();
+          owner.localReflections.warmupEnvironment=environment;
+          try{
+            owner.drawWarmupScene();await this.fence(signal);
+            if(owner.graphicsEffects?.softParticles==='high'&&owner.graphicsEffects?.softParticleResolution!=='full'){
+              owner.forceHalfSmokeWarmup=true;
+              try{owner.drawWarmupScene();await this.fence(signal);}finally{owner.forceHalfSmokeWarmup=false;}
+            }
+          }finally{owner.localReflections.warmupEnvironment=undefined;}
+          await nextFrame();
         }
+        stats.drawMs=performance.now()-t;
       }finally{restore();}
       // Clear sample-only heat, smoke and output; normal gameplay never
       // consumes the synthetic effect or a temporal history from it.

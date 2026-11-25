@@ -836,8 +836,13 @@ export class GameRenderer {
         signal.throwIfAborted();
         for(const rig of actors)setInfantryLod(rig,lod,lod<2&&this.renderer.shadowMap.enabled,this.geometryQuality==='low');
         this.indirectLighting.invalidate();
-        this.drawWarmupScene();stats.lods++;
-        await fence();await yieldFrame();
+        for(const environment of this.localReflections.warmupEnvironments()){
+          signal.throwIfAborted();this.localReflections.warmupEnvironment=environment;
+          try{this.drawWarmupScene();await fence();}
+          finally{this.localReflections.warmupEnvironment=undefined;}
+          await yieldFrame();
+        }
+        stats.lods++;
       }
       return stats;
     }finally{
@@ -854,7 +859,7 @@ export class GameRenderer {
     const player=state.players.find(p=>p.id===localId);
     if(!player||!this.weaponRig)return 0;
     const rig=this.weaponRig,r=this.renderer,weapon=this.weapon;
-    const saved={visible:weapon.visible,mask:this.camera.layers.mask,target:r.getRenderTarget(),background:this.scene.background,world:this.worldRoot.visible,clear:r.autoClear,shadows:r.shadowMap.autoUpdate};
+    const saved={visible:weapon.visible,mask:this.camera.layers.mask,target:r.getRenderTarget(),background:this.scene.background,world:this.worldRoot.visible,clear:r.autoClear,shadows:r.shadowMap.autoUpdate,environment:this.scene.environment};
     const meshes=[];weapon.traverse(o=>{if(o.isMesh&&o.frustumCulled){meshes.push(o);o.frustumCulled=false;}});
     const variants=Object.entries(CLASS_WEAPONS).flatMap(([classId,ids])=>ids.map(weaponId=>({classId,weaponId})));
     for(const weaponId of SIDEARMS)variants.push({classId:'assault',weaponId});
@@ -867,15 +872,18 @@ export class GameRenderer {
         signal.throwIfAborted();
         rig.update({team:player.team,reloadPhase:1,reloadEmpty:false,clock:this.clock,...variant});
         this.scene.updateMatrixWorld(true);
-        await r.compileAsync?.(this.scene,this.camera);
-        signal.throwIfAborted();
-        r.render(this.scene,this.camera);count++;
-        await fence();await yieldFrame();
+        for(const environment of this.localReflections.warmupEnvironments()){
+          this.scene.environment=environment??saved.environment;
+          await r.compileAsync?.(this.scene,this.camera);signal.throwIfAborted();
+          r.render(this.scene,this.camera);
+          await fence();await yieldFrame();
+        }
+        count++;
       }
     }finally{
       for(const mesh of meshes)mesh.frustumCulled=true;
       rig.update({classId:player.classId,weaponId:player.weaponId||defaultWeaponId(player.classId),team:player.team,reloadPhase:1,reloadEmpty:false,unarmed:state.gameMode==='tdm'&&!player.weaponId,attachments:view.equippedAttachments?.(player.weaponId),skinId:view.weaponSkinFor?.(player.id,player.weaponId)});
-      weapon.visible=saved.visible;this.worldRoot.visible=saved.world;this.scene.background=saved.background;this.camera.layers.mask=saved.mask;r.autoClear=saved.clear;r.shadowMap.autoUpdate=saved.shadows;r.setRenderTarget(saved.target);
+      weapon.visible=saved.visible;this.worldRoot.visible=saved.world;this.scene.background=saved.background;this.scene.environment=saved.environment;this.camera.layers.mask=saved.mask;r.autoClear=saved.clear;r.shadowMap.autoUpdate=saved.shadows;r.setRenderTarget(saved.target);
     }
     return count;
   }
@@ -1248,7 +1256,7 @@ export class GameRenderer {
           pickup.userData.weaponId=item.weaponId;
           pickup.userData.procedural=true;
           this.worldRoot.add(pickup);
-          this.poolWeaponModels.set(item.id,pickup);
+          this.poolWeaponModels.set(item.id,pickup);this.indirectLighting.invalidate();
         }
         pickup.position.set(item.x,item.y,item.z);
         pickup.rotation.y=item.yaw??0;
@@ -1274,6 +1282,7 @@ export class GameRenderer {
     if (!asset) return null;
     const rig = createInfantry(asset, { ...player, weaponId });
     if (!this.integratedGpu) rig.group.traverse(optimizeLighting);
+    this.indirectLighting.invalidate();
     return rig;
   }
 
@@ -1439,7 +1448,7 @@ export class GameRenderer {
         this.soldiers.set(player.id, soldier);
       } else if (soldier.weaponId !== weaponId) {
         const asset = this.infantry.get(player.team, weaponId);
-        if (asset) setInfantryWeapon(soldier, asset.gun, weaponId);
+        if (asset) {setInfantryWeapon(soldier, asset.gun, weaponId);this.indirectLighting.invalidate();}
       }
       setInfantrySkin(soldier,weaponSkinFor?.(player.id,soldier.weaponId));
       const { group } = soldier;
@@ -2321,6 +2330,14 @@ export class GameRenderer {
   }
 
   drawScene(warming = false) {
+    const trace=this.perfEnabled&&!warming;
+    const started=trace?performance.now():0;
+    let last=started;
+    const parts=trace?(this.cpuPassTrace??=Object.create(null)):null;
+    if(parts)for(const key in parts)delete parts[key];
+    const record=(name,ms)=>{if(parts)parts[name]=(parts[name]??0)+ms;};
+    const checkpoint=name=>{if(parts){const now=performance.now();record(name,now-last);last=now;}};
+    const beforePrograms=trace?this.renderer.info.programs?.length??null:null;
     this.frameCount++;
     if(this.renderer.shadowMap.enabled){
       this.sun.shadow.needsUpdate=true;
@@ -2392,8 +2409,10 @@ export class GameRenderer {
       !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'),this.campaignWaterMesh);
     if(warming)this.effectLights?.clear();
     else this.effectLights?.update(this.clock,this.camera.position,this.activeFireLights);
-    const timing=this.gpuTimer.begin();
+    checkpoint('scenePreparation');
+    const timing=this.gpuTimer.begin();checkpoint('gpuTimerBegin');
     const profiler=this.perfEnabled?this.gpuTimer:null;
+    if(trace)profiler.recordCpuPass=record;
     if(softSmoke)smoke.layers.set(SOFT_PARTICLE_LAYER);
     try{
       if(localEnvironment)this.scene.environment=localEnvironment;
@@ -2412,7 +2431,9 @@ export class GameRenderer {
         // WebGPU renderer there; enable temporal history only in a match.
         generator?.setMode(warming||skipFG?'off':this.gfx.frameGeneration??'off');
         this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
+        const postBegin=trace?performance.now():0;
         this.postPass.begin(this.quality);
+        if(trace)record('postSetup',performance.now()-postBegin);
         try {
           generator?.beginWorld(this.scene);
           drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world&&!this.postPass.worldEffects.directWorld?this.finishWorldEffects:null,profiler);
@@ -2445,6 +2466,19 @@ export class GameRenderer {
       if(timing)this.gpuTimer.end();
       this.gpuTimer.poll?.();
       this.interiorVisibility.restore();
+      if(trace){
+        profiler.recordCpuPass=null;
+        const total=performance.now()-started;
+        if(total>=40){
+          const log=this.renderStalls??=[];
+          if(log.length>=16)log.shift();
+          log.push({at:new Date().toISOString(),frame:this.frameCount,totalMs:Math.round(total*10)/10,
+            parts:Object.fromEntries(Object.entries(parts).map(([k,v])=>[k,Math.round(v*10)/10])),
+            programsBefore:beforePrograms,programsAfter:this.renderer.info.programs?.length??null,
+            environment:this.localReflections.active,smoke:smoke.count,heat:worldFX.heat.count,
+            giMaterials:this.indirectLighting.materials.size,shadowMode:this.shadowMode});
+        }
+      }
     }
   }
 
@@ -2939,6 +2973,7 @@ export class GameRenderer {
     if(frameGeneration?.enabled)frameGeneration.gpuMs=gpuPassMs?.frameGeneration?.p95??null;
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
+      shaderPrograms:r.info.programs?.length??null,renderStalls:this.renderStalls??[],
       staticSectorSize:this.staticRoot?.userData.staticSectorSize??this.staticRoot?.children.find(child=>child.userData.staticSectorSize)?.userData.staticSectorSize??null,
       occlusion:{candidates:this.interiorVisibility.items?.length??0,occluders:this.interiorVisibility.wallCount??0,checks:this.interiorVisibility.lastChecks??0,hidden:this.interiorVisibility.lastHidden??0},
       mapResidency:this.mapResidency??null,shadowCache:this.cachedShadows.stats?.()??null,

@@ -56,6 +56,10 @@ export class LocalReflections {
   prepare(owner, menu, warming) {
     this.active=null;
     if(!this.requested(owner)||this.map!==owner.map)return null;
+    if(warming&&this.warmupEnvironment!==undefined){
+      this.active=this.warmupEnvironment?'warmup':null;
+      return this.warmupEnvironment;
+    }
     const {x,y,z}=owner.camera.position;
     const zone=this.zones.find(p=>Math.abs(x-p.x)<p.w/2&&Math.abs(z-p.z)<p.d/2&&y>=p.minY&&y<p.maxY);
     // During shader warmup also compile a local-environment variant even
@@ -63,6 +67,17 @@ export class LocalReflections {
     const target=this.targets.get(zone?.id)??(warming?this.targets.values().next().value:null);
     if(target)this.active=zone?.id??'warmup';
     return target?.texture??null;
+  }
+
+  warmupEnvironments(){
+    // Sky and local CubeUV atlases can have different dimensions and shader
+    // variants. One representative per atlas size suffices for local probes.
+    const variants=[null],sizes=new Set();
+    for(const target of this.targets.values()){
+      const texture=target.texture,key=texture.image?.width+'x'+texture.image?.height;
+      if(sizes.has(key))continue;sizes.add(key);variants.push(texture);
+    }
+    return variants;
   }
 
   stats(){return {ready:this.targets.size,total:this.zones?.length??0,failed:this.failed.size,dirty:!!this.dirty,warmupMs:this.warmupMs??0};}

@@ -36,7 +36,7 @@ export class IndirectLighting{
     // Scan only when a map model changes, or periodically to catch new
     // soldiers/vehicles. No ray tracing or material traversal every frame.
     if(!this.dirty&&owner.clock<(this.nextScan??0))return;
-    const refreshStatic=this.dirty||this.staticRevision!==owner.staticMaterialRevision||!this.staticMaterials;
+    const refreshStatic=this.staticRevision!==owner.staticMaterialRevision||!this.staticMaterials;
     this.dirty=false;this.nextScan=owner.clock+.8;
     const collect=(o,eligible)=>{
       if(!o.isMesh||o.userData.waterReflection||o.userData.waterSurface||o.userData.architecturalSurface==='water'||o.name==='Port water')return;
@@ -50,6 +50,12 @@ export class IndirectLighting{
     }
     const eligible=new Set(this.staticMaterials);
     const walk=o=>{if(o===owner.staticRoot)return;collect(o,eligible);for(const c of o.children)walk(c);};walk(owner.scene);
+    // A culled actor is detached from worldRoot, not destroyed. Keep its
+    // shader bindings resident, including hidden weapon variants and pooled
+    // pickup templates, so re-entry cannot toggle GI and recompile shaders.
+    for(const rig of owner.soldiers?.values()??[])if(!rig.group.parent)walk(rig.group);
+    for(const rig of owner.vehicleRigs?.values()??[])if(!rig.group.parent)walk(rig.group);
+    for(const template of owner.poolWeaponTemplates?.values()??[])walk(template);
     for(const m of eligible)if(!this.materials.has(m)){this.setMaterial(m,field);this.materials.add(m);}
     // Cached static materials stay patched until map/quality change. Removed
     // dynamic meshes release their patch to avoid retaining disposed rigs.

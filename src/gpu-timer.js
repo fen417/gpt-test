@@ -10,7 +10,7 @@ export class GpuTimer {
     this.gl=gl;
     this.profiling=profiling;
     this.enabled=false;
-    this.pending=[];
+    this.pending=[];this.queryActive=false;
     this.samples=new PerformanceSamples();
     this.passSamples=new GpuPassSamples();
     this.frame=0;
@@ -42,10 +42,10 @@ export class GpuTimer {
 
   start(pass) {
     const {gl,ext,pending}=this;
-    if(pending.length>=4||gl.getQuery(ext.TIME_ELAPSED_EXT,gl.CURRENT_QUERY))return false;
+    if(pending.length>=4||this.queryActive)return false;
     const query=gl.createQuery();
     if(!query)return false;
-    gl.beginQuery(ext.TIME_ELAPSED_EXT,query);
+    gl.beginQuery(ext.TIME_ELAPSED_EXT,query);this.queryActive=true;
     pending.push({query,pass});
     return true;
   }
@@ -56,11 +56,12 @@ export class GpuTimer {
     return this.start(pass);
   }
 
-  end() { this.gl.endQuery(this.ext.TIME_ELAPSED_EXT); }
+  end() { if(this.queryActive){this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queryActive=false;} }
   endPass() { this.end(); }
   summary() { return this.enabled&&this.ext&&this.samples.count?this.samples.summary():null; }
 
   reset() {
+    if(this.queryActive)this.end();
     for(const {query} of this.pending)this.gl.deleteQuery(query);
     this.pending.length=0;
     this.samples.reset();
