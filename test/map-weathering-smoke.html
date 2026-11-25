@@ -13,6 +13,8 @@ import {PostPass} from '../src/post-pass.js';
 import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
 import {getMap} from '../shared/world.js';
 import {Vegetation} from '../src/vegetation.js';
+import {ShaderWarmup} from '../src/shader-warmup.js';
+import {drawWorldAndViewModel} from '../src/viewmodel.js';
 import {makeWebGpuFoliageMaterial} from '../src/webgpu-vegetation.js';
 import {bakeProbeField,makeProbeTexture,probeUniforms} from '../src/gi-probes.js';
 import {setWebGlGI} from '../src/webgl-gi.js';
@@ -249,5 +251,29 @@ window.drawFoliageSmoke=async mode=>{
   for(let i=0;i<5;i++){foliageOwner.clock+=.8;foliage.update(foliageOwner);}
   const result=await renderChecked(async()=>{await renderer.compileAsync(foliageScene,foliageCamera);renderer.render(foliageScene,foliageCamera);});
   return {...result,...foliage.stats()};
+};
+window.drawWarmupSmoke=async ()=>{
+  const scene=new THREE.Scene(),root=new THREE.Group(),camera=new THREE.PerspectiveCamera(50,1.5,.1,100);
+  camera.position.set(0,1.5,5);camera.lookAt(0,1.5,0);camera.updateMatrixWorld();
+  scene.background=new THREE.Color(0x202b35);scene.fog=new THREE.FogExp2(0x202b35,.001);scene.add(root,camera);
+  scene.add(new THREE.HemisphereLight(0xffffff,0xaa9977,1.8));
+  const tex=new THREE.DataTexture(new Uint8Array([160,80,40,255]),1,1);tex.needsUpdate=true;
+  const geom=new THREE.BoxGeometry(2,2,.4),mat=new THREE.MeshStandardMaterial({map:tex}),mesh=new THREE.Mesh(geom,mat);mesh.position.y=1.4;root.add(mesh);
+  const weapon=new THREE.Group();camera.add(weapon);
+  const gun=new THREE.Mesh(new THREE.BoxGeometry(.3,.25,.5),new THREE.MeshStandardMaterial({color:0x556677}));gun.position.set(.4,-.45,-1);gun.layers.set(1);weapon.add(gun);
+  const flash=new THREE.Sprite(new THREE.SpriteMaterial({map:tex}));flash.position.set(.4,-.4,-1.4);flash.layers.set(1);flash.visible=false;weapon.add(flash);
+  const smoke=new THREE.InstancedMesh(new THREE.PlaneGeometry(.3,.3),new THREE.MeshBasicMaterial({map:tex}),2);
+  smoke.count=0;smoke.frustumCulled=false;root.add(smoke);
+  const postPass=device?new WebGpuPostPass(renderer,{antialias:'off'}):new PostPass(renderer,{antialias:'off'});
+  const quality='high',settings={...graphicsEffects(quality),shaderWarmup:'auto',muzzleEffects:'high',vignette:'off',grain:'off'},map=getMap('quarry');
+  postPass.setImage(settings,gradeParameters(settings,map));
+  const draw=()=>{postPass.begin(quality);drawWorldAndViewModel(renderer,scene,camera,weapon,root);postPass.end(0,quality,null);renderer.setRenderTarget(null);};
+  const hot=new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
+  const owner={renderer,api:device?'webgpu':'webgl2',scene,camera,weapon,worldRoot:root,postPass,graphicsEffects:settings,effectBatches:{smoke},effectPools:{},weaponRig:{muzzleFlash:flash},indirectLighting:{update(){}},vegetation:{},getHotParticleMaterial:k=>k==='muzzle'?hot:null,render:draw,drawWarmupScene:draw};
+  const manager=new ShaderWarmup(owner),stages=[];
+  const checked=await renderChecked(async()=>{await manager.run({mapId:'quarry',players:[{id:'p'}]},'p',{},new AbortController().signal,(p)=>stages.push(p));});
+  const state={...checked,stats:manager.stats,stages,restored:smoke.count===0&&!flash.visible&&root.visible&&camera.layers.mask===1&&!owner.effectPools.muzzle[0].mesh.parent&&!manager.busy&&renderer.getRenderTarget()===null};
+  postPass.dispose();geom.dispose();mat.dispose();gun.geometry.dispose();gun.material.dispose();flash.material.dispose();smoke.geometry.dispose();smoke.material.dispose();smoke.dispose();hot.dispose();owner.effectPools.muzzle[0].mesh.material.dispose();tex.dispose();
+  return state;
 };
 </script></body></html>

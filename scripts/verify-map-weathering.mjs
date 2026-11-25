@@ -172,6 +172,18 @@ async function run(api){
     assert.ok(foliageHigh.changed>.01&&foliageLow.changed>.01,api+' enhanced foliage not rendered');
     assert.ok(wind.changed>.0002,api+' GPU wind did not change image');
     assert.ok(foliageRestored.mean<.5,api+' original vegetation did not restore');
+    const warmup=await page.evaluate(()=>window.drawWarmupSmoke());
+    assert.deepEqual(warmup.errors,[],api+' warmup GPU validation errors');
+    assert.deepEqual(networkErrors,[],api+' warmup resource loading errors');
+    assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' warmup shader/browser errors');
+    if(warmup.lost){
+      if(api==='webgpu'&&info.software)return {inconclusive:'software device lost during warmup: '+warmup.lost};
+      assert.fail(api+' GPU lost: '+warmup.lost);
+    }
+    console.log('WARMUP',api,JSON.stringify(warmup));
+    assert.equal(warmup.stats.complete,true);assert.equal(warmup.stats.assetsReady,true);assert.ok(warmup.stats.textures>0);
+    assert.equal(warmup.restored,true);assert.equal(warmup.stages.at(-1),1);
+    assert.ok(warmup.stages.every((v,i,a)=>i===0||v>=a[i-1]));
     return {passed:true};
   }finally{await browser.close();}
 }

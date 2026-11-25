@@ -118,6 +118,7 @@ export class Vegetation{
   prewarmAssets(owner){
     if(!this.map)return;
     const kinds=new Set(this.authored.map(e=>e.kind));if(Number(owner.graphicsEffects?.grassDensity)>0&&this.map.id!=='fy_pool_day')kinds.add('grass');
+    this.warmupKinds=kinds;
     for(const kind of kinds)for(let lod=0;lod<=2;lod++)this.asset(kind,lod);
   }
   warmupSamples(owner,position){
@@ -125,7 +126,7 @@ export class Vegetation{
     const matrix=new THREE.Matrix4().makeTranslation(position.x,position.y-1,position.z),samples=[];
     // Compile actual instanced geometry layouts and the palm impostor variant.
     // Samples are never added to the map or persistent authored/grass lists.
-    for(const a of this.assets.values())for(const g of a.geometries.values()){
+    for(const [kind,a] of this.assets)if(this.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))for(const g of a.geometries.values()){
       const mesh=new THREE.InstancedMesh(g,a.material,1);mesh.setMatrixAt(0,matrix);mesh.setColorAt(0,this.white);mesh.frustumCulled=false;
       mesh.userData.vegetation=true;mesh.customDepthMaterial=a.depth;mesh.receiveShadow=true;mesh.castShadow=['low','high'].includes(owner.graphicsEffects?.vegetationShadows);
       this.root.add(mesh);samples.push(mesh);

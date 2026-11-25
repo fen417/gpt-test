@@ -14,7 +14,7 @@ export function collectWarmupTextures(owner){
   });
   for(const t of [owner.indirectLighting?.field?.texture,owner.enhancedSurfaces?.weatherMask,owner.activeSmokeTexture,owner.muzzleTexture,owner.fireballTexture])add(t);
   for(const x of owner.enhancedSurfaces?.textures?.values()??[])add(x.texture);
-  for(const x of owner.vegetation?.assets?.values()??[])add(x.texture);
+  for(const [kind,x] of owner.vegetation?.assets??[])if(owner.vegetation.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))add(x.texture);
   return {textures:[...textures],materials:materials.size};
 }
 export function assetsPending(owner){
@@ -49,6 +49,8 @@ export function prepareWarmupSamples(owner){
       if(rotation){rotation.setX(0,r);rotation.needsUpdate=true;}});
   }
   for(const kind of ['muzzle','flash','flame']){
+    const e=owner.graphicsEffects;
+    if(e&&(kind==='muzzle'?e.muzzleEffects!=='high':kind==='flash'?!['medium','high'].includes(e.explosions):e.fireEffects!=='high'&&e.explosions!=='high'))continue;
     const material=owner.getHotParticleMaterial(kind);
     if(!material)continue;
     const pool=owner.effectPools[kind]??(owner.effectPools[kind]=[]);

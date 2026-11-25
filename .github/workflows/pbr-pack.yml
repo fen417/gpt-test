@@ -81,5 +81,5 @@ jobs:
           done
           cat /tmp/weather-vite.log
           exit 1
-      - name: Render and compare weathering, water, effect lighting, atmosphere, GI and vegetation
+      - name: Render and compare weathering, water, effect lighting, atmosphere, GI, vegetation and warmup
         run: node scripts/verify-map-weathering.mjs
