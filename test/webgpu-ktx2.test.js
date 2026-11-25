@@ -44,3 +44,15 @@ test('WebGPU KTX2 worker requests no optional compression formats',()=>{
     }
   }finally{loader.dispose();}
 });
+
+test('PBR WebGPU loader selects only enabled hardware formats',()=>{
+  const loader=new SafeWebGpuKtx2Loader();
+  loader.allowCompression=true;
+  try{
+    loader.detectSupport({isWebGPURenderer:true,hasFeature:()=>true,backend:{device:{features:new Set(['texture-compression-bc'])}}});
+    assert.equal(loader.workerConfig.dxtSupported,true);
+    assert.equal(loader.workerConfig.bptcSupported,true);
+    assert.equal(loader.workerConfig.astcSupported,false);
+    assert.equal(loader.workerConfig.etc2Supported,false);
+  }finally{loader.dispose();}
+});

@@ -36,7 +36,14 @@ export async function createWebGpuRenderer(canvas, {
   // Request timestamps only for diagnostics or a saved adaptive quality target.
   const compression = ['texture-compression-bc','texture-compression-etc2','texture-compression-astc'].filter(feature=>adapter.features.has(feature));
   const requiredFeatures = [...compression,...(timings && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [])];
-  const device = await adapter.requestDevice({ requiredFeatures });
+  let device;
+  try { device=await adapter.requestDevice({requiredFeatures}); }
+  catch(error){
+    if(!compression.length)throw error;
+    // An advertised compression format may still fail to initialize on a
+    // driver. Keep the previous no-compression device path available.
+    device=await adapter.requestDevice({requiredFeatures:requiredFeatures.filter(feature=>!compression.includes(feature))});
+  }
   if (!device) throw new Error('Не удалось создать WebGPU device.');
   const { WebGPURenderer } = await import('three/webgpu');
   const renderer = new WebGPURenderer({

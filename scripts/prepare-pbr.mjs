@@ -7,6 +7,7 @@ import {PBR_SOURCES,PBR_PACK_VERSION} from '../src/pbr-library.js';
 
 const output='public/pbr-v1',cache='.perf-local/pbr-source';
 const basis=join('node_modules','basis_universal','bin',process.platform==='win32'?'basisu.exe':'basisu');
+if(process.env.S09_PBR_SKIP==='1'){console.log('PBR preparation skipped by S09_PBR_SKIP');process.exit(0);}
 const selection=process.argv.find(a=>a.startsWith('--surface='))?.split('=')[1];
 const all=!selection;
 const userAgent='SECTOR09-PBR-Pack/1.0 (https://github.com/fen417/gpt-test)';
@@ -65,7 +66,7 @@ async function encode(surface,channel,size,input,spec){
   const temporary=path+'.tmp.ktx2';
   await writeFile(png,canvas.toBuffer('image/png'));
   try{
-    const args=['-ktx2','-mipmap','-file',png,'-output_file',temporary,
+    const args=['-ktx2','-mipmap','-y_flip','-file',png,'-output_file',temporary,
       ...(channel==='diff'?['-q','190']:['-uastc','-uastc_level','1','-linear'])];
     execFileSync(basis,args,{stdio:'inherit',timeout:900000});
     if(!await valid(temporary))throw Error('Missing encoded KTX2 '+temporary);

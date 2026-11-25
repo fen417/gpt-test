@@ -21,7 +21,9 @@
     "assets:explosion": "node scripts/align-explosion-audio.mjs",
     "assets:infantry": "node scripts/import-infantry.mjs",
     "viewer:build": "node scripts/package-infantry-viewer.mjs",
-    "assets:pbr": "node scripts/prepare-pbr.mjs"
+    "assets:pbr": "node scripts/prepare-pbr.mjs",
+    "predev": "node scripts/prepare-pbr.mjs",
+    "prebuild": "node scripts/prepare-pbr.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3",
