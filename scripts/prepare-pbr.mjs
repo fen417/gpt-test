@@ -122,10 +122,14 @@ const failures=[];
 for(const task of tasks){
   const {surface,spec,channel,missing}=task;
   try{task.input=await source(spec.asset,channel,Math.max(1024,...missing),channel==='diff'?spec.colorVariants:undefined);await checkpoint();}
-  catch(error){failures.push(surface+'/'+channel+': '+error.message);}
+  catch(error){
+    if(channel==='disp'&&spec.height==='optional'){task.skip=true;console.warn('Optional native height unavailable',surface,error.message);}
+    else failures.push(surface+'/'+channel+': '+error.message);
+  }
 }
 if(failures.length)throw Error('PBR source preflight failed:\n'+failures.join('\n'));
-for(const {surface,spec,channel,missing,input} of tasks){
+for(const {surface,spec,channel,missing,input,skip} of tasks){
+  if(skip)continue;
   for(const size of missing){console.log(surface,channel,size);await encode(surface,channel,size,input,spec);await checkpoint();}
 }
 if(all||selection==='ceramic')for(const size of [256,1024]){

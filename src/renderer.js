@@ -2765,7 +2765,7 @@ export class GameRenderer {
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
       postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
-      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,
+      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,cascadeSchedule:this.cascades?.stats?.()??null,
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
       worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
       triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,

@@ -1,4 +1,4 @@
-import {RELIEF_DEPTH, RELIEF_STEPS} from './surface-relief.js';
+import {RELIEF_DEPTH, RELIEF_STEPS, RELIEF_RANGE} from './surface-relief.js';
 import {makeWeatherMask,weatherParameters,surfaceRepeat} from './map-weathering.js';
 import {setWebGlWeathering} from './webgl-map-weathering.js';
 import {setWebGlRelief} from './webgl-surface-relief.js';
@@ -152,7 +152,7 @@ export class EnhancedSurfaces {
       this.suspendWeathering(material);
       const steps=RELIEF_STEPS[settings.relief],scale=RELIEF_DEPTH[surface];
       const relief=ready&&steps&&scale&&!material.userData.groundShadowPatched;
-      this.setRelief(material,relief?get(surface,'disp',Math.min(size,steps>8?1024:512)):null,steps,scale);
+      this.setRelief(material,relief?get(surface,'disp',Math.min(size,steps>8?1024:512)):null,steps,scale,RELIEF_RANGE[settings.relief]);
       const params=weather?weatherParameters(mapId,weatherSurface,settings.mapWeathering):null;
       this.setWeathering(material,params?this.weatherMask:null,params);
     };

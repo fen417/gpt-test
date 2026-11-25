@@ -13,7 +13,7 @@ const gpuSteps = [
   ['atmosphere',{ultra:'high',high:'medium',medium:'low',low:'off'}],
   ['clouds',{high:'medium',medium:'low',low:'off'}],
   ['heightFog',{high:'low',low:'off'}],
-  ['relief',{high:'low',low:'basic',basic:'off'}],
+  ['relief',{ultra:'high',high:'low',low:'basic',basic:'off'}],
   ['mapWeathering',{high:'low',low:'off'}],
   ['ao',{gtao:'high',high:'low'}],
   ['contact',{high:'medium',medium:'low',low:'off'}],

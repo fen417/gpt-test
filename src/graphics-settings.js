@@ -9,7 +9,7 @@ const legacy = Object.freeze({
 });
 
 const ultra = Object.freeze({
-  ...legacy, shaderWarmup:'full',surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', architectureLight:'high', architectureAO:'high', ao: 'gtao', contact: 'high', bloom: 'high',
+  ...legacy, shaderWarmup:'full',surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'high',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', architectureLight:'high', architectureAO:'high', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
   sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
@@ -47,7 +47,7 @@ export const GRAPHICS_CONTROLS = [
     ['materials', 'Материалы', 'Высокое качество использует PBR и рельеф поверхности.', choices(auto, low, high)],
     ['surfaceDetail', 'Фактуры окружения', 'Сжатые PBR-фактуры окружения. Ультра использует 4K только для крупных поверхностей; без аппаратного сжатия действует ограничение 2K.', choices(off, ['medium', '512 px'], ['standard', '1024 px'], ['high', '2048 px'], ['ultra','До 4096 px'])],
     ['mapWeathering','Износ и разнообразие поверхностей','Профили карт, минеральная пыль, потёки, сколы, окисление и шероховатость. Высокое — локальные детали и обочины дорог.',choices(off,low,high)],
-    ['relief','Параллакс-рельеф','Добавляет видимую глубину камню и бетону при включённых фактурах окружения.',choices(off,['basic','Базовый'],['low','POM · 8 шагов'],['high','POM · 16 шагов'])],
+    ['relief','Параллакс-рельеф','Рельеф сканов камня, бетона, кирпича и других материалов с картами высот. Дальность и число шагов адаптируются к расстоянию и углу.',choices(off,['basic','Базовый'],['low','POM · до 8 шагов'],['high','POM · до 16 шагов'],['ultra','POM · до 24 шагов + уточнение'])],
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
     ['sky', 'Небо', 'Добавляет солнечный диск, воздушную перспективу горизонта и цвет неба с учётом карты.', choices(old, high)],
     ['clouds','Облака','Движущиеся облака в улучшенном небе: низкие — один слой, средние — второй слой, высокие — детализация и подсветка.',choices(off,low,medium,high)],
@@ -110,7 +110,7 @@ export const GRAPHICS_GROUPS = [
   }],
   ['surfaceQuality','Качество поверхностей','Материалы, чёткость фактур и глубина рельефа.', ['materials','surfaceDetail','relief','mapWeathering'], {
     auto:['Как раньше','auto','off','off','off'], low:['Облегчённое','low','off','off','off'], medium:['Среднее','auto','standard','basic','low'],
-    high:['Высокое','auto','high','low','high'], ultra:['Ультра','auto','ultra','high','high'],
+    high:['Высокое','auto','high','low','high'], ultra:['Ультра','auto','ultra','ultra','high'],
   }],
   ['vegetationQuality','Растительность','Кроны, трава, ветер и тени.', ['vegetation','grassDensity','grassDistance','vegetationWind','vegetationShadows','foliageTransmission'], {
     legacy:['Как раньше','legacy','off','20','off','off','off'],low:['Низкое','low','25','20','off','off','off'],medium:['Среднее','medium','50','45','low','low','off'],high:['Высокое','high','100','70','high','low','high'],ultra:['Ультра','ultra','100','100','high','high','high'],
