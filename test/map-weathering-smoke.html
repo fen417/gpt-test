@@ -12,8 +12,12 @@ import {graphicsEffects,gradeParameters} from '../src/graphics-settings.js';
 import {PostPass} from '../src/post-pass.js';
 import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
 import {getMap} from '../shared/world.js';
+import {EffectLights} from '../src/effect-lights.js';
+import {makeParticleTexture} from '../src/effect-art.js';
+import {createWebGpuSmokeMaterial} from '../src/webgpu-smoke.js';
+import {webGpuCampaignFlame} from '../src/webgpu-campaign-fire.js';
 const canvas=document.getElementById('probe');
-let renderer,scene,camera,materials,mask,apply,device,lost,software=false,errors=[],waterScene,waterCamera,waterRoot,waterAppearance,waterPost,waterSun;
+let renderer,scene,camera,materials,mask,apply,device,lost,software=false,errors=[],waterScene,waterCamera,waterRoot,waterAppearance,waterPost,waterSun,fxScene,fxCamera,fxLights,fxParticles;
 const instanceDropped=error=>/Instance dropped in popErrorScope|external Instance reference no longer exists|GPU device (?:was )?lost/i.test(String(error));
 const tick=()=>new Promise(resolve=>requestAnimationFrame(resolve));
 window.initWeatherSmoke=async (api,softwareAdapter=false)=>{
@@ -114,5 +118,42 @@ window.drawWaterSmoke=async quality=>{
     waterPost.end(1,'high',null);
   });
   return {...result,receivers:waterPost.worldEffects.receivers.count,transmission:waterAppearance.material?.transmission??0};
+};
+window.drawEffectSmoke=async mode=>{
+  if(!fxScene){
+    fxScene=new THREE.Scene();fxScene.background=new THREE.Color(0x18212b);
+    fxCamera=new THREE.PerspectiveCamera(46,1.5,.1,100);
+    fxCamera.position.set(0,1.6,6);fxCamera.lookAt(0,1.4,0);
+    fxScene.add(new THREE.HemisphereLight(0x99b0c8,0x646060,.32));
+    const wall=new THREE.Mesh(new THREE.PlaneGeometry(8,5),new THREE.MeshStandardMaterial({color:0x969696,roughness:.82}));
+    wall.position.set(0,1.6,0);fxScene.add(wall);
+    const cube=new THREE.Mesh(new THREE.BoxGeometry(.8,.8,.8),new THREE.MeshLambertMaterial({color:0x888888}));
+    cube.position.set(1.2,.45,.65);fxScene.add(cube);
+    fxLights=new EffectLights(fxScene);fxParticles=new THREE.Group();fxScene.add(fxParticles);
+    const smokeTexture=makeParticleTexture('smoke'),fireTexture=makeParticleTexture('fire'),muzzleTexture=makeParticleTexture('muzzle');
+    const geometry=new THREE.PlaneGeometry(1,1);
+    geometry.setAttribute('instanceAlpha',new THREE.InstancedBufferAttribute(new Float32Array([.85,.65]),1));
+    geometry.setAttribute('instanceRotation',new THREE.InstancedBufferAttribute(new Float32Array([0,.4]),1));
+    const material=device?createWebGpuSmokeMaterial(smokeTexture):new THREE.MeshBasicMaterial({map:smokeTexture,transparent:true,depthWrite:false});
+    if(device){material.userData.smokeUniforms.smokeMotion.value=2;material.userData.smokeUniforms.smokeTime.value=1;}
+    const batch=new THREE.InstancedMesh(geometry,material,2),dummy=new THREE.Object3D();
+    for(let i=0;i<2;i++){dummy.position.set(-1+i*.75,1.2+i*.45,.6);dummy.scale.setScalar(1.5);dummy.updateMatrix();batch.setMatrixAt(i,dummy.matrix);batch.setColorAt(i,new THREE.Color(0xb6a69a));}
+    batch.instanceMatrix.needsUpdate=true;batch.instanceColor.needsUpdate=true;fxParticles.add(batch);
+    for(const [i,map] of [fireTexture,muzzleTexture].entries()){
+      const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,color:new THREE.Color(2,1.65,1.2)}));
+      sprite.position.set(.2+i*.8,.9+i*.65,1);sprite.scale.setScalar(.9);fxParticles.add(sprite);
+    }
+    if(device){
+      const flame=webGpuCampaignFlame(1);flame.userData.fireUniforms.detail.value=1;flame.userData.fireUniforms.time.value=1;
+      const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.8,1.3),flame);mesh.position.set(1.8,1.15,.8);fxParticles.add(mesh);
+    }
+  }
+  fxParticles.visible=mode==='particles';
+  if(mode==='off'||mode==='offAgain')fxLights.configure('off','off');
+  else fxLights.configure('high','off');
+  if(mode==='flash'){fxLights.pulse(new THREE.Vector3(-.8,1.5,1.15),1,{own:true,energy:38,range:7});fxLights.update(1,fxCamera.position);}
+  else fxLights.update(1.2,fxCamera.position);
+  const result=await renderChecked(async()=>{await renderer.compileAsync(fxScene,fxCamera);renderer.render(fxScene,fxCamera);});
+  return {...result,lights:fxLights.active,slots:fxLights.lights.length};
 };
 </script></body></html>

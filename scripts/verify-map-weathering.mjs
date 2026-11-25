@@ -91,6 +91,31 @@ async function run(api){
         assert.ok(diff.mean<.5,api+' disabling water did not restore baseline');
       }else waterFrames.legacy=frame;
     }
+    const fx={};
+    for(const q of ['off','flash','expired','offAgain','particles']){
+      const result=await page.evaluate(q=>window.drawEffectSmoke(q),q);
+      assert.deepEqual(result.errors,[],api+' effects GPU validation errors');
+      assert.deepEqual(networkErrors,[],api+' effects resource loading errors');
+      assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' effects shader/browser errors');
+      if(result.lost){
+        if(api==='webgpu'&&info.software)return {inconclusive:'software device lost during effects '+q+': '+result.lost};
+        assert.fail(api+' GPU lost: '+result.lost);
+      }
+      fx[q]=await pixels(page);
+      if(q==='flash'){assert.equal(result.lights,1);assert.equal(result.slots,3);}
+      if(q==='expired')assert.equal(result.lights,0);
+      if(q==='offAgain')assert.equal(result.slots,0);
+    }
+    let delta=0;
+    for(let i=0;i<fx.off.length;i+=4)delta+=(fx.flash[i]+fx.flash[i+1]+fx.flash[i+2]-fx.off[i]-fx.off[i+1]-fx.off[i+2])/3;
+    delta/=fx.off.length/4;
+    const light=compare(fx.off,fx.flash),expired=compare(fx.off,fx.expired),removed=compare(fx.off,fx.offAgain),particles=compare(fx.off,fx.particles);
+    console.log('EFFECTS',api,JSON.stringify({light,delta,expired,removed,particles}));
+    // No sprites are visible during the flash test: the wall and cube must
+    // actually brighten due to the pooled PointLight, then restore.
+    assert.ok(delta>2&&light.changed>.05,api+' point light does not illuminate scene geometry');
+    assert.ok(expired.mean<.5&&removed.mean<.5,api+' transient lighting did not restore baseline');
+    assert.ok(particles.changed>.01,api+' particle materials did not render');
     return {passed:true};
   }finally{await browser.close();}
 }
