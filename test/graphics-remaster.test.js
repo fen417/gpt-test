@@ -259,7 +259,7 @@ test('static GI bake is deterministic and roofs block sky access',()=>{
 test('GI material patch restores shader and TSL material nodes',()=>{
   const data=bakeProbeField({id:'gi',size:8,terrain:{heightAt:()=>0},boxes:[]}),tex=makeProbeTexture(data),field=probeUniforms(data,tex);
   const gl=new THREE.MeshStandardMaterial(),hook=gl.onBeforeCompile;
-  setWebGlGI(gl,field);const shader={uniforms:{},vertexShader:'#include <project_vertex>',fragmentShader:'#include <aomap_fragment>'};gl.onBeforeCompile(shader);
+  setWebGlGI(gl,field);const shader={uniforms:{},vertexShader:'#include <project_vertex>',fragmentShader:'#define STANDARD\n#include <aomap_fragment>'};gl.onBeforeCompile(shader);assert.ok(shader.fragmentShader.includes('}\n#define STANDARD'));
   assert.ok(shader.fragmentShader.includes('reflectedLight.indirectDiffuse'));setWebGlGI(gl,null);assert.equal(gl.onBeforeCompile,hook);
   const gpu=new MeshStandardNodeMaterial(),ao=gpu.aoNode,emissive=gpu.emissiveNode;
   setWebGpuGI(gpu,field);assert.notEqual(gpu.aoNode,ao);assert.notEqual(gpu.emissiveNode,emissive);

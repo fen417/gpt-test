@@ -43,7 +43,7 @@ export function setWebGlGI(material,field){
     `);
     // Only the indirect diffuse lobe is changed. Direct sunlight, dynamic
     // lights, specular, and authored emissive remain independent.
-    shader.fragmentShader=code+shader.fragmentShader.replace('#include <aomap_fragment>',`
+    shader.fragmentShader=code+'\n'+shader.fragmentShader.replace('#include <aomap_fragment>',`
       vec4 s09Probe=s09GI(s09GIPosition);
       float s09Strength=clamp(s09GIStrength,0.,1.2);
       reflectedLight.indirectDiffuse*=1.-(1.-s09Probe.a)*.34*min(1.,s09Strength);
