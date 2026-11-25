@@ -41,10 +41,12 @@ export class EnhancedSurfaces {
 
   ensureManifest() {
     if(this.manifestRequest)return;
+    this.manifestPending=true;
     this.manifestRequest=fetch(new URL('manifest.json',this.base))
       .then(r=>{if(!r.ok)throw Error('PBR manifest '+r.status);return r.json();})
       .then(data=>{if(data.version!==PBR_PACK_VERSION||!data.files)throw Error('Invalid PBR pack');this.manifest=data.files;this.scheduleRefresh();})
-      .catch(error=>console.warn('PBR pack unavailable; legacy textures remain active',error));
+      .catch(error=>console.warn('PBR pack unavailable; legacy textures remain active',error))
+      .finally(()=>{this.manifestPending=false;});
   }
 
   getKtxLoader() {

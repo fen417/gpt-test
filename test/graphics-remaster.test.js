@@ -302,3 +302,21 @@ test('empty grass tiles release safely and all foliage LODs simplify',()=>{
   const veg=new Vegetation();veg.tiles.set('empty',{empty:true});assert.doesNotThrow(()=>veg.dispose());
   for(const kind of ['grass','scrub','broadleaf']){const g=[0,1,2].map(i=>foliageGeometry(kind,i));assert.ok(g[0].index.count>g[1].index.count&&g[1].index.count>g[2].index.count);g.forEach(x=>x.dispose());}
 });
+
+import {collectWarmupTextures,assetsPending,waitForWarmupAssets,WARMUP_LIMITS} from '../src/shader-warmup.js';
+test('warmup waits for selected assets with a deadline and observes cancellation',async()=>{
+  const owner={enhancedSurfaces:{latest:[],manifestPending:true,textures:new Map()},indirectLighting:{pending:false}};
+  let now=0;const signal=new AbortController().signal;
+  assert.equal(assetsPending(owner),true);
+  assert.equal(await waitForWarmupAssets(owner,signal,10,async()=>{now+=5},()=>now),false);
+  assert.equal(await waitForWarmupAssets(owner,signal,10,async()=>{owner.enhancedSurfaces.manifestPending=false;now+=1},()=>now),true);
+  const abort=new AbortController();abort.abort();await assert.rejects(waitForWarmupAssets(owner,abort.signal,10,async()=>{},()=>now),{name:'AbortError'});
+  assert.ok(WARMUP_LIMITS.full.assets>WARMUP_LIMITS.auto.assets);assert.equal(graphicsEffects('ultra').shaderWarmup,'full');
+});
+test('warmup texture collection deduplicates inputs and excludes render targets',()=>{
+  const scene=new THREE.Scene(),texture=new THREE.DataTexture(new Uint8Array(4),1,1),target=new THREE.WebGLRenderTarget(1,1),material=new THREE.MeshStandardMaterial({map:texture,normalMap:texture});
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(),material);scene.add(mesh);
+  material.envMap=target.texture;
+  const result=collectWarmupTextures({scene,activeSmokeTexture:texture});assert.deepEqual(result.textures,[texture]);assert.equal(result.materials,1);
+  mesh.geometry.dispose();material.dispose();texture.dispose();target.dispose();
+});

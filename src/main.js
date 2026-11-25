@@ -800,7 +800,7 @@ async function prepareMatchFrame(ticket){
   try{
     await renderer.warmMatchFrame(state,localId,{
       ...ticket.view,vehicleThirdPerson,campaignTankZoom,campaignRender:campaignPresentation?.renderHook,
-    },signal);
+    },signal,(fraction,label)=>{if(matchLoad===ticket&&!signal.aborted)loadingScreen.update(2.5+fraction*.5,label+' — '+Math.round(fraction*100)+'%');});
   }catch(error){
     if(!signal.aborted&&renderer.api==='webgpu')recoverWebGpu(error);
     throw error;
@@ -2050,7 +2050,7 @@ function markers(){
 function frame(now){
   const cpuBegin=performance.now();
   requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;
-  if(matchLoad)return;
+  if(matchLoad||renderer?.shaderWarmup?.busy)return;
   frames++;fpsClock+=elapsed;
   if(active)frameTimes.add(elapsed*1000);
   if(fpsClock>=1){

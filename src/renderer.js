@@ -6,6 +6,7 @@ import {EffectLights} from './effect-lights.js';
 import {WaterAppearance} from './water-appearance.js';
 import {IndirectLighting} from './indirect-lighting.js';
 import {Vegetation} from './vegetation.js';
+import {ShaderWarmup} from './shader-warmup.js';
 import {atmosphereProfile} from './atmosphere-profile.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {LocalReflections} from './local-reflections.js';
@@ -191,10 +192,11 @@ export class GameRenderer {
     this.localReflections=new LocalReflections();
     this.indirectLighting=new IndirectLighting(webgpu?.setWebGpuGI);
     this.vegetation=new Vegetation(webgpu?.makeWebGpuFoliageMaterial);
+    this.shaderWarmup=new ShaderWarmup(this);
     this.finishWorldEffects=profiler=>{
       const effects=this.postPass.worldEffects;
       effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock,this.cascades,profiler);
-      if(effects.softSmoke&&effects.world.depthTexture){
+      if(effects.softSmoke&&this.effectBatches.smoke.count&&effects.world.depthTexture){
         this.softSmokePass??=new SoftSmokePass(this,effects.world.depthTexture);
         this.softSmokePass.render(this,effects.world,profiler);
       }
@@ -689,6 +691,7 @@ export class GameRenderer {
   }
 
   async prepareMatchMap(mapId,view,signal) {
+    await this.shaderWarmup.idle();signal.throwIfAborted();
     await this.preloadMapVisuals(mapId,view);
     signal.throwIfAborted();
     this.setMap(mapId);
@@ -715,28 +718,18 @@ export class GameRenderer {
     ]);
   }
 
-  async warmMatchFrame(state,localId,view,signal) {
-    const local=state.players.find(player=>player.id===localId);
-    this.render({...state,events:[]},localId,1/60,{
-      ...view,yaw:local?.yaw??0,pitch:local?.pitch??0,vehicleCameraYaw:local?.yaw??0,paused:true,warming:true,
+  async warmMatchFrame(state,localId,view,signal,progress) {
+    await this.shaderWarmup.idle();signal.throwIfAborted();
+    return this.shaderWarmup.run(state,localId,view,signal,progress);
+  }
+
+  drawWarmupScene(){
+    const meshes=[];
+    this.staticRoot.traverseVisible(object=>{
+      if(object.isMesh&&object.frustumCulled){meshes.push(object);object.frustumCulled=false;}
     });
-    await this.renderer.compileAsync?.(this.scene,this.camera);
-    signal.throwIfAborted();
-    if(this.api==='webgpu'){
-      await this.renderer.backend.device.queue.onSubmittedWorkDone();
-    }else{
-      const gl=this.renderer.getContext();
-      const fence=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
-      if(!fence)return;
-      gl.flush();
-      const deadline=performance.now()+750;
-      try{
-        while(performance.now()<deadline&&gl.clientWaitSync(fence,0,0)===gl.TIMEOUT_EXPIRED){
-          signal.throwIfAborted();
-          await new Promise(resolve=>requestAnimationFrame(resolve));
-        }
-      }finally{gl.deleteSync(fence);}
-    }
+    try{this.drawScene(false,true);}
+    finally{for(const mesh of meshes)mesh.frustumCulled=true;}
   }
 
   bakedMapModel(map) {
@@ -1541,13 +1534,21 @@ export class GameRenderer {
     }
   }
 
+  getHotParticleMaterial(kind){
+    const texture=kind==='muzzle'?this.muzzleTexture:this.fireballTexture;
+    if(!texture)return null;
+    this.hotParticleMaterials??=new Map();
+    if(!this.hotParticleMaterials.has(kind))this.hotParticleMaterials.set(kind,new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false}));
+    return this.hotParticleMaterials.get(kind);
+  }
+
   hotParticle(kind,x,y,z,size,life){
     if(this.effects.length>=145)return;
     const max=kind==='muzzle'?12:kind==='flame'?12:8;
     if(this.effects.filter(e=>e.type===kind).length>=max)return;
     const texture=kind==='muzzle'?(this.muzzleTexture??=makeParticleTexture('muzzle')):(this.fireballTexture??=makeParticleTexture('fire'));
     const pool=this.effectPools[kind]??(this.effectPools[kind]=[]);
-    const effect=pool.pop()??{type:kind,mesh:new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false}))};
+    const effect=pool.pop()??{type:kind,mesh:new THREE.Sprite(this.getHotParticleMaterial(kind).clone())};
     effect.mesh.material.map=texture;effect.mesh.material.rotation=this.random()*Math.PI*2;
     effect.mesh.position.set(x,y,z);effect.mesh.scale.setScalar(size);
     Object.assign(effect,{age:0,life,size,fresh:true});
@@ -2115,7 +2116,8 @@ export class GameRenderer {
     this.postPass.worldEffects.reflector=this.waterAppearance?.active&&this.portWaterMesh
       ? this.waterReflectionPlane.set(this.map.shoreX,this.portWaterMesh.position.y) : null;
     const smoke=this.effectBatches.smoke;
-    const softSmoke=this.graphicsEffects?.softParticles==='high'&&smoke.count>0;
+    const softEnabled=this.graphicsEffects?.softParticles==='high';
+    const softSmoke=softEnabled&&smoke.count>0;
     const worldFX=this.postPass.worldEffects;
     worldFX.airClimate=atmosphereProfile(this.map);
     // Mission 1 owns the hidden sky / night-vision presentation. Never add
@@ -2123,10 +2125,11 @@ export class GameRenderer {
     worldFX.atmosphereAllowed=!this.presentingCampaign||this.atmosphere.sky.visible;
     worldFX.inMenu=menu;worldFX.cinematic=this.cinematicCamera;
     worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
-    worldFX.softSmoke=softSmoke;
-    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(this.effects.length||this.activeHeatFires.length)){
+    worldFX.softSmoke=softSmoke;worldFX.softEnabled=softEnabled;
+    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(warming||this.effects.length||this.activeHeatFires.length)){
       const heat=worldFX.heat;
       heat.begin(this.camera,this.clock);
+      if(warming&&this.shaderWarmup.busy){const p=this.scratchPosition.set(0,0,-5).applyMatrix4(this.camera.matrixWorld);heat.add(p.x,p.y,p.z,1,.35);}
       for(const {type,age,life,size,mesh} of this.effects){
         if(type!=='flash')continue;
         const {x,y,z}=mesh.position;
@@ -2139,7 +2142,7 @@ export class GameRenderer {
       worldFX.heat.count=0;
       worldFX.state.heatStrength.set(0,0,0,0);
     }
-    if(!softSmoke&&this.softSmokePass){
+    if(!softEnabled&&this.softSmokePass){
       this.softSmokePass.dispose();this.softSmokePass=null;
     }
     if(smoke.count){
@@ -2681,15 +2684,7 @@ export class GameRenderer {
     this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
     this.parachutes.update(this.worldRoot,state.players,dt,this.lowQuality);
     this.atmosphere.sky.position.copy(this.camera.position);
-    if(view.warming){
-      // Upload visible map layers even when the starting camera faces away.
-      const meshes=[];
-      this.staticRoot.traverseVisible(object=>{
-        if(object.isMesh&&object.frustumCulled){meshes.push(object);object.frustumCulled=false;}
-      });
-      try{this.drawScene(false,true);}
-      finally{for(const mesh of meshes)mesh.frustumCulled=true;}
-    }else this.drawScene();
+    if(view.warming)this.drawWarmupScene();else this.drawScene();
   }
 
   countVisibleObjects() {
@@ -2739,7 +2734,7 @@ export class GameRenderer {
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
       extraTextureBytes:this.enhancedSurfaces?.estimatedBytes()??0,
-      pbrTextures:this.enhancedSurfaces?.stats()??null,
+      pbrTextures:this.enhancedSurfaces?.stats()??null,shaderWarmup:this.shaderWarmup.stats,
       visibleLights:this.perfEnabled?this.scene.children.filter(object=>object.isLight&&object.visible&&object.intensity>0).length:null,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
@@ -2761,6 +2756,7 @@ export class GameRenderer {
     this.vegetation?.dispose();
     this.indirectLighting?.dispose();
     this.localReflections.dispose();
+    for(const material of this.hotParticleMaterials?.values()??[])material.dispose();
     this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
     this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();

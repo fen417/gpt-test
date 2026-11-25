@@ -58,7 +58,7 @@ export class WorldPost {
     const chromatic=this.aiming?0:cameraModes.chromatic[effects?.chromatic]??0;
     this.cameraFX=Boolean(blur||dof||flare||chromatic);
     this.hasHeat=effects?.heatDistortion==='high'&&(mask||reflections>0||this.heat.count>0||this.hasHeat);
-    const depth=mask||reflections>0||this.softSmoke||this.cameraFX||this.hasHeat||this.heightFog;
+    const depth=mask||reflections>0||this.softEnabled||this.softSmoke||this.cameraFX||this.hasHeat||this.heightFog;
     if(!blur)this.previousClock=undefined;
     if (!depth && !levels) {
       if (this.world) this.dispose();

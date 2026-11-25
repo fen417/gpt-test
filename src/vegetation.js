@@ -115,6 +115,11 @@ export class Vegetation{
     for(const a of this.assets.values())a.update?.();
     return shadowChanged;
   }
+  prewarmAssets(owner){
+    if(!this.map)return;
+    const kinds=new Set(this.authored.map(e=>e.kind));if(Number(owner.graphicsEffects?.grassDensity)>0&&this.map.id!=='fy_pool_day')kinds.add('grass');
+    for(const kind of kinds)for(let lod=0;lod<=2;lod++)this.asset(kind,lod);
+  }
   stats(){return {authored:this.authored.reduce((n,e)=>n+e.mesh.count,0),grass:[...this.tiles.values()].reduce((n,e)=>n+(e.mesh?.count??0),0),batches:this.authored.length+[...this.tiles.values()].filter(e=>!e.empty).length,tiles:this.tiles.size};}
   dispose(){this.clear();for(const a of this.assets.values()){a.texture.dispose();a.material.dispose();a.depth?.dispose();for(const g of a.geometries.values())g.dispose();}this.assets.clear();}
 }

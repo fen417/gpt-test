@@ -5,11 +5,11 @@ const legacy = Object.freeze({
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
   sky: 'legacy', clouds:'off', heightFog:'off', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
   smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off', muzzleEffects:'legacy', muzzleLights:'off', fireEffects:'legacy', fireLighting:'off', dust:'off',
-  adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
+  shaderWarmup:'auto',adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
 
 const ultra = Object.freeze({
-  ...legacy, surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', ao: 'gtao', contact: 'high', bloom: 'high',
+  ...legacy, shaderWarmup:'full',surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
   sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
@@ -90,6 +90,7 @@ export const GRAPHICS_CONTROLS = [
     ['explosions','Взрывы','HDR-огненный шар, расходящаяся пыль, искры и клубы дыма.',choices(old,medium,high)],
   ]],
   ['Производительность', [
+    ['shaderWarmup','Предкомпиляция шейдеров','Авто — ограниченная подготовка выбранной сцены при загрузке матча. Полная — дольше ждёт PBR/GI и загружает больше текстур. Выкл. — исходный прогрев первого кадра.',choices(off,auto,['full','Полная'])],
     ['adaptiveTarget', 'Адаптивное качество', 'После устойчивой нагрузки уменьшает качество отдельных эффектов.', choices(off, ...[30,45,60,90,120].map(n=>[String(n),n+' FPS']))],
     ['adaptiveFloor', 'Предел упрощения эффектов', 'Сбалансированный режим оставляет часть эффектов активными.', choices(['balanced','Сбалансированный'],['minimum','Минимальный'])],
     ['adaptiveMinScale', 'Минимальный масштаб', 'Предел для адаптивного масштаба. Действует в режимах «Авто».', [50, 100]],
