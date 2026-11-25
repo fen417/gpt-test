@@ -404,7 +404,7 @@ test('map art distinguishes salt, oxidation, dust and clean interiors',()=>{
 
 
 import {LocalReflections} from '../src/local-reflections.js';
-import {WorldPost} from '../src/world-post.js';
+import {WorldPost,canFuseBloom} from '../src/world-post.js';
 test('local probes are only generated on explicit warmup, never during gameplay',async()=>{
   const map={id:'fy_pool_day'},owner={map,worlds:new Map([[map.id,{}]]),camera:{position:{x:4,y:2,z:0}},graphicsEffects:{localReflections:'high'}};
   const probes=new LocalReflections(),texture={};let captures=0;
@@ -423,4 +423,48 @@ test('post targets remain stable when aiming and when heat sources first appear'
   assert.equal(post.world,world);assert.equal(post.stages,stages);assert.equal(post.key,key);assert.equal(post.state.cameraEffects.z,0);assert.equal(post.state.chromaticGain,0);
   post.heat.count=1;post.configure(settings,128,72,0);assert.equal(post.world,world);
   post.dispose();
+});
+
+
+import {batchInfantryBody,batchRigidPickup} from '../src/model-batching.js';
+test('floor pickup batching preserves material, transformed bounds and excludes transparent geometry',()=>{
+  const root=new THREE.Group(),material=new THREE.MeshStandardMaterial(),glass=new THREE.MeshStandardMaterial({transparent:true});
+  const a=new THREE.Mesh(new THREE.BoxGeometry(1,2,3),material),b=new THREE.Mesh(new THREE.BoxGeometry(2,1,1),material),c=new THREE.Mesh(new THREE.BoxGeometry(),glass);
+  a.position.set(1,2,3);b.position.set(-2,1,0);b.rotation.y=.5;root.add(a,b,c);
+  const before=new THREE.Box3().setFromObject(root,true);
+  const {saved,owned}=batchRigidPickup(root);
+  assert.equal(saved,1);assert.equal(root.children.length,2);assert.equal(c.parent,root);
+  const after=new THREE.Box3().setFromObject(root,true);
+  assert.ok(before.min.distanceTo(after.min)<1e-5&&before.max.distanceTo(after.max)<1e-5);
+  assert.ok(root.children.some(m=>m.material===material));
+  for(const g of owned)g.dispose();for(const m of [a,b,c])m.geometry.dispose();material.dispose();glass.dispose();
+});
+test('skinned batch preserves skin attributes and all LOD triangle counts; optional pouch stays separate',()=>{
+  const root=new THREE.Group(),bone=new THREE.Bone(),skeleton=new THREE.Skeleton([bone]),material=new THREE.MeshStandardMaterial();
+  root.add(bone);const levels=new Map(),owned=new Set();
+  const makeGeo=()=>{const g=new THREE.BoxGeometry();const count=g.attributes.position.count;
+    g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(new Uint16Array(count*4),4));
+    const w=new Float32Array(count*4);for(let i=0;i<count;i++)w[i*4]=1;
+    g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(w,4));owned.add(g);return g;};
+  for(let i=0;i<3;i++){
+    const mesh=new THREE.SkinnedMesh(makeGeo(),material);mesh.name='body-'+i;if(i===2)mesh.userData.optionalPouch=true;
+    root.add(mesh);mesh.bind(skeleton,new THREE.Matrix4());levels.set(mesh.name,[null,[makeGeo()],[makeGeo()],[makeGeo()]]);
+  }
+  root.updateMatrixWorld(true);
+  const result=batchInfantryBody(root,levels);assert.equal(result.saved,1);
+  const merged=result.mergedLods.get('body-0/0');assert.equal(merged.length,4);
+  for(const g of merged){assert.equal(g.index.count,72);assert.equal(g.attributes.skinIndex.count,48);assert.equal(g.attributes.skinWeight.getX(24),1);g.dispose();}
+  assert.equal(root.getObjectByName('body-1').visible,false);assert.equal(root.getObjectByName('body-2').visible,true);
+  for(const g of owned)g.dispose();material.dispose();skeleton.dispose();
+});
+test('bloom fusion skips one pass only without adjacent-pixel filters; bloom-only world bypasses copy',()=>{
+  assert.equal(canFuseBloom(3,false,false),true);assert.equal(canFuseBloom(3,true,false),false);assert.equal(canFuseBloom(3,false,true),false);assert.equal(canFuseBloom(0,false,false),false);
+  let composite=null;
+  const post=new WorldPost({},THREE.WebGLRenderTarget,()=>({dispose(){},renderBloom(input,profiler,combine){composite=combine;return input.texture;}}));
+  const input=new THREE.WebGLRenderTarget(128,72);
+  assert.equal(post.configure({bloom:'high'},128,72,4),true);assert.equal(post.directWorld,true);
+  const passes=post.passes;
+  assert.equal(post.finishBloom(input,null,true),input.texture);assert.equal(post.bloomFused,true);assert.equal(composite,false);assert.equal(post.passes,passes-1);
+  post.configure({ao:'gtao',bloom:'high'},128,72,4);assert.equal(post.directWorld,false);post.finishBloom(input,null,false);assert.equal(composite,true);
+  post.dispose();input.dispose();
 });
