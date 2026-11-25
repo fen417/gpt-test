@@ -6,6 +6,7 @@ import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, 
 import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
 import {EffectLights} from './effect-lights.js';
+import {emitTankTrackDust} from './campaign/track-dust.js';
 import {tankFireAnchor,adsFlashFactor,scriptedTankFire} from './combat-visuals.js';
 import {WaterAppearance} from './water-appearance.js';
 import {IndirectLighting} from './indirect-lighting.js';
@@ -1390,7 +1391,14 @@ export class GameRenderer {
       const dustQuality=this.graphicsEffects?.dust;
       const groundDust=dustQuality==='high'||dustQuality==='medium'?dustProfile(this.map):null;
       const speed=Math.abs(vehicle.speed??0);
-      if(groundDust&&vehicle.type!==BLACK_HAWK&&vehicle.hp>0&&speed>2.3&&distance<(dustQuality==='high'?70:42)&&this.effects.length<100&&this.clock>=(rig.nextDust??0)){
+      const tank=vehicle.type==='tank';
+      const campaignDust=tank&&(state.campaign?.missionId==='m02'||(state.campaign?.missionId==='m03'&&state.campaign.ride));
+      if(tank&&!campaignDust&&groundDust&&vehicle.hp>0&&speed>.8&&distance<(dustQuality==='high'?85:50)&&this.effects.length<94&&this.clock>=(rig.nextDust??0)){
+        const high=dustQuality==='high',reduced=this.lowQuality||this.integratedGpu;
+        rig.nextDust=this.clock+(reduced ? .26 : high ? .14 : .24);
+        emitTankTrackDust(this,vehicle,{size:high?1.30:1.0,life:high?1.95:1.5,color:groundDust.color,opacity:Math.min(.50,groundDust.opacity*1.15),rise:.36,wind:1.05},reduced);
+      }
+      if(groundDust&&!tank&&vehicle.type!==BLACK_HAWK&&vehicle.hp>0&&speed>2.3&&distance<(dustQuality==='high'?70:42)&&this.effects.length<100&&this.clock>=(rig.nextDust??0)){
         rig.nextDust=this.clock+(dustQuality==='high'?.11:.23);
         const direction=Math.sign(vehicle.speed)||1,dx=Math.sin(vehicle.yaw)*direction,dz=Math.cos(vehicle.yaw)*direction;
         const back=vehicle.type==='atv'?1.1:vehicle.type==='tank'?3.1:2.2;
@@ -1651,8 +1659,10 @@ export class GameRenderer {
         for(let i=0;i<3;i++)this.smoke(x,event.y-.1,z,.2+i*.06,.35,0xb1ab9c);
         continue;
       }
-      if(event.type==='cannonShot')this.shotEffect(event,state,localId);
-      if(event.type==='cannonShot'&&!event.confirmedCosmetic){this.smoke(event.x,event.y,event.z,.6,.4,0xc1bba5);for(let i=0;i<4;i++)this.spark(event.x,event.y,event.z,3);}
+      if(event.type==='cannonShot'){
+        this.shotEffect(event,state,localId);
+        this.cannonBlast(event,state,localId);
+      }
       if (event.type === 'shot') {
         this.shotEffect(event,state,localId);
         const own = event.playerId === localId;
@@ -1772,9 +1782,31 @@ export class GameRenderer {
       // The native FPV flash is sufficient in ADS; avoid a second HDR sprite
       // directly on the sight line, which would bloom across the reticle.
       if(!own||mounted||rocket||ads<.8)this.hotParticle('muzzle',pos.x,pos.y,pos.z,(cannon?1.35:rocket?.65:mounted?.46:.23)*Math.sqrt(subdued?.4:1)*Math.sqrt(flashFactor),cannon?.12:.065,flashFactor*(subdued?.45:1));
-      if(this.effects.length<110&&(!subdued||own))
-        this.smoke(pos.x,pos.y,pos.z,cannon?.65:mounted?.25:.115,cannon?.65:.37,0xaaa89d,{opacity:.38,rise:.37,kind:'smoke',enhanced:true});
+      if(!cannon&&this.effects.length<110&&(!subdued||own))
+        this.smoke(pos.x,pos.y,pos.z,mounted?.25:.115,.37,0xaaa89d,{opacity:.38,rise:.37,kind:'smoke',enhanced:true});
     }
+  }
+
+  cannonBlast(event,state,localId){
+    const own=event.playerId===localId;
+    if(state.time-event.time>.4||![event.x,event.y,event.z].every(Number.isFinite))return;
+    if(!own&&this.camera.position.distanceToSquared(this.scratchPosition.set(event.x,event.y,event.z))>100**2)return;
+    const vehicle=state.vehicles?.find(v=>v.id===event.vehicleId);
+    const yaw=vehicle?.aimYaw??0,pitch=vehicle?.aimPitch??0;
+    const dx=-Math.sin(yaw)*Math.cos(pitch),dy=Math.sin(pitch),dz=-Math.cos(yaw)*Math.cos(pitch);
+    const reduced=this.lowQuality||this.integratedGpu;
+    // In the gunner's optic the camera is at the muzzle. Place the pressure
+    // plume forward of the near plane instead of directly on the camera.
+    const count=own?(reduced?2:3):2;
+    for(let i=0;i<count&&this.effects.length<138;i++){
+      const forward=own?1.65+i*.72:.4+i*.85,side=i===0?0:i===1?.32:-.40;
+      this.smoke(event.x+dx*forward+Math.cos(yaw)*side,event.y+dy*forward+.08+i*.1,event.z+dz*forward-Math.sin(yaw)*side,
+        (own?.82:.95)+i*.18,own?.78+i*.18:1.1+i*.2,i===0?0xc6bdae:0xaaa79e,{
+          opacity:own?.39-i*.055:.48-i*.08,rise:.45+i*.1,kind:'smoke',enhanced:true,
+          vx:dx*(2.7-i*.45),vz:dz*(2.7-i*.45),cannonHeat:i===0,ownCannonHeat:own&&i===0,
+        });
+    }
+    for(let i=0;i<(reduced?1:3)&&this.effects.length<135;i++)this.spark(event.x,event.y,event.z,3);
   }
 
   getHotParticleMaterial(kind){
@@ -1864,7 +1896,7 @@ export class GameRenderer {
     this.effects.push(effect);
   }
 
-  smoke(x, y, z, size, life, color, {opacity=.55, rise=.8, wind=0,vx,vz,kind='smoke',enhanced=false}={}) {
+  smoke(x, y, z, size, life, color, {opacity=.55, rise=.8, wind=0,vx,vz,kind='smoke',enhanced=false,cannonHeat=false,ownCannonHeat=false}={}) {
     if (this.effects.length > 140) return;
     const effect = this.effectPools.smoke.pop() ?? {
       mesh: new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, transparent: true, depthWrite: false })),
@@ -1874,7 +1906,7 @@ export class GameRenderer {
     sprite.material.color.setHex(color);
     sprite.material.rotation = this.random() * Math.PI;
     sprite.position.set(x, y, z); sprite.scale.setScalar(size);
-    Object.assign(effect, { age: 0, life, size, opacity, rise, kind, enhanced:enhanced||particleQuality[this.graphicsEffects?.smoke]>0, spin:(enhanced||particleQuality[this.graphicsEffects?.smoke]>0)?(this.random()-.5)*.6:0, vx: vx??(wind + (this.random() - 0.5) * 0.6), vz: vz??((this.random() - 0.5) * 0.6) });
+    Object.assign(effect, { age: 0, life, size, opacity, rise, kind, cannonHeat, ownCannonHeat, enhanced:enhanced||particleQuality[this.graphicsEffects?.smoke]>0, spin:(enhanced||particleQuality[this.graphicsEffects?.smoke]>0)?(this.random()-.5)*.6:0, vx: vx??(wind + (this.random() - 0.5) * 0.6), vz: vz??((this.random() - 0.5) * 0.6) });
     this.effects.push(effect);
   }
 
@@ -2406,17 +2438,27 @@ export class GameRenderer {
     worldFX.inMenu=false;worldFX.cinematic=this.cinematicCamera;
     worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
     worldFX.softSmoke=softSmoke;worldFX.softEnabled=softEnabled;
-    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(warming&&this.graphicsEffects?.shaderWarmup!=='off'||this.effects.length||this.activeHeatFires.length)){
+    const cannonHeat=this.effects.some(effect=>effect.type==='smoke'&&effect.cannonHeat&&effect.age<effect.life);
+    if(this.graphicsEffects?.heatDistortion==='high'&&(!worldFX.aiming||cannonHeat)&&(warming&&this.graphicsEffects?.shaderWarmup!=='off'||this.effects.length||this.activeHeatFires.length)){
       const heat=worldFX.heat;
       heat.begin(this.camera,this.clock);
-      if(warming&&this.shaderWarmup.busy&&this.graphicsEffects?.shaderWarmup!=='off'){const p=this.scratchPosition.set(0,0,-5).applyMatrix4(this.camera.matrixWorld);heat.add(p.x,p.y,p.z,1,.35);}
-      for(const {type,age,life,size,mesh} of this.effects){
-        if(type!=='flash')continue;
-        const {x,y,z}=mesh.position;
-        heat.add(x,y+size*.8,z,size*2.2,.78*Math.max(0,1-age/life));
+      // Own cannon first, then other tanks. In ADS allow cannon blast shimmer
+      // but keep persistent fires and unrelated explosions disabled.
+      for(const own of [true,false]){
+        for(const effect of this.effects){
+          if(effect.type!=='smoke'||!effect.cannonHeat||effect.ownCannonHeat!==own)continue;
+          const {x,y,z}=effect.mesh.position,t=effect.age/effect.life;
+          heat.add(x,y+.14,z,1.05+t*.40,(own?1:.75)*Math.max(0,1-t)**1.5);
+        }
       }
-      for(const fire of this.activeHeatFires){
-        heat.add(fire.x,fire.y+fire.height*1.25,fire.z,fire.width*1.4,.58);
+      if(!worldFX.aiming){
+        if(warming&&this.shaderWarmup.busy&&this.graphicsEffects?.shaderWarmup!=='off'){const p=this.scratchPosition.set(0,0,-5).applyMatrix4(this.camera.matrixWorld);heat.add(p.x,p.y,p.z,1,.35);}
+        for(const {type,age,life,size,mesh} of this.effects){
+          if(type!=='flash')continue;
+          const {x,y,z}=mesh.position;
+          heat.add(x,y+size*.8,z,size*2.2,.78*Math.max(0,1-age/life));
+        }
+        for(const fire of this.activeHeatFires)heat.add(fire.x,fire.y+fire.height*1.25,fire.z,fire.width*1.4,.58);
       }
     }else if(worldFX.heat.count){
       worldFX.heat.count=0;

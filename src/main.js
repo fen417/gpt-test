@@ -1064,10 +1064,10 @@ function makeGraphicsCustom(changes){
   save('gfx-custom',JSON.stringify(gfx.customGraphics));
   syncGraphicsPreset();
 }
-const impactLabels={low:'Низкая',medium:'Средняя',high:'Высокая',variable:'Зависит от режима'};
+const impactLabels={low:'Низкая',medium:'Средняя',high:'Высокая'};
 function graphicsImpactLabel(key){
   const impact=GRAPHICS_IMPACT[key];
-  if(!impact)return null;
+  if(!impact||impact==='variable')return null;
   const hint=document.createElement('span');
   hint.className='graphics-fps-impact';hint.dataset.impact=impact;
   hint.textContent='Нагрузка на FPS: '+impactLabels[impact];

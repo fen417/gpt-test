@@ -240,7 +240,7 @@ export class Mission2Presentation {
       r.updateSunShadow(target.x,target.z);
     }
     if(v&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
-      this.nextTrackDustAt=r.clock+.19;
+      this.nextTrackDustAt=r.clock+((r.lowQuality||r.integratedGpu) ? .24 : .15);
       emitTrackDust(r,state.vehicles,v);
     }
     if(v&&!view.paused&&r.clock>=(this.nextFieldSmokeAt??0)){

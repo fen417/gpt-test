@@ -333,7 +333,7 @@ function turretFlash(gun) {
 function buildAuthoredHumvee(body, materials) {
   const {part:humveePart}=humveeModel;
   const finish = materials.authoredFinish = humveeModel.finish();
-  materials.authoredWreck = humveeModel.finish(0x59534a);
+  materials.authoredWreck = humveeModel.finish(0x38332e);
   humveePart(body, 'BodyPaint', finish).name = 'paint';
   humveePart(body, 'Chassis', finish);
   humveePart(body, 'Cabin', finish, false);
@@ -371,7 +371,7 @@ function buildAuthoredHumvee(body, materials) {
 
 function buildAuthoredAtv(body,materials) {
   const finish=materials.authoredFinish=atvModel.finish();
-  materials.authoredWreck=atvModel.finish(0x62584a);
+  materials.authoredWreck=atvModel.finish(0x38332e);
   atvModel.part(body,'Body',finish).name='paint';
   const hardware=atvModel.part(body,'BodyDetail',finish,false);
   atvModel.part(body,'Badge',materials.badge,false);
@@ -465,7 +465,7 @@ export function createVehicleRig(type, material, teamColors) {
     mirror: material(0x879395,.19,.65), uniform: material(riderColors[0].uniform,.93,.01),
     riderArmor: material(riderColors[0].riderArmor,.95,.01), riderHelmet: material(riderColors[0].riderHelmet,.84,.08),
     skin: material(0xa2846d,.93,.01), brass: material(0x927045,.45,.68),
-    badge: material(teamColors[0],.84,.1), wreck: material(0x333735,1,.1),
+    badge: material(teamColors[0],.84,.1), wreck: material(0x262320,1,.1),
   };
   for(let i=0;i<7;i++)materials['glass'+i]=materials.glass;
   let controls, wheels, turret, detail, atvDetail;
@@ -486,11 +486,10 @@ export function createVehicleRig(type, material, teamColors) {
   const gunnerGloves=turret?addGloves(turret.gun,materials,false,true):null;
   const riders=VEHICLE_TYPES[type].seats.map((seat,index)=>rider(body,materials,seat,index,type));
   const paintMeshes=body.children.filter(node=>node.name==='paint');
-  if(atvDetail){
-    paintMeshes.push(atvDetail.hardware,atvDetail.instruments);
-    paintMeshes.push(...wheels.map(({mesh})=>mesh));
-    paintMeshes.push(controls.getObjectByName('Controls'));
-  }
+  // Every authored textured part (chassis, cabin, wheels and turret), not just body paint.
+  if(materials.authoredFinish)body.traverse(node=>{
+    if(node.isMesh&&node.material===materials.authoredFinish&&!paintMeshes.includes(node))paintMeshes.push(node);
+  });
   const materialsToDispose=new Set(Object.values(materials).flatMap(mat=>[mat,mat._lowMaterial]).filter(Boolean));
   if(turret)materialsToDispose.add(turret.flash.material);
   return {group,body,wheels,controls,turret,riders,detail,atvDetail,assetReady:Boolean(detail||atvDetail),paintMeshes,driverGloves,gunnerGloves,materials,materialsToDispose,teamColors};

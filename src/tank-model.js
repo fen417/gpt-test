@@ -250,8 +250,8 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   if(rig.desertCamo.node)rig.desertCamo.node.value=rig.desertCamo.value?1:0;
   // Vertex colors and the atlas already darken the hull. Multiplying by
   // 0x383c38 (sRGB -> ~0.04 linear) crushed all wreck surface detail.
-  // Keep soot discoloration in linear space without hiding the original camo.
-  if(v.hp<=0)rig.material.color.setRGB(.48,.43,.37);else rig.material.color.setRGB(1,1,1);
+  // Deep charcoal soot, retaining atlas highlights and surface detail.
+  if(v.hp<=0)rig.material.color.setRGB(.23,.205,.18);else rig.material.color.setRGB(1,1,1);
   if(reset)group.updateMatrixWorld(true);
 }
 export function tankModelStats(rig){return rig.levels.map(l=>{let triangles=0,draws=0;l.group.traverse(o=>{if(o.isMesh){triangles+=(o.geometry.index?.count??o.geometry.attributes.position.count)/3*(o.count??1);draws++;}});return{triangles,draws};});}
