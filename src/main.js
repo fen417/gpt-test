@@ -483,7 +483,6 @@ function receive(next){
   if(next.lobby){
     closeMatchLoad();
     setBattleMap(next.mapId);
-    void renderer.preloadMapVisuals(next.mapId,{quality,gfx});
     state=next;
     if(!inLobby)enterLobby();
     else updateLobby();
@@ -762,7 +761,9 @@ function leave(resetStatus=true,showAbandonedResults=false){
   if(mode==='campaign')vehicleThirdPerson=read('vehicle-camera','third')!=='first';
   reviveAwaitingControl=false;show('revive-control-hint',false);
   active=false;inLobby=false;quickAttachments.close();clearControls();simulation?.close();simulation=null;multiplayer.close();document.exitPointerLock?.();state=null;localId=null;wasAlive=false;finished=false;setBusy(false);show('menu');for(const id of ['hud','lobby','pause','death','result'])show(id,false);document.body.style.overflow='';
-  document.body.classList.remove('in-battle','team-1');audio.setMode?.('menu');
+  document.body.classList.remove('in-battle','team-1','scoped');
+  renderer?.clearMapDynamics();renderer?.clearVehicles();renderer?.parachutes.clear();renderer?.frameGeneration?.reset();
+  show('scope-overlay',false);show('binocular-overlay',false);show('scope-zoom',false);audio.setMode?.('menu');
   show('scoreboard',false);if(resetStatus)status('Сектор готов к высадке.');
   if(abandoned)$('abandoned-results').showModal();
   if(completedCampaign)queueMicrotask(showCampaignMenu);
@@ -953,7 +954,6 @@ async function joinRoom(item){
     await ticket.painted;
     const url=await serverAddress();
     ticket.controller.signal.throwIfAborted();
-    void renderer.preloadMapVisuals(item.mapId,ticket.view);
     room=await multiplayer.join({...opts,roomId:item.id,url});
   }catch(error){if(matchLoad===ticket){leave(false);status(error.message,true);}}
 }
@@ -973,7 +973,6 @@ syncRoomMode();
 $('create-room').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;const opts=prepare('server');setBusy(true);
   const mapId=$('room-map').value;
-  void renderer.preloadMapVisuals(mapId,{quality,gfx});
   try{room=await multiplayer.host({...opts,url:await serverAddress(),roomName:$('room-name').value,mapId,gameMode:$('room-mode').value,killLimit:Number($('room-kill-limit').value),maxPlayers:Number($('room-max').value),bots:Number($('room-bots').value),difficulty:$('room-difficulty').value});enterLobby();}
   catch(error){status(error.message,true);setBusy(false);if(multiplayer.rooms.length){show('room-browser');renderRooms(multiplayer.rooms);}}
 });
@@ -1572,9 +1571,7 @@ function initializeMapPickers(){
   filterModeMaps('map-select','solo-mode','solo-kill-limit',saved.id);
   const update=()=>{
     const map=getMap($('map-select').value);
-    text('menu-map-name',map.name.toUpperCase());
     text('menu-map-points',String(map.points.length).padStart(2,'0'));
-    text('menu-map-info',map.size+' × '+map.size+' м · '+(map.tdmLoadout?'Командный бой':map.points.length+' позиций')+(map.vehicleSpawns?.some(v=>v.type===BLACK_HAWK)?' · Наземная техника и вертолёты':map.vehicleSpawns?.length?' · Квадроциклы и хамви':map.theme==='desert-village'?' · Пехотный бой':''));
     save('map',map.id);
   };
   $('map-select').addEventListener('change',update);
@@ -2051,6 +2048,13 @@ function frame(now){
   const cpuBegin=performance.now();
   requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;
   if(matchLoad||renderer?.shaderWarmup?.busy)return;
+  // Static menu/lobby: only audio and normal UI events, no world rendering,
+  // camera animation, GPU timers, simulation or game frame generation.
+  if(!active){
+    lastWorldFrame=0;frames=0;fpsClock=0;
+    audio.update?.(dt,{quality,state,local:local(),moving:0,sprinting:false,crouching:false,aim:false,locked:false,inMenu:true,paused:false});
+    return;
+  }
   frames++;fpsClock+=elapsed;
   if(active)frameTimes.add(elapsed*1000);
   if(fpsClock>=1){
@@ -2102,7 +2106,7 @@ function frame(now){
     vehicleLook.heading=driven.yaw;
     yaw=vehicleLook.yaw;pitch=vehicleLook.pitch;
   }else vehicleLook.id=null;
-  const renderDue=active&&!paused||now-lastWorldFrame>=1000/30;
+  const renderDue=active&&(!paused||now-lastWorldFrame>=1000/30);
   const fgAngles=aimAngles();
   if(!vehicleThirdPerson&&driven?.type===BLACK_HAWK){
     const authority=state?.vehicles.find(v=>v.id===driven.id);
@@ -2126,7 +2130,7 @@ function frame(now){
     lastWorldFrame=now;
     try{
       const realBegin=performance.now();
-      renderer.render(renderState,localId,renderDelta,{mapId:inLobby?state?.mapId:$('map-select').value,...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
+      renderer.render(renderState,localId,renderDelta,{...fgAngles,campaignRender:campaignPresentation?.renderHook,vehicleThirdPerson,vehicleCameraYaw:yaw,campaignTankZoom,campaignTankScoped:!paused&&isActionHeld('tankZoom'),campaignTankLead:$('tank-lead').checked,
         networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom:weaponScopeZoom(renderPlayer?.weaponId),hasCollimator,equippedAttachments,weaponSkinFor,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
       if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
     }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}

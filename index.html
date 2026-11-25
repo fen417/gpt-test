@@ -9,6 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23101b20'/%3E%3Cpath d='M12 15h40v8H21v7h31v19H12v-8h31v-5H12z' fill='%23e4b776'/%3E%3C/svg%3E" />
 </head>
 <body>
+  <img id="menu-background" src="./menu-background.webp" alt="" aria-hidden="true" fetchpriority="high" decoding="async" />
   <canvas id="game" aria-label="Трёхмерное поле боя"></canvas>
   <dialog id="match-loading" class="match-loading" aria-labelledby="match-loading-title">
     <img id="match-loading-image" class="match-loading-image" sizes="(max-aspect-ratio: 16/9) 177.78vh, 100vw" alt="" />
@@ -44,7 +45,7 @@
           </div>
         </nav>
       </section>
-      <aside class="home-location"><span class="scene-label">В ОБЪЕКТИВЕ</span><div class="map-caption"><span class="cross-icon">⌖</span><div><strong id="menu-map-name"></strong><small id="menu-map-info"></small></div></div><span class="scene-rule"></span><span class="scene-label">ЖИВОЙ СЕКТОР / SECTOR 09</span></aside>
+      <aside class="home-location"><span class="scene-label">ПЕСОК И СТАЛЬ</span><div class="map-caption"><span class="cross-icon">⌖</span><div><strong>НАХАР</strong><small>Кампания SECTOR 09</small></div></div><span class="scene-rule"></span><span class="scene-label">SECTOR 09</span></aside>
     </div>
     <footer class="menu-footer"><div><p id="status" class="status" role="status" aria-live="polite">Загрузка сектора…</p><div class="now-playing"><span class="track-line"></span><span id="track-label">♫ QUIET RESOLVE</span></div></div><div class="menu-footer-actions"><button id="menu-changelog" class="small-button" aria-haspopup="dialog">Что нового ↗</button><a class="small-button" href="./credits.html" target="_blank" rel="noopener">Авторы ↗</a></div></footer>
   </main>

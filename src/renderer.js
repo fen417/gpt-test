@@ -379,7 +379,7 @@ export class GameRenderer {
     this.portModel = new PortModel(this);
     this.lagunaModel = new ArchitecturalMapModel(this,lagunaAssets);
     this.estateModel = new ArchitecturalMapModel(this,estateAssets);
-    this.setMap();
+    // No default world on startup. Only prepareMatchMap/render with a real state may load a map.
     this.scene.matrixAutoUpdate = false;
     this.buildWeapon();
     this.scene.traverse(object => { if (object.isLight) object.layers.enable(1); });
@@ -469,7 +469,6 @@ export class GameRenderer {
     this.smokeOrder = [];
     this.worldRoot.add(smokeBatch);
     if(!webgpu)this.scene.traverse(optimizeLighting);
-    this.warmup();
     this.resize();
   }
 
@@ -690,7 +689,6 @@ export class GameRenderer {
       const next = this.lowQuality ? mat?._lowMaterial : mat?._highMaterial;
       if (next) object.material = next;
     });
-    this.staticMenuShadows = false;
     this.cascades?.invalidate(true);
     this.cameraPlayerId = null;
     this.worlds.delete(map.id);this.worlds.set(map.id,world);
@@ -773,6 +771,7 @@ export class GameRenderer {
     await this.preloadMapVisuals(mapId,view);
     signal.throwIfAborted();
     this.setMap(mapId);
+    if(!this.effectsWarmed){this.warmup();this.effectsWarmed=true;}
     const world=this.worlds.get(this.map.id);
     const detail=geometryQuality(view.quality,view.gfx?.detail)==='high';
     if(world.model)this.updateBakedDetail(world,detail);
@@ -884,7 +883,7 @@ export class GameRenderer {
     this.staticRoot.traverseVisible(object=>{
       if(object.isMesh&&object.frustumCulled){meshes.push(object);object.frustumCulled=false;}
     });
-    try{this.drawScene(false,true);}
+    try{this.drawScene(true);}
     finally{for(const mesh of meshes)mesh.frustumCulled=true;}
   }
 
@@ -928,7 +927,6 @@ export class GameRenderer {
     this.cascades?.invalidate(true);
     this.sun.shadow.needsUpdate=true;
     this.renderer.shadowMap.needsUpdate=true;
-    this.staticMenuShadows=false;
   }
 
   updateQuarryDetail(world,map,wanted) {
@@ -2286,26 +2284,13 @@ export class GameRenderer {
     }
   }
 
-  drawScene(menu = false, warming = false) {
+  drawScene(warming = false) {
     this.frameCount++;
-    const menuKey=menu?[this.staticMaterialRevision,this.shadowMode,...this.sun.position.toArray(),...this.sun.target.position.toArray(),...(this.cascades?[...this.camera.position.toArray(),...this.camera.quaternion.toArray(),...this.camera.projectionMatrix.elements]:[])].join('/'):'';
-    this.shadowMenuIdle=Boolean(menu&&this.staticMenuShadows&&menuKey===this.menuShadowKey&&!['low','high'].includes(this.graphicsEffects?.vegetationWind));
-    this.menuShadowKey=menuKey;
-    if (menu) {
-      if (!this.shadowMenuIdle && this.renderer.shadowMap.enabled) {
-        this.staticMenuShadows = true;
-        this.sun.shadow.needsUpdate = true;
-        this.renderer.shadowMap.needsUpdate = true;
-      }
-    } else {
-      this.staticMenuShadows = false;
-      if (this.renderer.shadowMap.enabled) {
-        this.sun.shadow.needsUpdate = true;
-        this.renderer.shadowMap.needsUpdate = true;
-      }
+    if(this.renderer.shadowMap.enabled){
+      this.sun.shadow.needsUpdate=true;
+      this.renderer.shadowMap.needsUpdate=true;
     }
     if(this.vegetation.update(this)){
-      this.shadowMenuIdle=false;
       this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);
       this.sun.shadow.needsUpdate=true;this.renderer.shadowMap.needsUpdate=true;
     }
@@ -2326,7 +2311,7 @@ export class GameRenderer {
     // Mission 1 owns the hidden sky / night-vision presentation. Never add
     // sunlight or extra fog there; other missions retain their live weather.
     worldFX.atmosphereAllowed=!this.presentingCampaign||this.atmosphere.sky.visible;
-    worldFX.inMenu=menu;worldFX.cinematic=this.cinematicCamera;
+    worldFX.inMenu=false;worldFX.cinematic=this.cinematicCamera;
     worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
     worldFX.softSmoke=softSmoke;worldFX.softEnabled=softEnabled;
     if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(warming&&this.graphicsEffects?.shaderWarmup!=='off'||this.effects.length||this.activeHeatFires.length)){
@@ -2360,16 +2345,16 @@ export class GameRenderer {
     }
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock,this.graphicsEffects?.clouds,this.map,this.scene.fog.color);
     const environment=this.scene.environment;
-    const localEnvironment=this.localReflections.prepare(this,menu,warming);
+    const localEnvironment=this.localReflections.prepare(this,false,warming);
     this.architectureLightmaps.update(this);
     this.indirectLighting.update(this);
     if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene,this.staticRoot,this.staticMaterialRevision);
     this.cascades?.update();
-    if(!menu&&!warming)this.interiorVisibility.apply(this);
+    if(!warming)this.interiorVisibility.apply(this);
     worldFX.receiverMode=worldFX.receivers.update(this.map.id,this.staticRoot,this.camera,
       !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'),this.campaignWaterMesh);
-    if(menu||warming)this.effectLights?.clear();
+    if(warming)this.effectLights?.clear();
     else this.effectLights?.update(this.clock,this.camera.position,this.activeFireLights);
     const timing=this.gpuTimer.begin();
     const profiler=this.perfEnabled?this.gpuTimer:null;
@@ -2387,9 +2372,9 @@ export class GameRenderer {
           worldFX.softEnabled=worldFX.softSmoke=false;worldFX.hasHeat=false;
           smoke.layers.set(0);
         }
-        // No simulated gameplay frames exist in menu. Keep the ordinary
+        // During warmup keep the ordinary
         // WebGPU renderer there; enable temporal history only in a match.
-        generator?.setMode(menu||warming||skipFG?'off':this.gfx.frameGeneration??'off');
+        generator?.setMode(warming||skipFG?'off':this.gfx.frameGeneration??'off');
         this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
         this.postPass.begin(this.quality);
         try {
@@ -2450,9 +2435,10 @@ export class GameRenderer {
   }
 
   render(state, localId, dt, view = {}) {
+    if(!state?.players)return; // The menu is a static DOM image, never a map.
     this.deferAssetRefresh=Boolean(state?.players&&!view.paused&&!view.warming&&!this.shaderWarmup.busy);
     this.tankThirdPerson=view.vehicleThirdPerson!==false;
-    this.setMap(state?.mapId ?? view.mapId);
+    this.setMap(state.mapId ?? view.mapId);
     const rawDt = dt || 0.016;
     dt = Math.min(rawDt, 0.1); this.clock += dt;
     this.scoped = false;
@@ -2550,39 +2536,6 @@ export class GameRenderer {
     }
     const baseFov = clamp(Number(view.fov) || 85, 65, 105), shake = view.shake !== false;
     this.renderer.toneMappingExposure = 1.06 * clamp(Number(view.brightness) || 1, .6, 1.5);
-    if (!state?.players) {
-      this.cameraPlayerId = null;
-      if (this.vehicleRigs.size) this.clearVehicles();
-      this.parachutes.clear();
-      const angle = this.clock * 0.012, radius = this.map.terrain ? this.map.size * .29 : 130;
-      const menuView=this.map.menuView;
-      if(menuView){
-        this.camera.position.fromArray(menuView.eye);
-        this.camera.lookAt(...menuView.target);
-      }else if (this.map.shoreX !== undefined) {
-        this.camera.position.set(-136 + Math.sin(angle - .6) * 86, 68 + Math.sin(this.clock * .025) * 7, 26 + Math.cos(angle - .6) * 122);
-        this.camera.lookAt(-73, 4, 4);
-      } else {
-        this.camera.position.set(Math.sin(angle + .9) * radius, 94 + Math.sin(this.clock * .025) * 8, Math.cos(angle + .9) * radius);
-        this.camera.lookAt(0, 3, -12);
-      }
-      this.weapon.visible = false;
-      this.viewWeaponTarget = null;
-      this.atmosphere.sky.position.copy(this.camera.position);
-      const fov=menuView?.fov??70,near=menuView?.near??(menuView ? .12 : 2);
-      if (this.camera.fov !== fov || this.camera.near !== near) {
-        this.camera.fov = fov;
-        this.camera.near = near;
-        this.camera.updateProjectionMatrix();
-      }
-      this.updateSunShadow(0, 0);
-      for (const soldier of this.soldiers.values()) soldier.group.visible = false;
-      for (const grenade of this.grenadeMeshes.values()) grenade.visible = false;
-      for(const cache of [this.equipmentMeshes,this.rocketMeshes,this.reviveRings])for(const model of cache.values())model.visible=false;
-      for(const model of this.rocketMeshes.values())model.userData.flight.line.visible=false;
-      this.updateEffects(dt);
-      this.drawScene(true); return;
-    }
     if (this.lastStateTime !== undefined && state.time < this.lastStateTime - 1) {
       this.bulletMarks.clear();
       for (const f of this.flags.values()) { f.fromOwned = false; f.neutralH = 1; f.teamH = 0; }

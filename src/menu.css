@@ -237,3 +237,8 @@ body:has(dialog.menu-dialog[open]),body:has(#pause:not(.hidden)){overflow:hidden
 #single-player-panel .weapon-picker{margin:10px 0 14px;}
 @media(max-width:1000px){#single-player-panel .solo-layout{grid-template-columns:.8fr 1.3fr;}#single-player-panel .classes{grid-template-columns:1fr 1fr;}#single-player-panel .class-card{grid-template-columns:24px 1fr;min-height:70px;}#single-player-panel .class-card>span{grid-row:1/3;}}
 @media(max-width:700px){#single-player-panel{width:calc(100vw - 24px);}#single-player-panel .solo-layout{grid-template-columns:1fr;}.weapon-preview-canvas{height:150px;}}
+
+/* Static campaign panorama: the game canvas is hidden until a match begins. */
+#menu-background{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none;z-index:0;background:#303731;}
+body:not(.in-battle) #game{visibility:hidden;}
+body.in-battle #menu-background{display:none;}
