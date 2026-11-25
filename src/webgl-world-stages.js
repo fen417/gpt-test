@@ -17,6 +17,14 @@ vec3 viewPosition(vec2 uv,float depth){
 vec2 depthCenter(vec2 uv){return (clamp(floor(uv*depthSize),vec2(0.),depthSize-1.)+.5)/depthSize;}
 vec3 viewAt(vec2 uv){vec2 at=depthCenter(uv);return viewPosition(at,readDepth(at));}
 bool offscreen(vec2 uv){return any(lessThanEqual(uv,vec2(0.)))||any(greaterThanEqual(uv,vec2(1.)));}
+vec3 receiverNormal(vec2 center,vec3 pos){
+  vec2 dx=vec2(1./depthSize.x,0.),dy=vec2(0.,1./depthSize.y);
+  vec3 left=pos-viewAt(center-dx),right=viewAt(center+dx)-pos;
+  vec3 down=pos-viewAt(center-dy),top=viewAt(center+dy)-pos;
+  vec3 crossNormal=cross(abs(left.z)<abs(right.z)?left:right,abs(down.z)<abs(top.z)?down:top);
+  float lengthSquared=dot(crossNormal,crossNormal);
+  return lengthSquared>1.e-20?crossNormal*inversesqrt(lengthSquared):normalize(-pos);
+}
 `;
 const mask = (cascadeCount) => `
 varying vec2 vUv;
@@ -74,15 +82,16 @@ void main(){
   vec3 pos=viewPosition(center,depth);
   float range=-pos.z, ao=0., contact=0., shaft=0.;
   if(depth<.999999 && ((steps.x>0. && range<48.) || (steps.y>0. && range<36.))){
-    vec2 dx=vec2(1./depthSize.x,0.), dy=vec2(0.,1./depthSize.y);
-    vec3 left=pos-viewAt(center-dx), right=viewAt(center+dx)-pos;
-    vec3 down=pos-viewAt(center-dy), top=viewAt(center+dy)-pos;
-    vec3 n=normalize(cross(abs(left.z)<abs(right.z)?left:right,abs(down.z)<abs(top.z)?down:top));
+    vec3 n=receiverNormal(center,pos);
     if(steps.x>0. && range<48.){
       float radius=.83, sum=0.;
       vec2 footprint=vec2(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
-      vec2 seed=floor(gl_FragCoord.xy);
-      float rotation=6.283185*fract(sin(dot(seed,vec2(12.9898,78.233)))*43758.5453);
+      // Four evenly spaced orientations instead of uncorrelated pixel noise.
+      // The cheap 4-tap mode uses a fixed kernel; the 3x3 resolve averages
+      // the ordered orientations in higher modes.
+      vec2 parity=mod(floor(gl_FragCoord.xy),2.);
+      float order=2.*parity.x+3.*parity.y-4.*parity.x*parity.y;
+      float rotation=.35+(steps.x<=4.?0.:order*(steps.x>12.?.261799388:1.570796327));
       if(steps.x>12.) ao=horizonOcclusion(pos,n,footprint,rotation);
       else for(int i=0;i<12;i++){
         if(float(i)>=steps.x)break;
@@ -277,7 +286,7 @@ ${reflections ? reflectors(receivers)+'uniform sampler2D reflection;' : ''}
 ${depth ? `
 uniform sampler2D mask;
 uniform vec2 effectPixel;
-uniform vec3 fogColor;
+uniform vec3 steps,fogColor;
 ${cameraFX?'':'uniform vec3 sunColor;'}
 ` : ''}
 ${levels ? 'uniform float bloomGain;' : ''}
@@ -289,8 +298,10 @@ void main(){
   ${cameraFX?'color=applyCameraEffects(vUv,color);':''}
   ${hasHeat?'color=distortHeat(vUv,color);':''}
   ${depth ? `
-  float raw=readDepth(vUv);
-  float distance=-viewPosition(vUv,raw).z;
+  vec2 center=depthCenter(vUv);
+  float raw=readDepth(center);
+  vec3 pos=viewPosition(center,raw);
+  float distance=-pos.z;
   vec2 grid=vUv/effectPixel-.5, f=fract(grid), base=(floor(grid)+.5)*effectPixel;
   vec2 effects=vec2(0.);
   float weights=0., contact=0., contactWeights=0.;
@@ -307,7 +318,32 @@ void main(){
     contactWeights+=contactWeight;
   }
   effects/=max(.12,weights);
-  color*=(1.-.43*effects.x)*(1.-.23*contact/max(.12,contactWeights));
+  float ao=effects.x;
+  // Edge-aware 3x3 AO resolve. Compare against the receiver plane, not
+  // raw view depth: neighbouring points on a sloped plate belong together.
+  // Sample exact depth texel centres; never infer geometry from the
+  // half-float distance packed into the effects mask.
+  if(steps.x>4. && raw<.999999 && distance<48.){
+    vec3 n=receiverNormal(center,pos);
+    vec2 nearest=(floor(vUv/effectPixel)+.5)*effectPixel;
+    float tolerance=max(.018,.004*distance);
+    float aoSum=0.,aoWeights=0.;
+    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+      vec2 at=nearest+vec2(float(x),float(y))*effectPixel;
+      if(offscreen(at))continue;
+      vec2 sampleCenter=depthCenter(at);
+      float sampleDepth=readDepth(sampleCenter);
+      if(sampleDepth>=.999999)continue;
+      vec3 delta=viewPosition(sampleCenter,sampleDepth)-pos;
+      float planeWeight=1.-smoothstep(tolerance,3.*tolerance,abs(dot(n,delta)));
+      vec2 offset=(at-vUv)/effectPixel;
+      float w=exp(-.8*dot(offset,offset))*planeWeight;
+      aoSum+=texture2D(mask,at).r*w;
+      aoWeights+=w;
+    }
+    ao=aoSum/max(.12,aoWeights);
+  }
+  color*=(1.-.43*ao)*(1.-.23*contact/max(.12,contactWeights));
   color+=effects.y*mix(fogColor,sunColor,.44)*.24;
   ` : ''}
   ${Array.from({length:levels}, (_, i) => 'color+=texture2D(bloom'+i+',vUv).rgb*bloomGain*'+([.62,.23,.10,.05][i].toFixed(2))+';').join('\n')}

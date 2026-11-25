@@ -42,6 +42,19 @@ fn worldViewAt(sceneDepth: texture_depth_2d, inverseProjection: mat4x4f, at: vec
   let center=worldDepthCenter(at,size);
   return worldViewPosition(inverseProjection, center, worldReadDepth(sceneDepth, center, size));
 }`, [readDepth, viewPosition,depthCenter]);
+const receiverNormal = wgslFn(`
+fn worldReceiverNormal(sceneDepth: texture_depth_2d, inverseProjection: mat4x4f,
+  center: vec2f, pos: vec3f, depthSize: vec2f) -> vec3f {
+  let dx=vec2f(1./depthSize.x,0.); let dy=vec2f(0.,1./depthSize.y);
+  let left=pos-worldViewAt(sceneDepth,inverseProjection,center-dx,depthSize);
+  let right=worldViewAt(sceneDepth,inverseProjection,center+dx,depthSize)-pos;
+  let below=pos-worldViewAt(sceneDepth,inverseProjection,center+dy,depthSize);
+  let above=worldViewAt(sceneDepth,inverseProjection,center-dy,depthSize)-pos;
+  let crossNormal=cross(select(right,left,abs(left.z)<abs(right.z)),select(above,below,abs(below.z)<abs(above.z)));
+  let lengthSquared=dot(crossNormal,crossNormal);
+  if(lengthSquared>1.e-20){return crossNormal*inverseSqrt(lengthSquared);}
+  return normalize(-pos);
+}`,[viewAt]);
 const integrateHorizon = wgslFn(`
 fn worldIntegrateHorizon(cosine: vec2f) -> vec2f {
   let h=clamp(cosine,vec2f(-1.),vec2f(1.));
@@ -89,7 +102,7 @@ const maskVariants=[];
 function mask(cascadeCount){
   if(maskVariants[cascadeCount])return maskVariants[cascadeCount];
   const volume=volumeSunWGSL(cascadeCount);
-  const includes=[viewAt,horizonOcclusion];
+  const includes=[viewAt,horizonOcclusion,receiverNormal];
   if(cascadeCount){
     const [tap,sun]=volume.source.trim().split(/\n(?=fn worldVolumeSun)/);
     includes.push(wgslFn(sun,[wgslFn(tap)]));
@@ -104,18 +117,14 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
   let range=-pos.z;
   var ao=0.; var contact=0.; var shaft=0.;
   if (depth<.999999 && ((steps.x>0. && range<48.) || (steps.y>0. && range<36.))) {
-    let dx=vec2f(1./depthSize.x,0.); let dy=vec2f(0.,1./depthSize.y);
-    let left=pos-worldViewAt(sceneDepth,inverseProjection,center-dx,depthSize);
-    let right=worldViewAt(sceneDepth,inverseProjection,center+dx,depthSize)-pos;
-    let below=pos-worldViewAt(sceneDepth,inverseProjection,center+dy,depthSize);
-    let above=worldViewAt(sceneDepth,inverseProjection,center-dy,depthSize)-pos;
-    let n=normalize(cross(select(right,left,abs(left.z)<abs(right.z)),select(above,below,abs(below.z)<abs(above.z))));
+    let n=worldReceiverNormal(sceneDepth,inverseProjection,center,pos,depthSize);
     if (steps.x>0. && range<48.) {
       let radius=.83;
       var sum=0.;
       let footprint=vec2f(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
-      let seed=floor(at/effectPixel);
-      let rotation=6.283185*fract(sin(dot(seed,vec2f(12.9898,78.233)))*43758.5453);
+      let parity=vec2f(vec2i(floor(at/effectPixel))%vec2i(2));
+      let order=2.*parity.x+3.*parity.y-4.*parity.x*parity.y;
+      let rotation=.35+select(order*select(1.570796327,.261799388,steps.x>12.),0.,steps.x<=4.);
       if(steps.x>12.){
         ao=worldHorizonOcclusion(at,sceneDepth,inverseProjection,depthSize,pos,n,footprint,rotation);
       }else{
@@ -212,8 +221,11 @@ fn worldHeightFog(at:vec2f,rgb:vec3f,sceneDepth:texture_depth_2d,inverseProjecti
 
 const applyDepthEffects = wgslFn(`
 fn worldCompositeDepth(at: vec2f, rgb: vec3f, sceneDepth: texture_depth_2d, effectsMask: texture_2d<f32>,
-  inverseProjection: mat4x4f, depthSize: vec2f, effectPixel: vec2f, sunColor: vec3f, fogColor: vec3f) -> vec3f {
-  let distance=-worldViewPosition(inverseProjection,at,worldReadDepth(sceneDepth,at,depthSize)).z;
+  inverseProjection: mat4x4f, depthSize: vec2f, effectPixel: vec2f, sunColor: vec3f, fogColor: vec3f, steps: vec3f) -> vec3f {
+  let center=worldDepthCenter(at,depthSize);
+  let raw=worldReadDepth(sceneDepth,center,depthSize);
+  let pos=worldViewPosition(inverseProjection,center,raw);
+  let distance=-pos.z;
   let grid=at/effectPixel-.5;
   let f=fract(grid);
   let base=vec2i(floor(grid));
@@ -235,8 +247,35 @@ fn worldCompositeDepth(at: vec2f, rgb: vec3f, sceneDepth: texture_depth_2d, effe
     contactWeights+=contactWeight;
   }
   effects/=max(.12,weights);
-  return rgb*(1.-.43*effects.x)*(1.-.23*contact/max(.12,contactWeights))+effects.y*mix(fogColor,sunColor,.44)*.24;
-}`,[readDepth,viewPosition]);
+  var ao=effects.x;
+  // Resolve AO independently of shafts/contact, with the same receiver
+  // plane and 3x3 ordered-kernel filter as WebGL.
+  if(steps.x>4. && raw<.999999 && distance<48.){
+    let n=worldReceiverNormal(sceneDepth,inverseProjection,center,pos,depthSize);
+    let nearest=vec2i(floor(at/effectPixel));
+    let tolerance=max(.018,.004*distance);
+    var aoSum=0.;
+    var aoWeights=0.;
+    for(var y=-1;y<=1;y++){
+      for(var x=-1;x<=1;x++){
+        let coord=nearest+vec2i(x,y);
+        if(any(coord<vec2i(0))||any(coord>=size)){continue;}
+        let sampleAt=(vec2f(coord)+.5)*effectPixel;
+        let sampleCenter=worldDepthCenter(sampleAt,depthSize);
+        let sampleDepth=worldReadDepth(sceneDepth,sampleCenter,depthSize);
+        if(sampleDepth>=.999999){continue;}
+        let delta=worldViewPosition(inverseProjection,sampleCenter,sampleDepth)-pos;
+        let planeWeight=1.-smoothstep(tolerance,3.*tolerance,abs(dot(n,delta)));
+        let offset=(sampleAt-at)/effectPixel;
+        let w=exp(-.8*dot(offset,offset))*planeWeight;
+        aoSum+=textureLoad(effectsMask,coord,0).r*w;
+        aoWeights+=w;
+      }
+    }
+    ao=aoSum/max(.12,aoWeights);
+  }
+  return rgb*(1.-.43*ao)*(1.-.23*contact/max(.12,contactWeights))+effects.y*mix(fogColor,sunColor,.44)*.24;
+}`,[readDepth,viewPosition,depthCenter,receiverNormal]);
 
 const waterSurface = wgslFn(`
 fn worldWaterSurface(pos: vec3f, shore: vec2f, upView: vec3f, worldXView: vec3f,
@@ -409,7 +448,7 @@ export function webGpuWorldStages(post, geometry, camera) {
   if(post.hasHeat)rgb=heatDistortion({...depthParams,color:rgb,source,sourceSampler:source,
     heatSources:params.heatSources,heatStrength:params.heatStrength,heatTime:params.heatTime});
   if(post.mask)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
-    effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor});
+    effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor,steps:params.steps});
   if(reflected)rgb=applyReflection({...depthParams,...waterParams,rgb,reflected:texture(post.reflection.texture).sample(at)});
   if(post.heightFog)rgb=applyHeightFog({...depthParams,rgb,fogLayer:params.fogLayer,fogLayerUp:params.fogLayerUp,fogLayerTint:params.fogLayerTint,fogEyeY:params.fogEyeY});
   const composite=make(vec4(rgb,1));
