@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 export function gardenTriangleKind(x,y,z,plants){
-  if(y<.09)return 'ground';
   for(const p of plants){
     const dx=Math.abs(x-p.x),dz=Math.abs(z-p.z);
     if(p.type==='tree'&&y>2.65&&dx<1.95&&dz<1.85)return 'replace';
-    if((p.type==='hedge'||p.type==='planter')&&y>(p.y??0)+(p.h??.75)-.38&&dx<p.w*.5+.48&&dz<p.d*.5+.48)return 'replace';
+    if(p.type==='hedge'&&y>(p.y??0)+.025&&y<(p.y??0)+(p.h??1.2)+.65&&dx<p.w*.5+.50&&dz<p.d*.5+.55)return 'replace';
+    if(p.type==='planter'&&y>(p.y??0)+(p.h??.75)-.38&&dx<p.w*.5+.48&&dz<p.d*.5+.48)return 'replace';
   }
-  return 'leaves';
+  return y<.09?'ground':'leaves';
 }
 function subset(source,indices){
   const g=source.clone();g.setIndex(indices);g.clearGroups();g.setDrawRange(0,indices.length);return g;

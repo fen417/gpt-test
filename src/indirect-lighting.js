@@ -1,4 +1,4 @@
-import {makeProbeTexture,probeUniforms,giStrength,GI_VERSION,GI_LEVELS} from './gi-probes.js';
+import {makeProbeTexture,probeUniforms,giStrength,GI_VERSION,GI_LEVELS,relightEstateProbes} from './gi-probes.js';
 import {setWebGlGI} from './webgl-gi.js';
 export class IndirectLighting{
   constructor(setMaterial=setWebGlGI){this.setMaterial=setMaterial;this.materials=new Set();this.serial=0;}
@@ -15,7 +15,7 @@ export class IndirectLighting{
       const data=new Uint8Array(await fetch(new URL(meta.file,base)).then(r=>{if(!r.ok)throw Error('GI field '+r.status);return r.arrayBuffer();}));
       if(serial!==this.serial)return;
       if(meta.sourceType!=='visual-triangles'||!meta.triangles)throw Error('GI does not contain visual geometry '+map.id);
-      const field={...meta,data};this.sourceType=meta.sourceType;this.triangleCount=meta.triangles;
+      const field={...meta,data,mapId:map.id};relightEstateProbes(field);this.sourceType=meta.sourceType;this.triangleCount=meta.triangles;
       this.field=probeUniforms(field,makeProbeTexture(field));this.dirty=true;this.pending=false;
     }catch(error){if(serial===this.serial){this.pending=false;this.failed=true;console.warn('Indirect lighting unavailable:',map.id,error);}}
   }

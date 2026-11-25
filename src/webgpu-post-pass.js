@@ -72,7 +72,7 @@ export class WebGpuPostPass {
       }
       const mapped=acesFilmicToneMapping(color,this.exposure).toVar();
       if(useGrade){
-        const adjusted=mapped.sub(.32).mul(this.grading.x).add(.32);
+        const adjusted=mapped.add(mapped.mul(mapped.oneMinus()).mul(mapped.sub(.32)).mul(this.grading.x.sub(1)).mul(4));
         const luma=dot(adjusted,vec3(.2126,.7152,.0722));
         mapped.assign(max(vec3(0),vec3(luma).add(adjusted.sub(luma).mul(this.grading.y)).mul(this.gradeTint)));
       }

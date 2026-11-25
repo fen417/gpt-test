@@ -2621,8 +2621,8 @@ export class GameRenderer {
         const ambient=this.map?.ambientLightIntensity??(low?.38:.2);
         const interiors=this.map.theme==='pool-day'||this.map.theme==='linden-estate';
         const estate=this.map.id==='linden_estate'&&enhanced;
-        this.hemiLight.intensity=hemi*(estate?1.05:enhanced?(interiors?.96:.86):1);
-        this.ambientLight.intensity=ambient*(estate?1.18:enhanced?(interiors?1:.86):1);
+        this.hemiLight.intensity=hemi*(estate?1.14:enhanced?(interiors?.96:.86):1);
+        this.ambientLight.intensity=ambient*(estate?1.26:enhanced?(interiors?1:.86):1);
         this.sun.intensity=(this.map?.sunIntensity??3.5)*(enhanced?1.10:1);
       }
       this.postPass.setImage(this.graphicsEffects,gradeParameters(this.graphicsEffects,this.map));

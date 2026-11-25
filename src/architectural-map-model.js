@@ -108,7 +108,8 @@ export class ArchitecturalMapModel {
     if(estate){for(const m of [high,low]){
       m.userData.estateFinish=true;
       if(plaster)m.userData.weatherSurface='stucco';
-      if(['wood','stone','concrete','ceramic'].includes(name)){m.userData.preserveAlbedo=true;m.userData.disableRelief=true;}
+      if(name==='brick'){m.color.lerp(new THREE.Color(0xe9e0d0),.18);m.userData.disableRelief=true;}
+      if(['wood','stone','concrete','ceramic','brick'].includes(name)){m.userData.preserveAlbedo=true;m.userData.disableRelief=true;}
       if(foliage)m.userData.noGI=true;
     }}
     if(name==='fabric')high.userData.weatherSurface=low.userData.weatherSurface='cloth';

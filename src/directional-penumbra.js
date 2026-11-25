@@ -18,8 +18,8 @@ export function cascadeShadowBias(shadow,pcss=false) {
   const depth=Math.max(1,c.far-c.near);
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   return {
-    bias:-clamp(texel*(pcss?.90:.70)/depth,.00022,.0018),
-    normalBias:clamp(texel*(pcss?1.05:.88),.035,.25),
+    bias:-clamp(texel*(pcss?1.12:.84)/depth,.00026,.0020),
+    normalBias:clamp(texel*(pcss?1.18:1.0),.04,.27),
   };
 }
 export function applyCascadeShadowBias(shadow,pcss=false){

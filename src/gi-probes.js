@@ -113,6 +113,24 @@ export function bakeProbeField(map,{maxCells=192,spacing,tracer=null}={}){
   }
   return {version:GI_VERSION,mapId:map.id,layout:map.layoutVersion??0,sourceType:tracer?'visual-triangles':'collision-fixture',nx,nz,minX,minZ,width,depth,groundMin:low,groundRange:range,data};
 }
+export function relightEstateProbes(field){
+  if(field.mapId!=='linden_estate')return;
+  const {nx,nz,width,depth,minX,minZ,groundMin,groundRange,data}=field;
+  const stride=nx*GI_ATLAS_COLUMNS;
+  for(let z=0;z<nz;z++)for(let x=0;x<nx;x++){
+    const wx=minX+(x+.5)*width/nx,wz=minZ+(z+.5)*depth/nz;
+    if(Math.abs(wx)>=13.6||Math.abs(wz)>=6.65)continue;
+    const h=(z*stride+x+3*nx)*4;
+    const ground=groundMin+(data[h]*256+data[h+1])/65535*groundRange;
+    for(let layer=0;layer<3;layer++){
+      const y=ground+GI_HEIGHTS[layer];if(y<.1||y>=6.5)continue;
+      const i=(z*stride+x+layer*nx)*4,shade=1-data[i+3]/255;
+      const edge=clamp(Math.min(13.6-Math.abs(wx),6.65-Math.abs(wz))/.85);
+      const add=Math.round(255*(.07+.09*shade)*edge);
+      data[i]=Math.min(255,data[i]+add);data[i+1]=Math.min(255,data[i+1]+Math.round(add*.94));data[i+2]=Math.min(255,data[i+2]+Math.round(add*.85));
+    }
+  }
+}
 export function makeProbeTexture(field){
   if(field.version!==GI_VERSION||field.data.length!==field.nx*field.nz*GI_ATLAS_COLUMNS*GI_ATLAS_ROWS*4)throw Error('Invalid GI field');
   const t=new THREE.DataTexture(field.data,field.nx*GI_ATLAS_COLUMNS,field.nz*GI_ATLAS_ROWS,THREE.RGBAFormat);

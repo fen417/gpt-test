@@ -104,7 +104,7 @@ export function foliageGeometry(kind,lod){
       }
     }
   }else{
-    const palm=kind==='palm',grass=kind==='grass',count=lod===0?(grass?3:5):lod===1?2:2;
+    const palm=kind==='palm',grass=kind==='grass',count=lod===0?(grass?3:kind==='scrub'?6:5):lod===1?(kind==='scrub'?4:2):2;
     for(let j=0;j<count;j++){
       const a=j*Math.PI/count,dx=Math.cos(a),dz=Math.sin(a),half=palm?3.75:grass?.55:kind==='broadleaf'?.9:.60;
       const bottom=palm?-2.0:0,top=palm?1.6:grass?.77:kind==='broadleaf'?1.65:.96;

@@ -64,17 +64,31 @@ export const blackHawkModel = {
             if(!scene.getObjectByName(`LOD${lod}_${part}`))throw Error(`Missing Black Hawk part ${part} in LOD${lod}`);
           }
         }
+        const interiorMaterials=new Map();
         scene.traverse(mesh=>{
           if(!mesh.isMesh)return;
           mesh.geometry.userData.sharedVehicleGeometry=true;
-          const high=mesh.material;
+          let high=mesh.material;
+          let parent=mesh,interior=false;
+          while(parent&&parent!==scene){if(/_Cabin$|_Airframe$/.test(parent.name)){interior=true;break;}parent=parent.parent;}
+          if(interior&&!high.transparent&&/enamel|liner|rubber|canvas|webbing/i.test(high.name)){
+            const original=high;
+            high=interiorMaterials.get(original);
+            if(!high){
+              high=original.clone();high.metalness=Math.min(high.metalness??0,.12);
+              high.color.lerp(new THREE.Color(0x6b7063),.18);
+              high.emissive.copy(high.color);high.emissiveIntensity=.075;
+              high.emissiveMap=high.map;interiorMaterials.set(original,high);
+            }
+            mesh.material=high;
+          }
           if(high.transparent){
             high.side=THREE.DoubleSide;
             high.depthWrite=false;
           }
           mesh.castShadow=mesh.receiveShadow=!high.transparent;
           pairMaterials(high,new THREE.MeshLambertMaterial({
-            color:high.color,map:high.map,emissive:high.emissive,emissiveIntensity:high.emissiveIntensity,
+            color:high.color,map:high.map,emissive:high.emissive,emissiveMap:high.emissiveMap,emissiveIntensity:high.emissiveIntensity,
             transparent:high.transparent,opacity:high.opacity,depthWrite:high.depthWrite,side:high.side,
           }));
         });

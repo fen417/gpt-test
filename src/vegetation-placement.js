@@ -81,12 +81,15 @@ export function authoredPlants(map){
   // Replace matching legacy foliage, never the ground or trunks.
   for(const b of map.furnishings??[]){
     if(b.type==='tree')plants.push({kind:'broadleaf',x:b.x,y:2.8,z:b.z,yaw:b.x*.37,scale:1.85,shade:.96,color:0x9caf78});
-    else if(b.type==='planter'||b.type==='hedge'){
-      const count=Math.max(1,Math.ceil((b.type==='hedge'?b.d:b.w)/.68));
-      for(let i=0;i<count;i++){
-        const offset=(i+.5)/count-.5,hedge=b.type==='hedge';
-        plants.push({kind:'scrub',x:b.x+(hedge?0:offset*b.w*.85),y:(b.y??0)+(b.h??.75)-(hedge?.42:.04),z:b.z+(hedge?offset*b.d*.85:0),yaw:i*2.4,scale:hedge?.84:.65,shade:1,color:0x9da979});
+    else if(b.type==='hedge'){
+      const count=Math.max(2,Math.ceil(b.d/.56)),height=b.h??1.23;
+      for(let i=0;i<count;i++)for(const side of [-1,1]){
+        const offset=(i+.5)/count-.5;
+        plants.push({kind:'scrub',x:b.x+side*b.w*.21,y:(b.y??0)+.025,z:b.z+offset*b.d*.95,yaw:i*2.4+side*.75,scale:height/.96,shade:.88+.1*Math.sin(i*1.8+side),color:0x879c68});
       }
+    }else if(b.type==='planter'){
+      const count=Math.max(1,Math.ceil(b.w/.68));
+      for(let i=0;i<count;i++)plants.push({kind:'scrub',x:b.x+((i+.5)/count-.5)*b.w*.85,y:(b.y??0)+(b.h??.75)-.04,z:b.z,yaw:i*2.4,scale:.65,shade:1,color:0x9da979});
     }
   }
   return plants;

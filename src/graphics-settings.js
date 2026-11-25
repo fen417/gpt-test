@@ -174,7 +174,7 @@ export function gradeParameters(effects, map) {
   else if (map?.theme === 'pool-day' || map?.theme === 'linden-estate') tint = [1.008, 1, .997];
   return {
     tint: tint.map(channel => 1 + (channel - 1) * weight),
-    contrast: Number(effects.contrast) / 100 + (cinematic ? .1 : .035) * weight,
+    contrast: Number(effects.contrast) / 100 + (cinematic ? .075 : .018) * weight,
     saturation: Number(effects.saturation) / 100 - (cinematic ? .14 : .035) * weight,
     vignette: {legacy: .08, off: 0, low: .055, high: .14}[effects.vignette],
     grain: {legacy: null, off: 0, low: .003, high: .008}[effects.grain],

@@ -19,8 +19,8 @@ export function viewLightTargets(sunOpen,skyOpen,cabin,shadows=true){
   const covered=cabin?Math.min(sun,.25):sun;
   const openSky=cabin?Math.min(sky,cabin===BLACK_HAWK?.68:.52):sky;
   return {direct:mix(shadows?.22:.58,1,covered),
-    ambient:mix(.72,1,openSky)+(cabin?.09:0),
-    environment:mix(.72,1,openSky)};
+    ambient:cabin?mix(.98,1.12,openSky):mix(.72,1,openSky),
+    environment:cabin?mix(.85,1,openSky):mix(.72,1,openSky)};
 }
 
 export class ContextLighting {
@@ -28,7 +28,9 @@ export class ContextLighting {
     this.scene=scene;this.sunDirection=new THREE.Vector3();
     this.cabinPosition=new THREE.Vector3();this.previousPosition=new THREE.Vector3();
     this.light=new THREE.PointLight(0xc8d3dd,0,3.4,1.5);
-    this.light.name='S09 cabin diffuse bounce';this.light.castShadow=false;this.light.layers.set(0);
+    this.light.name='S09 cabin diffuse bounce';this.light.castShadow=false;this.light.layers.enable(1);
+    this.frontLight=new THREE.PointLight(0xffdfb8,0,4.1,1.25);
+    this.frontLight.name='S09 cabin cockpit bounce';this.frontLight.castShadow=false;this.frontLight.layers.enable(1);
     this.records=[];this.resetView();
   }
   resetView(){
@@ -40,18 +42,18 @@ export class ContextLighting {
   update(owner,state,player,mounted,dt,boxes){
     const map=owner.map,vehicles=state.vehicles??[];
     if(this.map!==map){
-      this.map=map;this.light.removeFromParent();this.light.intensity=0;
+      this.map=map;this.light.removeFromParent();this.frontLight.removeFromParent();this.light.intensity=this.frontLight.intensity=0;
       this.cabinId=null;this.resetView();
     }
     // Keep the number of lights stable through seat changes. Non-vehicle
     // maps don't pay for the additional point light at all.
     if(!this.light.parent&&(vehicles.some(v=>v.type===BLACK_HAWK||v.type==='humvee')||
-       (map?.vehicleSpawns??[]).some(v=>v.type===BLACK_HAWK||v.type==='humvee')))this.scene.add(this.light);
+       (map?.vehicleSpawns??[]).some(v=>v.type===BLACK_HAWK||v.type==='humvee')))this.scene.add(this.light,this.frontLight);
     const pos=owner.camera.position;
     const cabin=mounted&&enclosedCabin(mounted.vehicle.type,player?.vehicleSeat)?mounted.vehicle.type:null;
     if(owner.campaignNightVision){
       this.direct=this.ambient=this.environment=1;this.nextSample=-Infinity;
-      this.cabinType=null;this.light.intensity=0;this.cabinId=null;return;
+      this.cabinType=null;this.light.intensity=this.frontLight.intensity=0;this.cabinId=null;return;
     }
     if(this.light.parent){
       let selected=null,best=18*18;
@@ -67,12 +69,19 @@ export class ContextLighting {
         this.cabinPosition.set(0,heli?2.08:1.32,heli?-.72:0);
         selected.rig.body.localToWorld(this.cabinPosition);
         this.light.position.copy(this.cabinPosition);this.light.updateMatrixWorld(true);
-        this.light.distance=heli?3.45:2.15;
-        this.light.color.copy(owner.hemiLight.color).lerp(owner.hemiLight.groundColor,.25);
+        this.light.distance=heli?4.5:2.4;this.light.decay=1.35;
+        this.light.color.copy(owner.hemiLight.color).lerp(owner.hemiLight.groundColor,.20);
         const daylight=clamp((owner.hemiLight.intensity+owner.sun.intensity*.22)/2.25,0,1.2);
-        this.light.intensity=(heli?3.6:2.25)*daylight;
+        this.light.intensity=(heli?7.0:3.0)*daylight;
+        this.frontLight.intensity=heli?5.7*daylight:0;
+        if(heli){
+          this.cabinPosition.set(0,2.15,-2.15);
+          selected.rig.body.localToWorld(this.cabinPosition);
+          this.frontLight.position.copy(this.cabinPosition);this.frontLight.updateMatrixWorld(true);
+          this.frontLight.color.copy(owner.hemiLight.color).lerp(owner.sun.color,.42);
+        }
         this.cabinId=selected.vehicle.id;
-      }else{this.light.intensity=0;this.cabinId=null;}
+      }else{this.light.intensity=this.frontLight.intensity=0;this.cabinId=null;}
     }
     if(!owner.weapon?.visible){this.nextSample=-Infinity;return;}
     const now=owner.clock,cabinChanged=this.cabinType!==cabin;
@@ -111,6 +120,6 @@ export class ContextLighting {
     this.records.length=0;
     if(Number.isFinite(this.savedEnvironment))scene.environmentIntensity=this.savedEnvironment;
   }
-  stats(){return {direct:this.direct,ambient:this.ambient,environment:this.environment,cabin:this.cabinType,cabinLight:this.light.intensity,cabinId:this.cabinId??null};}
-  dispose(){this.light.removeFromParent();this.light.dispose?.();this.records.length=0;}
+  stats(){return {direct:this.direct,ambient:this.ambient,environment:this.environment,cabin:this.cabinType,cabinLight:this.light.intensity,cockpitLight:this.frontLight.intensity,cabinId:this.cabinId??null};}
+  dispose(){this.light.removeFromParent();this.frontLight.removeFromParent();this.light.dispose?.();this.frontLight.dispose?.();this.records.length=0;}
 }
