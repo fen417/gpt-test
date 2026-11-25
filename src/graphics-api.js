@@ -34,7 +34,8 @@ export async function createWebGpuRenderer(canvas, {
     throw new Error('WebGPU обнаружил программный адаптер ('+adapterDescription+'). Выбран аппаратный WebGL 2.');
   }
   // Request timestamps only for diagnostics or a saved adaptive quality target.
-  const requiredFeatures = timings && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
+  const compression = ['texture-compression-bc','texture-compression-etc2','texture-compression-astc'].filter(feature=>adapter.features.has(feature));
+  const requiredFeatures = [...compression,...(timings && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [])];
   const device = await adapter.requestDevice({ requiredFeatures });
   if (!device) throw new Error('Не удалось создать WebGPU device.');
   const { WebGPURenderer } = await import('three/webgpu');

@@ -1909,7 +1909,7 @@ export class GameRenderer {
   refreshSurfaceEnhancements(){
     const settings=this.graphicsEffects;
     if(!settings)return;
-    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off')this.enhancedSurfaces??=new EnhancedSurfaces(this.webgpu?.setWebGpuRelief);
+    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief);
     this.enhancedSurfaces?.update(this.staticRoot,settings,this.textureAnisotropy);
   }
 
@@ -2584,6 +2584,7 @@ export class GameRenderer {
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
       extraTextureBytes:this.enhancedSurfaces?.estimatedBytes()??0,
+      pbrTextures:this.enhancedSurfaces?.stats()??null,
       visibleLights:this.perfEnabled?this.scene.children.filter(object=>object.isLight&&object.visible&&object.intensity>0).length:null,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',

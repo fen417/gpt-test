@@ -171,7 +171,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
       bumpScale: useBump ? bump : 0,
     });
     const lowMat = new THREE.MeshLambertMaterial({ map, color });
-    const enhanced=map===concrete?'concrete':map===asphalt?'asphalt':map===ground?'earth':null;
+    const enhanced=map===concrete?'concrete':map===asphalt?'asphalt':map===ground?'earth':map===brick?'brick':map===wood?'wood':map===metal?'metal':map===cloth?'cloth':null;
     if(enhanced)highMat.userData.remasterSurface=lowMat.userData.remasterSurface=enhanced;
     highMat.userData.tileSize = tile;
     lowMat.userData.tileSize = tile;

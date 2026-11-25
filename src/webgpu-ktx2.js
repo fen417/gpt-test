@@ -38,9 +38,14 @@ export function convertWebGpuKtx2Texture(texture) {
 export class SafeWebGpuKtx2Loader extends KTX2Loader {
   detectSupport(renderer) {
     super.detectSupport(renderer);
-    for (const key of ['astcSupported','astcHDRSupported','etc1Supported',
-      'etc2Supported','dxtSupported','bptcSupported','pvrtcSupported']) {
-      this.workerConfig[key]=false;
+    const features=renderer.backend?.device?.features;
+    // Existing model loaders keep their conservative RGBA path; the new PBR
+    // loader opts into only those formats actually enabled on this device.
+    const bc=this.allowCompression&&features?.has('texture-compression-bc');
+    const etc=this.allowCompression&&features?.has('texture-compression-etc2');
+    const astc=this.allowCompression&&features?.has('texture-compression-astc');
+    for(const [key,enabled] of Object.entries({astcSupported:astc,astcHDRSupported:false,etc1Supported:false,etc2Supported:etc,dxtSupported:bc,bptcSupported:bc,pvrtcSupported:false})){
+      this.workerConfig[key]=Boolean(enabled&&this.workerConfig[key]);
     }
     return this;
   }

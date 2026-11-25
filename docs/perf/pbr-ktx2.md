@@ -1,0 +1,9 @@
+# PBR / KTX2 — experimental branch
+
+This stage expands the original remaster's photographic texture catalogue. All legacy presets retain the original assets by default. Surface detail is independent: off, 512, 1024, 2048, and up to 4096 px. Ultra requests the highest available tier; packed ARM stays at 2K or below. Hardware without native compressed texture formats is limited to 2K. KTX2/Basis with mipmaps uses ETC1S for color and UASTC for linear normal/ARM/height maps. The renderer requests only adapter-supported optional WebGPU compression formats and the new loader falls back to RGBA or legacy WebP.
+
+Build the pack with `npm run assets:pbr` (Node 24, existing npm dependencies). Outputs live under `public/pbr-v1/`; Vite copies them to the game build, and the game fetches only the active map/material tier on demand. The generator downloads real Poly Haven source scans, validates MD5 checksums when supplied, records sources and licenses, and supports resuming / `--surface=concrete`. This is a build-time dependency, not a runtime CDN. Existing assets remain functional if the new pack is unavailable.
+
+CC0 sources: see `src/pbr-library.js`; links use https://polyhaven.com/a/<asset>. Ceramic AO is the existing original Blender bake. Existing map palettes, painted signs, water, transparency and alpha foliage are preserved where possible. Shared and baked-map material tags cover Village, Quarry, Port, Laguna, Linden Estate and the campaign's desert/city maps. Geometry, collision, game logic and weapon assets are unchanged. This is material coverage, not a full artistic rebuild of individual map geometry or UVs.
+
+Diagnostics: `?perf` includes pbrTextures (actual loaded resolution, compressed texture count, estimated GPU bytes). Verify both render APIs in game, switching tiers and maps; compare screenshots with the base commit and test Low on actual weak GPUs. No hardware benchmarks are asserted here.
