@@ -8,7 +8,7 @@ export function tankFireAnchor(vehicle,rig,out){
   const bounds=hull?.boundingBox;
   const deck=Math.max(TANK_TURRET_BASE_Y,bounds?.max.y??0)+.10;
   const rear=(bounds?.max.z??3.38)*.56;
-  if(rig?.body){out.set(0,deck,rear);return rig.body.localToWorld(out);}
+  if(rig?.body&&rig.group?.visible!==false){out.set(0,deck,rear);return rig.body.localToWorld(out);}
   const p=vehiclePartPose(vehicle,0,deck,rear,out);return p;
 }
 

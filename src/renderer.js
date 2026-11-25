@@ -1702,7 +1702,7 @@ export class GameRenderer {
       // flash adds the hot halo and the nearby smoke.
       // The native FPV flash is sufficient in ADS; avoid a second HDR sprite
       // directly on the sight line, which would bloom across the reticle.
-      if(!localWeapon||ads<.8)this.hotParticle('muzzle',pos.x,pos.y,pos.z,(cannon?1.35:rocket?.65:mounted?.46:.23)*Math.sqrt(subdued?.4:1)*Math.sqrt(flashFactor),cannon?.12:.065,flashFactor*(subdued?.45:1));
+      if(!own||mounted||rocket||ads<.8)this.hotParticle('muzzle',pos.x,pos.y,pos.z,(cannon?1.35:rocket?.65:mounted?.46:.23)*Math.sqrt(subdued?.4:1)*Math.sqrt(flashFactor),cannon?.12:.065,flashFactor*(subdued?.45:1));
       if(this.effects.length<110&&(!subdued||own))
         this.smoke(pos.x,pos.y,pos.z,cannon?.65:mounted?.25:.115,cannon?.65:.37,0xaaa89d,{opacity:.38,rise:.37,kind:'smoke',enhanced:true});
     }
@@ -1730,7 +1730,11 @@ export class GameRenderer {
   }
 
   explosionVisual(event,state) {
-    const x=event.x??0,y=event.y??.6,z=event.z??0;
+    // Destruction events originate at chassis height in simulation. Lift the
+    // visual fireball only; damage, hit detection and event coordinates stay intact.
+    const destroyed=event.vehicleId!=null?state.vehicles?.find(v=>v.id===event.vehicleId&&v.type==='tank'&&v.hp<=0):null;
+    const anchor=destroyed?tankFireAnchor(destroyed,this.vehicleRigs.get(destroyed.id),this.wreckFirePosition):null;
+    const x=anchor?.x??event.x??0,y=anchor?.y??event.y??.6,z=anchor?.z??event.z??0;
     if(state.time-event.time>.6||this.camera.position.distanceToSquared(this.scratchPosition.set(x,y,z))>180**2)return;
     this.effectBounds.center.set(x,y,z);
     if(!this.viewFrustum.intersectsSphere(this.effectBounds))return;
@@ -1746,7 +1750,7 @@ export class GameRenderer {
       if(quality==='high'){
         for(let i=0;i<3;i++)this.hotParticle('flame',x+(this.random()-.5)*scale,y+.45*scale,z+(this.random()-.5)*scale,scale*(.9+this.random()),.45+this.random()*.35);
         const dust=dustProfile(this.map);
-        if(dust)for(let i=0;i<6;i++){const a=i*Math.PI/3;this.smoke(x+Math.cos(a)*scale,y+.15,z+Math.sin(a)*scale,scale*.9,1.3,dust.color,{kind:'dust',opacity:dust.opacity,rise:.23,vx:Math.cos(a)*2.8*scale,vz:Math.sin(a)*2.8*scale,enhanced:true});}
+        if(dust)for(let i=0;i<6;i++){const a=i*Math.PI/3;this.smoke(x+Math.cos(a)*scale,(destroyed?this.map.terrain.heightAt(x+Math.cos(a)*scale,z+Math.sin(a)*scale):y)+.15,z+Math.sin(a)*scale,scale*.9,1.3,dust.color,{kind:'dust',opacity:dust.opacity,rise:.23,vx:Math.cos(a)*2.8*scale,vz:Math.sin(a)*2.8*scale,enhanced:true});}
       }
     }
     this.blastFlash(x,y+scale,z,enhanced?scale:0);
