@@ -67,12 +67,14 @@ fn worldHorizonOcclusion(at: vec2f, sceneDepth: texture_depth_2d, inverseProject
       let offset=axis*foot*(.09+.91*t*t);
       for(var k=0; k<2; k++){
         let direction=select(-1.,1.,k==0);
-        let sampleAt=at+direction*offset*vec2f(1.,-1.);
+        let sampleAt=worldDepthCenter(at,depthSize)+direction*offset*vec2f(1.,-1.);
         if(any(sampleAt<=vec2f(0.))||any(sampleAt>=vec2f(1.))){continue;}
         let delta=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize)-pos;
         let len=length(delta);
         let rise=dot(view,delta)/max(len,.001);
-        let weight=smoothstep(.015,.07,len)*(1.-smoothstep(.22,.83,len));
+        let planeTolerance=max(.012,.004*max(0.,-pos.z));
+        let above=dot(n,delta);
+        let weight=smoothstep(.015,.07,len)*(1.-smoothstep(.22,.83,len))*smoothstep(planeTolerance,planeTolerance*2.5,above);
         horizons[k]=max(horizons[k],mix(open[k],rise,weight));
       }
     }
@@ -95,24 +97,25 @@ function mask(cascadeCount){
   return maskVariants[cascadeCount]=wgslFn(`
 fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f,
   inverseProjection: mat4x4f, depthSize: vec2f, steps: vec3f, sunView: vec3f,
-  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32${volume.parameters}) -> vec4f {
+  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32, airProfile:vec3f${volume.parameters}) -> vec4f {
   let center=worldDepthCenter(at,depthSize);
   let depth=worldReadDepth(sceneDepth,center,depthSize);
   let pos=worldViewPosition(inverseProjection,center,depth);
   let range=-pos.z;
   var ao=0.; var contact=0.; var shaft=0.;
-  if (depth<.999999 && range<95. && (steps.x>0. || steps.y>0.)) {
+  if (depth<.999999 && ((steps.x>0. && range<48.) || (steps.y>0. && range<36.))) {
     let dx=vec2f(1./depthSize.x,0.); let dy=vec2f(0.,1./depthSize.y);
     let left=pos-worldViewAt(sceneDepth,inverseProjection,center-dx,depthSize);
     let right=worldViewAt(sceneDepth,inverseProjection,center+dx,depthSize)-pos;
     let below=pos-worldViewAt(sceneDepth,inverseProjection,center+dy,depthSize);
     let above=worldViewAt(sceneDepth,inverseProjection,center-dy,depthSize)-pos;
     let n=normalize(cross(select(right,left,abs(left.z)<abs(right.z)),select(above,below,abs(below.z)<abs(above.z))));
-    if (steps.x>0.) {
+    if (steps.x>0. && range<48.) {
       let radius=.83;
       var sum=0.;
       let footprint=vec2f(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
-      let rotation=6.283185*fract(dot(floor(at/effectPixel),vec2f(.75487766,.56984029)));
+      let seed=floor(at/effectPixel);
+      let rotation=6.283185*fract(sin(dot(seed,vec2f(12.9898,78.233)))*43758.5453);
       if(steps.x>12.){
         ao=worldHorizonOcclusion(at,sceneDepth,inverseProjection,depthSize,pos,n,footprint,rotation);
       }else{
@@ -120,11 +123,12 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
         if(f32(i)>=steps.x){break;}
         let angle=f32(i)*2.399963+rotation;
         let spread=.18+.82*sqrt((f32(i)+.5)/steps.x);
-        let sampleAt=at+vec2f(cos(angle),sin(angle))*footprint*spread;
+        let sampleAt=center+vec2f(cos(angle),sin(angle))*footprint*spread;
         if(any(sampleAt<=vec2f(0.))||any(sampleAt>=vec2f(1.))){continue;}
         let d=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize)-pos;
         let len=length(d);
-        sum+=max(0.,dot(n,d)/max(.001,len)-.12)*(1.-smoothstep(.07,radius,len));
+        let planeTolerance=max(.012,.004*range);
+        sum+=max(0.,dot(n,d)/max(.001,len)-.12)*(1.-smoothstep(.07,radius,len))*smoothstep(planeTolerance,planeTolerance*2.5,dot(n,d));
       }
       ao=clamp(sum*2.6/steps.x,0.,.65);
       }
@@ -133,7 +137,7 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
     let sunFacing=dot(n,sunView);
     if(steps.y>0. && sunFacing>.08 && range<36.){
       let pixelWorld=2.*range/(projection[1][1]*depthSize.y);
-      let bias=clamp(pixelWorld*1.2,.012,.06);
+      let bias=clamp(pixelWorld*2.0,.025,.11);
       let origin=pos+n*bias;
       for(var i=0; i<12; i++){
         if(f32(i)>=steps.y){break;}
@@ -149,7 +153,7 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
         let thickness=.045+.11*rayLength+min(pixelWorld,.045);
         let above=dot(surface-pos,n);
         let overlap=smoothstep(.003,max(.012,bias*.8),hit)*(1.-smoothstep(thickness*.6,thickness,hit));
-        let blocker=smoothstep(bias*.8,bias*1.65,above);
+        let blocker=smoothstep(bias*1.2,bias*2.5,above);
         let margin=min(sampleAt,1.-sampleAt);
         let edge=smoothstep(0.,.04,min(margin.x,margin.y));
         contact=max(contact,overlap*blocker*edge*(1.-smoothstep(.12,.91,rayLength)));
@@ -160,7 +164,8 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
   }
   if(steps.z>0. && atmosphereStrength>0.){
     let direction=normalize(pos);
-    let angular=pow(max(0.,dot(direction,sunView)),10.);
+    let mu=max(0.,dot(direction,sunView));
+    let angular=mix(pow(mu,10.),pow(mu,5.),airProfile.z*.45);
     var visible=0.;
     if(angular>.008 && sunView.z<-.07){
       for(var i=1; i<=12; i++){
@@ -173,7 +178,7 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
     }
     var haze=0.;
     if(steps.z>1. ${cascadeCount ? '' : '&& depth<.999999'}){
-      let stepSize=min(length(pos),${cascadeCount ? `volumeSplits[${cascadeCount-1}]` : '130.'})/steps.z;
+      let stepSize=min(length(pos),${cascadeCount ? `volumeSplits[${cascadeCount-1}]` : '165.'})/steps.z;
       var density=0.;
       let slope=dot(direction,upView);
       for(var i=0; i<12; i++){
@@ -181,15 +186,29 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
         let distance=stepSize*(f32(i)+.5);
         let height=max(0.,cameraY+distance*slope);
         let light=${cascadeCount ? `.22+.78*${volume.sample}` : '1.'};
-        density+=light*exp(-height*.048)*stepSize;
+        density+=light*exp(-height/max(1.,airProfile.y))*stepSize;
       }
-      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*.012));
+      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*airProfile.x));
     }
     shaft=(haze+.52*angular*visible/steps.z)*atmosphereStrength;
   }
   return vec4f(ao,contact,shaft,range);
 }`,includes);
 }
+
+const applyHeightFog=wgslFn(`
+fn worldHeightFog(at:vec2f,rgb:vec3f,sceneDepth:texture_depth_2d,inverseProjection:mat4x4f,depthSize:vec2f,
+ fogLayer:vec4f,fogLayerUp:vec3f,fogLayerTint:vec3f,fogEyeY:f32)->vec3f{
+ let raw=worldReadDepth(sceneDepth,at,depthSize);
+ if(raw>=.999999||fogLayer.x<=0.){return rgb;}
+ let pos=worldViewPosition(inverseProjection,at,raw);let len=length(pos);
+ let h0=max(0.,fogEyeY-fogLayer.z)/fogLayer.y;
+ let h1=max(0.,fogEyeY+dot(pos,fogLayerUp)-fogLayer.z)/fogLayer.y;
+ let dh=abs(h1-h0);var mean=exp(-min(h0,h1));
+ if(dh>=.001){mean*=(1.-exp(-dh))/dh;}
+ let amount=min(fogLayer.w,1.-exp(-fogLayer.x*min(len,500.)*mean))*smoothstep(3.,18.,len);
+ return mix(rgb,fogLayerTint,amount);
+}`,[readDepth,viewPosition]);
 
 const applyDepthEffects = wgslFn(`
 fn worldCompositeDepth(at: vec2f, rgb: vec3f, sceneDepth: texture_depth_2d, effectsMask: texture_2d<f32>,
@@ -250,23 +269,28 @@ function reflectionShaders(receivers){
   const reflection = wgslFn(`
 fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, sceneDepth: texture_depth_2d,
   inverseProjection: mat4x4f, projection: mat4x4f, depthSize: vec2f, waterPixel: vec2f,
-  shore: vec2f, upView: vec3f, worldXView: vec3f, cameraY: f32, cameraX: f32, waterActive:f32, time: f32, reflectionSteps: f32${fields}) -> vec4f {
+  shore: vec2f, upView: vec3f, worldXView: vec3f, cameraY: f32, cameraX: f32, cameraZ:f32, waterActive:f32, time: f32, reflectionSteps: f32${fields}) -> vec4f {
   var pos=worldViewAt(sceneDepth,inverseProjection,at,depthSize);
-  let water=worldWaterSurface(pos,shore,upView,worldXView,cameraY,cameraX,waterActive);
   let receiver=${read};
+  let water=worldWaterSurface(pos,shore,upView,worldXView,cameraY,cameraX,waterActive)||(receiver.b>-.15&&receiver.b<-.10);
+  if(receiver.b<0.){pos*=receiver.a/max(.001,-pos.z);}
   if((!water && receiver.b==0.)||(water&&-pos.z>145.)){return vec4f(0.);}
-  if(!water&&receiver.b<0.){pos*=receiver.a/max(.001,-pos.z);}
   let wet=receiver.b>1.;
   let roughness=select(select(abs(receiver.b),mix(.38,.15,receiver.b-1.),wet),.21,water);
-  let normal=select(decodeReflectionNormal(receiver.rg),normalize(upView+worldXView*sin(pos.x*.7+time*1.5)*.025),water);
+  let worldZView=cross(worldXView,upView);
+  let wx=cameraX+dot(pos,worldXView);let wz=cameraZ+dot(pos,worldZView);
+  let fadeWave=1.-smoothstep(28.,130.,-pos.z);
+  let wave=worldXView*(sin(wx*.71+wz*.37+time*1.5)*.038+sin(wx*2.2-wz*.9-time*2.1)*.018)
+    +worldZView*(cos(wz*.81-wx*.46+time*1.2)*.04+sin(wz*2.3+wx*.77-time*1.8)*.012);
+  let normal=select(decodeReflectionNormal(receiver.rg),normalize(upView+wave*fadeWave),water);
   let ray=reflect(normalize(pos),normal);
   let noV=max(0.,-dot(normalize(pos),normal));
-  let fresnel=pow(1.-noV,3.);
+  let fresnel=select(pow(1.-noV,3.),.0204+.9796*pow(1.-noV,5.),water);
   if(water&&(fresnel<.035 || dot(ray,upView)<=.001)){return vec4f(0.);}
-  let reach=select(mix(43.,24.,roughness),64.,water);
+  let reach=select(mix(48.,24.,roughness),85.,water);
   let bias=select(.045,.12,water);
   var lastTravel=bias;
-  for(var i=1;i<=21;i++){
+  for(var i=1;i<=32;i++){
     if(f32(i)>reflectionSteps){break;}
     let t=f32(i)/reflectionSteps;
     let travel=.15+(reach-1.)*t*t;
@@ -278,7 +302,7 @@ fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, s
     let hit=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize);
     let delta=hit.z-point.z;
     if(delta>0. && delta<select(.35,1.3,water)+travel*.084 && !worldWaterSurface(hit,shore,upView,worldXView,cameraY,cameraX,waterActive)
-        && (water||dot(hit-pos,normal)>.06)){
+        && select(dot(hit-pos,normal)>.06,dot(hit-pos,upView)>.06,water)){
       var lo=lastTravel;
       var hi=travel;
       for(var j=0;j<3;j++){
@@ -290,7 +314,7 @@ fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, s
       }
       let margin=min(sampleAt,1.-sampleAt);
       let refined=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize);
-      if(!water&&(dot(refined-pos,normal)<.045||abs(refined.z-(pos+normal*bias+ray*hi).z)>.4+travel*.044)){
+      if(select(dot(refined-pos,normal)<.045,dot(refined-pos,upView)<.04,water)||abs(refined.z-(pos+normal*bias+ray*hi).z)>select(.4,.8,water)+travel*.044){
         lastTravel=travel;
         continue;
       }
@@ -298,7 +322,7 @@ fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, s
       let blur=waterPixel*(.58+roughness*2.+travel*.023);
       let color=textureSampleLevel(source,sourceSampler,sampleAt,0.).rgb*.5
         +(textureSampleLevel(source,sourceSampler,sampleAt+blur,0.).rgb+textureSampleLevel(source,sourceSampler,sampleAt-blur,0.).rgb)*.25;
-      let gain=select((.19+.57*fresnel)*(1.-roughness*.8),fresnel*.56,water);
+      let gain=select((.19+.57*fresnel)*(1.-roughness*.8),fresnel*.82,water)*(1.-smoothstep(85.,145.,-pos.z));
       let opacity=fade*gain*select(1.,receiver.b-1.,wet&&!water);
       return vec4f(color*opacity,opacity);
     }
@@ -364,19 +388,19 @@ export function webGpuWorldStages(post, geometry, camera) {
   const masks=post.mask && [];
   const maskParams=post.mask && {
     ...depthParams, projection:params.projection, steps:params.steps, sunView:params.sunView,
-    upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,
+    upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,airProfile:params.airProfile,
   };
   const {reflection,applyReflection}=post.receiverMask?withReceivers:onlyWater;
   const receiverParams=post.receiverMask?{receiverMask:texture(post.receiverMask.texture),receiverActive:params.receiverActive}:{};
   const waterParams={...receiverParams,shore:params.shore,upView:params.upView,worldXView:params.worldXView,
     cameraY:params.cameraY,cameraX:params.cameraX,waterActive:params.waterActive};
   const reflected=post.reflection && make(reflection({...depthParams,...waterParams,source,sourceSampler:source,
-    projection:params.projection,waterPixel:params.waterPixel,time:params.time,reflectionSteps:params.reflectionSteps}));
+    projection:params.projection,waterPixel:params.waterPixel,time:params.time,cameraZ:params.cameraZ,reflectionSteps:params.reflectionSteps}));
   const blurs=post.bloom.map((_,i)=>{
     const src=i===0?world:post.bloom[i-1];
     const tex=texture(src.texture), pixel=uniform(new THREE.Vector2());
     const shader=i===0?prefilter:downsample;
-    return {scene:make(shader({source:tex,sourceSampler:tex,at,pixel})),pixel,src};
+    return {scene:make(shader({source:tex,sourceSampler:tex,at,pixel})),pixel,src,tex};
   });
   let rgb=source.sample(at).rgb;
   if(post.cameraFX)rgb=cameraEffects({...depthParams,original:rgb,source,sourceSampler:source,
@@ -386,11 +410,13 @@ export function webGpuWorldStages(post, geometry, camera) {
     heatSources:params.heatSources,heatStrength:params.heatStrength,heatTime:params.heatTime});
   if(post.mask)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
     effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor});
-  for(let i=0;i<post.bloom.length;i++){
-    rgb=rgb.add(texture(post.bloom[i].texture).sample(at).rgb.mul(params.bloomGain).mul([.62,.23,.1,.05][i]));
-  }
   if(reflected)rgb=applyReflection({...depthParams,...waterParams,rgb,reflected:texture(post.reflection.texture).sample(at)});
+  if(post.heightFog)rgb=applyHeightFog({...depthParams,rgb,fogLayer:params.fogLayer,fogLayerUp:params.fogLayerUp,fogLayerTint:params.fogLayerTint,fogEyeY:params.fogEyeY});
   const composite=make(vec4(rgb,1));
+  const bloomSource=texture(world.texture);
+  let bloomRgb=bloomSource.sample(at).rgb;
+  for(let i=0;i<post.bloom.length;i++)bloomRgb=bloomRgb.add(texture(post.bloom[i].texture).sample(at).rgb.mul(params.bloomGain).mul([.62,.23,.1,.05][i]));
+  const bloomComposite=blurs.length?make(vec4(bloomRgb,1)):null;
   function draw(target,scene,profiler,pass) {
     renderer.setRenderTarget(target);
     renderTimed(renderer,scene,camera,profiler,pass);
@@ -399,7 +425,9 @@ export function webGpuWorldStages(post, geometry, camera) {
     render(target,profiler) {
       params.bloomGain.value=state.bloomGain;
       params.cameraY.value=state.cameraY;
+      params.fogEyeY.value=state.fogEyeY;
       params.cameraX.value=state.cameraX;
+      params.cameraZ.value=state.cameraZ;
       params.chromaticGain.value=state.chromaticGain;
       params.time.value=state.time;
       params.heatTime.value=state.heatTime;
@@ -423,17 +451,25 @@ export function webGpuWorldStages(post, geometry, camera) {
         for(let i=0;i<count;i++)entry.maps[i].value=post.shadowMaps[i];
         draw(post.mask,entry.scene,profiler,'depthEffects');
       }
-      if(blurs.length){
+      draw(target,composite,profiler,'worldComposite');
+    },
+    renderBloom(input,profiler){
+      if(!blurs.length)return input.texture;
+      params.bloomGain.value=state.bloomGain;
+      bloomSource.value=input.texture;blurs[0].tex.value=input.texture;
+      {
         const timing=profiler?.beginPass('bloom');
         try{
           for(let i=0;i<blurs.length;i++){
             const {scene,pixel,src}=blurs[i];
-            pixel.value.set(1/src.width,1/src.height);
+            const sourceSize=i===0?input:src;
+            pixel.value.set(1/sourceSize.width,1/sourceSize.height);
             draw(post.bloom[i],scene);
           }
         }finally{if(timing)profiler.endPass();}
       }
-      draw(target,composite,profiler,'worldComposite');
+      draw(world,bloomComposite,profiler,'bloomComposite');
+      return world.texture;
     },
     dispose() { for(const material of materials)material.dispose(); },
   };

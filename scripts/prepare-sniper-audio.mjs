@@ -1,4 +1,4 @@
-import {readFile,writeFile} from 'node:fs/promises';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
@@ -24,6 +24,6 @@ export async function prepareSniperAudio(){
     }
   }
   const report={method:'User uploads preserved as sources. First sample above 15% of peak aligned with 3ms lead and 1ms fade; no normalization or sample-rate change.',recordings};
-  await writeFile('docs/perf/sniper-recordings.json',JSON.stringify(report,null,2)+'\n');return report;
+  await mkdir('.perf-local',{recursive:true});await writeFile('.perf-local/sniper-recordings.json',JSON.stringify(report,null,2)+'\n');return report;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))console.log(JSON.stringify(await prepareSniperAudio(),null,2));

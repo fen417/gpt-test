@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import {atmosphereProfile,CLOUD_LEVEL,makeCloudTexture,ensureCloudTexture} from './atmosphere-profile.js';
 import { MeshBasicNodeMaterial, PMREMGenerator } from 'three/webgpu';
 export { PMREMGenerator } from 'three/webgpu';
-import { Fn, vec2, vec3, vec4, uniform, positionLocal, cubeTexture,
+import { Fn, vec2, vec3, vec4, uniform, positionLocal, cubeTexture, texture,
   floor, fract, dot, sin, mix, pow, max, smoothstep, normalize, exp, clamp, If } from 'three/tsl';
 
 const hash = Fn(([p]) => fract(sin(dot(p, vec2(127.1,311.7))).mul(43758.5453)));
@@ -57,6 +58,7 @@ export function makeWebGpuSky(scene, renderer) {
   scene.environmentIntensity=.45;
   generator.dispose();envMesh.geometry.dispose();sourceMaterial.dispose();
   const advancedSky=uniform(0), liveSun=uniform(new THREE.Vector3()), skyTime=uniform(0);
+  const cloudMap=makeCloudTexture(),cloudParams=uniform(new THREE.Vector4()),airTint=uniform(new THREE.Color()),airMix=uniform(0);
   const baked=new MeshBasicNodeMaterial({side:THREE.BackSide,depthWrite:false,fog:false});
   baked.toneMapped=false;
   baked.fragmentNode=Fn(()=>{
@@ -66,17 +68,32 @@ export function makeWebGpuSky(scene, renderer) {
       const daylight=smoothstep(-.03,.34,liveSun.y);
       const mu=max(0,dot(direction,liveSun)).toVar();
       const zenith=mix(vec3(.12,.19,.33),vec3(.071,.225,.48),daylight);
-      const horizon=mix(vec3(.50,.325,.27),vec3(.54,.65,.73),daylight);
+      const horizon=mix(mix(vec3(.50,.325,.27),vec3(.54,.65,.73),daylight),airTint,airMix);
       const air=exp(max(0,direction.y).mul(-5.5));
       const sky=mix(zenith,horizon,air).toVar();
       const sunlight=mix(vec3(1,.48,.23),vec3(1,.86,.64),daylight);
-      sky.addAssign(sunlight.mul(pow(mu,12)).mul(air.mul(.17).add(.12)));
-      const p=direction.xz.div(max(.10,direction.y.add(.12))).mul(2.1).add(vec2(skyTime.mul(.004),skyTime.mul(.0009)));
-      const field=fbm(p).toVar();
-      const cloud=smoothstep(.39,.65,field).mul(smoothstep(.008,.17,direction.y)).toVar();
-      const edge=fbm(p.add(liveSun.xz.mul(.21))).sub(field);
-      const cloudShade=mix(vec3(.31,.38,.45),vec3(.85,.87,.84),clamp(edge.mul(4).add(mu.mul(.36)).add(.41),0,1));
-      sky.assign(mix(sky,cloudShade,cloud.mul(.94)));
+      sky.addAssign(sunlight.mul(pow(mu,12).mul(air.mul(.17).add(.12)).add(pow(mu,36).mul(.035))));
+      const cloud=vec2(0).x.toVar();
+      If(cloudParams.w.greaterThan(0),()=>{
+        const p=direction.xz.div(max(.13,direction.y.add(.13))).mul(.22).add(cloudParams.yz.mul(skyTime));
+        const cell=texture(cloudMap).sample(p).toVar(),field=cell.r.toVar(),edge=vec2(.10).x.toVar();
+        const horizonFade=smoothstep(.018,.20,direction.y);
+        If(cloudParams.w.greaterThan(2.5),()=>{
+          const offset=texture(cloudMap).sample(p.add(liveSun.xz.mul(.022))).r;
+          const fine=texture(cloudMap).sample(p.mul(2.7).add(vec2(.37,.11))).b;
+          field.assign(field.mul(.83).add(fine.mul(.17)));edge.assign(offset.sub(cell.r));
+        });
+        cloud.assign(smoothstep(cloudParams.x.sub(.095),cloudParams.x.add(.12),field).mul(horizonFade));
+        If(cloudParams.w.greaterThan(1.5),()=>{
+          const p2=direction.xz.div(max(.18,direction.y.add(.18))).mul(vec2(.33,.12)).sub(cloudParams.zy.mul(skyTime).mul(.58)).add(vec2(.51,.12));
+          const wisps=smoothstep(.52,.76,texture(cloudMap).sample(p2).g).mul(horizonFade);
+          sky.assign(mix(sky,mix(vec3(.37,.43,.50),vec3(.87,.86,.81),daylight),wisps.mul(.37)));
+          cloud.assign(max(cloud,wisps.mul(.26)));
+        });
+        const shadow=mix(vec3(.20,.18,.22),vec3(.30,.37,.44),daylight),lit=mix(vec3(.94,.49,.27),vec3(.91,.93,.91),daylight);
+        const shade=mix(shadow,lit,clamp(edge.mul(4.5).add(mu.mul(.34)).add(field.mul(.14)).add(.40),0,1)).add(sunlight.mul(pow(mu,48)).mul(cloud.oneMinus()).mul(.17));
+        sky.assign(mix(sky,shade,cloud.mul(.94)));
+      });
       const disk=smoothstep(.999984,.999991,mu);
       sky.addAssign(sunlight.mul(disk.mul(8).add(pow(mu,110).mul(.20))).mul(cloud.oneMinus()));
       sampled.assign(mix(horizon,sky,smoothstep(-.09,.035,direction.y)));
@@ -87,12 +104,14 @@ export function makeWebGpuSky(scene, renderer) {
   const sky=new THREE.Mesh(new THREE.SphereGeometry(700,20,12),baked);
   sky.renderOrder=1000;sky.frustumCulled=false;sky.userData.noBatch=true;scene.add(sky);
   return {sky,hazeAmount,hazeTint,envTexture:pmremTarget.texture,
-    update(mode, direction, time) {
+    update(mode, direction, time,cloudQuality,map,fogColor) {
       advancedSky.value=mode==='high'?1:0;
       if(mode==='high'){
-        liveSun.value.copy(direction).normalize();
-        skyTime.value=time;
+        const p=atmosphereProfile(map),level=CLOUD_LEVEL[cloudQuality]??0;
+        if(level)ensureCloudTexture(cloudMap);
+        liveSun.value.copy(direction).normalize();skyTime.value=time;
+        cloudParams.value.set(p[0],p[1],p[2],level);airMix.value=p[3];if(fogColor)airTint.value.copy(fogColor);
       }
     },
-    target:{dispose(){pmremTarget.dispose();cubeTarget.dispose();baked.dispose();}}};
+    target:{dispose(){pmremTarget.dispose();cubeTarget.dispose();baked.dispose();cloudMap.dispose();}}};
 }

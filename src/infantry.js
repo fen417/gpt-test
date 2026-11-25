@@ -384,9 +384,12 @@ function updateInfantryUpgrades(rig, flags, lowDetail=rig.lowWeaponDetail??false
 
 export function setInfantryLod(rig, level, shadows, lowWeaponDetail=false) {
   if(rig.lowWeaponDetail!==lowWeaponDetail)updateInfantryUpgrades(rig,rig.attachmentFlags,lowWeaponDetail);
+  const unchanged=rig.lod===level&&rig.lodShadows===shadows;
   rig.lod = level;
   rig.weaponModel.visible = level < 2;
   rig.distantWeapon.visible = level >= 2;
+  if(unchanged)return;
+  rig.lodShadows=shadows;
   for (const { mesh, geometries } of rig.parts) {
     mesh.geometry = geometries[level];
     mesh.castShadow = shadows;

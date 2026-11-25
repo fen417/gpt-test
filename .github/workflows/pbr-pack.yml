@@ -1,0 +1,111 @@
+name: Prepare experimental PBR textures
+on:
+  push:
+    branches: [remaster/pbr-ktx2]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: experimental-pbr-pack
+  cancel-in-progress: false
+jobs:
+  generate:
+    if: github.ref == 'refs/heads/remaster/pbr-ktx2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remaster/pbr-ktx2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Check consolidated regression tests
+        run: npm test
+      - name: Restore partial PBR pack
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            public/pbr-v1
+            .perf-local/pbr-source
+          key: pbr-pack-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: pbr-pack-v1-${{ runner.os }}-
+      - name: Generate actual mipmapped KTX2 assets
+        run: npm run assets:pbr
+      - name: Save generated textures and downloaded scans even on failure
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            public/pbr-v1
+            .perf-local/pbr-source
+          key: pbr-pack-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Restore geometry GI cache
+        uses: actions/cache/restore@v4
+        with:
+          path: public/gi-v1
+          key: geometry-gi-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: geometry-gi-v2-${{ runner.os }}-
+      - name: Bake diffuse irradiance from actual map geometry
+        run: npm run assets:gi
+      - name: Save geometry GI cache even on failure
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: public/gi-v1
+          key: geometry-gi-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Restore architecture bake cache
+        uses: actions/cache/restore@v4
+        with:
+          path: public/architecture-v1
+          key: architecture-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: architecture-v2-${{ runner.os }}-
+      - name: Bake architecture lightmaps from exported visual meshes
+        run: npm run assets:architecture
+      - name: Save architecture bake cache even on failure
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: public/architecture-v1
+          key: architecture-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Build experimental game
+        run: npm run build
+        env:
+          S09_PBR_SKIP: '1'
+      - name: Commit generated pack to the experimental branch only
+        shell: bash
+        run: |
+          git add public/pbr-v1 public/gi-v1 public/architecture-v1
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Update generated PBR and baked GI assets"
+          git push origin HEAD:refs/heads/remaster/pbr-ktx2
+  browser-weathering:
+    if: github.ref == 'refs/heads/remaster/pbr-ktx2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Install browser smoke tools
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install chromium --with-deps
+      - name: Start local server without regenerating PBR scans
+        run: |
+          S09_PBR_SKIP=1 npm run dev -- --host 127.0.0.1 > /tmp/weather-vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5173/test/map-weathering-smoke.html >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/weather-vite.log
+          exit 1
+      - name: Render and compare weathering, water, effect lighting, atmosphere, GI, vegetation and warmup
+        run: node scripts/verify-map-weathering.mjs

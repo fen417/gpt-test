@@ -8,3 +8,6 @@ dist/
 .perf-local/
 .perf-ci/
 data/case-inventory.json*
+artifacts/
+*.cpuprofile
+*.heapprofile

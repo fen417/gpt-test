@@ -1,6 +1,6 @@
 import { AdditiveBlending, Color, DoubleSide } from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { attribute, float, texture, uv, vec3, vec4, uniform, Fn, sin, smoothstep, abs, mix, length, max, pow } from 'three/tsl';
+import { attribute, float, texture, uv, vec3, vec4, uniform, Fn, If, sin, smoothstep, abs, mix, length, max, pow } from 'three/tsl';
 
 export function webGpuCampaignSmoke(map) {
   const material=new MeshBasicNodeMaterial({transparent:true,depthWrite:false,fog:false});
@@ -19,8 +19,8 @@ export function webGpuCampaignFlame(phase) {
   const material=new MeshBasicNodeMaterial({
     transparent:true,depthWrite:false,side:DoubleSide,blending:AdditiveBlending,fog:false,
   });
-  const time=uniform(0),seed=float(phase);
-  material.userData.fireUniforms={time};
+  const time=uniform(0),seed=float(phase),detail=uniform(0);
+  material.userData.fireUniforms={time,detail};
   material.fragmentNode=Fn(()=>{
     const p=uv(),y=p.y;
     const wobble=sin(y.mul(11).sub(time.mul(5)).add(seed)).mul(.07)
@@ -31,9 +31,15 @@ export function webGpuCampaignFlame(phase) {
       .add(sin(p.x.mul(47).sub(time.mul(4))).mul(.10)).add(.72);
     const alpha=edge.mul(smoothstep(tongues.sub(.18),tongues.add(.12),y).oneMinus())
       .mul(smoothstep(0,.07,y)).mul(sin(y.mul(31).sub(time.mul(12)).add(seed)).mul(.18).add(.75)).toVar();
+    const color=mix(vec3(1,.92,.42),vec3(1,.28,.025),smoothstep(.1,.8,y)).toVar();
+    If(detail.greaterThan(.5),()=>{
+      const t=y.mul(23).sub(time.mul(7)).add(seed);
+      const cells=sin(p.x.mul(39).add(sin(t).mul(2.8)).add(t.mul(.6))).mul(sin(p.x.mul(17).sub(t.mul(1.2)))).mul(.5).add(.5);
+      const hot=smoothstep(.30,.86,cells).mul(smoothstep(.3,.9,y).oneMinus());
+      alpha.mulAssign(cells.mul(.38).add(.62));color.assign(mix(color,vec3(1,.98,.70),hot.mul(.72)).mul(1.45));
+    });
     alpha.lessThan(.025).discard();
-    const color=mix(vec3(1,.92,.42),vec3(1,.28,.025),smoothstep(.1,.8,y)).mul(1.5);
-    return vec4(color,alpha.mul(.85));
+    return vec4(color.mul(1.5),alpha.mul(.85));
   })();
   material.toneMapped=false;
   return material;

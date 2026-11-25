@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { CSMShader } from 'three/addons/csm/CSMShader.js';
 import {setWebGlShaderPatch} from './webgl-shader-patches.js';
-import { directionalPenumbraScale } from './directional-penumbra.js';
+import { directionalPenumbraScale,applyCascadeShadowBias } from './directional-penumbra.js';
 import { CachedShadows } from './cached-shadows.js';
+import {StaticMaterialVisitor} from './render-work.js';
+import {cascadePolicy,cascadeDue} from './cascade-schedule.js';
 
 export function shadowCascadeOptions(level, distance) {
   const count = level === 'ultra' ? 3 : 2;
@@ -33,7 +35,7 @@ export class WebGlCascades {
       ...options.data, camera:owner.camera, parent:owner.scene, lightNear:1, lightFar:295, shadowBias:-.00025,
     });
     this.csm.fade=true;
-    this.materials=new Set();
+    this.materials=new Set();this.materialVisitor=new StaticMaterialVisitor();
     this.uniforms={CSM_cascades:{value:[]},cameraNear:{value:0},shadowFar:{value:0}};
     this.axis=new THREE.Vector3();
     this.right=new THREE.Vector3();
@@ -42,12 +44,14 @@ export class WebGlCascades {
     this.caches=this.csm.lights.map((light,index)=>{
       light.layers.mask=owner.sun.layers.mask;
       light.shadow.mapSize.setScalar(options.sizes[index]);
-      light.shadow.normalBias=.025+.025*index;
+      applyCascadeShadowBias(light.shadow,owner.pcssShadows);
       light.shadow.autoUpdate=false;
       return new CachedShadows();
     });
     owner.sun.removeFromParent();
     this.lastProjection=new THREE.Matrix4().multiplyScalar(0);
+    this.records=[];this.previousDirection=new THREE.Vector3();this.invalidated=true;
+    this.counters={rendered:0,reused:0,frames:0,lastMask:0};
     this.visitMaterial=object=>{
       if(!object.material)return;
       if(Array.isArray(object.material)){
@@ -80,13 +84,19 @@ export class WebGlCascades {
       csm._getExtendedBreaks(uniforms.CSM_cascades.value);
       uniforms.cameraNear.value=camera.near;
       uniforms.shadowFar.value=Math.min(csm.maxFar,camera.far);
-      if(owner.pcssShadows){
-        for(const light of csm.lights)light.shadow.radius=directionalPenumbraScale(light.shadow);
+      for(let i=0;i<csm.lights.length;i++){
+        const light=csm.lights[i],c=light.shadow.camera;
+        const guard=cascadePolicy(i,(c.right-c.left)/light.shadow.mapSize.x).guard;
+        c.left-=guard;c.right+=guard;c.top+=guard;c.bottom-=guard;c.updateProjectionMatrix();
+        applyCascadeShadowBias(light.shadow,owner.pcssShadows);
+        if(owner.pcssShadows)light.shadow.radius=directionalPenumbraScale(light.shadow);
       }
       this.invalidate();
     }
     csm.lightDirection.copy(owner.sunOffset).negate().normalize();
+    const sunChanged=this.previousDirection.distanceToSquared(csm.lightDirection)>1e-8;
     csm.update();
+    let mask=0;
     // Snap all three light-space axes to a coarser grid than one texel.
     // This keeps the cached static pass useful through small camera movements.
     const axis=this.axis.copy(csm.lightDirection);
@@ -98,24 +108,42 @@ export class WebGlCascades {
       light.position.copy(right).multiplyScalar(Math.round(x/snap)*snap)
         .addScaledVector(up,Math.round(y/snap)*snap).addScaledVector(axis,Math.round(z/snap)*snap);
       light.target.position.copy(light.position).add(axis);
+      const c=light.shadow.camera,texel=(c.right-c.left)/light.shadow.mapSize.x,record=this.records[i];
+      const displacement=record?record.position.distanceTo(light.position):Infinity;
+      const due=cascadeDue({index:i,frame:owner.frameCount,lastFrame:record?.frame,displacement,texel,invalidated:this.invalidated||!this.caches[i].key,sunChanged});
+      if(due){mask|=1<<i;}
+      else{light.position.copy(record.position);light.target.position.copy(record.target);}
       light.color.copy(owner.sun.color);
       light.intensity=owner.sun.intensity;
       light.updateMatrixWorld();
       light.target.updateMatrixWorld();
     }
-    owner.scene.traverseVisible(this.visitMaterial);
+    this.pendingMask=mask;this.previousDirection.copy(csm.lightDirection);
+    this.materialVisitor.visit(owner.scene,owner.staticRoot,owner.staticMaterialRevision,this.visitMaterial);
   }
 
   render(native) {
     const {owner,csm}=this;
+    let mask=0;
     for(let i=0;i<csm.lights.length;i++){
       const light=csm.lights[i], cache=this.caches[i];
-      if(i>0&&cache.key&&owner.frameCount%(i===1?2:4)!==0)continue;
+      if(!(this.pendingMask&(1<<i))&&cache.key){this.counters.reused++;continue;}
       cache.render(owner,native,light);
+      this.records[i]={position:light.position.clone(),target:light.target.position.clone(),frame:owner.frameCount};
+      mask|=1<<i;this.counters.rendered++;
     }
+    this.counters.frames++;this.counters.lastMask=mask;this.invalidated=false;
   }
 
+  forgetMaterial(material){
+    if(!this.materials.delete(material))return;
+    setWebGlShaderPatch(material,'cascades',null);
+    if(material.defines){delete material.defines.USE_CSM;delete material.defines.CSM_CASCADES;delete material.defines.CSM_FADE;}
+  }
+  stats(){return {...this.counters,cascades:this.csm.cascades};}
   invalidate(rebuildCasters=false) {
+    this.invalidated=true;
+    if(rebuildCasters)this.materialVisitor.invalidate();
     for(const cache of this.caches)cache.invalidate(rebuildCasters);
   }
 

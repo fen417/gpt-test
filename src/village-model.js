@@ -171,9 +171,11 @@ export class VillageModel {
       high=new THREE.MeshStandardMaterial({...options,normalMap,normalScale:new THREE.Vector2(normalStrength,normalStrength),
         roughness:name==='vehicle-glass'?.32:name==='vehicle-paint'?.68:source?.roughness??.95,
         metalness:name.startsWith('vehicle-')?.16:source?.metalness??0});
-      const enhanced={rock:'rock','road-sand':'sand','village-sand':'sand',concrete:'concrete'}[name];
+      const enhanced={rock:'rock','road-sand':'sand','village-sand':'sand','village-stucco':'stucco',concrete:'concrete',brick:'brick',wood:'wood',metal:'metal',ground:'earth',asphalt:'asphalt',cloth:'cloth'}[name];
       low=new THREE.MeshLambertMaterial(options);
       if(enhanced)high.userData.remasterSurface=low.userData.remasterSurface=enhanced;
+      const weather={canvas:'cloth','vehicle-paint':'metal',clay:'stucco'}[name];
+      if(weather)high.userData.weatherSurface=low.userData.weatherSurface=weather;
     }
     if(name==='road-sand'){
       const span=this.assets.manifest.span;

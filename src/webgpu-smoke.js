@@ -29,6 +29,12 @@ export function createWebGpuSmokeMaterial(texture, depth=null, shared=null) {
   })();
   material.colorNode=Fn(()=>{
     const rgba=materialColor.context({getUV:()=>sampleUV}).toVar();
+    If(smokeMotion.greaterThan(1.5),()=>{
+      const at=sampleUV.sub(.5).mul(1.42).add(.5).add(vec2(sin(smokeTime.mul(.37)),sin(smokeTime.mul(.29).add(1.5708))).mul(.065));
+      const d=textureNode(texture).sample(at);
+      rgba.rgb.assign(rgba.rgb.mul(d.a.mul(-.20).add(1)).add(d.rgb.mul(d.a.mul(.20))));
+      rgba.a.mulAssign(d.a.mul(.24).add(.76));
+    });
     If(dot(smokeLight,smokeLight).greaterThan(.001),()=>{
       const puff=normalize(vec3(uv().sub(.5).mul(2),.64));
       rgba.rgb.mulAssign(max(0,dot(puff,smokeLight)).mul(.37).add(.84));

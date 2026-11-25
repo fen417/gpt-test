@@ -75,7 +75,9 @@ export class PortModel {
       metalness: name === 'metal' || name === 'painted' ? .27 : name === 'glazing' ? .16 : 0,
     });
     let low = new THREE.MeshLambertMaterial(options);
-    if(name==='deck'||name==='concrete'||name==='asphalt')high.userData.remasterSurface=low.userData.remasterSurface=name==='deck'?'concrete':name;
+    const enhanced={deck:'concrete',concrete:'concrete',asphalt:'asphalt',brick:'brick',wood:'wood',metal:'metal',cloth:'cloth',ground:'earth'}[name];
+    if(enhanced)high.userData.remasterSurface=low.userData.remasterSurface=enhanced;
+    if(name==='painted')high.userData.weatherSurface=low.userData.weatherSurface='metal';
     if (name === 'deck' || name === 'asphalt') {
       const shadows = this.owner.groundShadows;
       high = shadows.apply(high) ?? high;

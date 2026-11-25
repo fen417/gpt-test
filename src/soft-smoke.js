@@ -7,7 +7,7 @@ export class SoftSmokePass {
   constructor(owner, depth) {
     const base=owner.effectBatches.smoke.material;
     if(owner.webgpu){
-      this.material=owner.webgpu.createSmokeMaterial(owner.smokeTexture,depth,base.userData.smokeUniforms);
+      this.material=owner.webgpu.createSmokeMaterial(owner.activeSmokeTexture??owner.smokeTexture,depth,base.userData.smokeUniforms);
       this.uniforms=this.material.userData.softSmokeUniforms;
     }else{
       const material=this.material=base.clone();

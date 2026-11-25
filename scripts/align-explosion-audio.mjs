@@ -19,4 +19,4 @@ execFileSync(ffmpeg,['-v','error','-y','-i',source,'-af',`atrim=start=${trimSeco
 const after=analyse(target);
 if(after.firstStrongAttackMs>20)throw Error('Explosion attack remains late after encoding');
 const report={method:'First sample above 15% of global peak; aligned with 3 ms lead and 1 ms edge fade. Original compressed master preserved.',trimSeconds,before,after};
-await writeFile('docs/perf/pt90-explosion-alignment.json',JSON.stringify(report,null,2)+'\n');console.log(report);
+await mkdir('.perf-local',{recursive:true});await writeFile('.perf-local/pt90-explosion-alignment.json',JSON.stringify(report,null,2)+'\n');console.log(report);

@@ -50,6 +50,8 @@ jobs:
           path: .perf-ci/current.json
       - run: npm run build
         env:
+          VITE_TEST_BUILD: '0'
+          S09_PBR_SKIP: '1'
           VITE_SERVER_URL: ${{ vars.SECTOR_SERVER_URL }}
           VITE_FIREBASE_CONFIG: ${{ vars.SECTOR_FIREBASE_WEB_CONFIG }}
       - name: Upload bundle size report
@@ -82,6 +84,10 @@ jobs:
         run: |
           set -euo pipefail
           test -f dist/index.html
+          test -f dist/pbr-v1/manifest.json
+          test -f dist/gi-v1/manifest.json
+          test -f dist/architecture-v1/manifest.json
+          test -f dist/basis/basis_transcoder.wasm
           test -f preview-source/dist/index.html
           test -f preview-source/dist/pbr-v1/manifest.json
           test -f preview-source/dist/basis/basis_transcoder.wasm
@@ -101,12 +107,14 @@ jobs:
                 if(path.startsWith("/")||!existsSync(resolve(dir,path)))throw Error("Invalid asset path "+dir+": "+path);
               }
             }
-            const m=JSON.parse(readFileSync("dist/test/pbr-v1/manifest.json","utf8"));
+            for(const root of ["dist","dist/test"]){
+            const m=JSON.parse(readFileSync(root+"/pbr-v1/manifest.json","utf8"));
             for(const [surface,channels] of Object.entries(m.files))
               for(const [channel,sizes] of Object.entries(channels))
                 for(const size of sizes)
-                  if(!existsSync("dist/test/pbr-v1/"+surface+"-"+channel+"-"+size+".ktx2"))
-                    throw Error("Missing experimental texture "+surface+"/"+channel+"/"+size);
+                  if(!existsSync(root+"/pbr-v1/"+surface+"-"+channel+"-"+size+".ktx2"))
+                    throw Error("Missing texture "+root+"/"+surface+"/"+channel+"/"+size);
+            }
           '
           touch dist/.nojekyll
           echo "Stable: $(cat dist/build-revision.txt)"

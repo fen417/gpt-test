@@ -108,6 +108,7 @@ export class NaharWater {
       roughness: .41, metalness: .03, envMap: renderer.atmosphere.envTexture, envMapIntensity: .53,
     });
     this.material=material;
+    this.owner=renderer;
     this.surface = new THREE.Mesh(geometry.water, material);
     this.surface.name = 'Nahar canal surface';
     this.surface.renderOrder = -1;
@@ -117,10 +118,25 @@ export class NaharWater {
     this.banks.name = 'Nahar damp banks';
     this.banks.renderOrder = -2;
     parent.add(this.banks, this.surface);
+    renderer.campaignWaterMesh=this.surface;
+    this.originalColors=geometry.water.attributes.color.array.slice();
   }
 
   update(clock, fogDensity, lowQuality, quality) {
-    const advanced=quality==='high';
+    const advanced=!lowQuality&&(quality==='high'||quality==='medium');
+    const foam=advanced&&quality==='high'&&this.owner.graphicsEffects?.waterFoam==='high';
+    const reflected=!lowQuality&&quality&&quality!=='legacy';
+    this.surface.userData.waterReflection=Boolean(reflected);
+    if(this.foam!==foam){
+      this.foam=foam;const c=this.surface.geometry.attributes.color,p=this.surface.geometry.attributes.position;
+      c.array.set(this.originalColors);
+      if(foam)for(let i=0;i<c.count;i++){
+        const alpha=c.getW(i),x=p.getX(i),z=p.getZ(i);
+        const edge=alpha>0&&alpha<.95?(.5+.5*Math.sin(x*1.37+z*.53))*.27:0;
+        c.setXYZW(i,THREE.MathUtils.lerp(c.getX(i),.70,edge),THREE.MathUtils.lerp(c.getY(i),.78,edge),THREE.MathUtils.lerp(c.getZ(i),.68,edge),alpha);
+      }
+      c.needsUpdate=true;
+    }
     if(advanced&&!this.capillary){
       const base=this.material;
       this.surface.material=new THREE.MeshPhysicalMaterial({
@@ -143,13 +159,15 @@ export class NaharWater {
     if(advanced)this.capillary.offset.set((clock*-.05)%1,(clock*.06)%1);
     this.ripples.offset.set((clock * .033) % 1, (clock * .003) % 1);
     const haze = THREE.MathUtils.smoothstep(fogDensity, .00172, .0047);
-    this.surface.material.roughness = (advanced?.28:.41) + haze * .1;
+    if(reflected)this.surface.material.envMap=this.owner.atmosphere.envTexture;
+    this.surface.material.roughness = (advanced?.25:reflected?.35:.41) + haze * .1;
     this.surface.material.envMapIntensity = (advanced?.70:.53) - haze * .23;
     this.surface.receiveShadow = !lowQuality;
     this.banks.receiveShadow = !lowQuality;
   }
 
   dispose() {
+    if(this.owner.campaignWaterMesh===this.surface)this.owner.campaignWaterMesh=null;
     for (const mesh of [this.surface, this.banks]) {
       mesh.removeFromParent();
       mesh.geometry.dispose();

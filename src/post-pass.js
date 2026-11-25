@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {compactColorEligible,supportsCompactWebGL,selectSceneColor,displayVariant} from './compact-color-target.js';
 import { WorldPost } from './world-post.js';
 import { renderTimed } from './gpu-pass-timing.js';
 import { webGlWorldStages } from './webgl-world-stages.js';
@@ -9,6 +10,7 @@ export class PostPass {
   constructor(renderer,{antialias='auto'}={}){
     this.antialias=antialias;
     this.renderer=renderer;this.target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:true});
+    this.nativeTarget=this.target;this.compactActive=false;this.compactSupported=supportsCompactWebGL(renderer);
     this.worldEffects=new WorldPost(renderer,THREE.WebGLRenderTarget,webGlWorldStages);
     this.maxSamples=Math.min(4,renderer.capabilities?.maxSamples??0);
     const gl=renderer.getContext?.();
@@ -20,18 +22,28 @@ export class PostPass {
     }
     // FXAA must compare tone-mapped display luminance, not linear HDR values.
     const fragment=('#include <tonemapping_pars_fragment>\nuniform float useFxaa;uniform float sharpen;uniform float grain;uniform float time;uniform vec3 gradeTint;uniform vec2 grading;uniform float vignetteGain;\n'+FXAAShader.fragmentShader)
-      .replace('return texture( tex2D, uv );','vec4 texel=texture(tex2D,uv);vec3 color=ACESFilmicToneMapping(texel.rgb); if(grading.x!=1.||grading.y!=1.||any(notEqual(gradeTint,vec3(1.)))){color=(color-.32)*grading.x+.32; color=max(mix(vec3(dot(color,vec3(.2126,.7152,.0722))),color,grading.y)*gradeTint,vec3(0.));} return linearToOutputTexel(vec4(color,texel.a));')
+      .replace('return texture( tex2D, uv );','vec4 texel=texture(tex2D,uv);vec3 color=ACESFilmicToneMapping(texel.rgb); \n#ifdef S09_GRADE\n color=(color-.32)*grading.x+.32; color=max(mix(vec3(dot(color,vec3(.2126,.7152,.0722))),color,grading.y)*gradeTint,vec3(0.));\n#endif\n return linearToOutputTexel(vec4(color,texel.a));')
       .replace('gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );',`
-      vec3 colour=useFxaa>0.5?ApplyFXAA(tDiffuse,resolution.xy,vUv).rgb:Sample(tDiffuse,vUv).rgb;
-      if(sharpen>0.0){
+      #ifdef S09_FXAA
+      vec3 colour=ApplyFXAA(tDiffuse,resolution.xy,vUv).rgb;
+      #else
+      vec3 colour=Sample(tDiffuse,vUv).rgb;
+      #endif
+      #ifdef S09_SHARPEN
+      {
         vec3 a=Sample(tDiffuse,vUv+vec2(resolution.x,0.0)).rgb,b=Sample(tDiffuse,vUv-vec2(resolution.x,0.0)).rgb;
         vec3 c=Sample(tDiffuse,vUv+vec2(0.0,resolution.y)).rgb,d=Sample(tDiffuse,vUv-vec2(0.0,resolution.y)).rgb;
         vec3 low=min(colour,min(min(a,b),min(c,d))),high=max(colour,max(max(a,b),max(c,d)));
         colour=clamp(colour+(colour-(a+b+c+d)*0.25)*sharpen,low,high);
       }
+      #endif
+      #ifdef S09_VIGNETTE
       float vignette=1.0-smoothstep(0.1,0.8,distance(vUv,vec2(0.5)));
       colour*=1.-vignetteGain*(1.-vignette);
+      #endif
+      #ifdef S09_GRAIN
       colour+=(fract(sin(dot(gl_FragCoord.xy+time,vec2(12.9898,78.233)))*43758.5453)-0.5)*grain;
+      #endif
       gl_FragColor=vec4(colour,1.0);
       `);
     this.material=new THREE.ShaderMaterial({vertexShader:FXAAShader.vertexShader,fragmentShader:fragment,toneMapped:false,depthTest:false,depthWrite:false,uniforms:{tDiffuse:{value:this.target.texture},resolution:{value:new THREE.Vector2()},useFxaa:{value:1},sharpen:{value:.12},grain:{value:.0015},time:{value:0},toneMappingExposure:{value:1.06},gradeTint:{value:new THREE.Vector3(1,1,1)},grading:{value:new THREE.Vector2(1,1)},vignetteGain:{value:.08}}});
@@ -73,14 +85,12 @@ export class PostPass {
     const mode=this.antialias;
     const samples=mode==='msaa2'?(this.supportedSamples.includes(2)?2:0)
       : mode==='msaa4'||quality==='high'&&(mode==='auto'||mode==='on')?this.maxSamples:0;
-    if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
     const fsr=this.fsrQuality!=='off'&&this.fsrScale<0.995;
     this.material.uniforms.useFxaa.value=this.antialias==='off'?0:samples>0?0:1;
     this.material.uniforms.sharpen.value=fsr?0:quality==='high'?0:.12;
     const r=this.renderer;r.getDrawingBufferSize(this.size);
     const w=Math.max(1,Math.round(this.size.x*(fsr?this.fsrScale:1)));
     const h=Math.max(1,Math.round(this.size.y*(fsr?this.fsrScale:1)));
-    if(this.target.width!==w||this.target.height!==h)this.target.setSize(w,h);
     this.material.uniforms.resolution.value.set(1/w,1/h);
     if(mode==='smaa'){
       if(!this.smaaClass){
@@ -89,7 +99,7 @@ export class PostPass {
           .catch(error=>console.warn('SMAA resources unavailable',error));
       }else{
         this.smaa??=new this.smaaClass();
-        this.smaa.resize(this.size);
+        this.smaa.resize({x:w,y:h});
       }
     }else if(this.smaa){
       this.smaa.dispose();
@@ -103,41 +113,58 @@ export class PostPass {
       this.easuMaterial.uniforms.outputSize.value.copy(this.size);
       this.rcasMaterial.uniforms.outputSize.value.copy(this.size);
     }
-    const effects=this.worldEffects.configure(this.effects,w,h,samples);
+    let effects;
+    try{effects=this.worldEffects.configure(this.effects,w,h,samples);}
+    catch(error){throw Object.assign(new Error('World post configuration failed',{cause:error}),{s09PostFault:'depth'});}
+    selectSceneColor(this,this.compactSupported&&compactColorEligible(quality,effects,samples),w,h,THREE.WebGLRenderTarget);
+    if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
+    this.material.uniforms.tDiffuse.value=this.target.texture;
     if(this.smaaActive)this.material.uniforms.useFxaa.value=0;
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.material.uniforms.useFxaa.value=1;
+    const worldSamples=effects?this.worldEffects.world.samples:samples;
+    this.activeAA=this.smaaActive?'SMAA':this.material.uniforms.useFxaa.value>.5?'FXAA':worldSamples?'MSAA '+worldSamples+'×':'Выкл.';
+    this.aaFallback=mode==='smaa'&&!this.smaaActive?'SMAA ещё недоступно':mode.startsWith('msaa')&&worldSamples!==Number(mode.slice(4))?'MSAA несовместимо с активными эффектами или GPU':null;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
   end(time,quality,profiler){
     const r=this.renderer;r.setRenderTarget(null);const reset=r.info.autoReset;r.info.autoReset=false;
     this.material.uniforms.time.value=time;this.material.uniforms.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.material.uniforms.toneMappingExposure.value=r.toneMappingExposure;
+    const u=this.material.uniforms,g=u.gradeTint.value;
+    const variant=displayVariant({fxaa:u.useFxaa.value>.5,sharpen:u.sharpen.value>0,grade:u.grading.value.x!==1||u.grading.value.y!==1||g.x!==1||g.y!==1||g.z!==1,vignette:u.vignetteGain.value!==0,grain:u.grain.value!==0});
+    if(this.displayVariant!==variant){
+      this.displayVariant=variant;this.material.defines={};
+      ['S09_FXAA','S09_SHARPEN','S09_GRADE','S09_VIGNETTE','S09_GRAIN'].forEach((name,i)=>{if(variant[i]==='1')this.material.defines[name]=1;});
+      this.material.needsUpdate=true;
+    }
     try{
+      this.material.uniforms.tDiffuse.value=this.worldEffects.finishBloom(this.target,profiler);
       const output=this.smaaActive?this.smaa.input:null;
       if(this.fsrQuality!=='off'&&this.fsrScale<0.995){
         // Display-referred low-resolution image -> EASU at native resolution
         // -> RCAS sharpening at native resolution. Keep the HTML HUD native.
-        r.setRenderTarget(this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        r.setRenderTarget(this.smaaActive?this.smaa.input:this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        if(this.smaaActive){const timing=profiler?.beginPass('smaa');try{this.smaa.render(r,this.ldrTarget);}finally{if(timing)profiler.endPass();}}
         const timing=profiler?.beginPass('fsr');
         try{
           r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-          r.setRenderTarget(output);r.render(this.rcasScene,this.camera);
+          r.setRenderTarget(null);r.render(this.rcasScene,this.camera);
         }finally{if(timing)profiler.endPass();}
       }else{
         r.setRenderTarget(output);renderTimed(r,this.scene,this.camera,profiler,'display');
       }
-      if(this.smaaActive){
+      if(this.smaaActive&&!(this.fsrQuality!=='off'&&this.fsrScale<.995)){
         const timing=profiler?.beginPass('smaa');
         try{this.smaa.render(r);}
         finally{if(timing)profiler.endPass();}
       }
-    }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
+    }finally{this.material.uniforms.tDiffuse.value=this.target.texture;r.setRenderTarget(null);r.info.autoReset=reset;}
   }
   dispose(){
     this.worldEffects.receivers.dispose();
     this.worldEffects.dispose();
     this.smaa?.dispose();
-    this.target.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
+    this.nativeTarget.dispose();this.compactTarget?.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
     this.scene.children[0].geometry.dispose();
     this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();
   }

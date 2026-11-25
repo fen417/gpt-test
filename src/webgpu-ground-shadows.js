@@ -56,6 +56,7 @@ export class WebGpuGroundShadows {
       nodeMaterial[key]=value?.clone&&!value.isTexture?value.clone():value;
     }
     nodeMaterial.userData={...material.userData,groundShadowPatched:true};
+    if(material.roadMask)nodeMaterial.roadMask=material.roadMask;
     const uv=positionWorld.xz.div(this.span).add(vec2(.5));
     const inside=step(0,uv.x).mul(step(uv.x,1)).mul(step(0,uv.y)).mul(step(uv.y,1));
     const lightMask=this.sample.sample(clamp(uv,0,1)).r;
@@ -68,5 +69,6 @@ export class WebGpuGroundShadows {
     }
     return nodeMaterial;
   }
+  releaseMap(id){const t=this.textures.get(id);if(t&&t!==this.sample.value){if(t!==this.white)t.dispose();this.textures.delete(id);}}
   dispose(){for(const tex of new Set(this.textures.values()))if(tex!==this.white)tex.dispose();this.white.dispose();}
 }

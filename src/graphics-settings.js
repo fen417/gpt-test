@@ -1,17 +1,17 @@
 const legacy = Object.freeze({
-  materials: 'auto', surfaceDetail:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', ao: 'off', contact: 'off',
+  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', vegetation:'legacy', grassDensity:'off', grassDistance:'20', vegetationWind:'off', vegetationShadows:'off', foliageTransmission:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', gi:'off', architectureLight:'off', architectureAO:'off', ao: 'off', contact: 'off',
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
-  sky: 'legacy', water: 'legacy', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
-  smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off',
-  adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
+  sky: 'legacy', clouds:'off', heightFog:'off', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
+  smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off', muzzleEffects:'legacy', muzzleLights:'off', fireEffects:'legacy', fireLighting:'off', dust:'off',
+  shaderWarmup:'auto',adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
 
 const ultra = Object.freeze({
-  ...legacy, surfaceDetail:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
+  ...legacy, shaderWarmup:'full',surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'high',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', architectureLight:'high', architectureAO:'high', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
-  sky: 'high', water: 'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high',
+  sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
 
 export const GRAPHICS_PRESETS = Object.freeze({ legacy, low: legacy, medium: legacy, high: legacy, ultra });
@@ -33,7 +33,10 @@ const low = ['low', 'Низкое'], medium = ['medium', 'Среднее'], high
 export const GRAPHICS_CONTROLS = [
   ['Освещение и тени', [
     ['lighting', 'Освещение', 'Меняет баланс солнечного и рассеянного света. Почти не влияет на FPS.', choices(old, ['enhanced', 'Улучшенное'])],
+    ['gi','Глобальное освещение (GI)','Непрямой свет по реальным треугольникам карт. Учитывает стены и перекрытия при смешивании проб. Высокое — дополнительные слои по высоте.',choices(off,low,high)],
     ['ao', 'Экранное затенение (SSAO)', 'Делает заметнее стыки и углубления. GTAO оценивает перекрытие по горизонту.', choices(off, ['low', 'SSAO · низкое'], ['high', 'SSAO · высокое'], ['gtao', 'GTAO'])],
+    ['architectureLight','Карты освещения архитектуры','Запечённый рассеянный свет по реальным треугольникам зданий. Не требует дополнительного экранного прохода.',choices(off,low,high)],
+    ['architectureAO','Запечённое AO архитектуры','Статические углы, стыки и затенение под крышами. Дополняет AO фактур; работает с PBR и рельефом.',choices(off,low,high)],
     ['bakedAO', 'Запечённое AO материалов', 'Добавляет затенение в порах, швах и углублениях. Расходует текстурную память.', choices(off, low, high)],
     ['contact', 'Контактные тени', 'Уточняет мелкие тени рядом с камерой. Стоимость растёт с числом шагов.', choices(off, low, medium, high)],
     ['atmosphere', 'Атмосферное рассеивание', 'Добавляет высотную дымку и солнечные лучи. Высокие уровни учитывают перекрытие света при включённых каскадных тенях.', choices(off, low, medium, high, ['ultra','Ультра'])],
@@ -42,13 +45,26 @@ export const GRAPHICS_CONTROLS = [
   ]],
   ['Материалы и окружение', [
     ['materials', 'Материалы', 'Высокое качество использует PBR и рельеф поверхности.', choices(auto, low, high)],
-    ['surfaceDetail', 'Фактуры окружения', 'Карты цвета, рельефа и шероховатости для камня, песка, бетона и асфальта.', choices(off, ['medium', '512 px'], ['high', '1024 px'])],
-    ['relief','Параллакс-рельеф','Добавляет видимую глубину камню и бетону при включённых фактурах окружения.',choices(off,['basic','Базовый'],['low','POM · 8 шагов'],['high','POM · 16 шагов'])],
+    ['surfaceDetail', 'Фактуры окружения', 'Сжатые PBR-фактуры окружения. Ультра использует 4K только для крупных поверхностей; без аппаратного сжатия действует ограничение 2K.', choices(off, ['medium', '512 px'], ['standard', '1024 px'], ['high', '2048 px'], ['ultra','До 4096 px'])],
+    ['mapWeathering','Износ и разнообразие поверхностей','Профили карт, минеральная пыль, потёки, сколы, окисление и шероховатость. Высокое — локальные детали и обочины дорог.',choices(off,low,high)],
+    ['relief','Параллакс-рельеф','Рельеф сканов камня, бетона, кирпича и других материалов с картами высот. Дальность и число шагов адаптируются к расстоянию и углу.',choices(off,['basic','Базовый'],['low','POM · до 8 шагов'],['high','POM · до 16 шагов'],['ultra','POM · до 24 шагов + уточнение'])],
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
-    ['sky', 'Небо', 'Добавляет солнечный диск и атмосферное рассеивание. Умеренная нагрузка.', choices(old, high)],
+    ['sky', 'Небо', 'Добавляет солнечный диск, воздушную перспективу горизонта и цвет неба с учётом карты.', choices(old, high)],
+    ['clouds','Облака','Движущиеся облака в улучшенном небе: низкие — один слой, средние — второй слой, высокие — детализация и подсветка.',choices(off,low,medium,high)],
+    ['heightFog','Высотный туман','Дополнительная дымка у земли с затуханием по высоте и расстоянию. Независимо от лучей.',choices(off,low,high)],
     ['reflections', 'Экранные отражения', 'Отражает видимое окружение на воде и отмеченных глянцевых поверхностях.', choices(off,low,medium,high)],
-    ['localReflections', 'Локальные отражения', 'Отражает окружение на воде, стекле и металле в отдельных зонах порта, «Лагуны» и Linden Estate.', choices(off,high)],
-    ['water', 'Вода', 'Добавляет нормали волн и отражение неба там, где есть вода.', choices(old, high)],
+    ['localReflections', 'Локальные отражения', 'Кэшированные пробы окружения на стекле и металле. Средние 64, высокие 128 px.', choices(off,medium,high)],
+    ['water', 'Вода', 'Два масштаба волн, цвет по глубине и отражение неба. Старый режим сохраняет исходный материал.', choices(old,low,medium,high)],
+    ['waterRefraction','Преломление воды','Физическая передача света через поверхность бассейнов на высоком качестве воды. Дополнительный проход.',choices(off,high)],
+    ['waterFoam','Береговая пена','Нерегулярные светлые полосы на мелководье и у берега. Высокое качество воды.',choices(off,high)],
+  ]],
+  ['Растительность', [
+    ['vegetation','Качество растительности','Новые пальмовые кроны, кустарники и листья с дистанционным LOD. Исходное сохраняет прежнюю карту.',choices(old,low,medium,high,['ultra','Ультра'])],
+    ['grassDensity','Густота травы','Количество небольших пучков на подходящей земле.',choices(off,['25','25%'],['50','50%'],['100','100%'])],
+    ['grassDistance','Дальность травы','Дальность потоковой загрузки секторов вокруг камеры.',choices(['20','20 м'],['45','45 м'],['70','70 м'],['100','100 м'])],
+    ['vegetationWind','Ветер','Колебание вершин на GPU, с неподвижными корнями.',choices(off,low,high)],
+    ['vegetationShadows','Тени растительности','Ближние тени крупных растений или полные с ближней травой.',choices(off,low,high)],
+    ['foliageTransmission','Просвечивание листвы','Приближённая подсветка тонких листьев со стороны солнца.',choices(off,high)],
   ]],
   ['Постобработка', [
     ['bloom', 'Свечение HDR', 'Смягчает яркие блики и эмиссивные источники. Чем выше качество, тем шире свечение.', choices(off, low, medium, high, ['ultra', 'Ультра'])],
@@ -64,13 +80,19 @@ export const GRAPHICS_CONTROLS = [
     ['grain', 'Зерно', 'Добавляет мелкое зерно поверх изображения.', choices(old, off, low, high)],
   ]],
   ['Эффекты', [
-    ['smoke','Дым','Добавляет неоднородность и движение мелких облаков дыма.',choices(old,high)],
+    ['smoke','Дым','Неоднородные клубы, дрейф и многослойная турбулентность. Высокое качество использует дополнительную выборку текстуры.',choices(old,medium,high)],
+    ['muzzleEffects','Дульная вспышка','Нерегулярная яркая вспышка и короткий пороховой дым.',choices(old,high)],
+    ['muzzleLights','Освещение от выстрелов','Реальные точечные источники света без теней. Низкое — свои выстрелы, высокое — также ближайшие бойцы и техника (до трёх источников).',choices(off,low,high)],
+    ['fireEffects','Огонь','Текстурированные языки пламени и горящие обломки.',choices(old,high)],
+    ['fireLighting','Освещение от огня','Локальный мерцающий свет от близких очагов. Общий ограниченный пул света.',choices(off,high)],
+    ['dust','Пыль и обломки','Пыль от техники и попаданий, вытянутые искры. Ограничено расстоянием.',choices(off,medium,high)],
     ['softParticles','Мягкие частицы','Плавно скрывает дым при пересечении с поверхностями. Добавляет проход при наличии дыма.',choices(off,high)],
     ['particleLighting','Освещение дыма','Имитирует рассеивание света на частицах со стороны солнца.',choices(off,high)],
     ['heatDistortion','Марево','Искажает воздух над огнём и вспышками. При прицеливании отключается.',choices(off,high)],
-    ['explosions','Взрывы','Добавляет короткую HDR-вспышку и детализированный шлейф дыма.',choices(old,high)],
+    ['explosions','Взрывы','HDR-огненный шар, расходящаяся пыль, искры и клубы дыма.',choices(old,medium,high)],
   ]],
   ['Производительность', [
+    ['shaderWarmup','Предкомпиляция шейдеров','Авто — ограниченная подготовка выбранной сцены при загрузке матча. Полная — дольше ждёт PBR/GI и загружает больше текстур. Выкл. — исходный прогрев первого кадра.',choices(off,auto,['full','Полная'])],
     ['adaptiveTarget', 'Адаптивное качество', 'После устойчивой нагрузки уменьшает качество отдельных эффектов.', choices(off, ...[30,45,60,90,120].map(n=>[String(n),n+' FPS']))],
     ['adaptiveFloor', 'Предел упрощения эффектов', 'Сбалансированный режим оставляет часть эффектов активными.', choices(['balanced','Сбалансированный'],['minimum','Минимальный'])],
     ['adaptiveMinScale', 'Минимальный масштаб', 'Предел для адаптивного масштаба. Действует в режимах «Авто».', [50, 100]],
@@ -86,16 +108,19 @@ export const GRAPHICS_GROUPS = [
   ['shadowStyle','Мягкость и дальность теней','Фильтр и размер области динамических теней.', ['shadowFilter','shadowDistance'], {
     auto:['Авто','auto','auto'], fast:['Ближние', 'hard','near'], soft:['Мягкие','soft','auto'], far:['Мягкие дальние','pcss','far'],
   }],
-  ['surfaceQuality','Качество поверхностей','Материалы, чёткость фактур и глубина рельефа.', ['materials','surfaceDetail','relief'], {
-    auto:['Как раньше','auto','off','off'], low:['Облегчённое','low','off','off'], medium:['Среднее','auto','medium','basic'],
-    high:['Высокое','auto','high','low'], ultra:['Ультра','auto','high','high'],
+  ['surfaceQuality','Качество поверхностей','Материалы, чёткость фактур и глубина рельефа.', ['materials','surfaceDetail','relief','mapWeathering'], {
+    auto:['Как раньше','auto','off','off','off'], low:['Облегчённое','low','off','off','off'], medium:['Среднее','auto','standard','basic','low'],
+    high:['Высокое','auto','high','low','high'], ultra:['Ультра','auto','ultra','ultra','high'],
   }],
-  ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere'], {
-    legacy:['Как раньше','legacy','off'], low:['Низкое','high','low'], medium:['Среднее','high','medium'], high:['Высокое','high','high'], ultra:['Ультра','high','ultra'],
+  ['vegetationQuality','Растительность','Кроны, трава, ветер и тени.', ['vegetation','grassDensity','grassDistance','vegetationWind','vegetationShadows','foliageTransmission'], {
+    legacy:['Как раньше','legacy','off','20','off','off','off'],low:['Низкое','low','25','20','off','off','off'],medium:['Среднее','medium','50','45','low','low','off'],high:['Высокое','high','100','70','high','low','high'],ultra:['Ультра','ultra','100','100','high','high','high'],
   }],
-  ['reflectionQuality','Вода и отражения','Волны, экранные отражения и местное окружение.', ['reflections','localReflections','water'], {
-    legacy:['Как раньше','off','off','legacy'], local:['Локальные','off','high','high'],
-    low:['Низкие','low','high','high'], medium:['Средние','medium','high','high'], high:['Высокие','high','high','high'],
+  ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere','clouds','heightFog'], {
+    legacy:['Как раньше','legacy','off','off','off'], low:['Низкое','high','low','low','off'], medium:['Среднее','high','medium','medium','low'], high:['Высокое','high','high','high','low'], ultra:['Ультра','high','ultra','high','high'],
+  }],
+  ['reflectionQuality','Вода и отражения','Волны, экранные отражения и местное окружение.', ['reflections','localReflections','water','waterRefraction','waterFoam'], {
+    legacy:['Как раньше','off','off','legacy','off','off'], local:['Локальные','off','medium','medium','off','off'],
+    low:['Низкие','low','off','low','off','off'], medium:['Средние','medium','medium','medium','off','off'], high:['Высокие','high','high','high','high','high'],
   }],
   ['cinematicCamera','Камера в заставках','Смаз движения и глубина резкости.', ['motionBlur','depthOfField'], {
     off:['Выкл.','off','off'], low:['Лёгкий эффект','low','cinematics'], high:['Заставки и меню','medium','on'],
@@ -107,10 +132,10 @@ export const GRAPHICS_GROUPS = [
     legacy:['Как раньше','legacy','legacy'], off:['Выкл.','off','off'], low:['Слабые','low','low'], high:['Выраженные','high','high'],
   }],
   ['smokeQuality','Качество дыма','Детализация, освещение и мягкие края частиц.', ['smoke','softParticles','particleLighting'], {
-    legacy:['Как раньше','legacy','off','off'], medium:['Среднее','high','off','high'], high:['Высокое','high','high','high'],
+    legacy:['Как раньше','legacy','off','off'], medium:['Среднее','medium','off','high'], high:['Высокое','high','high','high'],
   }],
-  ['explosionQuality','Взрывы и марево','Вспышки, шлейфы и искажение воздуха над огнём.', ['explosions','heatDistortion'], {
-    legacy:['Как раньше','legacy','off'], medium:['Среднее','high','off'], high:['Высокое','high','high'],
+  ['explosionQuality','Взрывы и марево','Вспышки, шлейфы и искажение воздуха над огнём.', ['explosions','heatDistortion','fireEffects','dust'], {
+    legacy:['Как раньше','legacy','off','legacy','off'], medium:['Среднее','medium','off','high','medium'], high:['Высокое','high','high','high','high'],
   }],
   ['adaptivePolicy','Приоритет адаптации','До какого уровня можно упрощать эффекты и масштаб.', ['adaptiveFloor','adaptiveMinScale','adaptiveClarity'], {
     clarity:['Чёткость','balanced','65','on'], balanced:['Баланс','balanced','65','off'], fps:['Частота кадров','minimum','50','off'],
