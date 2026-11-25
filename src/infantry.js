@@ -265,9 +265,28 @@ const classKit = {
   recon: [['ScoutBoonie', 'Head']],
 };
 
+// SkeletonUtils clones a palette for every skinned mesh. Sharing identical
+// palettes inside one actor preserves every bone/IK transform and bind matrix.
+export function shareInfantrySkeletons(model) {
+  const palettes=[],replaced=new Set();
+  model.traverse(mesh=>{
+    const skeleton=mesh.skeleton;
+    if(!mesh.isSkinnedMesh||!skeleton||skeleton.boneTexture)return;
+    const existing=palettes.find(other=>other===skeleton||
+      other.bones.length===skeleton.bones.length&&
+      other.boneInverses.length===skeleton.boneInverses.length&&
+      other.bones.every((bone,index)=>bone===skeleton.bones[index]&&
+        other.boneInverses[index]?.equals(skeleton.boneInverses[index])));
+    if(!existing)palettes.push(skeleton);
+    else if(existing!==skeleton){mesh.skeleton=existing;replaced.add(skeleton);}
+  });
+  return replaced.size;
+}
+
 export function createInfantry({ template, gun, kit }, player) {
   const group = new THREE.Group(), model = cloneInfantry(template);
   const bones = findInfantryBones(model);
+  const sharedSkeletons=shareInfantrySkeletons(model);
   const parts = [];
   let variant = 0;
   for (const letter of String(player.id ?? "")) variant = (Math.imul(variant, 31) + letter.charCodeAt(0)) | 0;
@@ -321,7 +340,7 @@ export function createInfantry({ template, gun, kit }, player) {
   bones.Head.add(head);
   head.userData.faceCovered = true;
   const rig = {
-    group, model, parts, details, bones, head, marker, rifle, flash, template,
+    group, model, parts, details, bones, head, marker, rifle, flash, template, sharedSkeletons,
     mixer: new THREE.AnimationMixer(model), actions: new Map(), activeActions: new Set(), nextActions:new Set(),
     team: player.team, classId: player.classId, lod: 0, alive: true,
     motion: { phase: 0, speed: 0, vx: 0, vz: 0, x: 0, z: 0, moving: 0, gait: new Map() },

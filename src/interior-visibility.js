@@ -17,14 +17,14 @@ function insetShape(b){
 // Every corner must be behind the SAME convex wall, so windows/doorways stay
 // visible. Apply only during the colour pass; shadow casters remain intact.
 export class InteriorVisibility {
-  constructor(){this.eye=new THREE.Vector3(Infinity,0,0);this.orientation=new THREE.Quaternion();this.cursor=0;this.hidden=[];}
+  constructor(){this.eye=new THREE.Vector3(Infinity,0,0);this.orientation=new THREE.Quaternion();this.cursor=0;this.hidden=[];this.blocked=new Set();this.nearWalls=[];}
   apply(owner){
     const {staticRoot,map,camera,viewFrustum}=owner;
     if(!staticRoot||!map)return;
     this.lastHidden=0;this.lastChecks=0;
     if(this.root!==staticRoot||this.revision!==owner.staticMaterialRevision){
       this.revision=owner.staticMaterialRevision;
-      this.root=staticRoot;this.items=[];
+      this.root=staticRoot;this.items=[];this.blocked.clear();
       staticRoot.updateMatrixWorld(true);
       const flags=new Set([...owner.flags.values()].map(f=>f.group));
       staticRoot.traverse(mesh=>{
@@ -48,14 +48,15 @@ export class InteriorVisibility {
     const moved=!this.eye.equals(eye)||this.previousDisabled!==disabledKey||this.shadowRestriction!==shadowRestriction;
     const turned=!this.orientation.equals(camera.quaternion);
     if(moved){
-      for(const item of this.items)item.blocked=false;this.eye.copy(eye);this.previousDisabled=disabledKey;this.shadowRestriction=shadowRestriction;
+      this.blocked.clear();this.eye.copy(eye);this.previousDisabled=disabledKey;this.shadowRestriction=shadowRestriction;
+      this.nearWalls=this.walls.query(eye.x-40,eye.z-40,eye.x+40,eye.z+40)
+        .filter(box=>!this.disabled?.has(box.id))
+        .sort((a,b)=>(a.x-eye.x)**2+(a.z-eye.z)**2-((b.x-eye.x)**2+(b.z-eye.z)**2)).slice(0,16);
     }
     // Keep the cursor across movement to avoid starving later candidates.
     if(moved||turned){this.remaining=this.items.length;this.orientation.copy(camera.quaternion);}
     if(this.remaining>0){
-    const walls=this.walls.query(eye.x-40,eye.z-40,eye.x+40,eye.z+40)
-      .filter(box=>!this.disabled?.has(box.id))
-      .sort((a,b)=>(a.x-eye.x)**2+(a.z-eye.z)**2-((b.x-eye.x)**2+(b.z-eye.z)**2)).slice(0,16);
+    const walls=this.nearWalls;
     const deadline=performance.now()+.6;let count=0;
     // Revisit the relevant candidates when the view changes; stationary
     // frames reuse proven results instead of repeatedly spending the budget.
@@ -63,15 +64,16 @@ export class InteriorVisibility {
       const item=this.items[this.cursor++%this.items.length];this.remaining--;
       if(!item.mesh.visible||shadowRestriction&&item.mesh.castShadow||!viewFrustum.intersectsBox(item.box))continue;
       this.lastChecks++;
-      item.blocked=walls.some(wall=>item.corners.every(p=>{
+      const blocked=walls.some(wall=>item.corners.every(p=>{
         const dx=p.x-eye.x,dy=p.y-eye.y,dz=p.z-eye.z,length=Math.hypot(dx,dy,dz);
         if(length<.1)return false;
         const hit=rayAffineBox(eye,{x:dx/length,y:dy/length,z:dz/length},wall.occlusionShape,length);
         return hit>.05&&hit<length-.1;
       }));
+      if(blocked)this.blocked.add(item);else this.blocked.delete(item);
     }
     }
-    for(const item of this.items)if(item.blocked&&item.mesh.visible&&!(shadowRestriction&&item.mesh.castShadow)){item.mesh.visible=false;this.hidden.push(item.mesh);}
+    for(const item of this.blocked)if(item.mesh.visible&&!(shadowRestriction&&item.mesh.castShadow)){item.mesh.visible=false;this.hidden.push(item.mesh);}
     this.lastHidden=this.hidden.length;
   }
   restore(){for(const mesh of this.hidden)mesh.visible=true;this.hidden.length=0;}

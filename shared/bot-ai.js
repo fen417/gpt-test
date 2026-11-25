@@ -21,6 +21,7 @@ function state(sim,p){
 export function ensureBotState(sim,p){return state(sim,p);}
 function sight(sim,from,to){
   if(!sim.lineClear(from,to))return false;
+  if(!sim.vehicles.length)return true;
   const length=Math.hypot(to.x-from.x,to.y-from.y,to.z-from.z);if(length<.05)return true;
   const direction={x:(to.x-from.x)/length,y:(to.y-from.y)/length,z:(to.z-from.z)/length};
   return !sim.vehicles.some(v=>(v.hp>0||v.wreckTime>0)&&rayVehicleArmor(from,direction,v,length-.1)<length-.1);
@@ -84,7 +85,7 @@ function sense(sim,p){
   ai.senseAt=sim.time+(sim.difficulty==='veteran'?.12:sim.difficulty==='recruit'?.24:.18)+(p.botSlot%3)*.007;
   const origin=eye(p),range=p.classId==='recon'?Math.min(weapon.range,settings.awareness*2.25):settings.awareness;
   let selected=null,best=Infinity;
-  for(const other of sim.players.values()){
+  for(const other of sim.botSenseGrid?.query(p,range,sim.players)??sim.players.values()){
     if(!other.alive||other.team===p.team||other.invulnerableUntil>sim.time)continue;
     const d=distance(p,other);if(d>range)continue;
     const bearing=Math.atan2(-(other.x-p.x),-(other.z-p.z));
@@ -124,7 +125,7 @@ function sense(sim,p){
       const shared=[...sim.botTeams[p.team].contacts.values()].filter(c=>sim.time-c.at>.5&&sim.time-c.at<5&&distance(c,p)<80).sort((a,b)=>b.at-a.at)[0];
       if(shared&&(!ai.memory||shared.at>ai.memory.at))ai.memory={...shared,x:shared.x+(sim.random()-.5)*3,z:shared.z+(sim.random()-.5)*3,confidence:.65};
     }
-    if(!ai.memory||sim.time-ai.memory.at>3)for(const other of sim.players.values()){
+    if(!ai.memory||sim.time-ai.memory.at>3)for(const other of sim.botSenseGrid?.query(p,14,sim.players)??sim.players.values()){
       if(!other.alive||other.team===p.team||other.vehicleId||other.moveSpeed<2)continue;
       if(distance(p,other)>(other.input.sprint?14:7))continue;
       ai.memory={x:other.x+(sim.random()-.5)*2,y:other.y,z:other.z+(sim.random()-.5)*2,at:sim.time,kind:'footsteps',confidence:.45};break;

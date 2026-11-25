@@ -1,7 +1,7 @@
 import {resourceSet,collectMaterial,collectRoot,collectModel,collectWorld,estimateBytes,releaseResources,residencyPolicy} from './map-residency.js';
 import {batchRigidPickup} from './model-batching.js';
 import {ArchitectureLightmaps} from './architecture-lightmaps.js';
-import {batchStaticWorld} from './static-batching.js';
+import {batchStaticWorld,staticSectorSizeForMap} from './static-batching.js';
 import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, GEOMETRY_QUALITY} from './graphics-settings.js';
 import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
@@ -11,7 +11,7 @@ import {WaterAppearance} from './water-appearance.js';
 import {IndirectLighting} from './indirect-lighting.js';
 import {Vegetation} from './vegetation.js';
 import {ShaderWarmup} from './shader-warmup.js';
-import {uploadPrefix,billboardRadius} from './render-work.js';
+import {uploadPrefix,uploadChangedPrefix,billboardRadius} from './render-work.js';
 import {atmosphereProfile} from './atmosphere-profile.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {LocalReflections} from './local-reflections.js';
@@ -1141,7 +1141,11 @@ export class GameRenderer {
   }
 
   mergeStaticWorld(existing) {
-    batchStaticWorld(this.scene,{excluded:new Set([...existing,...[...this.flags.values()].map(f=>f.group),this.camera]),sectorSize:this.staticSectorSize??96});
+    const override=Number(new URLSearchParams(typeof location==='undefined'?'':location.search).get('sector'));
+    const sectorSize=[24,32,48,64,96].includes(override)?override:staticSectorSizeForMap(this.map);
+    this.lastStaticSectorSize=sectorSize;
+    this.scene.userData.staticSectorSize=sectorSize;
+    batchStaticWorld(this.scene,{excluded:new Set([...existing,...[...this.flags.values()].map(f=>f.group),this.camera]),sectorSize});
   }
 
   makeFlag(point) {
@@ -1539,8 +1543,22 @@ export class GameRenderer {
         (player.crouching || player.crouch ? 1.48 : 1.94) + Math.sin(this.clock * 2) * .025;
       soldier.rifle.scale.setScalar(1);
       const interval = lod === 3 ? 1 / 12 : lod === 2 ? 1 / 24 : 0;
+      // Different actors start their next far-LOD pose at different offsets,
+      // but use the original cadence thereafter; elapsed motion time is intact.
+      if(soldier.animationPhase==null){
+        let hash=0;for(const letter of String(player.id))hash=(Math.imul(hash,31)+letter.charCodeAt(0))|0;
+        soldier.animationPhase=(hash>>>0)%8/8;
+      }
+      if(mustReset||soldier.animationInterval!==interval){
+        soldier.animationInterval=interval;
+        soldier.animationThreshold=interval*(.5+.5*soldier.animationPhase);
+      }
+      const poseFlags=(player.grounded===false?1:0)|(player.sliding?2:0)|(player.prone?4:0)|(player.downed?8:0)|(player.aim?16:0)|(player.reloading?32:0)|(player.crouch||player.crouching?64:0);
+      const urgent=poseFlags!==soldier.animationFlags||player.shotSeq!==soldier.animationShot||player.gadgetAction!==soldier.animationGadget;
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
-      if (mustReset || externalScene || this.scoped || soldier.animationDt >= interval) {
+      if (mustReset || externalScene || this.scoped || urgent || soldier.animationDt >= (soldier.animationThreshold??interval)) {
+        soldier.animationFlags=poseFlags;soldier.animationShot=player.shotSeq;soldier.animationGadget=player.gadgetAction;
+        soldier.animationThreshold=mustReset?interval*(.5+.5*soldier.animationPhase):interval;
         updateInfantry(soldier, player, soldier.animationDt, mustReset, this.map.terrain);
         if(state.gameMode==='tdm'&&!player.weaponId){
           if(soldier.weaponModel)soldier.weaponModel.visible=false;
@@ -1920,9 +1938,9 @@ export class GameRenderer {
       smoke.geometry.attributes.instanceRotation.setX(index, sprite.material.rotation);
     }
     if (smoke.count) {
-      uploadPrefix(smoke.instanceColor,smoke.count);
+      uploadChangedPrefix(smoke.instanceColor,smoke.count);
       uploadPrefix(smoke.geometry.attributes.instanceAlpha,smoke.count);
-      uploadPrefix(smoke.geometry.attributes.instanceRotation,smoke.count);
+      uploadChangedPrefix(smoke.geometry.attributes.instanceRotation,smoke.count);
     }
     for (const batch of Object.values(this.effectBatches)) uploadPrefix(batch.instanceMatrix,batch.count);
   }
@@ -2142,11 +2160,12 @@ export class GameRenderer {
     const dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 1.5);
     // The display canvas must stay native-sized with FSR; only the scene
     // render target is reduced. Without FSR keep the previous DRS behavior.
-    const ratio = this.gfx.fsr === 'on'
+    const requestedRatio = this.gfx.fsr === 'on'
       ? (this.lowQuality ? 1 : dpr)
       : this.gfx.resolution !== 'auto'
         ? clamp(Number(this.gfx.resolution) || 1, 0.5, 2)
         : this.resolutionController.ratio(this.viewportWidth??innerWidth,this.lowQuality?1:dpr);
+    const ratio=this.potatoMode&&this.gfx.fsr!=='on'&&this.gfx.resolution==='auto'?Math.min(.85,requestedRatio):requestedRatio;
     if (this.currentPixelRatio !== ratio) {
       this.currentPixelRatio = ratio;
       this.renderer.setPixelRatio(ratio);
@@ -2471,6 +2490,8 @@ export class GameRenderer {
     const previousQuality=this.quality;
     const previousEffects=this.graphicsEffects, previousShadowOverride=this.adaptiveGraphics?.shadowOverride;
     const gfx=view.gfx;
+    const previousPotato=this.potatoMode;
+    this.potatoMode=view.quality==='potato'&&!gfx?.customGraphics;
     const dynamicResolution=gfx?.fsr==='on'?gfx.fsrQuality==='auto':(gfx?.resolution??'auto')==='auto';
     this.quality=baseGraphicsQuality(view.quality);
     const selectedEffects=graphicsEffects(view.quality,gfx?.customGraphics);
@@ -2536,6 +2557,7 @@ export class GameRenderer {
       if(shadowChanged)this.applyShadows();
       this.updatePixelRatio();
     }
+    if(previousPotato!==this.potatoMode)this.updatePixelRatio();
     if(this.adaptiveGraphics){
       const scale=this.adaptiveGraphics.scale;
       if(this.resolutionController.scale!==scale){
@@ -2917,8 +2939,10 @@ export class GameRenderer {
     if(frameGeneration?.enabled)frameGeneration.gpuMs=gpuPassMs?.frameGeneration?.p95??null;
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
+      staticSectorSize:this.staticRoot?.userData.staticSectorSize??this.staticRoot?.children.find(child=>child.userData.staticSectorSize)?.userData.staticSectorSize??null,
       occlusion:{candidates:this.interiorVisibility.items?.length??0,occluders:this.interiorVisibility.wallCount??0,checks:this.interiorVisibility.lastChecks??0,hidden:this.interiorVisibility.lastHidden??0},
       mapResidency:this.mapResidency??null,shadowCache:this.cachedShadows.stats?.()??null,
+      sharedSkeletonPalettes:[...this.soldiers.values()].reduce((n,rig)=>n+(rig.sharedSkeletons??0),0),
       drawCallSavings:{pickupTemplate:this.pickupDrawCallsSaved??0,infantryTemplates:[...this.infantry?.templates.values()??[]].reduce((sum,t)=>sum+(t.bodyBatch?.saved??0),0)},
       sceneColorFormat:post.compactActive?'R11G11B10F':'RGBA16F',compactColorSupported:post.compactSupported,
       postSamples:post.target.samples,worldSamples:post.worldEffects.directWorld?post.target.samples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),

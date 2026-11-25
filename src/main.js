@@ -90,7 +90,7 @@ function flushDamage(now){
 }
 let selectedSpawn='',lastDeathPos=null,hoveredSpawn=null,inLobby=false;
 let gfx={shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality',fsrSharpness:40,frameGeneration:'off'},sensitivity=.8,quality='high',lastInput={},finished=false,fov=85,brightness=1,cameraShake=true;
-const getLowWeaponDetail=()=>(gfx.detail==='auto'?quality:gfx.detail)==='low';
+const getLowWeaponDetail=()=>['low','potato'].includes(gfx.detail==='auto'?quality:gfx.detail);
 let musicVolume=.45,effectsVolume=.7,musicMuted=false,audioStarted=false;
 const difficultyNames={recruit:'НОВОБРАНЦЫ',regular:'ОБЫЧНЫЕ БОЙЦЫ',veteran:'ВЕТЕРАНЫ'};
 const keys=new Set(),pulses=new Set();
@@ -1050,7 +1050,7 @@ const advancedControls=new Map();
 const groupControls=[];
 function syncGraphicsPreset(){
   presetSelector.value=gfx.customGraphics?'custom':quality;
-  document.body.classList.toggle('low-quality',quality==='low');
+  document.body.classList.toggle('low-quality',quality==='low'||quality==='potato');
   const values=graphicsEffects(quality,gfx.customGraphics);
   for(const [key,{control,value}] of advancedControls){
     control.value=values[key];
@@ -2061,10 +2061,12 @@ function frame(now){
     const network=(simulation?.client??(mode==='server'?multiplayer:null))?.diagnostics()??null;
     const networkLabel=mode==='server'&&network?` · ПИНГ ${network.rttMs??'—'} мс · ОЧЕРЕДЬ ${network.pendingInputs}${network.server?.tickAverageMs!=null?` · ТИК ${network.server.tickAverageMs} мс`:''}`:'';
     text('fps',`${Math.round(frames/fpsClock)} FPS${networkLabel}`);fpsClock=0;frames=0;
+    if(perfPanel.enabled||TEST_BUILD){
     const audioStats=audio.getStats?.();if(audioStats)$('music-toggle').dataset.audio=JSON.stringify(audioStats);
     const renderStats={...renderer.getStats?.(),frameMs:frameTimes.summary(),cpuMs:cpuTimes.summary(),renderMs:renderTimes.summary(),simulationMs:simulationTimes.summary()};
     canvas.dataset.renderStats=JSON.stringify(renderStats);
     perfPanel.update({...renderStats,active:active&&$('pause').classList.contains('hidden')&&$('death').classList.contains('hidden')&&!document.hidden,mapId:renderer.map?.id??currentMap.id,quality:gfx.customGraphics?'custom':quality,mode,settings:{...gfx,fov},population:state?.players.length??0,network,audio:audioStats,heapBytes:performance.memory?.usedJSHeapSize??null,viewport:{width:innerWidth,height:innerHeight}});
+    }
     if(network)canvas.dataset.networkStats=JSON.stringify(network);else delete canvas.dataset.networkStats;
   }
   const paused=document.hidden||!$('pause').classList.contains('hidden')||quickAttachments.open;

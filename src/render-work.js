@@ -27,3 +27,27 @@ export function withoutCasters(casters,callback){
   const changed=[];for(const object of casters)if(object.castShadow){object.castShadow=false;changed.push(object);}
   try{return callback();}finally{for(const object of changed)object.castShadow=true;}
 }
+
+const uploadHistory=new WeakMap();
+// Keep a CPU mirror only for small, often unchanged attributes. If another
+// writer touched the attribute (warmup/context changes), upload a fresh prefix.
+export function uploadChangedPrefix(attribute,count){
+  if(!attribute||count<=0)return;
+  const array=attribute.array,end=Math.min(array.length,count*attribute.itemSize);
+  let history=uploadHistory.get(attribute);
+  if(!history||history.array!==array||history.version!==attribute.version){
+    history={array,mirror:new array.constructor(array.length),valid:0,version:attribute.version};
+    uploadHistory.set(attribute,history);
+  }
+  let first=end,last=-1;
+  for(let n=0;n<end;n++){
+    if(n>=history.valid||history.mirror[n]!==array[n]){
+      history.mirror[n]=array[n];if(n<first)first=n;last=n;
+    }
+  }
+  history.valid=Math.max(history.valid,end);
+  if(last<0)return;
+  // Do not discard queued ranges if the renderer has not consumed them yet.
+  attribute.addUpdateRange(first,last-first+1);
+  attribute.needsUpdate=true;history.version=attribute.version;
+}

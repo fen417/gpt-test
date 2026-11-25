@@ -5,6 +5,9 @@ import {compactGeometryGroup} from './compact-geometry.js';
 
 // Colours are baked in linear space, so identical surface/shader settings can
 // share one draw without quantising paint colours or changing texture tiling.
+export function staticSectorSizeForMap(map) {
+  return /village|alhadra|tel-mazin|nahar|estate|laguna|port/i.test(map?.id??'') ? 32 : 96;
+}
 export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
   root.updateMatrixWorld(true);
   const keys=new WeakMap(),materials=new Map(),batches=new Map(),originals=new Set();

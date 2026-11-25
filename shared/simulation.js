@@ -6,6 +6,7 @@ import { shouldSpawnVehicleBotAtBase, thinkVehicleBot, honkVehicle, prepareVehic
 import {assignSquad,reconcileSquads,changeSquad} from './squads.js';
 import { rayVehicleArmor, rayVehicleGlass, rayVehicleCrew } from './vehicle-combat.js';
 import { ensureBotState, thinkInfantryBot, updateBotTeams, rememberBotDamage, suppressBot, botSpawnPoint, botDebugSnapshot } from './bot-ai.js';
+import {BotSenseGrid} from './bot-sense-grid.js';
 import { findBotPath, prepareNavigation, beginNavigationTick, moveBot } from './bot-navigation.js';
 import { CAPTURE_RATE, canSpawnAtPoint, getPrimaryWeapon, getSidearm, WEAPON_SWITCH_TIME, CROUCH_EYE_HEIGHT, WEAPONS } from './world.js';
 import { aimBullet, bulletHeight, zeroedBulletPitch } from './ballistics.js';
@@ -308,6 +309,7 @@ export class Simulation {
         ammo:0,reserve:0,stowedAmmo:{ammo:0,reserve:0},grenades:0,rockets:0,heldGadget:null});
       p.tdmSpawn=null;
     }
+    this.botSenseGrid?.sync(p);
     this.event('spawn',{playerId:p.id,x:p.x,z:p.z,team:p.team});return true;
   }
   groundAt(x,z){return this.map.terrain?.heightAt(x,z)??0;}
@@ -457,6 +459,7 @@ export class Simulation {
   syncVehicleSeat(p,vehicle){
     const pose=getVehicleSeatPose(vehicle,p.vehicleSeat);
     Object.assign(p,{x:pose.x,z:pose.z,y:pose.y-EYE_HEIGHT,vy:0,grounded:true,moveSpeed:Math.abs(vehicle.speed)});
+    this.botSenseGrid?.sync(p);
   }
   mountVehicle(p,vehicle,seat){
     if(p.bot&&this.time<BOT_VEHICLE_GRACE_SECONDS)return false;
@@ -494,6 +497,7 @@ export class Simulation {
       this.event('vehicleExit',{playerId:p.id,vehicleId:vehicle.id,seat});
       Object.assign(p,{vehicleId:null,vehicleSeat:null,grounded:false,vy:Math.min(-1.6,vehicle.verticalSpeed??0),moveSpeed:0,
         parachuteOpen:false,parachuteHold:0,parachuteReady:p.y-this.groundAt(p.x,p.z)>PARACHUTE_MIN_HEIGHT});
+      this.botSenseGrid?.sync(p);
       return true;
     }
     if(vehicle){
@@ -511,6 +515,7 @@ export class Simulation {
       this.event('vehicleExit',{playerId:p.id,vehicleId:vehicle.id,seat});
     }
     Object.assign(p,{vehicleId:null,vehicleSeat:null,y:this.groundAt(p.x,p.z),vy:0,moveSpeed:0});
+    this.botSenseGrid?.sync(p);
     return true;
   }
   updateVehicleActions(p){
@@ -1141,6 +1146,7 @@ export class Simulation {
         }
       }
     p.velocityX=(p.x-oldX)/dt;p.velocityZ=(p.z-oldZ)/dt;
+    this.botSenseGrid?.sync(p);
   }
   grenadeBoxes(x,z,endX,endZ){
     // Swept horizontal bounds of the grenade, queried against the *expanded*
@@ -1223,12 +1229,15 @@ export class Simulation {
     beginNavigationTick(this);
     if(this.gameMode!=='tdm'||this.map.tdmLoadout==='class')updateEquipment(this,dt);
     updateBotTeams(this);
+    // Campaign scripts may teleport actors outside the normal movement hooks.
+    if(!this.campaign)(this.botSenseGrid??=new BotSenseGrid()).begin(this.players);
     if(this.vehicles.length){
       for(const p of this.players.values()){
         if(!p.alive)continue;
         if(p.bot)this.thinkBot(p,dt);
         this.updateVehicleActions(p);
       }
+      this.botSenseGrid?.end(); // All infantry sensing is complete on vehicle maps.
       this.updateVehicles(dt);
     }
     for(const p of this.players.values()){
@@ -1289,6 +1298,7 @@ export class Simulation {
       p.grenadeHeld=i.grenade;
       if(!this.campaign&&this.time-p.lastHurt>7&&p.hp<100)p.hp=Math.min(100,p.hp+7*dt);
     }
+    this.botSenseGrid?.end();
     for(const p of this.players.values()){
       p.velocityX=(p.x-p.tickX)/dt;
       p.velocityZ=(p.z-p.tickZ)/dt;

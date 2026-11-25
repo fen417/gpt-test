@@ -14,11 +14,12 @@ const ultra = Object.freeze({
   sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
 
-export const GRAPHICS_PRESETS = Object.freeze({ legacy, low: legacy, medium: legacy, high: legacy, ultra });
+const potato=Object.freeze({...legacy,materials:'low',anisotropy:'1',vignette:'off',grain:'off',vegetation:'low'});
+export const GRAPHICS_PRESETS = Object.freeze({ legacy, potato, low: legacy, medium: legacy, high: legacy, ultra });
 export const LEGACY_GRAPHICS_DEFAULTS = Object.freeze({
   shadows:'auto',resolution:'auto',detail:'auto',fsr:'off',fsrQuality:'quality',fsrSharpness:40,frameGeneration:'off',aa:'auto',
 });
-export const baseGraphicsQuality = value => value === 'ultra' || value === 'legacy' ? 'high' : Object.hasOwn(GRAPHICS_PRESETS, value) ? value : 'high';
+export const baseGraphicsQuality = value => value === 'potato' ? 'low' : value === 'ultra' || value === 'legacy' ? 'high' : Object.hasOwn(GRAPHICS_PRESETS, value) ? value : 'high';
 export const GEOMETRY_QUALITY = Object.freeze(['low','medium','high']);
 export const geometryQuality = (preset, detail='auto') =>
   GEOMETRY_QUALITY.includes(detail)?detail:baseGraphicsQuality(preset);

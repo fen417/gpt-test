@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {BotSenseGrid} from '../shared/bot-sense-grid.js';
+import {uploadChangedPrefix} from '../src/render-work.js';
+
+test('bot broad phase retains order and updates moved players',()=>{
+  const players=new Map(Array.from({length:32},(_,id)=>[id,{id,x:(id%8)*80-320,z:Math.floor(id/8)*80-160}]));
+  const grid=new BotSenseGrid();grid.begin(players);
+  const point={x:0,z:0},range=100;
+  const expected=()=>[...players.values()].filter(p=>Math.hypot(p.x-point.x,p.z-point.z)<=range).map(p=>p.id);
+  const actual=()=>[...grid.query(point,range,players)].filter(p=>Math.hypot(p.x-point.x,p.z-point.z)<=range).map(p=>p.id);
+  assert.deepEqual(actual(),expected());
+  const moved=players.get(0);moved.x=1;moved.z=-1;grid.sync(moved);
+  assert.deepEqual(actual(),expected());
+  moved.x=800;moved.z=900;grid.sync(moved);
+  assert.deepEqual(actual(),expected());
+  grid.end();assert.deepEqual([...grid.query(point,range,players)],[...players.values()]);
+});
+
+test('changed upload skips identical values and preserves pending ranges',()=>{
+  const attr={array:new Float32Array([1,2,3,4]),itemSize:1,version:0,ranges:[],addUpdateRange(start,count){this.ranges.push({start,count});},set needsUpdate(v){if(v)this.version++;}};
+  uploadChangedPrefix(attr,4);assert.equal(attr.version,1);
+  uploadChangedPrefix(attr,4);assert.equal(attr.version,1);
+  attr.array[2]=9;uploadChangedPrefix(attr,4);assert.equal(attr.version,2);
+  assert.deepEqual(attr.ranges,[{start:0,count:4},{start:2,count:1}]);
+  attr.needsUpdate=true;uploadChangedPrefix(attr,4);assert.deepEqual(attr.ranges.at(-1),{start:0,count:4});
+});
