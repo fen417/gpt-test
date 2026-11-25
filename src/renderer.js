@@ -1360,7 +1360,7 @@ export class GameRenderer {
         if(this.graphicsEffects?.heatDistortion==='high')this.activeHeatFires.push({x,y,z,width,height});
         if(this.clock>=(rig.nextFlame??0)&&this.effects.length<105){
           rig.nextFlame=this.clock+.18;
-          this.hotParticle('flame',x+(this.random()-.5)*width,y+Math.max(height*.65,tank?width*.85:0),z+(this.random()-.5)*width,width*.8,.55,tank?.72:1);
+          this.hotParticle('flame',x+(this.random()-.5)*width,y+(tank?width*.22:height*.65),z+(this.random()-.5)*width,width*.8,.55,tank?.72:1);
           if(this.graphicsEffects.dust==='high'&&this.random()<.45)this.spark(x,y+height*.5,z,.8);
         }
       }

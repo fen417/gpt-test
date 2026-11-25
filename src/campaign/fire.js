@@ -1,8 +1,9 @@
+import {tankFlameCenter} from '../combat-visuals.js';
 import * as THREE from 'three';
 import {makeParticleTexture} from '../effect-art.js';
 
 const flameFragment=`
-  varying vec2 uvFire;uniform float time;uniform float seed;uniform float detail;
+  varying vec2 uvFire;uniform float time;uniform float seed;uniform float detail;uniform float vehicleFire;
   float noise(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
   void main(){
     vec2 p=uvFire;float y=p.y;
@@ -20,7 +21,12 @@ const flameFragment=`
       alpha*=.62+.38*cells;color=mix(color,vec3(1.,.98,.70),hot*.72)*1.45;
     }
     if(alpha<.025)discard;
-    gl_FragColor=vec4(color*1.5,alpha*.85);
+    if(vehicleFire>.5){
+      // Normal alpha blending retains orange flames against bright sky.
+      vec3 orange=mix(vec3(1.,.48,.055),vec3(.88,.085,.008),smoothstep(.10,.85,y));
+      color=mix(orange,orange*color,.28);
+      gl_FragColor=vec4(color*.95,alpha*.92);
+    }else gl_FragColor=vec4(color*1.5,alpha*.85);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
@@ -46,8 +52,8 @@ export class CampaignFire {
       const y=renderer.map.terrain.heightAt(x,z),group=new THREE.Group();group.position.set(x,y,z);this.root.add(group);
       const planes=[];for(let i=0;i<2;i++){
         const seed=this.emitters.length*3+i*4.2;
-        const material=gpu?.webGpuCampaignFlame(seed)??new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,uniforms:{time:{value:0},seed:{value:seed},detail:{value:0}},vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:flameFragment});
-        this.materials.push(material);const mesh=new THREE.Mesh(this.plane,material);mesh.scale.set(width,height,1);mesh.position.y=height*(vehicle?.60:.48);group.add(mesh);planes.push(mesh);
+        const material=gpu?.webGpuCampaignFlame(seed,vehicle)??new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:vehicle?THREE.NormalBlending:THREE.AdditiveBlending,uniforms:{time:{value:0},seed:{value:seed},detail:{value:0},vehicleFire:{value:Number(vehicle)}},vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:flameFragment});
+        this.materials.push(material);const mesh=new THREE.Mesh(this.plane,material);mesh.scale.set(width,height,1);mesh.position.y=vehicle?tankFlameCenter(height):height*.48;group.add(mesh);planes.push(mesh);
       }
       const glowMaterial=gpu?.webGpuCampaignGlow()??new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{strength:{value:.2}},vertexShader:'varying vec2 uvGlow;void main(){uvGlow=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'varying vec2 uvGlow;uniform float strength;void main(){float a=pow(max(0.,1.-length(uvGlow-.5)*2.),2.)*strength;gl_FragColor=vec4(1.,.28,.025,a);}'});
       this.materials.push(glowMaterial);const glow=new THREE.Mesh(this.plane,glowMaterial);glow.rotation.x=-Math.PI/2;glow.position.y=.05;glow.scale.setScalar(width*4.2);group.add(glow);glow.visible=!vehicle;
@@ -78,11 +84,11 @@ export class CampaignFire {
       if(anchor){e.x=anchor.x;e.y=anchor.y;e.z=anchor.z;e.group.position.copy(anchor);}
       if(this.renderer.graphicsEffects?.heatDistortion==='high')this.renderer.activeHeatFires.push(e);
       if(this.renderer.graphicsEffects?.fireLighting==='high')this.renderer.activeFireLights.push(e);
-      e.planes.forEach((mesh,i)=>{const u=uniforms(mesh.material);u.time.value=time;u.detail.value=Number(high);mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*(high?.12:.07));});
+      e.planes.forEach((mesh,i)=>{const u=uniforms(mesh.material);u.time.value=time;u.detail.value=Number(high);mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*(high?.12:.07));if(e.vehicle)mesh.position.y=tankFlameCenter(mesh.scale.y);});
       uniforms(e.glow.material).strength.value=.16+Math.sin(time*5+index)*.025;
       for(let n=0;n<8&&count<this.smoke.instanceMatrix.count;n++){
         const phase=((time*.12+n/8+index*.117)%1),age=phase*8,spread=e.width*(.45+phase*.7);
-        this.dummy.position.set(e.x+Math.sin(index*11+n*3.1)*spread+age*.32,e.y+e.height*.7+age*1.45,e.z+Math.cos(index*7+n*2.3)*spread+age*.12);
+        this.dummy.position.set(e.x+Math.sin(index*11+n*3.1)*spread+age*.32,e.y+e.height*(e.vehicle?.32:.7)+age*1.45,e.z+Math.cos(index*7+n*2.3)*spread+age*.12);
         this.dummy.quaternion.copy(camera.quaternion);this.dummy.rotateZ(Math.sin(n*9+index)*.6);this.dummy.scale.setScalar(e.width*(.65+phase*2.1));this.dummy.updateMatrix();this.smoke.setMatrixAt(count,this.dummy.matrix);
         this.opacities.setX(count,Math.sin(phase*Math.PI)*.68);count++;
       }

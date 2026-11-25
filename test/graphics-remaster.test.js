@@ -511,15 +511,17 @@ test('streamed grass reuses compatible instance buffers with exact live count',(
 });
 
 
-import {tankFireAnchor,adsFlashFactor,scriptedTankFire} from '../src/combat-visuals.js';
+import {tankFireAnchor,adsFlashFactor,scriptedTankFire,tankFlameCenter} from '../src/combat-visuals.js';
 test('tank wreck fire uses the rear deck in the interpolated hull pose, not turret or ground',()=>{
   const group=new THREE.Group(),body=new THREE.Group(),hull=new THREE.BoxGeometry(3.6,1.4,7);hull.translate(0,.8,0);group.add(body);group.position.set(10,2,20);group.rotation.y=Math.PI/2;
   const vehicle={type:'tank',x:0,y:0,z:0,yaw:0},out=new THREE.Vector3(),rig={body,levels:[{hull:{geometry:hull}}]};
-  tankFireAnchor(vehicle,rig,out);assert.ok(out.y>3.5&&out.x>11.9&&Math.abs(out.z-20)<1e-6);
-  body.rotation.x=.2;const expected=body.localToWorld(new THREE.Vector3(0,1.63,1.96));tankFireAnchor(vehicle,rig,out);assert.ok(expected.distanceTo(out)<1e-6);
+  tankFireAnchor(vehicle,rig,out);assert.ok(Math.abs(out.y-3.51)<1e-6&&Math.abs(out.x-12.12)<1e-6&&Math.abs(out.z-20)<1e-6);
+  body.rotation.x=.2;const expected=body.localToWorld(new THREE.Vector3(0,1.51,2.12));tankFireAnchor(vehicle,rig,out);assert.ok(expected.distanceTo(out)<1e-6);
   tankFireAnchor(vehicle,null,out);assert.ok(out.y>1.5&&out.z>1.8);hull.dispose();
   assert.equal(scriptedTankFire({...vehicle,convoyIndex:0,scriptedLoss:true},'m03'),true);assert.equal(scriptedTankFire({...vehicle,convoyIndex:0,scriptedLoss:true},'m02'),false);
 });
 test('ADS flash strength smoothly decreases without extinguishing the native flash',()=>{
   assert.equal(adsFlashFactor(0),1);assert.ok(adsFlashFactor(1)>.17&&adsFlashFactor(1)<.19);assert.ok(adsFlashFactor(.5)>adsFlashFactor(1));assert.equal(adsFlashFactor(-1),1);assert.equal(adsFlashFactor(2),adsFlashFactor(1));
 });
+
+test('tank flame base stays inside the engine deck as flame height changes',()=>{for(const height of [1,2.6,3])assert.ok(Math.abs(tankFlameCenter(height)-height*.5+.18)<1e-9);});

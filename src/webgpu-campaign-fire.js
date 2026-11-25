@@ -1,4 +1,4 @@
-import { AdditiveBlending, Color, DoubleSide } from 'three';
+import { AdditiveBlending, NormalBlending, Color, DoubleSide } from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { attribute, float, texture, uv, vec3, vec4, uniform, Fn, If, sin, smoothstep, abs, mix, length, max, pow } from 'three/tsl';
 
@@ -15,9 +15,9 @@ export function webGpuCampaignSmoke(map) {
   return material;
 }
 
-export function webGpuCampaignFlame(phase) {
+export function webGpuCampaignFlame(phase,vehicle=false) {
   const material=new MeshBasicNodeMaterial({
-    transparent:true,depthWrite:false,side:DoubleSide,blending:AdditiveBlending,fog:false,
+    transparent:true,depthWrite:false,side:DoubleSide,blending:vehicle?NormalBlending:AdditiveBlending,fog:false,
   });
   const time=uniform(0),seed=float(phase),detail=uniform(0);
   material.userData.fireUniforms={time,detail};
@@ -39,6 +39,7 @@ export function webGpuCampaignFlame(phase) {
       alpha.mulAssign(cells.mul(.38).add(.62));color.assign(mix(color,vec3(1,.98,.70),hot.mul(.72)).mul(1.45));
     });
     alpha.lessThan(.025).discard();
+    if(vehicle){const orange=mix(vec3(1,.48,.055),vec3(.88,.085,.008),smoothstep(.1,.85,y));return vec4(mix(orange,orange.mul(color),.28).mul(.95),alpha.mul(.92));}
     return vec4(color.mul(1.5),alpha.mul(.85));
   })();
   material.toneMapped=false;
