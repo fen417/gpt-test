@@ -24,9 +24,23 @@ function compare(a,b){
 async function run(api){
   const browser=await launch(api);
   const page=await browser.newPage({viewport:{width:480,height:320},deviceScaleFactor:1});
-  const errors=[];
+  const errors=[],networkErrors=[];
+  // Full Chromium requests a favicon automatically; this fixture has no icon.
+  // Only intercept that exact optional resource, never application assets.
+  await page.route('**/favicon.ico',route=>route.fulfill({status:204,body:''}));
+  page.on('response',response=>{
+    if(response.status()>=400)networkErrors.push(response.status()+' '+response.url());
+  });
+  page.on('requestfailed',request=>{
+    const reason=request.failure()?.errorText??'unknown';
+    if(reason!=='net::ERR_ABORTED')networkErrors.push(reason+' '+request.url());
+  });
   page.on('pageerror',error=>errors.push(error.message));
-  page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  page.on('console',message=>{
+    if(message.type()!=='error')return;
+    const url=message.location().url;
+    errors.push(message.text()+(url?' ['+url+']':''));
+  });
   try{
     await page.goto('http://127.0.0.1:5173/test/map-weathering-smoke.html',{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>typeof window.initWeatherSmoke==='function');
@@ -36,6 +50,7 @@ async function run(api){
     for(const q of ['off','low','high','offAgain']){
       const result=await page.evaluate(q=>window.drawWeatherSmoke(q==='offAgain'?'off':q),q);
       assert.deepEqual(result.errors,[],api+' GPU validation errors');
+      assert.deepEqual(networkErrors,[],api+' resource loading errors');
       // Never accept shader compilation errors, even when a device is lost.
       assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' browser errors');
       if(result.lost){
@@ -53,6 +68,7 @@ async function run(api){
     assert.ok(low.changed>.015,api+' low weathering did not change the rendered image');
     assert.ok(high.changed>.025,api+' high weathering did not change the rendered image');
     assert.ok(restored.mean<.3,api+' disabling weathering failed to restore original frame');
+    assert.deepEqual(networkErrors,[],api+' resource loading errors');
     return {passed:true};
   }finally{await browser.close();}
 }
