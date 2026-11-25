@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { weaponSwitchPose } from '../shared/world.js';
-import { updateTravel, cycleTime, idleSample } from './infantry-motion.js';
+import { updateTravel, cycleTime, idleSample, upperPoseTargets, blendUpperWeights } from './infantry-motion.js';
 import { cloneInfantry, findInfantryBones, gaitClips, legNames } from './infantry-assets.js';
 import { CREW_CONTROLS } from './vehicles.js';
 import { LAUNCHER_POSE } from './gadget-poses.js';
@@ -364,6 +364,7 @@ export function setInfantryWeapon(rig, template, weaponId) {
   rig.weaponTemplate = template;
   rig.attachmentFlags = 0;
   rig.weaponId = weaponId;
+  rig.weaponPoseReady=false;
   rig.weaponSkin = null;
   rig.pistol = template.pistol;
   rig.support.copy(template.support);
@@ -472,18 +473,24 @@ function play(rig, active, name, upper, time, weight) {
   active.add(action);
 }
 
-function nextPoseActions(rig){const active=rig.nextActions??=new Set();active.clear();return active;}
-
-function evalPose(rig, active) {
+function nextPoseActions(rig){
+  // Restore last frame's unmodified animated pose BEFORE clip activation.
+  // AnimationMixer captures the original binding value on activation. If
+  // the previous IK pose is still present, that modified pose can become
+  // the new baseline when an aim/idle/LOD clip is activated or released.
   for (const [bone, rest] of rig.corrections) bone.quaternion.copy(rest);
   rig.corrections.clear();
+  if(rig.hipsRest){
+    rig.bones.Hips.position.copy(rig.hipsRest);
+    rig.hipsRest=null;
+  }
+  const active=rig.nextActions??=new Set();active.clear();return active;
+}
+
+function evalPose(rig, active) {
   for (const action of rig.activeActions) if (!active.has(action)) action.stop();
   rig.nextActions=rig.activeActions;
   rig.activeActions = active;
-  if (rig.hipsRest) {
-    rig.bones.Hips.position.copy(rig.hipsRest);
-    rig.hipsRest = null;
-  }
   rig.mixer.update(0);
   rig.group.updateWorldMatrix(true, true);
 }
@@ -582,16 +589,50 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
   }
 }
 
-function applyWeapon(rig, player, dt, reload, actionWeight, aimYaw=player.yaw, aimPitch=player.pitch) {
+// A small upper-body motion follows the existing stride clock. The hips,
+// knees and contact solver remain unchanged. During idle this becomes
+// slow breathing rather than a repeated captured shoulder movement.
+function animateUpperTorso(rig,weight){
+  const spine=rig.bones.Spine;
+  if(!spine||weight<.005)return;
+  const moving=rig.motion.moving,phase=rig.motion.phase*TAU;
+  const breath=Math.sin(rig.poseTime*1.7)*.006;
+  const sway=Math.sin(phase)*moving*.018;
+  const lean=(.025*rig.upperSprint+.008*Math.cos(phase*2)*moving);
+  saveRotation(rig,spine);
+  // Apply gentle local rotations; no changes to root position or leg joints.
+  spine.rotateX((lean+breath)*weight);
+  spine.rotateZ(sway*weight);
+  spine.updateWorldMatrix(false,true);
+}
+
+function stabilizeWeaponPose(rig,dt){
+  const rifle=rig.rifle;
+  const pos=rig.weaponPosePosition??=new THREE.Vector3();
+  const rot=rig.weaponPoseRotation??=new THREE.Quaternion();
+  if(!rig.weaponPoseReady){
+    pos.copy(rifle.position);rot.copy(rifle.quaternion);rig.weaponPoseReady=true;
+  }else{
+    // Smooth only the local visual target before solving the arms. The
+    // hands still follow the same weapon in the same frame.
+    const alpha=1-Math.exp(-22*dt);
+    pos.lerp(rifle.position,alpha);rot.slerp(rifle.quaternion,alpha);
+    rifle.position.copy(pos);rifle.quaternion.copy(rot);
+    rifle.updateWorldMatrix(true,true);
+  }
+}
+
+function applyWeapon(rig, player, dt, reload, actionWeight, aimYaw=player.yaw, aimPitch=player.pitch, stabilize=false) {
   const { bones, group, rifle } = rig;
   const launcher = (player.heldGadget ?? player.gadgetAction) === 'launcher';
   const pistol = rig.pistol && !launcher, foregrip = rig.foregrip && !launcher;
   const afterSwitch = weaponSwitchPose(player.equipTime).lowered;
-  const bodyAim = clamp(turn(group.rotation.y, aimYaw ?? group.rotation.y), -.67, .67);
+  const targetAim=clamp(turn(group.rotation.y,aimYaw??group.rotation.y),-.67,.67);
+  const bodyAim=stabilize?(rig.relativeAim=damp(rig.relativeAim??targetAim,targetAim,12,dt)):targetAim;
   const pitch = clamp(aimPitch ?? 0, -.9, .9);
-  const sprint = player.sprint ? smoothstep(rig.motion.speed, 4.6, 6.1) : 0;
-  const wantsAim = Number(Boolean(player.aim));
-  const aimed = rig.gripAim = damp(rig.gripAim ?? wantsAim, wantsAim, 16, dt);
+  const sprint = stabilize?rig.upperSprint??0:player.sprint ? smoothstep(rig.motion.speed, 4.6, 6.1) : 0;
+  const wantsAim = stabilize?rig.upperAim??Number(Boolean(player.aim)):Number(Boolean(player.aim));
+  const aimed = rig.gripAim = damp(rig.gripAim ?? wantsAim, wantsAim, stabilize?12:16, dt);
   const carrying = .10 * (1 - aimed);
   const aimWeight = (1 - actionWeight) * (1 - reload * .72);
   const reloadProgress = player.reloading ? player.reloadProgress ?? 0 : 0;
@@ -651,6 +692,7 @@ function applyWeapon(rig, player, dt, reload, actionWeight, aimYaw=player.yaw, a
     }
     bringGripIntoReach(rig, supportPalm, supportFrame, supportWeight, foregrip,
       launcher ? launcherShoulder : pistol ? null : rig.stock);
+    if(stabilize)stabilizeWeaponPose(rig,dt);
     gripHand(rig, rig.rightHand, primaryPalm, rightGrip, 1, 1);
     gripHand(rig, rig.leftHand, supportPalm, supportFrame, -1, supportWeight);
     if (rig.lod < 2) {
@@ -677,7 +719,8 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     Object.assign(motion, { x: group.position.x, z: group.position.z, speed: 0, vx: 0, vz: 0, moving: 0, phase: 0, travelling:false, stopTime:0 });
     rig.poseTime=0;rig.bodyAimYaw=player.yaw??group.rotation.y;rig.bodyAimPitch=player.pitch??0;
     motion.gait.clear();
-    rig.upperWeights?.clear();
+    rig.upperWeights?.clear();rig.upperTimes?.clear();
+    rig.upperAim=Number(Boolean(player.aim));rig.upperSprint=0;rig.relativeAim=0;rig.weaponPoseReady=false;
     rig.crouchBlend = Number(Boolean(player.crouch || player.crouching));
     for (const leg of rig.legs) { leg.locked = false; leg.inContact = false; leg.weight = 0; }
     Object.assign(rig, { lastShot: player.shotSeq, shotAge: Infinity, hitAge: Infinity, recoil: 0,
@@ -778,8 +821,11 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
       }
     }
   }
-  const upper = lowerAction??(crouched ? (player.aim ? 'aim_crouch_idle' : 'ready_crouch_idle') :
-    player.sprint && motion.speed > 5 ? 'ready_sprint' : player.aim ? 'aim_idle' : 'ready_idle');
+  // Blend aim, carry, crouch and run continuously. AI aim can toggle on
+  // adjacent snapshots; no single toggle should restart the torso clip.
+  rig.upperAim=damp(rig.upperAim??Number(Boolean(player.aim)),Number(Boolean(player.aim)),7,dt);
+  rig.upperSprint=damp(rig.upperSprint??0,player.sprint?smoothstep(motion.speed,4.6,6.1):0,7,dt);
+  const upperCrouch=rig.crouchBlend??Number(crouched);
   if (player.shotSeq !== undefined && player.shotSeq !== rig.lastShot) {
     rig.shotAge = 0;
     rig.recoil = 1;
@@ -796,26 +842,29 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   // Bots keep their aiming pose through a burst. Weapon recoil and hand IK
   // still animate each shot without restarting the captured neck motion.
   const shoot = !player.bot && !prone && rig.shotAge < .18 ? .47 * (1 - rig.shotAge / .18) : 0;
-  const overlay = Math.max(actionWeight, reloadWeight, hit, shoot);
-  rig.upperWeights ??= new Map();
-  if (!rig.upperWeights.has(upper)) rig.upperWeights.set(upper, rig.upperWeights.size ? 0 : 1);
-  for (const [name, currentWeight] of rig.upperWeights) {
-    const weight = damp(currentWeight, Number(name === upper), 15, dt);
-    if (weight < .003 && name !== upper) {
-      rig.upperWeights.delete(name);
-      continue;
-    }
-    rig.upperWeights.set(name, weight);
-    const duration = rig.template.clips.get(name)?.upper.duration ?? 1;
-    const sample=name===lowerAction?lowerTime:name==='ready_sprint'?cycleTime(motion.phase,duration):idleSample(duration,rig.poseTime,true);
-    play(rig, active, name, true, sample, weight * (1 - overlay));
+  // Allocate a continuous overlay budget instead of swapping the whole
+  // upper skeleton to whichever transient happens to have the highest weight.
+  const actionLayer=actionWeight;
+  const reloadLayer=reloadWeight*(1-actionLayer);
+  const hitLayer=hit*(1-actionLayer-reloadLayer);
+  const shootLayer=shoot*(1-actionLayer-reloadLayer-hitLayer);
+  const baseWeight=1-actionLayer-reloadLayer-hitLayer-shootLayer;
+  const desiredUpper=upperPoseTargets(rig.upperTargets??=new Map(),upperCrouch,rig.upperAim,rig.upperSprint,lowerAction);
+  const upperWeights=blendUpperWeights(rig.upperWeights??=new Map(),desiredUpper,dt);
+  const upperTimes=rig.upperTimes??=new Map();
+  for(const [name,weight] of upperWeights){
+    const duration=rig.template.clips.get(name)?.upper.duration??1;
+    // Ready/aim clips are source poses, not independent breathing loops.
+    // For one-shot poses, keep the previous sample during their fade-out.
+    const sample=name===lowerAction?lowerTime:desiredUpper.has(name)?idleSample(duration,0):upperTimes.get(name)??idleSample(duration,0);
+    upperTimes.set(name,sample);
+    play(rig,active,name,true,sample,weight*baseWeight);
   }
-  if (overlay > 0) {
-    if (overlay === actionWeight) play(rig, active, action, true, rig.actionAge, overlay);
-    else if (overlay === reloadWeight) play(rig, active, 'reload', true, reload * rig.template.clips.get('reload').upper.duration, overlay);
-    else if (overlay === hit) play(rig, active, 'hit', true, rig.hitAge, overlay);
-    else play(rig, active, 'shoot', true, rig.shotAge, overlay);
-  }
+  for(const name of upperTimes.keys())if(!upperWeights.has(name))upperTimes.delete(name);
+  if(actionLayer>.003)play(rig,active,action,true,rig.actionAge,actionLayer);
+  if(reloadLayer>.003)play(rig,active,'reload',true,reload*rig.template.clips.get('reload').upper.duration,reloadLayer);
+  if(hitLayer>.003)play(rig,active,'hit',true,rig.hitAge,hitLayer);
+  if(shootLayer>.003)play(rig,active,'shoot',true,rig.shotAge,shootLayer);
   const kneeling = action === 'revive_kneel' && actionWeight > .01;
   if (kneeling) {
     for (const action of active) if (action.getClip().name.endsWith(':lower')) {
@@ -843,7 +892,8 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     const stretch = clamp(cycleDistance / measured - 1, 0, .85) * crouchWeight * movingWeight;
     applyContacts(rig, dt, contacts, terrain, 1 - smoothstep(motion.moving, 0, .52), drop, stretch);
   }
-  applyWeapon(rig, player, dt, reloadWeight, actionWeight,rig.bodyAimYaw,rig.bodyAimPitch);
+  if(!lowerAction)animateUpperTorso(rig,baseWeight);
+  applyWeapon(rig, player, dt, reloadWeight, actionWeight,rig.bodyAimYaw,rig.bodyAimPitch,true);
 }
 
 export function infantryHit(rig) {

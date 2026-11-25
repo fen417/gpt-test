@@ -36,3 +36,34 @@ export function idleSample(duration,clock,upper=false){
   // eased section of its pose instead of jumping from clip end to start.
   return Math.max(0,duration)*(upper?.26+.075*Math.sin(clock*1.65):.26);
 }
+
+// Continuous upper-body stance blending: no boolean clip changes per snapshot.
+export function upperPoseTargets(out,crouch,aim,sprint,special){
+  out.clear();
+  if(special){out.set(special,1);return out;}
+  const standing=1-crouch,run=standing*sprint*(1-aim);
+  const regular=standing-run;
+  out.set("ready_idle",regular*(1-aim));
+  out.set("aim_idle",regular*aim);
+  out.set("ready_crouch_idle",crouch*(1-aim));
+  out.set("aim_crouch_idle",crouch*aim);
+  out.set("ready_sprint",run);
+  return out;
+}
+
+export function blendUpperWeights(weights,targets,dt){
+  const alpha=1-Math.exp(-9*Math.max(0,dt));
+  if(!weights.size){
+    for(const [name,value] of targets)if(value>.0001)weights.set(name,value);
+  }else{
+    for(const [name,value] of targets)if(value>.0001&&!weights.has(name))weights.set(name,0);
+    for(const [name,value] of weights){
+      const next=value+((targets.get(name)??0)-value)*alpha;
+      if(next<.002&&(targets.get(name)??0)<.002)weights.delete(name);
+      else weights.set(name,next);
+    }
+  }
+  let sum=0;for(const value of weights.values())sum+=value;
+  if(sum>0)for(const [name,value] of weights)weights.set(name,value/sum);
+  return weights;
+}
