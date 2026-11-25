@@ -13,6 +13,7 @@ fn s09ShadowPcss(depthMap: texture_depth_2d, point: vec3f, size: vec2f, spread: 
   let texel=1./size;
   let searchDisk=array<vec2f,${p.blockerTaps}>(${diskPoints(p.blockerTaps,.73,'vec2f')});
   let filterDisk=array<vec2f,${p.filterTaps}>(${diskPoints(p.filterTaps,1.83,'vec2f')});
+  let smallDisk=array<vec2f,8>(${diskPoints(8,1.83,'vec2f')});
   let depthPerTexel=.024/max(spread,.01);
   var blockers=0.;
   var average=0.;
@@ -29,6 +30,13 @@ fn s09ShadowPcss(depthMap: texture_depth_2d, point: vec3f, size: vec2f, spread: 
   if(blockers==0.){return 1.;}
   let penumbra=clamp((point.z-average/blockers)*spread,${p.minRadius},${p.maxRadius}.);
   var visibility=0.;
+  if(penumbra<=1.35){
+    for(var i=0;i<8;i++){
+      let offset=smallDisk[i]*penumbra;
+      visibility+=step(point.z-depthPerTexel*(.28+.22*length(offset)),s09DepthAt(depthMap,point.xy+offset*texel,size));
+    }
+    return visibility/8.;
+  }
   for(var i=0;i<${p.filterTaps};i++){
     let offset=filterDisk[i]*penumbra;
     let uv=point.xy+offset*texel;

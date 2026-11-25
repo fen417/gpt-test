@@ -14,6 +14,7 @@ float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, floa
   // changing the entire kernel at every shadow texel.
   const vec2 searchDisk[${p.blockerTaps}]=vec2[${p.blockerTaps}](${diskPoints(p.blockerTaps,.73,'vec2')});
   const vec2 filterDisk[${p.filterTaps}]=vec2[${p.filterTaps}](${diskPoints(p.filterTaps,1.83,'vec2')});
+  const vec2 smallDisk[8]=vec2[8](${diskPoints(8,1.83,'vec2')});
   float depthPerTexel=.024/max(spread,.01);
   // Receiver-plane correction for each sample. A sloping lit face must not
   // compare every neighbouring depth against the centre's depth.
@@ -34,6 +35,13 @@ float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, floa
   if(blockers==0.)return 1.;
   float penumbra=clamp((point.z-average/blockers)*spread,${p.minRadius},${p.maxRadius}.);
   float visibility=0.;
+  if(penumbra<=1.35){
+    for(int i=0;i<8;i++){
+      vec2 offset=smallDisk[i]*penumbra;
+      visibility+=texture2DCompare(shadowMap,point.xy+offset*texel,point.z+dot(slope,offset)-.28*depthPerTexel);
+    }
+    return mix(1.,visibility/8.,intensity);
+  }
   for(int i=0;i<${p.filterTaps};i++){
     vec2 offset=filterDisk[i]*penumbra;
     vec2 sampleUV=point.xy+offset*texel;
