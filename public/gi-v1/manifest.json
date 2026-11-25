@@ -1,10 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "maps": {
     "port": {
-      "version": 1,
+      "version": 2,
       "mapId": "port",
       "layout": 0,
+      "sourceType": "visual-triangles",
       "nx": 144,
       "nz": 144,
       "minX": -180,
@@ -13,14 +14,17 @@
       "depth": 360,
       "groundMin": 0,
       "groundRange": 1,
+      "source": "939236ee953d540491979e14e7f1e666a8025eb3b8fc596207def0ca77a44399",
       "file": "port.rgba",
-      "bytes": 331776,
-      "sha256": "bdbeedc8959d0bc3dc15030dd481b5db048e4fea410a7329da660257ad71700e"
+      "bytes": 663552,
+      "sha256": "b835fd8493237269d93b8563fee6624995b7af7f31468101c78b853266b39d43",
+      "triangles": 50552
     },
     "quarry": {
-      "version": 1,
+      "version": 2,
       "mapId": "quarry",
       "layout": 2,
+      "sourceType": "visual-triangles",
       "nx": 192,
       "nz": 192,
       "minX": -448,
@@ -29,14 +33,17 @@
       "depth": 896,
       "groundMin": -15,
       "groundRange": 29,
+      "source": "93353179e8880ff3d1fdc6f5cb53e08303765f82e6ca7c8e76200cf8772a3cd9",
       "file": "quarry.rgba",
-      "bytes": 589824,
-      "sha256": "bfd19b53268cbec1c5e3a9b56ad0b4bb2b7fe4fd35de5323340dee85f3c77d8e"
+      "bytes": 1179648,
+      "sha256": "27d6a030593a02f595a40792231e8feed250947563c25690a1b0b62e94b2a423",
+      "triangles": 233038
     },
     "village": {
-      "version": 1,
+      "version": 2,
       "mapId": "village",
       "layout": 3,
+      "sourceType": "visual-triangles",
       "nx": 154,
       "nz": 154,
       "minX": -192,
@@ -45,14 +52,17 @@
       "depth": 384,
       "groundMin": -6.585492920565915,
       "groundRange": 75.58549292056591,
+      "source": "9def655a30dd3f07f70bebfc9bf26b1fb709f46d19f62a451658d1dd26128e85",
       "file": "village.rgba",
-      "bytes": 379456,
-      "sha256": "b705388735d02bce3bb9cd12d89a3655d7aa2e8c45550eb59d29eced4cbdfaec"
+      "bytes": 758912,
+      "sha256": "7dc684a5ccc03e95be80857957eb71cfe9292f6a4b32ac60b6992f4d5a0bb16b",
+      "triangles": 303750
     },
     "fy_pool_day": {
-      "version": 1,
+      "version": 2,
       "mapId": "fy_pool_day",
       "layout": 2,
+      "sourceType": "visual-triangles",
       "nx": 56,
       "nz": 56,
       "minX": -32,
@@ -61,14 +71,17 @@
       "depth": 64,
       "groundMin": -1.28,
       "groundRange": 1.28,
+      "source": "85f5186e53c1ede07f07990037f8a0ae282da81b1ba8fc8a10a287d11bd7d484",
       "file": "fy_pool_day.rgba",
-      "bytes": 50176,
-      "sha256": "125e545180e563195f897f2a5bc159e2a5d1f6eb0f796e6020ba4fd4d7155ac5"
+      "bytes": 100352,
+      "sha256": "8f9c3736875d8df4cb9e3b2ce1d40a5bf7e4c45a8e06c8d26dfb16a44373c41c",
+      "triangles": 4686
     },
     "linden_estate": {
-      "version": 1,
+      "version": 2,
       "mapId": "linden_estate",
       "layout": 4,
+      "sourceType": "visual-triangles",
       "nx": 63,
       "nz": 63,
       "minX": -36,
@@ -77,14 +90,17 @@
       "depth": 72,
       "groundMin": -1.33,
       "groundRange": 4.532140181915464,
+      "source": "c3c4374ece84785561305bcc7d86bd20607fb86813432a7546a5ac55bc70915f",
       "file": "linden_estate.rgba",
-      "bytes": 63504,
-      "sha256": "45648c2c6822579b6d31bfb9ace997e89467c12ddea81646887382004b0ed71d"
+      "bytes": 127008,
+      "sha256": "d64326920bdb7a34350bdfd6abb994bd3484eb2bc12ea0e488cac665d02a8526",
+      "triangles": 16686
     },
     "alhadra": {
-      "version": 1,
+      "version": 2,
       "mapId": "alhadra",
       "layout": 0,
+      "sourceType": "visual-triangles",
       "nx": 192,
       "nz": 144,
       "minX": -240,
@@ -93,14 +109,17 @@
       "depth": 360,
       "groundMin": -3.799999952316284,
       "groundRange": 17.799999952316284,
+      "source": "ad4f001cc8d2499f4884905e3cd6a535d07697dd7488c39f66c6a3a7a5978356",
       "file": "alhadra.rgba",
-      "bytes": 442368,
-      "sha256": "37b7c549ec29ad5775bd378c069dd5be3c2a498bea4764bf392746608bb82421"
+      "bytes": 884736,
+      "sha256": "d675e13641cb8b8c5ad658b27778d3e1a8435e682bd3c26e55d42db3afed358b",
+      "triangles": 117861
     },
     "alhadra-desert": {
-      "version": 1,
+      "version": 2,
       "mapId": "alhadra-desert",
       "layout": 0,
+      "sourceType": "visual-triangles",
       "nx": 192,
       "nz": 192,
       "minX": -1000,
@@ -109,14 +128,17 @@
       "depth": 1200,
       "groundMin": -4.315066275497277,
       "groundRange": 45.715067801376186,
+      "source": "8abc1a9530f4e1389d084740119c391ce7a2bf3d700c736f56d1ad0e22967b4a",
       "file": "alhadra-desert.rgba",
-      "bytes": 589824,
-      "sha256": "b79d39467e9c7ba5fa2aa1f0c984b1a20c7be733e9c58e3274a0549dccfe4379"
+      "bytes": 1179648,
+      "sha256": "d8602acc52d281b47778ea90c22e9432c50f56a3bd4b11c0c624bddabe53f0cc",
+      "triangles": 219108
     },
     "tel-mazin": {
-      "version": 1,
+      "version": 2,
       "mapId": "tel-mazin",
       "layout": 0,
+      "sourceType": "visual-triangles",
       "nx": 192,
       "nz": 77,
       "minX": -580,
@@ -125,14 +147,17 @@
       "depth": 344,
       "groundMin": -0.9200000166893005,
       "groundRange": 13.9200000166893,
+      "source": "26199af5a83117b354712f14716740195cd5d4e576fee295a5f15f3544e56834",
       "file": "tel-mazin.rgba",
-      "bytes": 236544,
-      "sha256": "6656b2ee6a6268612f4a61d06a1eaf5d1322acaddc75eccd06c4a165aa5c586c"
+      "bytes": 473088,
+      "sha256": "fb185ede9ea4f7048b726eed0872d7323c591f6e29f69dcc86735a7e7434dc02",
+      "triangles": 228480
     },
     "nahar": {
-      "version": 1,
+      "version": 2,
       "mapId": "nahar",
       "layout": 0,
+      "sourceType": "visual-triangles",
       "nx": 192,
       "nz": 192,
       "minX": -950,
@@ -141,14 +166,17 @@
       "depth": 1660,
       "groundMin": -4.199999809265137,
       "groundRange": 36.19999980926514,
+      "source": "15c194e80ade0463eb5a5bb653700be48e3100e28be2bf8adedea94f27c420c9",
       "file": "nahar.rgba",
-      "bytes": 589824,
-      "sha256": "223f35e30cee9de77680ab7f6a497f34e1fb7ecfc478bdef7af248ece453960a"
+      "bytes": 1179648,
+      "sha256": "a8c21f5ac79b8beaf96c281e16e362811f07ee852617d2569f1f50ea883c8b8b",
+      "triangles": 329402
     },
     "safra": {
-      "version": 1,
+      "version": 2,
       "mapId": "safra",
       "layout": 0,
+      "sourceType": "visual-triangles",
       "nx": 169,
       "nz": 111,
       "minX": -380,
@@ -157,9 +185,11 @@
       "depth": 496,
       "groundMin": -2.799999952316284,
       "groundRange": 21.799999952316284,
+      "source": "c088c282b25d9745921f2d12b85ac9e1947e7e4e9a782417cf123b7d04b2d675",
       "file": "safra.rgba",
-      "bytes": 300144,
-      "sha256": "755db435acdab2ed61fe04adba11f61c7f23ad3c5a6ad46234a00f27cf473cf5"
+      "bytes": 600288,
+      "sha256": "efb6e06ddbeb2be0040fc6c8459de9997048b208d8fca29126eb19fbc7173168",
+      "triangles": 117789
     }
   }
 }
