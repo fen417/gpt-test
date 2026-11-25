@@ -333,6 +333,7 @@ export class InfantryAssets {
     (template.anchor ?? template.model).traverse(collect);
     if (template.distantWeapon) collect(template.distantWeapon);
     for (const variant of template.distantUpgrades?.values() ?? []) collect(variant);
+    for(const g of template.bodyBatch?.replaced??[])geometry.add(g);
     for(const lods of template.bodyBatch?.mergedLods.values()??[])for(const g of lods)geometry.add(g);
     for (const values of template.levels?.values() ?? []) for (const level of values) for (const value of level ?? []) geometry.add(value);
     for (const material of materials) {

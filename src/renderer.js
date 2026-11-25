@@ -214,6 +214,7 @@ export class GameRenderer {
     this.scaleCooldown = 0;
     this.soldiers = new Map();
     this.activeSoldiers = new Set();
+    this.activeVehicles=new Set();this.vehicleIndex=new Map();this.activePickups=new Set();this.activeRockets=new Set();this.activeRevives=new Set();this.activeDeployables=new Set();this.activeRemoteTools=new Set();this.plumeScratch={opacity:0,growth:1};
     this.flags = new Map();
     this.grenadeMeshes = new Map();
     this.activeGrenades = new Set();
@@ -1186,7 +1187,7 @@ export class GameRenderer {
   updatePoolWeapons(state){
     this.poolWeaponModels ??= new Map();
     this.poolWeaponTemplates ??= new Map();
-    const active=new Set();
+    const active=this.activePickups;active.clear();
     if(state?.gameMode==='tdm'&&this.map?.id==='fy_pool_day'){
       // Reuse the SAME procedural generator as the equipped gun and menu
       // weapon preview. No imported soldier/GLB asset required.
@@ -1280,7 +1281,7 @@ export class GameRenderer {
   }
 
   updateVehicles(state, player, dt, view) {
-    const active = new Set();
+    const active = this.activeVehicles;active.clear();
     const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
     const vehicleView = state.campaign ? { ...view, hideTankMachineGun: true } : view;
     let mounted = null;
@@ -1385,7 +1386,7 @@ export class GameRenderer {
     const active = this.activeSoldiers;
     active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
-    const vehiclesById=new Map((state.vehicles??[]).map(v=>[v.id,v]));
+    const vehiclesById=this.vehicleIndex;vehiclesById.clear();for(const v of state.vehicles??[])vehiclesById.set(v.id,v);
     const blend = networkInterpolated || this.scoped ? 1 : 1 - Math.exp(-dt * 18);
     let shadowFrustum = null;
     if (this.renderer.shadowMap.enabled) {
@@ -1829,7 +1830,7 @@ export class GameRenderer {
       } else if (effect.type === 'smoke') {
         effect.mesh.position.x += effect.vx * dt; effect.mesh.position.z += effect.vz * dt; effect.mesh.position.y += dt * effect.rise;
         if(effect.enhanced){
-          const p=plumeEnvelope(effect.age,effect.life,effect.kind);effect.mesh.scale.setScalar(effect.size*p.growth);effect.mesh.material.opacity=p.opacity*effect.opacity;
+          const p=plumeEnvelope(effect.age,effect.life,effect.kind,this.plumeScratch);effect.mesh.scale.setScalar(effect.size*p.growth);effect.mesh.material.opacity=p.opacity*effect.opacity;
           effect.vx*=Math.exp(-dt*(effect.kind==='dust'?1.05:.44));effect.vz*=Math.exp(-dt*(effect.kind==='dust'?1.05:.44));effect.mesh.material.rotation+=effect.spin*dt;
         }else{effect.mesh.scale.setScalar(effect.size * (1 + effect.age * 1.5)); effect.mesh.material.opacity = alpha * effect.opacity;}
         const p = effect.mesh.position, view = this.camera.matrixWorldInverse.elements;
@@ -1917,7 +1918,7 @@ export class GameRenderer {
   }
 
   syncRockets(state,dt) {
-    const active=new Set();
+    const active=this.activeRockets;active.clear();
     for(const item of state.rockets??[]){
       active.add(item.id);
       const model=this.rocketMeshes.get(item.id)??this.createRocketVisual(item,state.time),flight=model.userData.flight;
@@ -1960,7 +1961,7 @@ export class GameRenderer {
   }
 
   syncEquipment(state,localId,dt) {
-    const local=state.players.find(player=>player.id===localId),revivable=new Set();
+    const local=state.players.find(player=>player.id===localId),revivable=this.activeRevives;revivable.clear();
     if(local?.alive&&local.classId==='medic'&&!local.vehicleId){
       for(const ally of state.players){
         if(ally.alive||ally.team!==local.team||ally.respawnIn<=0||Math.hypot(ally.x-local.x,ally.z-local.z)>30)continue;
@@ -1972,7 +1973,7 @@ export class GameRenderer {
     }
     for(const [id,ring] of this.reviveRings)if(!revivable.has(id)){ring.removeFromParent();this.reviveRings.delete(id);}
     const sync=(items,cache,kindOf)=>{
-      const active=new Set();
+      const active=this.activeDeployables;active.clear();
       for(const item of items){
         active.add(item.id);let model=cache.get(item.id);
         if(!model){
@@ -2023,7 +2024,7 @@ export class GameRenderer {
         }
       }
     }
-    const active=new Set();
+    const active=this.activeRemoteTools;active.clear();
     for(const player of state.players){
       if(player.id===localId)continue;
       const soldier=this.soldiers.get(player.id);
@@ -2886,7 +2887,8 @@ export class GameRenderer {
       }
     }
     this.updateSoldiers(state, localId, dt, view.networkInterpolated, view.weaponSkinFor); this.updatePoolWeapons(state); this.updateGrenades(state, localId);
-    for(const event of this.cosmeticShots.splice(0))this.shotEffect(event,state,localId,true);
+    for(const event of this.cosmeticShots)this.shotEffect(event,state,localId,true);
+    this.cosmeticShots.length=0;
     this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt,true);
     this.parachutes.update(this.worldRoot,state.players,dt,this.lowQuality);
     this.atmosphere.sky.position.copy(this.camera.position);

@@ -51,11 +51,11 @@ export function makeParticleTexture(kind){
   return t;
 }
 export const particleQuality=Object.freeze({legacy:0,medium:1,high:2});
-export function plumeEnvelope(age,life,kind){
+export function plumeEnvelope(age,life,kind,out={}){
   const t=clamp(age/Math.max(.001,life));
   const fadeIn=smooth(0,kind==='dust'?.12:.08,t);
   const fadeOut=1-smooth(kind==='dust'?.20:.32,1,t);
-  return {opacity:fadeIn*fadeOut,growth:1+(kind==='dust'?2.0:1.65)*Math.sqrt(t)};
+  out.opacity=fadeIn*fadeOut;out.growth=1+(kind==='dust'?2.0:1.65)*Math.sqrt(t);return out;
 }
 export function dustProfile(map){
   if(!map||['fy_pool_day','linden_estate','nahar'].includes(map.id))return null;

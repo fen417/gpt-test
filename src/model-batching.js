@@ -9,7 +9,7 @@ const sameSkeleton=(a,b)=>a.bones.length===b.bones.length&&a.bones.every((bone,i
 // bind spaces, skeletons, material and independent visibility. Optional
 // pouches are excluded; their per-soldier selection must survive.
 export function batchInfantryBody(scene,levels){
-  const candidates=[],consumed=new Set(),mergedLods=new Map();let saved=0;
+  const candidates=[],consumed=new Set(),mergedLods=new Map(),replaced=new Set();let saved=0;
   for(const [name,lods] of levels){
     const node=scene.getObjectByName(name);
     if(!node||node.userData.optionalPouch)continue;
@@ -30,12 +30,12 @@ export function batchInfantryBody(scene,levels){
     // skip absorbed mesh slots instead of removing their node.
     const merged=[0,1,2,3].map(i=>mergeGeometries(group.map(b=>b.geometries[i]),false));
     if(merged.some(g=>!g)){merged.forEach(g=>g?.dispose());continue;}
-    a.mesh.geometry=merged[0];mergedLods.set(a.node.name+'/'+a.slot,merged);
+    replaced.add(a.mesh.geometry);a.mesh.geometry=merged[0];mergedLods.set(a.node.name+'/'+a.slot,merged);
     for(const b of group.slice(1)){b.mesh.userData.batchedBodyHidden=true;b.mesh.visible=false;}
     for(const b of group)consumed.add(b);
     saved+=group.length-1;
   }
-  return {saved,mergedLods};
+  return {saved,mergedLods,replaced};
 }
 
 // Frozen floor pickups need neither animated pivots nor hidden variants.

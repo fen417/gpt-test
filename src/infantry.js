@@ -322,12 +322,12 @@ export function createInfantry({ template, gun, kit }, player) {
   head.userData.faceCovered = true;
   const rig = {
     group, model, parts, details, bones, head, marker, rifle, flash, template,
-    mixer: new THREE.AnimationMixer(model), actions: new Map(), activeActions: new Set(),
+    mixer: new THREE.AnimationMixer(model), actions: new Map(), activeActions: new Set(), nextActions:new Set(),
     team: player.team, classId: player.classId, lod: 0, alive: true,
     motion: { phase: 0, speed: 0, vx: 0, vz: 0, x: 0, z: 0, moving: 0, gait: new Map() },
     legs: legNames.map(side => newLeg(bones, side)), recoil: 0, shotAge: Infinity, hitAge: Infinity,
     actionAge: Infinity, jumpAge: Infinity, landAge: Infinity, slideAge: Infinity,
-    lastShot: player.shotSeq, corrections: new Map(),
+    lastShot: player.shotSeq, corrections: new Map(), correctionStorage:new Map(), hipsStorage:new THREE.Vector3(), contactWeights:[0,0], gaitNames:new Set(),
     support: new THREE.Vector3(), muzzle: new THREE.Vector3(),
     rightHand: bindHand(bones, 'Right'), leftHand: bindHand(bones, 'Left'),
   };
@@ -419,15 +419,20 @@ export function locomotionWeights(out, speed, yaw, vx, vz, crouched, sprinting) 
   const index = Math.floor(sector), blend = sector - index;
   const run = smoothstep(speed, 1.85, 4.7);
   const sprint = sprinting ? smoothstep(speed, 5.4, 8.5) : 0;
-  for (const [state, weight] of crouched ? [['crouch', 1]] :
-    [['walk', (1 - run) * (1 - sprint)], ['run', run * (1 - sprint)], ['sprint', sprint]]) {
-    if (!weight) continue;
-    const keys = gaitClips[state];
-    for (const [name, contribution] of [[keys[index], 1 - blend], [keys[(index + 1) % 4], blend]]) {
-      if (contribution) out.set(name, (out.get(name) ?? 0) + contribution * weight);
-    }
+  if(crouched)addGaitWeights(out,gaitClips.crouch,index,blend,1);
+  else{
+    addGaitWeights(out,gaitClips.walk,index,blend,(1-run)*(1-sprint));
+    addGaitWeights(out,gaitClips.run,index,blend,run*(1-sprint));
+    addGaitWeights(out,gaitClips.sprint,index,blend,sprint);
   }
   return out;
+}
+
+function addGaitWeights(out,keys,index,blend,weight){
+  if(!weight)return;
+  const a=keys[index],b=keys[(index+1)%4];
+  if(blend!==1)out.set(a,(out.get(a)??0)+(1-blend)*weight);
+  if(blend)out.set(b,(out.get(b)??0)+blend*weight);
 }
 
 function play(rig, active, name, upper, time, weight) {
@@ -447,10 +452,13 @@ function play(rig, active, name, upper, time, weight) {
   active.add(action);
 }
 
+function nextPoseActions(rig){const active=rig.nextActions??=new Set();active.clear();return active;}
+
 function evalPose(rig, active) {
   for (const [bone, rest] of rig.corrections) bone.quaternion.copy(rest);
   rig.corrections.clear();
   for (const action of rig.activeActions) if (!active.has(action)) action.stop();
+  rig.nextActions=rig.activeActions;
   rig.activeActions = active;
   if (rig.hipsRest) {
     rig.bones.Hips.position.copy(rig.hipsRest);
@@ -460,14 +468,20 @@ function evalPose(rig, active) {
   rig.group.updateWorldMatrix(true, true);
 }
 
-function saveRotation(rig, ...bones) {
-  for (const bone of bones) if (!rig.corrections.has(bone)) rig.corrections.set(bone, bone.quaternion.clone());
+function saveRotation(rig, a, b, c) {
+  saveBoneRotation(rig,a);if(b)saveBoneRotation(rig,b);if(c)saveBoneRotation(rig,c);
+}
+function saveBoneRotation(rig,bone){
+  if(rig.corrections.has(bone))return;
+  const storage=rig.correctionStorage??=new Map();
+  let rest=storage.get(bone);if(!rest){rest=new THREE.Quaternion();storage.set(bone,rest);}
+  rig.corrections.set(bone,rest.copy(bone.quaternion));
 }
 
 function shiftHips(rig, worldDelta) {
   const { Hips } = rig.bones;
   const shift = worldDelta / Hips.parent.getWorldScale(b).y;
-  rig.hipsRest = Hips.position.clone();
+  rig.hipsRest = (rig.hipsStorage??=new THREE.Vector3()).copy(Hips.position);
   b.copy(flatNormal).applyQuaternion(Hips.parent.getWorldQuaternion(q).invert());
   Hips.position.addScaledVector(b, shift);
   Hips.updateWorldMatrix(false, true);
@@ -656,7 +670,9 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   const prone = Boolean(player.prone || player.downed);
   const requested = locomotionWeights(rig.requested ??= new Map(), motion.speed, group.rotation.y,
     motion.vx, motion.vz, crouched, player.sprint);
-  for (const name of new Set([...motion.gait.keys(), ...requested.keys()])) {
+  const gaitNames=rig.gaitNames??=new Set();gaitNames.clear();
+  for(const name of motion.gait.keys())gaitNames.add(name);for(const name of requested.keys())gaitNames.add(name);
+  for (const name of gaitNames) {
     const weight = damp(motion.gait.get(name) ?? 0, requested.get(name) ?? 0, reset ? 1000 : 15, dt);
     if (weight < .004) motion.gait.delete(name);
     else motion.gait.set(name, weight);
@@ -682,8 +698,8 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   // for the blend. Its integral still tracks rendered travel at steady pace.
   if (weightSum && motion.speed > .12) motion.phase = cycle(motion.phase + motion.speed * dt / cycleDistance);
 
-  const active = new Set();
-  const contacts = [0, 0];
+  const active = nextPoseActions(rig);
+  const contacts = rig.contactWeights??=[0,0];contacts[0]=contacts[1]=0;
   for (const leg of rig.legs) {
     (leg.path ??= new THREE.Vector3()).set(0, 0, 0);
     leg.pathWeight = 0;
@@ -825,7 +841,7 @@ export function infantryDeath(rig, age) {
     };
   }
   const death = rig.deathPose;
-  const active = new Set(), duration = rig.template.clips.get('death').lower.duration;
+  const active = nextPoseActions(rig), duration = rig.template.clips.get('death').lower.duration;
   // The source winds the wrists and elbows sharply during the first .17 s.
   // Blend the rendered pose into the stable part of the upper-body track.
   const time = age + (death.down ? 1.45 : 0);
@@ -834,7 +850,7 @@ export function infantryDeath(rig, age) {
   evalPose(rig, active);
   if (death.rotations && age < deathBlendTime) {
     const weight = smoothstep(age, 0, deathBlendTime);
-    rig.hipsRest = Hips.position.clone();
+    rig.hipsRest = (rig.hipsStorage??=new THREE.Vector3()).copy(Hips.position);
     Hips.position.lerp(death.hips, 1 - weight);
     for (const [bone, from] of death.rotations) {
       saveRotation(rig, bone);
@@ -856,7 +872,7 @@ export function infantryDeath(rig, age) {
 
 // The review can inspect the original tracks with the same mixer that runs in play.
 export function sampleInfantryClip(rig, name, time) {
-  const active = new Set();
+  const active = nextPoseActions(rig);
   play(rig, active, name, false, time, 1);
   play(rig, active, name, true, time, 1);
   evalPose(rig, active);
@@ -905,7 +921,7 @@ export function infantrySeat(rig, { vehicle, seat, index, control, relativeYaw, 
   updateInfantryUpgrades(rig,attachmentFlags);
   const { group, bones } = rig;
   rig.deathPose = null;
-  const active = new Set(), atv = vehicle.type === 'atv', driving = seat.role === 'driver';
+  const active = nextPoseActions(rig), atv = vehicle.type === 'atv', driving = seat.role === 'driver';
   const gunner = seat.role === 'gunner', copilot=seat.role==='copilot', controls = driving || gunner;
   const blackHawk=vehicle.type==='black-hawk';
   const pose = vehicle.type === 'tank' ? (index === 4 ? ridingPose.tankRear : ridingPose.tankSide) :
@@ -915,7 +931,7 @@ export function infantrySeat(rig, { vehicle, seat, index, control, relativeYaw, 
   play(rig, active, controls ? 'interact' : 'ready_idle', true, .22, 1);
   evalPose(rig, active);
   const { Hips, Spine } = bones;
-  rig.hipsRest = Hips.position.clone();
+  rig.hipsRest = (rig.hipsStorage??=new THREE.Vector3()).copy(Hips.position);
   target.set(0, pose.hips - seat.height, 0);
   Hips.position.copy(Hips.parent.worldToLocal(group.localToWorld(target)));
   Hips.updateWorldMatrix(false, true);
