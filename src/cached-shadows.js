@@ -23,6 +23,7 @@ export class CachedShadows {
     this.native=owner.renderer.shadowMap.render;
     owner.renderer.shadowMap.render=(lights,scene,camera)=>{
       if(scene!==owner.scene||!owner.worldRoot?.visible||!owner.renderer.shadowMap.enabled)return native(lights,scene,camera);
+      if(owner.shadowMenuIdle&&!owner.renderer.shadowMap.needsUpdate)return;
       const timer=owner.perfEnabled?owner.gpuTimer:null;
       const timing=timer?.beginPass('shadows');
       const hidden=owner.interiorVisibility.hidden;

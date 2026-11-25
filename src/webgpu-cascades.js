@@ -56,7 +56,8 @@ class SizedCsm extends CSMShadowNode {
       const texel=(c.right-c.left)/shadow.mapSize.x;
       let record=this.records[i];
       const displacement=record?record.position.distanceTo(caster.position):Infinity;
-      const due=cascadeDue({index:i,frame:epoch,lastFrame:record?.frame,displacement,texel,invalidated:this.invalidated,sunChanged});
+      const idle=this.owner.shadowMenuIdle&&!this.invalidated&&!sunChanged&&record&&displacement<1e-6;
+      const due=!idle&&cascadeDue({index:i,frame:epoch,lastFrame:record?.frame,displacement,texel,invalidated:this.invalidated,sunChanged});
       if(due){
         record??={position:new Vector3(),target:new Vector3()};
         record.position.copy(caster.position);record.target.copy(caster.target.position);record.frame=epoch;

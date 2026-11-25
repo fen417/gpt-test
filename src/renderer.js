@@ -739,9 +739,10 @@ export class GameRenderer {
     }
     const worldModels=new Set([...this.worlds.values()].map(w=>w.model));
     const preloads=[...this.modelRecent.entries()].filter(([model])=>!worldModels.has(model)&&!this.modelPins.has(model)).sort((a,b)=>a[1]-b[1]);
+    let remaining=preloads.length;
     for(const [model] of preloads){
       if(model===keepModel)continue;
-      if(preloads.length>1||bytes>policy.bytes||keepModel){this.releaseMapModel(model);bytes=total();}
+      if(remaining>1||bytes>policy.bytes||keepModel){this.releaseMapModel(model);remaining--;bytes=total();}
     }
     this.mapResidency={worlds:this.worlds.size,estimatedBytes:bytes,budgetBytes:policy.bytes,maxWorlds:policy.worlds,evictions:this.mapEvictions};
   }
@@ -750,10 +751,12 @@ export class GameRenderer {
     const model=this.bakedMapModel(getMap(mapId));
     if(!model)return;
     this.modelRecent.set(model,++this.modelClock);
+    const wantsDetail=geometryQuality(quality,gfx?.detail)==='high';
+    if(model.base&&(!wantsDetail||model.detail)&&!model.textureLoader.pending.size)return;
     this.modelPins.set(model,(this.modelPins.get(model)??0)+1);
     try{
       const base=await model.loadBase();
-      if(base&&geometryQuality(quality,gfx?.detail)==='high')await model.loadDetail();
+      if(base&&wantsDetail)await model.loadDetail();
       await model.textureLoader.ready();
     }finally{
       const count=(this.modelPins.get(model)??1)-1;if(count)this.modelPins.set(model,count);else this.modelPins.delete(model);
@@ -2180,8 +2183,11 @@ export class GameRenderer {
 
   drawScene(menu = false, warming = false) {
     this.frameCount++;
+    const menuKey=menu?[this.staticMaterialRevision,this.shadowMode,...this.sun.position.toArray(),...this.sun.target.position.toArray(),...(this.cascades?[...this.camera.position.toArray(),...this.camera.quaternion.toArray(),...this.camera.projectionMatrix.elements]:[])].join('/'):'';
+    this.shadowMenuIdle=Boolean(menu&&this.staticMenuShadows&&menuKey===this.menuShadowKey&&!['low','high'].includes(this.graphicsEffects?.vegetationWind));
+    this.menuShadowKey=menuKey;
     if (menu) {
-      if (!this.staticMenuShadows && this.renderer.shadowMap.enabled) {
+      if (!this.shadowMenuIdle && this.renderer.shadowMap.enabled) {
         this.staticMenuShadows = true;
         this.sun.shadow.needsUpdate = true;
         this.renderer.shadowMap.needsUpdate = true;
@@ -2194,6 +2200,7 @@ export class GameRenderer {
       }
     }
     if(this.vegetation.update(this)){
+      this.shadowMenuIdle=false;
       this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);this.localReflections.dispose();
       this.sun.shadow.needsUpdate=true;this.renderer.shadowMap.needsUpdate=true;
     }
