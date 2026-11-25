@@ -4,6 +4,7 @@ import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
 import {EffectLights} from './effect-lights.js';
 import {WaterAppearance} from './water-appearance.js';
+import {atmosphereProfile} from './atmosphere-profile.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {LocalReflections} from './local-reflections.js';
 import {applyTextureFiltering} from './texture-quality.js';
@@ -2100,6 +2101,10 @@ export class GameRenderer {
     const smoke=this.effectBatches.smoke;
     const softSmoke=this.graphicsEffects?.softParticles==='high'&&smoke.count>0;
     const worldFX=this.postPass.worldEffects;
+    worldFX.airClimate=atmosphereProfile(this.map);
+    // Mission 1 owns the hidden sky / night-vision presentation. Never add
+    // sunlight or extra fog there; other missions retain their live weather.
+    worldFX.atmosphereAllowed=!this.presentingCampaign||this.atmosphere.sky.visible;
     worldFX.inMenu=menu;worldFX.cinematic=this.cinematicCamera;
     worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
     worldFX.softSmoke=softSmoke;
@@ -2131,7 +2136,7 @@ export class GameRenderer {
       values.smokeMotion.value=particleQuality[this.graphicsEffects?.smoke]??0;
       values.smokeTime.value=this.clock;
     }
-    this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
+    this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock,this.graphicsEffects?.clouds,this.map,this.scene.fog.color);
     const environment=this.scene.environment;
     const localEnvironment=this.localReflections.prepare(this,menu,warming);
     if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;

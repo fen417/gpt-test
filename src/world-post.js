@@ -2,6 +2,7 @@ import {HeatSources} from './heat-sources.js';
 import {cameraModes} from './camera-effects.js';
 import {ReflectionReceivers, makeGlReflectionReceiver} from './reflection-receivers.js';
 import * as THREE from 'three';
+import {atmosphereProfile,fogLayerParameters} from './atmosphere-profile.js';
 
 const aoSteps = { off: 0, low: 4, high: 12, gtao: 24 };
 export const reflectionSteps={off:0,low:8,medium:16,high:32};
@@ -26,7 +27,8 @@ export class WorldPost {
       waterActive:0, receiverActive:0,
       cameraEffects:new THREE.Vector3(), chromaticGain:0, previousClipFromView:new THREE.Matrix4(),
       heatSources:new THREE.Matrix4(), heatStrength:new THREE.Vector4(), heatTime:0,
-      atmosphereStrength: 0, bloomGain: 0,
+      atmosphereStrength: 0, airProfile:new THREE.Vector3(.012,21,.65), bloomGain: 0,
+      fogLayer:new THREE.Vector4(),fogLayerUp:new THREE.Vector3(),fogEyeY:0,fogLayerTint:new THREE.Color(),
       volumeSplits: new THREE.Vector3(),
       volumeMatrix0: new THREE.Matrix4(), volumeMatrix1: new THREE.Matrix4(), volumeMatrix2: new THREE.Matrix4(),
     };
@@ -44,6 +46,8 @@ export class WorldPost {
     const ao = aoSteps[effects?.ao] ?? 0;
     const contact = contactSteps[effects?.contact] ?? 0;
     const atmosphere = atmosphereSteps[effects?.atmosphere] ?? 0;
+    this.fogQuality=this.atmosphereAllowed===false?'off':effects?.heightFog??'off';
+    this.heightFog=this.fogQuality==='low'||this.fogQuality==='high';
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];
     const reflections=this.reflector||this.receiverMode?(reflectionSteps[effects?.reflections]??0):0;
     const receiverMask=Boolean(reflections&&this.receiverMode);
@@ -54,13 +58,13 @@ export class WorldPost {
     const chromatic=this.aiming?0:cameraModes.chromatic[effects?.chromatic]??0;
     this.cameraFX=Boolean(blur||dof||flare||chromatic);
     this.hasHeat=effects?.heatDistortion==='high'&&(mask||reflections>0||this.heat.count>0||this.hasHeat);
-    const depth=mask||reflections>0||this.softSmoke||this.cameraFX||this.hasHeat;
+    const depth=mask||reflections>0||this.softSmoke||this.cameraFX||this.hasHeat||this.heightFog;
     if(!blur)this.previousClock=undefined;
     if (!depth && !levels) {
       if (this.world) this.dispose();
       return false;
     }
-    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + receiverMask + '/' + levels;
+    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + receiverMask + '/' + levels + '/' + this.heightFog;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
@@ -123,7 +127,7 @@ export class WorldPost {
 
   apply(output, camera, scene, sunOffset, sun, campaign, time, cascades, profiler) {
     const r = this.renderer, state = this.state;
-    if (this.mask||this.reflection||this.cameraFX||this.hasHeat) {
+    if (this.mask||this.reflection||this.cameraFX||this.hasHeat||this.heightFog) {
       state.projection.copy(camera.projectionMatrix);
       state.inverseProjection.copy(camera.projectionMatrixInverse);
       state.sunView.copy(sunOffset).transformDirection(camera.matrixWorldInverse);
@@ -135,7 +139,12 @@ export class WorldPost {
       state.sunScreen.addScalar(.5);
       state.sunColor.copy(sun.color);
       state.fogColor.copy(scene.fog.color);
-      state.atmosphereStrength = campaign ? 0 : Math.min(1, sun.intensity / 3);
+      const profile=this.airClimate??atmosphereProfile(null);
+      const active=this.atmosphereAllowed!==false&&(!campaign||this.atmosphereAllowed===true);
+      state.atmosphereStrength=active?Math.min(1,sun.intensity/3)*profile[8]:0;
+      state.airProfile.set(.008+profile[4]*1.7,profile[5],profile[7]);
+      state.fogLayer.set(...fogLayerParameters(profile,this.fogQuality,scene.fog.density));
+      state.fogLayerUp.copy(state.upView);state.fogEyeY=state.cameraY;state.fogLayerTint.copy(state.fogColor);
     }
     const cascade = state.steps.z>=7&&state.atmosphereStrength>0 ? cascades?.csm : null;
     this.shadowMaps.length=0;

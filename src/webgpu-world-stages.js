@@ -95,7 +95,7 @@ function mask(cascadeCount){
   return maskVariants[cascadeCount]=wgslFn(`
 fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f,
   inverseProjection: mat4x4f, depthSize: vec2f, steps: vec3f, sunView: vec3f,
-  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32${volume.parameters}) -> vec4f {
+  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32, airProfile:vec3f${volume.parameters}) -> vec4f {
   let center=worldDepthCenter(at,depthSize);
   let depth=worldReadDepth(sceneDepth,center,depthSize);
   let pos=worldViewPosition(inverseProjection,center,depth);
@@ -160,7 +160,8 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
   }
   if(steps.z>0. && atmosphereStrength>0.){
     let direction=normalize(pos);
-    let angular=pow(max(0.,dot(direction,sunView)),10.);
+    let mu=max(0.,dot(direction,sunView));
+    let angular=mix(pow(mu,10.),pow(mu,5.),airProfile.z*.45);
     var visible=0.;
     if(angular>.008 && sunView.z<-.07){
       for(var i=1; i<=12; i++){
@@ -173,7 +174,7 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
     }
     var haze=0.;
     if(steps.z>1. ${cascadeCount ? '' : '&& depth<.999999'}){
-      let stepSize=min(length(pos),${cascadeCount ? `volumeSplits[${cascadeCount-1}]` : '130.'})/steps.z;
+      let stepSize=min(length(pos),${cascadeCount ? `volumeSplits[${cascadeCount-1}]` : '165.'})/steps.z;
       var density=0.;
       let slope=dot(direction,upView);
       for(var i=0; i<12; i++){
@@ -181,15 +182,29 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
         let distance=stepSize*(f32(i)+.5);
         let height=max(0.,cameraY+distance*slope);
         let light=${cascadeCount ? `.22+.78*${volume.sample}` : '1.'};
-        density+=light*exp(-height*.048)*stepSize;
+        density+=light*exp(-height/max(1.,airProfile.y))*stepSize;
       }
-      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*.012));
+      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*airProfile.x));
     }
     shaft=(haze+.52*angular*visible/steps.z)*atmosphereStrength;
   }
   return vec4f(ao,contact,shaft,range);
 }`,includes);
 }
+
+const applyHeightFog=wgslFn(`
+fn worldHeightFog(at:vec2f,rgb:vec3f,sceneDepth:texture_depth_2d,inverseProjection:mat4x4f,depthSize:vec2f,
+ fogLayer:vec4f,fogLayerUp:vec3f,fogLayerTint:vec3f,fogEyeY:f32)->vec3f{
+ let raw=worldReadDepth(sceneDepth,at,depthSize);
+ if(raw>=.999999||fogLayer.x<=0.){return rgb;}
+ let pos=worldViewPosition(inverseProjection,at,raw);let len=length(pos);
+ let h0=max(0.,fogEyeY-fogLayer.z)/fogLayer.y;
+ let h1=max(0.,fogEyeY+dot(pos,fogLayerUp)-fogLayer.z)/fogLayer.y;
+ let dh=abs(h1-h0);var mean=exp(-min(h0,h1));
+ if(dh>=.001){mean*=(1.-exp(-dh))/dh;}
+ let amount=min(fogLayer.w,1.-exp(-fogLayer.x*min(len,500.)*mean))*smoothstep(3.,18.,len);
+ return mix(rgb,fogLayerTint,amount);
+}`,[readDepth,viewPosition]);
 
 const applyDepthEffects = wgslFn(`
 fn worldCompositeDepth(at: vec2f, rgb: vec3f, sceneDepth: texture_depth_2d, effectsMask: texture_2d<f32>,
@@ -369,7 +384,7 @@ export function webGpuWorldStages(post, geometry, camera) {
   const masks=post.mask && [];
   const maskParams=post.mask && {
     ...depthParams, projection:params.projection, steps:params.steps, sunView:params.sunView,
-    upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,
+    upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,airProfile:params.airProfile,
   };
   const {reflection,applyReflection}=post.receiverMask?withReceivers:onlyWater;
   const receiverParams=post.receiverMask?{receiverMask:texture(post.receiverMask.texture),receiverActive:params.receiverActive}:{};
@@ -395,6 +410,7 @@ export function webGpuWorldStages(post, geometry, camera) {
     rgb=rgb.add(texture(post.bloom[i].texture).sample(at).rgb.mul(params.bloomGain).mul([.62,.23,.1,.05][i]));
   }
   if(reflected)rgb=applyReflection({...depthParams,...waterParams,rgb,reflected:texture(post.reflection.texture).sample(at)});
+  if(post.heightFog)rgb=applyHeightFog({...depthParams,rgb,fogLayer:params.fogLayer,fogLayerUp:params.fogLayerUp,fogLayerTint:params.fogLayerTint,fogEyeY:params.fogEyeY});
   const composite=make(vec4(rgb,1));
   function draw(target,scene,profiler,pass) {
     renderer.setRenderTarget(target);
@@ -404,6 +420,7 @@ export function webGpuWorldStages(post, geometry, camera) {
     render(target,profiler) {
       params.bloomGain.value=state.bloomGain;
       params.cameraY.value=state.cameraY;
+      params.fogEyeY.value=state.fogEyeY;
       params.cameraX.value=state.cameraX;
       params.cameraZ.value=state.cameraZ;
       params.chromaticGain.value=state.chromaticGain;

@@ -3,7 +3,7 @@ const legacy = Object.freeze({
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
-  sky: 'legacy', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
+  sky: 'legacy', clouds:'off', heightFog:'off', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
   smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off', muzzleEffects:'legacy', muzzleLights:'off', fireEffects:'legacy', fireLighting:'off', dust:'off',
   adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
@@ -11,7 +11,7 @@ const legacy = Object.freeze({
 const ultra = Object.freeze({
   ...legacy, surfaceDetail:'ultra',mapWeathering:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
-  sky: 'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
+  sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
 
 export const GRAPHICS_PRESETS = Object.freeze({ legacy, low: legacy, medium: legacy, high: legacy, ultra });
@@ -46,7 +46,9 @@ export const GRAPHICS_CONTROLS = [
     ['mapWeathering','Износ и разнообразие поверхностей','Пыль, пятна и мелкие трещины с учётом карты.',choices(off,low,high)],
     ['relief','Параллакс-рельеф','Добавляет видимую глубину камню и бетону при включённых фактурах окружения.',choices(off,['basic','Базовый'],['low','POM · 8 шагов'],['high','POM · 16 шагов'])],
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
-    ['sky', 'Небо', 'Добавляет солнечный диск и атмосферное рассеивание. Умеренная нагрузка.', choices(old, high)],
+    ['sky', 'Небо', 'Добавляет солнечный диск, воздушную перспективу горизонта и цвет неба с учётом карты.', choices(old, high)],
+    ['clouds','Облака','Движущиеся облака в улучшенном небе: низкие — один слой, средние — второй слой, высокие — детализация и подсветка.',choices(off,low,medium,high)],
+    ['heightFog','Высотный туман','Дополнительная дымка у земли с затуханием по высоте и расстоянию. Независимо от лучей.',choices(off,low,high)],
     ['reflections', 'Экранные отражения', 'Отражает видимое окружение на воде и отмеченных глянцевых поверхностях.', choices(off,low,medium,high)],
     ['localReflections', 'Локальные отражения', 'Кэшированные пробы окружения на стекле и металле. Средние 64, высокие 128 px.', choices(off,medium,high)],
     ['water', 'Вода', 'Два масштаба волн, цвет по глубине и отражение неба. Старый режим сохраняет исходный материал.', choices(old,low,medium,high)],
@@ -98,8 +100,8 @@ export const GRAPHICS_GROUPS = [
     auto:['Как раньше','auto','off','off','off'], low:['Облегчённое','low','off','off','off'], medium:['Среднее','auto','standard','basic','low'],
     high:['Высокое','auto','high','low','high'], ultra:['Ультра','auto','ultra','high','high'],
   }],
-  ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere'], {
-    legacy:['Как раньше','legacy','off'], low:['Низкое','high','low'], medium:['Среднее','high','medium'], high:['Высокое','high','high'], ultra:['Ультра','high','ultra'],
+  ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere','clouds','heightFog'], {
+    legacy:['Как раньше','legacy','off','off','off'], low:['Низкое','high','low','low','off'], medium:['Среднее','high','medium','medium','low'], high:['Высокое','high','high','high','low'], ultra:['Ультра','high','ultra','high','high'],
   }],
   ['reflectionQuality','Вода и отражения','Волны, экранные отражения и местное окружение.', ['reflections','localReflections','water','waterRefraction','waterFoam'], {
     legacy:['Как раньше','off','off','legacy','off','off'], local:['Локальные','off','medium','medium','off','off'],

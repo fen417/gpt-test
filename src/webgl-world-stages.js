@@ -23,6 +23,7 @@ varying vec2 vUv;
 uniform vec3 steps,sunView,upView;
 uniform vec2 sunScreen;
 uniform float atmosphereStrength,cameraY;
+uniform vec3 airProfile;
 ` + reconstruct + volumeSunGLSL(cascadeCount) + `
 // Cosine-weighted integral between the two horizon angles of a view slice.
 vec2 integrateHorizon(vec2 cosine) {
@@ -122,7 +123,8 @@ void main(){
   }
   if(steps.z>0. && atmosphereStrength>0.){
     vec3 direction=normalize(pos);
-    float angular=pow(max(0.,dot(direction,sunView)),10.);
+    float mu=max(0.,dot(direction,sunView));
+    float angular=mix(pow(mu,10.),pow(mu,5.),airProfile.z*.45);
     float visible=0.;
     if(angular>.008 && sunView.z<-.07){
       for(int i=1;i<=12;i++){
@@ -133,7 +135,7 @@ void main(){
     }
     float haze=0.;
     if(steps.z>1. ${cascadeCount ? '' : '&& depth<.999999'}){
-      float stepSize=min(length(pos),${cascadeCount ? 'volumeSplits['+(cascadeCount-1)+']' : '130.'})/steps.z;
+      float stepSize=min(length(pos),${cascadeCount ? 'volumeSplits['+(cascadeCount-1)+']' : '165.'})/steps.z;
       float density=0.;
       float slope=dot(direction,upView);
       for(int i=0;i<12;i++){
@@ -141,9 +143,9 @@ void main(){
         float distance=stepSize*(float(i)+.5);
         float height=max(0.,cameraY+distance*slope);
         float light=${cascadeCount ? '.22+.78*volumeSun(direction*distance)' : '1.'};
-        density+=light*exp(-height*.048)*stepSize;
+        density+=light*exp(-height/max(1.,airProfile.y))*stepSize;
       }
-      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*.012));
+      haze=${cascadeCount ? '(.18+.33*angular)' : '.18'}*(1.-exp(-density*airProfile.x));
     }
     shaft=(haze+.52*angular*visible/steps.z)*atmosphereStrength;
   }
@@ -258,11 +260,12 @@ void main(){
   }
 }`;
 
-function composite(depth, levels, reflections, cameraFX, hasHeat, receivers) {
+function composite(depth, levels, reflections, cameraFX, hasHeat, receivers,heightFog) {
   return `
 varying vec2 vUv;
 uniform sampler2D source;
-${depth||reflections||cameraFX||hasHeat ? reconstruct : ''}
+${depth||reflections||cameraFX||hasHeat||heightFog ? reconstruct : ''}
+${heightFog?`uniform vec4 fogLayer;uniform vec3 fogLayerUp,fogLayerTint;uniform float fogEyeY;`:''}
 ${reflections ? reflectors(receivers)+'uniform sampler2D reflection;' : ''}
 ${depth ? `
 uniform sampler2D mask;
@@ -310,6 +313,18 @@ void main(){
       color=color*(1.-reflected.a)+reflected.rgb;
     }
   }` : ''}
+  ${heightFog?`
+  float fogRaw=readDepth(vUv);
+  if(fogRaw<.999999 && fogLayer.x>0.){
+    vec3 fogPos=viewPosition(vUv,fogRaw);
+    float len=length(fogPos);
+    float h0=max(0.,fogEyeY-fogLayer.z)/fogLayer.y;
+    float h1=max(0.,fogEyeY+dot(fogPos,fogLayerUp)-fogLayer.z)/fogLayer.y;
+    float dh=abs(h1-h0);
+    float mean=exp(-min(h0,h1))*(dh<.001?1.:(1.-exp(-dh))/dh);
+    float amount=min(fogLayer.w,1.-exp(-fogLayer.x*min(len,500.)*mean))*smoothstep(3.,18.,len);
+    color=mix(color,fogLayerTint,amount);
+  }`:''}
   gl_FragColor=vec4(color,1.);
 }`;
 }
@@ -336,7 +351,7 @@ export function webGlWorldStages(post) {
   const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
     source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
   }));
-  const output = stage(composite(Boolean(post.mask),blurs.length,Boolean(reflected),post.cameraFX,post.hasHeat,receivers), {
+  const output = stage(composite(Boolean(post.mask),blurs.length,Boolean(reflected),post.cameraFX,post.hasHeat,receivers,post.heightFog), {
     ...uniforms, ...receiverUniform, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},reflection:{value:post.reflection?.texture},
     ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
   });
@@ -349,6 +364,7 @@ export function webGlWorldStages(post) {
     render(target,profiler) {
       uniforms.atmosphereStrength.value=state.atmosphereStrength;
       uniforms.cameraY.value=state.cameraY;
+      uniforms.fogEyeY.value=state.fogEyeY;
       uniforms.bloomGain.value=state.bloomGain;
       uniforms.cameraX.value=state.cameraX;
       uniforms.cameraZ.value=state.cameraZ;

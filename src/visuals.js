@@ -1,3 +1,4 @@
+import {atmosphereProfile,CLOUD_LEVEL,makeCloudTexture,ensureCloudTexture} from './atmosphere-profile.js';
 import * as THREE from 'three';
 import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
 import {drawVillageSurface} from './village-surface-paint.js';
@@ -219,6 +220,7 @@ export function addSectorInstances(scene, geometry, material, matrices, castShad
 }
 
 export function makeSky(scene, renderer) {
+  const cloudMap=makeCloudTexture();
   const uniforms = { sunDirection: { value: new THREE.Vector3(-.65, .42, .5).normalize() } };
   const proceduralShader = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false, uniforms,
@@ -252,23 +254,16 @@ export function makeSky(scene, renderer) {
 
   const bakedShader = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { skyMap: { value: cubeTarget.texture }, advancedSky:{value:0}, liveSun:{value:new THREE.Vector3()}, skyTime:{value:0}, hazeAmount: { value: 0 }, hazeTint: { value: new THREE.Color(.79,.68,.51) } },
+    uniforms: { skyMap: { value: cubeTarget.texture }, advancedSky:{value:0}, liveSun:{value:new THREE.Vector3()}, skyTime:{value:0}, cloudMap:{value:cloudMap}, cloudParams:{value:new THREE.Vector4()}, airTint:{value:new THREE.Color()}, airMix:{value:0}, hazeAmount: { value: 0 }, hazeTint: { value: new THREE.Color(.79,.68,.51) } },
     vertexShader: 'varying vec3 direction; void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_Position.z=gl_Position.w;}',
     fragmentShader: `
       varying vec3 direction;
       uniform samplerCube skyMap;
       uniform float hazeAmount,advancedSky,skyTime;
-      uniform vec3 hazeTint,liveSun;
-      float cloudHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-      float cloudNoise(vec2 p){
-        vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
-        return mix(mix(cloudHash(i),cloudHash(i+vec2(1,0)),f.x),mix(cloudHash(i+vec2(0,1)),cloudHash(i+1.),f.x),f.y);
-      }
-      float clouds(vec2 p){
-        float sum=0.,amp=.5;
-        for(int i=0;i<5;i++){sum+=amp*cloudNoise(p);p=p*2.03+vec2(4.2,7.8);amp*=.5;}
-        return sum;
-      }
+      uniform vec3 hazeTint,liveSun,airTint;
+      uniform sampler2D cloudMap;
+      uniform vec4 cloudParams;
+      uniform float airMix;
       void main(){
         vec3 d=normalize(direction);
         float up=max(d.y,0.), haze=hazeAmount*(1.-up);
@@ -278,16 +273,36 @@ export function makeSky(scene, renderer) {
           float mu=max(0.,dot(d,liveSun));
           vec3 zenith=mix(vec3(.12,.19,.33),vec3(.071,.225,.48),daylight);
           vec3 horizon=mix(vec3(.50,.325,.27),vec3(.54,.65,.73),daylight);
+          horizon=mix(horizon,airTint,airMix);
           float air=exp(-up*5.5);
           sky=mix(zenith,horizon,air);
           vec3 sunlight=mix(vec3(1.,.48,.23),vec3(1.,.86,.64),daylight);
-          sky+=sunlight*pow(mu,12.)*(.12+.17*air);
-          vec2 p=d.xz/max(.10,d.y+.12)*2.1+vec2(skyTime*.004,skyTime*.0009);
-          float field=clouds(p);
-          float cloud=smoothstep(.39,.65,field)*smoothstep(.008,.17,d.y);
-          float edge=clouds(p+liveSun.xz*.21)-field;
-          vec3 cloudShade=mix(vec3(.31,.38,.45),vec3(.85,.87,.84),clamp(.41+edge*4.+.36*mu,0.,1.));
-          sky=mix(sky,cloudShade,cloud*.94);
+          sky+=sunlight*(pow(mu,12.)*(.12+.17*air)+.035*pow(mu,36.));
+          float cloud=0.;
+          if(cloudParams.w>0.){
+            vec2 p=d.xz/max(.13,d.y+.13)*.22+skyTime*cloudParams.yz;
+            vec4 cell=texture2D(cloudMap,p);
+            float field=cell.r;
+            float horizonFade=smoothstep(.018,.20,d.y);
+            float edge=.10;
+            if(cloudParams.w>2.5){
+              float offset=texture2D(cloudMap,p+liveSun.xz*.022).r;
+              float fine=texture2D(cloudMap,p*2.7+vec2(.37,.11)).b;
+              field=field*.83+fine*.17;edge=offset-cell.r;
+            }
+            cloud=smoothstep(cloudParams.x-.095,cloudParams.x+.12,field)*horizonFade;
+            if(cloudParams.w>1.5){
+              vec2 p2=d.xz/max(.18,d.y+.18)*vec2(.33,.12)-skyTime*cloudParams.zy*.58+vec2(.51,.12);
+              float wisps=smoothstep(.52,.76,texture2D(cloudMap,p2).g)*horizonFade;
+              sky=mix(sky,mix(vec3(.37,.43,.50),vec3(.87,.86,.81),daylight),wisps*.37);
+              cloud=max(cloud,wisps*.26);
+            }
+            vec3 shadow=mix(vec3(.20,.18,.22),vec3(.30,.37,.44),daylight);
+            vec3 lit=mix(vec3(.94,.49,.27),vec3(.91,.93,.91),daylight);
+            vec3 shade=mix(shadow,lit,clamp(.40+edge*4.5+.34*mu+.14*field,0.,1.));
+            shade+=sunlight*pow(mu,48.)*(1.-cloud)*.17;
+            sky=mix(sky,shade,cloud*.94);
+          }
           float disk=smoothstep(.999984,.999991,mu);
           sky+=sunlight*(disk*8.+.20*pow(mu,110.))*(1.-cloud);
           sky=mix(horizon,sky,smoothstep(-.09,.035,d.y));
@@ -299,14 +314,18 @@ export function makeSky(scene, renderer) {
   sky.renderOrder = 1000; sky.frustumCulled = false; sky.userData.noBatch = true; scene.add(sky);
   const target = {
     texture: pmremTarget.texture,
-    dispose() { pmremTarget.dispose(); cubeTarget.dispose(); bakedShader.dispose(); },
+    dispose() { pmremTarget.dispose(); cubeTarget.dispose(); bakedShader.dispose(); cloudMap.dispose(); },
   };
   return { sky, target, envTexture: pmremTarget.texture,
-    update(mode, direction, time) {
-      bakedShader.uniforms.advancedSky.value=mode==='high'?1:0;
+    update(mode, direction, time,cloudQuality,map,fogColor) {
+      const u=bakedShader.uniforms;
+      u.advancedSky.value=mode==='high'?1:0;
       if(mode==='high'){
-        bakedShader.uniforms.liveSun.value.copy(direction).normalize();
-        bakedShader.uniforms.skyTime.value=time;
+        const p=atmosphereProfile(map),level=CLOUD_LEVEL[cloudQuality]??0;
+        if(level)ensureCloudTexture(cloudMap);
+        u.liveSun.value.copy(direction).normalize();u.skyTime.value=time;
+        u.cloudParams.value.set(p[0],p[1],p[2],level);u.airMix.value=p[3];
+        if(fogColor)u.airTint.value.copy(fogColor);
       }
     },
   };
