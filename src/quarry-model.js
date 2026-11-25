@@ -7,8 +7,8 @@ import { addSectorInstances, pairMaterials } from './visuals.js';
 
 const url = new URL('./assets/quarry/detail.glb', import.meta.url).href;
 
-export async function loadQuarryDetail(map, surface) {
-  const {scene} = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
+export async function loadQuarryDetail(map, surface, sourceScene=null) {
+  const scene = sourceScene??(await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)).scene;
   const layer=new THREE.Group();
   layer.name='quarry-detail';
   const standard=new THREE.MeshStandardMaterial({

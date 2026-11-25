@@ -2774,7 +2774,7 @@ export class GameRenderer {
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
-      extraTextureBytes:(this.enhancedSurfaces?.estimatedBytes()??0)+(this.architectureLightmaps.stats()?.bytes??0),
+      extraTextureBytes:(this.enhancedSurfaces?.estimatedBytes()??0)+(this.architectureLightmaps.stats()?.bytes??0)+(this.indirectLighting.stats()?.bytes??0),
       pbrTextures:this.enhancedSurfaces?.stats()??null,shaderWarmup:this.shaderWarmup.stats,
       visibleLights:this.perfEnabled?this.scene.children.filter(object=>object.isLight&&object.visible&&object.intensity>0).length:null,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,

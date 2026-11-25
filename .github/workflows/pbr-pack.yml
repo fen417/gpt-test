@@ -42,8 +42,20 @@ jobs:
             public/pbr-v1
             .perf-local/pbr-source
           key: pbr-pack-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
-      - name: Bake static diffuse irradiance probes for all maps
+      - name: Restore geometry GI cache
+        uses: actions/cache/restore@v4
+        with:
+          path: public/gi-v1
+          key: geometry-gi-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: geometry-gi-v2-${{ runner.os }}-
+      - name: Bake diffuse irradiance from actual map geometry
         run: npm run assets:gi
+      - name: Save geometry GI cache even on failure
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: public/gi-v1
+          key: geometry-gi-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Restore architecture bake cache
         uses: actions/cache/restore@v4
         with:

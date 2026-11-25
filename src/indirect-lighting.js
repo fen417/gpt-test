@@ -5,7 +5,7 @@ export class IndirectLighting{
   invalidate(){this.dirty=true;}
   // Suspend before enhanced-surface material edits (POM modifies aoNode).
   suspend(){for(const m of this.materials)this.setMaterial(m,null);this.materials.clear();this.staticMaterials=null;this.dirty=true;}
-  clear(){this.serial++;this.suspend();this.field?.texture.dispose();this.field=null;this.map=null;this.quality=null;this.pending=false;this.failed=false;}
+  clear(){this.serial++;this.suspend();this.field?.texture.dispose();this.field=null;this.map=null;this.quality=null;this.pending=false;this.failed=false;this.sourceType=null;this.triangleCount=0;}
   async load(map,serial){
     try{
       const base=new URL('gi-v1/',document.baseURI);
@@ -14,21 +14,23 @@ export class IndirectLighting{
       if(manifest.version!==GI_VERSION||!meta||meta.layout!==(map.layoutVersion??0))throw Error('GI layout mismatch '+map.id);
       const data=new Uint8Array(await fetch(new URL(meta.file,base)).then(r=>{if(!r.ok)throw Error('GI field '+r.status);return r.arrayBuffer();}));
       if(serial!==this.serial)return;
-      const field={...meta,data};
+      if(meta.sourceType!=='visual-triangles'||!meta.triangles)throw Error('GI does not contain visual geometry '+map.id);
+      const field={...meta,data};this.sourceType=meta.sourceType;this.triangleCount=meta.triangles;
       this.field=probeUniforms(field,makeProbeTexture(field));this.dirty=true;this.pending=false;
     }catch(error){if(serial===this.serial){this.pending=false;this.failed=true;console.warn('Indirect lighting unavailable:',map.id,error);}}
   }
   update(owner){
-    const quality=owner.lowQuality?'off':owner.graphicsEffects?.gi??'off',level=GI_LEVELS[quality]??0,map=owner.map;
-    // M01 owns its night/thermal lighting. Other campaign maps scale with live sun.
-    if(!level||!map||(owner.presentingCampaign&&!owner.atmosphere.sky.visible)){
+    const quality=owner.graphicsEffects?.gi??'off',level=GI_LEVELS[quality]??0,map=owner.map;
+    // Keep the baked field resident through NVG toggles; only its contribution
+    // is zero while the authored night-vision lighting owns the image.
+    if(!level||!map){
       if(this.map)this.clear();return;
     }
     if(this.map!==map){this.clear();this.map=map;this.pending=true;this.load(map,this.serial);}
     if(!this.field)return;
     const field=this.field;
     if(this.quality!==quality){this.suspend();this.quality=quality;}
-    field.strength.value=giStrength(owner.sun,quality);field.quality.value=level;
+    field.strength.value=giStrength(owner.sun,quality,{campaign:owner.presentingCampaign,nightVision:owner.campaignNightVision,hemi:owner.hemiLight.intensity});field.quality.value=level;
     field.sunTint.copy(owner.sun.color).lerp(owner.hemiLight.color,.6).lerp({r:1,g:1,b:1},.32);
     if(field.gpu)field.gpu.strength.value=field.strength.value;
     // Scan only when a map model changes, or periodically to catch new
@@ -53,6 +55,6 @@ export class IndirectLighting{
     // dynamic meshes release their patch to avoid retaining disposed rigs.
     for(const material of this.materials)if(!eligible.has(material)){this.setMaterial(material,null);this.materials.delete(material);}
   }
-  stats(){return this.map?{map:this.map.id,ready:!!this.field,pending:this.pending,failed:this.failed,materials:this.materials.size,bytes:this.field?.texture.image.data.byteLength??0}:null;}
+  stats(){return this.map?{map:this.map.id,ready:!!this.field,pending:this.pending,failed:this.failed,materials:this.materials.size,source:this.sourceType,triangles:this.triangleCount,bytes:this.field?.texture.image.data.byteLength??0}:null;}
   dispose(){this.clear();}
 }

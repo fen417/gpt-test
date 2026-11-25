@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import {boxBounds,rayAffineBox} from '../shared/geometry.js';
 import {SpatialIndex} from '../shared/spatial-index.js';
 
-export const GI_VERSION=1;
+export const GI_VERSION=2;
+export const GI_ATLAS_COLUMNS=4, GI_ATLAS_ROWS=2;
 export const GI_HEIGHTS=[.65,3.2,8.5];
 export const GI_LEVELS={off:0,low:1,high:2};
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
@@ -11,7 +12,7 @@ const directions=Array.from({length:12},(_,i)=>{
   const y=i<6?.69:i<10?.20:-.46,a=i*2.3999632297,r=Math.sqrt(1-y*y);
   return {x:Math.cos(a)*r,y,z:Math.sin(a)*r};
 });
-const skyDir={x:.32,y:.89,z:.32};
+const skyDirs=[{x:.32,y:.891,z:.32},{x:-.46,y:.848,z:.26},{x:.12,y:.844,z:-.523}];
 function hitBox(o,d,b,limit){
   if(b.obb)return rayAffineBox(o,d,b.obb,limit);
   let near=0,far=limit;
@@ -36,35 +37,43 @@ function colorOf(value,fallback){
   try{c.set(value??fallback);}catch{c.set(fallback);}
   return [c.r,c.g,c.b];
 }
-export function bakeProbeField(map,{maxCells=192,spacing}={}){
+export function bakeProbeField(map,{maxCells=192,spacing,tracer=null}={}){
   const width=map.width??map.size,depth=map.depth??map.size;
   const step=spacing??(map.size<=96?1.15:map.size<=500?2.5:4.5);
   const nx=Math.max(4,Math.min(maxCells,Math.ceil(width/step))),nz=Math.max(4,Math.min(maxCells,Math.ceil(depth/step)));
   const minX=-width/2,minZ=-depth/2;
-  const boxes=(map.boxes??[]).filter(b=>!b.noCollision&&b.h>.16&&b.w>.12&&b.d>.12&&!/palm|scrub|grass|leaf|water|sign|trigger/i.test(b.kind??'')).map(b=>{
+  const boxes=(tracer?[]:map.boxes??[]).filter(b=>!b.noCollision&&b.h>.16&&b.w>.12&&b.d>.12&&!/palm|scrub|grass|leaf|water|sign|trigger/i.test(b.kind??'')).map(b=>{
     const bounded=boxBounds(b);bounded.giColor=colorOf(b.color,'#8a8174');return bounded;
   });
   const index=new SpatialIndex(boxes,16,b=>b),near=[],terrain=map.terrain;
   const ground=colorOf(map.theme==='desert-village'?'#b4a080':map.id==='port'?'#898c8c':map.id==='fy_pool_day'?'#9cb4af':'#9d9686','#9d9686');
   const heights=new Float32Array(nx*nz);let low=Infinity,high=-Infinity;
-  const data=new Uint8Array(nx*2*nz*2*4);
-  const offset=(layer,x,z)=>((z+Math.floor(layer/2)*nz)*nx*2+x+(layer%2)*nx)*4;
+  const data=new Uint8Array(nx*GI_ATLAS_COLUMNS*nz*GI_ATLAS_ROWS*4);
+  const offset=(layer,x,z)=>((z+Math.floor(layer/GI_ATLAS_COLUMNS)*nz)*nx*GI_ATLAS_COLUMNS+x+(layer%GI_ATLAS_COLUMNS)*nx)*4;
+  // Retain the old collision fixture path for unit tests only. Production
+  // scripts always supply a tracer over visual triangles.
+  const trace=(o,d,max,skip=null)=>tracer?tracer.trace(o,d,max,skip):nearest(o,d,near,max,skip);
   for(let z=0;z<nz;z++)for(let x=0;x<nx;x++){
     const wx=minX+(x+.5)*width/nx,wz=minZ+(z+.5)*depth/nz;
     const y=terrain?.heightAt(wx,wz)??0,h=Number.isFinite(y)?y:0;
     heights[z*nx+x]=h;low=Math.min(low,h);high=Math.max(high,h);
-    index.query(wx-19,wz-19,wx+19,wz+19,near);
+    if(!tracer)index.query(wx-31,wz-31,wx+31,wz+31,near);
     for(let layer=0;layer<3;layer++){
       const o={x:wx,y:h+GI_HEIGHTS[layer],z:wz};
       let open=0,weight=0,rr=0,gg=0,bb=0;
       for(let i=0;i<directions.length;i++){
-        const d=directions[i],cast=nearest(o,d,near,17);
+        const d=directions[i],cast=trace(o,d,17);
         if(d.y>0){weight++;if(!cast.hit)open++;}
         let albedo,illumination=1,attenuation;
         if(cast.hit){
-          albedo=cast.hit.giColor;
-          const p={x:o.x+d.x*Math.max(0,cast.distance-.10),y:o.y+d.y*Math.max(0,cast.distance-.10),z:o.z+d.z*Math.max(0,cast.distance-.10)};
-          illumination=nearest(p,skyDir,near,13,cast.hit).hit?.28:1;
+          albedo=cast.hit.color??cast.hit.giColor;
+          const p={x:o.x+d.x*Math.max(0,cast.distance-.065),y:o.y+d.y*Math.max(0,cast.distance-.065),z:o.z+d.z*Math.max(0,cast.distance-.065)};
+          const sky=skyDirs[i%skyDirs.length];
+          // Sample sky visibility at the real hit; the bake contains no fixed
+          // direct-sun shadows. Campaign lighting can scale it at runtime.
+          const blocked=trace(p,sky,20,cast.hit).hit;
+          const n=cast.hit,orientation=n.nx===undefined?1:Math.max(.18,Math.abs(n.nx*sky.x+n.ny*sky.y+n.nz*sky.z));
+          illumination=blocked?.18:.45+.55*orientation;
           attenuation=1/(1+cast.distance*.075);
         }else if(d.y<0){albedo=ground;attenuation=.72;}
         else continue;
@@ -74,7 +83,7 @@ export function bakeProbeField(map,{maxCells=192,spacing}={}){
       const sky=weight?open/weight:1;
       // Linear RGB one-bounce approximation. A is sky visibility, not
       // material AO; the receiver combines it with the existing AO.
-      const floorBounce=.045+.035*sky,scale=.92;
+      const floorBounce=.025+.040*sky,scale=1.02;
       const i=offset(layer,x,z);
       data.set([byte(rr*scale+ground[0]*floorBounce),byte(gg*scale+ground[1]*floorBounce),byte(bb*scale+ground[2]*floorBounce),byte(sky)],i);
     }
@@ -83,12 +92,30 @@ export function bakeProbeField(map,{maxCells=192,spacing}={}){
   for(let z=0;z<nz;z++)for(let x=0;x<nx;x++){
     const h=Math.round(clamp((heights[z*nx+x]-low)/range)*65535),i=offset(3,x,z);
     data.set([h>>8,h&255,0,255],i);
+    const wx=minX+(x+.5)*width/nx,wz=minZ+(z+.5)*depth/nz;
+    if(!tracer)index.query(wx-31,wz-31,wx+31,wz+31,near);
+    const origin=layer=>({x:wx,y:heights[z*nx+x]+GI_HEIGHTS[layer],z:wz});
+    const linked=(a,b)=>{
+      const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z,length=Math.hypot(dx,dy,dz);
+      if(length<.06)return 255;
+      const d={x:dx/length,y:dy/length,z:dz/length};
+      return trace(a,d,length-.025).hit?0:255;
+    };
+    for(let layer=0;layer<3;layer++){
+      const a=origin(layer),links=[];
+      for(const [xx,zz] of [[x-1,z],[x+1,z],[x,z-1],[x,z+1]]){
+        if(xx<0||xx>=nx||zz<0||zz>=nz){links.push(0);continue;}
+        links.push(linked(a,{x:minX+(xx+.5)*width/nx,y:heights[zz*nx+xx]+GI_HEIGHTS[layer],z:minZ+(zz+.5)*depth/nz}));
+      }
+      data.set(links,offset(4+layer,x,z));
+    }
+    data.set([linked(origin(0),origin(1)),linked(origin(1),origin(2)),255,255],offset(7,x,z));
   }
-  return {version:GI_VERSION,mapId:map.id,layout:map.layoutVersion??0,nx,nz,minX,minZ,width,depth,groundMin:low,groundRange:range,data};
+  return {version:GI_VERSION,mapId:map.id,layout:map.layoutVersion??0,sourceType:tracer?'visual-triangles':'collision-fixture',nx,nz,minX,minZ,width,depth,groundMin:low,groundRange:range,data};
 }
 export function makeProbeTexture(field){
-  if(field.version!==GI_VERSION||field.data.length!==field.nx*field.nz*16)throw Error('Invalid GI field');
-  const t=new THREE.DataTexture(field.data,field.nx*2,field.nz*2,THREE.RGBAFormat);
+  if(field.version!==GI_VERSION||field.data.length!==field.nx*field.nz*GI_ATLAS_COLUMNS*GI_ATLAS_ROWS*4)throw Error('Invalid GI field');
+  const t=new THREE.DataTexture(field.data,field.nx*GI_ATLAS_COLUMNS,field.nz*GI_ATLAS_ROWS,THREE.RGBAFormat);
   t.name='S09 baked irradiance '+field.mapId;t.colorSpace=THREE.NoColorSpace;
   t.minFilter=t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;t.needsUpdate=true;
   return t;
@@ -96,6 +123,8 @@ export function makeProbeTexture(field){
 export function probeUniforms(field,texture){
   return {texture,bounds:new THREE.Vector4(field.minX,field.minZ,field.width,field.depth),grid:new THREE.Vector4(field.nx,field.nz,field.groundMin,field.groundRange),strength:{value:0},quality:{value:1},sunTint:new THREE.Color(1,1,1)};
 }
-export function giStrength(sun,quality){
-  return (quality==='high'?1:quality==='low'?.62:0)*clamp((sun?.intensity??3.5)/3.5,.12,1.2);
+export function giStrength(sun,quality,{campaign=false,nightVision=false,hemi=2}={}){
+  if(nightVision)return 0;
+  const light=campaign?((sun?.intensity??3.5)*.65+hemi*.35)/2.975:(sun?.intensity??3.5)/3.5;
+  return (quality==='high'?1:quality==='low'?.62:0)*clamp(light,0,1.2);
 }

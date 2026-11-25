@@ -252,11 +252,11 @@ test('GI is independently selectable, off on old presets and on in Ultra',()=>{
 test('static GI bake is deterministic and roofs block sky access',()=>{
   const map={id:'gi-test',size:20,terrain:{heightAt:()=>0},boxes:[{x:0,z:0,w:10,d:10,baseY:3.5,h:.4,color:'#ca5030',kind:'roof'}]};
   const a=bakeProbeField(map,{spacing:1,maxCells:20}),b=bakeProbeField(map,{spacing:1,maxCells:20});
-  assert.deepEqual(a.data,b.data);assert.equal(a.data.length,a.nx*a.nz*16);
-  const at=(x,z)=>((z*a.nx*2+x)*4);
+  assert.deepEqual(a.data,b.data);assert.equal(a.data.length,a.nx*a.nz*32);
+  const at=(x,z)=>((z*a.nx*4+x)*4);
   assert.ok(a.data[at(10,10)+3]<a.data[at(0,0)+3]);
   assert.ok(a.data[at(10,10)]>a.data[at(10,10)+2]);
-  const tex=makeProbeTexture(a);assert.equal(tex.image.width,a.nx*2);assert.equal(tex.generateMipmaps,false);tex.dispose();
+  const tex=makeProbeTexture(a);assert.equal(tex.image.width,a.nx*4);assert.equal(tex.generateMipmaps,false);tex.dispose();
 });
 test('GI material patch restores shader and TSL material nodes',()=>{
   const data=bakeProbeField({id:'gi',size:8,terrain:{heightAt:()=>0},boxes:[]}),tex=makeProbeTexture(data),field=probeUniforms(data,tex);
