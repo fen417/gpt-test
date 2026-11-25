@@ -351,10 +351,14 @@ export function webGlWorldStages(post) {
   const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
     source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
   }));
-  const output = stage(composite(Boolean(post.mask),blurs.length,Boolean(reflected),post.cameraFX,post.hasHeat,receivers,post.heightFog), {
+  const output = stage(composite(Boolean(post.mask),0,Boolean(reflected),post.cameraFX,post.hasHeat,receivers,post.heightFog), {
     ...uniforms, ...receiverUniform, source:{value:world.texture}, sceneDepth:{value:world.depthTexture}, mask:{value:post.mask?.texture},reflection:{value:post.reflection?.texture},
     ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
   });
+  const bloomOutput=blurs.length?stage(composite(false,blurs.length,false,false,false,false,false),{
+    source:{value:world.texture},bloomGain:uniforms.bloomGain,
+    ...Object.fromEntries(post.bloom.map((target,i)=>['bloom'+i,{value:target.texture}])),
+  }):null;
   function draw(target, material, profiler, pass) {
     mesh.material=material;
     renderer.setRenderTarget(target);
@@ -382,17 +386,25 @@ export function webGlWorldStages(post) {
         for(let i=0;i<count;i++)depth.uniforms['volumeMap'+i].value=post.shadowMaps[i];
         draw(post.mask,depth,profiler,'depthEffects');
       }
-      if(blurs.length){
+      draw(target,output,profiler,'worldComposite');
+    },
+    renderBloom(input,profiler){
+      if(!blurs.length)return input.texture;
+      uniforms.bloomGain.value=state.bloomGain;
+      bloomOutput.uniforms.source.value=input.texture;
+      blurs[0].uniforms.source.value=input.texture;
+      {
         const timing=profiler?.beginPass('bloom');
         try{
           for(let i=0;i<blurs.length;i++){
-            const src=i===0?world:post.bloom[i-1];
+            const src=i===0?input:post.bloom[i-1];
             blurs[i].uniforms.pixel.value.set(1/src.width,1/src.height);
             draw(post.bloom[i],blurs[i]);
           }
         }finally{if(timing)profiler.endPass();}
       }
-      draw(target,output,profiler,'worldComposite');
+      draw(world,bloomOutput,profiler,'bloomComposite');
+      return world.texture;
     },
     dispose() { geometry.dispose(); for(const material of materials)material.dispose(); },
   };

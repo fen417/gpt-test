@@ -89,7 +89,7 @@ export class PostPass {
           .catch(error=>console.warn('SMAA resources unavailable',error));
       }else{
         this.smaa??=new this.smaaClass();
-        this.smaa.resize(this.size);
+        this.smaa.resize({x:w,y:h});
       }
     }else if(this.smaa){
       this.smaa.dispose();
@@ -103,9 +103,14 @@ export class PostPass {
       this.easuMaterial.uniforms.outputSize.value.copy(this.size);
       this.rcasMaterial.uniforms.outputSize.value.copy(this.size);
     }
-    const effects=this.worldEffects.configure(this.effects,w,h,samples);
+    let effects;
+    try{effects=this.worldEffects.configure(this.effects,w,h,samples);}
+    catch(error){throw Object.assign(new Error('World post configuration failed',{cause:error}),{s09PostFault:'depth'});}
     if(this.smaaActive)this.material.uniforms.useFxaa.value=0;
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.material.uniforms.useFxaa.value=1;
+    const worldSamples=effects?this.worldEffects.world.samples:samples;
+    this.activeAA=this.smaaActive?'SMAA':this.material.uniforms.useFxaa.value>.5?'FXAA':worldSamples?'MSAA '+worldSamples+'×':'Выкл.';
+    this.aaFallback=mode==='smaa'&&!this.smaaActive?'SMAA ещё недоступно':mode.startsWith('msaa')&&worldSamples!==Number(mode.slice(4))?'MSAA несовместимо с активными эффектами или GPU':null;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
   end(time,quality,profiler){
@@ -113,25 +118,27 @@ export class PostPass {
     this.material.uniforms.time.value=time;this.material.uniforms.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.material.uniforms.toneMappingExposure.value=r.toneMappingExposure;
     try{
+      this.material.uniforms.tDiffuse.value=this.worldEffects.finishBloom(this.target,profiler);
       const output=this.smaaActive?this.smaa.input:null;
       if(this.fsrQuality!=='off'&&this.fsrScale<0.995){
         // Display-referred low-resolution image -> EASU at native resolution
         // -> RCAS sharpening at native resolution. Keep the HTML HUD native.
-        r.setRenderTarget(this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        r.setRenderTarget(this.smaaActive?this.smaa.input:this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        if(this.smaaActive){const timing=profiler?.beginPass('smaa');try{this.smaa.render(r,this.ldrTarget);}finally{if(timing)profiler.endPass();}}
         const timing=profiler?.beginPass('fsr');
         try{
           r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-          r.setRenderTarget(output);r.render(this.rcasScene,this.camera);
+          r.setRenderTarget(null);r.render(this.rcasScene,this.camera);
         }finally{if(timing)profiler.endPass();}
       }else{
         r.setRenderTarget(output);renderTimed(r,this.scene,this.camera,profiler,'display');
       }
-      if(this.smaaActive){
+      if(this.smaaActive&&!(this.fsrQuality!=='off'&&this.fsrScale<.995)){
         const timing=profiler?.beginPass('smaa');
         try{this.smaa.render(r);}
         finally{if(timing)profiler.endPass();}
       }
-    }finally{r.setRenderTarget(null);r.info.autoReset=reset;}
+    }finally{this.material.uniforms.tDiffuse.value=this.target.texture;r.setRenderTarget(null);r.info.autoReset=reset;}
   }
   dispose(){
     this.worldEffects.receivers.dispose();

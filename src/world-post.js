@@ -91,7 +91,7 @@ export class WorldPost {
     this.state.bloomGain = gain;
     this.state.waterActive=Number(Boolean(this.reflector));
     this.state.receiverActive=Number(receiverMask&&this.receivers.count>0);
-    this.passes = 1 + levels + Number(mask) + Number(Boolean(reflections&&(this.state.waterActive||this.state.receiverActive))) + this.state.receiverActive + Number(Boolean(this.softSmoke));
+    this.passes = 1 + levels + Number(levels>0) + Number(mask) + Number(Boolean(reflections&&(this.state.waterActive||this.state.receiverActive))) + this.state.receiverActive + Number(Boolean(this.softSmoke));
     this.memory = width * height * (12 + worldSamples * 12);
     if (this.mask) {
       const divisor=ao<=4&&contact===0&&atmosphere<=1?4:2;
@@ -184,9 +184,16 @@ export class WorldPost {
     try {
       if(state.receiverActive)this.receivers.render(r,this.receiverMask,camera,profiler);
       this.stages.render(output,profiler);
+    } catch(error) {
+      throw Object.assign(new Error('World screen effects failed',{cause:error}),{s09PostFault:'depth'});
     } finally {
       r.setRenderTarget(output);
     }
+  }
+
+  finishBloom(input,profiler) {
+    try{return this.stages?.renderBloom(input,profiler)??input.texture;}
+    catch(error){throw Object.assign(new Error('HDR bloom failed',{cause:error}),{s09PostFault:'bloom'});}
   }
 
   dispose() {

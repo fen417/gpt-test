@@ -2130,6 +2130,9 @@ function frame(now){
         networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom:weaponScopeZoom(renderPlayer?.weaponId),hasCollimator,equippedAttachments,weaponSkinFor,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
       if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
     }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
+    const aaStatus=$('gfx-aa-active'),post=renderer.postPass;
+    const aaText=post.activeAA?'Фактически: '+post.activeAA+(post.aaFallback?' · '+post.aaFallback:''):'';
+    if(aaStatus&&aaStatus.textContent!==aaText)aaStatus.textContent=aaText;
   }
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);

@@ -396,7 +396,7 @@ export function webGpuWorldStages(post, geometry, camera) {
     const src=i===0?world:post.bloom[i-1];
     const tex=texture(src.texture), pixel=uniform(new THREE.Vector2());
     const shader=i===0?prefilter:downsample;
-    return {scene:make(shader({source:tex,sourceSampler:tex,at,pixel})),pixel,src};
+    return {scene:make(shader({source:tex,sourceSampler:tex,at,pixel})),pixel,src,tex};
   });
   let rgb=source.sample(at).rgb;
   if(post.cameraFX)rgb=cameraEffects({...depthParams,original:rgb,source,sourceSampler:source,
@@ -406,12 +406,13 @@ export function webGpuWorldStages(post, geometry, camera) {
     heatSources:params.heatSources,heatStrength:params.heatStrength,heatTime:params.heatTime});
   if(post.mask)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
     effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor});
-  for(let i=0;i<post.bloom.length;i++){
-    rgb=rgb.add(texture(post.bloom[i].texture).sample(at).rgb.mul(params.bloomGain).mul([.62,.23,.1,.05][i]));
-  }
   if(reflected)rgb=applyReflection({...depthParams,...waterParams,rgb,reflected:texture(post.reflection.texture).sample(at)});
   if(post.heightFog)rgb=applyHeightFog({...depthParams,rgb,fogLayer:params.fogLayer,fogLayerUp:params.fogLayerUp,fogLayerTint:params.fogLayerTint,fogEyeY:params.fogEyeY});
   const composite=make(vec4(rgb,1));
+  const bloomSource=texture(world.texture);
+  let bloomRgb=bloomSource.sample(at).rgb;
+  for(let i=0;i<post.bloom.length;i++)bloomRgb=bloomRgb.add(texture(post.bloom[i].texture).sample(at).rgb.mul(params.bloomGain).mul([.62,.23,.1,.05][i]));
+  const bloomComposite=blurs.length?make(vec4(bloomRgb,1)):null;
   function draw(target,scene,profiler,pass) {
     renderer.setRenderTarget(target);
     renderTimed(renderer,scene,camera,profiler,pass);
@@ -446,17 +447,25 @@ export function webGpuWorldStages(post, geometry, camera) {
         for(let i=0;i<count;i++)entry.maps[i].value=post.shadowMaps[i];
         draw(post.mask,entry.scene,profiler,'depthEffects');
       }
-      if(blurs.length){
+      draw(target,composite,profiler,'worldComposite');
+    },
+    renderBloom(input,profiler){
+      if(!blurs.length)return input.texture;
+      params.bloomGain.value=state.bloomGain;
+      bloomSource.value=input.texture;blurs[0].tex.value=input.texture;
+      {
         const timing=profiler?.beginPass('bloom');
         try{
           for(let i=0;i<blurs.length;i++){
             const {scene,pixel,src}=blurs[i];
-            pixel.value.set(1/src.width,1/src.height);
+            const sourceSize=i===0?input:src;
+            pixel.value.set(1/sourceSize.width,1/sourceSize.height);
             draw(post.bloom[i],scene);
           }
         }finally{if(timing)profiler.endPass();}
       }
-      draw(target,composite,profiler,'worldComposite');
+      draw(world,bloomComposite,profiler,'bloomComposite');
+      return world.texture;
     },
     dispose() { for(const material of materials)material.dispose(); },
   };

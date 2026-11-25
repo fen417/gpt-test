@@ -2129,7 +2129,7 @@ export class GameRenderer {
     this.postPass.worldEffects.reflector=this.waterAppearance?.active&&this.portWaterMesh
       ? this.waterReflectionPlane.set(this.map.shoreX,this.portWaterMesh.position.y) : null;
     const smoke=this.effectBatches.smoke;
-    const softEnabled=this.graphicsEffects?.softParticles==='high';
+    const softEnabled=this.graphicsEffects?.softParticles==='high'&&!this.postFaults?.has('depth');
     const softSmoke=softEnabled&&smoke.count>0;
     const worldFX=this.postPass.worldEffects;
     worldFX.airClimate=atmosphereProfile(this.map);
@@ -2186,10 +2186,19 @@ export class GameRenderer {
     try{
       if(localEnvironment)this.scene.environment=localEnvironment;
       const generator=this.frameGeneration;
-      try{
+      const renderFrame=()=>{
+        const faults=this.postFaults;
+        const requested=this.graphicsEffects;
+        this.postPass.effects=faults?.size?{...requested,
+          ...(faults.has('depth')?{ao:'off',contact:'off',atmosphere:'off',heightFog:'off',reflections:'off',motionBlur:'off',depthOfField:'off',lensFlare:'off',chromatic:'off',heatDistortion:'off',softParticles:'off'}:{}),
+          ...(faults.has('bloom')?{bloom:'off'}:{})}:requested;
+        if(faults?.has('depth')){
+          worldFX.softEnabled=worldFX.softSmoke=false;worldFX.hasHeat=false;
+          smoke.layers.set(0);
+        }
         // No simulated gameplay frames exist in menu. Keep the ordinary
         // WebGPU renderer there; enable temporal history only in a match.
-        generator?.setMode(menu||warming?'off':this.gfx.frameGeneration??'off');
+        generator?.setMode(menu||warming||skipFG?'off':this.gfx.frameGeneration??'off');
         this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
         this.postPass.begin(this.quality);
         try {
@@ -2197,13 +2206,24 @@ export class GameRenderer {
           drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null,profiler);
         } finally {generator?.endWorld();}
         this.postPass.end(this.clock,this.quality,profiler);
-      }catch(error){
-        if(!generator?.enabled)throw error;
-        // A bad pipeline/unsupported MRT disables only FG, not the whole WebGPU game.
-        generator.error(error);
-        this.postPass.begin(this.quality);
-        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null,profiler);
-        this.postPass.end(this.clock,this.quality,profiler);
+      };
+      // Retry recognized optional-pass failures without altering saved settings.
+      let skipFG=false;
+      for(let attempt=0;;attempt++){
+        try{if(skipFG)generator?.setMode('off');renderFrame();break;}
+        catch(error){
+          const fault=error.s09PostFault;
+          this.postFaults??=new Set();
+          if(attempt<3&&fault&&!this.postFaults.has(fault)){
+            this.postFaults.add(fault);
+            console.warn('Optional graphics pass disabled for this renderer:',fault,error.cause??error);
+            this.postPass.worldEffects.dispose();
+            generator?.reset();
+            continue;
+          }
+          if(attempt<3&&generator?.enabled&&!fault&&!skipFG){generator.error(error);skipFG=true;continue;}
+          throw error;
+        }
       }
     }
     finally{
@@ -2740,7 +2760,7 @@ export class GameRenderer {
       graphicsEffects:this.graphicsEffects,geometryQuality:this.geometryQuality,
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
-      smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
+      smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
       volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),vegetation:this.vegetation.stats(),
       effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),

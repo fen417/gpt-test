@@ -123,7 +123,7 @@ export class WebGpuPostPass {
         this.smaa={input,node,...stage(this.geometry,node)};
       }
       const {input}=this.smaa;
-      if(input.width!==this.size.x||input.height!==this.size.y)input.setSize(this.size.x,this.size.y);
+      if(input.width!==w||input.height!==h)input.setSize(w,h);
     }else this.disposeSmaa();
     this.smaaActive=Boolean(this.smaa?.node._areaTexture.version&&this.smaa.node._searchTexture.version);
     this.invSize.value.set(1/w,1/h);
@@ -133,9 +133,14 @@ export class WebGpuPostPass {
       if(this.upscaledTarget.width!==this.size.x||this.upscaledTarget.height!==this.size.y)this.upscaledTarget.setSize(this.size.x,this.size.y);
       this.inputSize.value.set(w,h);
     }
-    const effects=this.worldEffects.configure(this.effects,w,h,samples);
+    let effects;
+    try{effects=this.worldEffects.configure(this.effects,w,h,samples);}
+    catch(error){throw Object.assign(new Error('World post configuration failed',{cause:error}),{s09PostFault:'depth'});}
     if(this.smaaActive)this.useFxaa.value=0;
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.useFxaa.value=1;
+    const worldSamples=effects?this.worldEffects.world.samples:samples;
+    this.activeAA=this.smaaActive?'SMAA':this.useFxaa.value>.5?'FXAA':worldSamples?'MSAA '+worldSamples+'×':'Выкл.';
+    this.aaFallback=mode==='smaa'&&!this.smaaActive?'SMAA ещё недоступно':mode.startsWith('msaa')&&worldSamples!==Number(mode.slice(4))?'MSAA несовместимо с активными эффектами или GPU':null;
     r.setRenderTarget(effects?this.worldEffects.world:this.target);
   }
   end(time,quality,profiler){
@@ -147,20 +152,22 @@ export class WebGpuPostPass {
     this.time.value=time;this.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.exposure.value=r.toneMappingExposure;
     try {
+      this.sourceTexture.value=this.worldEffects.finishBloom(this.target,profiler);
       const finalTarget=this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null;
       const output=this.smaaActive?this.smaa.input:finalTarget;
       if(this.fsrQuality!=='off'&&this.fsrScale<.995){
-        r.setRenderTarget(this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        r.setRenderTarget(this.smaaActive?this.smaa.input:this.ldrTarget);renderTimed(r,this.scene,this.camera,profiler,'display');
+        if(this.smaaActive){r.setRenderTarget(this.ldrTarget);renderTimed(r,this.smaa.scene,this.camera,profiler,'smaa');}
         const timing=profiler?.beginPass('fsr');
         try{
           r.setRenderTarget(this.upscaledTarget);r.render(this.easuScene,this.camera);
-          r.setRenderTarget(output);r.render(this.rcasScene,this.camera);
+          r.setRenderTarget(finalTarget);r.render(this.rcasScene,this.camera);
         }finally{if(timing)profiler.endPass();}
       }else {
         r.setRenderTarget(output);
         renderTimed(r,this.scene,this.camera,profiler,'display');
       }
-      if(this.smaaActive){
+      if(this.smaaActive&&!(this.fsrQuality!=='off'&&this.fsrScale<.995)){
         r.setRenderTarget(finalTarget);renderTimed(r,this.smaa.scene,this.camera,profiler,'smaa');
       }
       if(this.frameGeneration?.enabled){
@@ -168,7 +175,7 @@ export class WebGpuPostPass {
         try{this.frameGeneration.presentReal();}
         finally{if(timing)profiler.endPass();}
       }
-    }finally{r.setRenderTarget(null);r.toneMapping=oldToneMapping;r.info.autoReset=reset;}
+    }finally{this.sourceTexture.value=this.target.texture;r.setRenderTarget(null);r.toneMapping=oldToneMapping;r.info.autoReset=reset;}
   }
   disposeSmaa(){
     if(!this.smaa)return;

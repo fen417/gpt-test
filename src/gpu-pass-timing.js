@@ -2,7 +2,7 @@ import { PerformanceSamples } from '../shared/performance-samples.js';
 
 export const gpuPassLabels = {
   world:'Мир', shadows:'Карты теней', viewModel:'Оружие',
-  depthEffects:'AO / контактные тени / атмосфера', reflectionMask:'Поверхности для SSR', reflections:'SSR', bloom:'Bloom',
+  depthEffects:'AO / контактные тени / атмосфера', reflectionMask:'Поверхности для SSR', reflections:'SSR', bloom:'Bloom', bloomComposite:'HDR Bloom · композиция',
   worldComposite:'Композиция мира', softParticles:'Мягкие частицы', display:'Цвет / FXAA',
   fsr:'FSR', smaa:'SMAA', realPresent:'Вывод при FG', frameGeneration:'Frame Generation',
 };

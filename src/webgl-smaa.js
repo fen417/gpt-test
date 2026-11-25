@@ -26,8 +26,9 @@ export class WebGlSmaa {
     this.pass.setSize(x,y);
   }
 
-  render(renderer){
-    this.pass.render(renderer,null,this.input);
+  render(renderer,output=null){
+    this.pass.renderToScreen=output===null;
+    this.pass.render(renderer,output,this.input);
   }
 
   dispose(){
