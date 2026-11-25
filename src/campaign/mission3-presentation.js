@@ -210,10 +210,7 @@ export class Mission3Presentation{
     r.ambientLight.intensity=THREE.MathUtils.damp(r.ambientLight.intensity,indoors?.22:.29,6,dt);
     if(m.ride){
       const transport=state.vehicles.find(v=>v.id==='sokol-7');
-      if(transport&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
-        this.nextTrackDustAt=r.clock+(view.quality==='low'?.43:.29);
-        emitTrackDust(r,state.vehicles,transport,convoyTrackDust);
-      }
+      if(transport&&!view.paused)emitTrackDust(r,state.vehicles,transport,convoyTrackDust);
       if(transport&&state.players.some(p=>p.id==='local'&&p.vehicleId===transport.id)){
         const heading=transport.yaw+Math.PI;
         const delta=THREE.MathUtils.clamp(wrapped((view.yaw??heading)-heading),-2.094,2.094);

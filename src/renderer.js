@@ -6,7 +6,7 @@ import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, 
 import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
 import {EffectLights} from './effect-lights.js';
-import {emitTankTrackDust} from './campaign/track-dust.js';
+import {emitTankTrackDust,trackDustSlot} from './campaign/track-dust.js';
 import {tankFireAnchor,adsFlashFactor,scriptedTankFire} from './combat-visuals.js';
 import {WaterAppearance} from './water-appearance.js';
 import {IndirectLighting} from './indirect-lighting.js';
@@ -1073,6 +1073,7 @@ export class GameRenderer {
       else { effect.mesh.removeFromParent(); this.effectPools[effect.type].push(effect); }
     }
     this.effects.length = 0;
+    this.trackDustSchedule?.clear();
     this.effectLights?.clear();this.cosmeticShots?.splice(0);this.flashKeys?.clear();
     for (const batch of Object.values(this.effectBatches || {})) batch.count = 0;
     this.seenEvents.clear();
@@ -1393,7 +1394,7 @@ export class GameRenderer {
       const speed=Math.abs(vehicle.speed??0);
       const tank=vehicle.type==='tank';
       const campaignDust=tank&&(state.campaign?.missionId==='m02'||(state.campaign?.missionId==='m03'&&state.campaign.ride));
-      if(tank&&!campaignDust&&groundDust&&vehicle.hp>0&&speed>.8&&distance<(dustQuality==='high'?85:50)&&this.effects.length<94&&this.clock>=(rig.nextDust??0)){
+      if(tank&&!campaignDust&&groundDust&&vehicle.hp>0&&speed>.8&&distance<(dustQuality==='high'?85:50)&&this.clock>=(rig.nextDust??0)){
         const high=dustQuality==='high',reduced=this.lowQuality||this.integratedGpu;
         rig.nextDust=this.clock+(reduced ? .26 : high ? .14 : .24);
         emitTankTrackDust(this,vehicle,{size:high?1.30:1.0,life:high?1.95:1.5,color:groundDust.color,opacity:Math.min(.50,groundDust.opacity*1.15),rise:.36,wind:1.05},reduced);
@@ -1896,9 +1897,10 @@ export class GameRenderer {
     this.effects.push(effect);
   }
 
-  smoke(x, y, z, size, life, color, {opacity=.55, rise=.8, wind=0,vx,vz,kind='smoke',enhanced=false,cannonHeat=false,ownCannonHeat=false}={}) {
-    if (this.effects.length > 140) return;
-    const effect = this.effectPools.smoke.pop() ?? {
+  smoke(x, y, z, size, life, color, {opacity=.55, rise=.8, wind=0,vx,vz,kind='smoke',enhanced=false,cannonHeat=false,ownCannonHeat=false,trackOwner=null,trackReduced=false}={}) {
+    const reuse=trackOwner==null?null:trackDustSlot(this.effects,trackOwner,trackReduced);
+    if (!reuse&&this.effects.length > 140) return;
+    const effect = reuse ?? this.effectPools.smoke.pop() ?? {
       mesh: new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, transparent: true, depthWrite: false })),
       type: 'smoke',
     };
@@ -1906,8 +1908,8 @@ export class GameRenderer {
     sprite.material.color.setHex(color);
     sprite.material.rotation = this.random() * Math.PI;
     sprite.position.set(x, y, z); sprite.scale.setScalar(size);
-    Object.assign(effect, { age: 0, life, size, opacity, rise, kind, cannonHeat, ownCannonHeat, enhanced:enhanced||particleQuality[this.graphicsEffects?.smoke]>0, spin:(enhanced||particleQuality[this.graphicsEffects?.smoke]>0)?(this.random()-.5)*.6:0, vx: vx??(wind + (this.random() - 0.5) * 0.6), vz: vz??((this.random() - 0.5) * 0.6) });
-    this.effects.push(effect);
+    Object.assign(effect, { age: 0, life, size, opacity, rise, kind, cannonHeat, ownCannonHeat, trackOwner, fresh:true, enhanced:enhanced||particleQuality[this.graphicsEffects?.smoke]>0, spin:(enhanced||particleQuality[this.graphicsEffects?.smoke]>0)?(this.random()-.5)*.6:0, vx: vx??(wind + (this.random() - 0.5) * 0.6), vz: vz??((this.random() - 0.5) * 0.6) });
+    if(!reuse)this.effects.push(effect);
   }
 
   spark(x, y, z, force = 1) {

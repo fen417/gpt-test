@@ -239,10 +239,7 @@ export class Mission2Presentation {
       r.camera.updateProjectionMatrix();
       r.updateSunShadow(target.x,target.z);
     }
-    if(v&&!view.paused&&r.clock>=(this.nextTrackDustAt??0)){
-      this.nextTrackDustAt=r.clock+((r.lowQuality||r.integratedGpu) ? .24 : .15);
-      emitTrackDust(r,state.vehicles,v);
-    }
+    if(v&&!view.paused)emitTrackDust(r,state.vehicles,v);
     if(v&&!view.paused&&r.clock>=(this.nextFieldSmokeAt??0)){
       this.nextFieldSmokeAt=r.clock+1.9;
       const sources=[{x:-130,y:r.map.terrain.heightAt(-130,-75),z:-75},...m.smoke];
