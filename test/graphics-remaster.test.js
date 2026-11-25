@@ -206,3 +206,33 @@ test('particle maps have transparent edges, deterministic detail and fading plum
   assert.equal(plumeEnvelope(0,1,'dust').opacity,0);assert.equal(plumeEnvelope(1,1,'smoke').opacity,0);
   assert.ok(plumeEnvelope(.3,1,'smoke').growth>1);assert.equal(dustProfile({id:'fy_pool_day'}),null);
 });
+
+import {atmosphereProfile,buildCloudPixels,makeCloudTexture,ensureCloudTexture,fogLayerParameters,heightFogOpacity,CLOUD_LEVEL} from '../src/atmosphere-profile.js';
+
+test('atmosphere improvements preserve old presets and independently selectable levels',()=>{
+  for(const preset of ['legacy','low','medium','high']){
+    const e=graphicsEffects(preset);assert.equal(e.clouds,'off');assert.equal(e.heightFog,'off');assert.equal(e.sky,'legacy');
+  }
+  assert.equal(graphicsEffects('ultra').clouds,'high');assert.equal(graphicsEffects('ultra').heightFog,'high');
+  const e=validateCustomGraphics({sky:'high',clouds:'medium',heightFog:'off',atmosphere:'low'},'ultra');
+  assert.equal(e.clouds,'medium');assert.equal(e.heightFog,'off');assert.equal(e.atmosphere,'low');assert.equal(CLOUD_LEVEL.high,3);
+  assert.notDeepEqual(atmosphereProfile({id:'port'}),atmosphereProfile({id:'quarry'}));
+  assert.ok(atmosphereProfile({id:'port'})[0]<atmosphereProfile({id:'alhadra-desert'})[0]);
+});
+test('cloud field is deterministic, varied and allocated only on enhanced sky',()=>{
+  const p=buildCloudPixels(64);assert.deepEqual(p,buildCloudPixels(64));assert.equal(p.length,64*64*4);
+  for(let k=0;k<3;k++)assert.ok(new Set(p.filter((_,i)=>i%4===k)).size>60);
+  const t=makeCloudTexture();assert.equal(t.image.width,1);ensureCloudTexture(t);assert.equal(t.image.width,256);
+  const data=t.image.data;ensureCloudTexture(t);assert.equal(t.image.data,data);assert.ok(t.generateMipmaps);t.dispose();
+});
+test('height fog is finite, fades near camera and at altitude, and respects dense campaign fog',()=>{
+  const p=atmosphereProfile({id:'quarry'}),high=fogLayerParameters(p,'high'),low=fogLayerParameters(p,'low');
+  assert.equal(heightFogOpacity(100,2,2,fogLayerParameters(p,'off')),0);
+  assert.equal(heightFogOpacity(2,2,2,high),0);
+  assert.ok(heightFogOpacity(100,2,2,high)>heightFogOpacity(25,2,2,high));
+  assert.ok(heightFogOpacity(100,2,2,high)>heightFogOpacity(100,100,100,high));
+  assert.ok(heightFogOpacity(100,2,2,high)>heightFogOpacity(100,2,2,low));
+  assert.ok(heightFogOpacity(100,2,2,high)>heightFogOpacity(100,2,2,fogLayerParameters(p,'high',.02)));
+  assert.equal(heightFogOpacity(10000,-10,-5,high),high[3]);
+  assert.ok(Number.isFinite(heightFogOpacity(60,2,2.000001,high)));
+});

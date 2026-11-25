@@ -12,6 +12,9 @@ import {graphicsEffects,gradeParameters} from '../src/graphics-settings.js';
 import {PostPass} from '../src/post-pass.js';
 import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
 import {getMap} from '../shared/world.js';
+import {makeSky} from '../src/visuals.js';
+import {makeWebGpuSky} from '../src/webgpu-sky.js';
+import {atmosphereProfile} from '../src/atmosphere-profile.js';
 import {EffectLights} from '../src/effect-lights.js';
 import {makeParticleTexture} from '../src/effect-art.js';
 import {createWebGpuSmokeMaterial} from '../src/webgpu-smoke.js';
@@ -155,5 +158,34 @@ window.drawEffectSmoke=async mode=>{
   else fxLights.update(1.2,fxCamera.position);
   const result=await renderChecked(async()=>{await renderer.compileAsync(fxScene,fxCamera);renderer.render(fxScene,fxCamera);});
   return {...result,lights:fxLights.active,slots:fxLights.lights.length};
+};
+let airScene,airCamera,airSky,airPost,airSun;
+window.drawAtmosphereSmoke=async mode=>{
+  if(!airScene){
+    airScene=new THREE.Scene();airScene.background=new THREE.Color(0x97a5ae);airScene.fog=new THREE.FogExp2(0x97a5ae,.001);
+    airCamera=new THREE.PerspectiveCamera(60,1.5,.1,950);airCamera.position.set(0,2,0);airCamera.lookAt(0,10,-60);
+    airSun=new THREE.DirectionalLight(0xffdfb4,2.7);airSun.position.set(-28,35,-65);airScene.add(airSun);
+    const floor=new THREE.Mesh(new THREE.PlaneGeometry(400,400),new THREE.MeshBasicMaterial({color:0x353f3b}));
+    floor.rotation.x=-Math.PI/2;airScene.add(floor);
+    for(let i=0;i<3;i++){
+      const block=new THREE.Mesh(new THREE.BoxGeometry(11,6+i*5,8),new THREE.MeshBasicMaterial({color:0x232d36}));
+      block.position.set((i-1)*17,3+i*2.5,-38-i*38);airScene.add(block);
+    }
+    airSky=device?makeWebGpuSky(airScene,renderer):makeSky(airScene,renderer);
+    airSky.sky.position.copy(airCamera.position);
+    airPost=device?new WebGpuPostPass(renderer,{antialias:'off'}):new PostPass(renderer,{antialias:'off'});
+  }
+  const map=getMap('quarry'),clouds=mode==='cloud'||mode==='moving'?'high':'off';
+  const settings={...graphicsEffects('high'),sky:'high',clouds,heightFog:mode==='fog'?'high':'off',
+    atmosphere:mode==='rays'?'high':'off',vignette:'off',grain:'off'};
+  airSky.update('high',airSun.position,mode==='moving'?25:0,clouds,map,airScene.fog.color);
+  airPost.worldEffects.airClimate=atmosphereProfile(map);airPost.worldEffects.atmosphereAllowed=true;
+  airPost.setImage(settings,gradeParameters(settings,map));
+  const result=await renderChecked(async()=>{
+    airPost.begin('high');renderer.render(airScene,airCamera);
+    if(airPost.worldEffects.world)airPost.worldEffects.apply(airPost.target,airCamera,airScene,airSun.position,airSun,false,1,null,null);
+    airPost.end(1,'high',null);
+  });
+  return {...result,fog:airPost.worldEffects.heightFog,mask:Boolean(airPost.worldEffects.mask),passes:airPost.worldEffects.passes};
 };
 </script></body></html>

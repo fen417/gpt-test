@@ -116,6 +116,27 @@ async function run(api){
     assert.ok(delta>2&&light.changed>.05,api+' point light does not illuminate scene geometry');
     assert.ok(expired.mean<.5&&removed.mean<.5,api+' transient lighting did not restore baseline');
     assert.ok(particles.changed>.01,api+' particle materials did not render');
+    const air={};
+    for(const q of ['clear','cloud','moving','fog','rays','clearAgain']){
+      const result=await page.evaluate(q=>window.drawAtmosphereSmoke(q),q);
+      assert.deepEqual(result.errors,[],api+' atmosphere GPU validation errors');
+      assert.deepEqual(networkErrors,[],api+' atmosphere resource loading errors');
+      assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' atmosphere shader/browser errors');
+      if(result.lost){
+        if(api==='webgpu'&&info.software)return {inconclusive:'software device lost during atmosphere '+q+': '+result.lost};
+        assert.fail(api+' GPU lost: '+result.lost);
+      }
+      air[q]=await pixels(page);
+      if(q==='fog')assert.equal(result.fog,true);
+      if(q==='rays')assert.equal(result.mask,true);
+      if(q==='clearAgain')assert.equal(result.passes,0);
+    }
+    const clouds=compare(air.clear,air.cloud),moving=compare(air.cloud,air.moving),fog=compare(air.clear,air.fog),rays=compare(air.clear,air.rays),reset=compare(air.clear,air.clearAgain);
+    console.log('ATMOSPHERE',api,JSON.stringify({clouds,moving,fog,rays,reset}));
+    assert.ok(clouds.changed>.015,api+' cloud layers not visible');
+    assert.ok(moving.changed>.01,api+' clouds do not move');
+    assert.ok(fog.changed>.015,api+' height fog not visible');
+    assert.ok(reset.mean<.5,api+' atmosphere did not restore baseline');
     return {passed:true};
   }finally{await browser.close();}
 }

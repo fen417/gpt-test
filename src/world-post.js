@@ -45,7 +45,7 @@ export class WorldPost {
   configure(effects, width, height, samples) {
     const ao = aoSteps[effects?.ao] ?? 0;
     const contact = contactSteps[effects?.contact] ?? 0;
-    const atmosphere = atmosphereSteps[effects?.atmosphere] ?? 0;
+    const atmosphere = this.atmosphereAllowed===false?0:atmosphereSteps[effects?.atmosphere] ?? 0;
     this.fogQuality=this.atmosphereAllowed===false?'off':effects?.heightFog??'off';
     this.heightFog=this.fogQuality==='low'||this.fogQuality==='high';
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];

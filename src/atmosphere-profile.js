@@ -64,6 +64,7 @@ export function makeCloudTexture(){
 export function ensureCloudTexture(t){
   if(t.image.width>1)return;
   // Retain texture identity so existing TSL nodes/uniforms remain valid.
+  t.dispose(); // dimensions change: explicitly release the placeholder GPU allocation
   t.image={data:buildCloudPixels(),width:256,height:256};
   t.generateMipmaps=true;t.minFilter=THREE.LinearMipmapLinearFilter;t.needsUpdate=true;
 }
