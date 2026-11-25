@@ -27,11 +27,12 @@ export function mountMissionIntro(root,missionId,{resumed=false}={}){
   let elapsed=0,lastAt=null,done=false;
   const finish=()=>{done=true;card.remove();};
   return {
-    update(m,paused,now){
+    update(m,paused,now,hasControl){
       if(done)return;
       if(!root.isConnected||m?.failed||m?.complete){finish();return;}
-      // Do not consume the title during loading, the loadout screen or a pause.
-      if(!m||paused||m.awaitingLoadout){
+      // Wait until the opening cutscene is over and controls have actually been returned.
+      // A later cutscene, pause, or loss of control must not consume the remaining title time.
+      if(!m||paused||!hasControl||m.cutscene||m.awaitingLoadout||m.transfer!=null||m.disembark){
         card.hidden=true;lastAt=null;return;
       }
       if(lastAt!==null)elapsed+=Math.max(0,Math.min(250,now-lastAt));

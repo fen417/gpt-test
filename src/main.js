@@ -126,7 +126,7 @@ const BIND_LABELS=[
   ['attachments','Обвесы оружия'],
   ['secondaryGadget','Достать снаряжение из слота 4'],
   ['grenade','Граната'],['drop','Выбросить оружие (TDM)'],
-  ['score','Таблица счёта'],
+  ['score','Таблица счёта / задачи кампании'],
   ['interact','Сесть в технику / выйти'],
   ['switchSeat','Сменить место в технике'],
   ['vehicleCamera','Камера танка / вертолёта'],
@@ -296,7 +296,7 @@ document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('#mus
 document.addEventListener('keydown',event=>{if(!event.target.closest?.('#music-toggle'))unlockAudio();},{once:true});
 function local(){return state?.players.find(p=>p.id===localId);}
 function setBusy(value){busy=value;for(const id of ['solo','open-solo','host','join-toggle','open-campaign'])$(id).disabled=value;}
-function clearControls(){keys.clear();pulses.clear();fire=false;fireTap=false;aim=false;recoilPitch=0;recoilYaw=0;if(active&&localId){const neutral={yaw,pitch};simulation?.client.clearInput(neutral);multiplayer.clearInput(neutral);}}
+function clearControls(){campaignPresentation?.objectivesJournal?.setHeld(false);keys.clear();pulses.clear();fire=false;fireTap=false;aim=false;recoilPitch=0;recoilYaw=0;if(active&&localId){const neutral={yaw,pitch};simulation?.client.clearInput(neutral);multiplayer.clearInput(neutral);}}
 function aimAngles(){
   return { yaw:yaw+recoilYaw, pitch:Math.max(-1.45,Math.min(1.45,pitch+recoilPitch)) };
 }
@@ -866,7 +866,9 @@ async function startCampaign(options){
   const fourth=options.missionId==='m04';
   try{
     const {CampaignSession,CampaignPresentation,campaignData}=await import('./campaign/menu.js');
-    const {mountMissionIntro}=await import('./campaign/mission-intro.js');
+    const [{mountMissionIntro},{mountObjectivesJournal}]=await Promise.all([
+      import('./campaign/mission-intro.js'),import('./campaign/objectives-journal.js'),
+    ]);
     await ticket.painted;
     const data=await campaignData(options.missionId);
     // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
@@ -904,6 +906,7 @@ async function startCampaign(options){
       resume:()=>requestControl(true)});
     await prepareMatchFrame(ticket);
     campaignPresentation.missionIntro=mountMissionIntro(campaignPresentation.root,options.missionId,{resumed:Boolean(options.save)});
+    campaignPresentation.objectivesJournal=mountObjectivesJournal(campaignPresentation.root,data.definition,data.locale,()=>formatKeyCode(keybinds.score));
     closeMatchLoad();enter();text('room-badge',`КАМПАНИЯ · ${data.definition.title.toUpperCase()}`);
   }catch(error){if(matchLoad===ticket){
     console.error('Campaign:',error);leave(false);throw error;
@@ -1336,6 +1339,11 @@ document.addEventListener('keydown',event=>{
     if(!event.repeat&&isBound('attachments',event.code)){event.preventDefault();toggleQuickAttachments();}
     return;
   }
+  if(active&&mode==='campaign'&&campaignPresentation?.objectivesJournal&&isBound('score',event.code)&&
+    $('pause').classList.contains('hidden')&&!listeningAction&&!document.querySelector('dialog.menu-dialog[open]')&&
+    !state?.campaign?.awaitingLoadout&&!event.target?.matches?.('input,select,textarea,[contenteditable]')){
+    event.preventDefault();campaignPresentation.objectivesJournal.setHeld(true);return;
+  }
   if(active&&$('pause').classList.contains('hidden')&&campaignPresentation?.key(event)){event.preventDefault();return;}
   if(active&&mode==='campaign'&&event.code==='Escape'&&!locked&&!unlocked){event.preventDefault();show('pause',$('pause').classList.contains('hidden'));clearControls();return;}
   if(active&&mode==='campaign'&&isBound('squad',event.code)){event.preventDefault();return;}
@@ -1421,7 +1429,7 @@ document.addEventListener('keydown',event=>{
     pulses.add(event.code);
   }
 });
-document.addEventListener('keyup',event=>{keys.delete(event.code);if(isBound('score',event.code)){event.preventDefault();show('scoreboard',false);}});
+document.addEventListener('keyup',event=>{keys.delete(event.code);if(isBound('score',event.code)){campaignPresentation?.objectivesJournal?.setHeld(false);event.preventDefault();show('scoreboard',false);}});
 window.addEventListener('blur',clearControls);
 document.addEventListener('visibilitychange',()=>{clearControls();if(document.hidden)simulation?.setPaused(true);lastFrame=performance.now();accumulator=0;fpsClock=0;frames=0;if(document.hidden)audio.ctx?.suspend?.();else if(audioStarted)unlockAudio();});
 function input(){
@@ -2167,7 +2175,8 @@ function frame(now){
   }
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);
-    campaignPresentation.missionIntro?.update(state?.campaign,paused,now);
+    campaignPresentation.missionIntro?.update(state?.campaign,paused,now,Boolean((locked||unlocked&&!unlockedPaused)&&local()?.alive&&!finished));
+    campaignPresentation.objectivesJournal?.update(state?.campaign,paused);
     showCampaignOutcome(campaignPresentation.root,state);
     const ended=state?.campaign?.complete||state?.campaign?.failed;
     if(ended)quickAttachments.close();

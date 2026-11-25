@@ -2,8 +2,10 @@
 .campaign-mission-intro{
   position:absolute;
   left:clamp(14px,4vw,64px);
-  top:clamp(118px,25vh,240px);
-  max-width:min(42vw,540px);
+  bottom:clamp(32px,10vh,108px);
+  box-sizing:border-box;
+  width:min(660px,54vw);
+  max-width:calc(100vw - 28px);
   z-index:4;
   display:grid;
   gap:5px;
@@ -35,9 +37,13 @@
 }
 .campaign-intro-formation{color:#d9cfbc}
 @media(max-width:700px),(max-height:520px){
-  .campaign-mission-intro{left:12px;top:26vh;max-width:43vw;padding:9px 14px 10px 10px;gap:2px}
+  .campaign-mission-intro{left:12px;bottom:10vh;width:min(620px,70vw);max-width:calc(100vw - 24px);padding:9px 14px 10px 10px;gap:2px}
   .campaign-intro-kicker{font-size:9px}
   .campaign-intro-title{font-size:clamp(15px,2.7vw,23px);margin-bottom:5px}
   .campaign-intro-character{font-size:13px}
   .campaign-intro-callsign,.campaign-intro-unit,.campaign-intro-formation{font-size:11px}
 }
+
+/* Keep the lower-left title legible without permanently changing the squad HUD. */
+body.campaign-active:has(.campaign-mission-intro:not([hidden])) .squad-hud,
+.campaign-ui:has(.campaign-mission-intro:not([hidden])) :is(.campaign-supplies,.m02-company,.m02-minimap){visibility:hidden}
