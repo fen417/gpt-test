@@ -23,35 +23,49 @@ export class LocalReflections {
   targets=new Map();
   failed=new Set();
 
+  // Probe generation is an explicit loading-screen operation. Never render
+  // six cube faces or run PMREM in an ordinary gameplay or menu frame.
+  requested(owner){
+    const quality=owner.graphicsEffects?.localReflections;
+    return !owner.lowQuality&&!owner.presentingCampaign&&['medium','high'].includes(quality)?quality:null;
+  }
+
+  async prewarm(owner,signal,yieldFrame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),fence=async()=>{}){
+    const quality=this.requested(owner);
+    if(!quality)return;
+    const map=owner.map,world=owner.worlds.get(map.id);
+    if(!world||world.model&&!world.model.base&&!world.fallback)return;
+    if(this.map!==map||this.quality!==quality||this.dirty){
+      this.dispose();this.map=map;this.quality=quality;this.zones=zonesFor(map);
+    }
+    const start=performance.now();
+    for(const zone of this.zones){
+      signal.throwIfAborted();
+      if(this.targets.has(zone.id)||this.failed.has(zone.id))continue;
+      await yieldFrame();signal.throwIfAborted();
+      if(owner.map!==map||this.map!==map||this.quality!==quality)return;
+      try{this.targets.set(zone.id,this.capture(owner,zone));}
+      catch(error){this.failed.add(zone.id);console.warn('Local reflection unavailable:',zone.id,error);}
+      await fence();signal.throwIfAborted();
+    }
+    this.warmupMs=Math.round(performance.now()-start);this.dirty=false;
+  }
+
+  invalidate(){this.dirty=true;}
+
   prepare(owner, menu, warming) {
     this.active=null;
-    const quality=owner.graphicsEffects?.localReflections;
-    if(!['medium','high'].includes(quality)||owner.lowQuality){
-      if(this.map)this.dispose();
-      return null;
-    }
-    if(owner.presentingCampaign)return null;
-    if(this.map!==owner.map||this.quality!==quality){
-      this.dispose();
-      this.map=owner.map;this.quality=quality;
-      this.zones=zonesFor(this.map);
-    }
+    if(!this.requested(owner)||this.map!==owner.map)return null;
     const {x,y,z}=owner.camera.position;
     const zone=this.zones.find(p=>Math.abs(x-p.x)<p.w/2&&Math.abs(z-p.z)<p.d/2&&y>=p.minY&&y<p.maxY);
-    const world=owner.worlds.get(owner.map.id);
-    if(world.model&&!world.model.base&&!world.fallback)return null;
-    // Warm one capture with the map. Additional warehouses are cached the
-    // first time the player approaches them, before entering their interior.
-    const nearby=zone??(!menu&&this.zones.find(p=>Math.abs(x-p.x)<p.w/2+8&&Math.abs(z-p.z)<p.d/2+8));
-    const candidate=nearby||(warming?this.zones[0]:null);
-    if(candidate&&!this.targets.has(candidate.id)&&!this.failed.has(candidate.id)){
-      try{this.targets.set(candidate.id,this.capture(owner,candidate));}
-      catch(error){this.failed.add(candidate.id);console.warn('Local reflection unavailable:',candidate.id,error);}
-    }
-    const target=this.targets.get(zone?.id);
-    if(target)this.active=zone.id;
+    // During shader warmup also compile a local-environment variant even
+    // when the spawn is outside the probe volume.
+    const target=this.targets.get(zone?.id)??(warming?this.targets.values().next().value:null);
+    if(target)this.active=zone?.id??'warmup';
     return target?.texture??null;
   }
+
+  stats(){return {ready:this.targets.size,total:this.zones?.length??0,failed:this.failed.size,dirty:!!this.dirty,warmupMs:this.warmupMs??0};}
 
   capture(owner, zone) {
     const {renderer,scene,staticRoot,worldRoot}=owner, sky=owner.atmosphere.sky;
@@ -104,6 +118,6 @@ export class LocalReflections {
     for(const target of this.targets.values())target.dispose();
     this.targets.clear();
     this.failed.clear();
-    this.active=this.map=this.quality=null;
+    this.active=this.map=this.quality=null;this.zones=[];this.dirty=false;this.warmupMs=0;
   }
 }

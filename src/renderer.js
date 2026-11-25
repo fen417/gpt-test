@@ -837,7 +837,7 @@ export class GameRenderer {
   invalidateBakedVisibility() {
     this.staticMaterialRevision++;
     this.waterAppearance?.invalidate();
-    this.localReflections.dispose();
+    this.localReflections.invalidate();
     this.indirectLighting?.invalidate();
     this.vegetation?.invalidate();
     this.postPass.worldEffects.receivers.invalidate();
@@ -2201,7 +2201,7 @@ export class GameRenderer {
     }
     if(this.vegetation.update(this)){
       this.shadowMenuIdle=false;
-      this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);this.localReflections.dispose();
+      this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);
       this.sun.shadow.needsUpdate=true;this.renderer.shadowMap.needsUpdate=true;
     }
     const waterQuality=this.lowQuality?'legacy':this.graphicsEffects?.water;
@@ -2851,7 +2851,7 @@ export class GameRenderer {
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
-      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
+      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,localReflectionProbes:this.localReflections.stats(),gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
       effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,

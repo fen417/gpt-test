@@ -87,13 +87,19 @@ export class ShaderWarmup{
       await stage(0,'Подготовка сцены');
       frame();
       const mode=stats.mode=owner.graphicsEffects?.shaderWarmup??'auto',limits=WARMUP_LIMITS[mode]??WARMUP_LIMITS.auto;
-      if(mode==='off'){await this.compile(signal);await this.fence(signal);stats.complete=true;return;}
+      if(mode==='off'){
+        await owner.localReflections?.prewarm(owner,signal,nextFrame,()=>this.fence(signal));
+        await this.compile(signal);await this.fence(signal);stats.complete=true;return;
+      }
       await stage(.18,'Загрузка PBR и световых проб');
       stats.assetsReady=await waitForWarmupAssets(owner,signal,limits.assets);
       // Flush deferred material refresh before taking the texture/variant set.
       owner.architectureLightmaps?.update(owner);
       owner.indirectLighting.update(owner);
       owner.vegetation.prewarmAssets?.(owner);
+      await stage(.35,'Подготовка локальных отражений');
+      await owner.localReflections?.prewarm(owner,signal,nextFrame,()=>this.fence(signal));
+      stats.reflectionProbes=owner.localReflections?.stats();
       await stage(.44,'Загрузка текстур на GPU');
       const all=collectWarmupTextures(owner);stats.materials=all.materials;
       const deadline=performance.now()+limits.upload;
