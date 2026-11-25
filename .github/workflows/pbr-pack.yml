@@ -42,8 +42,24 @@ jobs:
       - run: npm ci
       - name: Check targeted graphics configuration
         run: node --test test/pbr-library.test.js test/graphics-remaster.test.js test/webgpu-ktx2.test.js test/polyhaven-source.test.js
+      - name: Restore partial PBR pack
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            public/pbr-v1
+            .perf-local/pbr-source
+          key: pbr-pack-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: pbr-pack-v1-${{ runner.os }}-
       - name: Generate actual mipmapped KTX2 assets
         run: npm run assets:pbr
+      - name: Save generated textures and downloaded scans even on failure
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            public/pbr-v1
+            .perf-local/pbr-source
+          key: pbr-pack-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Build experimental game
         run: npm run build
         env:

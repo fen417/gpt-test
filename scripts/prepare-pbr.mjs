@@ -1,5 +1,5 @@
 import {createCanvas,loadImage} from '@napi-rs/canvas';
-import {mkdir,readFile,writeFile,rename,stat,rm} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,rename,stat,rm,chmod} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
@@ -7,7 +7,18 @@ import {PBR_SOURCES,PBR_PACK_VERSION} from '../src/pbr-library.js';
 import {sourceCandidates} from './polyhaven-source.mjs';
 
 const output='public/pbr-v1',cache='.perf-local/pbr-source';
-const basis=join('node_modules','basis_universal','bin',process.platform==='win32'?'basisu.exe':'basisu');
+const basis=process.env.S09_BASISU??join('node_modules','basis_universal','bin',process.platform==='win32'?'basisu.exe':'basisu');
+let basisReady=false;
+async function prepareEncoder(){
+  if(basisReady)return;
+  if(process.platform!=='win32'){
+    const info=await stat(basis);
+    if(!info.isFile())throw Error('Basis Universal executable not found: '+basis);
+    // npm archives may strip executable permission from bundled binaries.
+    await chmod(basis,info.mode|0o111);
+  }
+  basisReady=true;
+}
 if(process.env.S09_PBR_SKIP==='1'){console.log('PBR preparation skipped by S09_PBR_SKIP');process.exit(0);}
 const selection=process.argv.find(a=>a.startsWith('--surface='))?.split('=')[1];
 const all=!selection;
@@ -84,6 +95,7 @@ async function encode(surface,channel,size,input,spec){
   try{
     const args=['-ktx2','-mipmap','-y_flip','-file',png,'-output_file',temporary,
       ...(channel==='diff'?['-q','190']:['-uastc','-uastc_level','1','-linear'])];
+    await prepareEncoder();
     execFileSync(basis,args,{stdio:'inherit',timeout:900000});
     if(!await valid(temporary))throw Error('Missing encoded KTX2 '+temporary);
     await rename(temporary,path);
