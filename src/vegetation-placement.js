@@ -9,6 +9,7 @@ const profiles={
   alhadra:[.40,.28,.62,0xa9a070],'alhadra-desert':[.25,.24,.55,0xb4a16d],
   'tel-mazin':[.35,.22,.53,0xa79d6e],nahar:[.13,.13,.36,0x98996d],safra:[.38,.25,.60,0xab9d6a],
 };
+export const dryGrass=map=>map?.theme==='desert-village';
 export const vegetationProfile=map=>profiles[map?.id]??[.25,.18,.42,0xa8a17a];
 export function foliageLOD(distance,quality,grass=false){
   const q=FOLIAGE_LEVEL[quality]??0;
@@ -64,7 +65,7 @@ export function grassTile(map,placement,cx,cz,density){
     const half=.55*size/.77;
     const low=Math.min(y,map.terrain?.heightAt(x-half,z)??y,map.terrain?.heightAt(x+half,z)??y,map.terrain?.heightAt(x,z-half)??y,map.terrain?.heightAt(x,z+half)??y);
     const sink=Math.min(.14,.055+Math.max(0,y-low)*.7);
-    plants.push({x,y:y-sink,z,yaw,scale:size/.77,shade:shade*(placement.shadeAt?.(x,z)??1),color:p[3],kind:'grass'});
+    plants.push({x,y:y-sink,z,yaw,scale:size/.77,shade:shade*(placement.shadeAt?.(x,z)??1),color:dryGrass(map)?0xc6b28c:p[3],kind:'grass'});
   }
   return plants;
 }

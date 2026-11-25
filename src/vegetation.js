@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {uploadPrefix} from './render-work.js';
 import {makeFoliageTexture,foliageGeometry} from './vegetation-art.js';
-import {authoredPlants,createPlacement,grassTile,foliageLOD,FOLIAGE_LEVEL,GRASS_CELL} from './vegetation-placement.js';
+import {authoredPlants,createPlacement,grassTile,foliageLOD,FOLIAGE_LEVEL,GRASS_CELL,dryGrass} from './vegetation-placement.js';
 import {makeGlFoliageMaterial} from './webgl-vegetation.js';
 const center=(x,z,size)=>[Math.floor(x/size),Math.floor(z/size)];
 export class Vegetation{
@@ -12,11 +12,12 @@ export class Vegetation{
   }
   asset(kind,lod){
     const texKind=kind==='palm'&&lod===2?'palm-impostor':kind;
-    if(!this.assets.has(texKind)){
-      const texture=makeFoliageTexture(texKind),mat=this.makeMaterial(texture,this.uniforms);
-      this.assets.set(texKind,{texture,...mat,geometries:new Map()});
+    const dry=kind==='grass'&&dryGrass(this.map),key=dry?'grass-dry':texKind;
+    if(!this.assets.has(key)){
+      const texture=makeFoliageTexture(texKind,dry),mat=this.makeMaterial(texture,this.uniforms);
+      this.assets.set(key,{texture,...mat,geometries:new Map()});
     }
-    const asset=this.assets.get(texKind);
+    const asset=this.assets.get(key);
     if(!asset.geometries.has(lod))asset.geometries.set(lod,foliageGeometry(kind,lod));
     return {...asset,geometry:asset.geometries.get(lod)};
   }
@@ -154,10 +155,15 @@ export class Vegetation{
     const matrix=new THREE.Matrix4().makeTranslation(position.x,position.y-1,position.z),samples=[];
     // Compile actual instanced geometry layouts and the palm impostor variant.
     // Samples are never added to the map or persistent authored/grass lists.
-    for(const [kind,a] of this.assets)if(this.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))for(const g of a.geometries.values()){
+    for(const [key,a] of this.assets){
+      if((key==='grass'||key==='grass-dry')&&((key==='grass-dry')!==dryGrass(this.map)))continue;
+      const kind=key==='grass-dry'?'grass':key;
+      if(!this.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))continue;
+      for(const g of a.geometries.values()){
       const mesh=new THREE.InstancedMesh(g,a.material,1);mesh.setMatrixAt(0,matrix);mesh.setColorAt(0,this.white);mesh.frustumCulled=false;
       mesh.userData.vegetation=true;mesh.customDepthMaterial=a.depth;mesh.receiveShadow=kind!=='grass'||this.receiveGrassShadow;mesh.castShadow=['low','high'].includes(owner.graphicsEffects?.vegetationShadows);
       this.root.add(mesh);samples.push(mesh);
+      }
     }
     return ()=>{for(const mesh of samples){mesh.removeFromParent();mesh.dispose();}};
   }

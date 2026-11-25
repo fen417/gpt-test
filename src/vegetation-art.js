@@ -15,7 +15,7 @@ function leaflet(u,v,b,px){
   if(Math.abs(x)>b.w+b.h||Math.abs(y)>b.w+b.h)return 0;
   return 1-smooth(1-px*4,1+px*4,Math.hypot(a,k));
 }
-export function foliagePixels(kind,size=256){
+export function foliagePixels(kind,size=256,dry=false){
   const random=foliageRandom(971+kind.length*73),data=new Uint8Array(size*size*4),shapes=[],px=1/size;
   if(kind==='grass'){
     for(let i=0;i<29;i++)shapes.push({x:.15+random()*.70,y:.025+random()*.095,h:.30+random()*.63,w:.013+random()*.020,lean:(random()-.5)*.52,t:random()});
@@ -29,7 +29,7 @@ export function foliagePixels(kind,size=256){
     for(let i=0;i<12;i++){const a=TAU*i/12;shapes.push({x:.5+Math.cos(a)*.21,y:.53+Math.sin(a)*.18,w:.28,h:.063,a,t:random()});}
   }
   for(const b of shapes)if(b.a!=null){b.c=Math.cos(b.a);b.s=Math.sin(b.a);}
-  const palette=kind==='grass'?[[91,116,47],[147,155,73]]:kind==='scrub'?[[113,133,69],[177,159,100]]:kind==='broadleaf'?[[75,116,49],[151,165,74]]:[[93,132,62],[169,150,77]];
+  const palette=kind==='grass'?(dry?[[132,105,62],[204,179,115]]:[[91,116,47],[147,155,73]]):kind==='scrub'?[[113,133,69],[177,159,100]]:kind==='broadleaf'?[[75,116,49],[151,165,74]]:[[93,132,62],[169,150,77]];
   for(let y=0;y<size;y++)for(let x=0;x<size;x++){
     const u=(x+.5)/size,v=(y+.5)/size;
     let alpha=0,tone=.5,vein=0;
@@ -64,9 +64,9 @@ export function foliagePixels(kind,size=256){
   }
   return data;
 }
-export function makeFoliageTexture(kind){
-  const size=kind==='palm'?256:128,t=new THREE.DataTexture(foliagePixels(kind,size),size,size,THREE.RGBAFormat);
-  t.name='S09 foliage '+kind;t.colorSpace=THREE.SRGBColorSpace;t.generateMipmaps=true;t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;t.anisotropy=2;t.needsUpdate=true;return t;
+export function makeFoliageTexture(kind,dry=false){
+  const size=kind==='palm'?256:128,t=new THREE.DataTexture(foliagePixels(kind,size,dry),size,size,THREE.RGBAFormat);
+  t.name='S09 foliage '+kind+(dry?' dry':'');t.colorSpace=THREE.SRGBColorSpace;t.generateMipmaps=true;t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;t.anisotropy=2;t.needsUpdate=true;return t;
 }
 function builder(){
   const pos=[],uv=[],weight=[],indices=[];
