@@ -38,7 +38,7 @@ export function buildPoolDay(owner,map,root){
   for(const section of map.floorSections)
     floor(section.minX,section.maxX,section.minZ,section.maxZ,section.y0,section.y1,material(0x507d80));
   for(const p of map.pools)
-    floor(p.x-p.w/2,p.x+p.w/2,p.z-p.d/2,p.z+p.d/2,p.waterY,p.waterY,material(0x41858c,true)).renderOrder=1;
+    {const water=floor(p.x-p.w/2,p.x+p.w/2,p.z-p.d/2,p.z+p.d/2,p.waterY,p.waterY,material(0x41858c,true));water.renderOrder=1;water.userData.waterSurface=true;}
   for(const b of map.boxes)
     add(new THREE.BoxGeometry(b.w,b.h,b.d),material(b.color)).position.set(b.x,(b.baseY??0)+b.h/2,b.z);
 }

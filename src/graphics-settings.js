@@ -3,7 +3,7 @@ const legacy = Object.freeze({
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
-  sky: 'legacy', water: 'legacy', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
+  sky: 'legacy', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
   smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off',
   adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
@@ -11,7 +11,7 @@ const legacy = Object.freeze({
 const ultra = Object.freeze({
   ...legacy, surfaceDetail:'ultra',mapWeathering:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
-  sky: 'high', water: 'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high',
+  sky: 'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high',
 });
 
 export const GRAPHICS_PRESETS = Object.freeze({ legacy, low: legacy, medium: legacy, high: legacy, ultra });
@@ -48,8 +48,10 @@ export const GRAPHICS_CONTROLS = [
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
     ['sky', 'Небо', 'Добавляет солнечный диск и атмосферное рассеивание. Умеренная нагрузка.', choices(old, high)],
     ['reflections', 'Экранные отражения', 'Отражает видимое окружение на воде и отмеченных глянцевых поверхностях.', choices(off,low,medium,high)],
-    ['localReflections', 'Локальные отражения', 'Отражает окружение на воде, стекле и металле в отдельных зонах порта, «Лагуны» и Linden Estate.', choices(off,high)],
-    ['water', 'Вода', 'Добавляет нормали волн и отражение неба там, где есть вода.', choices(old, high)],
+    ['localReflections', 'Локальные отражения', 'Кэшированные пробы окружения на стекле и металле. Средние 64, высокие 128 px.', choices(off,medium,high)],
+    ['water', 'Вода', 'Два масштаба волн, цвет по глубине и отражение неба. Старый режим сохраняет исходный материал.', choices(old,low,medium,high)],
+    ['waterRefraction','Преломление воды','Физическая передача света через поверхность бассейнов на высоком качестве воды. Дополнительный проход.',choices(off,high)],
+    ['waterFoam','Береговая пена','Нерегулярные светлые полосы на мелководье и у берега. Высокое качество воды.',choices(off,high)],
   ]],
   ['Постобработка', [
     ['bloom', 'Свечение HDR', 'Смягчает яркие блики и эмиссивные источники. Чем выше качество, тем шире свечение.', choices(off, low, medium, high, ['ultra', 'Ультра'])],
@@ -94,9 +96,9 @@ export const GRAPHICS_GROUPS = [
   ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere'], {
     legacy:['Как раньше','legacy','off'], low:['Низкое','high','low'], medium:['Среднее','high','medium'], high:['Высокое','high','high'], ultra:['Ультра','high','ultra'],
   }],
-  ['reflectionQuality','Вода и отражения','Волны, экранные отражения и местное окружение.', ['reflections','localReflections','water'], {
-    legacy:['Как раньше','off','off','legacy'], local:['Локальные','off','high','high'],
-    low:['Низкие','low','high','high'], medium:['Средние','medium','high','high'], high:['Высокие','high','high','high'],
+  ['reflectionQuality','Вода и отражения','Волны, экранные отражения и местное окружение.', ['reflections','localReflections','water','waterRefraction','waterFoam'], {
+    legacy:['Как раньше','off','off','legacy','off','off'], local:['Локальные','off','medium','medium','off','off'],
+    low:['Низкие','low','off','low','off','off'], medium:['Средние','medium','medium','medium','off','off'], high:['Высокие','high','high','high','high','high'],
   }],
   ['cinematicCamera','Камера в заставках','Смаз движения и глубина резкости.', ['motionBlur','depthOfField'], {
     off:['Выкл.','off','off'], low:['Лёгкий эффект','low','cinematics'], high:['Заставки и меню','medium','on'],

@@ -1,5 +1,8 @@
 const gpuSteps = [
   ['reflections',{high:'medium',medium:'low',low:'off'}],
+  ['waterRefraction',{high:'off'}],
+  ['water',{high:'medium',medium:'low',low:'legacy'}],
+  ['localReflections',{high:'medium',medium:'off'}],
   ['atmosphere',{ultra:'high',high:'medium',medium:'low',low:'off'}],
   ['relief',{high:'low',low:'basic',basic:'off'}],
   ['mapWeathering',{high:'low',low:'off'}],
@@ -95,6 +98,6 @@ export class AdaptiveGraphics {
 }
 
 function gpuEffectName(previous,next) {
-  const names={reflections:'отражения',atmosphere:'атмосфера',relief:'параллакс-рельеф',mapWeathering:'износ поверхностей',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',softParticles:'мягкие частицы',bloom:'свечение'};
+  const names={reflections:'отражения',waterRefraction:'преломление воды',water:'вода',localReflections:'локальные отражения',atmosphere:'атмосфера',relief:'параллакс-рельеф',mapWeathering:'износ поверхностей',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',softParticles:'мягкие частицы',bloom:'свечение'};
   return Object.keys(names).map(key=>previous[key]!==next[key]?names[key]:null).find(Boolean)??'эффекты';
 }

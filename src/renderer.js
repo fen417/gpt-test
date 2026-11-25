@@ -553,6 +553,7 @@ export class GameRenderer {
     const map = getMap(mapId);
     if (this.map === map) return;
     this.enhancedSurfaces?.clear(); // Never clone a shared material with temporary PBR textures.
+    this.waterAppearance?.restore();
     this.postPass.worldEffects.previousClock=undefined;
     for(const type of new Set(map.vehicleSpawns?.map(vehicle=>vehicle.type)))lightVehicleModels[type]?.load();
     let world = this.worlds.get(map.id);
@@ -746,6 +747,7 @@ export class GameRenderer {
   }
 
   invalidateBakedVisibility() {
+    this.waterAppearance?.invalidate();
     this.localReflections.dispose();
     this.postPass.worldEffects.receivers.invalidate();
     this.interiorVisibility.root=null;
@@ -1889,6 +1891,7 @@ export class GameRenderer {
   }
 
   applyQuality(low) {
+    this.waterAppearance?.restore();
     this.lowQuality = low;
     this.adaptiveScale = 1;
     this.applyShadows();
@@ -1966,14 +1969,14 @@ export class GameRenderer {
         this.renderer.shadowMap.needsUpdate = true;
       }
     }
-    if(this.graphicsEffects?.water==='high'&&this.portWaterMesh){
+    const waterQuality=this.lowQuality?'legacy':this.graphicsEffects?.water;
+    const waterKey=[this.map.id,waterQuality,this.graphicsEffects?.waterRefraction,this.graphicsEffects?.waterFoam].join('/');
+    if(this.waterKey!==waterKey){this.waterKey=waterKey;this.postPass.worldEffects.receivers.invalidate();}
+    if(waterQuality&&waterQuality!=='legacy'&&(this.map.id==='port'||this.map.id==='fy_pool_day')){
       this.waterAppearance??=new WaterAppearance();
-      this.waterAppearance.update(this.clock,this.portWaterMesh);
-    }else if(this.waterAppearance){
-      this.waterAppearance.dispose();
-      this.waterAppearance=null;
-    }
-    this.postPass.worldEffects.reflector=this.waterAppearance
+      this.waterAppearance.update(this.clock,this.staticRoot,this.map,waterQuality,this.graphicsEffects.waterRefraction,this.graphicsEffects.waterFoam,this.atmosphere.envTexture);
+    }else if(this.waterAppearance){this.waterAppearance.dispose();this.waterAppearance=null;}
+    this.postPass.worldEffects.reflector=this.waterAppearance?.active&&this.portWaterMesh
       ? this.waterReflectionPlane.set(this.map.shoreX,this.portWaterMesh.position.y) : null;
     const smoke=this.effectBatches.smoke;
     const softSmoke=this.graphicsEffects?.softParticles==='high'&&smoke.count>0;
@@ -2016,7 +2019,7 @@ export class GameRenderer {
     this.cascades?.update();
     if(!menu&&!warming)this.interiorVisibility.apply(this);
     worldFX.receiverMode=worldFX.receivers.update(this.map.id,this.staticRoot,this.camera,
-      !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'));
+      !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'),this.campaignWaterMesh);
     const timing=this.gpuTimer.begin();
     const profiler=this.perfEnabled?this.gpuTimer:null;
     if(softSmoke)smoke.layers.set(SOFT_PARTICLE_LAYER);
@@ -2581,7 +2584,7 @@ export class GameRenderer {
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
       volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,
-      reflectionReceivers:post.worldEffects.receivers.count,
+      reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',

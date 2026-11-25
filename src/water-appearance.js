@@ -24,38 +24,110 @@ export function makeWaveNormal(detail=false) {
   return texture;
 }
 
+// CPU-generated linear geometry-independent surface inputs. No external textures.
+export const WATER_QUALITY=Object.freeze({legacy:0,low:1,medium:2,high:3});
+export function waterDepth(map,x,z){
+  if(map.id==='port')return Math.max(0,Math.min(12,(map.shoreX-x)*.32));
+  if(map.id==='fy_pool_day'){
+    const p=map.pools.find(p=>Math.abs(x-p.x)<p.w/2&&Math.abs(z-p.z)<p.d/2);
+    return p?Math.max(0,p.waterY-map.terrain.heightAt(x,z)):0;
+  }
+  return 0;
+}
+const clamp=THREE.MathUtils.clamp, smooth=THREE.MathUtils.smoothstep;
+export function waterSurfaceColor(map,x,z,foam=true){
+  const depth=waterDepth(map,x,z),port=map.id==='port';
+  const mix=smooth(depth,0,port?7:1.1);
+  const shallow=port?[71,113,108]:[153,206,198],deep=port?[31,67,77]:[48,129,143];
+  const wave=.5+.5*Math.sin(z*1.73+.7*Math.sin(x*2.3+z*.4));
+  const detail=.5+.5*Math.sin(x*8.1+z*4.7+2*Math.sin(z*1.31));
+  const shore=port?Math.max(0,map.shoreX-x):depth;
+  const foamBand=foam&&depth>0? (1-smooth(shore,port?.4:.06,port?2.3:.22))*smooth(wave*.66+detail*.34,.51,.94)*(port?.78:.34):0;
+  return shallow.map((c,i)=>Math.round(clamp(THREE.MathUtils.lerp(THREE.MathUtils.lerp(c,deep[i],mix),[211,230,221][i],foamBand),0,255)));
+}
+export function makeWaterColor(map,foam){
+  const port=map.id==='port',width=port?1024:256,height=port?256:256;
+  const bytes=new Uint8Array(width*height*4),span=map.size;
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const u=(x+.5)/width,v=(y+.5)/height;
+    const wx=port?map.shoreX-1200*(1-u):(u-.5)*span;
+    const wz=port?(v-.5)*1600:(v-.5)*span;
+    bytes.set([...waterSurfaceColor(map,wx,wz,foam),255],(y*width+x)*4);
+  }
+  const t=new THREE.DataTexture(bytes,width,height,THREE.RGBAFormat);
+  t.name='S09 shallow/deep water colour';t.colorSpace=THREE.SRGBColorSpace;
+  t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearMipmapLinearFilter;t.generateMipmaps=true;
+  t.needsUpdate=true;return t;
+}
+function poolGeometry(mesh,map){
+  // World-aligned UVs on a private geometry: imported and procedural fallback
+  // meshes share the same depth palette and metric wave scale.
+  const geometry=mesh.geometry.clone(),position=geometry.attributes.position;
+  const uv=new THREE.Float32BufferAttribute(position.count*2,2),p=new THREE.Vector3();
+  for(let i=0;i<position.count;i++){
+    p.fromBufferAttribute(position,i).applyMatrix4(mesh.matrixWorld);
+    uv.setXY(i,p.x/map.size+.5,p.z/map.size+.5);
+  }
+  geometry.setAttribute('uv',uv);return geometry;
+}
+export function makeWaterMaterial(kind,quality,large,small,colorMap,refraction=false){
+  const level=WATER_QUALITY[quality]??0,pool=kind==='pool',deep=level>=2;
+  const transparent=pool&&!(refraction&&level===3);
+  const material=new THREE.MeshPhysicalMaterial({
+    color:colorMap?0xffffff:pool?0x78b8be:0x335965,
+    map:colorMap??null,roughness:pool?.14:.23,metalness:0,
+    ior:1.333,envMapIntensity:pool?1.08:.95,
+    normalMap:large,normalScale:new THREE.Vector2(pool?.27:.62,pool?.23:.49),
+    transparent,opacity:transparent?.42:1,depthWrite:!transparent,
+    clearcoat:deep?.58:0,clearcoatRoughness:pool?.12:.18,
+    clearcoatNormalMap:deep?small:null,clearcoatNormalScale:new THREE.Vector2(.24,.19),
+    transmission:pool&&refraction&&level===3?.82:0,
+    thickness:pool&&refraction&&level===3?.65:0,
+    attenuationColor:0x83c5c5,attenuationDistance:2.3,
+  });
+  return material;
+}
+
 export class WaterAppearance {
-  constructor() {
-    this.large=makeWaveNormal();
-    this.small=makeWaveNormal(true);
-    this.material=new THREE.MeshPhysicalMaterial({
-      color:0x254d56,roughness:.21,metalness:0,
-      ior:1.333,envMapIntensity:.85,
-      normalMap:this.large,normalScale:new THREE.Vector2(.75,.62),
-      clearcoat:.6,clearcoatRoughness:.16,clearcoatNormalMap:this.small,
-      clearcoatNormalScale:new THREE.Vector2(.27,.19),
-    });
-    this.large.repeat.set(34,46);this.small.repeat.set(95,111);
-  }
-
-  update(clock,mesh) {
-    if(this.mesh!==mesh){
-      this.restore();
-      this.mesh=mesh;
-      this.original=mesh.material;
+  entries=[];
+  dirty=true;
+  invalidate(){this.dirty=true;}
+  update(clock,root,map,quality,refraction,foam,env){
+    const level=WATER_QUALITY[quality]??0;
+    const supported=map?.id==='port'||map?.id==='fy_pool_day';
+    if(!level||!supported||!root){this.restore();return;}
+    const key=[map.id,quality,refraction,foam].join('/');
+    if(this.dirty||this.root!==root||this.key!==key){
+      this.restore();this.dirty=false;this.root=root;this.key=key;
+      const pool=map.id==='fy_pool_day';
+      root.traverse(mesh=>{
+        if(!mesh.isMesh||!(mesh.name==='Port water'||mesh.userData.architecturalSurface==='water'||mesh.userData.waterSurface===true))return;
+        this.entries.push({mesh,material:mesh.material,geometry:mesh.geometry});
+      });
+      if(!this.entries.length)return;
+      this.large=makeWaveNormal();this.large.repeat.set(pool?13:34,pool?13:46);
+      if(level>=2){this.small=makeWaveNormal(true);this.small.repeat.set(pool?35:95,pool?35:111);}
+      if(level>=2)this.color=makeWaterColor(map,level===3&&foam==='high');
+      this.material=makeWaterMaterial(pool?'pool':'port',quality,this.large,this.small,this.color,refraction==='high');
+      for(const e of this.entries){
+        if(pool)e.mesh.geometry=poolGeometry(e.mesh,map);
+        e.mesh.material=this.material;
+        e.mesh.userData.waterReflection=pool;
+      }
     }
-    mesh.material=this.material;
+    if(!this.material)return;
+    this.material.envMap=env??null; // explicit sky fallback; never use an interior probe on open water.
     this.large.offset.set((clock*.017)%1,(clock*.011)%1);
-    this.small.offset.set((-clock*.029)%1,(clock*.037)%1);
+    this.small?.offset.set((-clock*.029)%1,(clock*.037)%1);
   }
-
-  restore() {
-    if(this.mesh)this.mesh.material=this.original;
-    this.mesh=this.original=null;
+  get active(){return this.entries.length>0;}
+  restore(){
+    for(const {mesh,material,geometry} of this.entries){
+      if(mesh.geometry!==geometry)mesh.geometry.dispose();
+      mesh.geometry=geometry;mesh.material=material;delete mesh.userData.waterReflection;
+    }
+    this.entries.length=0;this.material?.dispose();this.large?.dispose();this.small?.dispose();this.color?.dispose();
+    this.material=this.large=this.small=this.color=null;this.root=this.key=null;
   }
-
-  dispose() {
-    this.restore();
-    this.material.dispose();this.large.dispose();this.small.dispose();
-  }
+  dispose(){this.restore();}
 }
