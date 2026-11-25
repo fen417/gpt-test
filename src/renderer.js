@@ -776,7 +776,7 @@ export class GameRenderer {
     await Promise.allSettled([this.surfaces.ready,this.groundShadows.textureLoader.ready(),world.quarryLoad,this.tankWarmup]);
   }
 
-  async preloadMatchActors(state) {
+  async preloadMatchActors(state,view={}) {
     this.infantry??=new InfantryAssets(this.renderer);
     const units=new Map();
     for(const player of state.players){
@@ -787,6 +787,7 @@ export class GameRenderer {
     if(state.campaign?.missionId==='m03')vehicleTypes.add(BLACK_HAWK);
     await Promise.allSettled([
       this.parachutes.load(),
+      ...(graphicsEffects(view.quality,view.gfx?.customGraphics).shaderWarmup==='full'||state.gameMode==='tdm'?[this.infantry.warm()]:[]),
       ...Array.from(units.values(),([team,weapon])=>this.infantry.load(team,weapon)),
       ...Array.from(vehicleTypes,type=>lightVehicleModels[type]?.load()),
     ]);
@@ -795,6 +796,83 @@ export class GameRenderer {
   async warmMatchFrame(state,localId,view,signal,progress) {
     await this.shaderWarmup.idle();signal.throwIfAborted();
     return this.shaderWarmup.run(state,localId,view,signal,progress);
+  }
+
+  async warmActorVariants(state,signal,full,yieldFrame,fence){
+    const live=[...this.soldiers.values()],temporary=[],saved=[];
+    const variants=new Set(live.map(r=>r.team+'/'+r.classId+'/'+r.weaponId));
+    const stats={actors:live.length,representatives:0,lods:0};
+    try{
+      for(const rig of live){
+        saved.push({rig,visible:rig.group.visible,lod:rig.lod,shadows:rig.lodShadows,low:rig.lowWeaponDetail,parent:rig.group.parent});
+        if(!rig.group.parent)this.worldRoot.add(rig.group);
+        rig.group.visible=true;
+      }
+      if(full){
+        const choices=Object.entries(CLASS_WEAPONS).flatMap(([classId,ids])=>ids.map(weaponId=>({classId,weaponId})));
+        for(const weaponId of SIDEARMS)choices.push({classId:'assault',weaponId});
+        for(const team of [0,1])for(const {classId,weaponId} of choices){
+          signal.throwIfAborted();
+          if(variants.has(team+'/'+classId+'/'+weaponId))continue;
+          const rig=this.makeSoldier({id:'warm-'+team+'-'+weaponId,classId,team,weaponId,shotSeq:0});
+          if(!rig)continue;
+          temporary.push(rig);
+          const index=temporary.length-1;
+          rig.group.position.set((index%5-2)*.65,-1.6,-5-Math.floor(index/5)*1.2).applyMatrix4(this.camera.matrixWorld);
+          rig.group.rotation.y=this.camera.rotation.y;
+          rig.group.visible=true;this.worldRoot.add(rig.group);
+          if(temporary.length%3===0)await yieldFrame();
+        }
+      }
+      stats.representatives=temporary.length;
+      const actors=[...live,...temporary];
+      if(!actors.length)return stats;
+      for(const lod of [0,1,2,3]){
+        signal.throwIfAborted();
+        for(const rig of actors)setInfantryLod(rig,lod,lod<2&&this.renderer.shadowMap.enabled,this.geometryQuality==='low');
+        this.indirectLighting.invalidate();
+        this.drawWarmupScene();stats.lods++;
+        await fence();await yieldFrame();
+      }
+      return stats;
+    }finally{
+      for(const {rig,visible,lod,shadows,low,parent} of saved){
+        setInfantryLod(rig,lod,shadows,low);rig.group.visible=visible;
+        if(!parent)rig.group.removeFromParent();
+      }
+      for(const rig of temporary)this.removeSoldier(rig);
+      this.indirectLighting.invalidate();
+    }
+  }
+
+  async warmWeaponVariants(state,localId,view,signal,yieldFrame,fence){
+    const player=state.players.find(p=>p.id===localId);
+    if(!player||!this.weaponRig)return 0;
+    const rig=this.weaponRig,r=this.renderer,weapon=this.weapon;
+    const saved={visible:weapon.visible,mask:this.camera.layers.mask,target:r.getRenderTarget(),background:this.scene.background,world:this.worldRoot.visible,clear:r.autoClear,shadows:r.shadowMap.autoUpdate};
+    const meshes=[];weapon.traverse(o=>{if(o.isMesh&&o.frustumCulled){meshes.push(o);o.frustumCulled=false;}});
+    const variants=Object.entries(CLASS_WEAPONS).flatMap(([classId,ids])=>ids.map(weaponId=>({classId,weaponId})));
+    for(const weaponId of SIDEARMS)variants.push({classId:'assault',weaponId});
+    for(const gadgetKind of ['launcher','repair','defibrillator','medkit','ammo','claymore','binoculars'])variants.push({classId:player.classId,weaponId:player.weaponId||defaultWeaponId(player.classId),gadgetKind,gadgetPhase:.5,toolActive:true,toolProgress:.5});
+    let count=0;
+    try{
+      this.worldRoot.visible=false;weapon.visible=true;this.scene.background=null;this.camera.layers.set(1);r.shadowMap.autoUpdate=false;r.autoClear=true;
+      r.setRenderTarget(this.postPass.target);
+      for(const variant of variants){
+        signal.throwIfAborted();
+        rig.update({team:player.team,reloadPhase:1,reloadEmpty:false,clock:this.clock,...variant});
+        this.scene.updateMatrixWorld(true);
+        await r.compileAsync?.(this.scene,this.camera);
+        signal.throwIfAborted();
+        r.render(this.scene,this.camera);count++;
+        await fence();await yieldFrame();
+      }
+    }finally{
+      for(const mesh of meshes)mesh.frustumCulled=true;
+      rig.update({classId:player.classId,weaponId:player.weaponId||defaultWeaponId(player.classId),team:player.team,reloadPhase:1,reloadEmpty:false,unarmed:state.gameMode==='tdm'&&!player.weaponId,attachments:view.equippedAttachments?.(player.weaponId),skinId:view.weaponSkinFor?.(player.id,player.weaponId)});
+      weapon.visible=saved.visible;this.worldRoot.visible=saved.world;this.scene.background=saved.background;this.camera.layers.mask=saved.mask;r.autoClear=saved.clear;r.shadowMap.autoUpdate=saved.shadows;r.setRenderTarget(saved.target);
+    }
+    return count;
   }
 
   drawWarmupScene(){

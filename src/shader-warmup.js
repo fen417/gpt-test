@@ -124,6 +124,13 @@ export class ShaderWarmup{
       }finally{restore();}
       // Clear sample-only heat, smoke and output; normal gameplay never
       // consumes the synthetic effect or a temporal history from it.
+      await stage(.90,'Подготовка бойцов и уровней детализации');
+      stats.actorVariants=await owner.warmActorVariants?.(state,signal,mode==='full',nextFrame,()=>this.fence(signal));
+      if(mode==='full'){
+        await stage(.95,'Подготовка оружия и снаряжения');
+        stats.weaponVariants=await owner.warmWeaponVariants?.(state,localId,view,signal,nextFrame,()=>this.fence(signal));
+      }
+      frame();
       await stage(1,'Графика готова');
       stats.complete=true;
     }finally{

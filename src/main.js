@@ -794,7 +794,7 @@ async function prepareMatchMap(ticket,mapId){
 async function prepareMatchFrame(ticket){
   const {signal}=ticket.controller;
   loadingScreen.update(2,'Загрузка бойцов и техники');
-  await renderer.preloadMatchActors(state);
+  await renderer.preloadMatchActors(state,ticket.view);
   signal.throwIfAborted();
   loadingScreen.update(2.5,'Подготовка первого кадра');
   try{
