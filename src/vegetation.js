@@ -5,7 +5,7 @@ import {makeGlFoliageMaterial} from './webgl-vegetation.js';
 const center=(x,z,size)=>[Math.floor(x/size),Math.floor(z/size)];
 export class Vegetation{
   constructor(makeMaterial=makeGlFoliageMaterial){
-    this.makeMaterial=makeMaterial;this.root=new THREE.Group();this.root.name='S09 streamed vegetation';this.assets=new Map();this.tiles=new Map();this.authored=[];this.hidden=new Map();
+    this.makeMaterial=makeMaterial;this.root=new THREE.Group();this.root.name='S09 streamed vegetation';this.assets=new Map();this.tiles=new Map();this.authored=[];this.hidden=new Map();this.grassPool=[];this.tileCache=new Map();this.poolHits=0;this.tileHits=0;
     this.uniforms={time:{value:0},wind:{value:0},transmission:{value:0},sun:{value:new THREE.Vector3(0,1,0)}};
     this.dummy=new THREE.Object3D();this.tint=new THREE.Color();this.white=new THREE.Color(0xffffff);
   }
@@ -21,7 +21,14 @@ export class Vegetation{
   }
   batch(plants,kind,lod){
     if(!plants.length)return null;
-    const a=this.asset(kind,lod),mesh=new THREE.InstancedMesh(a.geometry,a.material,plants.length);
+    const a=this.asset(kind,lod),capacity=kind==='grass'?Math.max(16,2**Math.ceil(Math.log2(plants.length))):plants.length;
+    let mesh;
+    if(kind==='grass'){
+      const i=this.grassPool.findIndex(m=>m.instanceMatrix.count===capacity);
+      if(i>=0){mesh=this.grassPool.splice(i,1)[0];this.poolHits++;}
+    }
+    mesh??=new THREE.InstancedMesh(a.geometry,a.material,capacity);
+    mesh.geometry=a.geometry;mesh.material=a.material;mesh.count=plants.length;mesh.visible=true;mesh.castShadow=false;
     mesh.name='S09 '+kind+' instances';mesh.userData.noBatch=true;mesh.userData.vegetation=true;mesh.receiveShadow=kind!=='grass';
     for(let i=0;i<plants.length;i++){
       const p=plants[i],d=this.dummy;d.position.set(p.x,p.y,p.z);d.rotation.set(0,p.yaw,0);d.scale.setScalar(p.scale);d.updateMatrix();
@@ -38,7 +45,16 @@ export class Vegetation{
     entry.mesh.geometry=a.geometry;entry.mesh.material=a.material;entry.mesh.customDepthMaterial=a.depth;entry.lod=lod;
     entry.mesh.computeBoundingSphere();entry.mesh.boundingSphere.radius+=.6;
   }
-  remove(entry){if(entry?.mesh){entry.mesh.removeFromParent();entry.mesh.dispose();}}
+  remove(entry,recycle=false){if(entry?.mesh){const mesh=entry.mesh;mesh.removeFromParent();
+    if(recycle&&entry.kind==='grass'&&this.grassPool.length<24){mesh.count=0;mesh.visible=false;this.grassPool.push(mesh);}
+    else mesh.dispose();
+  }}
+  cachedTile(key,x,z,density){
+    if(this.tileCache.has(key)){const plants=this.tileCache.get(key);this.tileCache.delete(key);this.tileCache.set(key,plants);this.tileHits++;return plants;}
+    const plants=grassTile(this.map,this.placement,x,z,density);this.tileCache.set(key,plants);
+    while(this.tileCache.size>160)this.tileCache.delete(this.tileCache.keys().next().value);
+    return plants;
+  }
   restoreLegacy(){for(const [mesh,mask] of this.hidden)mesh.layers.mask=mask;this.hidden.clear();}
   hideLegacy(root){
     if(!this.authored.some(e=>e.kind==='palm')||!root)return;
@@ -51,7 +67,7 @@ export class Vegetation{
   invalidate(){this.dirty=true;}
   clear(){
     this.restoreLegacy();for(const e of this.authored)this.remove(e);for(const e of this.tiles.values())this.remove(e);
-    this.authored=[];this.tiles.clear();this.selectedTiles=null;this.root.removeFromParent();this.map=null;this.key=null;this.last=null;this.dirty=true;
+    this.authored=[];this.tiles.clear();for(const mesh of this.grassPool)mesh.dispose();this.grassPool.length=0;this.tileCache.clear();this.selectedTiles=null;this.root.removeFromParent();this.map=null;this.key=null;this.last=null;this.dirty=true;
   }
   configure(owner,quality,density,distance){
     const map=owner.map,key=[map.id,quality,density,distance].join('/');
@@ -93,7 +109,7 @@ export class Vegetation{
       }
       const cap=level===1?12:level===2?24:level===3?38:52;
       this.selectedTiles=new Map([...wanted].sort((a,b)=>a[1].d-b[1].d).slice(0,cap));
-      for(const [key,e] of this.tiles)if(!this.selectedTiles.has(key)){this.remove(e);this.tiles.delete(key);}
+      for(const [key,e] of this.tiles)if(!this.selectedTiles.has(key)){this.remove(e,true);this.tiles.delete(key);if(e.mesh?.castShadow)shadowChanged=true;}
     }
     if(this.selectedTiles){
       // Spread grass generation across consecutive frames instead of bursts
@@ -102,18 +118,21 @@ export class Vegetation{
       for(const [key,p] of this.selectedTiles){
         const lod=foliageLOD(p.d,quality,true);let e=this.tiles.get(key);
         if(!e&&created<limit&&(created===0||performance.now()-start<1)){
-          const plants=grassTile(this.map,this.placement,p.x,p.z,density);
+          const plants=this.cachedTile(key,p.x,p.z,density);
           e=this.batch(plants,'grass',lod)??{empty:true};this.tiles.set(key,e);created++;
         }
         if(e&&!e.empty){
-          this.swap(e,lod);e.mesh.castShadow=shadowMode==='high'&&p.d<34;
+          const casts=shadowMode==='high'&&p.d<34;
+          if(e.mesh.castShadow!==casts||casts&&e.lod!==lod)shadowChanged=true;
+          this.swap(e,lod);e.mesh.castShadow=casts;
         }
       }
     }
     if(moving||shadowModeChanged)for(const e of this.authored){
       const distance=Math.hypot(e.x-camera.x,e.z-camera.z);
-      this.swap(e,foliageLOD(distance,quality));
-      e.mesh.castShadow=shadowMode==='high'||shadowMode==='low'&&distance<65;
+      const lod=foliageLOD(distance,quality),casts=shadowMode==='high'||shadowMode==='low'&&distance<65;
+      if(e.mesh.castShadow!==casts||casts&&e.lod!==lod)shadowChanged=true;
+      this.swap(e,lod);e.mesh.castShadow=casts;
     }
     for(const a of this.assets.values())a.update?.();
     return shadowChanged;
@@ -136,6 +155,6 @@ export class Vegetation{
     }
     return ()=>{for(const mesh of samples){mesh.removeFromParent();mesh.dispose();}};
   }
-  stats(){return {authored:this.authored.reduce((n,e)=>n+e.mesh.count,0),grass:[...this.tiles.values()].reduce((n,e)=>n+(e.mesh?.count??0),0),batches:this.authored.length+[...this.tiles.values()].filter(e=>!e.empty).length,tiles:this.tiles.size};}
+  stats(){return {authored:this.authored.reduce((n,e)=>n+e.mesh.count,0),grass:[...this.tiles.values()].reduce((n,e)=>n+(e.mesh?.count??0),0),batches:this.authored.length+[...this.tiles.values()].filter(e=>!e.empty).length,tiles:this.tiles.size,pooledBuffers:this.grassPool.length,cachedTiles:this.tileCache.size,poolHits:this.poolHits,tileHits:this.tileHits};}
   dispose(){this.clear();for(const a of this.assets.values()){a.texture.dispose();a.material.dispose();a.depth?.dispose();for(const g of a.geometries.values())g.dispose();}this.assets.clear();}
 }

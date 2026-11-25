@@ -1796,7 +1796,8 @@ export class GameRenderer {
   }
 
   updateEffects(dt,cull=false) {
-    this.particleCulled=0;
+    this.particleCulled=0;this.subpixelParticles=0;
+    const pixelScale=this.postPass.target.height*Math.abs(this.camera.projectionMatrix.elements[5])*.5;
     this.bulletMarks.update(dt);
     for (const batch of Object.values(this.effectBatches)) batch.count = 0;
     this.smokeOrder.length = 0;
@@ -1836,6 +1837,7 @@ export class GameRenderer {
         const p = effect.mesh.position, view = this.camera.matrixWorldInverse.elements;
         effect.sortDepth = view[2]*p.x + view[6]*p.y + view[10]*p.z + view[14];
         this.particleBounds.center.copy(p);this.particleBounds.radius=billboardRadius(effect.mesh.scale);
+        if(cull&&effect.mesh.material.opacity<.035&&this.particleBounds.radius*pixelScale/Math.max(.1,-effect.sortDepth)<.45){this.particleCulled++;this.subpixelParticles++;continue;}
         if(!cull||this.viewFrustum.intersectsSphere(this.particleBounds))this.smokeOrder.push(effect);
         else this.particleCulled++;
       } else if(effect.type==='flash'||effect.type==='muzzle'||effect.type==='flame'){
@@ -2941,7 +2943,7 @@ export class GameRenderer {
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
       volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,localReflectionProbes:this.localReflections.stats(),gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
-      effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
+      effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,subpixelParticles:this.subpixelParticles??0,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postFusion:{bloom:post.worldEffects.bloomFused,directWorld:post.worldEffects.directWorld},
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,

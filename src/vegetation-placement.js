@@ -37,7 +37,7 @@ export function createPlacement(map){
       // Only the authored lawn bands, not the house, pool or paving.
       if(Math.abs(x)<17||z<-16||z>30)return false;
     }
-    if(reserved.some(p=>(p.x-x)**2+(p.z-z)**2<p.r*p.r))return false;
+    for(const p of reserved)if((p.x-x)**2+(p.z-z)**2<p.r*p.r)return false;
     index.query(x-.48,z-.48,x+.48,z+.48,near);if(near.length)return false;
     roadIndex.query(x-1.3,z-1.3,x+1.3,z+1.3,roadNear);
     for(const r of roadNear){const dx=x-r.x,dz=z-r.z;if(Math.abs(dx*r.c-dz*r.s)<r.w/2+.95&&Math.abs(dx*r.s+dz*r.c)<r.d/2+.95)return false;}
