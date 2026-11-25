@@ -22,24 +22,28 @@ export function webGpuCampaignFlame(phase,vehicle=false) {
   const time=uniform(0),seed=float(phase),detail=uniform(0);
   material.userData.fireUniforms={time,detail};
   material.fragmentNode=Fn(()=>{
-    const p=uv(),y=p.y;
-    const wobble=sin(y.mul(11).sub(time.mul(5)).add(seed)).mul(.07)
-      .add(sin(y.mul(24).sub(time.mul(9)).add(seed.mul(2))).mul(.035));
-    const width=y.oneMinus().mul(.46).add(.035);
-    const edge=smoothstep(width.mul(.45),width,abs(p.x.sub(.5).add(wobble))).oneMinus();
-    const tongues=sin(p.x.mul(28).add(time.mul(7)).add(seed)).mul(.18)
-      .add(sin(p.x.mul(47).sub(time.mul(4))).mul(.10)).add(.72);
-    const alpha=edge.mul(smoothstep(tongues.sub(.18),tongues.add(.12),y).oneMinus())
-      .mul(smoothstep(0,.07,y)).mul(sin(y.mul(31).sub(time.mul(12)).add(seed)).mul(.18).add(.75)).toVar();
-    const color=mix(vec3(1,.92,.42),vec3(1,.28,.025),smoothstep(.1,.8,y)).toVar();
+    const p=uv(),y=p.y,t=time.mul(.62);
+    const wobble=sin(y.mul(5.8).sub(t.mul(2.1)).add(seed)).mul(.085).mul(y)
+      .add(sin(y.mul(13).sub(t.mul(3.7)).add(seed.mul(2))).mul(.045).mul(y));
+    const width=y.oneMinus().mul(.40).add(.065);
+    const edge=smoothstep(width.mul(.38),width,abs(p.x.sub(.5).add(wobble))).oneMinus();
+    const flow=y.mul(12).sub(t.mul(3.8)).add(seed);
+    const warp=sin(p.x.mul(13).add(sin(flow).mul(1.3)).add(seed));
+    const tongues=warp.mul(.16).add(sin(p.x.mul(29).sub(flow.mul(.82)).add(seed)).mul(.12))
+      .add(sin(p.x.mul(51).add(flow.mul(.43))).mul(.06)).add(.69);
+    const cells=sin(p.x.mul(24).add(sin(flow).mul(2.1)).add(flow.mul(.67)))
+      .mul(sin(p.x.mul(13).sub(flow.mul(.91)))).mul(.5).add(.5);
+    const alpha=edge.mul(smoothstep(tongues.sub(.13),tongues.add(.12),y).oneMinus())
+      .mul(smoothstep(0,.09,y)).mul(cells.mul(.23).add(.77)).toVar();
+    const color=mix(vec3(1,.72,.19),vec3(.96,.14,.012),smoothstep(.10,.85,y)).toVar();
     If(detail.greaterThan(.5),()=>{
-      const t=y.mul(23).sub(time.mul(7)).add(seed);
-      const cells=sin(p.x.mul(39).add(sin(t).mul(2.8)).add(t.mul(.6))).mul(sin(p.x.mul(17).sub(t.mul(1.2)))).mul(.5).add(.5);
-      const hot=smoothstep(.30,.86,cells).mul(smoothstep(.3,.9,y).oneMinus());
-      alpha.mulAssign(cells.mul(.38).add(.62));color.assign(mix(color,vec3(1,.98,.70),hot.mul(.72)).mul(1.45));
+      const fine=sin(p.x.mul(49).add(sin(flow.mul(1.2)).mul(1.7)).sub(flow))
+        .mul(sin(p.x.mul(33).add(flow.mul(.71)))).mul(.5).add(.5);
+      const hot=smoothstep(.40,.88,cells.mul(.74).add(fine.mul(.26))).mul(smoothstep(.26,.84,y).oneMinus());
+      alpha.mulAssign(fine.mul(.22).add(.78));color.assign(mix(color,vec3(1,.94,.52),hot.mul(.83)));
     });
     alpha.lessThan(.025).discard();
-    if(vehicle){const orange=mix(vec3(1,.48,.055),vec3(.88,.085,.008),smoothstep(.1,.85,y));return vec4(mix(orange,orange.mul(color),.28).mul(.95),alpha.mul(.92));}
+    if(vehicle){const orange=mix(vec3(1,.48,.055),vec3(.88,.085,.008),smoothstep(.1,.85,y));return vec4(mix(orange,color,.72),alpha.mul(.86));}
     return vec4(color.mul(1.5),alpha.mul(.85));
   })();
   material.toneMapped=false;

@@ -4,33 +4,97 @@ import {makeParticleTexture} from '../effect-art.js';
 
 const flameFragment=`
   varying vec2 uvFire;uniform float time;uniform float seed;uniform float detail;uniform float vehicleFire;
-  float noise(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
   void main(){
     vec2 p=uvFire;float y=p.y;
-    float wobble=sin(y*11.-time*5.+seed)*.07+sin(y*24.-time*9.+seed*2.)*.035;
-    float width=(1.-y)*.46+.035;float x=abs(p.x-.5+wobble);
-    float edge=1.-smoothstep(width*.45,width,x);
-    float tongues=.72+.18*sin(p.x*28.+time*7.+seed)+.10*sin(p.x*47.-time*4.);
-    float alpha=edge*(1.-smoothstep(tongues-.18,tongues+.12,y))*smoothstep(0.,.07,y);
-    alpha*=.75+.18*sin(y*31.-time*12.+seed);
-    vec3 color=mix(vec3(1.,.92,.42),vec3(1.,.28,.025),smoothstep(.1,.8,y));
+    float t=time*.62;
+    float wobble=sin(y*5.8-t*2.1+seed)*.085*y+sin(y*13.-t*3.7+seed*2.)*.045*y;
+    float width=(1.-y)*.40+.065;
+    float x=abs(p.x-.5+wobble);
+    float edge=1.-smoothstep(width*.38,width,x);
+    // Continuous domain-warped bands flow upward; independent scales split
+    // the upper silhouette into tongues instead of pulsing a circular sprite.
+    float flow=y*12.-t*3.8+seed;
+    float warp=sin(p.x*13.+sin(flow)*1.3+seed);
+    float tongues=.69+.16*warp+.12*sin(p.x*29.-flow*.82+seed)+.06*sin(p.x*51.+flow*.43);
+    float alpha=edge*(1.-smoothstep(tongues-.13,tongues+.12,y))*smoothstep(0.,.09,y);
+    float cells=.5+.5*sin(p.x*24.+sin(flow)*2.1+flow*.67)*sin(p.x*13.-flow*.91);
+    alpha*=.77+.23*cells;
+    vec3 color=mix(vec3(1.,.72,.19),vec3(.96,.14,.012),smoothstep(.10,.85,y));
     if(detail>.5){
-      float t=y*23.-time*7.+seed;
-      float cells=.5+.5*sin(p.x*39.+sin(t)*2.8+t*.6)*sin(p.x*17.-t*1.2);
-      float hot=smoothstep(.30,.86,cells)*(1.-smoothstep(.3,.9,y));
-      alpha*=.62+.38*cells;color=mix(color,vec3(1.,.98,.70),hot*.72)*1.45;
+      float fine=.5+.5*sin(p.x*49.+sin(flow*1.2)*1.7-flow)*sin(p.x*33.+flow*.71);
+      float hot=smoothstep(.40,.88,cells*.74+fine*.26)*(1.-smoothstep(.26,.84,y));
+      alpha*=.78+.22*fine;color=mix(color,vec3(1.,.94,.52),hot*.83);
     }
     if(alpha<.025)discard;
     if(vehicleFire>.5){
       // Normal alpha blending retains orange flames against bright sky.
       vec3 orange=mix(vec3(1.,.48,.055),vec3(.88,.085,.008),smoothstep(.10,.85,y));
-      color=mix(orange,orange*color,.28);
-      gl_FragColor=vec4(color*.95,alpha*.92);
+      color=mix(orange,color,.72);
+      gl_FragColor=vec4(color,alpha*.86);
     }else gl_FragColor=vec4(color*1.5,alpha*.85);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
 const uniforms=material=>material.userData.fireUniforms??material.uniforms;
+
+function flameMaterial(renderer,seed,vehicle){
+  return renderer.webgpu?.webGpuCampaignFlame(seed,vehicle)??new THREE.ShaderMaterial({
+    transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:vehicle?THREE.NormalBlending:THREE.AdditiveBlending,
+    uniforms:{time:{value:0},seed:{value:seed},detail:{value:0},vehicleFire:{value:Number(vehicle)}},
+    vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader:flameFragment,
+  });
+}
+
+// Fixed pool for ordinary wrecks. Unlike transient blast sprites, these
+// flame cards remain visible for the entire lifetime of the wreck.
+export class WreckFire {
+  constructor(renderer,parent){
+    this.renderer=renderer;this.root=new THREE.Group();parent.add(this.root);
+    this.geometry=new THREE.PlaneGeometry(1,1);this.slots=[];this.sources=[];
+    this.materials=Array.from({length:6},(_,i)=>flameMaterial(renderer,i*3.71,true));
+  }
+  begin(){this.sources.length=0;}
+  add(source){this.sources.push(source);}
+  slot(index){
+    if(this.slots[index])return this.slots[index];
+    const group=new THREE.Group();this.root.add(group);
+    const planes=Array.from({length:3},(_,i)=>{
+      const mesh=new THREE.Mesh(this.geometry,this.materials[(index*3+i)%this.materials.length]);
+      group.add(mesh);return mesh;
+    });
+    return this.slots[index]={group,planes};
+  }
+  update(camera,time,reduced=false){
+    const distance=e=>(e.x-camera.position.x)**2+(e.y-camera.position.y)**2+(e.z-camera.position.z)**2;
+    this.sources.sort((a,b)=>distance(a)-distance(b));
+    const count=Math.min(this.sources.length,reduced?5:9);
+    for(const [i,material] of this.materials.entries()){
+      const u=uniforms(material);u.time.value=time+i*.37;u.detail.value=Number(!reduced);
+    }
+    for(let i=0;i<count;i++){
+      const e=this.sources[i],slot=this.slot(i),d=distance(e);
+      slot.group.visible=true;slot.group.position.set(e.x,e.y,e.z);
+      const yaw=Math.atan2(camera.position.x-e.x,camera.position.z-e.z);
+      const phase=e.x*.037+e.z*.029,angle=time*1.35+phase;
+      const layers=d>45**2?1:reduced?2:3;
+      for(const [j,mesh] of slot.planes.entries()){
+        mesh.visible=j<layers;
+        if(!mesh.visible)continue;
+        const side=j===0?0:j===1?-.28:.31;
+        const height=e.height*(j===0?1:j===1?.79:.88)*(1+.10*Math.sin(angle+j*2.1)+.045*Math.sin(time*2.7+phase+j));
+        const width=e.width*(j===0?1.02:.74);
+        mesh.rotation.y=yaw+(j===0?0:j===1?.92:-.88);
+        mesh.position.set(Math.cos(yaw)*side*e.width,height*.5-.08,-Math.sin(yaw)*side*e.width);
+        mesh.scale.set(width,height,1);
+      }
+    }
+    for(let i=count;i<this.slots.length;i++)this.slots[i].group.visible=false;
+  }
+  clear(){this.sources.length=0;for(const slot of this.slots)slot.group.visible=false;}
+  dispose(){this.root.removeFromParent();this.geometry.dispose();for(const material of this.materials)material.dispose();}
+}
+
 
 export class CampaignFire {
   constructor(renderer,parent,emitters){
@@ -52,7 +116,7 @@ export class CampaignFire {
       const y=renderer.map.terrain.heightAt(x,z),group=new THREE.Group();group.position.set(x,y,z);this.root.add(group);
       const planes=[];for(let i=0;i<2;i++){
         const seed=this.emitters.length*3+i*4.2;
-        const material=gpu?.webGpuCampaignFlame(seed,vehicle)??new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:vehicle?THREE.NormalBlending:THREE.AdditiveBlending,uniforms:{time:{value:0},seed:{value:seed},detail:{value:0},vehicleFire:{value:Number(vehicle)}},vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:flameFragment});
+        const material=flameMaterial(renderer,seed,vehicle);
         this.materials.push(material);const mesh=new THREE.Mesh(this.plane,material);mesh.scale.set(width,height,1);mesh.position.y=vehicle?tankFlameCenter(height):height*.48;group.add(mesh);planes.push(mesh);
       }
       const glowMaterial=gpu?.webGpuCampaignGlow()??new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{strength:{value:.2}},vertexShader:'varying vec2 uvGlow;void main(){uvGlow=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'varying vec2 uvGlow;uniform float strength;void main(){float a=pow(max(0.,1.-length(uvGlow-.5)*2.),2.)*strength;gl_FragColor=vec4(1.,.28,.025,a);}'});
@@ -84,8 +148,8 @@ export class CampaignFire {
       if(anchor){e.x=anchor.x;e.y=anchor.y;e.z=anchor.z;e.group.position.copy(anchor);}
       if(this.renderer.graphicsEffects?.heatDistortion==='high')this.renderer.activeHeatFires.push(e);
       if(this.renderer.graphicsEffects?.fireLighting==='high')this.renderer.activeFireLights.push(e);
-      e.planes.forEach((mesh,i)=>{const u=uniforms(mesh.material);u.time.value=time;u.detail.value=Number(high);mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*(high?.12:.07));if(e.vehicle)mesh.position.y=tankFlameCenter(mesh.scale.y);});
-      uniforms(e.glow.material).strength.value=.16+Math.sin(time*5+index)*.025;
+      e.planes.forEach((mesh,i)=>{const u=uniforms(mesh.material);u.time.value=time;u.detail.value=Number(high);mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*1.65+index+i)*(high?.10:.06));if(e.vehicle)mesh.position.y=tankFlameCenter(mesh.scale.y);});
+      uniforms(e.glow.material).strength.value=.16+Math.sin(time*1.7+index)*.025;
       for(let n=0;n<8&&count<this.smoke.instanceMatrix.count;n++){
         const phase=((time*.12+n/8+index*.117)%1),age=phase*8,spread=e.width*(.45+phase*.7);
         this.dummy.position.set(e.x+Math.sin(index*11+n*3.1)*spread+age*.32,e.y+e.height*(e.vehicle?.32:.7)+age*1.45,e.z+Math.cos(index*7+n*2.3)*spread+age*.12);

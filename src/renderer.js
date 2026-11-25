@@ -7,6 +7,7 @@ import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
 import {EffectLights} from './effect-lights.js';
 import {emitTankTrackDust,trackDustSlot} from './campaign/track-dust.js';
+import {WreckFire} from './campaign/fire.js';
 import {tankFireAnchor,adsFlashFactor,scriptedTankFire} from './combat-visuals.js';
 import {WaterAppearance} from './water-appearance.js';
 import {IndirectLighting} from './indirect-lighting.js';
@@ -1331,12 +1332,14 @@ export class GameRenderer {
   }
 
   clearVehicles() {
+    this.wreckFire?.clear();
     for (const rig of this.vehicleRigs.values()) disposeVehicleRig(rig);
     this.vehicleRigs.clear();
   }
 
   updateVehicles(state, player, dt, view) {
     const active = this.activeVehicles;active.clear();
+    this.wreckFire?.begin();
     const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
     const vehicleView = state.campaign ? { ...view, hideTankMachineGun: true } : view;
     let mounted = null;
@@ -1412,17 +1415,19 @@ export class GameRenderer {
       }
       const damaged = vehicle.hp < vehicle.maxHp * .33;
       const scripted=scriptedTankFire(vehicle,state.campaign?.missionId);
-      if(damaged&&vehicle.hp<=0&&!scripted&&this.graphicsEffects?.fireEffects==='high'&&distance<60){
+      if(damaged&&vehicle.hp<=0&&!scripted&&this.graphicsEffects?.fireEffects==='high'&&distance<100){
         const tank=vehicle.type==='tank';
-        const width=vehicle.type==='atv'?.9:tank?1.35:1.8,height=vehicle.type===BLACK_HAWK?2.8:vehicle.type==='atv'?.8:1.55;
+        const width=vehicle.type==='atv'?1.15:tank?2.05:2.15,height=vehicle.type===BLACK_HAWK?3.2:vehicle.type==='atv'?1.35:tank?2.45:2.25;
         const origin=tank?tankFireAnchor(vehicle,rig,this.wreckFirePosition):vehicle;
         const x=origin.x,z=origin.z,y=origin.y??this.map.terrain.heightAt(x,z);
-        if(this.graphicsEffects?.fireLighting==='high')this.activeFireLights.push({x,y,z,width,height});
-        if(this.graphicsEffects?.heatDistortion==='high')this.activeHeatFires.push({x,y,z,width,height});
-        if(this.clock>=(rig.nextFlame??0)&&this.effects.length<105){
-          rig.nextFlame=this.clock+.18;
-          this.hotParticle('flame',x+(this.random()-.5)*width,y+(tank?width*.22:height*.65),z+(this.random()-.5)*width,width*.8,.55,tank?.72:1);
-          if(this.graphicsEffects.dust==='high'&&this.random()<.45)this.spark(x,y+height*.5,z,.8);
+        const source={x,y,z,width,height};
+        this.wreckFire??=new WreckFire(this,this.worldRoot);
+        this.wreckFire.add(source);
+        if(this.graphicsEffects?.fireLighting==='high')this.activeFireLights.push(source);
+        if(this.graphicsEffects?.heatDistortion==='high')this.activeHeatFires.push(source);
+        if(this.graphicsEffects.dust==='high'&&distance<45&&this.clock>=(rig.nextFlame??0)&&this.effects.length<105){
+          rig.nextFlame=this.clock+.38+this.random()*.30;
+          this.spark(x+(this.random()-.5)*width*.5,y+height*.62,z+(this.random()-.5)*width*.5,.65);
         }
       }
       if (damaged && !scripted && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
@@ -3034,6 +3039,7 @@ export class GameRenderer {
     for(const event of this.cosmeticShots)this.shotEffect(event,state,localId,true);
     this.cosmeticShots.length=0;
     this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt,true);
+    this.wreckFire?.update(this.camera,this.clock,this.lowQuality||this.integratedGpu);
     this.parachutes.update(this.worldRoot,state.players,dt,this.lowQuality);
     this.atmosphere.sky.position.copy(this.camera.position);
     if(view.warming)this.drawWarmupScene();else this.drawScene();
@@ -3120,6 +3126,7 @@ export class GameRenderer {
     this.localReflections.dispose();
     for(const material of this.hotParticleMaterials?.values()??[])material.dispose();
     this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
+    this.wreckFire?.dispose();
     this.contextLighting.dispose();
     this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();

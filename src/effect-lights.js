@@ -44,7 +44,7 @@ export class EffectLights{
     if(this.fire==='high')for(const e of fires){
       const x=e.x,y=e.y+e.height*.55,z=e.z,d=(camera.x-x)**2+(camera.y-y)**2+(camera.z-z)**2;
       if(d>42**2)continue;
-      const intensity=Math.min(35,9+e.width*5)*(1+.18*Math.sin(clock*13+x*.4)+.10*Math.sin(clock*21+z));
+      const intensity=Math.min(35,9+e.width*5)*(1+.11*Math.sin(clock*2.3+x*.4)+.07*Math.sin(clock*4.1+z));
       candidates.push({position:new THREE.Vector3(x,y,z),intensity,range:Math.min(13,e.width*2+5),color:0xff8b38,score:intensity/(1+d*.07)});
     }
     candidates.sort((a,b)=>b.score-a.score);
