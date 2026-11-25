@@ -46,6 +46,7 @@ import { getWeaponModule, resolveWeaponModules } from '../shared/weapon-modules.
 import { BULLET_GRAVITY, bulletHeight } from '../shared/ballistics.js';
 import { createSurfaceMaterials, makeSky, makeSign, addSectorInstances, mapSector, pairMaterials, clonePairedMaterial } from './visuals.js';
 import { prepareViewModel, distanceToCover, drawWorldAndViewModel } from './viewmodel.js';
+import { ContextLighting } from './context-lighting.js';
 import { createWeaponRig } from './weapons.js';
 import { opticZooms, scopeMagnification, usesFullscreenScope } from './scope-optics.js';
 import {sameSquad} from '../shared/squads.js';
@@ -410,6 +411,7 @@ export class GameRenderer {
       return { mesh, age: 0, life: 0.22, type: 'light' };
     });
     this.effectLights=new EffectLights(this.scene);
+    this.contextLighting=new ContextLighting(this.scene);
     this.wallStow = 0;
     this.smokeTexture = canvasTexture(64, (ctx, size) => {
       const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
@@ -2484,7 +2486,7 @@ export class GameRenderer {
         if(trace)record('postSetup',performance.now()-postBegin);
         try {
           generator?.beginWorld(this.scene);
-          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world&&!this.postPass.worldEffects.directWorld?this.finishWorldEffects:null,profiler);
+          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world&&!this.postPass.worldEffects.directWorld?this.finishWorldEffects:null,profiler,this.contextLighting);
         } finally {generator?.endWorld();}
         this.postPass.end(this.clock,this.quality,profiler);
       };
@@ -2934,6 +2936,7 @@ export class GameRenderer {
       this.weaponRig.anchorPistolArm(pistolSprint);
     }
     view.campaignRender?.(this,state,dt,view);
+    this.contextLighting.update(this,state,player,mounted,dt,this.campaignCoverColliders??getAssetColliders(this.map));
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.viewFrustum.setFromProjectionMatrix(this.viewProjection,this.camera.coordinateSystem);
@@ -3040,6 +3043,7 @@ export class GameRenderer {
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
       volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,localReflectionProbes:this.localReflections.stats(),gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
+      contextLighting:this.contextLighting.stats(),
       effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,subpixelParticles:this.subpixelParticles??0,softParticleScale:this.softSmokePass?.scale??1,smokeCoverage:this.smokeCoverage??0,reflectionReceivers:post.worldEffects.receivers.count,reflectionHierarchy:post.worldEffects.depthHierarchy?.map(t=>[t.width,t.height])??null,temporalEffects:{enabled:!!post.worldEffects.maskHistory,reusing:!!post.worldEffects.state.historyReuse,reusedFrames:post.worldEffects.temporalReused},waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postFusion:{bloom:post.worldEffects.bloomFused,directWorld:post.worldEffects.directWorld},
       postPasses:1+post.worldEffects.passes+Number(post.worldEffects.softSmoke&&this.softSmokePass?.scale===.5)+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
@@ -3071,6 +3075,7 @@ export class GameRenderer {
     this.localReflections.dispose();
     for(const material of this.hotParticleMaterials?.values()??[])material.dispose();
     this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
+    this.contextLighting.dispose();
     this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();
     this.penumbra?.setEnabled(false);

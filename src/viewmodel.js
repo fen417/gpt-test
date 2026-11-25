@@ -30,7 +30,7 @@ export function distanceToCover(origin,direction,boxes,maxDistance=1.6){
   return closest;
 }
 
-export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,finishWorld,profiler){
+export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,finishWorld,profiler,contextLighting){
   const mask=camera.layers.mask,autoClear=renderer.autoClear,autoReset=renderer.info.autoReset;
   const background=scene.background;
   const shadowAutoUpdate=renderer.shadowMap?.autoUpdate;
@@ -48,7 +48,10 @@ export function drawWorldAndViewModel(renderer,scene,camera,weapon,worldRoot,fin
       if(worldRoot)worldRoot.visible=false;
       // Both passes share a camera and transforms. The first pass already updated them.
       scene.matrixWorldAutoUpdate=false;
-      renderer.autoClear=false;renderer.clearDepth();camera.layers.set(VIEWMODEL_LAYER);renderTimed(renderer,scene,camera,profiler,'viewModel');
+      renderer.autoClear=false;renderer.clearDepth();camera.layers.set(VIEWMODEL_LAYER);
+      contextLighting?.beginViewPass(scene);
+      try{renderTimed(renderer,scene,camera,profiler,'viewModel');}
+      finally{contextLighting?.endViewPass(scene);}
     }
   }finally{
     scene.background=background;
