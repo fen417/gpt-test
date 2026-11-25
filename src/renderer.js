@@ -4,6 +4,7 @@ import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
 import {EffectLights} from './effect-lights.js';
 import {WaterAppearance} from './water-appearance.js';
+import {IndirectLighting} from './indirect-lighting.js';
 import {atmosphereProfile} from './atmosphere-profile.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {LocalReflections} from './local-reflections.js';
@@ -187,6 +188,7 @@ export class GameRenderer {
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
     this.waterReflectionPlane=new THREE.Vector2();
     this.localReflections=new LocalReflections();
+    this.indirectLighting=new IndirectLighting(webgpu?.setWebGpuGI);
     this.finishWorldEffects=profiler=>{
       const effects=this.postPass.worldEffects;
       effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock,this.cascades,profiler);
@@ -564,6 +566,7 @@ export class GameRenderer {
     if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
+    this.indirectLighting?.clear();
     this.enhancedSurfaces?.clear(); // Never clone a shared material with temporary PBR textures.
     this.waterAppearance?.restore();
     this.postPass.worldEffects.previousClock=undefined;
@@ -761,6 +764,7 @@ export class GameRenderer {
   invalidateBakedVisibility() {
     this.waterAppearance?.invalidate();
     this.localReflections.dispose();
+    this.indirectLighting?.invalidate();
     this.postPass.worldEffects.receivers.invalidate();
     this.interiorVisibility.root=null;
     this.cachedShadows.invalidate(true);
@@ -1523,7 +1527,7 @@ export class GameRenderer {
     if(![pos.x,pos.y,pos.z].every(Number.isFinite))return;
     const subdued=localWeapon&&this.weaponRig.suppressor?.visible;
     const strength=cannon?3.2:rocket?1.8:mounted?1.4:subdued?.25:1;
-    this.effectLights?.pulse(pos,this.clock,{own,energy:38*strength,range:Math.min(16,7*Math.sqrt(strength)),life:cannon?.13:rocket?.09:.065,color:cannon?0xffb66d:0xffcf9b});
+    this.effectLights?.pulse(pos,this.clock,{own,energy:25*strength,range:Math.min(14,6.2*Math.sqrt(strength)),life:cannon?.13:rocket?.09:.065,color:cannon?0xffb66d:0xffcf9b});
     if(quality.muzzleEffects==='high'){
       // Keep the native FPV mesh as a depth-correct core; a world-space irregular
       // flash adds the hot halo and the nearby smoke.
@@ -1664,7 +1668,7 @@ export class GameRenderer {
       } else if(effect.type==='flash'||effect.type==='muzzle'||effect.type==='flame'){
         const muzzle=effect.type==='muzzle',flame=effect.type==='flame';
         effect.mesh.scale.setScalar((muzzle?1+.5*(1-alpha):flame?1+.55*(1-alpha):2.6-1.6*alpha)*effect.size);
-        const energy=(muzzle?3.4:flame?2.1:4.4)*alpha*alpha;
+        const energy=(muzzle?2.3:flame?2.1:4.4)*alpha*alpha;
         effect.mesh.material.color.setRGB(energy,energy*.91,energy*.78);
         effect.mesh.material.opacity=alpha;if(flame)effect.mesh.position.y+=dt*.65;
       } else if (effect.type === 'spark' || effect.type === 'shell') {
@@ -2011,6 +2015,7 @@ export class GameRenderer {
   }
 
   applyQuality(low) {
+    this.indirectLighting?.suspend();
     this.waterAppearance?.restore();
     this.lowQuality = low;
     this.adaptiveScale = 1;
@@ -2034,7 +2039,10 @@ export class GameRenderer {
     const settings=this.graphicsEffects;
     if(!settings)return;
     if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off'||settings.mapWeathering==='high'||settings.mapWeathering==='low')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief,this.webgpu?.setWebGpuWeathering,this.webgpu?.suspendWebGpuWeathering);
-    this.enhancedSurfaces?.update(this.staticRoot,settings,this.textureAnisotropy,this.map?.id);
+    if(this.enhancedSurfaces){
+      this.enhancedSurfaces.beforeUpdate=()=>this.indirectLighting?.suspend();
+      this.enhancedSurfaces.update(this.staticRoot,settings,this.textureAnisotropy,this.map?.id);
+    }
   }
 
   maxAnisotropy(){return this.renderer.capabilities?.getMaxAnisotropy?.()??this.renderer.getMaxAnisotropy?.()??1;}
@@ -2139,6 +2147,7 @@ export class GameRenderer {
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock,this.graphicsEffects?.clouds,this.map,this.scene.fog.color);
     const environment=this.scene.environment;
     const localEnvironment=this.localReflections.prepare(this,menu,warming);
+    this.indirectLighting.update(this);
     if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene);
     this.cascades?.update();
@@ -2713,7 +2722,7 @@ export class GameRenderer {
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
-      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,
+      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),
       effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
@@ -2738,6 +2747,7 @@ export class GameRenderer {
   dispose() {
     this.disposed=true;
     this.waterAppearance?.dispose();
+    this.indirectLighting?.dispose();
     this.localReflections.dispose();
     this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
     this.softSmokePass?.dispose();

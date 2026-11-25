@@ -93,6 +93,7 @@ export class EnhancedSurfaces {
   }
 
   update(root,settings,anisotropy,mapId) {
+    this.beforeUpdate?.();
     if(!root)return;
     const size=DETAIL_SIZE[settings.surfaceDetail]??0;
     const aoSize={low:256,high:1024}[settings.bakedAO]??0;

@@ -1,5 +1,5 @@
 const legacy = Object.freeze({
-  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', ao: 'off', contact: 'off',
+  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', gi:'off', ao: 'off', contact: 'off',
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
@@ -9,7 +9,7 @@ const legacy = Object.freeze({
 });
 
 const ultra = Object.freeze({
-  ...legacy, surfaceDetail:'ultra',mapWeathering:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
+  ...legacy, surfaceDetail:'ultra',mapWeathering:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
   sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
@@ -33,6 +33,7 @@ const low = ['low', 'Низкое'], medium = ['medium', 'Среднее'], high
 export const GRAPHICS_CONTROLS = [
   ['Освещение и тени', [
     ['lighting', 'Освещение', 'Меняет баланс солнечного и рассеянного света. Почти не влияет на FPS.', choices(old, ['enhanced', 'Улучшенное'])],
+    ['gi','Глобальное освещение (GI)','Запечённый непрямой свет и затенение от стен и крыш. Низкое — ближайший слой проб, высокое — плавное смешивание по высоте.',choices(off,low,high)],
     ['ao', 'Экранное затенение (SSAO)', 'Делает заметнее стыки и углубления. GTAO оценивает перекрытие по горизонту.', choices(off, ['low', 'SSAO · низкое'], ['high', 'SSAO · высокое'], ['gtao', 'GTAO'])],
     ['bakedAO', 'Запечённое AO материалов', 'Добавляет затенение в порах, швах и углублениях. Расходует текстурную память.', choices(off, low, high)],
     ['contact', 'Контактные тени', 'Уточняет мелкие тени рядом с камерой. Стоимость растёт с числом шагов.', choices(off, low, medium, high)],

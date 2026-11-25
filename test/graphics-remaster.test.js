@@ -236,3 +236,32 @@ test('height fog is finite, fades near camera and at altitude, and respects dens
   assert.equal(heightFogOpacity(10000,-10,-5,high),high[3]);
   assert.ok(Number.isFinite(heightFogOpacity(60,2,2.000001,high)));
 });
+
+import {bakeProbeField,makeProbeTexture,probeUniforms,giStrength} from '../src/gi-probes.js';
+import {setWebGlGI} from '../src/webgl-gi.js';
+import {setWebGpuGI} from '../src/webgpu-gi.js';
+
+test('GI is independently selectable, off on old presets and on in Ultra',()=>{
+  for(const p of ['legacy','low','medium','high'])assert.equal(graphicsEffects(p).gi,'off');
+  assert.equal(graphicsEffects('ultra').gi,'high');assert.equal(validateCustomGraphics({gi:'low'},'ultra').gi,'low');
+  assert.ok(giStrength({intensity:3.5},'high')>giStrength({intensity:3.5},'low'));
+  assert.equal(giStrength({intensity:3.5},'off'),0);
+});
+test('static GI bake is deterministic and roofs block sky access',()=>{
+  const map={id:'gi-test',size:20,terrain:{heightAt:()=>0},boxes:[{x:0,z:0,w:10,d:10,baseY:3.5,h:.4,color:'#ca5030',kind:'roof'}]};
+  const a=bakeProbeField(map,{spacing:1,maxCells:20}),b=bakeProbeField(map,{spacing:1,maxCells:20});
+  assert.deepEqual(a.data,b.data);assert.equal(a.data.length,a.nx*a.nz*16);
+  const at=(x,z)=>((z*a.nx*2+x)*4);
+  assert.ok(a.data[at(10,10)+3]<a.data[at(0,0)+3]);
+  assert.ok(a.data[at(10,10)]>a.data[at(10,10)+2]);
+  const tex=makeProbeTexture(a);assert.equal(tex.image.width,a.nx*2);assert.equal(tex.generateMipmaps,false);tex.dispose();
+});
+test('GI material patch restores shader and TSL material nodes',()=>{
+  const data=bakeProbeField({id:'gi',size:8,terrain:{heightAt:()=>0},boxes:[]}),tex=makeProbeTexture(data),field=probeUniforms(data,tex);
+  const gl=new THREE.MeshStandardMaterial(),hook=gl.onBeforeCompile;
+  setWebGlGI(gl,field);const shader={uniforms:{},vertexShader:'#include <project_vertex>',fragmentShader:'#include <aomap_fragment>'};gl.onBeforeCompile(shader);
+  assert.ok(shader.fragmentShader.includes('reflectedLight.indirectDiffuse'));setWebGlGI(gl,null);assert.equal(gl.onBeforeCompile,hook);
+  const gpu=new MeshStandardNodeMaterial(),ao=gpu.aoNode,emissive=gpu.emissiveNode;
+  setWebGpuGI(gpu,field);assert.notEqual(gpu.aoNode,ao);assert.notEqual(gpu.emissiveNode,emissive);
+  setWebGpuGI(gpu,null);assert.equal(gpu.aoNode,ao);assert.equal(gpu.emissiveNode,emissive);tex.dispose();gl.dispose();gpu.dispose();
+});
