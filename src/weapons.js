@@ -1107,7 +1107,7 @@ export function createWeaponRig(owner = {}) {
   makeMark('ring',[new THREE.RingGeometry(.0054,.0059,32),new THREE.CircleGeometry(.00075,16)]);
   makeMark('ladder',[bar(.015,.00045),bar(.00045,.014,0,-.004),bar(.007,.00045,0,-.004),bar(.004,.00045,0,-.007)]);
   let upgradeSight;
-  let paintRoot,paintId;
+  let paintRoot,paintId,paintReady=Promise.resolve();
   function update({classId='assault',weaponId='',unarmed=false,team=0,aim=0,reloadPhase,reloadMotion=0,reloadEmpty=true,kick=0,clock=0,throwPhase=0,gadgetPhase=0,gadgetKind=null,toolActive=false,toolProgress=0,collimator=false,opticReticle=null,attachments,skinId}={}){
     team = team ? 1 : 0;
     if(team !== previousTeam){
@@ -1210,7 +1210,7 @@ export function createWeaponRig(owner = {}) {
     if(paintRoot!==weaponRoot||paintId!==skinId){
       paintRoot=weaponRoot;
       paintId=skinId;
-      void setWeaponSkin(weaponRoot,key,skinId).catch(error=>console.warn('Weapon skin unavailable',error));
+      paintReady=setWeaponSkin(weaponRoot,key,skinId).catch(error=>console.warn('Weapon skin unavailable',error));
     }
     const slots=collimator?{...attachments,optic:'collimator-15'}:attachments;
     showWeaponUpgrades(weaponRoot,key,slots,owner.detailLevel===0);
@@ -1333,5 +1333,5 @@ export function createWeaponRig(owner = {}) {
     get rifleSight(){return upgradeSight??visibleRifle?.sight??(rifleAssembly.visible&&scope.visible?fallbackScopeSight:null);},
     get sightType(){return visibleRifle?.scoped?'scope':visiblePistol||visibleRifle?'iron':compactOptic.visible?'compact':scope.visible?'scope':'iron';},
     get pistolSightHeight(){return visiblePistol?.sightY??.054;},
-    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,anchorPistolArm,dispose,createPreviewModel};
+    barrel,barrelSleeve,muzzle,suppressor,supportAttachment,scope,magazine,leftHand,leftArm,heldGrenade,muzzleFlash,flashLight,flashMaterial,update,ready:()=>paintReady,anchorPistolArm,dispose,createPreviewModel};
 }

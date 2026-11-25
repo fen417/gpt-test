@@ -801,6 +801,7 @@ async function prepareMatchFrame(ticket){
   try{
     await renderer.warmMatchFrame(state,localId,{
       ...ticket.view,vehicleThirdPerson,campaignTankZoom,campaignRender:campaignPresentation?.renderHook,
+      hasCollimator,equippedAttachments,weaponSkinFor,
     },signal,(fraction,label)=>{if(matchLoad===ticket&&!signal.aborted)loadingScreen.update(2.5+fraction*.5,label+' — '+Math.round(fraction*100)+'%');});
   }catch(error){
     if(!signal.aborted&&renderer.api==='webgpu')recoverWebGpu(error);

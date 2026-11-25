@@ -152,6 +152,9 @@ export class ShaderWarmup{
         stats.weaponVariants=await owner.warmWeaponVariants?.(state,localId,view,signal,nextFrame,()=>this.fence(signal));
       }
       frame();await this.fence(signal);
+      stats.programsAtReady=r.info.programs?.length??null;
+      // Don't retain loading-screen stall records in subsequent gameplay logs.
+      owner.renderStalls=[];
       await stage(1,'Графика готова');
       stats.complete=true;
     }finally{

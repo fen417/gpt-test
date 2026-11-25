@@ -809,7 +809,7 @@ export class GameRenderer {
     const stats={actors:live.length,representatives:0,lods:0};
     try{
       for(const rig of live){
-        saved.push({rig,visible:rig.group.visible,lod:rig.lod,shadows:rig.lodShadows,low:rig.lowWeaponDetail,parent:rig.group.parent});
+        saved.push({rig,visible:rig.group.visible,lod:rig.lod,shadows:rig.lodShadows,low:rig.lowWeaponDetail,parent:rig.group.parent,flash:rig.flash.visible,marker:rig.marker.visible,gun:rig.weaponModel.visible,distant:rig.distantWeapon.visible});
         if(!rig.group.parent)this.worldRoot.add(rig.group);
         rig.group.visible=true;
       }
@@ -834,7 +834,7 @@ export class GameRenderer {
       if(!actors.length)return stats;
       for(const lod of [0,1,2,3]){
         signal.throwIfAborted();
-        for(const rig of actors)setInfantryLod(rig,lod,lod<2&&this.renderer.shadowMap.enabled,this.geometryQuality==='low');
+        for(const rig of actors){setInfantryLod(rig,lod,lod<2&&this.renderer.shadowMap.enabled,this.geometryQuality==='low');rig.flash.visible=true;rig.marker.visible=true;}
         this.indirectLighting.invalidate();
         for(const environment of this.localReflections.warmupEnvironments()){
           signal.throwIfAborted();this.localReflections.warmupEnvironment=environment;
@@ -846,8 +846,9 @@ export class GameRenderer {
       }
       return stats;
     }finally{
-      for(const {rig,visible,lod,shadows,low,parent} of saved){
+      for(const {rig,visible,lod,shadows,low,parent,flash,marker,gun,distant} of saved){
         setInfantryLod(rig,lod,shadows,low);rig.group.visible=visible;
+        rig.flash.visible=flash;rig.marker.visible=marker;rig.weaponModel.visible=gun;rig.distantWeapon.visible=distant;
         if(!parent)rig.group.removeFromParent();
       }
       for(const rig of temporary)this.removeSoldier(rig);
@@ -860,30 +861,45 @@ export class GameRenderer {
     if(!player||!this.weaponRig)return 0;
     const rig=this.weaponRig,r=this.renderer,weapon=this.weapon;
     const saved={visible:weapon.visible,mask:this.camera.layers.mask,target:r.getRenderTarget(),background:this.scene.background,world:this.worldRoot.visible,clear:r.autoClear,shadows:r.shadowMap.autoUpdate,environment:this.scene.environment};
-    const meshes=[];weapon.traverse(o=>{if(o.isMesh&&o.frustumCulled){meshes.push(o);o.frustumCulled=false;}});
     const variants=Object.entries(CLASS_WEAPONS).flatMap(([classId,ids])=>ids.map(weaponId=>({classId,weaponId})));
     for(const weaponId of SIDEARMS)variants.push({classId:'assault',weaponId});
-    for(const gadgetKind of ['launcher','repair','defibrillator','medkit','ammo','claymore','binoculars'])variants.push({classId:player.classId,weaponId:player.weaponId||defaultWeaponId(player.classId),gadgetKind,gadgetPhase:.5,toolActive:true,toolProgress:.5});
+    const primary=player.weaponId||defaultWeaponId(player.classId);
+    for(const gadgetKind of ['launcher','repair','defibrillator','medkit','ammo','claymore','binoculars'])variants.push({classId:player.classId,weaponId:primary,gadgetKind,gadgetPhase:.5,toolActive:true,toolProgress:.5});
+    variants.push({classId:player.classId,weaponId:primary,throwPhase:.4});
     let count=0;
+    const environments=this.localReflections.warmupEnvironments();
     try{
-      this.worldRoot.visible=false;weapon.visible=true;this.scene.background=null;this.camera.layers.set(1);r.shadowMap.autoUpdate=false;r.autoClear=true;
-      r.setRenderTarget(this.postPass.target);
+      this.worldRoot.visible=true;weapon.visible=true;
       for(const variant of variants){
         signal.throwIfAborted();
-        rig.update({team:player.team,reloadPhase:1,reloadEmpty:false,clock:this.clock,...variant});
-        this.scene.updateMatrixWorld(true);
-        for(const environment of this.localReflections.warmupEnvironments()){
-          this.scene.environment=environment??saved.environment;
-          await r.compileAsync?.(this.scene,this.camera);signal.throwIfAborted();
-          r.render(this.scene,this.camera);
-          await fence();await yieldFrame();
-        }
+        const weaponId=variant.weaponId;
+        const attachments=view.equippedAttachments?.(weaponId);
+        const optic=getWeaponModule(weaponId,'optic',attachments?.optic);
+        rig.update({team:player.team,reloadPhase:1,reloadEmpty:false,clock:this.clock,
+          attachments,skinId:view.weaponSkinFor?.(player.id,weaponId),
+          collimator:Boolean(view.hasCollimator?.(weaponId)),aim:.9,opticReticle:optic?.reticle??'cross',
+          kick:variant.gadgetKind||variant.throwPhase?0:1,...variant});
+        await rig.ready();signal.throwIfAborted();
+        // Bind the same shader patches as actual gameplay BEFORE compile/draw.
+        // Hidden stock models, reticles and newly mounted modules can later
+        // become visible; don't wait for their first appearance to bind them.
+        this.indirectLighting.invalidate();
+        const meshes=[];
+        weapon.traverse(o=>{if(o.isMesh&&o.frustumCulled){meshes.push(o);o.frustumCulled=false;}});
+        try{
+          for(const environment of environments){
+            this.localReflections.warmupEnvironment=environment;
+            try{this.drawWarmupScene();await fence();}
+            finally{this.localReflections.warmupEnvironment=undefined;}
+            await yieldFrame();signal.throwIfAborted();
+          }
+        }finally{for(const mesh of meshes)mesh.frustumCulled=true;}
         count++;
       }
     }finally{
-      for(const mesh of meshes)mesh.frustumCulled=true;
-      rig.update({classId:player.classId,weaponId:player.weaponId||defaultWeaponId(player.classId),team:player.team,reloadPhase:1,reloadEmpty:false,unarmed:state.gameMode==='tdm'&&!player.weaponId,attachments:view.equippedAttachments?.(player.weaponId),skinId:view.weaponSkinFor?.(player.id,player.weaponId)});
+      rig.update({classId:player.classId,weaponId:primary,team:player.team,reloadPhase:1,reloadEmpty:false,unarmed:state.gameMode==='tdm'&&!player.weaponId,attachments:view.equippedAttachments?.(primary),collimator:Boolean(view.hasCollimator?.(primary)),skinId:view.weaponSkinFor?.(player.id,primary)});
       weapon.visible=saved.visible;this.worldRoot.visible=saved.world;this.scene.background=saved.background;this.scene.environment=saved.environment;this.camera.layers.mask=saved.mask;r.autoClear=saved.clear;r.shadowMap.autoUpdate=saved.shadows;r.setRenderTarget(saved.target);
+      this.indirectLighting.invalidate();
     }
     return count;
   }
@@ -2404,6 +2420,17 @@ export class GameRenderer {
     if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene,this.staticRoot,this.staticMaterialRevision);
     this.cascades?.update();
+    if(warming&&!this.webgpu){
+      // The normal visitor skips invisible subtrees. At load time bind all
+      // existing weapon materials (not only the currently equipped one).
+      this.weapon?.traverse(object=>{
+        for(const material of Array.isArray(object.material)?object.material:[object.material]){
+          if(!material)continue;
+          if(this.renderer.shadowMap.enabled&&this.penumbra?.enabled)this.penumbra.bind(material);
+          this.cascades?.bind(material);
+        }
+      });
+    }
     if(!warming)this.interiorVisibility.apply(this);
     worldFX.receiverMode=worldFX.receivers.update(this.map.id,this.staticRoot,this.camera,
       !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'),this.campaignWaterMesh);
