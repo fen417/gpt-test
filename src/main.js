@@ -866,6 +866,7 @@ async function startCampaign(options){
   const fourth=options.missionId==='m04';
   try{
     const {CampaignSession,CampaignPresentation,campaignData}=await import('./campaign/menu.js');
+    const {mountMissionIntro}=await import('./campaign/mission-intro.js');
     await ticket.painted;
     const data=await campaignData(options.missionId);
     // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
@@ -902,6 +903,7 @@ async function startCampaign(options){
     }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,depotAsset,
       resume:()=>requestControl(true)});
     await prepareMatchFrame(ticket);
+    campaignPresentation.missionIntro=mountMissionIntro(campaignPresentation.root,options.missionId,{resumed:Boolean(options.save)});
     closeMatchLoad();enter();text('room-badge',`КАМПАНИЯ · ${data.definition.title.toUpperCase()}`);
   }catch(error){if(matchLoad===ticket){
     console.error('Campaign:',error);leave(false);throw error;
@@ -2165,6 +2167,7 @@ function frame(now){
   }
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);
+    campaignPresentation.missionIntro?.update(state?.campaign,paused,now);
     showCampaignOutcome(campaignPresentation.root,state);
     const ended=state?.campaign?.complete||state?.campaign?.failed;
     if(ended)quickAttachments.close();
