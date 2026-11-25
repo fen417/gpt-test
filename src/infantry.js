@@ -282,13 +282,14 @@ export function createInfantry({ template, gun, kit }, player) {
     let index = 0;
     base.traverse(mesh => {
       if (!mesh.isMesh) return;
+      const slot=index++;
+      if(mesh.userData.batchedBodyHidden){mesh.visible=false;return;}
       mesh.visible = visible && mesh.material.name !== replacedHeadgear;
       mesh.frustumCulled = false; // the actor has a single conservative frustum test
       mesh.receiveShadow = true;
-      const geometries = [mesh.geometry, ...levels.slice(1).map(level => level[index])];
+      const geometries = template.bodyBatch?.mergedLods.get(name+'/'+slot)??[mesh.geometry, ...levels.slice(1).map(level => level[slot])];
       if (geometries.length !== 4 || geometries.some(geometry => !geometry)) throw new Error('Incomplete infantry LOD');
       parts.push({ mesh, geometries });
-      index++;
     });
   }
   const details = [];

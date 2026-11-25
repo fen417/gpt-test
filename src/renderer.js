@@ -1,4 +1,5 @@
 import {resourceSet,collectMaterial,collectRoot,collectModel,collectWorld,estimateBytes,releaseResources,residencyPolicy} from './map-residency.js';
+import {batchRigidPickup} from './model-batching.js';
 import {ArchitectureLightmaps} from './architecture-lightmaps.js';
 import {batchStaticWorld} from './static-batching.js';
 import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, GEOMETRY_QUALITY} from './graphics-settings.js';
@@ -1229,6 +1230,9 @@ export class GameRenderer {
               else if(object.material)object.material=frozen(object.material);
               object.castShadow=false;object.receiveShadow=false;
             });
+            const batching=batchRigidPickup(wrapper);
+            this.pickupDrawCallsSaved=(this.pickupDrawCallsSaved??0)+batching.saved;
+            this.pickupOwnedGeometries??=new Set();for(const g of batching.owned)this.pickupOwnedGeometries.add(g);
             wrapper.userData.procedural=true;
             template=wrapper;
             this.poolWeaponTemplates.set(item.weaponId,template);
@@ -2923,6 +2927,7 @@ export class GameRenderer {
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
       occlusion:{candidates:this.interiorVisibility.items?.length??0,occluders:this.interiorVisibility.wallCount??0,checks:this.interiorVisibility.lastChecks??0,hidden:this.interiorVisibility.lastHidden??0},
       mapResidency:this.mapResidency??null,shadowCache:this.cachedShadows.stats?.()??null,
+      drawCallSavings:{pickupTemplate:this.pickupDrawCallsSaved??0,infantryTemplates:[...this.infantry?.templates.values()??[]].reduce((sum,t)=>sum+(t.bodyBatch?.saved??0),0)},
       sceneColorFormat:post.compactActive?'R11G11B10F':'RGBA16F',compactColorSupported:post.compactSupported,
       postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
       anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,cascadeSchedule:this.cascades?.stats?.()??null,
@@ -2979,6 +2984,8 @@ export class GameRenderer {
     for (const soldier of this.soldiers.values()) this.removeSoldier(soldier);
     this.soldiers.clear();
     this.infantry?.dispose();
+    for(const g of this.pickupOwnedGeometries??[])g.dispose();
+    for(const template of this.poolWeaponTemplates?.values()??[]){const materials=new Set();template.traverse(o=>{for(const m of Array.isArray(o.material)?o.material:[o.material])if(m)materials.add(m);});for(const m of materials)m.dispose();}
     this.poolWeaponRig?.dispose();
     this.poolWeaponTemplates?.clear();
     this.poolWeaponModels?.clear();

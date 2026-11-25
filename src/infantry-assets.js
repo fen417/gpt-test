@@ -6,6 +6,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { showWeaponUpgrades, weaponModelUrls } from './weapon-models.js';
+import {batchInfantryBody} from './model-batching.js';
 import {prepareSkinProjection} from './weapon-skins.js';
 import { HORIZON_OPTIC_ID, weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
 
@@ -180,7 +181,9 @@ function prepareBody({ scene, animations }) {
     const direction = directions[name.at(-1)] ?? directions.F;
     gaits.set(name, sampleCycle(anchor, bones, entry.lower, from(direction), floor));
   }
-  return { anchor, clips, levels, gaits };
+  scene.updateMatrixWorld(true);
+  const bodyBatch=batchInfantryBody(scene,levels);
+  return { anchor, clips, levels, gaits,bodyBatch };
 }
 
 function batchDistantWeapon(model) {
@@ -208,6 +211,7 @@ function batchDistantWeapon(model) {
     pieces.push(geometry.applyMatrix4(mesh.matrixWorld));
   });
   const merged = mergeGeometries(pieces);
+  pieces.forEach(g=>g.dispose());
   if (!merged) throw new Error('Could not batch the distant weapon');
   return new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
 }
@@ -329,6 +333,7 @@ export class InfantryAssets {
     (template.anchor ?? template.model).traverse(collect);
     if (template.distantWeapon) collect(template.distantWeapon);
     for (const variant of template.distantUpgrades?.values() ?? []) collect(variant);
+    for(const lods of template.bodyBatch?.mergedLods.values()??[])for(const g of lods)geometry.add(g);
     for (const values of template.levels?.values() ?? []) for (const level of values) for (const value of level ?? []) geometry.add(value);
     for (const material of materials) {
       for (const item of Object.values(material)) if (item?.isTexture) textures.add(item);
