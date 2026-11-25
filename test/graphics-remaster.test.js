@@ -401,3 +401,26 @@ test('map art distinguishes salt, oxidation, dust and clean interiors',()=>{
   assert.equal(weatherArtProfile('port','metal','off'),null);
   const mask=buildWeatherPixels(64);assert.ok(new Set(mask.filter((x,i)=>i%4===3)).size>30);
 });
+
+
+import {LocalReflections} from '../src/local-reflections.js';
+import {WorldPost} from '../src/world-post.js';
+test('local probes are only generated on explicit warmup, never during gameplay',async()=>{
+  const map={id:'fy_pool_day'},owner={map,worlds:new Map([[map.id,{}]]),camera:{position:{x:4,y:2,z:0}},graphicsEffects:{localReflections:'high'}};
+  const probes=new LocalReflections(),texture={};let captures=0;
+  probes.capture=()=>{captures++;return {texture,dispose(){}};};
+  assert.equal(probes.prepare(owner,false,false),null);assert.equal(captures,0);
+  await probes.prewarm(owner,new AbortController().signal,async()=>{});
+  assert.equal(probes.prepare(owner,false,false),texture);assert.equal(captures,1);
+  probes.invalidate();assert.equal(probes.prepare(owner,false,false),texture);assert.equal(captures,1);
+  probes.dispose();
+});
+test('post targets remain stable when aiming and when heat sources first appear',()=>{
+  const post=new WorldPost({},THREE.WebGLRenderTarget,()=>({dispose(){}}));
+  const settings={ao:'gtao',lensFlare:'high',chromatic:'low',heatDistortion:'high',bloom:'high'};
+  post.configure(settings,128,72,0);const world=post.world,stages=post.stages,key=post.key;
+  post.aiming=true;post.configure(settings,128,72,0);
+  assert.equal(post.world,world);assert.equal(post.stages,stages);assert.equal(post.key,key);assert.equal(post.state.cameraEffects.z,0);assert.equal(post.state.chromaticGain,0);
+  post.heat.count=1;post.configure(settings,128,72,0);assert.equal(post.world,world);
+  post.dispose();
+});

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {gunzipSync} from 'fflate';
+import {gunzip} from 'fflate';
 import {setWebGlArchitectureAO} from './webgl-architecture-ao.js';
 import {ARCH_LIGHT_VERSION,ARCH_LIGHT_MAPS,decodeChartUV,geometryKey,meshGeometryKey,proceduralReceiver,architectureIntensity} from './architecture-lightmap-format.js';
 
@@ -35,12 +35,17 @@ export class ArchitectureLightmaps{
       const manifest=await fetch(new URL('manifest.json',base)).then(r=>{if(!r.ok)throw Error('Architecture manifest '+r.status);return r.json();});
       const meta=manifest.maps?.[map.id];
       if(manifest.version!==ARCH_LIGHT_VERSION||!meta||!Number.isInteger(meta.size)||meta.size>2048||meta.size<128)throw Error('Architecture atlas unavailable '+map.id);
-      const bytes=async name=>gunzipSync(new Uint8Array(await fetch(new URL(name,base)).then(r=>{if(!r.ok)throw Error(name+' '+r.status);return r.arrayBuffer();})));
+      const bytes=async name=>{
+        const data=new Uint8Array(await fetch(new URL(name,base)).then(r=>{if(!r.ok)throw Error(name+' '+r.status);return r.arrayBuffer();}));
+        // fflate's asynchronous decompressor runs in a worker in the browser.
+        return new Promise((resolve,reject)=>gunzip(data,{consume:true},(error,value)=>error?reject(error):resolve(value)));
+      };
       const [rgba,raw]=await Promise.all([bytes(meta.atlas),bytes(meta.charts)]);
       if(serial!==this.serial)return;
       if(rgba.length!==meta.size*meta.size*4||raw.length%2)throw Error('Invalid architecture atlas size');
-      const view=new DataView(raw.buffer,raw.byteOffset,raw.byteLength),charts=new Uint16Array(raw.length/2);
-      for(let i=0;i<charts.length;i++)charts[i]=view.getUint16(i*2,true);
+      const bytesAligned=raw.byteOffset%2===0?raw:raw.slice();
+      const charts=new Uint16Array(bytesAligned.buffer,bytesAligned.byteOffset,bytesAligned.byteLength/2);
+      if(new Uint8Array(new Uint16Array([1]).buffer)[0]!==1)for(let i=0;i<charts.length;i++)charts[i]=(charts[i]>>>8)|(charts[i]<<8);
       this.meta=meta;this.charts=charts;this.light=tex(rgba,meta.size,THREE.RGBAFormat);this.pending=false;this.appliedRevision=-1;
     }catch(error){if(serial===this.serial){this.pending=false;this.failed=true;console.warn('Architecture lightmaps unavailable:',map.id,error);}}
   }
@@ -55,9 +60,10 @@ export class ArchitectureLightmaps{
     }
     if(this.map!==map){this.clear();this.map=map;this.pending=true;this.load(map,this.serial);}
     if(!this.meta||(!procedural&&!world.model?.base))return;
-    if(procedural)world.root.updateMatrixWorld(true);
     const mode=lighting+'/'+occlusion;
     if(this.appliedRevision===owner.staticMaterialRevision&&this.mode===mode){this.updateIntensity(owner,lighting);return;}
+    if(owner.deferAssetRefresh){this.updateIntensity(owner,lighting);return;}
+    if(procedural)world.root.updateMatrixWorld(true);
     owner.indirectLighting?.suspend();this.suspend(true);this.mode=mode;
     const meta=this.meta,root=procedural?world.root:world.model.base,byId=new Map(meta.entries.map(e=>[procedural?e.key:e.id,e])),active=new Set(),candidates=[];
     // Match the original GLB mesh order, count and full position/index fingerprint.

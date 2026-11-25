@@ -51,7 +51,7 @@ export class Vegetation{
   invalidate(){this.dirty=true;}
   clear(){
     this.restoreLegacy();for(const e of this.authored)this.remove(e);for(const e of this.tiles.values())this.remove(e);
-    this.authored=[];this.tiles.clear();this.root.removeFromParent();this.map=null;this.key=null;this.last=null;this.dirty=true;
+    this.authored=[];this.tiles.clear();this.selectedTiles=null;this.root.removeFromParent();this.map=null;this.key=null;this.last=null;this.dirty=true;
   }
   configure(owner,quality,density,distance){
     const map=owner.map,key=[map.id,quality,density,distance].join('/');
@@ -72,7 +72,7 @@ export class Vegetation{
     const settings=owner.graphicsEffects??{},requested=settings.vegetation??'legacy',quality=owner.lowQuality&&requested!=='legacy'?'low':requested;
     const level=FOLIAGE_LEVEL[quality]??0;
     if(!level||!owner.map){if(this.map){this.clear();return true;}return false;}
-    const density=Math.min(owner.lowQuality?.25:1,(Number(settings.grassDensity)||0)/100),radius=Math.min(owner.lowQuality?20:100,Number(settings.grassDistance)||20);
+    const density=owner.map.id==='fy_pool_day'?0:Math.min(owner.lowQuality?.25:1,(Number(settings.grassDensity)||0)/100),radius=Math.min(owner.lowQuality?20:100,Number(settings.grassDistance)||20);
     let shadowChanged=this.configure(owner,quality,density,radius);
     if(this.dirty){this.hideLegacy(owner.staticRoot);this.dirty=false;shadowChanged=true;}
     const camera=owner.camera.position;this.uniforms.time.value=owner.clock;
@@ -91,14 +91,17 @@ export class Vegetation{
           if(d<=radius+GRASS_CELL*.55)wanted.set(x+'/'+z,{x,z,d});
         }
       }
-      const cap=level===1?12:level===2?24:level===3?38:52,selected=new Map([...wanted].sort((a,b)=>a[1].d-b[1].d).slice(0,cap));
-      for(const [key,e] of this.tiles)if(!selected.has(key)){this.remove(e);this.tiles.delete(key);}
-      // At most 5 new sectors per update, preventing a teleport from creating
-      // hundreds of instance buffers in a single render frame.
-      let created=0;
-      for(const [key,p] of selected){
+      const cap=level===1?12:level===2?24:level===3?38:52;
+      this.selectedTiles=new Map([...wanted].sort((a,b)=>a[1].d-b[1].d).slice(0,cap));
+      for(const [key,e] of this.tiles)if(!this.selectedTiles.has(key)){this.remove(e);this.tiles.delete(key);}
+    }
+    if(this.selectedTiles){
+      // Spread grass generation across consecutive frames instead of bursts
+      // of five allocations every movement update. Do not reduce coverage.
+      let created=0;const start=performance.now(),limit=owner.deferAssetRefresh?1:5;
+      for(const [key,p] of this.selectedTiles){
         const lod=foliageLOD(p.d,quality,true);let e=this.tiles.get(key);
-        if(!e&&created<5){
+        if(!e&&created<limit&&(created===0||performance.now()-start<1)){
           const plants=grassTile(this.map,this.placement,p.x,p.z,density);
           e=this.batch(plants,'grass',lod)??{empty:true};this.tiles.set(key,e);created++;
         }

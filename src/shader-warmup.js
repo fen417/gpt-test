@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-export const WARMUP_LIMITS=Object.freeze({off:{assets:0,upload:0,items:0},auto:{assets:3000,upload:900,items:160},full:{assets:9000,upload:2200,items:420}});
+export const WARMUP_LIMITS=Object.freeze({off:{assets:0,upload:0,items:0},auto:{assets:3000,upload:900,items:160},full:{assets:30000,upload:8000,items:1024}});
 const nextFrame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
 export function collectWarmupTextures(owner){
   const textures=new Set(),materials=new Set();
   const add=t=>{if(t?.isTexture&&!t.isRenderTargetTexture&&!t.isDepthTexture&&!t.isVideoTexture&&(t.image||t.mipmaps?.length))textures.add(t);};
-  owner.scene.traverseVisible(o=>{
+  owner.scene.traverse(o=>{
     if(!o.material)return;
     for(const mat of Array.isArray(o.material)?o.material:[o.material]){
       if(!mat||materials.has(mat))continue;materials.add(mat);
@@ -12,7 +12,14 @@ export function collectWarmupTextures(owner){
       for(const u of Object.values(mat.uniforms??{}))add(u?.value);
     }
   });
-  for(const t of [owner.indirectLighting?.field?.texture,owner.enhancedSurfaces?.weatherMask,owner.activeSmokeTexture,owner.muzzleTexture,owner.fireballTexture])add(t);
+  for(const template of owner.infantry?.templates?.values()??[]){
+    for(const root of [template.anchor??template.model,template.distantWeapon])root?.traverse?.(o=>{
+      for(const mat of Array.isArray(o.material)?o.material:[o.material]){
+        if(!mat||materials.has(mat))continue;materials.add(mat);for(const value of Object.values(mat))add(value);
+      }
+    });
+  }
+  for(const t of [owner.architectureLightmaps?.light,owner.indirectLighting?.field?.texture,owner.enhancedSurfaces?.weatherMask,owner.activeSmokeTexture,owner.muzzleTexture,owner.fireballTexture])add(t);
   for(const x of owner.enhancedSurfaces?.textures?.values()??[])add(x.texture);
   for(const [kind,x] of owner.vegetation?.assets??[])if(owner.vegetation.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))add(x.texture);
   return {textures:[...textures],materials:materials.size};
@@ -23,7 +30,7 @@ export function assetsPending(owner){
 }
 export async function waitForWarmupAssets(owner,signal,ms,frame=nextFrame,now=()=>performance.now()){
   const deadline=now()+ms;
-  while(assetsPending(owner)&&now()<deadline){signal.throwIfAborted();await frame();}
+  while(assetsPending(owner)&&now()<deadline){signal.throwIfAborted();owner.enhancedSurfaces?.flushRefresh?.();await frame();}
   signal.throwIfAborted();return !assetsPending(owner);
 }
 // Representative, temporary renderables, not simulation events. Reuse the
@@ -130,7 +137,7 @@ export class ShaderWarmup{
         await stage(.95,'Подготовка оружия и снаряжения');
         stats.weaponVariants=await owner.warmWeaponVariants?.(state,localId,view,signal,nextFrame,()=>this.fence(signal));
       }
-      frame();
+      frame();await this.fence(signal);
       await stage(1,'Графика готова');
       stats.complete=true;
     }finally{

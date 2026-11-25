@@ -766,6 +766,7 @@ export class GameRenderer {
 
   async prepareMatchMap(mapId,view,signal) {
     await this.shaderWarmup.idle();signal.throwIfAborted();
+    this.deferAssetRefresh=false;
     await this.preloadMapVisuals(mapId,view);
     signal.throwIfAborted();
     this.setMap(mapId);
@@ -2217,6 +2218,7 @@ export class GameRenderer {
     if(!settings)return;
     if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off'||settings.mapWeathering==='high'||settings.mapWeathering==='low')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief,this.webgpu?.setWebGpuWeathering,this.webgpu?.suspendWebGpuWeathering);
     if(this.enhancedSurfaces){
+      this.enhancedSurfaces.shouldDefer=()=>this.deferAssetRefresh;
       this.enhancedSurfaces.beforeUpdate=()=>{this.staticMaterialRevision++;this.indirectLighting?.suspend();this.architectureLightmaps?.suspend(true);};
       this.enhancedSurfaces.update(this.staticRoot,settings,this.textureAnisotropy,this.map?.id);
     }
@@ -2423,6 +2425,7 @@ export class GameRenderer {
   }
 
   render(state, localId, dt, view = {}) {
+    this.deferAssetRefresh=Boolean(state?.players&&!view.paused&&!view.warming&&!this.shaderWarmup.busy);
     this.tankThirdPerson=view.vehicleThirdPerson!==false;
     this.setMap(state?.mapId ?? view.mapId);
     const rawDt = dt || 0.016;
@@ -2465,6 +2468,7 @@ export class GameRenderer {
     // The old FPV core and the new HDR halo overlap. Reduce the core only
     // in the remastered mode; legacy preserves the prior artwork.
     if(this.weaponRig?.flashMaterial)this.weaponRig.flashMaterial.opacity=this.graphicsEffects.muzzleEffects==='high'?.69:.92;
+    if(!this.deferAssetRefresh)this.enhancedSurfaces?.flushRefresh();
     const materialQuality=this.graphicsEffects.materials;
     const low = materialQuality==='auto' ? this.quality!=='high' : materialQuality==='low';
     if(previousQuality!==this.quality||previousShadowOverride!==this.adaptiveGraphics?.shadowOverride||

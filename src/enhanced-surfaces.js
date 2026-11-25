@@ -47,7 +47,7 @@ export class EnhancedSurfaces {
       .then(r=>{if(!r.ok)throw Error('PBR manifest '+r.status);return r.json();})
       .then(data=>{if(data.version!==PBR_PACK_VERSION||!data.files)throw Error('Invalid PBR pack');this.manifest=data.files;this.scheduleRefresh();})
       .catch(error=>console.warn('PBR pack unavailable; legacy textures remain active',error))
-      .finally(()=>{this.manifestPending=false;});
+      .finally(()=>{this.manifestPending=false;if(this.loadedRefresh)this.scheduleRefresh();});
   }
 
   getKtxLoader() {
@@ -59,13 +59,25 @@ export class EnhancedSurfaces {
     return this.ktx;
   }
 
+  // Coalesce all completed requests into one material pass. A slow
+  // texture may finish mid-match; never rebuild the map's material graphs
+  // in an ordinary active frame. Apply pending work on a loading/pause frame.
   scheduleRefresh() {
-    if(this.loadedRefresh)return;
     this.loadedRefresh=true;
+    if(this.refreshScheduled)return;
+    this.refreshScheduled=true;
     requestAnimationFrame(()=>{
-      this.loadedRefresh=false;
-      if(this.latest)this.update(...this.latest);
+      this.refreshScheduled=false;
+      this.flushRefresh();
     });
+  }
+
+  flushRefresh(){
+    if(!this.loadedRefresh||this.shouldDefer?.()||this.manifestPending)return false;
+    if([...this.textures.values()].some(entry=>entry.pending))return false;
+    this.loadedRefresh=false;
+    if(this.latest)this.update(...this.latest);
+    return true;
   }
 
   load(surface,channel,size) {
@@ -90,6 +102,7 @@ export class EnhancedSurfaces {
       }).catch(error=>{
         entry.pending=false;
         console.warn('Surface texture unavailable',url,error);
+        if(this.textures.get(url)===entry)this.scheduleRefresh();
       });
     }
     return [url,this.textures.get(url).texture];
@@ -201,11 +214,11 @@ export class EnhancedSurfaces {
       loaded++;if(entry.texture.isCompressedTexture)compressed++;
       maxSize=Math.max(maxSize,entry.texture.image?.width??0,entry.texture.image?.height??0);
     }
-    return {pack:!!this.manifest,hardwareCompression:this.compressed,limit:this.limit,loaded,compressed,pending,maxSize,bytes:this.estimatedBytes(),weathering:Boolean(this.weatherMask)};
+    return {pack:!!this.manifest,hardwareCompression:this.compressed,limit:this.limit,loaded,compressed,pending,deferredRefresh:this.loadedRefresh,maxSize,bytes:this.estimatedBytes(),weathering:Boolean(this.weatherMask)};
   }
 
   clear(){
-    this.latest=null;
+    this.latest=null;this.loadedRefresh=false;
     for(const [material,base] of this.originals)this.restore(material,base);
     for(const entry of this.textures.values())entry.texture?.dispose();
     this.originals.clear();this.textures.clear();

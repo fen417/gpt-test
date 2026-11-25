@@ -56,8 +56,10 @@ export class WorldPost {
     const dof=(this.cinematic&&(effects?.depthOfField??'off')!=='off')||(this.inMenu&&effects?.depthOfField==='on');
     const flare=this.aiming?0:cameraModes.flare[effects?.lensFlare]??0;
     const chromatic=this.aiming?0:cameraModes.chromatic[effects?.chromatic]??0;
-    this.cameraFX=Boolean(blur||dof||flare||chromatic);
-    this.hasHeat=effects?.heatDistortion==='high'&&(mask||reflections>0||this.heat.count>0||this.hasHeat);
+    // Camera effects are compiled according to selected settings, not
+    // transient aiming/firing state. Uniforms still disable them while aiming.
+    this.cameraFX=Boolean(blur||dof||cameraModes.flare[effects?.lensFlare]||cameraModes.chromatic[effects?.chromatic]);
+    this.hasHeat=effects?.heatDistortion==='high';
     const depth=mask||reflections>0||this.softEnabled||this.softSmoke||this.cameraFX||this.hasHeat||this.heightFog;
     if(!blur)this.previousClock=undefined;
     if (!depth && !levels) {
