@@ -79,5 +79,5 @@ jobs:
           done
           cat /tmp/weather-vite.log
           exit 1
-      - name: Render and compare weathering off, low, high and off again
+      - name: Render and compare weathering and water, including restoration
         run: node scripts/verify-map-weathering.mjs

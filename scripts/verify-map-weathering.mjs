@@ -69,6 +69,28 @@ async function run(api){
     assert.ok(high.changed>.025,api+' high weathering did not change the rendered image');
     assert.ok(restored.mean<.3,api+' disabling weathering failed to restore original frame');
     assert.deepEqual(networkErrors,[],api+' resource loading errors');
+    const waterFrames={};
+    for(const q of ['legacy','high','legacy']){
+      const result=await page.evaluate(q=>window.drawWaterSmoke(q),q);
+      assert.deepEqual(result.errors,[],api+' water GPU validation errors');
+      assert.deepEqual(networkErrors,[],api+' water resource loading errors');
+      assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' water shader/browser errors');
+      if(result.lost){
+        if(api==='webgpu'&&info.software)return {inconclusive:'software device lost during water '+q+': '+result.lost};
+        assert.fail(api+' GPU lost: '+result.lost);
+      }
+      const frame=await pixels(page);
+      if(q==='high'){
+        assert.ok(result.receivers>0,api+' water SSR mask is missing');
+        assert.ok(result.transmission>0,api+' physical pool transmission is not active');
+        const diff=compare(waterFrames.legacy,frame);
+        console.log('WATER',api,JSON.stringify(diff));
+        assert.ok(diff.black<.99&&diff.changed>.015,api+' enhanced water frame did not render');
+      }else if(waterFrames.legacy){
+        const diff=compare(waterFrames.legacy,frame);
+        assert.ok(diff.mean<.5,api+' disabling water did not restore baseline');
+      }else waterFrames.legacy=frame;
+    }
     return {passed:true};
   }finally{await browser.close();}
 }

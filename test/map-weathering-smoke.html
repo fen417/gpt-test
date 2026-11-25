@@ -7,8 +7,13 @@ import {WebGPURenderer,MeshStandardNodeMaterial} from 'three/webgpu';
 import {makeWeatherMask,weatherParameters} from '../src/map-weathering.js';
 import {setWebGlWeathering} from '../src/webgl-map-weathering.js';
 import {setWebGpuWeathering} from '../src/webgpu-map-weathering.js';
+import {WaterAppearance} from '../src/water-appearance.js';
+import {graphicsEffects,gradeParameters} from '../src/graphics-settings.js';
+import {PostPass} from '../src/post-pass.js';
+import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
+import {getMap} from '../shared/world.js';
 const canvas=document.getElementById('probe');
-let renderer,scene,camera,materials,mask,apply,device,lost,software=false,errors=[];
+let renderer,scene,camera,materials,mask,apply,device,lost,software=false,errors=[],waterScene,waterCamera,waterRoot,waterAppearance,waterPost,waterSun;
 const instanceDropped=error=>/Instance dropped in popErrorScope|external Instance reference no longer exists|GPU device (?:was )?lost/i.test(String(error));
 const tick=()=>new Promise(resolve=>requestAnimationFrame(resolve));
 window.initWeatherSmoke=async (api,softwareAdapter=false)=>{
@@ -46,14 +51,11 @@ window.initWeatherSmoke=async (api,softwareAdapter=false)=>{
   mask=makeWeatherMask();
   return {api,ok:true,software};
 };
-window.drawWeatherSmoke=async quality=>{
-  const params=weatherParameters('quarry','concrete',quality);
-  for(const material of materials)apply(material,params?mask:null,params);
+async function renderChecked(draw){
   let scoped=false;
   try{
     if(device){device.pushErrorScope('validation');scoped=true;}
-    await renderer.compileAsync(scene,camera);
-    renderer.render(scene,camera);
+    await draw();
     await tick();await tick();
   }catch(error){
     if(software&&instanceDropped(error))lost=String(error);else throw error;
@@ -70,5 +72,47 @@ window.drawWeatherSmoke=async quality=>{
     }
   }
   return {errors:[...errors],lost:lost??null};
+};
+window.drawWeatherSmoke=async quality=>{
+  const params=weatherParameters('quarry','concrete',quality);
+  for(const material of materials)apply(material,params?mask:null,params);
+  return renderChecked(async()=>{await renderer.compileAsync(scene,camera);renderer.render(scene,camera);});
+};
+window.drawWaterSmoke=async quality=>{
+  const map=getMap('fy_pool_day');
+  if(!waterScene){
+    waterScene=new THREE.Scene();waterScene.background=new THREE.Color(0x314d65);waterScene.fog=new THREE.FogExp2(0x314d65,.002);
+    waterRoot=new THREE.Group();waterScene.add(waterRoot);
+    waterCamera=new THREE.PerspectiveCamera(48,1.5,.1,160);
+    waterCamera.position.set(7,3,15);waterCamera.lookAt(0,-.25,8.45);
+    waterScene.add(new THREE.HemisphereLight(0xffffff,0x877e64,2.4));
+    waterSun=new THREE.DirectionalLight(0xffffff,2.4);waterSun.position.set(-6,10,4);waterScene.add(waterSun);
+    const floor=new THREE.Mesh(new THREE.PlaneGeometry(24,24),new THREE.MeshStandardMaterial({color:0x9cb4ac,roughness:.82}));
+    floor.position.set(0,-1.28,8.45);floor.rotation.x=-Math.PI/2;waterRoot.add(floor);
+    for(let i=0;i<6;i++){
+      const tile=new THREE.Mesh(new THREE.BoxGeometry(1.5,.04,9),new THREE.MeshStandardMaterial({color:i%2?0xc2a36d:0x31535d}));
+      tile.position.set(i*1.65-4.1,-1.24,8.45);waterRoot.add(tile);
+    }
+    const wall=new THREE.Mesh(new THREE.BoxGeometry(11,5,1),new THREE.MeshStandardMaterial({color:0xb08a62,roughness:.64}));
+    wall.position.set(0,2,1.4);waterRoot.add(wall);
+    const pool=map.pools.find(p=>p.z>0);
+    const water=new THREE.Mesh(new THREE.PlaneGeometry(pool.w,pool.d),new THREE.MeshStandardMaterial({color:0x41858c,transparent:true,depthWrite:false,opacity:.46}));
+    water.rotation.x=-Math.PI/2;water.position.set(pool.x,pool.waterY,pool.z);water.userData.waterSurface=true;water.renderOrder=1;waterRoot.add(water);
+    waterRoot.updateMatrixWorld(true);
+    waterAppearance=new WaterAppearance();
+    waterPost=device?new WebGpuPostPass(renderer,{antialias:'off'}):new PostPass(renderer,{antialias:'off'});
+  }
+  const active=quality==='high',settings={...graphicsEffects('high'),water:quality,waterFoam:active?'high':'off',waterRefraction:active?'high':'off',reflections:active?'high':'off',vignette:'off',grain:'off'};
+  waterAppearance.update(1,waterRoot,map,quality,settings.waterRefraction,settings.waterFoam,null);
+  waterPost.worldEffects.receivers.invalidate();
+  waterPost.worldEffects.receiverMode=waterPost.worldEffects.receivers.update(map.id,waterRoot,waterCamera,active);
+  waterPost.setImage(settings,gradeParameters(settings,map));
+  const result=await renderChecked(async()=>{
+    waterPost.begin('high');
+    renderer.render(waterScene,waterCamera);
+    if(waterPost.worldEffects.world)waterPost.worldEffects.apply(waterPost.target,waterCamera,waterScene,waterSun.position,waterSun,false,1,null,null);
+    waterPost.end(1,'high',null);
+  });
+  return {...result,receivers:waterPost.worldEffects.receivers.count,transmission:waterAppearance.material?.transmission??0};
 };
 </script></body></html>
