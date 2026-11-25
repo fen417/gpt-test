@@ -12,9 +12,10 @@ export class CachedShadows {
       uniforms:{staticDepth:{value:null},dynamicDepth:{value:null}},
       vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
       fragmentShader:'#include <packing>\nuniform sampler2D staticDepth; uniform sampler2D dynamicDepth; varying vec2 vUv; void main(){vec4 a=texture2D(staticDepth,vUv),b=texture2D(dynamicDepth,vUv);gl_FragColor=unpackRGBAToDepth(a)<unpackRGBAToDepth(b)?a:b;}' });
+    this.counters={staticRefresh:0,staticReuse:0,dynamicRefresh:0,combined:0};
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),this.material);this.quadScene.add(this.quad);
   }
-  invalidate(rebuildCasters=false){this.key=null;if(rebuildCasters){this.root=null;this.mediumRoot=null;}}
+  invalidate(rebuildCasters=false){this.key=null;if(rebuildCasters){this.root=null;this.mediumRoot=null;this.casters=[];this.casterSet=null;this.mediumCasters=[];}}
   install(owner){
     if(this.installed===owner.renderer.shadowMap)return;
     this.uninstall();this.installed=owner.renderer.shadowMap;
@@ -67,19 +68,22 @@ export class CachedShadows {
         scene.traverse(o=>{if(o.isMesh&&o.castShadow&&!this.casterSet.has(o)){hidden.push(o);o.castShadow=false;}});
         try{renderer.shadowMap.needsUpdate=true;light.shadow.needsUpdate=true;renderShadow([light],scene,camera);}
         finally{for(const o of hidden)o.castShadow=true;}
-        this.key=key;
-      }
+        this.key=key;this.counters.staticRefresh++;
+      }else this.counters.staticReuse++;
       // The public sun samples the combined map; native rendering writes only
       // to its private dynamic target on the next frame.
       sun.shadow.map=this.dynamic??null;
       withoutCasters(this.casters,()=>{renderer.shadowMap.needsUpdate=true;sun.shadow.needsUpdate=true;renderShadow([sun],scene,camera);this.dynamic=sun.shadow.map;});
+      this.counters.dynamicRefresh++;
       this.material.uniforms.staticDepth.value=this.staticLight.shadow.map.texture;
       this.material.uniforms.dynamicDepth.value=this.dynamic.texture;
       renderer.setRenderTarget(this.combined);renderer.autoClear=false;
       renderer.render(this.quadScene,this.quadCamera);
+      this.counters.combined++;
       sun.shadow.map=this.combined;sun.shadow.needsUpdate=false;renderer.shadowMap.needsUpdate=false;
     } finally {renderer.setRenderTarget(target);renderer.autoClear=autoClear;camera.layers.mask=mask;}
   }
+  stats(){return {...this.counters};}
   disposeTargets(){this.dynamic?.dispose();this.combined?.dispose();this.staticLight.shadow.map?.dispose();this.staticLight.shadow.map=null;this.dynamic=null;}
   dispose(){this.uninstall();this.disposeTargets();this.quad.geometry.dispose();this.material.dispose();}
 }

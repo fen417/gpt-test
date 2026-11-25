@@ -135,6 +135,11 @@ export class WebGlCascades {
     this.counters.frames++;this.counters.lastMask=mask;this.invalidated=false;
   }
 
+  forgetMaterial(material){
+    if(!this.materials.delete(material))return;
+    setWebGlShaderPatch(material,'cascades',null);
+    if(material.defines){delete material.defines.USE_CSM;delete material.defines.CSM_CASCADES;delete material.defines.CSM_FADE;}
+  }
   stats(){return {...this.counters,cascades:this.csm.cascades};}
   invalidate(rebuildCasters=false) {
     this.invalidated=true;

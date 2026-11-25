@@ -1,3 +1,4 @@
+import {resourceSet,collectMaterial,collectRoot,collectModel,collectWorld,estimateBytes,releaseResources,residencyPolicy} from './map-residency.js';
 import {ArchitectureLightmaps} from './architecture-lightmaps.js';
 import {batchStaticWorld} from './static-batching.js';
 import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, GEOMETRY_QUALITY} from './graphics-settings.js';
@@ -366,7 +367,7 @@ export class GameRenderer {
     this.worldRoot = new THREE.Group();
     this.worldRoot.add(this.atmosphere.sky);
     this.scene.add(this.worldRoot);
-    this.worlds = new Map();
+    this.worlds = new Map();this.mapEvictions=0;this.modelPins=new Map();this.modelRecent=new Map();this.modelClock=0;
     this.villageModel = new VillageModel(this,dryWindAssets);
     this.alhadraModel = new VillageModel(this,alhadraAssets);
     this.alhadraDesertModel = new VillageModel(this,alhadraDesertAssets);
@@ -580,6 +581,9 @@ export class GameRenderer {
     this.architectureLightmaps?.clear();
     this.enhancedSurfaces?.clear(); // Never clone a shared material with temporary PBR textures.
     this.waterAppearance?.restore();
+    this.localReflections.dispose();this.postPass.worldEffects.receivers.invalidate();
+    this.interiorVisibility.restore();this.interiorVisibility.root=null;this.interiorVisibility.items=[];
+    this.cachedShadows.invalidate(true);
     this.postPass.worldEffects.previousClock=undefined;
     for(const type of new Set(map.vehicleSpawns?.map(vehicle=>vehicle.type)))lightVehicleModels[type]?.load();
     let world = this.worlds.get(map.id);
@@ -631,7 +635,7 @@ export class GameRenderer {
       });
       this.worlds.set(map.id, world);
       if(world.model&&!world.model.base)world.model.loadBase().then(base=>{
-        if(world.model.disposed)return;
+        if(world.evicted||world.model.disposed||this.disposed)return;
         if(base)this.installBakedBase(world,base);
         else if(world.model===this.portModel||world.model===this.lagunaModel||world.model===this.estateModel)this.installMapFallback(world,map);
       });
@@ -686,14 +690,75 @@ export class GameRenderer {
     this.staticMenuShadows = false;
     this.cascades?.invalidate(true);
     this.cameraPlayerId = null;
+    this.worlds.delete(map.id);this.worlds.set(map.id,world);
+    this.trimMapResidency();
+  }
+
+  modelSlots(){return ['villageModel','alhadraModel','alhadraDesertModel','telMazinModel','naharModel','portModel','lagunaModel','estateModel'];}
+  commonMapResources(){
+    const out=resourceSet();
+    for(const g of Object.values(this.geo??{}))if(g?.isBufferGeometry)out.geometries.add(g);
+    for(const collection of [this.surfaces,this.materials])for(const m of Object.values(collection??{}))collectMaterial(out,m);
+    for(const m of this.surfaceCache?.values()??[])collectMaterial(out,m);
+    for(const t of this.flagLogos??[])out.textures.add(t);
+    if(this.atmosphere?.envTexture)out.textures.add(this.atmosphere.envTexture);
+    return out;
+  }
+  forgetMapMaterial(material){this.cascades?.forgetMaterial?.(material);this.penumbra?.forgetMaterial?.(material);}
+  releaseMapModel(model){
+    const slot=this.modelSlots().find(key=>this[key]===model);
+    if(!slot)return;
+    const owned=collectModel(resourceSet(),model);
+    for(const m of model.materials.values()){this.forgetMapMaterial(m);if(m._lowMaterial)this.forgetMapMaterial(m._lowMaterial);}
+    model.dispose();this.modelRecent.delete(model);this.modelPins.delete(model);
+    this[slot]=model instanceof PortModel?new PortModel(this):new model.constructor(this,model.assets);
+    return owned;
+  }
+  evictWorld(id,world){
+    if(world.root===this.staticRoot||this.modelPins.has(world.model))return false;
+    const owned=collectWorld(world),protectedSet=this.commonMapResources();
+    collectRoot(protectedSet,this.scene);
+    for(const [otherId,other] of this.worlds)if(otherId!==id){collectRoot(protectedSet,other.root);collectModel(protectedSet,other.model);}
+    for(const key of this.modelSlots())if(this[key]!==world.model)collectModel(protectedSet,this[key]);
+    world.evicted=true;this.worlds.delete(id);world.root.removeFromParent();
+    let released=resourceSet();
+    if(world.model&&![...this.worlds.values()].some(w=>w.model===world.model))released=this.releaseMapModel(world.model)??released;
+    if(world.quarryDetail){const quarry=collectRoot(resourceSet(),world.quarryDetail);disposeQuarryDetail(world.quarryDetail);for(const key of Object.keys(released))for(const v of quarry[key])released[key].add(v);}
+    releaseResources(owned,protectedSet,released,m=>this.forgetMapMaterial(m));
+    world.root.clear();this.groundShadows.releaseMap?.(id);this.mapEvictions++;return true;
+  }
+  trimMapResidency(keepModel=null){
+    if(this.disposed)return;
+    const policy=residencyPolicy(this.integratedGpu,this.lowQuality),common=this.commonMapResources();
+    const total=()=>{const out=resourceSet();for(const w of this.worlds.values()){collectRoot(out,w.root);collectModel(out,w.model);}for(const key of this.modelSlots())collectModel(out,this[key]);return estimateBytes(out,common);};
+    let bytes=total();
+    for(const [id,world] of this.worlds){
+      if(this.worlds.size<=policy.worlds&&bytes<=policy.bytes)break;
+      if(keepModel&&world.model===keepModel)continue;
+      if(this.evictWorld(id,world))bytes=total();
+    }
+    const worldModels=new Set([...this.worlds.values()].map(w=>w.model));
+    const preloads=[...this.modelRecent.entries()].filter(([model])=>!worldModels.has(model)&&!this.modelPins.has(model)).sort((a,b)=>a[1]-b[1]);
+    for(const [model] of preloads){
+      if(model===keepModel)continue;
+      if(preloads.length>1||bytes>policy.bytes||keepModel){this.releaseMapModel(model);bytes=total();}
+    }
+    this.mapResidency={worlds:this.worlds.size,estimatedBytes:bytes,budgetBytes:policy.bytes,maxWorlds:policy.worlds,evictions:this.mapEvictions};
   }
 
   async preloadMapVisuals(mapId,{quality='high',gfx}={}) {
     const model=this.bakedMapModel(getMap(mapId));
     if(!model)return;
-    const base=await model.loadBase();
-    if(base&&geometryQuality(quality,gfx?.detail)==='high')await model.loadDetail();
-    await model.textureLoader.ready();
+    this.modelRecent.set(model,++this.modelClock);
+    this.modelPins.set(model,(this.modelPins.get(model)??0)+1);
+    try{
+      const base=await model.loadBase();
+      if(base&&geometryQuality(quality,gfx?.detail)==='high')await model.loadDetail();
+      await model.textureLoader.ready();
+    }finally{
+      const count=(this.modelPins.get(model)??1)-1;if(count)this.modelPins.set(model,count);else this.modelPins.delete(model);
+      if(!this.disposed)this.trimMapResidency(model);
+    }
   }
 
   async prepareMatchMap(mapId,view,signal) {
@@ -750,6 +815,7 @@ export class GameRenderer {
   }
 
   installBakedLayer(world,layer) {
+    if(world.evicted||this.disposed)return;
     if(world.root===this.staticRoot)this.architectureLightmaps?.suspend();
     world.root.add(layer);
     layer.updateMatrixWorld(true);
@@ -762,6 +828,7 @@ export class GameRenderer {
     this.updateTextureFiltering();
     this.refreshSurfaceEnhancements();
     this.invalidateBakedVisibility();
+    this.trimMapResidency(world.model);
   }
 
   invalidateBakedVisibility() {
@@ -788,7 +855,7 @@ export class GameRenderer {
       }
     }else if(wanted){
       world.quarryLoad??=loadQuarryDetail(map,this.surfaces.metal).then(layer=>{
-        if(this.disposed){
+        if(this.disposed||world.evicted){
           disposeQuarryDetail(layer);
           return;
         }
@@ -828,6 +895,7 @@ export class GameRenderer {
   }
 
   updateBakedDetail(world,wanted) {
+    if(world.evicted||this.disposed)return;
     world.wantsDetail=wanted;
     const {base,detail}=world.model;
     if(!base||world.fallback)return;
@@ -2319,7 +2387,7 @@ export class GameRenderer {
       previousEffects?.cascades!==this.graphicsEffects.cascades)this.applyShadows();
     if(previousQuality!==this.quality||previousEffects?.anisotropy!==this.graphicsEffects.anisotropy)this.updateTextureFiltering();
     const materialQualityChanged=this.lowQuality!==low;
-    if(materialQualityChanged)this.applyQuality(low);
+    if(materialQualityChanged){this.applyQuality(low);this.trimMapResidency();}
     if(previousEffects!==this.graphicsEffects||this.gradedMap!==this.map||materialQualityChanged){
       this.gradedMap=this.map;
       this.refreshSurfaceEnhancements();
@@ -2765,6 +2833,7 @@ export class GameRenderer {
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
       occlusion:{candidates:this.interiorVisibility.items?.length??0,occluders:this.interiorVisibility.wallCount??0,checks:this.interiorVisibility.lastChecks??0,hidden:this.interiorVisibility.lastHidden??0},
+      mapResidency:this.mapResidency??null,shadowCache:this.cachedShadows.stats?.()??null,
       sceneColorFormat:post.compactActive?'R11G11B10F':'RGBA16F',compactColorSupported:post.compactSupported,
       postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
       anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,cascadeSchedule:this.cascades?.stats?.()??null,

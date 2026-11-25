@@ -72,6 +72,7 @@ export class WebGlPenumbra {
     });
   }
 
+  forgetMaterial(material){if(this.active.delete(material))setWebGlShaderPatch(material,'penumbra',null);}
   bind(material) {
     if(!(material.isMeshStandardMaterial||material.isMeshLambertMaterial||material.isMeshPhongMaterial))return;
     if(this.active.has(material))return;

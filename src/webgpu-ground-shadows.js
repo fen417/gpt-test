@@ -69,5 +69,6 @@ export class WebGpuGroundShadows {
     }
     return nodeMaterial;
   }
+  releaseMap(id){const t=this.textures.get(id);if(t&&t!==this.sample.value){if(t!==this.white)t.dispose();this.textures.delete(id);}}
   dispose(){for(const tex of new Set(this.textures.values()))if(tex!==this.white)tex.dispose();this.white.dispose();}
 }
