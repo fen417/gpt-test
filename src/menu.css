@@ -242,3 +242,10 @@ body:has(dialog.menu-dialog[open]),body:has(#pause:not(.hidden)){overflow:hidden
 #menu-background{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none;z-index:0;background:#303731;}
 body:not(.in-battle) #game{visibility:hidden;}
 body.in-battle #menu-background{display:none;}
+
+/* Qualitative FPS cost hints; text stays readable without color perception. */
+#pause .graphics-fps-impact{display:block;width:fit-content;max-width:100%;font-size:10px;font-weight:600;line-height:1.35;margin-top:4px;color:#a9ccf0;}
+#pause .graphics-fps-impact[data-impact="low"]{color:#8cda9e;}
+#pause .graphics-fps-impact[data-impact="medium"]{color:#e9c371;}
+#pause .graphics-fps-impact[data-impact="high"]{color:#f29890;}
+#pause .graphics-impact-legend{font-size:11px;line-height:1.5;color:#a6b7a0;margin:0 0 16px;}

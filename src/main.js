@@ -14,7 +14,7 @@ import { drawBotDebug } from './bot-debug.js';
 import './style.css';
 import { CLASS_GADGET, GADGET_NAMES, selectedGadget, isPlacementGadget, gadgetCooldown } from '../shared/gadgets.js';
 import {GameRenderer} from './renderer.js';
-import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, GRAPHICS_GROUPS, LEGACY_GRAPHICS_DEFAULTS, graphicsEffects, graphicsGroupValue, validateCustomGraphics} from './graphics-settings.js';
+import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, GRAPHICS_GROUPS, GRAPHICS_FINE_ONLY, GRAPHICS_IMPACT, LEGACY_GRAPHICS_DEFAULTS, graphicsEffects, graphicsGroupValue, validateCustomGraphics} from './graphics-settings.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
@@ -1064,10 +1064,23 @@ function makeGraphicsCustom(changes){
   save('gfx-custom',JSON.stringify(gfx.customGraphics));
   syncGraphicsPreset();
 }
+const impactLabels={low:'Низкая',medium:'Средняя',high:'Высокая',variable:'Зависит от режима'};
+function graphicsImpactLabel(key){
+  const impact=GRAPHICS_IMPACT[key];
+  if(!impact)return null;
+  const hint=document.createElement('span');
+  hint.className='graphics-fps-impact';hint.dataset.impact=impact;
+  hint.textContent='Нагрузка на FPS: '+impactLabels[impact];
+  hint.title='Ориентировочная нагрузка при повышении качества; зависит от карты, GPU, разрешения и режима рендера.';
+  return hint;
+}
 function addGraphicsControl(parent,id,name,help,options,onChange){
   const row=document.createElement('label'), description=document.createElement('span'), controlBox=document.createElement('span');
   const label=document.createElement('b'), detail=document.createElement('small');
-  label.textContent=name;detail.textContent=help;description.append(label,detail);
+  label.textContent=name;detail.textContent=help;description.append(label);
+  const hint=graphicsImpactLabel(id.replace(/^gfx-(?:group|advanced)-/,''));
+  if(hint)description.append(hint);
+  description.append(detail);
   row.className='setting-row';controlBox.className='setting-control';
   const range=Array.isArray(options);
   const control=document.createElement(range?'input':'select');
@@ -1090,8 +1103,17 @@ function graphicsHeading(title){
   heading.className='settings-section';heading.textContent=title;
   return heading;
 }
+// Static graphics rows use the same FPS hints as grouped and fine settings.
+for(const row of $('settings-picture').querySelectorAll('label.setting-row')){
+  const hint=graphicsImpactLabel(row.htmlFor);
+  if(hint)row.querySelector('span')?.querySelector('b')?.after(hint);
+}
+const impactLegend=document.createElement('p');
+impactLegend.className='graphics-impact-legend';
+impactLegend.textContent='Влияние на FPS — ориентировочная оценка при повышении качества, а не результаты замеров. Фактическая нагрузка зависит от видеокарты и сцены.';
+$('settings-picture').querySelector('.settings-page-heading').after(impactLegend);
 const groupStarts=new Map(GRAPHICS_GROUPS.map(group=>[group[3][0],group]));
-const groupedFields=new Set(GRAPHICS_GROUPS.flatMap(group=>group[3]));
+const groupedFields=new Set([...GRAPHICS_GROUPS.flatMap(group=>group[3]),...GRAPHICS_FINE_ONLY]);
 for(const [index,[title,rows]] of GRAPHICS_CONTROLS.entries()){
   const group=index===0?$('graphics-lighting'):index===1?$('graphics-materials'):document.createElement('div');
   if(!group.parentNode)$('graphics-advanced').append(group);

@@ -105,6 +105,9 @@ export const GRAPHICS_CONTROLS = [
 ];
 
 export const GRAPHICS_GROUPS = [
+  ['lightingQuality','Освещение','Баланс света, непрямое освещение и запечённое освещение зданий.', ['lighting','gi','architectureLight','architectureAO'], {
+    legacy:['Как раньше','legacy','off','off','off'], low:['Низкое','enhanced','off','off','off'], medium:['Среднее','enhanced','low','low','low'], high:['Высокое','enhanced','high','high','high'],
+  }],
   ['smallShadows','Мелкие тени','Экранное и запечённое затенение, контактные тени.', ['ao','contact','bakedAO'], {
     off:['Выкл.','off','off','off'], low:['Низкие','low','low','low'],
     high:['Высокие','high','medium','high'], ultra:['Ультра','gtao','high','high'],
@@ -129,22 +132,41 @@ export const GRAPHICS_GROUPS = [
   ['cinematicCamera','Камера в заставках','Смаз движения и глубина резкости.', ['motionBlur','depthOfField'], {
     off:['Выкл.','off','off'], low:['Лёгкий эффект','low','cinematics'], high:['Заставки и меню','medium','on'],
   }],
-  ['lens','Эффекты объектива','Солнечные блики и цветное разделение по краям кадра.', ['lensFlare','chromatic'], {
-    off:['Выкл.','off','off'], low:['Слабые','low','off'], high:['Выраженные','high','low'],
+  ['postQuality','Постэффекты','HDR-свечение, блики, виньетка, зерно и цветовое разделение.', ['bloom','lensFlare','chromatic','vignette','grain'], {
+    legacy:['Как раньше','off','off','off','legacy','legacy'], off:['Выкл.','off','off','off','off','off'],
+    low:['Низкое','low','off','off','off','off'], medium:['Среднее','medium','low','off','off','off'],
+    high:['Высокое','high','low','off','off','off'], ultra:['Ультра','ultra','high','low','low','low'],
+    hdr:['Только HDR-свечение','high','off','off','off','off'],
   }],
-  ['film','Виньетка и зерно','Затемнение краёв и текстура кадра.', ['vignette','grain'], {
-    legacy:['Как раньше','legacy','legacy'], off:['Выкл.','off','off'], low:['Слабые','low','low'], high:['Выраженные','high','high'],
+  ['muzzleQuality','Эффекты выстрелов','Дульная вспышка и освещение от стрельбы.', ['muzzleEffects','muzzleLights'], {
+    legacy:['Как раньше','legacy','off'], medium:['Среднее','high','off'], high:['Высокое','high','low'], ultra:['Ультра','high','high'],
   }],
-  ['smokeQuality','Качество дыма','Детализация, освещение и мягкие края частиц.', ['smoke','softParticles','particleLighting'], {
-    legacy:['Как раньше','legacy','off','off'], medium:['Среднее','medium','off','high'], high:['Высокое','high','high','high'],
+  ['smokeQuality','Качество дыма','Детализация, освещение и мягкие края частиц.', ['smoke','softParticles','particleLighting','softParticleResolution'], {
+    legacy:['Как раньше','legacy','off','off','auto'], low:['Низкое','medium','off','off','auto'], medium:['Среднее','medium','high','off','half'], high:['Высокое','high','high','high','auto'], ultra:['Ультра','high','high','high','full'],
   }],
-  ['explosionQuality','Взрывы и марево','Вспышки, шлейфы и искажение воздуха над огнём.', ['explosions','heatDistortion','fireEffects','dust'], {
-    legacy:['Как раньше','legacy','off','legacy','off'], medium:['Среднее','medium','off','high','medium'], high:['Высокое','high','high','high','high'],
+  ['explosionQuality','Взрывы и марево','Вспышки, шлейфы и искажение воздуха над огнём.', ['explosions','heatDistortion','fireEffects','dust','fireLighting'], {
+    legacy:['Как раньше','legacy','off','legacy','off','off'], low:['Низкое','medium','off','legacy','off','off'], medium:['Среднее','medium','off','high','medium','off'], high:['Высокое','high','high','high','high','high'],
   }],
   ['adaptivePolicy','Приоритет адаптации','До какого уровня можно упрощать эффекты и масштаб.', ['adaptiveFloor','adaptiveMinScale','adaptiveClarity'], {
     clarity:['Чёткость','balanced','65','on'], balanced:['Баланс','balanced','65','off'], fps:['Частота кадров','minimum','50','off'],
   }],
 ];
+
+// Keep independent artistic and technical controls accessible without crowding the main menu.
+export const GRAPHICS_FINE_ONLY = Object.freeze(['gradeMix','contrast','saturation','anisotropy','shaderWarmup','reflectionTraversal','temporalEffects']);
+
+// Qualitative cost of increasing a setting, not a benchmark or a guaranteed FPS delta.
+export const GRAPHICS_IMPACT = Object.freeze({
+  lighting:'low',gi:'medium',ao:'high',architectureLight:'low',architectureAO:'low',bakedAO:'low',contact:'high',atmosphere:'high',shadowFilter:'high',shadowDistance:'high',
+  materials:'medium',surfaceDetail:'medium',mapWeathering:'medium',relief:'high',anisotropy:'low',sky:'low',clouds:'medium',heightFog:'low',reflections:'high',localReflections:'medium',water:'medium',waterRefraction:'high',waterFoam:'low',
+  vegetation:'high',grassDensity:'high',grassDistance:'high',vegetationWind:'low',vegetationShadows:'high',foliageTransmission:'low',
+  bloom:'medium',grade:'low',gradeMix:'low',contrast:'low',saturation:'low',vignette:'low',motionBlur:'medium',depthOfField:'medium',lensFlare:'low',chromatic:'low',grain:'low',
+  smoke:'high',muzzleEffects:'low',muzzleLights:'medium',fireEffects:'medium',fireLighting:'medium',dust:'medium',softParticles:'high',softParticleResolution:'high',particleLighting:'medium',heatDistortion:'medium',explosions:'high',
+  shaderWarmup:'variable',reflectionTraversal:'variable',temporalEffects:'variable',adaptiveTarget:'variable',adaptiveFloor:'variable',adaptiveMinScale:'variable',adaptiveClarity:'variable',
+  lightingQuality:'medium',smallShadows:'high',shadowStyle:'high',surfaceQuality:'high',vegetationQuality:'high',skyQuality:'high',reflectionQuality:'high',
+  cinematicCamera:'medium',postQuality:'medium',muzzleQuality:'medium',smokeQuality:'high',explosionQuality:'high',adaptivePolicy:'variable',
+  'gfx-api':'variable','quality':'variable','gfx-resolution':'high','gfx-fsr':'variable','gfx-fsr-quality':'high','gfx-fsr-sharpness':'low','gfx-frame-generation':'variable','gfx-aa':'high','gfx-shadows':'high','gfx-detail':'high','fov':'medium','brightness':'low','camera-shake':'low',
+});
 
 export function graphicsGroupValue(fields, modes, settings) {
   return Object.keys(modes).find(mode=>fields.every((field,index)=>settings[field]===modes[mode][index+1]))??'mixed';

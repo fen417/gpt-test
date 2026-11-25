@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AdaptiveGraphics } from '../src/adaptive-graphics.js';
-import { baseGraphicsQuality, geometryQuality, graphicsEffects, validateCustomGraphics } from '../src/graphics-settings.js';
+import { baseGraphicsQuality, geometryQuality, graphicsEffects, validateCustomGraphics, GRAPHICS_CONTROLS, GRAPHICS_GROUPS, GRAPHICS_FINE_ONLY, GRAPHICS_IMPACT, graphicsGroupValue } from '../src/graphics-settings.js';
 import { choosePbrSize, DETAIL_SIZE, PBR_SOURCES } from '../src/pbr-library.js';
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
@@ -525,3 +525,22 @@ test('ADS flash strength smoothly decreases without extinguishing the native fla
 });
 
 test('tank flame base stays inside the engine deck as flame height changes',()=>{for(const height of [1,2.6,3])assert.ok(Math.abs(tankFlameCenter(height)-height*.5+.18)<1e-9);});
+
+
+test('consolidated graphics groups preserve valid settings and have FPS impact hints',()=>{
+  const controls=new Map(GRAPHICS_CONTROLS.flatMap(([,rows])=>rows.map(([key,,,options])=>[key,options])));
+  const seen=new Set();
+  for(const [id,,,fields,modes] of GRAPHICS_GROUPS){
+    assert.ok(GRAPHICS_IMPACT[id],id);
+    for(const field of fields){assert.ok(controls.has(field),field);assert.ok(!seen.has(field),field);seen.add(field);}
+    for(const [mode,values] of Object.entries(modes)){
+      assert.equal(values.length,fields.length+1,id+'/'+mode);
+      const changes=Object.fromEntries(fields.map((field,i)=>[field,values[i+1]]));
+      const validated=validateCustomGraphics(changes,'legacy');
+      for(const field of fields){assert.equal(validated[field],changes[field],id+'/'+mode+'/'+field);}
+      assert.equal(graphicsGroupValue(fields,modes,validated),mode,id+'/'+mode);
+    }
+  }
+  for(const field of GRAPHICS_FINE_ONLY){assert.ok(controls.has(field));assert.ok(!seen.has(field));}
+  for(const field of controls.keys())assert.ok(GRAPHICS_IMPACT[field],field);
+});
