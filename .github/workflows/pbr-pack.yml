@@ -44,8 +44,20 @@ jobs:
           key: pbr-pack-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Bake static diffuse irradiance probes for all maps
         run: npm run assets:gi
+      - name: Restore architecture bake cache
+        uses: actions/cache/restore@v4
+        with:
+          path: public/architecture-v1
+          key: architecture-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: architecture-v2-${{ runner.os }}-
       - name: Bake architecture lightmaps from exported visual meshes
         run: npm run assets:architecture
+      - name: Save architecture bake cache even on failure
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: public/architecture-v1
+          key: architecture-v2-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Build experimental game
         run: npm run build
         env:

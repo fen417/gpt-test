@@ -4,7 +4,7 @@ import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {gzipSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
-import {ARCH_LIGHT_VERSION,ARCH_LIGHT_MAPS,architectureReceiver,geometryKey} from '../src/architecture-lightmap-format.js';
+import {ARCH_LIGHT_VERSION,ARCH_LIGHT_MAPS,architectureReceiver,geometryKey,proceduralReceiver,meshGeometryKey} from '../src/architecture-lightmap-format.js';
 
 const out='public/architecture-v1',loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 globalThis.self??=globalThis;
@@ -68,14 +68,14 @@ function shade(tree,t,u,v){
   }
   return [r/12,g/12,b/12,ao/12];
 }
-function triangles(scene){
+function triangles(scene,procedural=false){
   const list=[],meshes=[];scene.updateMatrixWorld(true);let ordinal=0;
   scene.traverse(mesh=>{
     if(!mesh.isMesh)return;
-    const id=ordinal++;if(!architectureReceiver(mesh))return;
+    const id=ordinal++;if(!(procedural?proceduralReceiver(mesh):architectureReceiver(mesh)))return;
     const g=mesh.geometry,p=g.getAttribute('position'),index=g.index,color=g.getAttribute('color'),count=index?.count??p.count;
     if(count%3)return;
-    const entry={id,name:mesh.name,key:geometryKey(g),count,triangles:[]};
+    const entry={id,name:mesh.name,key:procedural?meshGeometryKey(mesh,g):geometryKey(g),count,triangles:[]};
     meshes.push(entry);
     for(let i=0;i<count;i+=3){
       const ids=[0,1,2].map(j=>index?index.getX(i+j):i+j);
@@ -94,20 +94,21 @@ async function load(file){
   const {scene}=await loader.parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
   return {scene,sha:hash(bytes)};
 }
-function pack(meshes,size,scale,minArea){
+function pack(meshes,size,scale,minArea,allowPartial=false){
   const charts=[];
   for(const mesh of meshes)for(let i=0;i<mesh.triangles.length;i++){
     const t=mesh.triangles[i];if(!t||t.area<minArea)continue;
     const span=Math.max(t.a.distanceTo(t.b),t.b.distanceTo(t.c),t.c.distanceTo(t.a));
     charts.push({mesh,i,t,s:clamp(Math.ceil(span*scale)+3,4,28)});
   }
-  charts.sort((a,b)=>b.s-a.s);let x=2,y=2,row=0;
+  charts.sort((a,b)=>b.s-a.s||b.t.area-a.t.area);let x=2,y=2,row=0;
+  const placed=[];
   for(const chart of charts){
     if(x+chart.s>size){x=2;y+=row;row=0;}
-    if(y+chart.s>size)return null;
-    chart.x=x;chart.y=y;x+=chart.s;row=Math.max(row,chart.s);
+    if(y+chart.s>size){if(!allowPartial)return null;break;}
+    chart.x=x;chart.y=y;x+=chart.s;row=Math.max(row,chart.s);placed.push(chart);
   }
-  return charts;
+  return placed;
 }
 function paint(pixels,size,chart,tree){
   const {x,y,s,t}=chart,inner=s-3;
@@ -130,24 +131,44 @@ function paint(pixels,size,chart,tree){
 await mkdir(out,{recursive:true});
 let previous={maps:{}};try{previous=JSON.parse(await readFile(out+'/manifest.json','utf8'));}catch{}
 const manifest={version:ARCH_LIGHT_VERSION,maps:{}};
+const saveManifest=()=>writeFile(out+'/manifest.json',JSON.stringify(manifest,null,2)+'\n');
 for(const [mapId,folder] of Object.entries(ARCH_LIGHT_MAPS)){
+  const procedural=mapId==='safra';
   const path='src/assets/'+folder+'/base.glb';
-  const source=await readFile(path),sha=hash(source);
+  let scene,sha;
+  if(procedural){
+    const {createCanvas}=await import('@napi-rs/canvas');
+    globalThis.document??={createElement:()=>createCanvas(512,512)};
+    const [{SAFRA},{createMapModelBuilder},{createSurfaceMaterials},{buildMapScene}]=await Promise.all([
+      import('../shared/campaign/safra.js'),import('../src/renderer.js'),import('../src/visuals.js'),import('../src/map-scene.js')]);
+    const surfaces=createSurfaceMaterials({capabilities:{getMaxAnisotropy:()=>2}},{bake:true});
+    const owner=createMapModelBuilder(surfaces);scene=owner.scene=new THREE.Group();owner.map=SAFRA;
+    buildMapScene(owner,SAFRA);owner.mergeStaticWorld(new Set());scene.updateMatrixWorld(true);
+    const keys=[];scene.traverse(m=>{if(proceduralReceiver(m))keys.push(meshGeometryKey(m));});
+    sha=hash(keys.join('|'));
+  }else sha=hash(await readFile(path));
   const old=previous.maps?.[mapId];
   if(previous.version===ARCH_LIGHT_VERSION&&old?.source===sha){
-    try{for(const name of [old.atlas,old.charts])await readFile(out+'/'+name);manifest.maps[mapId]=old;console.log('Architecture cached',mapId);continue;}catch{}
+    try{for(const name of [old.atlas,old.charts])await readFile(out+'/'+name);manifest.maps[mapId]=old;await saveManifest();console.log('Architecture cached',mapId);continue;}catch{}
   }
-  const {scene}=await load(path),{list,meshes}=triangles(scene);
+  if(!scene)({scene}=await load(path));
+  const {list,meshes}=triangles(scene,procedural);
   if(!list.length)throw Error('No architecture in '+mapId);
   const size=['laguna','estate'].includes(folder)?1024:2048;
   let charts,minArea=.015,scale=2;
   // A fixed atlas budget. Preserve meaningful wall/floor triangles first,
   // skip sub-pixel bevels and small decorative polygons if the map is dense.
-  for(let attempt=0;attempt<24&&!charts;attempt++){
+  for(let attempt=0;attempt<9&&!charts?.length;attempt++){
     charts=pack(meshes,size,scale,minArea);
-    if(!charts){scale=Math.max(.45,scale*.82);minArea*=1.45;}
+    if(!charts?.length){scale=Math.max(.45,scale*.8);minArea*=1.3;}
   }
-  if(!charts?.length)throw Error('Lightmap atlas cannot fit '+mapId);
+  if(!charts?.length){
+    // Dense terrain can exhaust a fixed atlas; keep the most substantial
+    // charts and reserve a neutral texel for the remaining triangles.
+    minArea=.015;scale=.55;charts=pack(meshes,size,scale,minArea,true);
+  }
+  if(!charts?.length)charts=pack(meshes,size,.45,0,true);
+  if(!charts?.length)throw Error('No non-degenerate architecture charts '+mapId);
   const tree=bvh([...list]),pixels=new Uint8Array(size*size*4);
   for(let i=3;i<pixels.length;i+=4)pixels[i]=255;
   const table=new Uint16Array(meshes.reduce((n,m)=>n+m.count,0));let offset=0;
@@ -158,7 +179,8 @@ for(const [mapId,folder] of Object.entries(ARCH_LIGHT_MAPS)){
   const chartBytes=Buffer.alloc(table.length*2);for(let i=0;i<table.length;i++)chartBytes.writeUInt16LE(table[i],i*2);
   const atlas=folder+'.rgba.gz',chartName=folder+'.uv.gz';
   await writeFile(out+'/'+atlas,gzipSync(pixels,{level:6}));await writeFile(out+'/'+chartName,gzipSync(chartBytes,{level:6}));
-  manifest.maps[mapId]={source:sha,size,atlas,charts:chartName,entries,triangles:list.length,baked:charts.length,minArea,scale};
+  manifest.maps[mapId]={source:sha,procedural,size,atlas,charts:chartName,entries,triangles:list.length,baked:charts.length,minArea,scale};
+  await saveManifest();
   console.log('Architecture',mapId,charts.length+'/'+list.length,'triangles',size+'²');
 }
 await writeFile(out+'/manifest.json',JSON.stringify(manifest,null,2)+'\n');

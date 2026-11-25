@@ -193,7 +193,7 @@ export class GameRenderer {
     this.waterReflectionPlane=new THREE.Vector2();
     this.localReflections=new LocalReflections();
     this.indirectLighting=new IndirectLighting(webgpu?.setWebGpuGI);
-    this.architectureLightmaps=new ArchitectureLightmaps();
+    this.architectureLightmaps=new ArchitectureLightmaps(webgpu?.setWebGpuArchitectureAO);
     this.vegetation=new Vegetation(webgpu?.makeWebGpuFoliageMaterial);
     this.shaderWarmup=new ShaderWarmup(this);
     this.finishWorldEffects=profiler=>{
@@ -2039,7 +2039,7 @@ export class GameRenderer {
   applyQuality(low) {
     this.staticMaterialRevision++;
     this.indirectLighting?.suspend();
-    this.architectureLightmaps?.suspend();
+    this.architectureLightmaps?.suspend(true);
     this.waterAppearance?.restore();
     this.lowQuality = low;
     this.adaptiveScale = 1;
@@ -2064,7 +2064,7 @@ export class GameRenderer {
     if(!settings)return;
     if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off'||settings.mapWeathering==='high'||settings.mapWeathering==='low')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief,this.webgpu?.setWebGpuWeathering,this.webgpu?.suspendWebGpuWeathering);
     if(this.enhancedSurfaces){
-      this.enhancedSurfaces.beforeUpdate=()=>{this.staticMaterialRevision++;this.indirectLighting?.suspend();this.architectureLightmaps?.suspend();};
+      this.enhancedSurfaces.beforeUpdate=()=>{this.staticMaterialRevision++;this.indirectLighting?.suspend();this.architectureLightmaps?.suspend(true);};
       this.enhancedSurfaces.update(this.staticRoot,settings,this.textureAnisotropy,this.map?.id);
     }
   }
@@ -2287,6 +2287,7 @@ export class GameRenderer {
     this.quality=baseGraphicsQuality(view.quality);
     const selectedEffects=graphicsEffects(view.quality,gfx?.customGraphics);
     this.presentingCampaign=Boolean(state?.campaign);
+    this.campaignNightVision=Boolean(state?.campaign?.nightVision&&!state.campaign.cutscene&&!state.campaign.complete&&!state.campaign.failed);
     this.cinematicCamera=Boolean(state?.campaign?.cutscene);
     this.activeHeatFires.length=0;this.activeFireLights.length=0;
     this.cameraEffectsAim=Boolean(view.aim);

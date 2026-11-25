@@ -1,5 +1,5 @@
 const materialPatches=new WeakMap();
-const order=['penumbra','relief','weathering','gi','vegetation'];
+const order=['penumbra','relief','weathering','gi','architectureAO','vegetation'];
 
 export function setWebGlShaderPatch(material, key, patch) {
   let binding=materialPatches.get(material);

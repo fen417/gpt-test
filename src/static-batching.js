@@ -61,6 +61,7 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
     const first=parts[0].object,mesh=new THREE.Mesh(geometry,combinedMaterial);mesh.castShadow=first.castShadow;mesh.receiveShadow=first.receiveShadow;
     if(detailLevel)mesh.userData.detailLevel=detailLevel;
     if(first.userData.legacyPalmLeaf)mesh.userData.legacyPalmLeaf=true;
+    mesh.userData.architectureStaticBatch=true;
     root.add(mesh);
     for(const {object,group} of parts){
       // An array-material mesh may have groups that were not merged. Keep only
