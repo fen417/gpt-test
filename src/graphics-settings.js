@@ -4,7 +4,7 @@ const legacy = Object.freeze({
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
   sky: 'legacy', clouds:'off', heightFog:'off', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
-  smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off', muzzleEffects:'legacy', muzzleLights:'off', fireEffects:'legacy', fireLighting:'off', dust:'off',
+  smoke:'legacy', heatDistortion:'off', softParticles:'off', softParticleResolution:'auto', explosions:'legacy', particleLighting:'off', muzzleEffects:'legacy', muzzleLights:'off', fireEffects:'legacy', fireLighting:'off', dust:'off',
   shaderWarmup:'auto',adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
 
@@ -87,6 +87,7 @@ export const GRAPHICS_CONTROLS = [
     ['fireLighting','Освещение от огня','Локальный мерцающий свет от близких очагов. Общий ограниченный пул света.',choices(off,high)],
     ['dust','Пыль и обломки','Пыль от техники и попаданий, вытянутые искры. Ограничено расстоянием.',choices(off,medium,high)],
     ['softParticles','Мягкие частицы','Плавно скрывает дым при пересечении с поверхностями. Добавляет проход при наличии дыма.',choices(off,high)],
+    ['softParticleResolution','Разрешение дыма','Авто — ускоряет плотный дальний дым. Полное — максимальная детализация. Половинное — снижает нагрузку с восстановлением границ по глубине.',choices(auto,['full','Полное'],['half','Половинное'])],
     ['particleLighting','Освещение дыма','Имитирует рассеивание света на частицах со стороны солнца.',choices(off,high)],
     ['heatDistortion','Марево','Искажает воздух над огнём и вспышками. При прицеливании отключается.',choices(off,high)],
     ['explosions','Взрывы','HDR-огненный шар, расходящаяся пыль, искры и клубы дыма.',choices(old,medium,high)],

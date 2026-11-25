@@ -128,6 +128,10 @@ export class ShaderWarmup{
         // soft particles) rather than relying on compileAsync for all passes.
         const t=performance.now();owner.drawWarmupScene();stats.drawMs=performance.now()-t;
         await this.fence(signal);
+        if(owner.graphicsEffects?.softParticles==='high'&&owner.graphicsEffects?.softParticleResolution!=='full'){
+          owner.forceHalfSmokeWarmup=true;
+          try{owner.drawWarmupScene();await this.fence(signal);}finally{owner.forceHalfSmokeWarmup=false;}
+        }
       }finally{restore();}
       // Clear sample-only heat, smoke and output; normal gameplay never
       // consumes the synthetic effect or a temporal history from it.
@@ -141,6 +145,7 @@ export class ShaderWarmup{
       await stage(1,'Графика готова');
       stats.complete=true;
     }finally{
+      owner.postPass.worldEffects.resetTemporal();
       if(warmedSamples){owner.postPass.worldEffects.heat.count=0;owner.postPass.worldEffects.state.heatStrength.set(0,0,0,0);owner.frameGeneration?.reset();}
       stats.totalMs=Math.round(performance.now()-start);
     }

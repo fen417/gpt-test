@@ -2211,7 +2211,7 @@ try{
     webgpuAttempted=true;
     const [
       {WebGpuPostPass},{makeWebGpuSky,PMREMGenerator},
-      {WebGpuGroundShadows},{createWebGpuSmokeMaterial},{WebGpuTimer},{WebGpuFrameGeneration}
+      {WebGpuGroundShadows},{createWebGpuSmokeMaterial,createWebGpuSmokeComposite},{WebGpuTimer},{WebGpuFrameGeneration}
     ]=await Promise.all([
       import('./webgpu-post-pass.js'),import('./webgpu-sky.js'),
       import('./webgpu-ground-shadows.js'),import('./webgpu-smoke.js'),import('./webgpu-timer.js'),
@@ -2223,7 +2223,7 @@ try{
       onDeviceLost:recoverWebGpu,
     });
     gpuOptions={...instance,PostPass:WebGpuPostPass,makeSky:makeWebGpuSky,PMREMGenerator,
-      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,GpuTimer:WebGpuTimer,
+      GroundShadows:WebGpuGroundShadows,createSmokeMaterial:createWebGpuSmokeMaterial,createSmokeComposite:createWebGpuSmokeComposite,GpuTimer:WebGpuTimer,
       FrameGeneration:WebGpuFrameGeneration,Cascades:(await import('./webgpu-cascades.js')).WebGpuCascades,
       ...await import('./webgpu-campaign-fire.js'),
       ...await import('./webgpu-surface-relief.js'),

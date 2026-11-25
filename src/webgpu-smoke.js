@@ -1,4 +1,4 @@
-import { Vector2, Vector3 } from 'three';
+import { Vector2, Vector3, Scene, Mesh } from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { attribute, materialColor, uv, vec2, vec3, uniform, Fn, If, sin, normalize, dot, max, texture as textureNode, screenUV, positionView, wgslFn } from 'three/tsl';
 
@@ -52,4 +52,28 @@ export function createWebGpuSmokeMaterial(texture, depth=null, shared=null) {
   }
   material.toneMapped=true;
   return material;
+}
+
+const resolveSmoke=wgslFn(`
+fn resolveSoftSmoke(at:vec2f,smokeLayer:texture_2d<f32>,worldDepth:texture_depth_2d,smallSize:vec2f,fullSize:vec2f,clipRange:vec2f)->vec4f{
+  let centerCoord=vec2i(clamp(at*fullSize,vec2f(0.),fullSize-1.));
+  let d=textureLoad(worldDepth,centerCoord,0);
+  let center=clipRange.x*clipRange.y/(clipRange.y-d*(clipRange.y-clipRange.x));
+  let grid=at*smallSize-.5;let base=vec2i(floor(grid));let f=fract(grid);
+  var sum=vec4f(0.);var weights=0.;
+  for(var i=0;i<4;i++){
+    let o=vec2i(i%2,i/2);let coord=clamp(base+o,vec2i(0),vec2i(smallSize)-1);
+    let sampleAt=(vec2f(coord)+.5)/smallSize;
+    let depth=textureLoad(worldDepth,vec2i(clamp(sampleAt*fullSize,vec2f(0.),fullSize-1.)),0);
+    let distance=clipRange.x*clipRange.y/(clipRange.y-depth*(clipRange.y-clipRange.x));
+    let b=mix(1.-f,f,vec2f(o));let w=b.x*b.y*exp(-abs(distance-center)/max(.04,center*.012));
+    sum+=textureLoad(smokeLayer,coord,0)*w;weights+=w;
+  }
+  return select(vec4f(0.),sum/max(weights,.005),weights>.005);
+}`);
+export function createWebGpuSmokeComposite(geometry,layer,depth,blending){
+  const uniforms={smokeLayer:textureNode(layer),worldDepth:textureNode(depth),smallSize:uniform(new Vector2()),fullSize:uniform(new Vector2()),clipRange:uniform(new Vector2())};
+  const material=new MeshBasicNodeMaterial({...blending,fog:false});
+  material.fragmentNode=resolveSmoke({at:uv(),...uniforms});
+  const scene=new Scene();scene.add(new Mesh(geometry,material));return {scene,material,uniforms};
 }
