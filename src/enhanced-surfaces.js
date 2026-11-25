@@ -7,7 +7,8 @@ import {DETAIL_SIZE,choosePbrSize,PBR_PACK_VERSION} from './pbr-library.js';
 import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
 import * as THREE from 'three';
 
-const urls=import.meta.glob('./assets/remaster/*.webp',{eager:true,query:'?url',import:'default'});
+let urls={};
+try{urls=import.meta.glob('./assets/remaster/*.webp',{eager:true,query:'?url',import:'default'});}catch(error){if(typeof window!=='undefined')throw error;}
 const legacyUrl=(surface,channel,size)=>{
   const asset=surface==='earth'&&channel!=='diff'?'sand':surface;
   const limit=Math.min(size,1024);

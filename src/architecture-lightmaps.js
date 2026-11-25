@@ -55,6 +55,7 @@ export class ArchitectureLightmaps{
     }
     if(this.map!==map){this.clear();this.map=map;this.pending=true;this.load(map,this.serial);}
     if(!this.meta||(!procedural&&!world.model?.base))return;
+    if(procedural)world.root.updateMatrixWorld(true);
     const mode=lighting+'/'+occlusion;
     if(this.appliedRevision===owner.staticMaterialRevision&&this.mode===mode){this.updateIntensity(owner,lighting);return;}
     owner.indirectLighting?.suspend();this.suspend(true);this.mode=mode;

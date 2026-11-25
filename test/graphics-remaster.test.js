@@ -6,7 +6,7 @@ import { choosePbrSize, DETAIL_SIZE, PBR_SOURCES } from '../src/pbr-library.js';
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { vec4 } from 'three/tsl';
-import { buildWeatherPixels, weatherParameters, makeWeatherMask, surfaceRepeat } from '../src/map-weathering.js';
+import { buildWeatherPixels, weatherParameters, makeWeatherMask, surfaceRepeat, weatherArtProfile } from '../src/map-weathering.js';
 import { setWebGlWeathering } from '../src/webgl-map-weathering.js';
 import { setWebGpuWeathering, suspendWebGpuWeathering } from '../src/webgpu-map-weathering.js';
 import { sourceCandidates } from '../scripts/polyhaven-source.mjs';
@@ -392,4 +392,12 @@ test('static material group compaction preserves triangle vertices, UVs and norm
     result.dispose();
   }
   source.dispose();
+});
+
+test('map art distinguishes salt, oxidation, dust and clean interiors',()=>{
+  const port=weatherArtProfile('port','metal','high'),desert=weatherArtProfile('alhadra-desert','metal','high'),pool=weatherArtProfile('fy_pool_day','metal','high');
+  assert.notDeepEqual(port,desert);assert.ok(port[2]>pool[2]);assert.equal(weatherArtProfile('port','concrete','high')[2],0);
+  assert.ok(weatherArtProfile('alhadra-desert','sand','high')[3]>weatherArtProfile('fy_pool_day','sand','high')[3]);
+  assert.equal(weatherArtProfile('port','metal','off'),null);
+  const mask=buildWeatherPixels(64);assert.ok(new Set(mask.filter((x,i)=>i%4===3)).size>30);
 });

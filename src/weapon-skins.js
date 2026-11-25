@@ -1,7 +1,8 @@
 import {Box3,BufferAttribute,Matrix4,SRGBColorSpace,TextureLoader,Vector3} from 'three';
 import {caseReward} from '../shared/cases.js';
 
-const paintUrls=import.meta.glob('./assets/weapon-skins/*.webp',{eager:true,query:'?url',import:'default'});
+let paintUrls={};
+try{paintUrls=import.meta.glob('./assets/weapon-skins/*.webp',{eager:true,query:'?url',import:'default'});}catch(error){if(typeof window!=='undefined')throw error;}
 export const weaponSkinUrl=id=>paintUrls[`./assets/weapon-skins/${id}.webp`];
 const paintNames=/^(Receiver|Lower|Upper|Handguard|ForeEnd|Stock|Frame|Slide|Shroud|FeedCover)(?:_\d+)?$/;
 const textureCache=new Map(),projections=new WeakMap(),instances=new WeakMap();

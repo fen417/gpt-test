@@ -10,13 +10,41 @@ const surfaces={
   sand:[1.1,.75,0],earth:[1.05,.85,0],asphalt:[.8,1.1,1.1],
   wood:[.7,.55,.12],metal:[.8,1.1,0],cloth:[.45,.45,0],grass:[.8,.45,0],ceramic:[.45,.65,.15],
 };
+// Material response: streaks, abrasion/chips, oxidation, deposited dust,
+// roughness response. These are authored per surface, not generic grey noise.
+const responses={
+  concrete:[.72,.82,0,.40,.22],brick:[.46,.37,0,.43,.14],stucco:[.82,1,0,.52,.20],
+  rock:[.22,.35,0,.28,.12],sand:[0,0,0,1,.08],earth:[0,0,0,.82,.08],
+  asphalt:[.08,.82,0,.68,.18],wood:[.42,.38,0,.31,.13],metal:[.88,.66,1,.35,.36],
+  cloth:[.18,.12,0,.34,.07],grass:[0,0,0,.18,.03],ceramic:[.34,.22,0,.12,.15],
+};
+// Per-map artist palette: mineral dust, exposed substrate, oxide hue, strength.
+// Linear-space multipliers are intentionally modest to preserve map readability.
+const art={
+  village:[[1.18,1.03,.78],[1.10,.99,.82],[1.15,.61,.30],.82],
+  quarry:[[1.15,1.04,.83],[1.13,1.05,.94],[1.26,.56,.24],1],
+  port:[[.83,.95,.98],[.97,1.04,1.07],[1.25,.51,.24],1],
+  fy_pool_day:[[.92,1.02,1.09],[1.05,1.06,1.04],[1.15,.66,.36],.32],
+  linden_estate:[[.98,1.04,.90],[1.08,1.04,.97],[1.17,.61,.33],.48],
+  alhadra:[[1.20,1.04,.76],[1.13,1.01,.80],[1.24,.58,.26],.83],
+  'alhadra-desert':[[1.22,1.05,.72],[1.14,1.00,.77],[1.25,.56,.23],1],
+  'tel-mazin':[[1.14,1.02,.83],[1.10,.98,.85],[1.20,.58,.26],.89],
+  nahar:[[1.07,1.02,.88],[1.05,1.02,.93],[1.19,.55,.28],.73],
+  safra:[[1.20,1.04,.76],[1.11,.99,.82],[1.23,.58,.25],.9],
+};
+export function weatherArtProfile(mapId,surface,quality){
+  const a=art[mapId]??art.village,r=responses[surface];
+  if(!r||!['low','high'].includes(quality))return null;
+  const strength=a[3]*(quality==='high'?1:.55);
+  return [...r.map(v=>v*strength),...a[0],...a[1],...a[2]];
+}
 // Authored UVs stay intact. Concrete/rock remain at 1 for existing POM.
 export const surfaceRepeat=surface=>({brick:1.5,wood:1.2,metal:1.3,cloth:1.2,grass:1.4}[surface]??1);
 export function weatherParameters(mapId,surface,quality){
   const w=surfaces[surface];
   if(!w||!['low','high'].includes(quality))return null;
   const p=profiles[mapId]??[.18,.2,.09,.02],high=quality==='high',level=high?1:.58;
-  return [p[0]*w[0]*level,p[1]*w[1]*level,high?p[2]*w[2]:0,p[3],Number(high)];
+  return [p[0]*w[0]*level,p[1]*w[1]*level,high?p[2]*w[2]:0,p[3],Number(high),...weatherArtProfile(mapId,surface,quality)];
 }
 function hash(x,y,seed){
   let h=Math.imul(x+1,374761393)^Math.imul(y+1,668265263)^Math.imul(seed,1274126177);
@@ -28,13 +56,14 @@ function noise(x,y,c,seed){
   return m(m(at(a,b),at(a+1,b),s),m(at(a,b+1),at(a+1,b+1),s),t);
 }
 const byte=x=>Math.round(Math.max(0,Math.min(1,x))*255);
-// Periodic RGBA mask: coarse variation, grime, sparse branched cracks.
+// Periodic RGBA mask: mineral variation, grime, sparse branched cracks,
+// elongated runoff and fine paint flaking. No new texture fetch in Low.
 export function buildWeatherPixels(size=256){
   const data=new Uint8Array(size*size*4);
   for(let y=0;y<size;y++)for(let x=0;x<size;x++){
     const u=x/size,v=y/size,i=(y*size+x)*4;
     data[i]=byte(.65*noise(u*5,v*5,5,17)+.35*noise(u*13,v*13,13,37));
-    data[i+1]=byte(.6*noise(u*11,v*11,11,97)+.3*noise(u*23,v*23,23,45)+.1*noise(u*47,v*47,47,61));data[i+3]=255;
+    data[i+1]=byte(.6*noise(u*11,v*11,11,97)+.3*noise(u*23,v*23,23,45)+.1*noise(u*47,v*47,47,61));data[i+3]=byte(Math.pow(noise(u*43,v*43,43,183),3)*.78+.22*noise(u*83,v*83,83,211));
   }
   const mark=(x,y,k)=>{
     const a=((Math.round(x)%size)+size)%size,b=((Math.round(y)%size)+size)%size,i=(b*size+a)*4+2;
