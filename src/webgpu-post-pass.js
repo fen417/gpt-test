@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {compactColorEligible,selectSceneColor,displayVariant} from './compact-color-target.js';
 import { WorldPost } from './world-post.js';
 import { renderTimed } from './gpu-pass-timing.js';
 import { webGpuWorldStages, makeGpuReflectionReceiver } from './webgpu-world-stages.js';
@@ -33,7 +34,8 @@ export class WebGpuPostPass {
   constructor(renderer,{antialias='auto'}={}){
     this.renderer=renderer;this.antialias=antialias;
     this.target=new THREE.RenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:true});
-    this.nativeTarget=this.target;this.frameGeneration=null;
+    this.nativeTarget=this.target;this.frameGeneration=null;this.compactActive=false;
+    this.compactSupported=Boolean(renderer.backend?.device?.features?.has('rg11b10ufloat-renderable'));
     this.maxSamples=4;
     this.ldrTarget=new THREE.RenderTarget(1,1,{depthBuffer:false});
     this.upscaledTarget=new THREE.RenderTarget(1,1,{depthBuffer:false});
@@ -48,13 +50,16 @@ export class WebGpuPostPass {
     this.geometry=geometry;
     const source=texture(this.target.texture), sampled=source.sample(uv());
     this.sourceTexture=source; // Single attachment scene color; FG captures finished post output.
-    const filtered=fxaa(source);
+    this.displayStages=new Map();
+    this.buildDisplay=variant=>{
+    const [useFxaa,useSharpen,useGrade,useVignette,useGrain]=[...variant].map(v=>v==='1');
+    const filtered=useFxaa?fxaa(source):null;
     const postColor=Fn(()=>{
       const color=vec3(sampled.rgb).toVar();
       // Shader control flow matters on low-end GPUs: disabled FXAA/sharpening
       // must not execute their expensive texture samples.
-      If(this.useFxaa.greaterThan(.5),()=>{color.assign(filtered.rgb);});
-      If(this.sharpen.greaterThan(0),()=>{
+      if(useFxaa)color.assign(filtered.rgb);
+      if(useSharpen){
         const tx=this.invSize;
         const a=source.sample(uv().add(vec2(tx.x,0))).rgb;
         const b=source.sample(uv().sub(vec2(tx.x,0))).rgb;
@@ -62,22 +67,23 @@ export class WebGpuPostPass {
         const d=source.sample(uv().sub(vec2(0,tx.y))).rgb;
         const lo=min(color,min(min(a,b),min(c,d))),hi=max(color,max(max(a,b),max(c,d)));
         color.assign(clamp(color.add(color.sub(a.add(b).add(c).add(d).mul(.25)).mul(this.sharpen)),lo,hi));
-      });
+      }
       const mapped=acesFilmicToneMapping(color,this.exposure).toVar();
-      If(this.grading.x.notEqual(1).or(this.grading.y.notEqual(1)).or(this.gradeTint.x.notEqual(1)),()=>{
+      if(useGrade){
         const adjusted=mapped.sub(.32).mul(this.grading.x).add(.32);
         const luma=dot(adjusted,vec3(.2126,.7152,.0722));
         mapped.assign(max(vec3(0),vec3(luma).add(adjusted.sub(luma).mul(this.grading.y)).mul(this.gradeTint)));
-      });
-      const vignette=smoothstep(.1,.8,distance(uv(),vec2(.5))).mul(this.vignetteGain.negate()).add(1);
-      const pixel=uv().mul(this.outputSize);
-      const noise=fract(sin(dot(pixel.add(this.time),vec2(12.9898,78.233))).mul(43758.5453)).sub(.5).mul(this.grain);
+      }
+      const vignette=useVignette?smoothstep(.1,.8,distance(uv(),vec2(.5))).mul(this.vignetteGain.negate()).add(1):1;
+      const noise=useGrain?fract(sin(dot(uv().mul(this.outputSize).add(this.time),vec2(12.9898,78.233))).mul(43758.5453)).sub(.5).mul(this.grain):0;
       // WebGPU Renderer r181 does its own color-space output pass on
       // the default framebuffer. Keep intermediate FSR/FG targets linear and
       // don't manually encode sRGB, or the image becomes blown out.
       return vec4(mapped.mul(vignette).add(noise),1);
     })();
-    const post=stage(geometry,postColor);this.scene=post.scene;this.material=post.material;
+    return stage(geometry,postColor);
+    };
+    const initial=this.buildDisplay('11111');this.displayStages.set('11111',initial);this.scene=initial.scene;this.material=initial.material;
     const easu=stage(geometry,easuNode(texture(this.ldrTarget.texture),this.inputSize,this.outputSize));
     this.easuScene=easu.scene;this.easuMaterial=easu.material;
     const rcas=stage(geometry,rcasNode(texture(this.upscaledTarget.texture),this.outputSize,this.rcasSharpness));
@@ -102,19 +108,12 @@ export class WebGpuPostPass {
     // There is no velocity MRT, so the normal scene AA is safe to retain.
     const mode=this.antialias;
     const samples=mode==='msaa4'||quality==='high'&&(mode==='auto'||mode==='on')?this.maxSamples:0;
-    if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
     const fsr=this.fsrQuality!=='off'&&this.fsrScale<.995;
     this.useFxaa.value=this.antialias==='off'?0:samples>0?0:1;
     this.sharpen.value=fsr?0:quality==='high'?0:.12;
     const r=this.renderer;r.getDrawingBufferSize(this.size);
     const w=Math.max(1,Math.round(this.size.x*(fsr?this.fsrScale:1)));
     const h=Math.max(1,Math.round(this.size.y*(fsr?this.fsrScale:1)));
-    if(this.target.width!==w||this.target.height!==h){
-      this.target.setSize(w,h);
-      // The scene target is always single-color attachment and normally has
-      // no explicit DepthTexture. FG history is owned separately.
-      this.frameGeneration?.reset();
-    }
     this.frameGeneration?.resize(this.size.x,this.size.y);
     if(mode==='smaa'){
       if(!this.smaa){
@@ -136,6 +135,12 @@ export class WebGpuPostPass {
     let effects;
     try{effects=this.worldEffects.configure(this.effects,w,h,samples);}
     catch(error){throw Object.assign(new Error('World post configuration failed',{cause:error}),{s09PostFault:'depth'});}
+    const compact=this.compactSupported&&compactColorEligible(quality,effects,samples,this.frameGeneration?.enabled);
+    const changed=this.compactActive!==compact||this.target.width!==w||this.target.height!==h;
+    selectSceneColor(this,compact,w,h,THREE.RenderTarget);
+    if(this.target.samples!==samples){this.target.dispose();this.target.samples=samples;}
+    if(changed)this.frameGeneration?.reset();
+    this.sourceTexture.value=this.target.texture;
     if(this.smaaActive)this.useFxaa.value=0;
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.useFxaa.value=1;
     const worldSamples=effects?this.worldEffects.world.samples:samples;
@@ -151,6 +156,11 @@ export class WebGpuPostPass {
     r.toneMapping=THREE.NoToneMapping;
     this.time.value=time;this.grain.value=this.grainSetting??(quality==='low'?0:.0015);
     this.exposure.value=r.toneMappingExposure;
+    const g=this.gradeTint.value,v=this.grading.value;
+    const variant=displayVariant({fxaa:this.useFxaa.value>.5,sharpen:this.sharpen.value>0,grade:v.x!==1||v.y!==1||g.x!==1||g.y!==1||g.z!==1,vignette:this.vignetteGain.value!==0,grain:this.grain.value!==0});
+    let display=this.displayStages.get(variant);
+    if(!display){display=this.buildDisplay(variant);this.displayStages.set(variant,display);}
+    this.scene=display.scene;this.material=display.material;
     try {
       this.sourceTexture.value=this.worldEffects.finishBloom(this.target,profiler);
       const finalTarget=this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null;
@@ -186,7 +196,7 @@ export class WebGpuPostPass {
     this.disposeSmaa();
     this.worldEffects.receivers.dispose();
     this.worldEffects.dispose();
-    this.nativeTarget.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
-    this.geometry.dispose();this.material.dispose();this.easuMaterial.dispose();this.rcasMaterial.dispose();
+    this.nativeTarget.dispose();this.compactTarget?.dispose();this.ldrTarget.dispose();this.upscaledTarget.dispose();
+    this.geometry.dispose();for(const stage of this.displayStages.values())stage.material.dispose();this.displayStages.clear();this.easuMaterial.dispose();this.rcasMaterial.dispose();
   }
 }
