@@ -301,14 +301,33 @@ fn readReflectionReceiver(receiverMask:texture_2d<f32>, at:vec2f, range:f32, rec
   return receiver;
 }`);
 
-function reflectionShaders(receivers){
+const reduceDepth=first=>wgslFn(`
+fn reduceReflectionDepth(at:vec2f,source:${first?'texture_depth_2d':'texture_2d<f32>'},inputSize:vec2f,outputSize:vec2f,projection:mat4x4f)->vec4f{
+  let base=vec2i(floor(at*outputSize))*4;
+  var nearest=65504.;
+  for(var y=0;y<4;y++){for(var x=0;x<4;x++){
+    let pixel=min(base+vec2i(x,y),vec2i(inputSize)-1);
+    let d=textureLoad(source,pixel,0)${first?'':'.r'};
+    nearest=min(nearest,${first?'projection[3][2]/min(-1.e-7,d+projection[2][2])':'d'});
+  }}
+  return vec4f(nearest,0.,0.,1.);
+}`);
+const reduceFirst=reduceDepth(true),reduceNext=reduceDepth(false);
+const emptyDepthBlock=wgslFn(`
+fn emptyReflectionBlock(at:vec2f,endAt:vec2f,farRange:f32,blockSize:f32,depthSize:vec2f,hierarchy:texture_2d<f32>)->bool{
+  let a=vec2i(floor(at*depthSize/blockSize));let b=vec2i(floor(endAt*depthSize/blockSize));
+  if(any(a!=b)){return false;}
+  let nearest=textureLoad(hierarchy,a,0).r;
+  return farRange<nearest-max(.02,nearest*.0015);
+}`);
+function reflectionShaders(receivers,hierarchy=false){
   const fields=receivers?', receiverMask:texture_2d<f32>, receiverActive:f32':'';
   const read=receivers?'readReflectionReceiver(receiverMask,at,-pos.z,receiverActive)':'vec4f(0.)';
   const includes=receivers?[viewAt,waterSurface,readReceiver]:[viewAt,waterSurface];
   const reflection = wgslFn(`
 fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, sceneDepth: texture_depth_2d,
   inverseProjection: mat4x4f, projection: mat4x4f, depthSize: vec2f, waterPixel: vec2f,
-  shore: vec2f, upView: vec3f, worldXView: vec3f, cameraY: f32, cameraX: f32, cameraZ:f32, waterActive:f32, time: f32, reflectionSteps: f32${fields}) -> vec4f {
+  shore: vec2f, upView: vec3f, worldXView: vec3f, cameraY: f32, cameraX: f32, cameraZ:f32, waterActive:f32, time: f32, reflectionSteps: f32${fields}${hierarchy?', depthFine:texture_2d<f32>,depthCoarse:texture_2d<f32>':''}) -> vec4f {
   var pos=worldViewAt(sceneDepth,inverseProjection,at,depthSize);
   let receiver=${read};
   let water=worldWaterSurface(pos,shore,upView,worldXView,cameraY,cameraX,waterActive)||(receiver.b>-.15&&receiver.b<-.10);
@@ -338,6 +357,21 @@ fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, s
     if(clip.w<=0.){break;}
     var sampleAt=clip.xy/clip.w*vec2f(.5,-.5)+.5;
     if(any(sampleAt<=vec2f(0.))||any(sampleAt>=vec2f(1.))){break;}
+    ${hierarchy?`for(var k=0;k<2;k++){
+      let jump=select(1,3,k==0);
+      if(f32(i+jump)>reflectionSteps){continue;}
+      let endT=f32(i+jump)/reflectionSteps;let endTravel=.15+(reach-1.)*endT*endT;
+      let endPoint=pos+normal*bias+ray*endTravel;let endClip=projection*vec4f(endPoint,1.);
+      if(endClip.w<=0.){continue;}
+      let endAt=endClip.xy/endClip.w*vec2f(.5,-.5)+.5;
+      if(any(endAt<=vec2f(0.))||any(endAt>=vec2f(1.))){continue;}
+      let farRange=max(-point.z,-endPoint.z);
+      var empty=false;
+      if(k==0){empty=emptyReflectionBlock(sampleAt,endAt,farRange,16.,depthSize,depthCoarse);}
+      else{empty=emptyReflectionBlock(sampleAt,endAt,farRange,4.,depthSize,depthFine);}
+      if(empty){lastTravel=endTravel;i+=jump;break;}
+    }
+    if(lastTravel>travel){continue;}`:''}
     let hit=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize);
     let delta=hit.z-point.z;
     if(delta>0. && delta<select(.35,1.3,water)+travel*.084 && !worldWaterSurface(hit,shore,upView,worldXView,cameraY,cameraX,waterActive)
@@ -368,7 +402,7 @@ fn worldReflection(at: vec2f, source: texture_2d<f32>, sourceSampler: sampler, s
     lastTravel=travel;
   }
   return vec4f(0.);
-}`,[...includes,decodeReflectionNormal]);
+}`,[...includes,decodeReflectionNormal,...(hierarchy?[emptyDepthBlock]:[])]);
 
   const applyReflection = wgslFn(`
 fn worldApplyReflection(at: vec2f, rgb: vec3f, reflected: vec4f, sceneDepth: texture_depth_2d,
@@ -382,7 +416,7 @@ fn worldApplyReflection(at: vec2f, rgb: vec3f, reflected: vec4f, sceneDepth: tex
 }`,includes);
   return {reflection,applyReflection};
 }
-const onlyWater=reflectionShaders(false), withReceivers=reflectionShaders(true);
+const onlyWater=reflectionShaders(false), withReceivers=reflectionShaders(true),hierWater=reflectionShaders(false,true),hierReceivers=reflectionShaders(true,true);
 
 function blurShader(first) {
   const tap = wgslFn(`
@@ -429,12 +463,18 @@ export function webGpuWorldStages(post, geometry, camera) {
     ...depthParams, projection:params.projection, steps:params.steps, sunView:params.sunView,
     upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,airProfile:params.airProfile,
   };
-  const {reflection,applyReflection}=post.receiverMask?withReceivers:onlyWater;
+  const hierarchy=post.depthHierarchy;
+  const reductions=hierarchy?.map((target,i)=>{
+    const inputSize=uniform(new THREE.Vector2()),outputSize=uniform(new THREE.Vector2());
+    const shader=i===0?reduceFirst:reduceNext;
+    return {inputSize,outputSize,scene:make(shader({at,source:texture(i===0?world.depthTexture:hierarchy[i-1].texture),inputSize,outputSize,projection:params.projection}))};
+  });
+  const {reflection,applyReflection}=hierarchy?(post.receiverMask?hierReceivers:hierWater):(post.receiverMask?withReceivers:onlyWater);
   const receiverParams=post.receiverMask?{receiverMask:texture(post.receiverMask.texture),receiverActive:params.receiverActive}:{};
   const waterParams={...receiverParams,shore:params.shore,upView:params.upView,worldXView:params.worldXView,
     cameraY:params.cameraY,cameraX:params.cameraX,waterActive:params.waterActive};
   const reflected=post.reflection && make(reflection({...depthParams,...waterParams,source,sourceSampler:source,
-    projection:params.projection,waterPixel:params.waterPixel,time:params.time,cameraZ:params.cameraZ,reflectionSteps:params.reflectionSteps}));
+    projection:params.projection,waterPixel:params.waterPixel,time:params.time,cameraZ:params.cameraZ,reflectionSteps:params.reflectionSteps,...(hierarchy?{depthFine:texture(hierarchy[0].texture),depthCoarse:texture(hierarchy[1].texture)}:{})}));
   const blurs=post.bloom.map((_,i)=>{
     const src=i===0?world:post.bloom[i-1];
     const tex=texture(src.texture), pixel=uniform(new THREE.Vector2());
@@ -473,7 +513,13 @@ export function webGpuWorldStages(post, geometry, camera) {
       params.reflectionSteps.value=state.reflectionSteps;
       params.waterActive.value=state.waterActive;
       params.receiverActive.value=state.receiverActive;
-      if(reflected&&(state.waterActive||state.receiverActive))draw(post.reflection,reflected,profiler,'reflections');
+      if(reflected&&(state.waterActive||state.receiverActive)){
+        if(reductions){const timing=profiler?.beginPass('reflectionHierarchy');try{for(let i=0;i<2;i++){
+          const target=hierarchy[i],src=i===0?world:hierarchy[i-1],pass=reductions[i];
+          pass.inputSize.value.set(src.width,src.height);pass.outputSize.value.set(target.width,target.height);draw(target,pass.scene);
+        }}finally{if(timing)profiler.endPass();}}
+        draw(post.reflection,reflected,profiler,'reflections');
+      }
       params.atmosphereStrength.value=state.atmosphereStrength;
       if(masks){
         const count=post.shadowMaps.length;

@@ -202,12 +202,37 @@ vec4 reflectionReceiver(vec2 uv, float range){
 }`:`vec4 reflectionReceiver(vec2 uv,float range){return vec4(0.);}`}
 `;
 
-const reflection = (receivers) => `
+const depthReduce=(first)=>`
+varying vec2 vUv;
+uniform sampler2D source;
+uniform vec2 inputSize,outputSize;
+uniform mat4 projection;
+void main(){
+  vec2 base=floor(vUv*outputSize)*4.;float nearest=65504.;
+  for(int y=0;y<4;y++)for(int x=0;x<4;x++){
+    vec2 pixel=min(base+vec2(float(x),float(y)),inputSize-1.);
+    float sampleDepth=texture2D(source,(pixel+.5)/inputSize).r;
+    ${first?'nearest=min(nearest,projection[3][2]/min(-1.e-7,sampleDepth*2.-1.+projection[2][2]));':'nearest=min(nearest,sampleDepth);'}
+  }
+  gl_FragColor=vec4(nearest,0.,0.,1.);
+}`;
+const hierarchyGLSL=`
+uniform sampler2D depthFine,depthCoarse;
+// A projected straight segment stays inside a convex screen tile if both
+// endpoints are inside it. The nearest depth bounds ALL original texels.
+// Subtract a conservative margin for half-float quantization.
+bool emptyDepthBlock(vec2 at,vec2 endAt,float farRange,float blockSize,sampler2D hierarchy){
+  vec2 a=floor(at*depthSize/blockSize),b=floor(endAt*depthSize/blockSize);
+  if(any(notEqual(a,b)))return false;
+  float nearest=texture2D(hierarchy,(a+.5)/ceil(depthSize/blockSize)).r;
+  return farRange<nearest-max(.02,nearest*.0015);
+}`;
+const reflection = (receivers,hierarchy=false) => `
 varying vec2 vUv;
 uniform sampler2D source;
 uniform float reflectionSteps,time;
 uniform vec2 waterPixel;
-` + reconstruct + reflectors(receivers) + `
+` + reconstruct + reflectors(receivers) + (hierarchy?hierarchyGLSL:'') + `
 vec3 decodeReflectionNormal(vec2 oct){
   vec3 n=vec3(oct,1.-abs(oct.x)-abs(oct.y));
   n.xy+=mix(vec2(1.),vec2(-1.),step(vec2(0.),n.xy))*max(0.,-n.z);
@@ -244,6 +269,22 @@ void main(){
     if(clip.w<=0.)break;
     vec2 at=clip.xy/clip.w*.5+.5;
     if(offscreen(at))break;
+    ${hierarchy?`// Only skip the same discrete ray samples, never extend ray reach.
+    for(int k=0;k<2;k++){
+      int jump=k==0?3:1;
+      if(float(i+jump)>reflectionSteps)continue;
+      float endT=float(i+jump)/reflectionSteps,endTravel=.15+(reach-1.)*endT*endT;
+      vec3 endPoint=pos+normal*bias+ray*endTravel;
+      vec4 endClip=projection*vec4(endPoint,1.);
+      if(endClip.w<=0.)continue;
+      vec2 endAt=endClip.xy/endClip.w*.5+.5;
+      if(offscreen(endAt))continue;
+      float farRange=max(-point.z,-endPoint.z);
+      bool empty=k==0?emptyDepthBlock(at,endAt,farRange,16.,depthCoarse):emptyDepthBlock(at,endAt,farRange,4.,depthFine);
+      if(empty){lastTravel=endTravel;i+=jump;break;}
+    }
+    // The updated i identifies a skipped block. Avoid the old point test.
+    if(lastTravel>travel)continue;`:''}
     vec3 hit=viewAt(at);
     float delta=hit.z-point.z;
     if(delta>0. && delta<(water?1.3:.35)+travel*.084 && !waterSurface(hit) && (water?dot(hit-pos,upView)>.06:dot(hit-pos,normal)>.06)){
@@ -390,7 +431,9 @@ export function webGlWorldStages(post) {
   const masks = [];
   const receivers=Boolean(post.receiverMask);
   const receiverUniform={receiverMask:{value:post.receiverMask?.texture}};
-  const reflected=post.reflection ? stage(reflection(receivers), {...uniforms,...receiverUniform,sceneDepth:{value:world.depthTexture},source:{value:world.texture}}) : null;
+  const hierarchy=post.depthHierarchy;
+  const reductions=hierarchy?.map((target,i)=>stage(depthReduce(i===0),{source:{value:(i===0?world.depthTexture:hierarchy[i-1].texture)},projection:uniforms.projection,inputSize:{value:new THREE.Vector2()},outputSize:{value:new THREE.Vector2()}}));
+  const reflected=post.reflection ? stage(reflection(receivers,Boolean(hierarchy)), {...uniforms,...receiverUniform,sceneDepth:{value:world.depthTexture},source:{value:world.texture},...(hierarchy?{depthFine:{value:hierarchy[0].texture},depthCoarse:{value:hierarchy[1].texture}}:{})}) : null;
   const blurs = post.bloom.map((target,i) => stage(bloom(i===0), {
     source:{value:(i===0?world:post.bloom[i-1]).texture}, pixel:{value:new THREE.Vector2()},
   }));
@@ -421,7 +464,13 @@ export function webGlWorldStages(post) {
       uniforms.reflectionSteps.value=state.reflectionSteps;
       uniforms.waterActive.value=state.waterActive;
       uniforms.receiverActive.value=state.receiverActive;
-      if(reflected&&(state.waterActive||state.receiverActive))draw(post.reflection,reflected,profiler,'reflections');
+      if(reflected&&(state.waterActive||state.receiverActive)){
+        if(reductions){const timing=profiler?.beginPass('reflectionHierarchy');try{for(let i=0;i<2;i++){
+          const target=hierarchy[i],src=i===0?world:hierarchy[i-1],u=reductions[i].uniforms;
+          u.inputSize.value.set(src.width,src.height);u.outputSize.value.set(target.width,target.height);draw(target,reductions[i]);
+        }}finally{if(timing)profiler.endPass();}}
+        draw(post.reflection,reflected,profiler,'reflections');
+      }
       if(post.mask){
         const count=post.shadowMaps.length;
         const depth=masks[count]??=stage(mask(count),{...uniforms,sceneDepth:{value:world.depthTexture},

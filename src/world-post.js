@@ -54,6 +54,7 @@ export class WorldPost {
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];
     const reflections=this.reflector||this.receiverMode?(reflectionSteps[effects?.reflections]??0):0;
     const receiverMask=Boolean(reflections&&this.receiverMode);
+    const hierarchy=reflections===32;
     const mask=ao+contact+atmosphere>0;
     const blur=(this.inMenu||this.cinematic)?cameraModes.blur[effects?.motionBlur]??0:0;
     const dof=(this.cinematic&&(effects?.depthOfField??'off')!=='off')||(this.inMenu&&effects?.depthOfField==='on');
@@ -69,7 +70,7 @@ export class WorldPost {
       if (this.world) this.dispose();
       return false;
     }
-    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + receiverMask + '/' + levels + '/' + this.heightFog;
+    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + receiverMask + '/' + levels + '/' + this.heightFog + '/' + hierarchy;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
@@ -77,6 +78,7 @@ export class WorldPost {
         depthTexture: depth ? new THREE.DepthTexture(1, 1, THREE.FloatType) : null });
       if (mask) this.mask = this.colorTarget(true);
       if (reflections) this.reflection=this.colorTarget();
+      if(hierarchy)this.depthHierarchy=[this.colorTarget(true),this.colorTarget(true)];
       if (receiverMask) this.receiverMask=new this.Target(1,1,{type:THREE.HalfFloatType,depthBuffer:true,
         minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
       this.bloom = Array.from({ length: levels }, () => this.colorTarget());
@@ -110,6 +112,12 @@ export class WorldPost {
       this.resize(this.reflection,Math.ceil(width/divisor),Math.ceil(height/divisor));
       this.state.waterPixel.set(1/this.reflection.width,1/this.reflection.height);
       this.memory+=this.reflection.width*this.reflection.height*8;
+      if(this.depthHierarchy){
+        this.resize(this.depthHierarchy[0],Math.ceil(width/4),Math.ceil(height/4));
+        this.resize(this.depthHierarchy[1],Math.ceil(width/16),Math.ceil(height/16));
+        this.memory+=this.depthHierarchy.reduce((n,t)=>n+t.width*t.height*8,0);
+        if(this.state.waterActive||this.state.receiverActive)this.passes+=2;
+      }
       if(this.receiverMask){
         this.resize(this.receiverMask,this.reflection.width,this.reflection.height);
         this.memory+=this.receiverMask.width*this.receiverMask.height*12;
@@ -211,6 +219,7 @@ export class WorldPost {
     this.mask?.dispose();
     this.reflection?.dispose();
     this.receiverMask?.dispose();
+    for(const target of this.depthHierarchy??[])target.dispose();this.depthHierarchy=null;
     for (const target of this.bloom ?? []) target.dispose();
     this.world = this.mask = this.reflection = this.receiverMask = this.bloom = this.stages = this.key = null;
     this.shadowMaps.length=0;
