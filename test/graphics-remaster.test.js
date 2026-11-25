@@ -169,3 +169,40 @@ test('SSR collects only enabled water surfaces and accepts the campaign canal se
   assert.equal(receivers.update('nahar',root,camera,false,mesh),false);assert.equal(receivers.entries.length,0);
   receivers.dispose();geometry.dispose();material.dispose();
 });
+
+import {EffectLights,lightCapacity,flashEnvelope} from '../src/effect-lights.js';
+import {particlePixels,makeParticleTexture,plumeEnvelope,dustProfile} from '../src/effect-art.js';
+
+test('new particle and muzzle settings leave all old presets unchanged',()=>{
+  for(const p of ['legacy','low','medium','high']){
+    const e=graphicsEffects(p);assert.equal(e.muzzleLights,'off');assert.equal(e.muzzleEffects,'legacy');assert.equal(e.fireLighting,'off');assert.equal(e.dust,'off');
+  }
+  assert.equal(graphicsEffects('ultra').muzzleLights,'high');
+  assert.equal(validateCustomGraphics({muzzleLights:'low',dust:'medium'},'ultra').muzzleLights,'low');
+  assert.equal(lightCapacity('off','off'),0);assert.equal(lightCapacity('low','off'),1);assert.equal(lightCapacity('high','high'),3);
+});
+test('real muzzle point lights are bounded, prioritize the local shooter and expire',()=>{
+  const scene=new THREE.Scene(),lights=new EffectLights(scene),p=new THREE.Vector3(0,1,0),camera=new THREE.Vector3();
+  lights.configure('off','off');assert.equal(scene.children.length,0);
+  lights.configure('low','off');assert.equal(scene.children.length,1);assert.ok(scene.children[0].isPointLight);
+  lights.pulse(p,0,{own:false});lights.update(0,camera);assert.equal(lights.active,0);
+  lights.pulse(p,0,{own:true});lights.update(0,camera);assert.equal(lights.active,1);assert.ok(lights.lights[0].intensity>0);
+  const original=lights.lights[0];lights.update(.03,camera);assert.ok(original.intensity>0&&original.intensity<34);
+  lights.update(.1,camera);assert.equal(original.intensity,0);
+  lights.configure('high','high');const count=scene.children.length;assert.equal(count,3);
+  for(let i=0;i<20;i++)lights.pulse(new THREE.Vector3(i*.2,1,0),1,{own:false});
+  lights.pulse(p,1,{own:true,energy:42});lights.update(1,camera,[{x:1,y:0,z:1,height:2,width:2}]);
+  assert.equal(lights.active,3);assert.equal(lights.lights[0].intensity,42);assert.equal(scene.children.length,count);
+  assert.ok(lights.lights.every(l=>!l.castShadow&&l.layers.isEnabled(0)&&l.layers.isEnabled(1)));
+  lights.configure('off','off');assert.equal(scene.children.length,0);assert.equal(lights.active,0);lights.dispose();
+});
+test('particle maps have transparent edges, deterministic detail and fading plumes',()=>{
+  for(const kind of ['smoke','muzzle','fire']){
+    const data=particlePixels(kind,64);assert.deepEqual(data,particlePixels(kind,64));assert.equal(data[3],0);
+    const alpha=data.filter((v,i)=>i%4===3);assert.ok(Math.max(...alpha)>120);assert.ok(new Set(alpha).size>35);
+    const texture=makeParticleTexture(kind);assert.ok(texture.generateMipmaps);texture.dispose();
+  }
+  assert.equal(flashEnvelope(0,.06),1);assert.equal(flashEnvelope(.06,.06),0);
+  assert.equal(plumeEnvelope(0,1,'dust').opacity,0);assert.equal(plumeEnvelope(1,1,'smoke').opacity,0);
+  assert.ok(plumeEnvelope(.3,1,'smoke').growth>1);assert.equal(dustProfile({id:'fy_pool_day'}),null);
+});

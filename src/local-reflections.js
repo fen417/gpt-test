@@ -63,6 +63,7 @@ export class LocalReflections {
     staticRoot.traverse(child=>{if(child.visible&&(child.name==='Port water'||child.userData.waterReflection))hidden.push(child);});
     const keyLights=scene.children.filter(child=>child.isDirectionalLight);
     const intensities=keyLights.map(light=>light.intensity);
+    const transient=scene.children.filter(light=>light.isPointLight),transientIntensity=transient.map(light=>light.intensity);
     // Keep capture cost bounded: one static capture per zone/quality, no per-frame cube render.
     const cube=new THREE.WebGLCubeRenderTarget(this.quality==='high'?128:64,{type:THREE.HalfFloatType});
     const camera=new THREE.CubeCamera(.15,180,cube);
@@ -71,6 +72,7 @@ export class LocalReflections {
     let generator, target;
     try{
       for(const child of hidden)child.visible=false;
+      for(const light of transient)light.intensity=0;
       // A capture uses the sky environment as its bounce light and does not
       // move the main camera's shadow maps. Reduce direct light under roofs.
       if(zone.id!=='pool-deck')for(const light of keyLights)light.intensity*=.22;
@@ -91,6 +93,7 @@ export class LocalReflections {
       renderer.shadowMap.enabled=shadows;
       sky.position.copy(skyPosition);
       for(let i=0;i<keyLights.length;i++)keyLights[i].intensity=intensities[i];
+      for(let i=0;i<transient.length;i++)transient[i].intensity=transientIntensity[i];
       for(const child of hidden)child.visible=true;
       generator?.dispose();
       cube.dispose();

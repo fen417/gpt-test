@@ -1155,7 +1155,7 @@ export class GameRenderer {
           rig.turretYaw = previous.turretYaw;
           rig.gunSeq = previous.gunSeq;
           rig.flashTime = previous.flashTime;
-          rig.nextSmoke = previous.nextSmoke;
+          rig.nextSmoke = previous.nextSmoke;rig.nextDust=previous.nextDust;rig.nextFlame=previous.nextFlame;
           disposeVehicleRig(previous);
         }
         rig.group.traverse(object => {
@@ -1168,7 +1168,32 @@ export class GameRenderer {
       rig.group.visible = true;
       updateVehicleRig(rig, vehicle, player, dt, blend, vehicleView, this.lowQuality, this.map.terrain);
       if (local) mounted = { vehicle, rig };
+      const dustQuality=this.graphicsEffects?.dust;
+      const groundDust=dustQuality==='high'||dustQuality==='medium'?dustProfile(this.map):null;
+      const speed=Math.abs(vehicle.speed??0);
+      if(groundDust&&vehicle.type!==BLACK_HAWK&&vehicle.hp>0&&speed>2.3&&distance<(dustQuality==='high'?70:42)&&this.effects.length<100&&this.clock>=(rig.nextDust??0)){
+        rig.nextDust=this.clock+(dustQuality==='high'?.11:.23);
+        const direction=Math.sign(vehicle.speed)||1,dx=Math.sin(vehicle.yaw)*direction,dz=Math.cos(vehicle.yaw)*direction;
+        const back=vehicle.type==='atv'?1.1:vehicle.type==='tank'?3.1:2.2;
+        const tracks=dustQuality==='high'?[-.72,.72]:[0];
+        for(const side of tracks){
+          const x=vehicle.x-dx*back+dz*side,z=vehicle.z-dz*back-dx*side,y=this.map.terrain.heightAt(x,z);
+          if(Math.abs((vehicle.y??y)-y)>1.5)continue;
+          this.smoke(x,y+.24,z,.38+Math.min(.65,speed*.035),.85+Math.min(1.1,speed*.07),groundDust.color,{kind:'dust',opacity:groundDust.opacity*Math.min(1,speed*.15),rise:.20,vx:-dx*.7,vz:-dz*.7,enhanced:true});
+        }
+      }
       const damaged = vehicle.hp < vehicle.maxHp * .33;
+      if(damaged&&vehicle.hp<=0&&this.graphicsEffects?.fireEffects==='high'&&distance<60){
+        const width=vehicle.type==='atv'?.9:1.8,height=vehicle.type===BLACK_HAWK?2.8:vehicle.type==='atv'?.8:1.55;
+        const x=vehicle.x,z=vehicle.z,y=vehicle.y??this.map.terrain.heightAt(x,z);
+        if(this.graphicsEffects?.fireLighting==='high')this.activeFireLights.push({x,y,z,width,height});
+        if(this.graphicsEffects?.heatDistortion==='high')this.activeHeatFires.push({x,y,z,width,height});
+        if(this.clock>=(rig.nextFlame??0)&&this.effects.length<105){
+          rig.nextFlame=this.clock+.18;
+          this.hotParticle('flame',x+(this.random()-.5)*width,y+height*.65,z+(this.random()-.5)*width,width*.8,.55);
+          if(this.graphicsEffects.dust==='high'&&this.random()<.45)this.spark(x,y+height*.5,z,.8);
+        }
+      }
       if (damaged && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
         rig.nextSmoke = this.clock + (vehicle.hp > 0 ? .35 : .16);
         const atv = vehicle.type === 'atv', aircraft=vehicle.type===BLACK_HAWK;
@@ -1427,7 +1452,11 @@ export class GameRenderer {
           this.smoke(tx, ty, tz, .18, .32, 0x92968e);
         } else {
           const colors = { wood: 0xb59b75, concrete: 0xb9b2a0, ground: 0x9a8666, flesh: 0x827065, shield: 0x8bc5ca };
-          this.smoke(tx, ty, tz, impact === 'flesh' ? .14 : .28, impact === 'shield' ? .25 : .57, colors[impact] ?? colors.concrete);
+          const enhancedDust=['medium','high'].includes(this.graphicsEffects?.dust)&&['ground','concrete','wood'].includes(impact);
+          if(enhancedDust){
+            const count=this.graphicsEffects.dust==='high'?3:1;
+            for(let i=0;i<count;i++)this.smoke(tx,ty+.04,tz,.16+i*.10,.45+i*.22,colors[impact]??colors.concrete,{kind:'dust',opacity:.38,rise:.28+i*.16,enhanced:true});
+          }else this.smoke(tx, ty, tz, impact === 'flesh' ? .14 : .28, impact === 'shield' ? .25 : .57, colors[impact] ?? colors.concrete);
         }
       }
       if (event.type === 'explosion') {
@@ -1444,6 +1473,9 @@ export class GameRenderer {
   configureEffects(){
     const e=this.graphicsEffects;
     this.effectLights?.configure(e.muzzleLights,e.fireLighting);
+    // Precompute the small textures on quality selection, not the first shot.
+    if(e.muzzleEffects==='high')this.muzzleTexture??=makeParticleTexture('muzzle');
+    if(e.fireEffects==='high'||e.explosions==='high'||e.explosions==='medium')this.fireballTexture??=makeParticleTexture('fire');
     const enhanced=particleQuality[e.smoke]>0;
     const texture=enhanced?(this.detailedSmokeTexture??=makeParticleTexture('smoke')):this.smokeTexture;
     if(!texture||texture===this.activeSmokeTexture)return;
@@ -1522,8 +1554,7 @@ export class GameRenderer {
     const reduced=this.lowQuality||this.integratedGpu,count=enhanced?(quality==='high'?17:10):reduced?8:13;
     const scale=event.kind==='claymore'?.62:1;
     for(let i=0;i<count;i++){
-      const angle=this.random()*Math.PI*2,radial=this.random()*scale;
-      if(enhanced)this.smoke(x+Math.cos(angle)*radial,y+this.random()*1.7*scale,z+Math.sin(angle)*radial,(.95+this.random()*1.35)*scale,2.1+this.random()*2.8,i<3?0x9a8874:0x484c4a,{opacity:.65,rise:.55+this.random()*1.1,vx:Math.cos(angle)*radial*1.5,vz:Math.sin(angle)*radial*1.5,enhanced:true});
+      if(enhanced){const angle=this.random()*Math.PI*2,radial=this.random()*scale;this.smoke(x+Math.cos(angle)*radial,y+this.random()*1.7*scale,z+Math.sin(angle)*radial,(.95+this.random()*1.35)*scale,2.1+this.random()*2.8,i<3?0x9a8874:0x484c4a,{opacity:.65,rise:.55+this.random()*1.1,vx:Math.cos(angle)*radial*1.5,vz:Math.sin(angle)*radial*1.5,enhanced:true});}
       else this.smoke(x+(this.random()-.5)*2*scale,y+this.random()*2*scale,z+(this.random()-.5)*2*scale,(1.1+this.random()*1.4)*scale,2.5+this.random()*2,i<3?0xffb668:0x535953);
     }
     if(enhanced){
@@ -1536,25 +1567,6 @@ export class GameRenderer {
     }
     this.blastFlash(x,y+scale,z,enhanced?scale:0);
     for(let i=0;i<(enhanced&&quality==='high'?18:reduced?6:14);i++)this.spark(x,y+.3,z,3*scale);
-  }
-
-  explosionGlow(x,y,z,scale) {
-    const pool=this.effectPools.flash??(this.effectPools.flash=[]);
-    if(this.effects.filter(effect=>effect.type==='flash').length>=6)return;
-    if(!this.explosionTexture){
-      this.explosionTexture=canvasTexture(64,(ctx,size)=>{
-        const half=size/2,gradient=ctx.createRadialGradient(half,half,0,half,half,half);
-        gradient.addColorStop(0,'#fff5d8');gradient.addColorStop(.2,'rgba(255,228,172,.92)');
-        gradient.addColorStop(.53,'rgba(252,113,40,.34)');gradient.addColorStop(1,'rgba(184,54,12,0)');
-        ctx.fillStyle=gradient;ctx.fillRect(0,0,size,size);
-      });
-    }
-    const effect=pool.pop()??{type:'flash',mesh:new THREE.Sprite(new THREE.SpriteMaterial({
-      map:this.explosionTexture,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,
-    }))};
-    effect.age=0;effect.life=.25;effect.size=scale;
-    effect.mesh.position.set(x,y,z);effect.mesh.scale.setScalar(scale);
-    this.worldRoot.add(effect.mesh);this.effects.push(effect);
   }
 
   blastFlash(x, y, z,scale=0) {
@@ -1594,7 +1606,7 @@ export class GameRenderer {
     sprite.material.color.setHex(color);
     sprite.material.rotation = this.random() * Math.PI;
     sprite.position.set(x, y, z); sprite.scale.setScalar(size);
-    Object.assign(effect, { age: 0, life, size, opacity, rise, kind, enhanced:enhanced||particleQuality[this.graphicsEffects?.smoke]>0, spin:(this.random()-.5)*.6, vx: vx??(wind + (this.random() - 0.5) * 0.6), vz: vz??((this.random() - 0.5) * 0.6) });
+    Object.assign(effect, { age: 0, life, size, opacity, rise, kind, enhanced:enhanced||particleQuality[this.graphicsEffects?.smoke]>0, spin:(enhanced||particleQuality[this.graphicsEffects?.smoke]>0)?(this.random()-.5)*.6:0, vx: vx??(wind + (this.random() - 0.5) * 0.6), vz: vz??((this.random() - 0.5) * 0.6) });
     this.effects.push(effect);
   }
 
@@ -2722,7 +2734,7 @@ export class GameRenderer {
     this.disposed=true;
     this.waterAppearance?.dispose();
     this.localReflections.dispose();
-    this.explosionTexture?.dispose();this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
+    this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
     this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();
     this.penumbra?.setEnabled(false);
