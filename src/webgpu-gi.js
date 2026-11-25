@@ -1,4 +1,4 @@
-import {texture,uniform,vec2,vec4,positionWorld,materialAO,materialEmissive,diffuseColor,float,clamp,mix,step,smoothstep,floor,fract} from 'three/tsl';
+import {texture,uniform,vec2,vec4,positionWorld,materialAO,materialEmissive,diffuseColor,attribute,float,clamp,mix,step,smoothstep,floor,fract} from 'three/tsl';
 const bindings=new WeakMap(),graphs=new WeakMap();
 export function setWebGpuGI(material,field){
   const old=bindings.get(material);
@@ -11,13 +11,15 @@ export function setWebGpuGI(material,field){
   }
   if(!field)return;
   const baseAO=material.aoNode,baseEmissive=material.emissiveNode,cache=material.customProgramCacheKey;
-  const variant=[material.type,field.quality.value<1.5?1:2,Boolean(material.aoMap),baseAO?.id??'default',baseEmissive?.id??'default'].join('/');
+  const baked=material.userData?.architectureLightmap&&material.lightMap;
+  const neutral=baked?1/material.lightMap.image.width:0;
+  const variant=[material.type,neutral,field.quality.value<1.5?1:2,Boolean(material.aoMap),baseAO?.id??'default',baseEmissive?.id??'default'].join('/');
   let variants=graphs.get(field);if(!variants){variants=new Map();graphs.set(field,variants);}
   let graph=variants.get(variant);
   if(!graph){
   const bounds=uniform(field.bounds),grid=uniform(field.grid),strength=uniform(field.strength.value),tint=uniform(field.sunTint);
   // All materials use the same live uniform nodes per field.
-  field.gpu??={strength};const power=field.gpu.strength;
+  field.gpu??={strength};const power=neutral?field.gpu.strength.mul(step(neutral,attribute('uv1','vec2').x.max(attribute('uv1','vec2').y)).oneMinus()):field.gpu.strength;
   const uv=positionWorld.xz.sub(bounds.xy).div(bounds.zw),edge=vec2(.5).div(grid.xy);
   const cell=clamp(uv,edge,edge.oneMinus());
   const anchor=floor(cell.mul(grid.xy)).add(.5).div(grid.xy);

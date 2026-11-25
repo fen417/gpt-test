@@ -66,7 +66,7 @@ export function bakeProbeField(map,{maxCells=192,spacing,tracer=null}={}){
         if(d.y>0){weight++;if(!cast.hit)open++;}
         let albedo,illumination=1,attenuation;
         if(cast.hit){
-          albedo=cast.hit.color??cast.hit.giColor;
+          albedo=cast.hit.giColor??cast.hit.color;
           const p={x:o.x+d.x*Math.max(0,cast.distance-.065),y:o.y+d.y*Math.max(0,cast.distance-.065),z:o.z+d.z*Math.max(0,cast.distance-.065)};
           const sky=skyDirs[i%skyDirs.length];
           // Sample sky visibility at the real hit; the bake contains no fixed

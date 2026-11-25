@@ -39,3 +39,15 @@ test('instances and material colors feed the geometry tracer',()=>{
   const hit=tracer.trace({x:2,y:1,z:2},{x:0,y:0,z:-1},4).hit;
   assert.ok(hit&&hit.color[1]>hit.color[0]);
 });
+
+import {setWebGlGI} from '../src/webgl-gi.js';
+import {makeProbeTexture,probeUniforms} from '../src/gi-probes.js';
+test('architecture atlas gets GI only at its neutral fallback coordinates',()=>{
+  const f=bakeProbeField({id:'fixture',size:4,terrain:{heightAt:()=>0},boxes:[]});
+  const texture=makeProbeTexture(f),field=probeUniforms(f,texture);
+  const m=new THREE.MeshStandardMaterial();m.userData.architectureLightmap=true;
+  m.lightMap=new THREE.DataTexture(new Uint8Array(16*16*4),16,16);
+  setWebGlGI(m,field);const shader={uniforms:{},vertexShader:'#include <project_vertex>',fragmentShader:'#include <aomap_fragment>'};
+  m.onBeforeCompile(shader);assert.equal(shader.uniforms.s09GIAtlasNeutralUV.value,1/16);assert.ok(shader.fragmentShader.includes('max(vLightMapUv.x,vLightMapUv.y)'));
+  setWebGlGI(m,null);m.lightMap.dispose();m.dispose();texture.dispose();
+});
