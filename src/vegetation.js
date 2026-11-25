@@ -7,7 +7,7 @@ export class Vegetation{
   constructor(makeMaterial=makeGlFoliageMaterial){
     this.makeMaterial=makeMaterial;this.root=new THREE.Group();this.root.name='S09 streamed vegetation';this.assets=new Map();this.tiles=new Map();this.authored=[];this.hidden=new Map();
     this.uniforms={time:{value:0},wind:{value:0},transmission:{value:0},sun:{value:new THREE.Vector3(0,1,0)}};
-    this.dummy=new THREE.Object3D();this.tint=new THREE.Color();
+    this.dummy=new THREE.Object3D();this.tint=new THREE.Color();this.white=new THREE.Color(0xffffff);
   }
   asset(kind,lod){
     const texKind=kind==='palm'&&lod===2?'palm-impostor':kind;
@@ -26,7 +26,7 @@ export class Vegetation{
     for(let i=0;i<plants.length;i++){
       const p=plants[i],d=this.dummy;d.position.set(p.x,p.y,p.z);d.rotation.set(0,p.yaw,0);d.scale.setScalar(p.scale);d.updateMatrix();
       mesh.setMatrixAt(i,d.matrix);
-      this.tint.setHex(p.color).lerp(new THREE.Color(0xffffff),.57).multiplyScalar(p.shade);
+      this.tint.setHex(p.color).lerp(this.white,.57).multiplyScalar(p.shade);
       mesh.setColorAt(i,this.tint);
     }
     mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;
@@ -38,7 +38,7 @@ export class Vegetation{
     entry.mesh.geometry=a.geometry;entry.mesh.material=a.material;entry.mesh.customDepthMaterial=a.depth;entry.lod=lod;
     entry.mesh.computeBoundingSphere();entry.mesh.boundingSphere.radius+=.6;
   }
-  remove(entry){if(entry){entry.mesh.removeFromParent();entry.mesh.dispose();}}
+  remove(entry){if(entry?.mesh){entry.mesh.removeFromParent();entry.mesh.dispose();}}
   restoreLegacy(){for(const [mesh,mask] of this.hidden)mesh.layers.mask=mask;this.hidden.clear();}
   hideLegacy(root){
     if(!this.authored.some(e=>e.kind==='palm')||!root)return;
@@ -69,7 +69,7 @@ export class Vegetation{
     return true;
   }
   update(owner){
-    const settings=owner.graphicsEffects??{},quality=owner.lowQuality&&settings.vegetation!=='legacy'?'low':settings.vegetation;
+    const settings=owner.graphicsEffects??{},requested=settings.vegetation??'legacy',quality=owner.lowQuality&&requested!=='legacy'?'low':requested;
     const level=FOLIAGE_LEVEL[quality]??0;
     if(!level||!owner.map){if(this.map){this.clear();return true;}return false;}
     const density=Math.min(owner.lowQuality?.25:1,(Number(settings.grassDensity)||0)/100),radius=Math.min(owner.lowQuality?20:100,Number(settings.grassDistance)||20);

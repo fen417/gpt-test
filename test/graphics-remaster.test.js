@@ -297,3 +297,8 @@ test('vegetation switching preserves legacy leaf layers and releases instance ba
   const veg=new Vegetation();veg.update(owner);assert.equal(leaf.layers.mask,0);assert.equal(veg.stats().authored,1);
   owner.graphicsEffects={vegetation:'legacy'};veg.update(owner);assert.equal(leaf.layers.mask,1);assert.equal(veg.stats().authored,0);veg.dispose();leaf.geometry.dispose();leaf.material.dispose();
 });
+
+test('empty grass tiles release safely and all foliage LODs simplify',()=>{
+  const veg=new Vegetation();veg.tiles.set('empty',{empty:true});assert.doesNotThrow(()=>veg.dispose());
+  for(const kind of ['grass','scrub','broadleaf']){const g=[0,1,2].map(i=>foliageGeometry(kind,i));assert.ok(g[0].index.count>g[1].index.count&&g[1].index.count>g[2].index.count);g.forEach(x=>x.dispose());}
+});

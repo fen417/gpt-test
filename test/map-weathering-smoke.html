@@ -12,6 +12,8 @@ import {graphicsEffects,gradeParameters} from '../src/graphics-settings.js';
 import {PostPass} from '../src/post-pass.js';
 import {WebGpuPostPass} from '../src/webgpu-post-pass.js';
 import {getMap} from '../shared/world.js';
+import {Vegetation} from '../src/vegetation.js';
+import {makeWebGpuFoliageMaterial} from '../src/webgpu-vegetation.js';
 import {bakeProbeField,makeProbeTexture,probeUniforms} from '../src/gi-probes.js';
 import {setWebGlGI} from '../src/webgl-gi.js';
 import {setWebGpuGI} from '../src/webgpu-gi.js';
@@ -220,5 +222,32 @@ window.drawGISmoke=async quality=>{
   if(quality!=='off')for(const material of giMaterials)applyGI(material,giField);
   const result=await renderChecked(async()=>{await renderer.compileAsync(giScene,giCamera);renderer.render(giScene,giCamera);});
   return {...result,materials:giMaterials.length};
+};
+let foliageScene,foliageCamera,foliage,foliageOwner;
+window.drawFoliageSmoke=async mode=>{
+  if(!foliageScene){
+    foliageScene=new THREE.Scene();foliageScene.background=new THREE.Color(0xa1bbc5);
+    foliageCamera=new THREE.PerspectiveCamera(57,1.5,.1,160);foliageCamera.position.set(0,3,14);foliageCamera.lookAt(0,3,-5);foliageCamera.updateMatrixWorld();
+    foliageScene.add(new THREE.HemisphereLight(0xcfe6ff,0xab9876,1.7));
+    const sun=new THREE.DirectionalLight(0xffdfa8,2.4);sun.position.set(-5,10,3);foliageScene.add(sun);
+    const root=new THREE.Group();foliageScene.add(root);
+    const plane=new THREE.Mesh(new THREE.PlaneGeometry(80,80),new THREE.MeshStandardMaterial({color:0xb2a17d,roughness:.96}));plane.rotation.x=-Math.PI/2;root.add(plane);
+    const boxes=[];
+    for(let i=0;i<3;i++){
+      const x=(i-1)*5,z=-4-i*1.7,h=6+i*.5;
+      boxes.push({kind:'village-palm',x,z,w:.42,d:.42,h,baseY:0});
+      const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.13,.22,h,8),new THREE.MeshStandardMaterial({color:0x80664a}));trunk.position.set(x,h/2,z);root.add(trunk);
+      const old=new THREE.Mesh(new THREE.SphereGeometry(1.8,6,4),new THREE.MeshStandardMaterial({color:0x5d7040}));old.scale.y=.45;old.position.set(x,h,z);old.userData.legacyPalmLeaf=true;root.add(old);
+    }
+    for(let i=0;i<7;i++)boxes.push({kind:'village-scrub',x:(i-3)*1.6,z:1+Math.sin(i)*1.2,h:.8,w:.8,d:.8});
+    const map={id:'village',size:64,terrain:{heightAt:()=>0},boxes};
+    foliage=new Vegetation(device?makeWebGpuFoliageMaterial:undefined);
+    foliageOwner={map,staticRoot:root,worldRoot:foliageScene,camera:foliageCamera,clock:0,sun,sunOffset:sun.position.clone(),graphicsEffects:{}};
+  }
+  foliageOwner.graphicsEffects=mode==='off'?{vegetation:'legacy'}:{vegetation:mode==='low'?'low':'ultra',grassDensity:'100',grassDistance:'45',vegetationWind:mode==='moving'?'high':'off',vegetationShadows:'off',foliageTransmission:'high'};
+  foliageOwner.clock=mode==='moving'?2.7:0;
+  for(let i=0;i<5;i++){foliageOwner.clock+=.8;foliage.update(foliageOwner);}
+  const result=await renderChecked(async()=>{await renderer.compileAsync(foliageScene,foliageCamera);renderer.render(foliageScene,foliageCamera);});
+  return {...result,...foliage.stats()};
 };
 </script></body></html>

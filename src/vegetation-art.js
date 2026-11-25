@@ -11,7 +11,8 @@ function blade(u,v,b,px){
   return 1-smooth(width-px,width+px,Math.abs(u-x));
 }
 function leaflet(u,v,b,px){
-  const x=u-b.x,y=v-b.y,c=Math.cos(b.a),s=Math.sin(b.a),a=(x*c+y*s)/b.w,k=(-x*s+y*c)/b.h;
+  const x=u-b.x,y=v-b.y,c=b.c,s=b.s,a=(x*c+y*s)/b.w,k=(-x*s+y*c)/b.h;
+  if(Math.abs(x)>b.w+b.h||Math.abs(y)>b.w+b.h)return 0;
   return 1-smooth(1-px*4,1+px*4,Math.hypot(a,k));
 }
 export function foliagePixels(kind,size=256){
@@ -27,6 +28,7 @@ export function foliagePixels(kind,size=256){
   }else if(kind==='palm-impostor'){
     for(let i=0;i<12;i++){const a=TAU*i/12;shapes.push({x:.5+Math.cos(a)*.21,y:.53+Math.sin(a)*.18,w:.28,h:.063,a,t:random()});}
   }
+  for(const b of shapes)if(b.a!=null){b.c=Math.cos(b.a);b.s=Math.sin(b.a);}
   const palette=kind==='grass'?[[127,139,69],[192,163,96]]:kind==='scrub'?[[113,133,69],[177,159,100]]:kind==='broadleaf'?[[75,116,49],[151,165,74]]:[[93,132,62],[169,150,77]];
   for(let y=0;y<size;y++)for(let x=0;x<size;x++){
     const u=(x+.5)/size,v=(y+.5)/size;
@@ -91,12 +93,12 @@ export function foliageGeometry(kind,lod){
     for(let j=0;j<count;j++){
       const a=j*Math.PI/count,dx=Math.cos(a),dz=Math.sin(a),half=palm?3.75:grass?.55:kind==='broadleaf'?.9:.60;
       const bottom=palm?-2.0:0,top=palm?1.6:grass?.77:kind==='broadleaf'?1.65:.96;
-      const ids=[];
-      for(let row=0;row<=2;row++){
-        const t=row*.5,y=bottom+(top-bottom)*t,curve=lod===0?.08*t*t:0;
+      const ids=[],rows=lod===2?1:2;
+      for(let row=0;row<=rows;row++){
+        const t=row/rows,y=bottom+(top-bottom)*t,curve=lod===0?.08*t*t:0;
         for(const side of [-1,1])ids.push(b.vertex(dx*half*side+dz*curve,y,dz*half*side-dx*curve,(side+1)*.5,t,t*t));
       }
-      b.quad(ids[0],ids[1],ids[3],ids[2]);b.quad(ids[2],ids[3],ids[5],ids[4]);
+      b.quad(ids[0],ids[1],ids[3],ids[2]);if(rows===2)b.quad(ids[2],ids[3],ids[5],ids[4]);
     }
   }
   return b.finish();

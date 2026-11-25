@@ -153,6 +153,25 @@ async function run(api){
     console.log('GI',api,JSON.stringify({low:giLow,high:giHigh,reset:giReset}));
     assert.ok(giLow.changed>.01&&giHigh.changed>.01,api+' baked probe lighting not visible on real lit materials');
     assert.ok(giReset.mean<.5,api+' GI did not restore original shading');
+    const foliage={};
+    for(const q of ['off','low','high','moving','offAgain']){
+      const result=await page.evaluate(q=>window.drawFoliageSmoke(q==='offAgain'?'off':q),q);
+      assert.deepEqual(result.errors,[],api+' vegetation GPU validation errors');
+      assert.deepEqual(networkErrors,[],api+' vegetation resource loading errors');
+      assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' vegetation shader/browser errors');
+      if(result.lost){
+        if(api==='webgpu'&&info.software)return {inconclusive:'software device lost during foliage '+q+': '+result.lost};
+        assert.fail(api+' GPU lost: '+result.lost);
+      }
+      foliage[q]=await pixels(page);
+      if(q==='high'){assert.ok(result.authored>0);assert.ok(result.grass>0);assert.ok(result.tiles<=52);}
+      if(q==='offAgain')assert.equal(result.batches,0);
+    }
+    const foliageHigh=compare(foliage.off,foliage.high),foliageLow=compare(foliage.off,foliage.low),wind=compare(foliage.high,foliage.moving),restored=compare(foliage.off,foliage.offAgain);
+    console.log('VEGETATION',api,JSON.stringify({high:foliageHigh,low:foliageLow,wind,restored}));
+    assert.ok(foliageHigh.changed>.01&&foliageLow.changed>.01,api+' enhanced foliage not rendered');
+    assert.ok(wind.changed>.0002,api+' GPU wind did not change image');
+    assert.ok(restored.mean<.5,api+' original vegetation did not restore');
     return {passed:true};
   }finally{await browser.close();}
 }
