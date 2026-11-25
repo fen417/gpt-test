@@ -10,7 +10,7 @@ export const PBR_SOURCES=Object.freeze({
   stucco:{asset:'white_plaster_02',max:2048},
   wood:{asset:'wood_plank_wall',max:2048},
   metal:{asset:'rusty_metal_05',max:2048},
-  cloth:{asset:'fabric_pattern_07',max:2048},
+  cloth:{asset:'fabric_pattern_07',max:2048,colorVariants:['col_1','col_2','col_03']},
   grass:{asset:'leafy_grass',max:2048},
 });
 export const DETAIL_SIZE=Object.freeze({off:0,medium:512,standard:1024,high:2048,ultra:4096});

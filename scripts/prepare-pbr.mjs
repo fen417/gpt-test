@@ -34,14 +34,14 @@ async function request(url){
   for(let i=0;i<3;i++){
     try{
       const response=await fetch(url,{headers:{'User-Agent':userAgent},signal:AbortSignal.timeout(120000)});
-      if(!response.ok)throw Error(response.status+' '+url);
+      if(!response.ok){const error=Error(response.status+' '+url);error.status=response.status;throw error;}
       return response;
-    }catch(e){error=e;await new Promise(resolve=>setTimeout(resolve,1000*(i+1)));}
+    }catch(e){if(e.status===404||e.status===410)throw e;error=e;await new Promise(resolve=>setTimeout(resolve,1000*(i+1)));}
   }
   throw error;
 }
 const index=new Map();
-async function source(asset,channel,sourceSize){
+async function source(asset,channel,sourceSize,preferred=[]){
   const key=asset+'-'+channel+'-'+sourceSize;
   if(!index.has(asset)){
     const options=await request('https://api.polyhaven.com/files/'+asset)
@@ -49,7 +49,7 @@ async function source(asset,channel,sourceSize){
     index.set(asset,options);
     console.log('Poly Haven metadata',asset,Object.keys(options));
   }
-  const candidates=sourceCandidates(index.get(asset),asset,channel,sourceSize);
+  const candidates=sourceCandidates(index.get(asset),asset,channel,sourceSize,preferred);
   const hash=buffer=>createHash('md5').update(buffer).digest('hex');
   const prior=sources[key];
   if(prior?.md5){
@@ -104,6 +104,7 @@ async function encode(surface,channel,size,input,spec){
   }finally{await rm(png,{force:true});await rm(temporary,{force:true});}
 }
 function checkpoint(){return writeFile(join(output,'manifest.json'),JSON.stringify({version:PBR_PACK_VERSION,files,sources},null,2)+'\n');}
+const tasks=[];
 for(const [surface,spec] of Object.entries(PBR_SOURCES)){
   if(selection&&selection!==surface)continue;
   for(const channel of ['diff','nor_gl','arm',...(spec.height?['disp']:[])]){
@@ -112,9 +113,20 @@ for(const [surface,spec] of Object.entries(PBR_SOURCES)){
     for(const size of sizes)if(!files[surface]?.[channel]?.includes(size)||!await valid(join(output,surface+'-'+channel+'-'+size+'.ktx2')))missing.push(size);
     if(!missing.length)continue;
     // Native 2K/4K scan inputs; no upsampling from legacy 1K assets.
-    const input=await source(spec.asset,channel,Math.max(1024,...missing));
-    for(const size of missing){console.log(surface,channel,size);await encode(surface,channel,size,input,spec);await checkpoint();}
+    tasks.push({surface,spec,channel,missing});
   }
+}
+// Validate/download every remaining source before starting expensive conversion.
+// Keep every successfully downloaded source in the checkpoint even if another is missing.
+const failures=[];
+for(const task of tasks){
+  const {surface,spec,channel,missing}=task;
+  try{task.input=await source(spec.asset,channel,Math.max(1024,...missing),channel==='diff'?spec.colorVariants:undefined);await checkpoint();}
+  catch(error){failures.push(surface+'/'+channel+': '+error.message);}
+}
+if(failures.length)throw Error('PBR source preflight failed:\n'+failures.join('\n'));
+for(const {surface,spec,channel,missing,input} of tasks){
+  for(const size of missing){console.log(surface,channel,size);await encode(surface,channel,size,input,spec);await checkpoint();}
 }
 if(all||selection==='ceramic')for(const size of [256,1024]){
   await encode('ceramic','arm',size,'src/assets/remaster/ceramic-arm-'+size+'.webp',{});await checkpoint();
