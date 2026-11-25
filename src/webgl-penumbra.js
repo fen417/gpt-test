@@ -3,11 +3,8 @@ import {ShaderChunk} from 'three';
 import {PCSS_SETTINGS as p} from './directional-penumbra.js';
 import {StaticMaterialVisitor} from './render-work.js';
 
+const diskPoints=(n,turn,vec)=>Array.from({length:n},(_,i)=>{const a=i*2.3999632+turn,r=Math.sqrt((i+.5)/n);return vec+'('+ (Math.cos(a)*r).toFixed(8)+','+(Math.sin(a)*r).toFixed(8)+')';}).join(',');
 const softShadow=`
-vec2 s09ShadowDisk(int i, float n, float turn) {
-  float angle=float(i)*2.3999632+turn;
-  return vec2(cos(angle),sin(angle))*sqrt((float(i)+.5)/n);
-}
 
 float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, float bias, float spread, vec4 shadowCoord) {
   vec3 point=shadowCoord.xyz/shadowCoord.w;
@@ -15,7 +12,8 @@ float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, floa
   vec2 texel=1./size;
   // Stable disk rotation avoids the checkerboard pattern caused by
   // changing the entire kernel at every shadow texel.
-  float turn=.73;
+  const vec2 searchDisk[${p.blockerTaps}]=vec2[${p.blockerTaps}](${diskPoints(p.blockerTaps,.73,'vec2')});
+  const vec2 filterDisk[${p.filterTaps}]=vec2[${p.filterTaps}](${diskPoints(p.filterTaps,1.83,'vec2')});
   float depthPerTexel=.024/max(spread,.01);
   // Receiver-plane correction for each sample. A sloping lit face must not
   // compare every neighbouring depth against the centre's depth.
@@ -26,7 +24,7 @@ float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, floa
   if(any(lessThan(point,vec3(0.)))||any(greaterThan(point,vec3(1.))))return 1.;
   float blockers=0., average=0.;
   for(int i=0;i<${p.blockerTaps};i++){
-    vec2 offset=s09ShadowDisk(i,${p.blockerTaps}.,turn)*${p.searchRadius};
+    vec2 offset=searchDisk[i]*${p.searchRadius};
     vec2 sampleUV=point.xy+offset*texel;
     float depth=unpackRGBAToDepth(texture2D(shadowMap,sampleUV))-dot(slope,offset);
     if(depth<point.z-.45*depthPerTexel){average+=depth;blockers+=1.;}
@@ -37,7 +35,7 @@ float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, floa
   float penumbra=clamp((point.z-average/blockers)*spread,${p.minRadius},${p.maxRadius}.);
   float visibility=0.;
   for(int i=0;i<${p.filterTaps};i++){
-    vec2 offset=s09ShadowDisk(i,${p.filterTaps}.,turn+1.1)*penumbra;
+    vec2 offset=filterDisk[i]*penumbra;
     vec2 sampleUV=point.xy+offset*texel;
     visibility+=texture2DCompare(shadowMap,sampleUV,point.z+dot(slope,offset)-.28*depthPerTexel);
   }
