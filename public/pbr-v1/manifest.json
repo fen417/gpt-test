@@ -67,6 +67,10 @@
         512,
         1024,
         2048
+      ],
+      "disp": [
+        512,
+        1024
       ]
     },
     "earth": {
@@ -85,6 +89,10 @@
         512,
         1024,
         2048
+      ],
+      "disp": [
+        512,
+        1024
       ]
     },
     "asphalt": {
@@ -103,6 +111,10 @@
         512,
         1024,
         2048
+      ],
+      "disp": [
+        512,
+        1024
       ]
     },
     "brick": {
@@ -123,6 +135,10 @@
         512,
         1024,
         2048
+      ],
+      "disp": [
+        512,
+        1024
       ]
     },
     "stucco": {
@@ -141,6 +157,10 @@
         512,
         1024,
         2048
+      ],
+      "disp": [
+        512,
+        1024
       ]
     },
     "wood": {
@@ -159,6 +179,10 @@
         512,
         1024,
         2048
+      ],
+      "disp": [
+        512,
+        1024
       ]
     },
     "metal": {
@@ -177,6 +201,10 @@
         512,
         1024,
         2048
+      ],
+      "disp": [
+        512,
+        1024
       ]
     },
     "cloth": {
@@ -493,6 +521,54 @@
       "extension": ".jpg",
       "width": 2048,
       "height": 2048,
+      "license": "CC0-1.0"
+    },
+    "gravelly_sand-disp-1024": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravelly_sand/gravelly_sand_disp_1k.jpg",
+      "md5": "68bff5c2b245c76ce54f3944a0c258ea",
+      "extension": ".jpg",
+      "width": 1024,
+      "height": 1024,
+      "license": "CC0-1.0"
+    },
+    "asphalt_02-disp-1024": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_02/asphalt_02_disp_1k.jpg",
+      "md5": "2699b93c9eacfcf2e10582bccf849287",
+      "extension": ".jpg",
+      "width": 1024,
+      "height": 1024,
+      "license": "CC0-1.0"
+    },
+    "red_bricks_04-disp-1024": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/red_bricks_04/red_bricks_04_disp_1k.jpg",
+      "md5": "ce1471d126f9f3188cd7b2c99d6a02db",
+      "extension": ".jpg",
+      "width": 1024,
+      "height": 1024,
+      "license": "CC0-1.0"
+    },
+    "white_plaster_02-disp-1024": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/white_plaster_02/white_plaster_02_disp_1k.jpg",
+      "md5": "73f9cf2ee82e1a85c86ef9e607f50407",
+      "extension": ".jpg",
+      "width": 1024,
+      "height": 1024,
+      "license": "CC0-1.0"
+    },
+    "wood_plank_wall-disp-1024": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_plank_wall/wood_plank_wall_disp_1k.jpg",
+      "md5": "b49dfd5a4517bea5b7239362781ecf7b",
+      "extension": ".jpg",
+      "width": 1024,
+      "height": 1024,
+      "license": "CC0-1.0"
+    },
+    "rusty_metal_05-disp-1024": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rusty_metal_05/rusty_metal_05_disp_1k.jpg",
+      "md5": "c7ddba5cba2bfc755f5a1d97cf93ec8c",
+      "extension": ".jpg",
+      "width": 1024,
+      "height": 1024,
       "license": "CC0-1.0"
     }
   }
