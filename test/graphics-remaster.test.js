@@ -97,7 +97,9 @@ test('WebGPU wrapper preserves original color node while relief changes',()=>{
   m.colorNode=base;const original=m.customProgramCacheKey;
   setWebGpuWeathering(m,mask,weatherParameters('port','metal','high'));const first=m.colorNode;assert.notEqual(first,base);
   suspendWebGpuWeathering(m);assert.equal(m.colorNode,base);
-  setWebGpuWeathering(m,mask,weatherParameters('village','metal','high'));assert.equal(m.colorNode,first);
+  setWebGpuWeathering(m,mask,weatherParameters('village','metal','high'));const village=m.colorNode;
+  assert.notEqual(village,base);
+  suspendWebGpuWeathering(m);setWebGpuWeathering(m,mask,weatherParameters('port','metal','high'));assert.equal(m.colorNode,first);
   suspendWebGpuWeathering(m);m.colorNode=vec4(.5);const replacement=m.colorNode;
   setWebGpuWeathering(m,mask,weatherParameters('village','metal','low'));assert.notEqual(m.colorNode,first);
   setWebGpuWeathering(m,null);assert.equal(m.colorNode,replacement);assert.equal(m.customProgramCacheKey,original);
@@ -319,4 +321,31 @@ test('warmup texture collection deduplicates inputs and excludes render targets'
   material.envMap=target.texture;
   const result=collectWarmupTextures({scene,activeSmokeTexture:texture});assert.deepEqual(result.textures,[texture]);assert.equal(result.materials,1);
   mesh.geometry.dispose();material.dispose();texture.dispose();target.dispose();
+});
+
+test('WebGPU variants reuse identical node graphs without sharing differing weather profiles or GI quality',()=>{
+  const a=new MeshStandardNodeMaterial(),b=new MeshStandardNodeMaterial(),c=new MeshStandardNodeMaterial(),mask=makeWeatherMask();
+  const weather=weatherParameters('port','metal','high');setWebGpuWeathering(a,mask,weather);setWebGpuWeathering(b,mask,weather);
+  assert.equal(a.colorNode,b.colorNode);assert.equal(a.customProgramCacheKey(),b.customProgramCacheKey());
+  setWebGpuWeathering(c,mask,[weather[0]+.1,...weather.slice(1)]);assert.notEqual(a.colorNode,c.colorNode);
+  for(const m of [a,b,c])setWebGpuWeathering(m,null);
+  const data=bakeProbeField({id:'gi-cache',size:8,terrain:{heightAt:()=>0},boxes:[]}),tex=makeProbeTexture(data),field=probeUniforms(data,tex);
+  field.quality.value=1;setWebGpuGI(a,field);setWebGpuGI(b,field);
+  assert.equal(a.emissiveNode,b.emissiveNode);const before=a.emissiveNode;
+  setWebGpuGI(a,null);setWebGpuGI(a,field);assert.equal(a.emissiveNode,before);
+  field.quality.value=2;setWebGpuGI(c,field);assert.notEqual(c.emissiveNode,before);
+  for(const m of [a,b,c]){setWebGpuGI(m,null);m.dispose();}mask.dispose();tex.dispose();
+});
+
+import {prepareWarmupSamples} from '../src/shader-warmup.js';
+test('shader warmup samples never change live effect counts or instance data after cleanup',()=>{
+  const root=new THREE.Group(),geometry=new THREE.PlaneGeometry(),material=new THREE.MeshBasicMaterial();
+  geometry.setAttribute('instanceAlpha',new THREE.InstancedBufferAttribute(new Float32Array([.42]),1));
+  const batch=new THREE.InstancedMesh(geometry,material,1);batch.count=0;batch.visible=false;
+  const camera=new THREE.PerspectiveCamera();camera.updateMatrixWorld();root.add(batch);
+  const owner={camera,worldRoot:root,effectBatches:{smoke:batch},effectPools:{},getHotParticleMaterial:()=>null};
+  const old=new THREE.Matrix4();batch.getMatrixAt(0,old);const restore=prepareWarmupSamples(owner);
+  assert.equal(batch.count,1);assert.equal(batch.visible,true);restore();
+  const after=new THREE.Matrix4();batch.getMatrixAt(0,after);assert.ok(after.equals(old));assert.equal(batch.count,0);assert.equal(batch.visible,false);
+  assert.ok(Math.abs(geometry.attributes.instanceAlpha.getX(0)-.42)<1e-6);batch.dispose();geometry.dispose();material.dispose();
 });

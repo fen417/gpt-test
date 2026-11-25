@@ -1,5 +1,5 @@
 import {texture,uniform,vec2,vec4,positionWorld,materialAO,materialEmissive,diffuseColor,float,clamp,mix,step,smoothstep,floor,fract} from 'three/tsl';
-const bindings=new WeakMap();
+const bindings=new WeakMap(),graphs=new WeakMap();
 export function setWebGpuGI(material,field){
   const old=bindings.get(material);
   if(old){
@@ -10,6 +10,11 @@ export function setWebGpuGI(material,field){
     material.needsUpdate=true;
   }
   if(!field)return;
+  const baseAO=material.aoNode,baseEmissive=material.emissiveNode,cache=material.customProgramCacheKey;
+  const variant=[material.type,field.quality.value<1.5?1:2,Boolean(material.aoMap),baseAO?.id??'default',baseEmissive?.id??'default'].join('/');
+  let variants=graphs.get(field);if(!variants){variants=new Map();graphs.set(field,variants);}
+  let graph=variants.get(variant);
+  if(!graph){
   const bounds=uniform(field.bounds),grid=uniform(field.grid),strength=uniform(field.strength.value),tint=uniform(field.sunTint);
   // All materials use the same live uniform nodes per field.
   field.gpu??={strength};const power=field.gpu.strength;
@@ -22,14 +27,18 @@ export function setWebGpuGI(material,field){
   const value=field.quality.value<1.5?sample(floor(level.add(.5))):mix(sample(floor(level)),sample(floor(level).add(1).min(2)),fract(level));
   const fade=smoothstep(9,17,altitude).oneMinus().mul(step(0,uv.x)).mul(step(0,uv.y)).mul(step(uv.x,1)).mul(step(uv.y,1));
   const probe=mix(vec4(0,0,0,1),value,fade).toVar();
-  const baseAO=material.aoNode,baseEmissive=material.emissiveNode,cache=material.customProgramCacheKey;
   const originalAO=baseAO??(material.aoMap?materialAO:vec2(1).x);
   const ao=originalAO.mul(probe.a.oneMinus().mul(-.34).mul(power.min(1)).add(1));
   // The standard node material already reduces diffuseColor by metalness in
   // its variants. Using diffuseColor also preserves vertex and instance color.
   const bounce=diffuseColor.rgb.mul(probe.rgb).mul(tint).mul(power).mul(originalAO);
   const emissive=(baseEmissive??materialEmissive).add(bounce);
-  const key=()=>cache.call(material)+'|s09-gi:'+material.id+':'+emissive.id;
+  graph={ao,emissive};variants.set(variant,graph);
+  }
+  const {ao,emissive}=graph;
+  // Only shared graphs share the cache key. Their uniform sources and custom
+  // base nodes are identical; renderer-managed material values stay per draw.
+  const key=()=>cache.call(material)+'|s09-gi:'+emissive.id;
   material.aoNode=ao;material.emissiveNode=emissive;material.customProgramCacheKey=key;
   bindings.set(material,{baseAO,baseEmissive,ao,emissive,cache,key});material.needsUpdate=true;
 }

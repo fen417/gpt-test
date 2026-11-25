@@ -53,15 +53,16 @@ export function prepareWarmupSamples(owner){
     if(!material)continue;
     const pool=owner.effectPools[kind]??(owner.effectPools[kind]=[]);
     if(!pool.length)pool.push({type:kind,mesh:new THREE.Sprite(material.clone())});
-    const mesh=pool[0].mesh,previous=mesh.position.clone(),size=mesh.scale.clone();
+    const mesh=pool[0].mesh,previous=mesh.position.clone(),size=mesh.scale.clone(),culled=mesh.frustumCulled;
     if(mesh.parent)continue;
     mesh.position.copy(position);mesh.scale.setScalar(.35);mesh.frustumCulled=false;owner.worldRoot.add(mesh);
-    cleanup.push(()=>{mesh.removeFromParent();mesh.position.copy(previous);mesh.scale.copy(size);mesh.frustumCulled=true;});
+    cleanup.push(()=>{mesh.removeFromParent();mesh.position.copy(previous);mesh.scale.copy(size);mesh.frustumCulled=culled;});
   }
   const flash=owner.weaponRig?.muzzleFlash;
   if(flash&&owner.weapon.visible){const visible=flash.visible;flash.visible=true;cleanup.push(()=>{flash.visible=visible;});}
   const tracer=owner.effectPools.tracer?.[0]?.mesh;
   if(tracer&&!tracer.parent){const old=tracer.frustumCulled;tracer.frustumCulled=false;owner.worldRoot.add(tracer);cleanup.push(()=>{tracer.removeFromParent();tracer.frustumCulled=old;});}
+  const foliageCleanup=owner.vegetation?.warmupSamples?.(owner,position);if(foliageCleanup)cleanup.push(foliageCleanup);
   return ()=>{for(const restore of cleanup.reverse())restore();};
 }
 export class ShaderWarmup{
@@ -71,11 +72,12 @@ export class ShaderWarmup{
     if(this.busy)throw Error('Graphics warmup already running');
     this.busy=true;
     const task=this.execute(state,localId,view,signal,progress);
-    this.task=task;
-    return task.finally(()=>{this.busy=false;if(this.task===task)this.task=null;});
+    const settled=task.finally(()=>{this.busy=false;if(this.task===settled)this.task=null;});
+    this.task=settled;return settled;
   }
   async execute(state,localId,view,signal,progress){
     const owner=this.owner,r=owner.renderer,start=performance.now(),local=state.players.find(p=>p.id===localId);
+    let warmedSamples=false;
     const stats=this.stats={api:owner.api,map:state.mapId,mode:'auto',assetsReady:false,textures:0,materials:0,compileMs:0,drawMs:0,totalMs:0,complete:false};
     const stage=async(p,label)=>{signal.throwIfAborted();progress(p,label);await nextFrame();signal.throwIfAborted();};
     const frame=()=>owner.render({...state,events:[]},localId,1/60,{...view,yaw:local?.yaw??0,pitch:local?.pitch??0,vehicleCameraYaw:local?.yaw??0,paused:true,warming:true});
@@ -97,12 +99,12 @@ export class ShaderWarmup{
         if(stats.textures>=limits.items||performance.now()>=deadline)break;
         if(this.uploaded.get(texture)===texture.version)continue;
         if(!texture.image&&!texture.mipmaps?.length)continue;
-        try{r.initTexture?.(texture);this.uploaded.set(texture,texture.version);stats.textures++;}
+        try{if(typeof r.initTexture!=='function')break;await r.initTexture(texture);this.uploaded.set(texture,texture.version);stats.textures++;}
         catch(error){console.warn('Texture warmup deferred',texture.name,error);}
         if(stats.textures%4===0)await nextFrame();
       }
       await stage(.65,'Компиляция шейдеров');
-      const restore=prepareWarmupSamples(owner);
+      const restore=prepareWarmupSamples(owner);warmedSamples=true;
       try{
         const begin=performance.now();await this.compile(signal);stats.compileMs=performance.now()-begin;
         await stage(.85,'Подготовка графических проходов');
@@ -113,12 +115,12 @@ export class ShaderWarmup{
       }finally{restore();}
       // Clear sample-only heat, smoke and output; normal gameplay never
       // consumes the synthetic effect or a temporal history from it.
-      owner.postPass.worldEffects.heat.count=0;
-      owner.postPass.worldEffects.state.heatStrength.set(0,0,0,0);
-      owner.frameGeneration?.reset();
       await stage(1,'Графика готова');
       stats.complete=true;
-    }finally{stats.totalMs=Math.round(performance.now()-start);}
+    }finally{
+      if(warmedSamples){owner.postPass.worldEffects.heat.count=0;owner.postPass.worldEffects.state.heatStrength.set(0,0,0,0);owner.frameGeneration?.reset();}
+      stats.totalMs=Math.round(performance.now()-start);
+    }
   }
   async compile(signal){
     const {renderer:r,scene,camera,weapon,worldRoot,postPass}=this.owner;

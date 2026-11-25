@@ -796,7 +796,7 @@ async function prepareMatchFrame(ticket){
   loadingScreen.update(2,'Загрузка бойцов и техники');
   await renderer.preloadMatchActors(state);
   signal.throwIfAborted();
-  loadingScreen.update(3,'Подготовка первого кадра');
+  loadingScreen.update(2.5,'Подготовка первого кадра');
   try{
     await renderer.warmMatchFrame(state,localId,{
       ...ticket.view,vehicleThirdPerson,campaignTankZoom,campaignRender:campaignPresentation?.renderHook,

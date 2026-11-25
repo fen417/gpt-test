@@ -2126,10 +2126,10 @@ export class GameRenderer {
     worldFX.inMenu=menu;worldFX.cinematic=this.cinematicCamera;
     worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
     worldFX.softSmoke=softSmoke;worldFX.softEnabled=softEnabled;
-    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(warming||this.effects.length||this.activeHeatFires.length)){
+    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(warming&&this.graphicsEffects?.shaderWarmup!=='off'||this.effects.length||this.activeHeatFires.length)){
       const heat=worldFX.heat;
       heat.begin(this.camera,this.clock);
-      if(warming&&this.shaderWarmup.busy){const p=this.scratchPosition.set(0,0,-5).applyMatrix4(this.camera.matrixWorld);heat.add(p.x,p.y,p.z,1,.35);}
+      if(warming&&this.shaderWarmup.busy&&this.graphicsEffects?.shaderWarmup!=='off'){const p=this.scratchPosition.set(0,0,-5).applyMatrix4(this.camera.matrixWorld);heat.add(p.x,p.y,p.z,1,.35);}
       for(const {type,age,life,size,mesh} of this.effects){
         if(type!=='flash')continue;
         const {x,y,z}=mesh.position;

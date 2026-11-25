@@ -167,11 +167,11 @@ async function run(api){
       if(q==='high'){assert.ok(result.authored>0);assert.ok(result.grass>0);assert.ok(result.tiles<=52);}
       if(q==='offAgain')assert.equal(result.batches,0);
     }
-    const foliageHigh=compare(foliage.off,foliage.high),foliageLow=compare(foliage.off,foliage.low),wind=compare(foliage.high,foliage.moving),restored=compare(foliage.off,foliage.offAgain);
-    console.log('VEGETATION',api,JSON.stringify({high:foliageHigh,low:foliageLow,wind,restored}));
+    const foliageHigh=compare(foliage.off,foliage.high),foliageLow=compare(foliage.off,foliage.low),wind=compare(foliage.high,foliage.moving),foliageRestored=compare(foliage.off,foliage.offAgain);
+    console.log('VEGETATION',api,JSON.stringify({high:foliageHigh,low:foliageLow,wind,restored:foliageRestored}));
     assert.ok(foliageHigh.changed>.01&&foliageLow.changed>.01,api+' enhanced foliage not rendered');
     assert.ok(wind.changed>.0002,api+' GPU wind did not change image');
-    assert.ok(restored.mean<.5,api+' original vegetation did not restore');
+    assert.ok(foliageRestored.mean<.5,api+' original vegetation did not restore');
     return {passed:true};
   }finally{await browser.close();}
 }
