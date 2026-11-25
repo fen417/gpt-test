@@ -8,16 +8,20 @@ import {makeWeatherMask,weatherParameters} from '../src/map-weathering.js';
 import {setWebGlWeathering} from '../src/webgl-map-weathering.js';
 import {setWebGpuWeathering} from '../src/webgpu-map-weathering.js';
 const canvas=document.getElementById('probe');
-let renderer,scene,camera,materials,mask,apply,device,lost,errors=[];
+let renderer,scene,camera,materials,mask,apply,device,lost,software=false,errors=[];
+const instanceDropped=error=>/Instance dropped in popErrorScope|external Instance reference no longer exists|GPU device (?:was )?lost/i.test(String(error));
 const tick=()=>new Promise(resolve=>requestAnimationFrame(resolve));
-window.initWeatherSmoke=async api=>{
+window.initWeatherSmoke=async (api,softwareAdapter=false)=>{
   if(api==='webgpu'){
-    const adapter=await navigator.gpu?.requestAdapter();
+    const adapter=await navigator.gpu?.requestAdapter(softwareAdapter?{forceFallbackAdapter:true}:undefined);
     if(!adapter)return {skipped:'No WebGPU adapter'};
+    const info=adapter.info??{};
+    software=softwareAdapter||adapter.isFallbackAdapter||/swiftshader|llvmpipe|software/i.test([info.vendor,info.architecture,info.device,info.description].join(' '));
     device=await adapter.requestDevice();
     device.addEventListener('uncapturederror',e=>errors.push(String(e.error?.message??e.error)));
     device.lost.then(info=>lost=info.message||info.reason);
     renderer=new WebGPURenderer({canvas,device,antialias:false,alpha:false});
+    renderer.onDeviceLost=info=>{lost=info?.message||info?.reason||'GPU device lost';};
     await renderer.init();
     if(!renderer.backend?.isWebGPUBackend)throw Error('Not a WebGPU backend');
     apply=setWebGpuWeathering;
@@ -40,20 +44,29 @@ window.initWeatherSmoke=async api=>{
   wall.position.set(0,2.5,-3);scene.add(wall);
   materials=[floor.material,wall.material];
   mask=makeWeatherMask();
-  return {api,ok:true};
+  return {api,ok:true,software};
 };
 window.drawWeatherSmoke=async quality=>{
   const params=weatherParameters('quarry','concrete',quality);
   for(const material of materials)apply(material,params?mask:null,params);
-  if(device)device.pushErrorScope('validation');
+  let scoped=false;
   try{
+    if(device){device.pushErrorScope('validation');scoped=true;}
     await renderer.compileAsync(scene,camera);
     renderer.render(scene,camera);
     await tick();await tick();
+  }catch(error){
+    if(software&&instanceDropped(error))lost=String(error);else throw error;
   }finally{
-    if(device){
-      const validation=await device.popErrorScope();
-      if(validation)errors.push(validation.message);
+    if(scoped){
+      try{
+        const validation=await device.popErrorScope();
+        if(validation)errors.push(validation.message);
+      }catch(error){
+        // Dawn/SwiftShader may drop the instance even on the unmodified
+        // baseline frame. This is not a shader validation result.
+        if(software&&instanceDropped(error))lost=String(error);else throw error;
+      }
     }
   }
   return {errors:[...errors],lost:lost??null};
