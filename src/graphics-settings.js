@@ -4,14 +4,14 @@ const legacy = Object.freeze({
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
   sky: 'legacy', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
-  smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off',
+  smoke:'legacy', heatDistortion:'off', softParticles:'off', explosions:'legacy', particleLighting:'off', muzzleEffects:'legacy', muzzleLights:'off', fireEffects:'legacy', fireLighting:'off', dust:'off',
   adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
 
 const ultra = Object.freeze({
   ...legacy, surfaceDetail:'ultra',mapWeathering:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
-  sky: 'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high',
+  sky: 'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
 
 export const GRAPHICS_PRESETS = Object.freeze({ legacy, low: legacy, medium: legacy, high: legacy, ultra });
@@ -67,11 +67,16 @@ export const GRAPHICS_CONTROLS = [
     ['grain', 'Зерно', 'Добавляет мелкое зерно поверх изображения.', choices(old, off, low, high)],
   ]],
   ['Эффекты', [
-    ['smoke','Дым','Добавляет неоднородность и движение мелких облаков дыма.',choices(old,high)],
+    ['smoke','Дым','Неоднородные клубы, дрейф и многослойная турбулентность. Высокое качество использует дополнительную выборку текстуры.',choices(old,medium,high)],
+    ['muzzleEffects','Дульная вспышка','Нерегулярная яркая вспышка и короткий пороховой дым.',choices(old,high)],
+    ['muzzleLights','Освещение от выстрелов','Реальные точечные источники света без теней. Низкое — свои выстрелы, высокое — также ближайшие бойцы и техника (до трёх источников).',choices(off,low,high)],
+    ['fireEffects','Огонь','Текстурированные языки пламени и горящие обломки.',choices(old,high)],
+    ['fireLighting','Освещение от огня','Локальный мерцающий свет от близких очагов. Общий ограниченный пул света.',choices(off,high)],
+    ['dust','Пыль и обломки','Пыль от техники и попаданий, вытянутые искры. Ограничено расстоянием.',choices(off,medium,high)],
     ['softParticles','Мягкие частицы','Плавно скрывает дым при пересечении с поверхностями. Добавляет проход при наличии дыма.',choices(off,high)],
     ['particleLighting','Освещение дыма','Имитирует рассеивание света на частицах со стороны солнца.',choices(off,high)],
     ['heatDistortion','Марево','Искажает воздух над огнём и вспышками. При прицеливании отключается.',choices(off,high)],
-    ['explosions','Взрывы','Добавляет короткую HDR-вспышку и детализированный шлейф дыма.',choices(old,high)],
+    ['explosions','Взрывы','HDR-огненный шар, расходящаяся пыль, искры и клубы дыма.',choices(old,medium,high)],
   ]],
   ['Производительность', [
     ['adaptiveTarget', 'Адаптивное качество', 'После устойчивой нагрузки уменьшает качество отдельных эффектов.', choices(off, ...[30,45,60,90,120].map(n=>[String(n),n+' FPS']))],
@@ -110,10 +115,10 @@ export const GRAPHICS_GROUPS = [
     legacy:['Как раньше','legacy','legacy'], off:['Выкл.','off','off'], low:['Слабые','low','low'], high:['Выраженные','high','high'],
   }],
   ['smokeQuality','Качество дыма','Детализация, освещение и мягкие края частиц.', ['smoke','softParticles','particleLighting'], {
-    legacy:['Как раньше','legacy','off','off'], medium:['Среднее','high','off','high'], high:['Высокое','high','high','high'],
+    legacy:['Как раньше','legacy','off','off'], medium:['Среднее','medium','off','high'], high:['Высокое','high','high','high'],
   }],
-  ['explosionQuality','Взрывы и марево','Вспышки, шлейфы и искажение воздуха над огнём.', ['explosions','heatDistortion'], {
-    legacy:['Как раньше','legacy','off'], medium:['Среднее','high','off'], high:['Высокое','high','high'],
+  ['explosionQuality','Взрывы и марево','Вспышки, шлейфы и искажение воздуха над огнём.', ['explosions','heatDistortion','fireEffects','dust'], {
+    legacy:['Как раньше','legacy','off','legacy','off'], medium:['Среднее','medium','off','high','medium'], high:['Высокое','high','high','high','high'],
   }],
   ['adaptivePolicy','Приоритет адаптации','До какого уровня можно упрощать эффекты и масштаб.', ['adaptiveFloor','adaptiveMinScale','adaptiveClarity'], {
     clarity:['Чёткость','balanced','65','on'], balanced:['Баланс','balanced','65','off'], fps:['Частота кадров','minimum','50','off'],

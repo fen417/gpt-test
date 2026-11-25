@@ -608,7 +608,8 @@ function receive(next){
   }
 }
 function presentLocalShot(event){
-  const player=local();if(!player?.alive)return;const weapon=equippedPersonalWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
+  const player=local();if(!player?.alive)return;
+  renderer?.queueCosmeticShot(event);const weapon=equippedPersonalWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
   recoilPitch=Math.min(.12,recoilPitch+impulse);recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin(event.shotSeq*2.1)*impulse*.31));
   audio.events({time:event.time,events:[event],players:state.players},player,{immediate:true});
   text('ammo',(simulation?.client??multiplayer).prediction.player.ammo);

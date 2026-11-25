@@ -9,8 +9,13 @@ const gpuSteps = [
   ['ao',{gtao:'high',high:'low'}],
   ['contact',{high:'medium',medium:'low',low:'off'}],
   ['shadows',{ultra:'very-high','very-high':'high',high:'medium'}],
-  ['explosions',{high:'legacy'}],
-  ['smoke',{high:'legacy'}],
+  ['muzzleLights',{high:'low',low:'off'}],
+  ['fireLighting',{high:'off'}],
+  ['dust',{high:'medium',medium:'off'}],
+  ['explosions',{high:'medium',medium:'legacy'}],
+  ['smoke',{high:'medium',medium:'legacy'}],
+  ['fireEffects',{high:'legacy'}],
+  ['muzzleEffects',{high:'legacy'}],
   ['softParticles',{high:'off'}],
   ['bloom',{ultra:'high',high:'medium',medium:'low',low:'off'}],
   ['ao',{low:'off'}],
@@ -98,6 +103,6 @@ export class AdaptiveGraphics {
 }
 
 function gpuEffectName(previous,next) {
-  const names={reflections:'отражения',waterRefraction:'преломление воды',water:'вода',localReflections:'локальные отражения',atmosphere:'атмосфера',relief:'параллакс-рельеф',mapWeathering:'износ поверхностей',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',softParticles:'мягкие частицы',bloom:'свечение'};
+  const names={reflections:'отражения',waterRefraction:'преломление воды',water:'вода',localReflections:'локальные отражения',atmosphere:'атмосфера',relief:'параллакс-рельеф',mapWeathering:'износ поверхностей',ao:'AO',contact:'контактные тени',shadows:'каскады',explosions:'взрывы',smoke:'дым',muzzleLights:'свет выстрелов',fireLighting:'свет огня',dust:'пыль',fireEffects:'огонь',muzzleEffects:'дульная вспышка',softParticles:'мягкие частицы',bloom:'свечение'};
   return Object.keys(names).map(key=>previous[key]!==next[key]?names[key]:null).find(Boolean)??'эффекты';
 }
