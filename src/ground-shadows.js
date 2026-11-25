@@ -36,5 +36,6 @@ export class GroundShadows {
     };
     material.customProgramCacheKey=()=>`ground-shadow-v1-${material.type}-${previousKey}`;material.needsUpdate=true;
   }
+  releaseMap(id){const t=this.textures.get(id);if(t&&t!==this.uniforms.groundShadow.value){t.dispose();this.textures.delete(id);}}
   dispose(){for(const texture of this.textures.values())texture.dispose();}
 }

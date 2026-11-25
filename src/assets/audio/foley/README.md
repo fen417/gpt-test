@@ -30,6 +30,6 @@ Runtime WAV masters were moved to `art-source/audio/` and encoded as Opus with A
 
 ## Explosion onset alignment (0.16)
 
-The heavy recording contained approximately 604 ms of quiet pre-blast rumble before its audible attack. `npm run assets:explosion` regenerates the runtime Ogg from the unchanged compressed master preserved at `art-source/audio/foley/explosion-heavy.ogg`, with a 3 ms attack lead and 1 ms cut fade. The strong attack now begins approximately 3 ms into the file. Attribution above also covers the preserved master. Timing measurements are in `docs/perf/pt90-explosion-alignment.json`.
+The heavy recording contained approximately 604 ms of quiet pre-blast rumble before its audible attack. `npm run assets:explosion` regenerates the runtime Ogg from the unchanged compressed master preserved at `art-source/audio/foley/explosion-heavy.ogg`, with a 3 ms attack lead and 1 ms cut fade. The strong attack now begins approximately 3 ms into the file. Attribution above also covers the preserved master. Timing measurements are in `.perf-local/pt90-explosion-alignment.json`.
 
 PT-90 explosion reports are scheduled on the visual explosion presentation event, without a second distance-propagation timer. Other explosion propagation rules remain as before.

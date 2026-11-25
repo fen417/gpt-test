@@ -1,3 +1,4 @@
+import {TEST_BUILD} from './build-mode.js';
 import {createNetworkSocket} from './network-simulator.js';
 import {predictPersonalFire} from '../shared/fire-control.js';
 import {advanceTankSystems,aimTankMachineGun,fireTank} from '../shared/tank.js';
@@ -36,11 +37,13 @@ export function normalizeServerUrl(value){
   if(!url.pathname||url.pathname==='/')url.pathname='/ws';url.hash='';return url.href;
 }
 export async function defaultServerUrl(){
+  if(TEST_BUILD)return '';
   let value=import.meta.env?.VITE_SERVER_URL??'';
   if(!value){try{const response=await fetch(new URL((import.meta.env?.BASE_URL??'./')+'network-config.json',globalThis.location?.href??import.meta.url));if(response.ok)value=(await response.json()).serverUrl??'';}catch{}}
   return value?normalizeServerUrl(value):'';
 }
 export async function configuredServerUrl(){
+  if(TEST_BUILD)return '';
   let custom;
   try{custom=localStorage.getItem('sector09-server-url');}catch{}
   return custom?normalizeServerUrl(custom):defaultServerUrl();
@@ -157,6 +160,7 @@ export class Multiplayer{
   get mode(){return this._mode;}get phase(){return this._phase;}get canResume(){return !!(this.token||safeStorage.get('sector-resume:'+this.url));}get roomNameLabel(){return this.roomName??'';}
   async browse(url){await this.open(url);await this.request('list');return this.rooms;}
   async open(url){
+    if(TEST_BUILD)throw Error('Сетевая игра отключена в тестовой сборке.');
     url=normalizeServerUrl(url||this.url||await configuredServerUrl());
     if(this.ws?.readyState===WebSocket.OPEN&&this.url===url)return;
     if(this.connecting&&this.url===url)return this.connecting;

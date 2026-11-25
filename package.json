@@ -1,6 +1,6 @@
 {
   "name": "gpt-test-sector-09",
-  "version": "0.40.0",
+  "version": "0.41.0",
   "private": true,
   "type": "module",
   "description": "SECTOR 09 — conquest in your browser",
@@ -8,8 +8,6 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build && node scripts/check-budgets.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "preview:pistols": "vite build --config scripts/pistol-preview.config.mjs && vite preview --config scripts/pistol-preview.config.mjs",
-    "preview:tank": "vite build --config scripts/tank-preview.config.mjs && vite preview --config scripts/tank-preview.config.mjs",
     "assets:tank": "node scripts/bake-tank.mjs",
     "start": "node server/index.js",
     "test": "node --test test/*.test.js",
@@ -20,7 +18,11 @@
     "assets:audio": "node scripts/prepare-runtime-audio.mjs",
     "assets:explosion": "node scripts/align-explosion-audio.mjs",
     "assets:infantry": "node scripts/import-infantry.mjs",
-    "viewer:build": "node scripts/package-infantry-viewer.mjs"
+    "assets:pbr": "node scripts/prepare-pbr.mjs",
+    "predev": "node scripts/prepare-pbr.mjs",
+    "prebuild": "node scripts/prepare-pbr.mjs",
+    "assets:gi": "node scripts/bake-gi.mjs",
+    "assets:architecture": "node scripts/bake-architecture.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3",

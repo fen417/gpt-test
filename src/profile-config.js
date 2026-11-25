@@ -1,4 +1,6 @@
+import {TEST_BUILD} from './build-mode.js';
 function readConfig(){
+  if(TEST_BUILD)return null;
   try{
     const config=JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG??'null');
     const keys=['apiKey','authDomain','databaseURL','projectId','appId'];

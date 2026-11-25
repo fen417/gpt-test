@@ -28,10 +28,12 @@ export function desertRockMaterial() {
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
   map.wrapS = map.wrapT = THREE.RepeatWrapping; map.anisotropy = 4;
-  return pairMaterials(
-    new THREE.MeshStandardMaterial({ map, bumpMap: map, bumpScale: .15, roughness: 1, vertexColors: true }),
+  const material=pairMaterials(
+    new THREE.MeshStandardMaterial({ map, bumpMap: map, bumpScale: .15, roughness: 1, normalScale:new THREE.Vector2(.24,.24),vertexColors: true }),
     new THREE.MeshLambertMaterial({ map, vertexColors: true }),
   );
+  material.userData.remasterSurface=material._lowMaterial.userData.remasterSurface='rock';
+  return material;
 }
 
 export function desertMountain(owner, material, box, terrain) {

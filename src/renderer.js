@@ -1,14 +1,23 @@
+import {resourceSet,collectMaterial,collectRoot,collectModel,collectWorld,estimateBytes,releaseResources,residencyPolicy} from './map-residency.js';
+import {ArchitectureLightmaps} from './architecture-lightmaps.js';
 import {batchStaticWorld} from './static-batching.js';
 import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, GEOMETRY_QUALITY} from './graphics-settings.js';
 import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
+import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
+import {EffectLights} from './effect-lights.js';
 import {WaterAppearance} from './water-appearance.js';
+import {IndirectLighting} from './indirect-lighting.js';
+import {Vegetation} from './vegetation.js';
+import {ShaderWarmup} from './shader-warmup.js';
+import {uploadPrefix,billboardRadius} from './render-work.js';
+import {atmosphereProfile} from './atmosphere-profile.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
 import {LocalReflections} from './local-reflections.js';
 import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
 import * as THREE from 'three';
 import {WebGlPenumbra} from './webgl-penumbra.js';
-import {directionalPenumbraScale} from './directional-penumbra.js';
+import {directionalPenumbraScale,applyCascadeShadowBias} from './directional-penumbra.js';
 import {WebGlCascades, shadowCascadeOptions} from './shadow-cascades.js';
 import { CachedShadows } from './cached-shadows.js';
 import { InfantryAssets } from './infantry-assets.js';
@@ -184,10 +193,14 @@ export class GameRenderer {
     this.perfEnabled=typeof location!=='undefined'&&new URLSearchParams(location.search).has('perf');
     this.waterReflectionPlane=new THREE.Vector2();
     this.localReflections=new LocalReflections();
+    this.indirectLighting=new IndirectLighting(webgpu?.setWebGpuGI);
+    this.architectureLightmaps=new ArchitectureLightmaps(webgpu?.setWebGpuArchitectureAO);
+    this.vegetation=new Vegetation(webgpu?.makeWebGpuFoliageMaterial);
+    this.shaderWarmup=new ShaderWarmup(this);
     this.finishWorldEffects=profiler=>{
       const effects=this.postPass.worldEffects;
       effects.apply(this.postPass.target,this.camera,this.scene,this.sunOffset,this.sun,this.presentingCampaign,this.clock,this.cascades,profiler);
-      if(effects.softSmoke&&effects.world.depthTexture){
+      if(effects.softSmoke&&this.effectBatches.smoke.count&&effects.world.depthTexture){
         this.softSmokePass??=new SoftSmokePass(this,effects.world.depthTexture);
         this.softSmokePass.render(this,effects.world,profiler);
       }
@@ -219,9 +232,10 @@ export class GameRenderer {
     this.gadgetTimer = 0;
     this.gadgetDuration = 0.65;
     this.effects = [];
-    this.activeHeatFires=[];
+    this.activeHeatFires=[];this.activeFireLights=[];
+    this.cosmeticShots=[];this.flashKeys=new Map();
     this.bulletMarks = new BulletMarks();
-    this.effectPools = { tracer: [], shell: [], smoke: [], spark: [] };
+    this.effectPools = { tracer: [], shell: [], smoke: [], spark: [], muzzle: [], flame: [] };
     this.seenEvents = new Set();
     this.lastShot = -1;
     this.kick = 0;
@@ -244,6 +258,8 @@ export class GameRenderer {
     this.cameraAlive = null;
     this.scratchPosition = new THREE.Vector3();
     this.viewFrustum = new THREE.Frustum();
+    this.staticMaterialRevision=0;
+    this.particleBounds=new THREE.Sphere();this.particleCulled=0;
     this.viewProjection = new THREE.Matrix4();
     this.soldierBounds = new THREE.Sphere(new THREE.Vector3(), 2.5);
     this.flagBounds = new THREE.Sphere(new THREE.Vector3(), 4.5);
@@ -351,7 +367,7 @@ export class GameRenderer {
     this.worldRoot = new THREE.Group();
     this.worldRoot.add(this.atmosphere.sky);
     this.scene.add(this.worldRoot);
-    this.worlds = new Map();
+    this.worlds = new Map();this.mapEvictions=0;this.modelPins=new Map();this.modelRecent=new Map();this.modelClock=0;
     this.villageModel = new VillageModel(this,dryWindAssets);
     this.alhadraModel = new VillageModel(this,alhadraAssets);
     this.alhadraDesertModel = new VillageModel(this,alhadraDesertAssets);
@@ -370,6 +386,7 @@ export class GameRenderer {
       this.scene.add(mesh);
       return { mesh, age: 0, life: 0.22, type: 'light' };
     });
+    this.effectLights=new EffectLights(this.scene);
     this.wallStow = 0;
     this.smokeTexture = canvasTexture(64, (ctx, size) => {
       const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
@@ -382,6 +399,7 @@ export class GameRenderer {
       }
       ctx.globalCompositeOperation = 'source-over';
     });
+    this.activeSmokeTexture=this.smokeTexture;
     this.shellMaterial = material(0xb9954c, .32, .82);
     this.sparkMaterial = new THREE.MeshBasicMaterial({ color: 0xffc475 });
     this.effectBatches = {};
@@ -423,7 +441,13 @@ export class GameRenderer {
             vec2 center=st-.5;
             st+=.038*sin(vec2(11.,8.)*center.yx+vec2(smokeTime*1.3,-smokeTime*.8));
           }
-          gl_FragColor = texture2D(map,st) * smokeColor;
+          vec4 cloud=texture2D(map,st);
+          if(smokeMotion>1.5){
+            vec4 detail=texture2D(map,(st-.5)*1.42+.5+vec2(sin(smokeTime*.37),cos(smokeTime*.29))*.065);
+            cloud.rgb=mix(cloud.rgb,detail.rgb,.20*detail.a);
+            cloud.a*=.76+.24*detail.a;
+          }
+          gl_FragColor = cloud * smokeColor;
           if(dot(smokeLight,smokeLight)>.001){
             vec3 puff=normalize(vec3((smokeUv-.5)*2.,.64));
             gl_FragColor.rgb*=.84+.37*max(0.,dot(puff,smokeLight));
@@ -552,6 +576,14 @@ export class GameRenderer {
     if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
+    this.vegetation?.clear();
+    this.indirectLighting?.clear();
+    this.architectureLightmaps?.clear();
+    this.enhancedSurfaces?.clear(); // Never clone a shared material with temporary PBR textures.
+    this.waterAppearance?.restore();
+    this.localReflections.dispose();this.postPass.worldEffects.receivers.invalidate();
+    this.interiorVisibility.restore();this.interiorVisibility.root=null;this.interiorVisibility.items=[];
+    this.cachedShadows.invalidate(true);
     this.postPass.worldEffects.previousClock=undefined;
     for(const type of new Set(map.vehicleSpawns?.map(vehicle=>vehicle.type)))lightVehicleModels[type]?.load();
     let world = this.worlds.get(map.id);
@@ -603,7 +635,7 @@ export class GameRenderer {
       });
       this.worlds.set(map.id, world);
       if(world.model&&!world.model.base)world.model.loadBase().then(base=>{
-        if(world.model.disposed)return;
+        if(world.evicted||world.model.disposed||this.disposed)return;
         if(base)this.installBakedBase(world,base);
         else if(world.model===this.portModel||world.model===this.lagunaModel||world.model===this.estateModel)this.installMapFallback(world,map);
       });
@@ -626,7 +658,7 @@ export class GameRenderer {
     this.renderer.toneMappingExposure=map.toneMappingExposure??1.06;
     if(this.webgpu)this.atmosphere.hazeAmount.value=map.theme==='desert-village'?.16:0;
     else this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
-    this.staticRoot = world.root;
+    this.staticRoot = world.root;this.staticMaterialRevision++;
     this.portWaterMesh=world.water?world.root.getObjectByName('Port water'):null;
     this.mapDetails=world.details;this.detailLevel=undefined;
     this.groundShadows.setMap(map);
@@ -658,17 +690,82 @@ export class GameRenderer {
     this.staticMenuShadows = false;
     this.cascades?.invalidate(true);
     this.cameraPlayerId = null;
+    this.worlds.delete(map.id);this.worlds.set(map.id,world);
+    this.trimMapResidency();
+  }
+
+  modelSlots(){return ['villageModel','alhadraModel','alhadraDesertModel','telMazinModel','naharModel','portModel','lagunaModel','estateModel'];}
+  commonMapResources(){
+    const out=resourceSet();
+    for(const g of Object.values(this.geo??{}))if(g?.isBufferGeometry)out.geometries.add(g);
+    for(const collection of [this.surfaces,this.materials])for(const m of Object.values(collection??{}))collectMaterial(out,m);
+    for(const m of this.surfaceCache?.values()??[])collectMaterial(out,m);
+    for(const t of this.flagLogos??[])out.textures.add(t);
+    if(this.atmosphere?.envTexture)out.textures.add(this.atmosphere.envTexture);
+    return out;
+  }
+  forgetMapMaterial(material){this.cascades?.forgetMaterial?.(material);this.penumbra?.forgetMaterial?.(material);}
+  releaseMapModel(model){
+    const slot=this.modelSlots().find(key=>this[key]===model);
+    if(!slot)return;
+    const owned=collectModel(resourceSet(),model);
+    for(const m of model.materials.values()){this.forgetMapMaterial(m);if(m._lowMaterial)this.forgetMapMaterial(m._lowMaterial);}
+    model.dispose();this.modelRecent.delete(model);this.modelPins.delete(model);
+    this[slot]=model instanceof PortModel?new PortModel(this):new model.constructor(this,model.assets);
+    return owned;
+  }
+  evictWorld(id,world){
+    if(world.root===this.staticRoot||this.modelPins.has(world.model))return false;
+    const owned=collectWorld(world),protectedSet=this.commonMapResources();
+    collectRoot(protectedSet,this.scene);
+    for(const [otherId,other] of this.worlds)if(otherId!==id){collectRoot(protectedSet,other.root);collectModel(protectedSet,other.model);}
+    for(const key of this.modelSlots())if(this[key]!==world.model)collectModel(protectedSet,this[key]);
+    world.evicted=true;this.worlds.delete(id);world.root.removeFromParent();
+    let released=resourceSet();
+    if(world.model&&![...this.worlds.values()].some(w=>w.model===world.model))released=this.releaseMapModel(world.model)??released;
+    if(world.quarryDetail){const quarry=collectRoot(resourceSet(),world.quarryDetail);disposeQuarryDetail(world.quarryDetail);for(const key of Object.keys(released))for(const v of quarry[key])released[key].add(v);}
+    releaseResources(owned,protectedSet,released,m=>this.forgetMapMaterial(m));
+    world.root.clear();this.groundShadows.releaseMap?.(id);this.mapEvictions++;return true;
+  }
+  trimMapResidency(keepModel=null){
+    if(this.disposed)return;
+    const policy=residencyPolicy(this.integratedGpu,this.lowQuality),common=this.commonMapResources();
+    const total=()=>{const out=resourceSet();for(const w of this.worlds.values()){collectRoot(out,w.root);collectModel(out,w.model);}for(const key of this.modelSlots())collectModel(out,this[key]);return estimateBytes(out,common);};
+    let bytes=total();
+    for(const [id,world] of this.worlds){
+      if(this.worlds.size<=policy.worlds&&bytes<=policy.bytes)break;
+      if(keepModel&&world.model===keepModel)continue;
+      if(this.evictWorld(id,world))bytes=total();
+    }
+    const worldModels=new Set([...this.worlds.values()].map(w=>w.model));
+    const preloads=[...this.modelRecent.entries()].filter(([model])=>!worldModels.has(model)&&!this.modelPins.has(model)).sort((a,b)=>a[1]-b[1]);
+    let remaining=preloads.length;
+    for(const [model] of preloads){
+      if(model===keepModel)continue;
+      if(remaining>1||bytes>policy.bytes||keepModel){this.releaseMapModel(model);remaining--;bytes=total();}
+    }
+    this.mapResidency={worlds:this.worlds.size,estimatedBytes:bytes,budgetBytes:policy.bytes,maxWorlds:policy.worlds,evictions:this.mapEvictions};
   }
 
   async preloadMapVisuals(mapId,{quality='high',gfx}={}) {
     const model=this.bakedMapModel(getMap(mapId));
     if(!model)return;
-    const base=await model.loadBase();
-    if(base&&geometryQuality(quality,gfx?.detail)==='high')await model.loadDetail();
-    await model.textureLoader.ready();
+    this.modelRecent.set(model,++this.modelClock);
+    const wantsDetail=geometryQuality(quality,gfx?.detail)==='high';
+    if(model.base&&(!wantsDetail||model.detail)&&!model.textureLoader.pending.size)return;
+    this.modelPins.set(model,(this.modelPins.get(model)??0)+1);
+    try{
+      const base=await model.loadBase();
+      if(base&&wantsDetail)await model.loadDetail();
+      await model.textureLoader.ready();
+    }finally{
+      const count=(this.modelPins.get(model)??1)-1;if(count)this.modelPins.set(model,count);else this.modelPins.delete(model);
+      if(!this.disposed)this.trimMapResidency(model);
+    }
   }
 
   async prepareMatchMap(mapId,view,signal) {
+    await this.shaderWarmup.idle();signal.throwIfAborted();
     await this.preloadMapVisuals(mapId,view);
     signal.throwIfAborted();
     this.setMap(mapId);
@@ -695,28 +792,18 @@ export class GameRenderer {
     ]);
   }
 
-  async warmMatchFrame(state,localId,view,signal) {
-    const local=state.players.find(player=>player.id===localId);
-    this.render({...state,events:[]},localId,1/60,{
-      ...view,yaw:local?.yaw??0,pitch:local?.pitch??0,vehicleCameraYaw:local?.yaw??0,paused:true,warming:true,
+  async warmMatchFrame(state,localId,view,signal,progress) {
+    await this.shaderWarmup.idle();signal.throwIfAborted();
+    return this.shaderWarmup.run(state,localId,view,signal,progress);
+  }
+
+  drawWarmupScene(){
+    const meshes=[];
+    this.staticRoot.traverseVisible(object=>{
+      if(object.isMesh&&object.frustumCulled){meshes.push(object);object.frustumCulled=false;}
     });
-    await this.renderer.compileAsync?.(this.scene,this.camera);
-    signal.throwIfAborted();
-    if(this.api==='webgpu'){
-      await this.renderer.backend.device.queue.onSubmittedWorkDone();
-    }else{
-      const gl=this.renderer.getContext();
-      const fence=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
-      if(!fence)return;
-      gl.flush();
-      const deadline=performance.now()+750;
-      try{
-        while(performance.now()<deadline&&gl.clientWaitSync(fence,0,0)===gl.TIMEOUT_EXPIRED){
-          signal.throwIfAborted();
-          await new Promise(resolve=>requestAnimationFrame(resolve));
-        }
-      }finally{gl.deleteSync(fence);}
-    }
+    try{this.drawScene(false,true);}
+    finally{for(const mesh of meshes)mesh.frustumCulled=true;}
   }
 
   bakedMapModel(map) {
@@ -731,6 +818,8 @@ export class GameRenderer {
   }
 
   installBakedLayer(world,layer) {
+    if(world.evicted||this.disposed)return;
+    if(world.root===this.staticRoot)this.architectureLightmaps?.suspend();
     world.root.add(layer);
     layer.updateMatrixWorld(true);
     layer.traverse(object=>{
@@ -742,10 +831,15 @@ export class GameRenderer {
     this.updateTextureFiltering();
     this.refreshSurfaceEnhancements();
     this.invalidateBakedVisibility();
+    this.trimMapResidency(world.model);
   }
 
   invalidateBakedVisibility() {
+    this.staticMaterialRevision++;
+    this.waterAppearance?.invalidate();
     this.localReflections.dispose();
+    this.indirectLighting?.invalidate();
+    this.vegetation?.invalidate();
     this.postPass.worldEffects.receivers.invalidate();
     this.interiorVisibility.root=null;
     this.cachedShadows.invalidate(true);
@@ -764,7 +858,7 @@ export class GameRenderer {
       }
     }else if(wanted){
       world.quarryLoad??=loadQuarryDetail(map,this.surfaces.metal).then(layer=>{
-        if(this.disposed){
+        if(this.disposed||world.evicted){
           disposeQuarryDetail(layer);
           return;
         }
@@ -804,6 +898,7 @@ export class GameRenderer {
   }
 
   updateBakedDetail(world,wanted) {
+    if(world.evicted||this.disposed)return;
     world.wantsDetail=wanted;
     const {base,detail}=world.model;
     if(!base||world.fallback)return;
@@ -817,6 +912,7 @@ export class GameRenderer {
     if(visible===Boolean(wanted))return;
     if(wanted)this.installBakedLayer(world,detail);
     else {
+      this.architectureLightmaps?.suspend();
       detail?.removeFromParent();
       detail?.traverse(object=>object.geometry?.dispose());
       this.invalidateBakedVisibility();
@@ -847,6 +943,7 @@ export class GameRenderer {
       else { effect.mesh.removeFromParent(); this.effectPools[effect.type].push(effect); }
     }
     this.effects.length = 0;
+    this.effectLights?.clear();this.cosmeticShots?.splice(0);this.flashKeys?.clear();
     for (const batch of Object.values(this.effectBatches || {})) batch.count = 0;
     this.seenEvents.clear();
     this.lastShot = -1;
@@ -1140,7 +1237,7 @@ export class GameRenderer {
           rig.turretYaw = previous.turretYaw;
           rig.gunSeq = previous.gunSeq;
           rig.flashTime = previous.flashTime;
-          rig.nextSmoke = previous.nextSmoke;
+          rig.nextSmoke = previous.nextSmoke;rig.nextDust=previous.nextDust;rig.nextFlame=previous.nextFlame;
           disposeVehicleRig(previous);
         }
         rig.group.traverse(object => {
@@ -1153,7 +1250,32 @@ export class GameRenderer {
       rig.group.visible = true;
       updateVehicleRig(rig, vehicle, player, dt, blend, vehicleView, this.lowQuality, this.map.terrain);
       if (local) mounted = { vehicle, rig };
+      const dustQuality=this.graphicsEffects?.dust;
+      const groundDust=dustQuality==='high'||dustQuality==='medium'?dustProfile(this.map):null;
+      const speed=Math.abs(vehicle.speed??0);
+      if(groundDust&&vehicle.type!==BLACK_HAWK&&vehicle.hp>0&&speed>2.3&&distance<(dustQuality==='high'?70:42)&&this.effects.length<100&&this.clock>=(rig.nextDust??0)){
+        rig.nextDust=this.clock+(dustQuality==='high'?.11:.23);
+        const direction=Math.sign(vehicle.speed)||1,dx=Math.sin(vehicle.yaw)*direction,dz=Math.cos(vehicle.yaw)*direction;
+        const back=vehicle.type==='atv'?1.1:vehicle.type==='tank'?3.1:2.2;
+        const tracks=dustQuality==='high'?[-.72,.72]:[0];
+        for(const side of tracks){
+          const x=vehicle.x-dx*back+dz*side,z=vehicle.z-dz*back-dx*side,y=this.map.terrain.heightAt(x,z);
+          if(Math.abs((vehicle.y??y)-y)>1.5)continue;
+          this.smoke(x,y+.24,z,.38+Math.min(.65,speed*.035),.85+Math.min(1.1,speed*.07),groundDust.color,{kind:'dust',opacity:groundDust.opacity*Math.min(1,speed*.15),rise:.20,vx:-dx*.7,vz:-dz*.7,enhanced:true});
+        }
+      }
       const damaged = vehicle.hp < vehicle.maxHp * .33;
+      if(damaged&&vehicle.hp<=0&&this.graphicsEffects?.fireEffects==='high'&&distance<60){
+        const width=vehicle.type==='atv'?.9:1.8,height=vehicle.type===BLACK_HAWK?2.8:vehicle.type==='atv'?.8:1.55;
+        const x=vehicle.x,z=vehicle.z,y=vehicle.y??this.map.terrain.heightAt(x,z);
+        if(this.graphicsEffects?.fireLighting==='high')this.activeFireLights.push({x,y,z,width,height});
+        if(this.graphicsEffects?.heatDistortion==='high')this.activeHeatFires.push({x,y,z,width,height});
+        if(this.clock>=(rig.nextFlame??0)&&this.effects.length<105){
+          rig.nextFlame=this.clock+.18;
+          this.hotParticle('flame',x+(this.random()-.5)*width,y+height*.65,z+(this.random()-.5)*width,width*.8,.55);
+          if(this.graphicsEffects.dust==='high'&&this.random()<.45)this.spark(x,y+height*.5,z,.8);
+        }
+      }
       if (damaged && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
         rig.nextSmoke = this.clock + (vehicle.hp > 0 ? .35 : .16);
         const atv = vehicle.type === 'atv', aircraft=vehicle.type===BLACK_HAWK;
@@ -1180,6 +1302,7 @@ export class GameRenderer {
     const active = this.activeSoldiers;
     active.clear();
     const local = state.players.find(p => p.id === localId), localTeam = local?.team ?? 0;
+    const vehiclesById=new Map((state.vehicles??[]).map(v=>[v.id,v]));
     const blend = networkInterpolated || this.scoped ? 1 : 1 - Math.exp(-dt * 18);
     let shadowFrustum = null;
     if (this.renderer.shadowMap.enabled) {
@@ -1196,11 +1319,11 @@ export class GameRenderer {
     for (const player of state.players) {
       if(m03Finale&&player.inExtractionCabin)continue;
       if (player.id === localId&&!m03Finale&&!(this.tankThirdPerson&&player.vehicleSeat===0&&
-        ['tank',BLACK_HAWK].includes(state.vehicles.find(v=>v.id===player.vehicleId)?.type))) continue;
+        ['tank',BLACK_HAWK].includes(vehiclesById.get(player.vehicleId)?.type))) continue;
       active.add(player.id);
       // Only the tank's enclosed driver and gunner are hidden under its armour.
       // Exposed tank riders and all light-vehicle crew must still be rendered.
-      const seatedVehicle=player.vehicleId?state.vehicles.find(v=>v.id===player.vehicleId):null;
+      const seatedVehicle=player.vehicleId?vehiclesById.get(player.vehicleId):null;
       if(isEnclosedTankCrew(seatedVehicle,player.vehicleSeat)){
         const hidden=this.soldiers.get(player.id);
         if(hidden){hidden.group.removeFromParent();hidden.initialized=false;hidden.seated=false;}
@@ -1364,6 +1487,7 @@ export class GameRenderer {
         this.smoke(event.x,event.y+.3,event.z,.3,.6,0x989181);this.spark(event.x,event.y+.3,event.z);continue;
       }
       if(event.type==='rocketLaunch'){
+        this.shotEffect(event,state,localId);
         if(event.playerId===localId)this.kick=1;
         if(event.rocketId&&!this.rocketMeshes.has(event.rocketId)&&state.time-event.time<.2){
           this.createRocketVisual({...event,id:event.rocketId},event.time);
@@ -1372,8 +1496,10 @@ export class GameRenderer {
         for(let i=0;i<3;i++)this.smoke(x,event.y-.1,z,.2+i*.06,.35,0xb1ab9c);
         continue;
       }
+      if(event.type==='cannonShot')this.shotEffect(event,state,localId);
       if(event.type==='cannonShot'&&!event.confirmedCosmetic){this.smoke(event.x,event.y,event.z,.6,.4,0xc1bba5);for(let i=0;i<4;i++)this.spark(event.x,event.y,event.z,3);}
       if (event.type === 'shot') {
+        this.shotEffect(event,state,localId);
         const own = event.playerId === localId;
         const age = Math.max(0, state.time - event.time);
         if (this.effects.length >= 120) continue;
@@ -1388,7 +1514,7 @@ export class GameRenderer {
           const right = this.scratchPosition.setFromMatrixColumn(this.camera.matrixWorld, 0);
           Object.assign(effect, { age: 0, life: 1.1, vx: right.x * 2.9, vy: .85 + this.random() * .7, vz: right.z * 2.9, spin: 8 + this.random() * 8 });
           this.effects.push(effect);
-          if (!this.lowQuality && !this.integratedGpu && this.wallStow < .3 && (event.shotSeq ?? event.id) % 2 === 0) {
+          if (this.graphicsEffects?.muzzleEffects!=='high'&&!this.lowQuality && !this.integratedGpu && this.wallStow < .3 && (event.shotSeq ?? event.id) % 2 === 0) {
             const muzzle = this.weaponRig.muzzleFlash.getWorldPosition(this.scratchPosition);
             this.smoke(muzzle.x, muzzle.y, muzzle.z, .13, .42, 0xa4a79b);
           }
@@ -1409,7 +1535,11 @@ export class GameRenderer {
           this.smoke(tx, ty, tz, .18, .32, 0x92968e);
         } else {
           const colors = { wood: 0xb59b75, concrete: 0xb9b2a0, ground: 0x9a8666, flesh: 0x827065, shield: 0x8bc5ca };
-          this.smoke(tx, ty, tz, impact === 'flesh' ? .14 : .28, impact === 'shield' ? .25 : .57, colors[impact] ?? colors.concrete);
+          const enhancedDust=['medium','high'].includes(this.graphicsEffects?.dust)&&['ground','concrete','wood'].includes(impact);
+          if(enhancedDust){
+            const count=this.graphicsEffects.dust==='high'?3:1;
+            for(let i=0;i<count;i++)this.smoke(tx,ty+.04,tz,.16+i*.10,.45+i*.22,colors[impact]??colors.concrete,{kind:'dust',opacity:.38,rise:.28+i*.16,enhanced:true});
+          }else this.smoke(tx, ty, tz, impact === 'flesh' ? .14 : .28, impact === 'shield' ? .25 : .57, colors[impact] ?? colors.concrete);
         }
       }
       if (event.type === 'explosion') {
@@ -1423,47 +1553,122 @@ export class GameRenderer {
       this.seenEvents.delete(this.seenEvents.keys().next().value);
     }
   }
+  configureEffects(){
+    const e=this.graphicsEffects;
+    this.effectLights?.configure(e.muzzleLights,e.fireLighting);
+    // Precompute the small textures on quality selection, not the first shot.
+    if(e.muzzleEffects==='high')this.muzzleTexture??=makeParticleTexture('muzzle');
+    if(e.fireEffects==='high'||e.explosions==='high'||e.explosions==='medium')this.fireballTexture??=makeParticleTexture('fire');
+    const enhanced=particleQuality[e.smoke]>0;
+    const texture=enhanced?(this.detailedSmokeTexture??=makeParticleTexture('smoke')):this.smokeTexture;
+    if(!texture||texture===this.activeSmokeTexture)return;
+    this.softSmokePass?.dispose();this.softSmokePass=null;
+    const batch=this.effectBatches?.smoke;
+    if(!batch)return;
+    if(this.webgpu){
+      const old=batch.material;
+      batch.material=this.webgpu.createSmokeMaterial(texture,null,old.userData.smokeUniforms);
+      old.dispose();
+    }else batch.material.uniforms.map.value=texture;
+    this.activeSmokeTexture=texture;
+  }
+
+  queueCosmeticShot(event){
+    if(!this.graphicsEffects||this.graphicsEffects.muzzleEffects!=='high'&&!['low','high'].includes(this.graphicsEffects.muzzleLights))return;
+    if(this.cosmeticShots.length<24)this.cosmeticShots.push(event);
+  }
+
+  shotEffect(event,state,localId,predicted=false){
+    const quality=this.graphicsEffects;
+    if(!quality||quality.muzzleEffects!=='high'&&!['low','high'].includes(quality.muzzleLights))return;
+    if(!predicted&&state.time-event.time>.24)return;
+    const own=event.playerId===localId,player=state.players?.find(p=>p.id===event.playerId);
+    const vehicleId=event.vehicleId??player?.vehicleId,vehicle=vehicleId&&state.vehicles?.find(v=>v.id===vehicleId);
+    const mounted=Boolean(event.mounted||event.type==='cannonShot'||event.weaponId==='tank-mg'||event.weaponId==='black-hawk-minigun');
+    const cannon=event.type==='cannonShot',rocket=event.type==='rocketLaunch';
+    const key=event.shotSeq==null?null:[event.playerId,event.type,event.weaponId,event.shotSeq].join('/');
+    if(key&&this.flashKeys.has(key))return;
+    const pos=new THREE.Vector3(event.x,event.y,event.z);
+    if(![pos.x,pos.y,pos.z].every(Number.isFinite))return;
+    if(!own&&pos.distanceToSquared(this.camera.position)>60**2)return;
+    if(key){this.flashKeys.set(key,this.clock);while(this.flashKeys.size>256)this.flashKeys.delete(this.flashKeys.keys().next().value);}
+    const localWeapon=own&&!mounted&&!rocket&&this.weapon.visible&&this.wallStow<.55;
+    if(localWeapon)this.weaponRig.muzzleFlash.getWorldPosition(pos);
+    else if(mounted&&vehicle){
+      const flash=this.vehicleRigs.get(vehicle.id)?.turret?.flash;
+      if(flash&&!cannon)flash.getWorldPosition(pos);
+    }else if(!rocket&&!cannon){
+      const soldier=this.soldiers.get(event.playerId);
+      if(soldier?.group.visible&&soldier.rifle?.visible&&soldier.flash)soldier.flash.getWorldPosition(pos);
+      else if(player){pos.x-=Math.sin(player.yaw??0)*.52;pos.z-=Math.cos(player.yaw??0)*.52;pos.y+=Math.sin(player.pitch??0)*.25-.12;}
+    }
+    if(![pos.x,pos.y,pos.z].every(Number.isFinite))return;
+    const subdued=localWeapon&&this.weaponRig.suppressor?.visible;
+    const strength=cannon?3.2:rocket?1.8:mounted?1.4:subdued?.25:1;
+    this.effectLights?.pulse(pos,this.clock,{own,energy:25*strength,range:Math.min(14,6.2*Math.sqrt(strength)),life:cannon?.13:rocket?.09:.065,color:cannon?0xffb66d:0xffcf9b});
+    if(quality.muzzleEffects==='high'){
+      // Keep the native FPV mesh as a depth-correct core; a world-space irregular
+      // flash adds the hot halo and the nearby smoke.
+      this.hotParticle('muzzle',pos.x,pos.y,pos.z,(cannon?1.35:rocket?.65:mounted?.46:.23)*Math.sqrt(subdued?.4:1),cannon?.12:.065);
+      if(this.effects.length<110&&(!subdued||own))
+        this.smoke(pos.x,pos.y,pos.z,cannon?.65:mounted?.25:.115,cannon?.65:.37,0xaaa89d,{opacity:.38,rise:.37,kind:'smoke',enhanced:true});
+    }
+  }
+
+  getHotParticleMaterial(kind){
+    const texture=kind==='muzzle'?this.muzzleTexture:this.fireballTexture;
+    if(!texture)return null;
+    this.hotParticleMaterials??=new Map();
+    if(!this.hotParticleMaterials.has(kind))this.hotParticleMaterials.set(kind,new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false}));
+    return this.hotParticleMaterials.get(kind);
+  }
+
+  hotParticle(kind,x,y,z,size,life){
+    if(this.effects.length>=145)return;
+    const max=kind==='muzzle'?12:kind==='flame'?12:8;
+    if(this.effects.filter(e=>e.type===kind).length>=max)return;
+    const texture=kind==='muzzle'?(this.muzzleTexture??=makeParticleTexture('muzzle')):(this.fireballTexture??=makeParticleTexture('fire'));
+    const pool=this.effectPools[kind]??(this.effectPools[kind]=[]);
+    const effect=pool.pop()??{type:kind,mesh:new THREE.Sprite(this.getHotParticleMaterial(kind).clone())};
+    effect.mesh.material.map=texture;effect.mesh.material.rotation=this.random()*Math.PI*2;
+    effect.mesh.position.set(x,y,z);effect.mesh.scale.setScalar(size);
+    Object.assign(effect,{age:0,life,size,fresh:true});
+    this.worldRoot.add(effect.mesh);this.effects.push(effect);
+  }
+
   explosionVisual(event,state) {
     const x=event.x??0,y=event.y??.6,z=event.z??0;
     if(state.time-event.time>.6||this.camera.position.distanceToSquared(this.scratchPosition.set(x,y,z))>180**2)return;
     this.effectBounds.center.set(x,y,z);
     if(!this.viewFrustum.intersectsSphere(this.effectBounds))return;
-    const enhanced=this.graphicsEffects?.explosions==='high';
-    const reduced=this.lowQuality||this.integratedGpu,count=enhanced?17:reduced?8:13;
+    const quality=this.graphicsEffects?.explosions,enhanced=quality==='high'||quality==='medium';
+    const reduced=this.lowQuality||this.integratedGpu,count=enhanced?(quality==='high'?17:10):reduced?8:13;
     const scale=event.kind==='claymore'?.62:1;
-    for(let i=0;i<count;i++)this.smoke(x+(this.random()-.5)*2*scale,y+this.random()*2*scale,z+(this.random()-.5)*2*scale,(1.1+this.random()*1.4)*scale,2.5+this.random()*2,i<3?0xffb668:0x535953);
-    if(enhanced)this.explosionGlow(x,y+.6*scale,z,scale);
-    this.blastFlash(x,y+scale,z);
-    for(let i=0;i<(reduced?6:14);i++)this.spark(x,y+.3,z,3*scale);
-  }
-
-  explosionGlow(x,y,z,scale) {
-    const pool=this.effectPools.flash??(this.effectPools.flash=[]);
-    if(this.effects.filter(effect=>effect.type==='flash').length>=6)return;
-    if(!this.explosionTexture){
-      this.explosionTexture=canvasTexture(64,(ctx,size)=>{
-        const half=size/2,gradient=ctx.createRadialGradient(half,half,0,half,half,half);
-        gradient.addColorStop(0,'#fff5d8');gradient.addColorStop(.2,'rgba(255,228,172,.92)');
-        gradient.addColorStop(.53,'rgba(252,113,40,.34)');gradient.addColorStop(1,'rgba(184,54,12,0)');
-        ctx.fillStyle=gradient;ctx.fillRect(0,0,size,size);
-      });
+    for(let i=0;i<count;i++){
+      if(enhanced){const angle=this.random()*Math.PI*2,radial=this.random()*scale;this.smoke(x+Math.cos(angle)*radial,y+this.random()*1.7*scale,z+Math.sin(angle)*radial,(.95+this.random()*1.35)*scale,2.1+this.random()*2.8,i<3?0x9a8874:0x484c4a,{opacity:.65,rise:.55+this.random()*1.1,vx:Math.cos(angle)*radial*1.5,vz:Math.sin(angle)*radial*1.5,enhanced:true});}
+      else this.smoke(x+(this.random()-.5)*2*scale,y+this.random()*2*scale,z+(this.random()-.5)*2*scale,(1.1+this.random()*1.4)*scale,2.5+this.random()*2,i<3?0xffb668:0x535953);
     }
-    const effect=pool.pop()??{type:'flash',mesh:new THREE.Sprite(new THREE.SpriteMaterial({
-      map:this.explosionTexture,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,
-    }))};
-    effect.age=0;effect.life=.25;effect.size=scale;
-    effect.mesh.position.set(x,y,z);effect.mesh.scale.setScalar(scale);
-    this.worldRoot.add(effect.mesh);this.effects.push(effect);
+    if(enhanced){
+      this.hotParticle('flash',x,y+.65*scale,z,scale*1.9,.32);
+      if(quality==='high'){
+        for(let i=0;i<3;i++)this.hotParticle('flame',x+(this.random()-.5)*scale,y+.45*scale,z+(this.random()-.5)*scale,scale*(.9+this.random()),.45+this.random()*.35);
+        const dust=dustProfile(this.map);
+        if(dust)for(let i=0;i<6;i++){const a=i*Math.PI/3;this.smoke(x+Math.cos(a)*scale,y+.15,z+Math.sin(a)*scale,scale*.9,1.3,dust.color,{kind:'dust',opacity:dust.opacity,rise:.23,vx:Math.cos(a)*2.8*scale,vz:Math.sin(a)*2.8*scale,enhanced:true});}
+      }
+    }
+    this.blastFlash(x,y+scale,z,enhanced?scale:0);
+    for(let i=0;i<(enhanced&&quality==='high'?18:reduced?6:14);i++)this.spark(x,y+.3,z,3*scale);
   }
 
-  blastFlash(x, y, z) {
+  blastFlash(x, y, z,scale=0) {
     if (this.lowQuality || !this.blastLights.length) return;
     const light = this.blastLights.find(effect => effect.mesh.intensity === 0);
     if (light) this.effects.push(light);
     const effect = light ?? this.blastLights[0];
     effect.age = 0;
     effect.mesh.position.set(x, y, z);
-    effect.mesh.intensity = 18;
+    effect.life=scale?.27:.22;effect.energy=scale?Math.min(96,65*scale):18;
+    effect.mesh.distance=scale?Math.min(26,18*scale):15;effect.mesh.intensity=effect.energy;
   }
 
   tracer({ id, x, y, z, vx, vy, vz, life }, age) {
@@ -1482,7 +1687,7 @@ export class GameRenderer {
     this.effects.push(effect);
   }
 
-  smoke(x, y, z, size, life, color, {opacity=.55, rise=.8, wind=0}={}) {
+  smoke(x, y, z, size, life, color, {opacity=.55, rise=.8, wind=0,vx,vz,kind='smoke',enhanced=false}={}) {
     if (this.effects.length > 140) return;
     const effect = this.effectPools.smoke.pop() ?? {
       mesh: new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, transparent: true, depthWrite: false })),
@@ -1492,7 +1697,7 @@ export class GameRenderer {
     sprite.material.color.setHex(color);
     sprite.material.rotation = this.random() * Math.PI;
     sprite.position.set(x, y, z); sprite.scale.setScalar(size);
-    Object.assign(effect, { age: 0, life, size, opacity, rise, vx: wind + (this.random() - 0.5) * 0.6, vz: (this.random() - 0.5) * 0.6 });
+    Object.assign(effect, { age: 0, life, size, opacity, rise, kind, enhanced:enhanced||particleQuality[this.graphicsEffects?.smoke]>0, spin:(enhanced||particleQuality[this.graphicsEffects?.smoke]>0)?(this.random()-.5)*.6:0, vx: vx??(wind + (this.random() - 0.5) * 0.6), vz: vz??((this.random() - 0.5) * 0.6) });
     this.effects.push(effect);
   }
 
@@ -1506,12 +1711,13 @@ export class GameRenderer {
     this.effects.push(effect);
   }
 
-  updateEffects(dt) {
+  updateEffects(dt,cull=false) {
+    this.particleCulled=0;
     this.bulletMarks.update(dt);
     for (const batch of Object.values(this.effectBatches)) batch.count = 0;
     this.smokeOrder.length = 0;
     for (let i = this.effects.length - 1; i >= 0; i--) {
-      const effect = this.effects[i]; effect.age += dt;
+      const effect = this.effects[i]; if(effect.fresh)effect.fresh=false;else effect.age += dt;
       if (effect.age >= effect.life) {
         if (effect.type === 'light') effect.mesh.intensity = 0;
         else {
@@ -1539,26 +1745,40 @@ export class GameRenderer {
         effect.mesh.material.opacity = alpha * .8;
       } else if (effect.type === 'smoke') {
         effect.mesh.position.x += effect.vx * dt; effect.mesh.position.z += effect.vz * dt; effect.mesh.position.y += dt * effect.rise;
-        effect.mesh.scale.setScalar(effect.size * (1 + effect.age * 1.5)); effect.mesh.material.opacity = alpha * effect.opacity;
+        if(effect.enhanced){
+          const p=plumeEnvelope(effect.age,effect.life,effect.kind);effect.mesh.scale.setScalar(effect.size*p.growth);effect.mesh.material.opacity=p.opacity*effect.opacity;
+          effect.vx*=Math.exp(-dt*(effect.kind==='dust'?1.05:.44));effect.vz*=Math.exp(-dt*(effect.kind==='dust'?1.05:.44));effect.mesh.material.rotation+=effect.spin*dt;
+        }else{effect.mesh.scale.setScalar(effect.size * (1 + effect.age * 1.5)); effect.mesh.material.opacity = alpha * effect.opacity;}
         const p = effect.mesh.position, view = this.camera.matrixWorldInverse.elements;
         effect.sortDepth = view[2]*p.x + view[6]*p.y + view[10]*p.z + view[14];
-        this.smokeOrder.push(effect);
-      } else if(effect.type==='flash'){
-        effect.mesh.scale.setScalar((3.6-2.8*alpha)*effect.size);
-        const energy=3.8*alpha*alpha;
-        effect.mesh.material.color.setRGB(energy,energy*.92,energy*.76);
-        effect.mesh.material.opacity=alpha;
+        this.particleBounds.center.copy(p);this.particleBounds.radius=billboardRadius(effect.mesh.scale);
+        if(!cull||this.viewFrustum.intersectsSphere(this.particleBounds))this.smokeOrder.push(effect);
+        else this.particleCulled++;
+      } else if(effect.type==='flash'||effect.type==='muzzle'||effect.type==='flame'){
+        const muzzle=effect.type==='muzzle',flame=effect.type==='flame';
+        effect.mesh.scale.setScalar((muzzle?1+.5*(1-alpha):flame?1+.55*(1-alpha):2.6-1.6*alpha)*effect.size);
+        const energy=(muzzle?2.3:flame?2.1:4.4)*alpha*alpha;
+        effect.mesh.material.color.setRGB(energy,energy*.91,energy*.78);
+        effect.mesh.material.opacity=alpha;if(flame)effect.mesh.position.y+=dt*.65;
       } else if (effect.type === 'spark' || effect.type === 'shell') {
         effect.vy -= dt * 9.8; effect.mesh.position.x += effect.vx * dt; effect.mesh.position.y += effect.vy * dt; effect.mesh.position.z += effect.vz * dt;
         effect.mesh.rotation.x += dt * (effect.spin || 9); effect.mesh.rotation.z += dt * (effect.spin || 6);
         const position = effect.mesh.position;
-        const ground = effect.type === 'shell' ? this.map.terrain?.heightAt(position.x, position.z) ?? 0 : 0;
+        const enhancedSpark=effect.type==='spark'&&this.graphicsEffects?.dust!=='off'&&this.graphicsEffects?.dust!=null;
+        const ground = effect.type === 'shell'||enhancedSpark ? this.map.terrain?.heightAt(position.x, position.z) ?? 0 : 0;
         if (position.y < ground + .03) { position.y = ground + .03; effect.vy = Math.abs(effect.vy) * .25; effect.vx *= .72; effect.vz *= .72; }
-        if (effect.type === 'spark') effect.mesh.scale.setScalar(.025 * alpha);
-      } else if (effect.type === 'light') effect.mesh.intensity = alpha * 18;
+        if (effect.type === 'spark'){
+          if(enhancedSpark){const direction=this.sparkDirection??=new THREE.Vector3(),axis=this.sparkAxis??=new THREE.Vector3(0,1,0);direction.set(effect.vx,effect.vy,effect.vz);const speed=direction.length();if(speed>.01)effect.mesh.quaternion.setFromUnitVectors(axis,direction.normalize());effect.mesh.scale.set(.016*alpha,Math.min(.18,.025+speed*.008)*alpha,.016*alpha);}
+          else effect.mesh.scale.setScalar(.025 * alpha);
+        }
+      } else if (effect.type === 'light') effect.mesh.intensity = alpha * (effect.energy??18);
       const batch = this.effectBatches[effect.type];
       if (batch && effect.type !== 'smoke' && batch.count < batch.instanceMatrix.count) {
-        effect.mesh.updateMatrix();
+        if(cull){
+          const geometry=effect.mesh.geometry;if(!geometry.boundingSphere)geometry.computeBoundingSphere();
+          effect.mesh.updateMatrix();this.particleBounds.copy(geometry.boundingSphere).applyMatrix4(effect.mesh.matrix);
+          if(!this.viewFrustum.intersectsSphere(this.particleBounds)){this.particleCulled++;continue;}
+        }else effect.mesh.updateMatrix();
         batch.setMatrixAt(batch.count++, effect.mesh.matrix);
       }
     }
@@ -1581,11 +1801,11 @@ export class GameRenderer {
       smoke.geometry.attributes.instanceRotation.setX(index, sprite.material.rotation);
     }
     if (smoke.count) {
-      smoke.instanceColor.needsUpdate = true;
-      smoke.geometry.attributes.instanceAlpha.needsUpdate = true;
-      smoke.geometry.attributes.instanceRotation.needsUpdate = true;
+      uploadPrefix(smoke.instanceColor,smoke.count);
+      uploadPrefix(smoke.geometry.attributes.instanceAlpha,smoke.count);
+      uploadPrefix(smoke.geometry.attributes.instanceRotation,smoke.count);
     }
-    for (const batch of Object.values(this.effectBatches)) if (batch.count) batch.instanceMatrix.needsUpdate = true;
+    for (const batch of Object.values(this.effectBatches)) uploadPrefix(batch.instanceMatrix,batch.count);
   }
 
   createGrenadeMesh() {
@@ -1881,6 +2101,10 @@ export class GameRenderer {
       this.lastShadowTx = undefined;
     }
     this.sun.shadow.radius=pcss?directionalPenumbraScale(this.sun.shadow):1;
+    // Preserve historical fixed biases in legacy modes. Only opt-in PCSS
+    // and CSM use world-texel-scaled bias.
+    if(pcss&&size)applyCascadeShadowBias(this.sun.shadow,true);
+    else{this.sun.shadow.bias=-.0003;this.sun.shadow.normalBias=.05;}
     if (on) {
       this.sun.shadow.needsUpdate = true;
       this.renderer.shadowMap.needsUpdate = true;
@@ -1888,6 +2112,10 @@ export class GameRenderer {
   }
 
   applyQuality(low) {
+    this.staticMaterialRevision++;
+    this.indirectLighting?.suspend();
+    this.architectureLightmaps?.suspend(true);
+    this.waterAppearance?.restore();
     this.lowQuality = low;
     this.adaptiveScale = 1;
     this.applyShadows();
@@ -1909,8 +2137,11 @@ export class GameRenderer {
   refreshSurfaceEnhancements(){
     const settings=this.graphicsEffects;
     if(!settings)return;
-    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off')this.enhancedSurfaces??=new EnhancedSurfaces(this.webgpu?.setWebGpuRelief);
-    this.enhancedSurfaces?.update(this.staticRoot,settings,this.textureAnisotropy);
+    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off'||settings.mapWeathering==='high'||settings.mapWeathering==='low')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief,this.webgpu?.setWebGpuWeathering,this.webgpu?.suspendWebGpuWeathering);
+    if(this.enhancedSurfaces){
+      this.enhancedSurfaces.beforeUpdate=()=>{this.staticMaterialRevision++;this.indirectLighting?.suspend();this.architectureLightmaps?.suspend(true);};
+      this.enhancedSurfaces.update(this.staticRoot,settings,this.textureAnisotropy,this.map?.id);
+    }
   }
 
   maxAnisotropy(){return this.renderer.capabilities?.getMaxAnisotropy?.()??this.renderer.getMaxAnisotropy?.()??1;}
@@ -1952,8 +2183,11 @@ export class GameRenderer {
 
   drawScene(menu = false, warming = false) {
     this.frameCount++;
+    const menuKey=menu?[this.staticMaterialRevision,this.shadowMode,...this.sun.position.toArray(),...this.sun.target.position.toArray(),...(this.cascades?[...this.camera.position.toArray(),...this.camera.quaternion.toArray(),...this.camera.projectionMatrix.elements]:[])].join('/'):'';
+    this.shadowMenuIdle=Boolean(menu&&this.staticMenuShadows&&menuKey===this.menuShadowKey&&!['low','high'].includes(this.graphicsEffects?.vegetationWind));
+    this.menuShadowKey=menuKey;
     if (menu) {
-      if (!this.staticMenuShadows && this.renderer.shadowMap.enabled) {
+      if (!this.shadowMenuIdle && this.renderer.shadowMap.enabled) {
         this.staticMenuShadows = true;
         this.sun.shadow.needsUpdate = true;
         this.renderer.shadowMap.needsUpdate = true;
@@ -1965,24 +2199,35 @@ export class GameRenderer {
         this.renderer.shadowMap.needsUpdate = true;
       }
     }
-    if(this.graphicsEffects?.water==='high'&&this.portWaterMesh){
-      this.waterAppearance??=new WaterAppearance();
-      this.waterAppearance.update(this.clock,this.portWaterMesh);
-    }else if(this.waterAppearance){
-      this.waterAppearance.dispose();
-      this.waterAppearance=null;
+    if(this.vegetation.update(this)){
+      this.shadowMenuIdle=false;
+      this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);this.localReflections.dispose();
+      this.sun.shadow.needsUpdate=true;this.renderer.shadowMap.needsUpdate=true;
     }
-    this.postPass.worldEffects.reflector=this.waterAppearance
+    const waterQuality=this.lowQuality?'legacy':this.graphicsEffects?.water;
+    const waterKey=[this.map.id,waterQuality,this.graphicsEffects?.waterRefraction,this.graphicsEffects?.waterFoam].join('/');
+    if(this.waterKey!==waterKey){this.waterKey=waterKey;this.postPass.worldEffects.receivers.invalidate();}
+    if(waterQuality&&waterQuality!=='legacy'&&(this.map.id==='port'||this.map.id==='fy_pool_day')){
+      this.waterAppearance??=new WaterAppearance();
+      this.waterAppearance.update(this.clock,this.staticRoot,this.map,waterQuality,this.graphicsEffects.waterRefraction,this.graphicsEffects.waterFoam,this.atmosphere.envTexture);
+    }else if(this.waterAppearance){this.waterAppearance.dispose();this.waterAppearance=null;}
+    this.postPass.worldEffects.reflector=this.waterAppearance?.active&&this.portWaterMesh
       ? this.waterReflectionPlane.set(this.map.shoreX,this.portWaterMesh.position.y) : null;
     const smoke=this.effectBatches.smoke;
-    const softSmoke=this.graphicsEffects?.softParticles==='high'&&smoke.count>0;
+    const softEnabled=this.graphicsEffects?.softParticles==='high'&&!this.postFaults?.has('depth');
+    const softSmoke=softEnabled&&smoke.count>0;
     const worldFX=this.postPass.worldEffects;
+    worldFX.airClimate=atmosphereProfile(this.map);
+    // Mission 1 owns the hidden sky / night-vision presentation. Never add
+    // sunlight or extra fog there; other missions retain their live weather.
+    worldFX.atmosphereAllowed=!this.presentingCampaign||this.atmosphere.sky.visible;
     worldFX.inMenu=menu;worldFX.cinematic=this.cinematicCamera;
     worldFX.aiming=this.cameraEffectsAim||this.scoped||this.weaponOpticAiming;
-    worldFX.softSmoke=softSmoke;
-    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(this.effects.length||this.activeHeatFires.length)){
+    worldFX.softSmoke=softSmoke;worldFX.softEnabled=softEnabled;
+    if(this.graphicsEffects?.heatDistortion==='high'&&!worldFX.aiming&&(warming&&this.graphicsEffects?.shaderWarmup!=='off'||this.effects.length||this.activeHeatFires.length)){
       const heat=worldFX.heat;
       heat.begin(this.camera,this.clock);
+      if(warming&&this.shaderWarmup.busy&&this.graphicsEffects?.shaderWarmup!=='off'){const p=this.scratchPosition.set(0,0,-5).applyMatrix4(this.camera.matrixWorld);heat.add(p.x,p.y,p.z,1,.35);}
       for(const {type,age,life,size,mesh} of this.effects){
         if(type!=='flash')continue;
         const {x,y,z}=mesh.position;
@@ -1995,7 +2240,7 @@ export class GameRenderer {
       worldFX.heat.count=0;
       worldFX.state.heatStrength.set(0,0,0,0);
     }
-    if(!softSmoke&&this.softSmokePass){
+    if(!softEnabled&&this.softSmokePass){
       this.softSmokePass.dispose();this.softSmokePass=null;
     }
     if(smoke.count){
@@ -2005,27 +2250,41 @@ export class GameRenderer {
       }else this.smokeLight.set(0,0,0);
       const values=smoke.material.uniforms??smoke.material.userData.smokeUniforms;
       values.smokeLight.value.copy(this.smokeLight);
-      values.smokeMotion.value=Number(this.graphicsEffects?.smoke==='high');
+      values.smokeMotion.value=particleQuality[this.graphicsEffects?.smoke]??0;
       values.smokeTime.value=this.clock;
     }
-    this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
+    this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock,this.graphicsEffects?.clouds,this.map,this.scene.fog.color);
     const environment=this.scene.environment;
     const localEnvironment=this.localReflections.prepare(this,menu,warming);
-    if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene);
+    this.architectureLightmaps.update(this);
+    this.indirectLighting.update(this);
+    if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;
+    if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene,this.staticRoot,this.staticMaterialRevision);
     this.cascades?.update();
     if(!menu&&!warming)this.interiorVisibility.apply(this);
     worldFX.receiverMode=worldFX.receivers.update(this.map.id,this.staticRoot,this.camera,
-      !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'));
+      !this.lowQuality&&Boolean(this.graphicsEffects?.reflections&&this.graphicsEffects.reflections!=='off'),this.campaignWaterMesh);
+    if(menu||warming)this.effectLights?.clear();
+    else this.effectLights?.update(this.clock,this.camera.position,this.activeFireLights);
     const timing=this.gpuTimer.begin();
     const profiler=this.perfEnabled?this.gpuTimer:null;
     if(softSmoke)smoke.layers.set(SOFT_PARTICLE_LAYER);
     try{
       if(localEnvironment)this.scene.environment=localEnvironment;
       const generator=this.frameGeneration;
-      try{
+      const renderFrame=()=>{
+        const faults=this.postFaults;
+        const requested=this.graphicsEffects;
+        this.postPass.effects=faults?.size?{...requested,
+          ...(faults.has('depth')?{ao:'off',contact:'off',atmosphere:'off',heightFog:'off',reflections:'off',motionBlur:'off',depthOfField:'off',lensFlare:'off',chromatic:'off',heatDistortion:'off',softParticles:'off'}:{}),
+          ...(faults.has('bloom')?{bloom:'off'}:{})}:requested;
+        if(faults?.has('depth')){
+          worldFX.softEnabled=worldFX.softSmoke=false;worldFX.hasHeat=false;
+          smoke.layers.set(0);
+        }
         // No simulated gameplay frames exist in menu. Keep the ordinary
         // WebGPU renderer there; enable temporal history only in a match.
-        generator?.setMode(menu||warming?'off':this.gfx.frameGeneration??'off');
+        generator?.setMode(menu||warming||skipFG?'off':this.gfx.frameGeneration??'off');
         this.postPass.setUpscaling(this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',this.resolutionController.scale,this.gfx.fsrSharpness);
         this.postPass.begin(this.quality);
         try {
@@ -2033,13 +2292,24 @@ export class GameRenderer {
           drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null,profiler);
         } finally {generator?.endWorld();}
         this.postPass.end(this.clock,this.quality,profiler);
-      }catch(error){
-        if(!generator?.enabled)throw error;
-        // A bad pipeline/unsupported MRT disables only FG, not the whole WebGPU game.
-        generator.error(error);
-        this.postPass.begin(this.quality);
-        drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null,profiler);
-        this.postPass.end(this.clock,this.quality,profiler);
+      };
+      // Retry recognized optional-pass failures without altering saved settings.
+      let skipFG=false;
+      for(let attempt=0;;attempt++){
+        try{if(skipFG)generator?.setMode('off');renderFrame();break;}
+        catch(error){
+          const fault=error.s09PostFault;
+          this.postFaults??=new Set();
+          if(attempt<3&&fault&&!this.postFaults.has(fault)){
+            this.postFaults.add(fault);
+            console.warn('Optional graphics pass disabled for this renderer:',fault,error.cause??error);
+            this.postPass.worldEffects.dispose();
+            generator?.reset();
+            continue;
+          }
+          if(attempt<3&&generator?.enabled&&!fault&&!skipFG){generator.error(error);skipFG=true;continue;}
+          throw error;
+        }
       }
     }
     finally{
@@ -2096,8 +2366,9 @@ export class GameRenderer {
     this.quality=baseGraphicsQuality(view.quality);
     const selectedEffects=graphicsEffects(view.quality,gfx?.customGraphics);
     this.presentingCampaign=Boolean(state?.campaign);
+    this.campaignNightVision=Boolean(state?.campaign?.nightVision&&!state.campaign.cutscene&&!state.campaign.complete&&!state.campaign.failed);
     this.cinematicCamera=Boolean(state?.campaign?.cutscene);
-    this.activeHeatFires.length=0;
+    this.activeHeatFires.length=0;this.activeFireLights.length=0;
     this.cameraEffectsAim=Boolean(view.aim);
     this.gpuTimer.enabled=this.perfEnabled||selectedEffects.adaptiveTarget!=='off';
     if(selectedEffects.adaptiveTarget!=='off'){
@@ -2112,14 +2383,19 @@ export class GameRenderer {
       this.graphicsEffects=selectedEffects;
     }
     this.groundShadows.uniforms.groundShadowStrength.value=this.quality==='high'?0:.32;
+    this.configureEffects();
+    // The old FPV core and the new HDR halo overlap. Reduce the core only
+    // in the remastered mode; legacy preserves the prior artwork.
+    if(this.weaponRig?.flashMaterial)this.weaponRig.flashMaterial.opacity=this.graphicsEffects.muzzleEffects==='high'?.69:.92;
     const materialQuality=this.graphicsEffects.materials;
     const low = materialQuality==='auto' ? this.quality!=='high' : materialQuality==='low';
     if(previousQuality!==this.quality||previousShadowOverride!==this.adaptiveGraphics?.shadowOverride||
       previousEffects?.shadowDistance!==this.graphicsEffects.shadowDistance||previousEffects?.shadowFilter!==this.graphicsEffects.shadowFilter||
       previousEffects?.cascades!==this.graphicsEffects.cascades)this.applyShadows();
     if(previousQuality!==this.quality||previousEffects?.anisotropy!==this.graphicsEffects.anisotropy)this.updateTextureFiltering();
-    if (this.lowQuality !== low) this.applyQuality(low);
-    if(previousEffects!==this.graphicsEffects||this.gradedMap!==this.map){
+    const materialQualityChanged=this.lowQuality!==low;
+    if(materialQualityChanged){this.applyQuality(low);this.trimMapResidency();}
+    if(previousEffects!==this.graphicsEffects||this.gradedMap!==this.map||materialQualityChanged){
       this.gradedMap=this.map;
       this.refreshSurfaceEnhancements();
       if(!this.presentingCampaign){
@@ -2477,7 +2753,7 @@ export class GameRenderer {
     view.campaignRender?.(this,state,dt,view);
     this.camera.updateMatrixWorld();
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
-    this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
+    this.viewFrustum.setFromProjectionMatrix(this.viewProjection,this.camera.coordinateSystem);
     for (const point of state.points || []) {
       const flag = this.flags.get(point.id); if (!flag) continue;
       const color = point.owner === -1 || point.owner == null ? COLORS.neutral : (TEAM_COLORS[point.owner] ?? COLORS.neutral);
@@ -2523,25 +2799,19 @@ export class GameRenderer {
         }
       }
     }
-    this.updateSoldiers(state, localId, dt, view.networkInterpolated, view.weaponSkinFor); this.updatePoolWeapons(state); this.updateGrenades(state, localId); this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt);
+    this.updateSoldiers(state, localId, dt, view.networkInterpolated, view.weaponSkinFor); this.updatePoolWeapons(state); this.updateGrenades(state, localId);
+    for(const event of this.cosmeticShots.splice(0))this.shotEffect(event,state,localId,true);
+    this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt,true);
     this.parachutes.update(this.worldRoot,state.players,dt,this.lowQuality);
     this.atmosphere.sky.position.copy(this.camera.position);
-    if(view.warming){
-      // Upload visible map layers even when the starting camera faces away.
-      const meshes=[];
-      this.staticRoot.traverseVisible(object=>{
-        if(object.isMesh&&object.frustumCulled){meshes.push(object);object.frustumCulled=false;}
-      });
-      try{this.drawScene(false,true);}
-      finally{for(const mesh of meshes)mesh.frustumCulled=true;}
-    }else this.drawScene();
+    if(view.warming)this.drawWarmupScene();else this.drawScene();
   }
 
   countVisibleObjects() {
     this.scene.updateMatrixWorld(true);
     this.camera.updateMatrixWorld(true);
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
-    this.viewFrustum.setFromProjectionMatrix(this.viewProjection);
+    this.viewFrustum.setFromProjectionMatrix(this.viewProjection,this.camera.coordinateSystem);
     let count=0;
     this.scene.traverseVisible(object=>{
       if(!(object.isMesh||object.isLine||object.isSprite||object.isPoints))return;
@@ -2569,21 +2839,25 @@ export class GameRenderer {
     if(frameGeneration?.enabled)frameGeneration.gpuMs=gpuPassMs?.frameGeneration?.p95??null;
     return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
+      occlusion:{candidates:this.interiorVisibility.items?.length??0,occluders:this.interiorVisibility.wallCount??0,checks:this.interiorVisibility.lastChecks??0,hidden:this.interiorVisibility.lastHidden??0},
+      mapResidency:this.mapResidency??null,shadowCache:this.cachedShadows.stats?.()??null,
+      sceneColorFormat:post.compactActive?'R11G11B10F':'RGBA16F',compactColorSupported:post.compactSupported,
       postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
-      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,
+      anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,cascadeSchedule:this.cascades?.stats?.()??null,
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
       worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
       triangles:r.info.render.triangles,effects:this.effects.length,geometries:r.info.memory.geometries,textures:r.info.memory.textures,
       graphicsEffects:this.graphicsEffects,geometryQuality:this.geometryQuality,
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
-      smaa:post.smaaActive??false,heatSources:post.worldEffects.heat.count,
-      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,
-      reflectionReceivers:post.worldEffects.receivers.count,
+      smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
+      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
+      effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
-      extraTextureBytes:this.enhancedSurfaces?.estimatedBytes()??0,
+      extraTextureBytes:(this.enhancedSurfaces?.estimatedBytes()??0)+(this.architectureLightmaps.stats()?.bytes??0)+(this.indirectLighting.stats()?.bytes??0),
+      pbrTextures:this.enhancedSurfaces?.stats()??null,shaderWarmup:this.shaderWarmup.stats,
       visibleLights:this.perfEnabled?this.scene.children.filter(object=>object.isLight&&object.visible&&object.intensity>0).length:null,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
       pixelRatio:this.currentPixelRatio,fsr:this.gfx.fsr==='on'?this.gfx.fsrQuality:'off',
@@ -2602,8 +2876,12 @@ export class GameRenderer {
   dispose() {
     this.disposed=true;
     this.waterAppearance?.dispose();
+    this.vegetation?.dispose();
+    this.indirectLighting?.dispose();
+    this.architectureLightmaps?.dispose();
     this.localReflections.dispose();
-    this.explosionTexture?.dispose();
+    for(const material of this.hotParticleMaterials?.values()??[])material.dispose();
+    this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
     this.softSmokePass?.dispose();
     this.enhancedSurfaces?.dispose();
     this.penumbra?.setEnabled(false);

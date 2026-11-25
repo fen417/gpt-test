@@ -7,15 +7,17 @@ import { addSectorInstances, pairMaterials } from './visuals.js';
 
 const url = new URL('./assets/quarry/detail.glb', import.meta.url).href;
 
-export async function loadQuarryDetail(map, surface) {
-  const {scene} = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
+export async function loadQuarryDetail(map, surface, sourceScene=null) {
+  const scene = sourceScene??(await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)).scene;
   const layer=new THREE.Group();
   layer.name='quarry-detail';
   const standard=new THREE.MeshStandardMaterial({
     vertexColors:true,map:surface.map,normalMap:surface.normalMap??null,
     normalScale:new THREE.Vector2(.25,.25),metalness:.23,roughness:.72,
   });
-  const paint=pairMaterials(standard,new THREE.MeshLambertMaterial({vertexColors:true,map:surface.map}));
+  const low=new THREE.MeshLambertMaterial({vertexColors:true,map:surface.map});
+  standard.userData.remasterSurface=low.userData.remasterSurface='metal';
+  const paint=pairMaterials(standard,low);
   const byKit=new Map(), originals=new Set();
   for(const site of map.structures){
     if(!site.quarryKit)continue;

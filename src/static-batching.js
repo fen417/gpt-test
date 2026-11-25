@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {pairMaterials,mapSector} from './visuals.js';
+import {compactGeometryGroup} from './compact-geometry.js';
 
 // Colours are baked in linear space, so identical surface/shader settings can
 // share one draw without quantising paint colours or changing texture tiling.
@@ -31,7 +32,7 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
       if(material._lowMaterial?.color&&!material.color.equals(material._lowMaterial.color))continue;
       const surface=materialKey(material),sector=mapSector(object.matrixWorld,sectorSize);
       const attributes=Object.keys(object.geometry.attributes).filter(name=>name!=='color').sort().join(',');
-      const key=`${surface}/${object.castShadow}/${object.receiveShadow}/${sector}/${attributes}/${detailLevel}`;
+      const key=`${surface}/${object.castShadow}/${object.receiveShadow}/${sector}/${attributes}/${detailLevel}/${Boolean(object.userData.legacyPalmLeaf)}`;
       if(!batches.has(key))batches.set(key,{surface,material,parts:[],detailLevel});
       batches.get(key).parts.push({object,group});
     }
@@ -44,14 +45,12 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
       combinedMaterial=clone(material);if(material._lowMaterial)pairMaterials(combinedMaterial,clone(material._lowMaterial));materials.set(surface,combinedMaterial);
     }
     const geometries=parts.map(({object,group})=>{
-      const original=object.geometry,geometry=original.clone().applyMatrix4(object.matrixWorld);
-      const indices=original.index?.array??Uint32Array.from({length:original.attributes.position.count},(_,i)=>i);
-      const transformedIndices=Uint32Array.from(indices.subarray(group.start,group.start+group.count));
+      const original=object.geometry,geometry=compactGeometryGroup(original,group).applyMatrix4(object.matrixWorld);
+      const transformedIndices=geometry.index.array;
       if(object.matrixWorld.determinant()<0)for(let i=0;i<transformedIndices.length;i+=3)[transformedIndices[i],transformedIndices[i+1]]=[transformedIndices[i+1],transformedIndices[i]];
-      geometry.setIndex(new THREE.BufferAttribute(transformedIndices,1));geometry.clearGroups();
       const originalMaterial=Array.isArray(object.material)?object.material[group.materialIndex]:object.material;
-      const originalColour=originalMaterial.vertexColors?original.attributes.color:null,colours=new Float32Array(original.attributes.position.count*3),colour=originalMaterial.color;
-      for(let i=0;i<original.attributes.position.count;i++){
+      const originalColour=originalMaterial.vertexColors?geometry.attributes.color:null,colours=new Float32Array(geometry.attributes.position.count*3),colour=originalMaterial.color;
+      for(let i=0;i<geometry.attributes.position.count;i++){
         colours[i*3]=colour.r*(originalColour?.getX(i)??1);colours[i*3+1]=colour.g*(originalColour?.getY(i)??1);colours[i*3+2]=colour.b*(originalColour?.getZ(i)??1);
       }
       geometry.setAttribute('color',new THREE.BufferAttribute(colours,3));return geometry;
@@ -61,6 +60,8 @@ export function batchStaticWorld(root,{excluded=new Set(),sectorSize=96}={}){
     geometry.computeBoundingSphere();geometry.userData.owned=true;
     const first=parts[0].object,mesh=new THREE.Mesh(geometry,combinedMaterial);mesh.castShadow=first.castShadow;mesh.receiveShadow=first.receiveShadow;
     if(detailLevel)mesh.userData.detailLevel=detailLevel;
+    if(first.userData.legacyPalmLeaf)mesh.userData.legacyPalmLeaf=true;
+    mesh.userData.architectureStaticBatch=true;
     root.add(mesh);
     for(const {object,group} of parts){
       // An array-material mesh may have groups that were not merged. Keep only

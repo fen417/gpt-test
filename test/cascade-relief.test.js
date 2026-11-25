@@ -1,0 +1,42 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {cascadePolicy,cascadeDue} from '../src/cascade-schedule.js';
+import {RELIEF_STEPS,RELIEF_DEPTH,RELIEF_RANGE,reliefBudget} from '../src/surface-relief.js';
+import {graphicsEffects,validateCustomGraphics} from '../src/graphics-settings.js';
+import * as THREE from 'three';
+import {setWebGlRelief} from '../src/webgl-surface-relief.js';
+import {setWebGpuRelief} from '../src/webgpu-surface-relief.js';
+import {MeshStandardNodeMaterial} from 'three/webgpu';
+test('cascade scheduling keeps near live and bounds the far stale time',()=>{
+  const input={frame:10,lastFrame:9,texel:.12,displacement:.01};
+  assert.equal(cascadeDue({...input,index:0}),true);
+  assert.equal(cascadeDue({...input,index:1}),false);
+  assert.equal(cascadeDue({...input,index:2}),false);
+  assert.equal(cascadeDue({...input,index:2,lastFrame:6}),true);
+  assert.equal(cascadeDue({...input,index:2,displacement:3}),true);
+  assert.equal(cascadeDue({...input,index:2,sunChanged:true}),true);
+  assert.equal(cascadeDue({...input,index:2,invalidated:true}),true);
+  assert.ok(cascadePolicy(2,.12).guard>cascadePolicy(2,.12).threshold);
+});
+test('relief budget drops with range and angle; legacy remains disabled',()=>{
+  for(const p of ['legacy','low','medium','high'])assert.equal(graphicsEffects(p).relief,'off');
+  assert.equal(validateCustomGraphics({relief:'ultra'},'ultra').relief,'ultra');
+  assert.equal(RELIEF_STEPS.ultra,24);
+  assert.ok(reliefBudget('ultra',2,.2)>reliefBudget('ultra',30,.2));
+  assert.ok(reliefBudget('high',2,.2)>reliefBudget('high',2,.95));
+  assert.equal(reliefBudget('high',RELIEF_RANGE.high,.4),0);
+  assert.equal(reliefBudget('high',1,.01),0);
+  assert.ok(RELIEF_DEPTH.brick>RELIEF_DEPTH.metal);
+});
+test('POM restores material hooks and uses consistent packed channels',()=>{
+  const tex=new THREE.DataTexture(new Uint8Array(16),2,2),m=new THREE.MeshStandardMaterial({map:tex,roughnessMap:tex,aoMap:tex,metalnessMap:tex});
+  const original=m.onBeforeCompile;
+  setWebGlRelief(m,tex,24,.03,52);
+  const shader={uniforms:{},fragmentShader:'void main() {\n#include <map_fragment>\n}'};
+  m.onBeforeCompile(shader);assert.ok(shader.fragmentShader.includes('vMetalnessMapUv s09ReliefUV'));assert.ok(shader.fragmentShader.includes('vAoMapUv s09ReliefAO'));assert.equal(shader.uniforms.reliefRange.value,52);
+  setWebGlRelief(m,null);assert.equal(m.onBeforeCompile,original);
+  const gpu=new MeshStandardNodeMaterial({map:tex,normalMap:tex,roughnessMap:tex,aoMap:tex,metalnessMap:tex});
+  const base=gpu.colorNode;setWebGpuRelief(gpu,tex,24,.03,52);assert.notEqual(gpu.colorNode,base);
+  setWebGpuRelief(gpu,null);assert.equal(gpu.colorNode,base);
+  tex.dispose();m.dispose();gpu.dispose();
+});

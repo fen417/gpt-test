@@ -1,3 +1,4 @@
+import {TEST_BUILD,storageKey} from './build-mode.js';
 import {loadFPSHands} from './fps-hands.js';
 import {loadWeaponModels} from './weapon-models.js';
 import {loadEquipmentModels} from './gadget-models.js';
@@ -45,6 +46,12 @@ import './recon.css';
 
 const $=id=>document.getElementById(id);
 mountChangelog();
+if(TEST_BUILD){
+  document.title='SECTOR 09 · TEST';
+  $('build-version').append(' · TEST');
+  $('join-toggle').style.display='none';
+  $('open-cases').style.display='none';
+}
 const show=(id,visible=true)=>$(id).classList.toggle('hidden',!visible);
 const text=(id,value)=>{const node=$(id),next=String(value);if(node.textContent!==next)node.textContent=next;};
 const audio=new CombatAudio();
@@ -136,8 +143,8 @@ let listeningAction=null;
 const selectedWeapons={assault:'ar416',medic:'mcx9',support:'mg36',recon:'dmr12'};
 function status(message,error=false){for(const id of ['status','solo-status','network-status','create-status']){text(id,message);$(id).classList.toggle('error',error);}}
 function toast(message){text('toast',message);show('toast');clearTimeout(toastTimer);toastTimer=setTimeout(()=>show('toast',false),4500);}
-function save(key,value){try{localStorage.setItem(`sector09-${key}`,value);}catch{}}
-function read(key,fallback){try{return localStorage.getItem(`sector09-${key}`)??fallback;}catch{return fallback;}}
+function save(key,value){try{localStorage.setItem(storageKey(key),value);}catch{}}
+function read(key,fallback){try{return localStorage.getItem(storageKey(key))??fallback;}catch{return fallback;}}
 try{
   const savedBinds=JSON.parse(read('keybinds','{}'));
   if(savedBinds&&typeof savedBinds==='object'){
@@ -601,7 +608,8 @@ function receive(next){
   }
 }
 function presentLocalShot(event){
-  const player=local();if(!player?.alive)return;const weapon=equippedPersonalWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
+  const player=local();if(!player?.alive)return;
+  renderer?.queueCosmeticShot(event);const weapon=equippedPersonalWeapon(player.classId,event.weaponId),impulse=weapon.recoil*(aim?.76:1)*(lastInput.crouch?.87:1);
   recoilPitch=Math.min(.12,recoilPitch+impulse);recoilYaw=Math.max(-.035,Math.min(.035,recoilYaw+Math.sin(event.shotSeq*2.1)*impulse*.31));
   audio.events({time:event.time,events:[event],players:state.players},player,{immediate:true});
   text('ammo',(simulation?.client??multiplayer).prediction.player.ammo);
@@ -612,7 +620,7 @@ const profile=mountPlayerProfile({
   getSkins:()=>casePanel.loadout,equipSkin:(weaponId,rewardId)=>casePanel.equip(weaponId,rewardId),
 });
 const casePanel=mountCasePanel({
-  getUrl:async()=>normalizeServerUrl($('server-url').value.trim()||await configuredServerUrl()),
+  getUrl:async()=>TEST_BUILD?'':normalizeServerUrl($('server-url').value.trim()||await configuredServerUrl()),
   getToken:profile.tokenForServer,getAccount:()=>profile.caseAccount,
   getGpuDevice:()=>renderer?.webgpu?.device??null,notify:toast,
 });
@@ -788,11 +796,11 @@ async function prepareMatchFrame(ticket){
   loadingScreen.update(2,'Загрузка бойцов и техники');
   await renderer.preloadMatchActors(state);
   signal.throwIfAborted();
-  loadingScreen.update(3,'Подготовка первого кадра');
+  loadingScreen.update(2.5,'Подготовка первого кадра');
   try{
     await renderer.warmMatchFrame(state,localId,{
       ...ticket.view,vehicleThirdPerson,campaignTankZoom,campaignRender:campaignPresentation?.renderHook,
-    },signal);
+    },signal,(fraction,label)=>{if(matchLoad===ticket&&!signal.aborted)loadingScreen.update(2.5+fraction*.5,label+' — '+Math.round(fraction*100)+'%');});
   }catch(error){
     if(!signal.aborted&&renderer.api==='webgpu')recoverWebGpu(error);
     throw error;
@@ -928,6 +936,7 @@ document.addEventListener('keydown',event=>{
   }
 });
 async function serverAddress(){
+  if(TEST_BUILD)throw Error('Сетевая игра отключена в тестовой сборке.');
   const url=$('server-url').value.trim()||await configuredServerUrl();
   if(!url){document.querySelector('.server-details').open=true;throw Error('Сервер ещё не настроен. Укажите его публичный WSS-адрес в разделе «Адрес игрового сервера».');}
   return normalizeServerUrl(url);
@@ -1172,7 +1181,7 @@ apiSelector.value=preferredGraphicsApi();
 apiSelector.addEventListener('change',()=>{
   const next=apiSelector.value;
   save('gfx-api',next);
-  try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
+  try{sessionStorage.removeItem(storageKey('webgpu-failed'));}catch{}
   location.reload();
 });
 $('gfx-aa').value=read('gfx-aa','auto');if(!['auto','on','off','fxaa','smaa','msaa2','msaa4'].includes($('gfx-aa').value))$('gfx-aa').value='auto';
@@ -1195,9 +1204,9 @@ function restoreLegacyGraphics(){
 $('graphics-reset').addEventListener('click',()=>{
   try{
     for(const key of ['quality','gfx-custom','gfx-shadows','gfx-resolution','gfx-detail','gfx-fsr','gfx-fsr-quality','gfx-fsr-sharpness','gfx-frame-generation','gfx-api','gfx-aa','brightness']){
-      localStorage.removeItem('sector09-'+key);
+      localStorage.removeItem(storageKey(key));
     }
-    sessionStorage.removeItem('sector09-webgpu-failed');
+    sessionStorage.removeItem(storageKey('webgpu-failed'));
   }catch{}
   location.reload();
 });
@@ -2041,7 +2050,7 @@ function markers(){
 function frame(now){
   const cpuBegin=performance.now();
   requestAnimationFrame(frame);const elapsed=Math.max(0,(now-lastFrame)/1000),dt=Math.min(elapsed,.08);lastFrame=now;
-  if(matchLoad)return;
+  if(matchLoad||renderer?.shaderWarmup?.busy)return;
   frames++;fpsClock+=elapsed;
   if(active)frameTimes.add(elapsed*1000);
   if(fpsClock>=1){
@@ -2121,6 +2130,9 @@ function frame(now){
         networkInterpolated:mode==='server'||Boolean(simulation),aim:active&&aim,move:Math.abs(lastInput.forward??0)+Math.abs(lastInput.strafe??0),strafe:lastInput.strafe,sprint:lastInput.sprint,crouch:lastInput.crouch,quality,fov,scopeZoom:weaponScopeZoom(renderPlayer?.weaponId),hasCollimator,equippedAttachments,weaponSkinFor,brightness,shake:cameraShake,gfx,paused,deployTarget:active&&currentPlayer&&!currentPlayer.alive?getDeployTarget(currentPlayer):null});
       if(active&&!paused)renderer.noteRealFrame(now,fgMeta,performance.now()-realBegin);
     }catch(error){if(renderer.api==='webgpu'){recoverWebGpu(error);return;}throw error;}
+    const aaStatus=$('gfx-aa-active'),post=renderer.postPass;
+    const aaText=post.activeAA?'Фактически: '+post.activeAA+(post.aaFallback?' · '+post.aaFallback:''):'';
+    if(aaStatus&&aaStatus.textContent!==aaText)aaStatus.textContent=aaText;
   }
   if(active&&campaignPresentation){
     campaignPresentation.update(renderState??state,paused,yaw);
@@ -2186,7 +2198,7 @@ function recoverWebGpu(error) {
   webgpuRecovering=true;
   const message=String(error?.message??error??'WebGPU device lost').slice(0,280);
   console.error('[SECTOR 09] Switching back to WebGL 2:',message);
-  try {sessionStorage.setItem('sector09-webgpu-failed',message);}catch{}
+  try {sessionStorage.setItem(storageKey('webgpu-failed'),message);}catch{}
   location.reload();
 }
 try{
@@ -2194,7 +2206,7 @@ try{
   let gpuOptions=null;
   const requested=preferredGraphicsApi();
   let recoveredReason=null;
-  try{recoveredReason=sessionStorage.getItem('sector09-webgpu-failed');}catch{}
+  try{recoveredReason=sessionStorage.getItem(storageKey('webgpu-failed'));}catch{}
   if(requested==='webgpu'&&!recoveredReason) {
     webgpuAttempted=true;
     const [
@@ -2215,6 +2227,10 @@ try{
       FrameGeneration:WebGpuFrameGeneration,Cascades:(await import('./webgpu-cascades.js')).WebGpuCascades,
       ...await import('./webgpu-campaign-fire.js'),
       ...await import('./webgpu-surface-relief.js'),
+      ...await import('./webgpu-map-weathering.js'),
+      ...await import('./webgpu-gi.js'),
+       ...await import('./webgpu-architecture-ao.js'),
+      ...await import('./webgpu-vegetation.js'),
       ...await import('./webgpu-penumbra.js')};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});
@@ -2238,7 +2254,7 @@ try{
   const gpuRetry=$('gfx-api-retry');
   gpuRetry.hidden=!(recoveredReason&&requested==='webgpu');
   gpuRetry.addEventListener('click',()=>{
-    try{sessionStorage.removeItem('sector09-webgpu-failed');}catch{}
+    try{sessionStorage.removeItem(storageKey('webgpu-failed'));}catch{}
     location.reload();
   });
   if(recoveredReason)toast('WebGPU переключён на WebGL 2 после ошибки ('+recoveredReason+'). Повторный запуск — в настройках изображения.');

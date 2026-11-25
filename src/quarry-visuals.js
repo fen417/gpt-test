@@ -128,9 +128,10 @@ function quarryCliffs(owner, map, backdrop = true) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.anisotropy = owner.surfaces.maps.asphalt.anisotropy;
   const material = pairMaterials(
-    new THREE.MeshStandardMaterial({ map: texture, roughness: 1, vertexColors: true }),
+    new THREE.MeshStandardMaterial({ map: texture, roughness: 1, normalScale:new THREE.Vector2(.24,.24), vertexColors: true }),
     new THREE.MeshLambertMaterial({ map: texture, vertexColors: true }),
   );
+  material.userData.remasterSurface=material._lowMaterial.userData.remasterSurface='rock';
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = mesh.castShadow = true;
   owner.scene.add(mesh);
