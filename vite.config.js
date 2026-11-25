@@ -22,9 +22,7 @@ export default defineConfig({
       }},
       input: {
         credits: fileURLToPath(new URL('./credits.html', import.meta.url)),
-        soldiers: fileURLToPath(new URL('./soldier-review.html', import.meta.url)),
         game: fileURLToPath(new URL('./index.html', import.meta.url)),
-        editor: fileURLToPath(new URL('./editor/index.html', import.meta.url)),
       },
     },
   },

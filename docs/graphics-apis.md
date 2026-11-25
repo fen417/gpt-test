@@ -1,7 +1,6 @@
-# SECTOR 09: Graphics API selection (test branch)
+# SECTOR 09: Graphics API selection
 
-This feature is isolated to `test`. It does not alter the gameplay protocol,
-server simulation, campaign visibility or the published `main` build.
+Both render APIs are available; experimental rendering changes are published at `/gpt-test/test/` from `remaster/pbr-ktx2`.
 
 ## Settings
 
@@ -43,7 +42,7 @@ parity across GPU vendors remain unverified until real GPU comparisons.
 
 ## Compare performance
 
-1. Open the `test` build with `?perf`, preferably at the same window size.
+1. Open the experimental build with `?perf`, preferably at the same window size.
 2. Use exactly the same map, population (such as 30 bots), graphics quality,
    shadows, FSR quality, resolution, AA and browser settings.
 3. Record ~60 seconds with WebGL 2, then export JSON.
