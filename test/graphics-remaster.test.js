@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AdaptiveGraphics} from '../src/adaptive-graphics.js';
-import {baseGraphicsQuality, geometryQuality, graphicsEffects, validateCustomGraphics} from '../src/graphics-settings.js';
+import { AdaptiveGraphics } from '../src/adaptive-graphics.js';
+import { baseGraphicsQuality, geometryQuality, graphicsEffects, validateCustomGraphics } from '../src/graphics-settings.js';
+import { choosePbrSize, DETAIL_SIZE, PBR_SOURCES } from '../src/pbr-library.js';
+import * as THREE from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { vec4 } from 'three/tsl';
+import { buildWeatherPixels, weatherParameters, makeWeatherMask, surfaceRepeat } from '../src/map-weathering.js';
+import { setWebGlWeathering } from '../src/webgl-map-weathering.js';
+import { setWebGpuWeathering, suspendWebGpuWeathering } from '../src/webgpu-map-weathering.js';
+import { sourceCandidates } from '../scripts/polyhaven-source.mjs';
 
 test('Ultra inherits the high-detail path and legacy presets opt out of additional passes',()=>{
   assert.equal(baseGraphicsQuality('ultra'),'high');
@@ -47,4 +55,79 @@ test('CPU load adapts geometry while preserving GPU effects',()=>{
   for(let i=0;i<120;i++)quality.sample(.035,32,timer,true);
   assert.equal(quality.cpuStep,1);
   assert.equal(quality.effects,settings);
+});
+
+test('PBR tiers never exceed requested resolution or hardware limit',()=>{
+  assert.equal(choosePbrSize([512,1024,2048,4096],4096,2048),2048);
+  assert.equal(choosePbrSize([512,1024,2048],4096),2048);
+  assert.equal(choosePbrSize([512,1024],256),0);
+  assert.equal(choosePbrSize([512,1024],0),0);
+  assert.equal(DETAIL_SIZE[graphicsEffects('ultra').surfaceDetail],4096);
+  for(const preset of ['legacy','low','medium','high'])assert.equal(graphicsEffects(preset).surfaceDetail,'off');
+  assert.ok(Object.keys(PBR_SOURCES).length>=10);
+});
+
+test('map profiles are opt-in and preserve relief UV scale',()=>{
+  for(const p of ['legacy','low','medium','high'])assert.equal(graphicsEffects(p).mapWeathering,'off');
+  assert.equal(graphicsEffects('ultra').mapWeathering,'high');
+  assert.equal(validateCustomGraphics({mapWeathering:'low'},'ultra').mapWeathering,'low');
+  assert.equal(weatherParameters('quarry','rock','off'),null);
+  assert.ok(weatherParameters('quarry','concrete','high')[1]>weatherParameters('fy_pool_day','concrete','high')[1]);
+  assert.equal(weatherParameters('quarry','sand','high')[2],0);
+  assert.equal(weatherParameters('quarry','concrete','low')[2],0);
+  assert.equal(surfaceRepeat('rock'),1);assert.equal(surfaceRepeat('concrete'),1);
+});
+test('deterministic mask with sparse cracks',()=>{
+  const a=buildWeatherPixels(64),b=buildWeatherPixels(64);
+  assert.deepEqual(a,b);assert.equal(a.length,64*64*4);
+  const cracks=a.filter((x,i)=>i%4===2&&x>0).length;
+  assert.ok(cracks>0&&cracks<64*64*.4);assert.ok(new Set(a.filter((x,i)=>i%4===0)).size>50);
+});
+test('WebGL patches compose and restore original shader hook',()=>{
+  const m=new THREE.MeshStandardMaterial(),mask=makeWeatherMask(),original=s=>{s.fragmentShader+='\n// original';};
+  m.onBeforeCompile=original;setWebGlWeathering(m,mask,weatherParameters('port','metal','high'));
+  const s={uniforms:{},vertexShader:'#include <project_vertex>',fragmentShader:'#include <color_fragment>'};
+  m.onBeforeCompile(s);assert.ok(s.vertexShader.includes('s09WeatherPosition'));
+  assert.ok(s.fragmentShader.includes('s09WeatherFactor'));assert.ok(s.fragmentShader.includes('// original'));
+  assert.ok(m.customProgramCacheKey().includes('weathering'));setWebGlWeathering(m,null);
+  assert.equal(m.onBeforeCompile,original);mask.dispose();m.dispose();
+});
+test('WebGPU wrapper preserves original color node while relief changes',()=>{
+  const m=new MeshStandardNodeMaterial(),mask=makeWeatherMask(),base=vec4(1);
+  m.colorNode=base;const original=m.customProgramCacheKey;
+  setWebGpuWeathering(m,mask,weatherParameters('port','metal','high'));const first=m.colorNode;assert.notEqual(first,base);
+  suspendWebGpuWeathering(m);assert.equal(m.colorNode,base);
+  setWebGpuWeathering(m,mask,weatherParameters('village','metal','high'));assert.equal(m.colorNode,first);
+  suspendWebGpuWeathering(m);m.colorNode=vec4(.5);const replacement=m.colorNode;
+  setWebGpuWeathering(m,mask,weatherParameters('village','metal','low'));assert.notEqual(m.colorNode,first);
+  setWebGpuWeathering(m,null);assert.equal(m.colorNode,replacement);assert.equal(m.customProgramCacheKey,original);
+  mask.dispose();m.dispose();
+});
+
+test('Poly Haven lookup handles nested and differently named maps',()=>{
+  const url='https://dl.polyhaven.org/file/ph-assets/Textures/png/4k/concrete_floor_worn_001/concrete_floor_worn_001_diff_4k.png';
+  const data={files:{Diffuse:{'4K':{PNG:{url,md5:'abc'}}}}};
+  const result=sourceCandidates(data,'concrete_floor_worn_001','diff',4096);
+  assert.equal(result[0].url,url);
+  assert.equal(result[0].md5,'abc');
+  assert.equal(result[0].extension,'.png');
+});
+test('Missing metadata falls back to exact-resolution CDN paths',()=>{
+  const result=sourceCandidates({},'concrete_floor_worn_001','diff',4096);
+  assert.ok(result.length);
+  assert.ok(result.every(r=>r.url.includes('/4k/')));
+  assert.ok(result[0].url.endsWith('concrete_floor_worn_001_diff_4k.jpg'));
+});
+test('Normal GL candidates never include DX or another resolution',()=>{
+  const result=sourceCandidates({nor_dx:{'2k':{jpg:{url:'https://dl.polyhaven.org/x_nor_dx_2k.jpg'}}}},'x','nor_gl',4096);
+  assert.ok(result.every(r=>!r.url.includes('nor_dx')&&r.url.includes('/4k/')));
+});
+
+test('Fabric colour variants are accepted and preferred deterministically',()=>{
+  const url=name=>'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fabric_pattern_07/fabric_pattern_07_'+name+'_2k.jpg';
+  const metadata={col_2:{'2k':{jpg:{url:url('col_2')}}},col_1:{'2k':{jpg:{url:url('col_1'),md5:'cloth'}}}};
+  const candidates=sourceCandidates(metadata,'fabric_pattern_07','diff',2048,['col_1','col_2','col_03']);
+  assert.equal(candidates[0].url,url('col_1'));
+  assert.equal(candidates[0].md5,'cloth');
+  assert.equal(candidates[1].url,url('col_2'));
 });

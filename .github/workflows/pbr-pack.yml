@@ -9,24 +9,6 @@ concurrency:
   group: experimental-pbr-pack
   cancel-in-progress: false
 jobs:
-  cleanup-old-branch:
-    if: github.ref == 'refs/heads/remaster/pbr-ktx2'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Remove the superseded graphics branch if unchanged and merged
-        shell: bash
-        run: |
-          old="$(git ls-remote origin refs/heads/remaster/graphics-overhaul | cut -f1)"
-          if [ -z "$old" ]; then exit 0; fi
-          if [ "$old" != "d9c41087b3d92bb6cef968d8c1fc1305cb94818d" ]; then
-            echo "Old branch has changed; not deleting it."; exit 1
-          fi
-          git fetch origin main
-          git merge-base --is-ancestor "$old" origin/main
-          git push --force-with-lease=refs/heads/remaster/graphics-overhaul:"$old" origin :refs/heads/remaster/graphics-overhaul
   generate:
     if: github.ref == 'refs/heads/remaster/pbr-ktx2'
     runs-on: ubuntu-latest
@@ -40,8 +22,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Check targeted graphics configuration
-        run: node --test test/pbr-library.test.js test/graphics-remaster.test.js test/webgpu-ktx2.test.js test/polyhaven-source.test.js test/map-weathering.test.js
+      - name: Check consolidated regression tests
+        run: npm test
       - name: Restore partial PBR pack
         uses: actions/cache/restore@v4
         with:
