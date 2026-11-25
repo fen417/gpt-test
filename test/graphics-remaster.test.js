@@ -131,3 +131,41 @@ test('Fabric colour variants are accepted and preferred deterministically',()=>{
   assert.equal(candidates[0].md5,'cloth');
   assert.equal(candidates[1].url,url('col_2'));
 });
+
+// Water settings, shoreline depth and reversible material lifecycle.
+import {getMap} from '../shared/world.js';
+import {WaterAppearance,waterDepth,waterSurfaceColor,makeWaterMaterial,makeWaveNormal} from '../src/water-appearance.js';
+import {ReflectionReceivers,makeGlReflectionReceiver,WATER_RECEIVER} from '../src/reflection-receivers.js';
+import {reflectionSteps} from '../src/world-post.js';
+
+test('water quality is opt-in and true pool transmission can be disabled independently',()=>{
+  assert.equal(graphicsEffects('low').water,'legacy');
+  assert.equal(graphicsEffects('ultra').waterRefraction,'high');
+  assert.equal(validateCustomGraphics({water:'medium',waterRefraction:'off'},'ultra').water,'medium');
+  const normal=makeWaveNormal(),detail=makeWaveNormal(true);
+  const pool=makeWaterMaterial('pool','high',normal,detail,null,true),port=makeWaterMaterial('port','high',normal,detail,null,true),cheap=makeWaterMaterial('pool','low',normal,null,null,true);
+  assert.ok(pool.transmission>0&&pool.ior===1.333);assert.equal(port.transmission,0);assert.equal(cheap.transmission,0);
+  assert.equal(cheap.clearcoat,0);assert.equal(reflectionSteps.high,32);
+  for(const m of [pool,port,cheap])m.dispose();normal.dispose();detail.dispose();
+});
+test('water has map-specific depth and restores original mesh on quality change',()=>{
+  const map=getMap('fy_pool_day'),p=map.pools[0],shore=p.z-p.d/2+.1;
+  assert.ok(waterDepth(map,p.x,p.z)>waterDepth(map,p.x,shore));
+  assert.notDeepEqual(waterSurfaceColor(map,p.x,p.z,false),waterSurfaceColor(map,p.x,shore,false));
+  const root=new THREE.Group(),geometry=new THREE.PlaneGeometry(3,3),material=new THREE.MeshLambertMaterial(),mesh=new THREE.Mesh(geometry,material);
+  mesh.userData.waterSurface=true;mesh.rotation.x=-Math.PI/2;root.add(mesh);root.updateMatrixWorld(true);
+  const water=new WaterAppearance();water.update(0,root,map,'medium','off','off',null);
+  assert.equal(water.entries.length,1);assert.notEqual(mesh.geometry,geometry);assert.ok(mesh.userData.waterReflection);
+  water.update(1,root,map,'legacy','off','off',null);assert.equal(mesh.geometry,geometry);assert.equal(mesh.material,material);assert.equal(water.active,false);
+  geometry.dispose();material.dispose();
+});
+test('SSR collects only enabled water surfaces and accepts the campaign canal separately',()=>{
+  const root=new THREE.Group(),geometry=new THREE.PlaneGeometry(4,4),material=new THREE.MeshStandardMaterial(),mesh=new THREE.Mesh(geometry,material);
+  root.add(mesh);mesh.userData.waterReflection=true;root.updateMatrixWorld(true);
+  const camera=new THREE.PerspectiveCamera(60,1,.1,100);camera.position.z=10;camera.updateMatrixWorld();
+  const receivers=new ReflectionReceivers(makeGlReflectionReceiver);
+  assert.equal(receivers.update('fy_pool_day',root,camera,true),true);assert.equal(receivers.entries[0].roughness,WATER_RECEIVER);
+  receivers.invalidate();assert.equal(receivers.update('nahar',new THREE.Group(),camera,true,mesh),true);
+  assert.equal(receivers.update('nahar',root,camera,false,mesh),false);assert.equal(receivers.entries.length,0);
+  receivers.dispose();geometry.dispose();material.dispose();
+});

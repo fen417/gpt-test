@@ -2015,6 +2015,7 @@ export class GameRenderer {
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock);
     const environment=this.scene.environment;
     const localEnvironment=this.localReflections.prepare(this,menu,warming);
+    if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene);
     this.cascades?.update();
     if(!menu&&!warming)this.interiorVisibility.apply(this);

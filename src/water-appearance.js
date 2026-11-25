@@ -39,25 +39,33 @@ export function waterSurfaceColor(map,x,z,foam=true){
   const depth=waterDepth(map,x,z),port=map.id==='port';
   const mix=smooth(depth,0,port?7:1.1);
   const shallow=port?[71,113,108]:[153,206,198],deep=port?[31,67,77]:[48,129,143];
-  const wave=.5+.5*Math.sin(z*1.73+.7*Math.sin(x*2.3+z*.4));
-  const detail=.5+.5*Math.sin(x*8.1+z*4.7+2*Math.sin(z*1.31));
+  const wave=.5+.5*Math.sin(z*(port?.21:1.73)+.7*Math.sin(x*2.3+z*(port?.08:.4)));
+  const detail=.5+.5*Math.sin(x*8.1+z*(port?.53:4.7)+2*Math.sin(z*(port?.16:1.31)));
   const shore=port?Math.max(0,map.shoreX-x):depth;
   const foamBand=foam&&depth>0? (1-smooth(shore,port?.4:.06,port?2.3:.22))*smooth(wave*.66+detail*.34,.51,.94)*(port?.78:.34):0;
   return shallow.map((c,i)=>Math.round(clamp(THREE.MathUtils.lerp(THREE.MathUtils.lerp(c,deep[i],mix),[211,230,221][i],foamBand),0,255)));
 }
 export function makeWaterColor(map,foam){
-  const port=map.id==='port',width=port?1024:256,height=port?256:256;
+  const port=map.id==='port',width=port?512:256,height=port?1024:256;
   const bytes=new Uint8Array(width*height*4),span=map.size;
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const u=(x+.5)/width,v=(y+.5)/height;
-    const wx=port?map.shoreX-1200*(1-u):(u-.5)*span;
-    const wz=port?(v-.5)*1600:(v-.5)*span;
+    const wx=port?map.shoreX+(u<.5?-1200+2320*u:-80*(1-u)):(u-.5)*span;
+    const wz=port?(.5-v)*1600:(v-.5)*span;
     bytes.set([...waterSurfaceColor(map,wx,wz,foam),255],(y*width+x)*4);
   }
   const t=new THREE.DataTexture(bytes,width,height,THREE.RGBAFormat);
   t.name='S09 shallow/deep water colour';t.colorSpace=THREE.SRGBColorSpace;
   t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearMipmapLinearFilter;t.generateMipmaps=true;
   t.needsUpdate=true;return t;
+}
+function portGeometry(){
+  // Concentrate half of the color texture into the first 40m of water.
+  // Normal maps retain an independent, uniformly scaled UV channel.
+  const geometry=new THREE.PlaneGeometry(1200,1600,2,1),p=geometry.attributes.position,uv=geometry.attributes.uv;
+  const metric=uv.clone();
+  for(let i=0;i<p.count;i++)if(Math.abs(p.getX(i))<.01){p.setX(i,560);metric.setX(i,1160/1200);}
+  geometry.setAttribute('uv1',metric);return geometry;
 }
 function poolGeometry(mesh,map){
   // World-aligned UVs on a private geometry: imported and procedural fallback
@@ -107,10 +115,14 @@ export class WaterAppearance {
       if(!this.entries.length)return;
       this.large=makeWaveNormal();this.large.repeat.set(pool?13:34,pool?13:46);
       if(level>=2){this.small=makeWaveNormal(true);this.small.repeat.set(pool?35:95,pool?35:111);}
-      if(level>=2)this.color=makeWaterColor(map,level===3&&foam==='high');
+      if(level>=2){
+        this.color=makeWaterColor(map,level===3&&foam==='high');
+        if(!pool){this.large.channel=1;if(this.small)this.small.channel=1;}
+      }
       this.material=makeWaterMaterial(pool?'pool':'port',quality,this.large,this.small,this.color,refraction==='high');
       for(const e of this.entries){
         if(pool)e.mesh.geometry=poolGeometry(e.mesh,map);
+        else if(this.color)e.mesh.geometry=portGeometry();
         e.mesh.material=this.material;
         e.mesh.userData.waterReflection=pool;
       }

@@ -4,7 +4,7 @@ import {ReflectionReceivers, makeGlReflectionReceiver} from './reflection-receiv
 import * as THREE from 'three';
 
 const aoSteps = { off: 0, low: 4, high: 12, gtao: 24 };
-const reflectionSteps={off:0,low:8,medium:13,high:21};
+export const reflectionSteps={off:0,low:8,medium:16,high:32};
 const contactSteps = { off: 0, low: 4, medium: 7, high: 12 };
 const atmosphereSteps = { off: 0, low: 1, medium: 3, high: 7, ultra: 12 };
 const bloomSettings = { off: [0, 0], low: [1, .075], medium: [2, .11], high: [3, .155], ultra: [4, .19] };
@@ -22,7 +22,7 @@ export class WorldPost {
       fogColor: new THREE.Color(), cameraY: 0, upView: new THREE.Vector3(),
       depthSize: new THREE.Vector2(), effectPixel: new THREE.Vector2(),
       steps: new THREE.Vector3(), reflectionSteps:0, shore:new THREE.Vector2(), waterPixel:new THREE.Vector2(),
-      worldXView:new THREE.Vector3(), cameraX:0, time:0,
+      worldXView:new THREE.Vector3(), cameraX:0, cameraZ:0, time:0,
       waterActive:0, receiverActive:0,
       cameraEffects:new THREE.Vector3(), chromaticGain:0, previousClipFromView:new THREE.Matrix4(),
       heatSources:new THREE.Matrix4(), heatStrength:new THREE.Vector4(), heatTime:0,
@@ -169,6 +169,7 @@ export class WorldPost {
       if(this.reflector)state.shore.copy(this.reflector);
       state.worldXView.set(1,0,0).transformDirection(camera.matrixWorldInverse);
       state.cameraX=camera.position.x;
+      state.cameraZ=camera.position.z;
       state.time=time;
     }
     try {

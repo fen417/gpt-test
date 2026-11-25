@@ -159,7 +159,7 @@ export class NaharWater {
     if(advanced)this.capillary.offset.set((clock*-.05)%1,(clock*.06)%1);
     this.ripples.offset.set((clock * .033) % 1, (clock * .003) % 1);
     const haze = THREE.MathUtils.smoothstep(fogDensity, .00172, .0047);
-    this.surface.material.envMap=this.owner.atmosphere.envTexture;
+    if(reflected)this.surface.material.envMap=this.owner.atmosphere.envTexture;
     this.surface.material.roughness = (advanced?.25:reflected?.35:.41) + haze * .1;
     this.surface.material.envMapIntensity = (advanced?.70:.53) - haze * .23;
     this.surface.receiveShadow = !lowQuality;

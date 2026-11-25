@@ -169,7 +169,7 @@ void main(){
 const reflectors = (receivers) => `
 uniform vec2 shore;
 uniform vec3 upView,worldXView;
-uniform float cameraY,cameraX,waterActive,receiverActive;
+uniform float cameraY,cameraX,cameraZ,waterActive,receiverActive;
 bool waterSurface(vec3 pos){
   return waterActive>0. && cameraX+dot(pos,worldXView)<shore.x-.12 && abs(cameraY+dot(pos,upView)-shore.y)<.075;
 }
@@ -198,22 +198,27 @@ vec3 decodeReflectionNormal(vec2 oct){
 void main(){
   vec3 pos=viewAt(vUv);
   gl_FragColor=vec4(0.);
-  bool water=waterSurface(pos);
   vec4 receiver=reflectionReceiver(vUv,-pos.z);
+  bool water=waterSurface(pos)||(receiver.b>-.15&&receiver.b<-.10);
+  if(receiver.b<0.)pos*=receiver.a/max(.001,-pos.z);
   if(!water && receiver.b==0.)return;
   if(water&&-pos.z>145.)return;
-  if(!water&&receiver.b<0.)pos*=receiver.a/max(.001,-pos.z);
   bool wet=receiver.b>1.;
   float roughness=water?.21:wet?mix(.38,.15,receiver.b-1.):abs(receiver.b);
-  vec3 normal=water?normalize(upView+worldXView*sin(pos.x*.7+time*1.5)*.025):decodeReflectionNormal(receiver.rg);
+  vec3 worldZView=cross(worldXView,upView);
+  float wx=cameraX+dot(pos,worldXView),wz=dot(pos,worldZView)+cameraZ;
+  float fadeWave=1.-smoothstep(28.,130.,-pos.z);
+  vec3 wave=worldXView*(sin(wx*.71+wz*.37+time*1.5)*.038+sin(wx*2.2-wz*.9-time*2.1)*.018)
+    +worldZView*(cos(wz*.81-wx*.46+time*1.2)*.04+sin(wz*2.3+wx*.77-time*1.8)*.012);
+  vec3 normal=water?normalize(upView+wave*fadeWave):decodeReflectionNormal(receiver.rg);
   vec3 ray=reflect(normalize(pos),normal);
   float noV=max(0.,-dot(normalize(pos),normal));
-  float fresnel=pow(1.-noV,3.);
+  float fresnel=water?.0204+.9796*pow(1.-noV,5.):pow(1.-noV,3.);
   if(water&&(fresnel<.035 || dot(ray,upView)<=.001))return;
-  float reach=water?64.:mix(43.,24.,roughness);
+  float reach=water?85.:mix(48.,24.,roughness);
   float bias=water?.12:.045;
   float lastTravel=bias;
-  for(int i=1;i<=21;i++){
+  for(int i=1;i<=32;i++){
     if(float(i)>reflectionSteps)break;
     float t=float(i)/reflectionSteps, travel=.15+(reach-1.)*t*t;
     vec3 point=pos+normal*bias+ray*travel;
@@ -223,7 +228,7 @@ void main(){
     if(offscreen(at))break;
     vec3 hit=viewAt(at);
     float delta=hit.z-point.z;
-    if(delta>0. && delta<(water?1.3:.35)+travel*.084 && !waterSurface(hit) && (water||dot(hit-pos,normal)>.06)){
+    if(delta>0. && delta<(water?1.3:.35)+travel*.084 && !waterSurface(hit) && (water?dot(hit-pos,upView)>.06:dot(hit-pos,normal)>.06)){
       float lo=lastTravel, hi=travel;
       for(int j=0;j<3;j++){
         float mid=(lo+hi)*.5;
@@ -234,7 +239,7 @@ void main(){
       }
       vec2 margin=min(at,1.-at);
       vec3 refined=viewAt(at);
-      if(!water&&(dot(refined-pos,normal)<.045||abs(refined.z-(pos+normal*bias+ray*hi).z)>.4+travel*.044)){
+      if((water?dot(refined-pos,upView)<.04:dot(refined-pos,normal)<.045)||abs(refined.z-(pos+normal*bias+ray*hi).z)>(water?.8:.4)+travel*.044){
         lastTravel=travel;
         continue;
       }
@@ -242,7 +247,8 @@ void main(){
       vec2 blur=waterPixel*(.58+roughness*2.+travel*.023);
       vec3 color=texture2D(source,at).rgb*.5;
       color+=(texture2D(source,at+blur).rgb+texture2D(source,at-blur).rgb)*.25;
-      float gain=water?fresnel*.56:(.19+.57*fresnel)*(1.-roughness*.8);
+      fade*=1.-smoothstep(85.,145.,-pos.z);
+      float gain=water?fresnel*.82:(.19+.57*fresnel)*(1.-roughness*.8);
       if(wet&&!water)gain*=receiver.b-1.;
       float opacity=fade*gain;
       gl_FragColor=vec4(color*opacity,opacity);
@@ -345,6 +351,7 @@ export function webGlWorldStages(post) {
       uniforms.cameraY.value=state.cameraY;
       uniforms.bloomGain.value=state.bloomGain;
       uniforms.cameraX.value=state.cameraX;
+      uniforms.cameraZ.value=state.cameraZ;
       uniforms.chromaticGain.value=state.chromaticGain;
       uniforms.time.value=state.time;
       uniforms.heatTime.value=state.heatTime;
