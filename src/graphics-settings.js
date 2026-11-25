@@ -5,7 +5,7 @@ const legacy = Object.freeze({
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
   sky: 'legacy', clouds:'off', heightFog:'off', water: 'legacy', waterRefraction:'off', waterFoam:'off', reflections:'off', localReflections:'off', shadowFilter: 'auto', shadowDistance: 'auto',
   smoke:'legacy', heatDistortion:'off', softParticles:'off', softParticleResolution:'auto', explosions:'legacy', particleLighting:'off', muzzleEffects:'legacy', muzzleLights:'off', fireEffects:'legacy', fireLighting:'off', dust:'off',
-  shaderWarmup:'auto',adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
+  shaderWarmup:'auto',reflectionTraversal:'auto',temporalEffects:'auto',adaptiveTarget:'off',adaptiveFloor:'balanced',adaptiveMinScale:'65',adaptiveClarity:'on',
 });
 
 const ultra = Object.freeze({
@@ -94,6 +94,8 @@ export const GRAPHICS_CONTROLS = [
   ]],
   ['Производительность', [
     ['shaderWarmup','Предкомпиляция шейдеров','Авто — ограниченная подготовка выбранной сцены при загрузке матча. Полная — дольше готовит PBR/GI, отражения, уровни детализации бойцов, оружие и снаряжение. Выкл. — исходный прогрев первого кадра.',choices(off,auto,['full','Полная'])],
+    ['reflectionTraversal','Ускорение экранных отражений','Авто — иерархия глубины для высоких SSR. Выкл. — исходный поиск отражений.',choices(auto,off)],
+    ['temporalEffects','Временное накопление эффектов','Авто — переиспользует проверенные результаты GTAO и атмосферы на неподвижных кадрах. Выкл. — полный пересчёт.',choices(auto,off)],
     ['adaptiveTarget', 'Адаптивное качество', 'После устойчивой нагрузки уменьшает качество отдельных эффектов.', choices(off, ...[30,45,60,90,120].map(n=>[String(n),n+' FPS']))],
     ['adaptiveFloor', 'Предел упрощения эффектов', 'Сбалансированный режим оставляет часть эффектов активными.', choices(['balanced','Сбалансированный'],['minimum','Минимальный'])],
     ['adaptiveMinScale', 'Минимальный масштаб', 'Предел для адаптивного масштаба. Действует в режимах «Авто».', [50, 100]],

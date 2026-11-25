@@ -404,7 +404,7 @@ test('map art distinguishes salt, oxidation, dust and clean interiors',()=>{
 
 
 import {LocalReflections} from '../src/local-reflections.js';
-import {WorldPost,canFuseBloom} from '../src/world-post.js';
+import {WorldPost,canFuseBloom,stableEffectHistory} from '../src/world-post.js';
 test('local probes are only generated on explicit warmup, never during gameplay',async()=>{
   const map={id:'fy_pool_day'},owner={map,worlds:new Map([[map.id,{}]]),camera:{position:{x:4,y:2,z:0}},graphicsEffects:{localReflections:'high'}};
   const probes=new LocalReflections(),texture={};let captures=0;
@@ -467,4 +467,45 @@ test('bloom fusion skips one pass only without adjacent-pixel filters; bloom-onl
   assert.equal(post.finishBloom(input,null,true),input.texture);assert.equal(post.bloomFused,true);assert.equal(composite,false);assert.equal(post.passes,passes-1);
   post.configure({ao:'gtao',bloom:'high'},128,72,4);assert.equal(post.directWorld,false);post.finishBloom(input,null,false);assert.equal(composite,true);
   post.dispose();input.dispose();
+});
+
+
+import {chooseHalfSmoke} from '../src/soft-smoke.js';
+test('automatic half-resolution smoke is restricted to dense distant plumes',()=>{
+  assert.equal(chooseHalfSmoke('auto',12,false,.8),true);
+  assert.equal(chooseHalfSmoke('auto',11,false,1.2),false);
+  assert.equal(chooseHalfSmoke('auto',50,true,2),false);
+  assert.equal(chooseHalfSmoke('auto',50,false,.1),false);
+  assert.equal(chooseHalfSmoke('full',50,false,2),false);
+  assert.equal(chooseHalfSmoke('half',1,true,0),true);
+});
+test('depth hierarchy uses conservative ceil sizes and can be disabled independently',()=>{
+  const post=new WorldPost({},THREE.WebGLRenderTarget,()=>({dispose(){}}));
+  post.reflector=new THREE.Vector2(0,0);
+  post.configure({reflections:'high'},101,73,0);
+  assert.deepEqual(post.depthHierarchy.map(t=>[t.width,t.height]),[[26,19],[7,5]]);
+  post.configure({reflections:'high',reflectionTraversal:'off'},101,73,0);
+  assert.equal(post.depthHierarchy,null);
+  post.configure({reflections:'medium'},101,73,0);assert.equal(post.depthHierarchy,null);
+  post.dispose();
+});
+test('temporal masks ping-pong only on stable frames and reset on camera, quality or resize',()=>{
+  const post=new WorldPost({},THREE.WebGLRenderTarget,()=>({dispose(){}}));
+  const camera=new THREE.PerspectiveCamera(),sun=new THREE.Vector3(1,1,0);
+  post.configure({ao:'gtao'},100,80,0);
+  post.prepareTemporal(camera,sun,1);assert.equal(post.state.historyReuse,0);
+  const initial=post.maskWrite;post.finishTemporal();
+  post.prepareTemporal(camera,sun,1.016);assert.equal(post.state.historyReuse,1);assert.notEqual(post.maskWrite,initial);assert.equal(post.maskRead,initial);post.finishTemporal();
+  camera.position.x+=.1;post.prepareTemporal(camera,sun,1.032);assert.equal(post.state.historyReuse,0);post.finishTemporal();
+  post.configure({ao:'gtao'},104,80,0);post.prepareTemporal(camera,sun,1.048);assert.equal(post.state.historyReuse,0);
+  post.configure({ao:'gtao',temporalEffects:'off'},104,80,0);assert.equal(post.maskHistory,null);post.dispose();
+});
+test('streamed grass reuses compatible instance buffers with exact live count',()=>{
+  const veg=new Vegetation(),geometry=new THREE.PlaneGeometry(),material=new THREE.MeshBasicMaterial();
+  veg.asset=()=>({geometry,material});
+  const plants=Array.from({length:11},(_,i)=>({x:i,y:0,z:0,yaw:0,scale:1,color:0xffffff,shade:1}));
+  const first=veg.batch(plants,'grass',1);assert.equal(first.mesh.instanceMatrix.count,16);assert.equal(first.mesh.count,11);
+  veg.remove(first,true);assert.equal(veg.grassPool.length,1);
+  const next=veg.batch(plants.slice(0,9),'grass',2);assert.equal(next.mesh,first.mesh);assert.equal(next.mesh.count,9);assert.equal(veg.poolHits,1);
+  veg.remove(next,true);veg.clear();assert.equal(veg.grassPool.length,0);geometry.dispose();material.dispose();
 });

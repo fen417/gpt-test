@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {uploadPrefix} from './render-work.js';
 import {makeFoliageTexture,foliageGeometry} from './vegetation-art.js';
 import {authoredPlants,createPlacement,grassTile,foliageLOD,FOLIAGE_LEVEL,GRASS_CELL} from './vegetation-placement.js';
 import {makeGlFoliageMaterial} from './webgl-vegetation.js';
@@ -27,7 +28,7 @@ export class Vegetation{
       const i=this.grassPool.findIndex(m=>m.instanceMatrix.count===capacity);
       if(i>=0){mesh=this.grassPool.splice(i,1)[0];this.poolHits++;}
     }
-    mesh??=new THREE.InstancedMesh(a.geometry,a.material,capacity);
+    if(!mesh){mesh=new THREE.InstancedMesh(a.geometry,a.material,capacity);if(kind==='grass')mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);}
     mesh.geometry=a.geometry;mesh.material=a.material;mesh.count=plants.length;mesh.visible=true;mesh.castShadow=false;
     mesh.name='S09 '+kind+' instances';mesh.userData.noBatch=true;mesh.userData.vegetation=true;mesh.receiveShadow=kind!=='grass';
     for(let i=0;i<plants.length;i++){
@@ -36,7 +37,8 @@ export class Vegetation{
       this.tint.setHex(p.color).lerp(this.white,.57).multiplyScalar(p.shade);
       mesh.setColorAt(i,this.tint);
     }
-    mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;
+    if(kind==='grass'){mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);uploadPrefix(mesh.instanceMatrix,plants.length);uploadPrefix(mesh.instanceColor,plants.length);}
+    else{mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;}
     mesh.computeBoundingSphere();mesh.boundingSphere.radius+=.6;mesh.customDepthMaterial=a.depth;
     this.root.add(mesh);return {mesh,kind,lod,plants};
   }

@@ -62,9 +62,9 @@ export class WorldPost {
     const [levels, gain] = bloomSettings[effects?.bloom ?? 'off'];
     const reflections=this.reflector||this.receiverMode?(reflectionSteps[effects?.reflections]??0):0;
     const receiverMask=Boolean(reflections&&this.receiverMode);
-    const hierarchy=reflections===32;
+    const hierarchy=reflections===32&&effects?.reflectionTraversal!=='off';
     const mask=ao+contact+atmosphere>0;
-    const temporal=ao>12||atmosphere>=7;
+    const temporal=(ao>12||atmosphere>=7)&&effects?.temporalEffects!=='off';
     const blur=(this.inMenu||this.cinematic)?cameraModes.blur[effects?.motionBlur]??0:0;
     const dof=(this.cinematic&&(effects?.depthOfField??'off')!=='off')||(this.inMenu&&effects?.depthOfField==='on');
     const flare=this.aiming?0:cameraModes.flare[effects?.lensFlare]??0;
