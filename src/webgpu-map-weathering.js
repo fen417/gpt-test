@@ -32,15 +32,15 @@ export function setWebGpuWeathering(m,mask,params){
       const projected=mix(p.xz,mix(p.xy,p.zy,step(n.z,n.x)),vertical);
       const local=texture(mask).sample(projected.mul(vec2(.18,.12)).add(wide.mul(.17))).toVar();
       const near=smoothstep(18,55,p.sub(cameraPosition).length()).oneMinus();
-      const detail=texture(mask).sample(projected.mul(mix(vec2(.81,.81),vec2(.92,.115),vertical)).add(wide.mul(.23))).toVar();
+      const detail=texture(mask).sample(projected.mul(mix(vec2(.81,.81),vec2(.62,.38),vertical)).add(wide.mul(.23))).toVar();
       dirt=dirt.add(smoothstep(.51,.79,local.g).mul(parameters.y).mul(vertical.mul(.28).add(.32)));
       crack=local.b.mul(parameters.z).mul(near);
-      streak=smoothstep(.24,.58,detail.a).mul(art.x).mul(vertical).mul(near).mul(.36);
-      chips=smoothstep(.62,.84,local.g.add(detail.b.mul(.35))).mul(art.y).mul(near).mul(.45);
+      streak=smoothstep(.46,.73,detail.a).mul(smoothstep(.62,.84,macro.g)).mul(art.x).mul(vertical).mul(near).mul(.14);
+      chips=smoothstep(.61,.84,local.g.add(detail.b.mul(.35))).mul(art.y).mul(near).mul(.34);
       oxide=smoothstep(.45,.72,local.g.add(detail.a.mul(.23))).mul(art.z).mul(near).mul(.62);
       dust=dust.add(smoothstep(.40,.73,local.r).mul(art.w).mul(vertical.mul(.65).oneMinus()).mul(near).mul(.24));
     }
-    const shade=clamp(variation.add(1).sub(dirt).sub(crack).sub(streak),.55,1.25);
+    const shade=clamp(variation.add(1).sub(dirt).sub(crack).sub(streak),.72,1.22);
     let tint=vec3(.65,.15,-.8).mul(parameters.w).mul(macro.r.add(.5)).add(1).mul(shade)
       .mul(mix(vec3(1),vec3(...params.slice(10,13)),clamp(dust,0,.7)))
       .mul(mix(vec3(1),vec3(...params.slice(13,16)),chips))

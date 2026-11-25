@@ -46,14 +46,14 @@ export class CachedShadows {
       this.combined=new THREE.WebGLRenderTarget(size,size,{minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:false});
       this.invalidate();
     }
-    if(this.root!==staticRoot){
-      this.root=staticRoot;this.casters=[];const flagGroups=new Set([...flags.values()].map(f=>f.group));
+    if(this.root!==staticRoot||this.staticRevision!==owner.staticMaterialRevision){
+      this.root=staticRoot;this.staticRevision=owner.staticMaterialRevision;this.casters=[];const flagGroups=new Set([...flags.values()].map(f=>f.group));
       staticRoot.traverse(o=>{if(!o.isMesh||!o.castShadow)return;
         for(let p=o;p;p=p.parent)if(flagGroups.has(p))return;
         this.casters.push(o);
       });this.casterSet=new Set(this.casters);this.invalidate();
     }
-    const key=[sun.position.x,sun.position.y,sun.position.z,sun.target.position.x,sun.target.position.y,sun.target.position.z,size].join('/');
+    const key=[sun.position.x,sun.position.y,sun.position.z,sun.target.position.x,sun.target.position.y,sun.target.position.z,size,...sun.shadow.camera.projectionMatrix.elements].join('/');
     const mask=camera.layers.mask;camera.layers.set(0);
     const target=renderer.getRenderTarget(),autoClear=renderer.autoClear;
     try {

@@ -53,7 +53,11 @@ export function foliagePixels(kind,size=256){
       }
     }
     alpha*=smooth(.005,.04,u)*smooth(.005,.04,1-u)*smooth(.003,.025,v)*smooth(.003,.025,1-v);
-    const shade=.91+.12*Math.sin(u*159+v*113)+.05*Math.sin(v*397)+vein;
+    // No coherent sine bands across the cards: they looked like shadow acne.
+    // Stable isotropic fine grain and a gentle root-to-tip colour gradient.
+    let grain=Math.imul(x+1,374761393)^Math.imul(y+1,668265263);grain=Math.imul(grain^(grain>>>13),1274126177);
+    const noise=((grain^(grain>>>16))>>>0)/4294967295;
+    const shade=.89+.11*smooth(0,.92,v)+.035*(noise-.5)+vein;
     const i=(y*size+x)*4;
     for(let j=0;j<3;j++)data[i+j]=Math.round(clamp((palette[0][j]+(palette[1][j]-palette[0][j])*clamp(tone))*shade,0,255));
     data[i+3]=Math.round(clamp(alpha)*255);

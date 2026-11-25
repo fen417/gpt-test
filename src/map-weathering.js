@@ -13,7 +13,7 @@ const surfaces={
 // Material response: streaks, abrasion/chips, oxidation, deposited dust,
 // roughness response. These are authored per surface, not generic grey noise.
 const responses={
-  concrete:[.72,.82,0,.40,.22],brick:[.46,.37,0,.43,.14],stucco:[.82,1,0,.52,.20],
+  concrete:[.36,.72,0,.30,.16],brick:[.22,.35,0,.29,.12],stucco:[.28,.78,0,.32,.14],
   rock:[.22,.35,0,.28,.12],sand:[0,0,0,1,.08],earth:[0,0,0,.82,.08],
   asphalt:[.08,.82,0,.68,.18],wood:[.42,.38,0,.31,.13],metal:[.88,.66,1,.35,.36],
   cloth:[.18,.12,0,.34,.07],grass:[0,0,0,.18,.03],ceramic:[.34,.22,0,.12,.15],
@@ -21,20 +21,20 @@ const responses={
 // Per-map artist palette: mineral dust, exposed substrate, oxide hue, strength.
 // Linear-space multipliers are intentionally modest to preserve map readability.
 const art={
-  village:[[1.18,1.03,.78],[1.10,.99,.82],[1.15,.61,.30],.82],
+  village:[[1.06,1.02,.94],[1.08,1.05,.98],[1.15,.61,.30],.62],
   quarry:[[1.15,1.04,.83],[1.13,1.05,.94],[1.26,.56,.24],1],
   port:[[.83,.95,.98],[.97,1.04,1.07],[1.25,.51,.24],1],
   fy_pool_day:[[.92,1.02,1.09],[1.05,1.06,1.04],[1.15,.66,.36],.32],
   linden_estate:[[.98,1.04,.90],[1.08,1.04,.97],[1.17,.61,.33],.48],
-  alhadra:[[1.20,1.04,.76],[1.13,1.01,.80],[1.24,.58,.26],.83],
-  'alhadra-desert':[[1.22,1.05,.72],[1.14,1.00,.77],[1.25,.56,.23],1],
-  'tel-mazin':[[1.14,1.02,.83],[1.10,.98,.85],[1.20,.58,.26],.89],
+  alhadra:[[1.07,1.02,.93],[1.08,1.04,.98],[1.24,.58,.26],.58],
+  'alhadra-desert':[[1.09,1.03,.91],[1.09,1.05,.97],[1.25,.56,.23],.66],
+  'tel-mazin':[[1.06,1.02,.95],[1.07,1.04,.98],[1.20,.58,.26],.60],
   nahar:[[1.07,1.02,.88],[1.05,1.02,.93],[1.19,.55,.28],.73],
-  safra:[[1.20,1.04,.76],[1.11,.99,.82],[1.23,.58,.25],.9],
+  safra:[[1.08,1.03,.92],[1.08,1.04,.98],[1.23,.58,.25],.62],
 };
 export function weatherArtProfile(mapId,surface,quality){
   const a=art[mapId]??art.village,r=responses[surface];
-  if(!r||!['low','high'].includes(quality))return null;
+  if(!r||surface==='grass'||!['low','high'].includes(quality))return null;
   const strength=a[3]*(quality==='high'?1:.55);
   return [...r.map(v=>v*strength),...a[0],...a[1],...a[2]];
 }
@@ -42,9 +42,11 @@ export function weatherArtProfile(mapId,surface,quality){
 export const surfaceRepeat=surface=>({brick:1.5,wood:1.2,metal:1.3,cloth:1.2,grass:1.4}[surface]??1);
 export function weatherParameters(mapId,surface,quality){
   const w=surfaces[surface];
-  if(!w||!['low','high'].includes(quality))return null;
+  const authored=weatherArtProfile(mapId,surface,quality);
+  if(!w||!authored)return null;
   const p=profiles[mapId]??[.18,.2,.09,.02],high=quality==='high',level=high?1:.58;
-  return [p[0]*w[0]*level,p[1]*w[1]*level,high?p[2]*w[2]:0,p[3],Number(high),...weatherArtProfile(mapId,surface,quality)];
+  const masonry=['concrete','brick','stucco'].includes(surface),ground=['sand','earth'].includes(surface);
+  return [p[0]*w[0]*level*(masonry?.83:1),p[1]*w[1]*level*(masonry?.47:ground?.68:1),high?p[2]*w[2]*(masonry?.60:1):0,p[3]*(masonry?.28:ground?.45:1),Number(high),...authored];
 }
 function hash(x,y,seed){
   let h=Math.imul(x+1,374761393)^Math.imul(y+1,668265263)^Math.imul(seed,1274126177);

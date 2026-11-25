@@ -22,7 +22,7 @@ export class Vegetation{
   batch(plants,kind,lod){
     if(!plants.length)return null;
     const a=this.asset(kind,lod),mesh=new THREE.InstancedMesh(a.geometry,a.material,plants.length);
-    mesh.name='S09 '+kind+' instances';mesh.userData.noBatch=true;mesh.userData.vegetation=true;mesh.receiveShadow=true;
+    mesh.name='S09 '+kind+' instances';mesh.userData.noBatch=true;mesh.userData.vegetation=true;mesh.receiveShadow=kind!=='grass';
     for(let i=0;i<plants.length;i++){
       const p=plants[i],d=this.dummy;d.position.set(p.x,p.y,p.z);d.rotation.set(0,p.yaw,0);d.scale.setScalar(p.scale);d.updateMatrix();
       mesh.setMatrixAt(i,d.matrix);
@@ -128,7 +128,7 @@ export class Vegetation{
     // Samples are never added to the map or persistent authored/grass lists.
     for(const [kind,a] of this.assets)if(this.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))for(const g of a.geometries.values()){
       const mesh=new THREE.InstancedMesh(g,a.material,1);mesh.setMatrixAt(0,matrix);mesh.setColorAt(0,this.white);mesh.frustumCulled=false;
-      mesh.userData.vegetation=true;mesh.customDepthMaterial=a.depth;mesh.receiveShadow=true;mesh.castShadow=['low','high'].includes(owner.graphicsEffects?.vegetationShadows);
+      mesh.userData.vegetation=true;mesh.customDepthMaterial=a.depth;mesh.receiveShadow=kind!=='grass';mesh.castShadow=['low','high'].includes(owner.graphicsEffects?.vegetationShadows);
       this.root.add(mesh);samples.push(mesh);
     }
     return ()=>{for(const mesh of samples){mesh.removeFromParent();mesh.dispose();}};

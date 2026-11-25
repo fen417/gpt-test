@@ -26,14 +26,14 @@ vec3 s09WeatherFactor(vec3 p){
     dirt+=smoothstep(.51,.79,local.g)*s09WeatherParams.y*(.32+.28*vertical);
     crack=local.b*s09WeatherParams.z*nearDetail;
     // Vertical runoff samples a stretched field; floor wear is isotropic.
-    vec2 detailUV=projected*mix(vec2(.81,.81),vec2(.92,.115),vertical)+wide*.23;
+    vec2 detailUV=projected*mix(vec2(.81,.81),vec2(.62,.38),vertical)+wide*.23;
     vec4 detail=texture2D(s09WeatherMask,detailUV);
-    streak=smoothstep(.24,.58,detail.a)*s09WeatherArt.x*vertical*nearDetail*.36;
-    chips=smoothstep(.62,.84,local.g+detail.b*.35)*s09WeatherArt.y*nearDetail*.45;
+    streak=smoothstep(.46,.73,detail.a)*smoothstep(.62,.84,macro.g)*s09WeatherArt.x*vertical*nearDetail*.14;
+    chips=smoothstep(.61,.84,local.g+detail.b*.35)*s09WeatherArt.y*nearDetail*.34;
     oxide=smoothstep(.45,.72,local.g+detail.a*.23)*s09WeatherArt.z*nearDetail*.62;
     dust+=smoothstep(.40,.73,local.r)*s09WeatherArt.w*(1.-vertical*.65)*nearDetail*.24;
   }
-  float shade=clamp(1.+variation-dirt-crack-streak,.55,1.25);
+  float shade=clamp(1.+variation-dirt-crack-streak,.72,1.22);
   s09WearRoughness=(dust+oxide+streak+chips*.35)*s09WeatherRoughness;
   vec3 tint=vec3(shade)*(1.+vec3(.65,.15,-.8)*s09WeatherParams.w*(.5+macro.r));
   return tint*mix(vec3(1.),s09DustTint,clamp(dust,0.,.7))*mix(vec3(1.),s09ChipTint,chips)*mix(vec3(1.),s09OxideTint,oxide);

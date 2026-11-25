@@ -151,7 +151,7 @@ export class EnhancedSurfaces {
       material.aoMapIntensity=aoSize&&pack?(settings.ao==='off'?.8:.5):base.aoMapIntensity;
       this.suspendWeathering(material);
       const steps=RELIEF_STEPS[settings.relief],scale=RELIEF_DEPTH[surface];
-      const relief=ready&&steps&&scale&&!material.userData.groundShadowPatched;
+      const relief=ready&&steps&&scale&&!['sand','earth','grass'].includes(surface)&&!material.userData.groundShadowPatched;
       this.setRelief(material,relief?get(surface,'disp',Math.min(size,steps>8?1024:512)):null,steps,scale,RELIEF_RANGE[settings.relief]);
       const params=weather?weatherParameters(mapId,weatherSurface,settings.mapWeathering):null;
       this.setWeathering(material,params?this.weatherMask:null,params);

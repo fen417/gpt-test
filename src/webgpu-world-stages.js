@@ -67,12 +67,14 @@ fn worldHorizonOcclusion(at: vec2f, sceneDepth: texture_depth_2d, inverseProject
       let offset=axis*foot*(.09+.91*t*t);
       for(var k=0; k<2; k++){
         let direction=select(-1.,1.,k==0);
-        let sampleAt=at+direction*offset*vec2f(1.,-1.);
+        let sampleAt=worldDepthCenter(at,depthSize)+direction*offset*vec2f(1.,-1.);
         if(any(sampleAt<=vec2f(0.))||any(sampleAt>=vec2f(1.))){continue;}
         let delta=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize)-pos;
         let len=length(delta);
         let rise=dot(view,delta)/max(len,.001);
-        let weight=smoothstep(.015,.07,len)*(1.-smoothstep(.22,.83,len));
+        let planeTolerance=max(.012,.004*max(0.,-pos.z));
+        let above=dot(n,delta);
+        let weight=smoothstep(.015,.07,len)*(1.-smoothstep(.22,.83,len))*smoothstep(planeTolerance,planeTolerance*2.5,above);
         horizons[k]=max(horizons[k],mix(open[k],rise,weight));
       }
     }
@@ -112,7 +114,8 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
       let radius=.83;
       var sum=0.;
       let footprint=vec2f(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
-      let rotation=6.283185*fract(dot(floor(at/effectPixel),vec2f(.75487766,.56984029)));
+      let seed=floor(at/effectPixel);
+      let rotation=6.283185*fract(sin(dot(seed,vec2f(12.9898,78.233)))*43758.5453);
       if(steps.x>12.){
         ao=worldHorizonOcclusion(at,sceneDepth,inverseProjection,depthSize,pos,n,footprint,rotation);
       }else{
@@ -120,11 +123,12 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
         if(f32(i)>=steps.x){break;}
         let angle=f32(i)*2.399963+rotation;
         let spread=.18+.82*sqrt((f32(i)+.5)/steps.x);
-        let sampleAt=at+vec2f(cos(angle),sin(angle))*footprint*spread;
+        let sampleAt=center+vec2f(cos(angle),sin(angle))*footprint*spread;
         if(any(sampleAt<=vec2f(0.))||any(sampleAt>=vec2f(1.))){continue;}
         let d=worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize)-pos;
         let len=length(d);
-        sum+=max(0.,dot(n,d)/max(.001,len)-.12)*(1.-smoothstep(.07,radius,len));
+        let planeTolerance=max(.012,.004*range);
+        sum+=max(0.,dot(n,d)/max(.001,len)-.12)*(1.-smoothstep(.07,radius,len))*smoothstep(planeTolerance,planeTolerance*2.5,dot(n,d));
       }
       ao=clamp(sum*2.6/steps.x,0.,.65);
       }
@@ -133,7 +137,7 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
     let sunFacing=dot(n,sunView);
     if(steps.y>0. && sunFacing>.08 && range<36.){
       let pixelWorld=2.*range/(projection[1][1]*depthSize.y);
-      let bias=clamp(pixelWorld*1.2,.012,.06);
+      let bias=clamp(pixelWorld*2.0,.025,.11);
       let origin=pos+n*bias;
       for(var i=0; i<12; i++){
         if(f32(i)>=steps.y){break;}
@@ -149,7 +153,7 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
         let thickness=.045+.11*rayLength+min(pixelWorld,.045);
         let above=dot(surface-pos,n);
         let overlap=smoothstep(.003,max(.012,bias*.8),hit)*(1.-smoothstep(thickness*.6,thickness,hit));
-        let blocker=smoothstep(bias*.8,bias*1.65,above);
+        let blocker=smoothstep(bias*1.2,bias*2.5,above);
         let margin=min(sampleAt,1.-sampleAt);
         let edge=smoothstep(0.,.04,min(margin.x,margin.y));
         contact=max(contact,overlap*blocker*edge*(1.-smoothstep(.12,.91,rayLength)));

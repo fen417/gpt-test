@@ -48,12 +48,17 @@ float horizonOcclusion(vec3 pos,vec3 n,vec2 foot,float rotation) {
       vec2 offset=axis*foot*(.09+.91*t*t);
       for(int signIndex=0;signIndex<2;signIndex++){
         float sign=signIndex==0?1.:-1.;
-        vec2 at=vUv+sign*offset;
+        vec2 at=depthCenter(vUv)+sign*offset;
         if(offscreen(at))continue;
         vec3 delta=viewAt(at)-pos;
         float len=length(delta);
         float rise=dot(view,delta)/max(len,.001);
-        float weight=smoothstep(.015,.07,len)*(1.-smoothstep(.22,.83,len));
+        // Ignore samples on the same reconstructed plane. At grazing angles
+        // depth quantization and half-resolution sampling otherwise make
+        // the flat receiver look like alternating occluding ridges.
+        float planeTolerance=max(.012,.004*max(0.,-pos.z));
+        float above=dot(n,delta);
+        float weight=smoothstep(.015,.07,len)*(1.-smoothstep(.22,.83,len))*smoothstep(planeTolerance,planeTolerance*2.5,above);
         horizons[signIndex]=max(horizons[signIndex],mix(open[signIndex],rise,weight));
       }
     }
@@ -76,17 +81,19 @@ void main(){
     if(steps.x>0. && range<48.){
       float radius=.83, sum=0.;
       vec2 footprint=vec2(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
-      float rotation=6.283185*fract(dot(floor(gl_FragCoord.xy),vec2(.75487766,.56984029)));
+      vec2 seed=floor(gl_FragCoord.xy);
+      float rotation=6.283185*fract(sin(dot(seed,vec2(12.9898,78.233)))*43758.5453);
       if(steps.x>12.) ao=horizonOcclusion(pos,n,footprint,rotation);
       else for(int i=0;i<12;i++){
         if(float(i)>=steps.x)break;
         float angle=float(i)*2.399963+rotation;
         float spread=.18+.82*sqrt((float(i)+.5)/steps.x);
-        vec2 at=vUv+vec2(cos(angle),sin(angle))*footprint*spread;
+        vec2 at=center+vec2(cos(angle),sin(angle))*footprint*spread;
         if(offscreen(at))continue;
         vec3 d=viewAt(at)-pos;
         float distance=length(d);
-        sum+=max(0.,dot(n,d)/max(.001,distance)-.12)*(1.-smoothstep(.07,radius,distance));
+        float planeTolerance=max(.012,.004*range);
+        sum+=max(0.,dot(n,d)/max(.001,distance)-.12)*(1.-smoothstep(.07,radius,distance))*smoothstep(planeTolerance,planeTolerance*2.5,dot(n,d));
       }
       if(steps.x<=12.)ao=clamp(sum*2.6/steps.x,0.,.65);
       ao*=1.-smoothstep(27.,48.,range);
@@ -94,7 +101,7 @@ void main(){
     float sunFacing=dot(n,sunView);
     if(steps.y>0. && sunFacing>.08 && range<36.){
       float pixelWorld=2.*range/(projection[1][1]*depthSize.y);
-      float bias=clamp(pixelWorld*1.2,.012,.06);
+      float bias=clamp(pixelWorld*2.0,.025,.11);
       vec3 origin=pos+n*bias;
       for(int i=0;i<12;i++){
         if(float(i)>=steps.y)break;
@@ -112,7 +119,7 @@ void main(){
         float thickness=.045+.11*rayLength+min(pixelWorld,.045);
         float above=dot(surface-pos,n);
         float overlap=smoothstep(.003,max(.012,bias*.8),hit)*(1.-smoothstep(thickness*.6,thickness,hit));
-        float blocker=smoothstep(bias*.8,bias*1.65,above);
+        float blocker=smoothstep(bias*1.2,bias*2.5,above);
         vec2 margin=min(at,1.-at);
         float edge=smoothstep(0.,.04,min(margin.x,margin.y));
         contact=max(contact,overlap*blocker*edge*(1.-smoothstep(.12,.91,rayLength)));
