@@ -93,10 +93,10 @@ jobs:
           git -C preview-source rev-parse HEAD > dist/test/build-revision.txt
           node --input-type=module -e '
             import {readFileSync,existsSync} from "node:fs";
-            import {resolve,dirname} from "node:path";
+            import {resolve} from "node:path";
             for(const dir of ["dist","dist/test"]){
               const html=readFileSync(dir+"/index.html","utf8");
-              for(const match of html.matchAll(/(?:src|href)="([^"]+\\.(?:js|css))"/g)){
+              for(const match of html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)){
                 const path=match[1];
                 if(path.startsWith("/")||!existsSync(resolve(dir,path)))throw Error("Invalid asset path "+dir+": "+path);
               }
