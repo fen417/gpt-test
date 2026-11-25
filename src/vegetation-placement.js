@@ -57,7 +57,12 @@ export function grassTile(map,placement,cx,cz,density){
     const patch=.52+.48*Math.sin(x*.17+Math.cos(z*.11)*2)*Math.cos(z*.21);
     if(choice>p[0]*amount*patch||!placement.allowed(x,z))continue;
     const y=map.terrain?.heightAt(x,z)??0;
-    plants.push({x,y:y+.017,z,yaw,scale:size/.77,shade,color:p[3],kind:'grass'});
+    // Root the crossed cards just beneath the sampled terrain. On a slope,
+    // use the downhill edge to avoid visible floating blades.
+    const half=.55*size/.77;
+    const low=Math.min(y,map.terrain?.heightAt(x-half,z)??y,map.terrain?.heightAt(x+half,z)??y,map.terrain?.heightAt(x,z-half)??y,map.terrain?.heightAt(x,z+half)??y);
+    const sink=Math.min(.14,.055+Math.max(0,y-low)*.7);
+    plants.push({x,y:y-sink,z,yaw,scale:size/.77,shade,color:p[3],kind:'grass'});
   }
   return plants;
 }

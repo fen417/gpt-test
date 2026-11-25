@@ -79,10 +79,10 @@ export class Vegetation{
     this.uniforms.wind.value=settings.vegetationWind==='high'?1:settings.vegetationWind==='low'?.43:0;
     this.uniforms.transmission.value=settings.foliageTransmission==='high'?Math.min(.28,(owner.sun.intensity??0)*.072):0;
     this.uniforms.sun.value.copy(owner.sunOffset).normalize().transformDirection(owner.camera.matrixWorldInverse);
-    for(const a of this.assets.values())a.update?.();
     const [cx,cz]=center(camera.x,camera.z,GRASS_CELL),moving=!this.last||Math.hypot(camera.x-this.last.x,camera.z-this.last.z)>7||owner.clock-this.last.time>.7;
-    const shadowMode=settings.vegetationShadows;
-    if(moving){
+    const shadowMode=settings.vegetationShadows,shadowModeChanged=this.lastShadowMode!==shadowMode;
+    this.lastShadowMode=shadowMode;
+    if(moving||shadowModeChanged){
       this.last={x:camera.x,z:camera.z,time:owner.clock};
       const wanted=new Map(),limit=Math.ceil(radius/GRASS_CELL)+1;
       if(density>0){
@@ -107,7 +107,7 @@ export class Vegetation{
         }
       }
     }
-    for(const e of this.authored){
+    if(moving||shadowModeChanged)for(const e of this.authored){
       const distance=Math.hypot(e.x-camera.x,e.z-camera.z);
       this.swap(e,foliageLOD(distance,quality));
       e.mesh.castShadow=shadowMode==='high'||shadowMode==='low'&&distance<65;

@@ -22,25 +22,29 @@ export class InteriorVisibility {
         this.items.push({mesh,box,corners,blocked:false});
       });
       this.walls=new SpatialIndex(getAssetColliders(map).filter(b=>b.kind==='village-wall'&&!b.parts),16,b=>b);
-      this.eye.set(Infinity,0,0);
+      this.eye.set(Infinity,0,0);this.cursor=0;this.remaining=0;
     }
     const eye=camera.position;
     if(!this.eye.equals(eye)||this.previousDisabled!==this.disabled){
-      for(const item of this.items)item.blocked=false;this.eye.copy(eye);this.previousDisabled=this.disabled;
+      for(const item of this.items)item.blocked=false;this.eye.copy(eye);this.previousDisabled=this.disabled;this.remaining=this.items.length;this.cursor=0;
     }
+    if(this.remaining>0){
     const walls=this.walls.query(eye.x-24,eye.z-24,eye.x+24,eye.z+24)
       .filter(box=>!this.disabled?.has(box.id))
       .sort((a,b)=>(a.x-eye.x)**2+(a.z-eye.z)**2-((b.x-eye.x)**2+(b.z-eye.z)**2)).slice(0,12);
     const deadline=performance.now()+.6;let count=0;
-    while(count++<this.items.length&&performance.now()<deadline){
-      const item=this.items[this.cursor++%this.items.length];
-      if(!item.mesh.visible||!viewFrustum.intersectsBox(item.box))continue;
+    // Test every candidate once for an unchanged eye. Do not reject by
+    // current view angle: turning in place must still produce correct results.
+    while(this.remaining>0&&count++<this.items.length&&performance.now()<deadline){
+      const item=this.items[this.cursor++%this.items.length];this.remaining--;
+      if(!item.mesh.visible)continue;
       item.blocked=walls.some(wall=>item.corners.every(p=>{
         const dx=p.x-eye.x,dy=p.y-eye.y,dz=p.z-eye.z,length=Math.hypot(dx,dy,dz);
         if(length<.1)return false;
         const hit=rayCollider(eye,{x:dx/length,y:dy/length,z:dz/length},wall,length);
         return hit>.05&&hit<length-.1;
       }));
+    }
     }
     for(const item of this.items)if(item.blocked&&item.mesh.visible){item.mesh.visible=false;this.hidden.push(item.mesh);}
   }

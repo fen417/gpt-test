@@ -4,7 +4,7 @@ export class IndirectLighting{
   constructor(setMaterial=setWebGlGI){this.setMaterial=setMaterial;this.materials=new Set();this.serial=0;}
   invalidate(){this.dirty=true;}
   // Suspend before enhanced-surface material edits (POM modifies aoNode).
-  suspend(){for(const m of this.materials)this.setMaterial(m,null);this.materials.clear();this.dirty=true;}
+  suspend(){for(const m of this.materials)this.setMaterial(m,null);this.materials.clear();this.staticMaterials=null;this.dirty=true;}
   clear(){this.serial++;this.suspend();this.field?.texture.dispose();this.field=null;this.map=null;this.quality=null;this.pending=false;this.failed=false;}
   async load(map,serial){
     try{
@@ -34,16 +34,21 @@ export class IndirectLighting{
     // Scan only when a map model changes, or periodically to catch new
     // soldiers/vehicles. No ray tracing or material traversal every frame.
     if(!this.dirty&&owner.clock<(this.nextScan??0))return;
+    const refreshStatic=this.dirty||this.staticRevision!==owner.staticMaterialRevision||!this.staticMaterials;
     this.dirty=false;this.nextScan=owner.clock+.8;
-    const eligible=new Set();
-    owner.scene.traverse(o=>{
+    const collect=(o,eligible)=>{
       if(!o.isMesh||o.userData.waterReflection||o.userData.waterSurface||o.userData.architecturalSurface==='water'||o.name==='Port water')return;
       for(const m of Array.isArray(o.material)?o.material:[o.material]){
         if(!m||m.transparent||!(m.isMeshStandardMaterial||m.isMeshLambertMaterial)||m.transmission>0||m.userData?.noGI)continue;
         eligible.add(m);
-        if(!this.materials.has(m)){this.setMaterial(m,field);this.materials.add(m);}
       }
-    });
+    };
+    if(refreshStatic){
+      this.staticMaterials=new Set();owner.staticRoot?.traverse(o=>collect(o,this.staticMaterials));this.staticRevision=owner.staticMaterialRevision;
+    }
+    const eligible=new Set(this.staticMaterials);
+    const walk=o=>{if(o===owner.staticRoot)return;collect(o,eligible);for(const c of o.children)walk(c);};walk(owner.scene);
+    for(const m of eligible)if(!this.materials.has(m)){this.setMaterial(m,field);this.materials.add(m);}
     // Cached static materials stay patched until map/quality change. Removed
     // dynamic meshes release their patch to avoid retaining disposed rigs.
     for(const material of this.materials)if(!eligible.has(material)){this.setMaterial(material,null);this.materials.delete(material);}

@@ -349,3 +349,26 @@ test('shader warmup samples never change live effect counts or instance data aft
   const after=new THREE.Matrix4();batch.getMatrixAt(0,after);assert.ok(after.equals(old));assert.equal(batch.count,0);assert.equal(batch.visible,false);
   assert.ok(Math.abs(geometry.attributes.instanceAlpha.getX(0)-.42)<1e-6);batch.dispose();geometry.dispose();material.dispose();
 });
+
+import {StaticMaterialVisitor,uploadPrefix,billboardRadius,withoutCasters} from '../src/render-work.js';
+test('static material traversal caches a frozen map but visits new dynamic meshes',()=>{
+  const scene=new THREE.Scene(),root=new THREE.Group(),a=new THREE.Group(),b=new THREE.Group();root.add(a);scene.add(root,b);
+  const visitor=new StaticMaterialVisitor(),seen=[];const add=o=>seen.push(o);
+  visitor.visit(scene,root,0,add);assert.ok(seen.includes(a));assert.ok(seen.includes(b));
+  seen.length=0;visitor.visit(scene,root,0,add);assert.ok(!seen.includes(a));assert.ok(seen.includes(b));
+  seen.length=0;visitor.visit(scene,root,1,add);assert.ok(seen.includes(a));
+});
+test('partial instance uploads are bounded and shadow restoration preserves disabled casters',()=>{
+  const attr=new THREE.InstancedBufferAttribute(new Float32Array(160*16),16);
+  uploadPrefix(attr,5);assert.deepEqual(attr.updateRanges,[{start:0,count:80}]);
+  uploadPrefix(attr,200);assert.equal(attr.updateRanges[0].count,2560);
+  assert.ok(billboardRadius({x:2,y:2})>Math.SQRT2);
+  const a={castShadow:true},b={castShadow:false};
+  assert.throws(()=>withoutCasters([a,b],()=>{assert.equal(a.castShadow,false);throw Error('test');}));
+  assert.equal(a.castShadow,true);assert.equal(b.castShadow,false);
+});
+test('grass roots are below terrain while retaining the original scale',()=>{
+  const map={id:'village',size:96,terrain:{heightAt:(x,z)=>1+x*.04},boxes:[]};
+  const plants=grassTile(map,createPlacement(map),0,0,1);assert.ok(plants.length>0);
+  for(const p of plants){const sink=map.terrain.heightAt(p.x,p.z)-p.y;assert.ok(sink>=.054&&sink<=.141);assert.ok(p.scale>0);}
+});

@@ -4,6 +4,7 @@ import { CSMShader } from 'three/addons/csm/CSMShader.js';
 import {setWebGlShaderPatch} from './webgl-shader-patches.js';
 import { directionalPenumbraScale } from './directional-penumbra.js';
 import { CachedShadows } from './cached-shadows.js';
+import {StaticMaterialVisitor} from './render-work.js';
 
 export function shadowCascadeOptions(level, distance) {
   const count = level === 'ultra' ? 3 : 2;
@@ -33,7 +34,7 @@ export class WebGlCascades {
       ...options.data, camera:owner.camera, parent:owner.scene, lightNear:1, lightFar:295, shadowBias:-.00025,
     });
     this.csm.fade=true;
-    this.materials=new Set();
+    this.materials=new Set();this.materialVisitor=new StaticMaterialVisitor();
     this.uniforms={CSM_cascades:{value:[]},cameraNear:{value:0},shadowFar:{value:0}};
     this.axis=new THREE.Vector3();
     this.right=new THREE.Vector3();
@@ -103,7 +104,7 @@ export class WebGlCascades {
       light.updateMatrixWorld();
       light.target.updateMatrixWorld();
     }
-    owner.scene.traverseVisible(this.visitMaterial);
+    this.materialVisitor.visit(owner.scene,owner.staticRoot,owner.staticMaterialRevision,this.visitMaterial);
   }
 
   render(native) {
@@ -116,6 +117,7 @@ export class WebGlCascades {
   }
 
   invalidate(rebuildCasters=false) {
+    if(rebuildCasters)this.materialVisitor.invalidate();
     for(const cache of this.caches)cache.invalidate(rebuildCasters);
   }
 

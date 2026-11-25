@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {collectStaticCasters,withoutCasters} from './render-work.js';
 
 // Keep the stock Three depth materials (skinning, alpha tests and sidedness).
 // Merge packed depths BEFORE PCF, so overlapping static/dynamic shadows retain
@@ -13,7 +14,7 @@ export class CachedShadows {
       fragmentShader:'#include <packing>\nuniform sampler2D staticDepth; uniform sampler2D dynamicDepth; varying vec2 vUv; void main(){vec4 a=texture2D(staticDepth,vUv),b=texture2D(dynamicDepth,vUv);gl_FragColor=unpackRGBAToDepth(a)<unpackRGBAToDepth(b)?a:b;}' });
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),this.material);this.quadScene.add(this.quad);
   }
-  invalidate(rebuildCasters=false){this.key=null;if(rebuildCasters)this.root=null;}
+  invalidate(rebuildCasters=false){this.key=null;if(rebuildCasters){this.root=null;this.mediumRoot=null;}}
   install(owner){
     if(this.installed===owner.renderer.shadowMap)return;
     this.uninstall();this.installed=owner.renderer.shadowMap;
@@ -25,8 +26,8 @@ export class CachedShadows {
       const timing=timer?.beginPass('shadows');
       try{
         if(owner.shadowDynamicOnly){
-          const casters=[];owner.staticRoot?.traverse(mesh=>{if(mesh.castShadow){casters.push(mesh);mesh.castShadow=false;}});
-          try{return native(lights,scene,camera);}finally{for(const mesh of casters)mesh.castShadow=true;}
+          if(this.mediumRoot!==owner.staticRoot||this.mediumRevision!==owner.staticMaterialRevision){this.mediumRoot=owner.staticRoot;this.mediumRevision=owner.staticMaterialRevision;this.mediumCasters=collectStaticCasters(owner.staticRoot);}
+          return withoutCasters(this.mediumCasters,()=>native(lights,scene,camera));
         }
         // Run inside WebGLRenderer.render, with its render-state stack active.
         const hidden=owner.interiorVisibility.hidden;
@@ -71,9 +72,7 @@ export class CachedShadows {
       // The public sun samples the combined map; native rendering writes only
       // to its private dynamic target on the next frame.
       sun.shadow.map=this.dynamic??null;
-      for(const o of this.casters)o.castShadow=false;
-      try{renderer.shadowMap.needsUpdate=true;sun.shadow.needsUpdate=true;renderShadow([sun],scene,camera);this.dynamic=sun.shadow.map;}
-      finally{for(const o of this.casters)o.castShadow=true;}
+      withoutCasters(this.casters,()=>{renderer.shadowMap.needsUpdate=true;sun.shadow.needsUpdate=true;renderShadow([sun],scene,camera);this.dynamic=sun.shadow.map;});
       this.material.uniforms.staticDepth.value=this.staticLight.shadow.map.texture;
       this.material.uniforms.dynamicDepth.value=this.dynamic.texture;
       renderer.setRenderTarget(this.combined);renderer.autoClear=false;

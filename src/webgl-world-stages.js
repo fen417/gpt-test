@@ -68,12 +68,12 @@ void main(){
   float depth=readDepth(center);
   vec3 pos=viewPosition(center,depth);
   float range=-pos.z, ao=0., contact=0., shaft=0.;
-  if(depth<.999999 && range<95. && (steps.x>0. || steps.y>0.)){
+  if(depth<.999999 && ((steps.x>0. && range<48.) || (steps.y>0. && range<36.))){
     vec2 dx=vec2(1./depthSize.x,0.), dy=vec2(0.,1./depthSize.y);
     vec3 left=pos-viewAt(center-dx), right=viewAt(center+dx)-pos;
     vec3 down=pos-viewAt(center-dy), top=viewAt(center+dy)-pos;
     vec3 n=normalize(cross(abs(left.z)<abs(right.z)?left:right,abs(down.z)<abs(top.z)?down:top));
-    if(steps.x>0.){
+    if(steps.x>0. && range<48.){
       float radius=.83, sum=0.;
       vec2 footprint=vec2(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
       float rotation=6.283185*fract(dot(floor(gl_FragCoord.xy),vec2(.75487766,.56984029)));

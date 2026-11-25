@@ -1,6 +1,7 @@
 import {setWebGlShaderPatch} from './webgl-shader-patches.js';
 import {ShaderChunk} from 'three';
 import {PCSS_SETTINGS as p} from './directional-penumbra.js';
+import {StaticMaterialVisitor} from './render-work.js';
 
 const softShadow=`
 vec2 s09ShadowDisk(int i, float n, float turn) {
@@ -35,18 +36,18 @@ float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, floa
 
 export class WebGlPenumbra {
   enabled=false;
-  active=new Set();
+  active=new Set();visitor=new StaticMaterialVisitor();
 
   setEnabled(enabled) {
     if(this.enabled===enabled)return;
     this.enabled=enabled;
     for(const material of this.active)setWebGlShaderPatch(material,'penumbra',null);
-    this.active.clear();
+    this.active.clear();this.visitor.invalidate();
   }
 
-  update(root) {
+  update(scene,root,revision) {
     if(!this.enabled)return;
-    root.traverseVisible(object=>{
+    this.visitor.visit(scene,root,revision,object=>{
       if(!object.material)return;
       if(Array.isArray(object.material)){
         for(const material of object.material)this.bind(material);

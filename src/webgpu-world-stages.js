@@ -101,14 +101,14 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
   let pos=worldViewPosition(inverseProjection,center,depth);
   let range=-pos.z;
   var ao=0.; var contact=0.; var shaft=0.;
-  if (depth<.999999 && range<95. && (steps.x>0. || steps.y>0.)) {
+  if (depth<.999999 && ((steps.x>0. && range<48.) || (steps.y>0. && range<36.))) {
     let dx=vec2f(1./depthSize.x,0.); let dy=vec2f(0.,1./depthSize.y);
     let left=pos-worldViewAt(sceneDepth,inverseProjection,center-dx,depthSize);
     let right=worldViewAt(sceneDepth,inverseProjection,center+dx,depthSize)-pos;
     let below=pos-worldViewAt(sceneDepth,inverseProjection,center+dy,depthSize);
     let above=worldViewAt(sceneDepth,inverseProjection,center-dy,depthSize)-pos;
     let n=normalize(cross(select(right,left,abs(left.z)<abs(right.z)),select(above,below,abs(below.z)<abs(above.z))));
-    if (steps.x>0.) {
+    if (steps.x>0. && range<48.) {
       let radius=.83;
       var sum=0.;
       let footprint=vec2f(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
