@@ -1,3 +1,4 @@
+import {tankFireAnchor} from '../combat-visuals.js';
 import * as THREE from 'three';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
@@ -236,10 +237,14 @@ export class Mission3Presentation{
     r.camera.updateMatrixWorld();
     if(!this.fires){
       const convoy=state.vehicles.filter(v=>v.convoyIndex!==undefined);
-      const emitters=[convoy[0],convoy.at(-1)].filter(Boolean).map(v=>({...m03ConvoyPose(this.definition,v.convoyIndex,this.definition.convoy.ambushAt),id:v.id,width:2.2,height:3.4}));
+      const emitters=[convoy[0],convoy.at(-1)].filter(Boolean).map(v=>({...m03ConvoyPose(this.definition,v.convoyIndex,this.definition.convoy.ambushAt),id:v.id,width:1.65,height:2.6,vehicle:true}));
       this.fires=new CampaignFire(r,this.props,emitters);
     }
-    this.fires.update({light:'dawn'},state.time,r.camera,new Set(state.vehicles.filter(v=>v.hp<=0).map(v=>v.id)));
+    this.fireAnchor??=new THREE.Vector3();
+    this.fires.update({light:'dawn'},state.time,r.camera,new Set(state.vehicles.filter(v=>v.hp<=0).map(v=>v.id)),id=>{
+      const v=state.vehicles.find(v=>v.id===id);if(!v)return null;
+      return tankFireAnchor(v,r.vehicleRigs.get(id),this.fireAnchor);
+    });
     const objective=m.target&&!m.ride&&!m.cutscene&&!m.failed&&!m.complete?m.target:null;
     const screen=objective?r.project(objective.x,(objective.y??r.map.terrain.heightAt(objective.x,objective.z))+2.35,objective.z):null;
     const p=state.players.find(p=>p.id==='local');

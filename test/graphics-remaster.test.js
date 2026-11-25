@@ -195,7 +195,7 @@ test('real muzzle point lights are bounded, prioritize the local shooter and exp
   for(let i=0;i<20;i++)lights.pulse(new THREE.Vector3(i*.2,1,0),1,{own:false});
   lights.pulse(p,1,{own:true,energy:42});lights.update(1,camera,[{x:1,y:0,z:1,height:2,width:2}]);
   assert.equal(lights.active,3);assert.equal(lights.lights[0].intensity,42);assert.equal(scene.children.length,count);
-  assert.ok(lights.lights.every(l=>!l.castShadow&&l.layers.isEnabled(0)&&l.layers.isEnabled(1)));
+  assert.ok(lights.lights.every(l=>!l.castShadow&&l.layers.isEnabled(0)&&!l.layers.isEnabled(1)));
   lights.configure('off','off');assert.equal(scene.children.length,0);assert.equal(lights.active,0);lights.dispose();
 });
 test('particle maps have transparent edges, deterministic detail and fading plumes',()=>{
@@ -508,4 +508,18 @@ test('streamed grass reuses compatible instance buffers with exact live count',(
   veg.remove(first,true);assert.equal(veg.grassPool.length,1);
   const next=veg.batch(plants.slice(0,9),'grass',2);assert.equal(next.mesh,first.mesh);assert.equal(next.mesh.count,9);assert.equal(veg.poolHits,1);
   veg.remove(next,true);veg.clear();assert.equal(veg.grassPool.length,0);geometry.dispose();material.dispose();
+});
+
+
+import {tankFireAnchor,adsFlashFactor,scriptedTankFire} from '../src/combat-visuals.js';
+test('tank wreck fire uses the rear deck in the interpolated hull pose, not turret or ground',()=>{
+  const group=new THREE.Group(),body=new THREE.Group(),hull=new THREE.BoxGeometry(3.6,1.4,7);hull.translate(0,.8,0);group.add(body);group.position.set(10,2,20);group.rotation.y=Math.PI/2;
+  const vehicle={type:'tank',x:0,y:0,z:0,yaw:0},out=new THREE.Vector3(),rig={body,levels:[{hull:{geometry:hull}}]};
+  tankFireAnchor(vehicle,rig,out);assert.ok(out.y>3.5&&out.x>11.9&&Math.abs(out.z-20)<1e-6);
+  body.rotation.x=.2;const expected=body.localToWorld(new THREE.Vector3(0,1.63,1.96));tankFireAnchor(vehicle,rig,out);assert.ok(expected.distanceTo(out)<1e-6);
+  tankFireAnchor(vehicle,null,out);assert.ok(out.y>1.5&&out.z>1.8);hull.dispose();
+  assert.equal(scriptedTankFire({...vehicle,convoyIndex:0,scriptedLoss:true},'m03'),true);assert.equal(scriptedTankFire({...vehicle,convoyIndex:0,scriptedLoss:true},'m02'),false);
+});
+test('ADS flash strength smoothly decreases without extinguishing the native flash',()=>{
+  assert.equal(adsFlashFactor(0),1);assert.ok(adsFlashFactor(1)>.17&&adsFlashFactor(1)<.19);assert.ok(adsFlashFactor(.5)>adsFlashFactor(1));assert.equal(adsFlashFactor(-1),1);assert.equal(adsFlashFactor(2),adsFlashFactor(1));
 });

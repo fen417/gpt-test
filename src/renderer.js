@@ -6,6 +6,7 @@ import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, 
 import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
 import {makeParticleTexture,particleQuality,plumeEnvelope,dustProfile} from './effect-art.js';
 import {EffectLights} from './effect-lights.js';
+import {tankFireAnchor,adsFlashFactor,scriptedTankFire} from './combat-visuals.js';
 import {WaterAppearance} from './water-appearance.js';
 import {IndirectLighting} from './indirect-lighting.js';
 import {Vegetation} from './vegetation.js';
@@ -234,7 +235,7 @@ export class GameRenderer {
     this.gadgetTimer = 0;
     this.gadgetDuration = 0.65;
     this.effects = [];
-    this.activeHeatFires=[];this.activeFireLights=[];
+    this.activeHeatFires=[];this.activeFireLights=[];this.wreckFirePosition=new THREE.Vector3();
     this.cosmeticShots=[];this.flashKeys=new Map();
     this.bulletMarks = new BulletMarks();
     this.effectPools = { tracer: [], shell: [], smoke: [], spark: [], muzzle: [], flame: [] };
@@ -1349,23 +1350,27 @@ export class GameRenderer {
         }
       }
       const damaged = vehicle.hp < vehicle.maxHp * .33;
-      if(damaged&&vehicle.hp<=0&&this.graphicsEffects?.fireEffects==='high'&&distance<60){
-        const width=vehicle.type==='atv'?.9:1.8,height=vehicle.type===BLACK_HAWK?2.8:vehicle.type==='atv'?.8:1.55;
-        const x=vehicle.x,z=vehicle.z,y=vehicle.y??this.map.terrain.heightAt(x,z);
+      const scripted=scriptedTankFire(vehicle,state.campaign?.missionId);
+      if(damaged&&vehicle.hp<=0&&!scripted&&this.graphicsEffects?.fireEffects==='high'&&distance<60){
+        const tank=vehicle.type==='tank';
+        const width=vehicle.type==='atv'?.9:tank?1.35:1.8,height=vehicle.type===BLACK_HAWK?2.8:vehicle.type==='atv'?.8:1.55;
+        const origin=tank?tankFireAnchor(vehicle,rig,this.wreckFirePosition):vehicle;
+        const x=origin.x,z=origin.z,y=origin.y??this.map.terrain.heightAt(x,z);
         if(this.graphicsEffects?.fireLighting==='high')this.activeFireLights.push({x,y,z,width,height});
         if(this.graphicsEffects?.heatDistortion==='high')this.activeHeatFires.push({x,y,z,width,height});
         if(this.clock>=(rig.nextFlame??0)&&this.effects.length<105){
           rig.nextFlame=this.clock+.18;
-          this.hotParticle('flame',x+(this.random()-.5)*width,y+height*.65,z+(this.random()-.5)*width,width*.8,.55);
+          this.hotParticle('flame',x+(this.random()-.5)*width,y+Math.max(height*.65,tank?width*.85:0),z+(this.random()-.5)*width,width*.8,.55,tank?.72:1);
           if(this.graphicsEffects.dust==='high'&&this.random()<.45)this.spark(x,y+height*.5,z,.8);
         }
       }
-      if (damaged && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
+      if (damaged && !scripted && distance < 90 && this.effects.length < 70 && this.clock >= (rig.nextSmoke ?? 0)) {
         rig.nextSmoke = this.clock + (vehicle.hp > 0 ? .35 : .16);
         const atv = vehicle.type === 'atv', aircraft=vehicle.type===BLACK_HAWK;
         const z = aircraft?1.6:atv?-.79:-1.74;
-        this.smoke(vehicle.x + Math.sin(vehicle.yaw)*z, (vehicle.y ?? 0) + (aircraft?3.3:atv?.88:1.20),
-          vehicle.z + Math.cos(vehicle.yaw)*z, local ? .19 : vehicle.hp > 0 ? .34 : .68,
+        const tankOrigin=vehicle.type==='tank'?tankFireAnchor(vehicle,rig,this.wreckFirePosition):null;
+        this.smoke(tankOrigin?.x??vehicle.x + Math.sin(vehicle.yaw)*z, tankOrigin?tankOrigin.y+.28:(vehicle.y ?? 0) + (aircraft?3.3:atv?.88:1.20),
+          tankOrigin?.z??vehicle.z + Math.cos(vehicle.yaw)*z, local ? .19 : vehicle.hp > 0 ? .34 : .68,
           local ? .62 : 1.6, 0x50504a);
       }
     }
@@ -1689,11 +1694,15 @@ export class GameRenderer {
     if(![pos.x,pos.y,pos.z].every(Number.isFinite))return;
     const subdued=localWeapon&&this.weaponRig.suppressor?.visible;
     const strength=cannon?3.2:rocket?1.8:mounted?1.4:subdued?.25:1;
-    this.effectLights?.pulse(pos,this.clock,{own,energy:25*strength,range:Math.min(14,6.2*Math.sqrt(strength)),life:cannon?.13:rocket?.09:.065,color:cannon?0xffb66d:0xffcf9b});
+    const ads=own&&!mounted&&!rocket?this.aimAmount:0,flashFactor=adsFlashFactor(ads);
+    // Preserve nearby world illumination, even in ADS, but tone down local pulses.
+    this.effectLights?.pulse(pos,this.clock,{own,energy:25*strength*(.42+.58*flashFactor),range:Math.min(14,6.2*Math.sqrt(strength)),life:cannon?.13:rocket?.09:.065,color:cannon?0xffb66d:0xffcf9b});
     if(quality.muzzleEffects==='high'){
       // Keep the native FPV mesh as a depth-correct core; a world-space irregular
       // flash adds the hot halo and the nearby smoke.
-      this.hotParticle('muzzle',pos.x,pos.y,pos.z,(cannon?1.35:rocket?.65:mounted?.46:.23)*Math.sqrt(subdued?.4:1),cannon?.12:.065);
+      // The native FPV flash is sufficient in ADS; avoid a second HDR sprite
+      // directly on the sight line, which would bloom across the reticle.
+      if(!localWeapon||ads<.8)this.hotParticle('muzzle',pos.x,pos.y,pos.z,(cannon?1.35:rocket?.65:mounted?.46:.23)*Math.sqrt(subdued?.4:1)*Math.sqrt(flashFactor),cannon?.12:.065,flashFactor*(subdued?.45:1));
       if(this.effects.length<110&&(!subdued||own))
         this.smoke(pos.x,pos.y,pos.z,cannon?.65:mounted?.25:.115,cannon?.65:.37,0xaaa89d,{opacity:.38,rise:.37,kind:'smoke',enhanced:true});
     }
@@ -1707,7 +1716,7 @@ export class GameRenderer {
     return this.hotParticleMaterials.get(kind);
   }
 
-  hotParticle(kind,x,y,z,size,life){
+  hotParticle(kind,x,y,z,size,life,brightness=1){
     if(this.effects.length>=145)return;
     const max=kind==='muzzle'?12:kind==='flame'?12:8;
     if(this.effects.filter(e=>e.type===kind).length>=max)return;
@@ -1716,7 +1725,7 @@ export class GameRenderer {
     const effect=pool.pop()??{type:kind,mesh:new THREE.Sprite(this.getHotParticleMaterial(kind).clone())};
     effect.mesh.material.map=texture;effect.mesh.material.rotation=this.random()*Math.PI*2;
     effect.mesh.position.set(x,y,z);effect.mesh.scale.setScalar(size);
-    Object.assign(effect,{age:0,life,size,fresh:true});
+    Object.assign(effect,{age:0,life,size,brightness,fresh:true});
     this.worldRoot.add(effect.mesh);this.effects.push(effect);
   }
 
@@ -1848,7 +1857,7 @@ export class GameRenderer {
       } else if(effect.type==='flash'||effect.type==='muzzle'||effect.type==='flame'){
         const muzzle=effect.type==='muzzle',flame=effect.type==='flame';
         effect.mesh.scale.setScalar((muzzle?1+.5*(1-alpha):flame?1+.55*(1-alpha):2.6-1.6*alpha)*effect.size);
-        const energy=(muzzle?2.3:flame?2.1:4.4)*alpha*alpha;
+        const energy=(muzzle?2.3:flame?2.1:4.4)*alpha*alpha*(effect.brightness??1);
         effect.mesh.material.color.setRGB(energy,energy*.91,energy*.78);
         effect.mesh.material.opacity=alpha;if(flame)effect.mesh.position.y+=dt*.65;
       } else if (effect.type === 'spark' || effect.type === 'shell') {

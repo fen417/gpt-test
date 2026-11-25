@@ -42,24 +42,24 @@ export class CampaignFire {
     this.smokeMaterial=smokeMaterial;this.materials.push(smokeMaterial);this.smokeGeometry=this.plane.clone();
     this.opacities=new THREE.InstancedBufferAttribute(new Float32Array(48),1);this.smokeGeometry.setAttribute('smokeOpacity',this.opacities);
     this.smoke=new THREE.InstancedMesh(this.smokeGeometry,smokeMaterial,48);this.smoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.smoke.frustumCulled=false;this.smoke.count=0;this.root.add(this.smoke);
-    const add=(id,x,z,width,height)=>{
+    const add=(id,x,z,width,height,vehicle=false)=>{
       const y=renderer.map.terrain.heightAt(x,z),group=new THREE.Group();group.position.set(x,y,z);this.root.add(group);
       const planes=[];for(let i=0;i<2;i++){
         const seed=this.emitters.length*3+i*4.2;
         const material=gpu?.webGpuCampaignFlame(seed)??new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,uniforms:{time:{value:0},seed:{value:seed},detail:{value:0}},vertexShader:'varying vec2 uvFire;void main(){uvFire=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:flameFragment});
-        this.materials.push(material);const mesh=new THREE.Mesh(this.plane,material);mesh.scale.set(width,height,1);mesh.position.y=height*.48;group.add(mesh);planes.push(mesh);
+        this.materials.push(material);const mesh=new THREE.Mesh(this.plane,material);mesh.scale.set(width,height,1);mesh.position.y=height*(vehicle?.60:.48);group.add(mesh);planes.push(mesh);
       }
       const glowMaterial=gpu?.webGpuCampaignGlow()??new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{strength:{value:.2}},vertexShader:'varying vec2 uvGlow;void main(){uvGlow=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'varying vec2 uvGlow;uniform float strength;void main(){float a=pow(max(0.,1.-length(uvGlow-.5)*2.),2.)*strength;gl_FragColor=vec4(1.,.28,.025,a);}'});
-      this.materials.push(glowMaterial);const glow=new THREE.Mesh(this.plane,glowMaterial);glow.rotation.x=-Math.PI/2;glow.position.y=.05;glow.scale.setScalar(width*4.2);group.add(glow);
-      this.emitters.push({id,x,y,z,width,height,group,planes,glow});
+      this.materials.push(glowMaterial);const glow=new THREE.Mesh(this.plane,glowMaterial);glow.rotation.x=-Math.PI/2;glow.position.y=.05;glow.scale.setScalar(width*4.2);group.add(glow);glow.visible=!vehicle;
+      this.emitters.push({id,x,y,z,width,height,group,planes,glow,vehicle});
     };
-    if(emitters)for(const {id,x,z,width,height} of emitters)add(id,x,z,width,height);
+    if(emitters)for(const {id,x,z,width,height,vehicle} of emitters)add(id,x,z,width,height,vehicle);
     else{
       add('fuel-west',11,35,2.8,3.7);add('fuel-east',19,35,2.6,3.4);
       for(const [i,x] of [0,21,42].entries())add('truck-'+i,x,24,3.5,4.7);
     }
   }
-  update(mission,time,camera,activeIds){
+  update(mission,time,camera,activeIds,anchorFor){
     let count=0;
     const high=this.renderer.graphicsEffects?.fireEffects==='high';
     const detailed=this.renderer.graphicsEffects?.smoke==='high'||this.renderer.graphicsEffects?.smoke==='medium';
@@ -73,7 +73,9 @@ export class CampaignFire {
     }
     for(const [index,e] of this.emitters.entries()){
       const active=activeIds?activeIds.has(e.id):e.id.startsWith('fuel')?mission.fuel.some(f=>f.destroyed&&Math.hypot(f.x-e.x,f.z-e.z)<8):mission.trucks.some(t=>t.id===e.id&&t.destroyed);
-      e.group.visible=active;if(!active)continue;
+      const anchor=e.vehicle?anchorFor?.(e.id):null;
+      e.group.visible=active&&(!e.vehicle||Boolean(anchor));if(!e.group.visible)continue;
+      if(anchor){e.x=anchor.x;e.y=anchor.y;e.z=anchor.z;e.group.position.copy(anchor);}
       if(this.renderer.graphicsEffects?.heatDistortion==='high')this.renderer.activeHeatFires.push(e);
       if(this.renderer.graphicsEffects?.fireLighting==='high')this.renderer.activeFireLights.push(e);
       e.planes.forEach((mesh,i)=>{const u=uniforms(mesh.material);u.time.value=time;u.detail.value=Number(high);mesh.rotation.y=Math.atan2(camera.position.x-e.x,camera.position.z-e.z)+i*.9;mesh.scale.y=e.height*(1+Math.sin(time*4+index+i)*(high?.12:.07));});

@@ -1,3 +1,4 @@
+import {adsFlashFactor} from './combat-visuals.js';
 import * as THREE from 'three';
 import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -1303,8 +1304,10 @@ export function createWeaponRig(owner = {}) {
     }
     muzzleFlash.visible = !usingTool&&kick > .65;
     muzzleFlash.rotation.z = clock*43;
-    muzzleFlash.scale.setScalar((pistol?(pistol.heavy?.85:.57):1)*(.78+kick*.22));
-    flashLight.intensity = !usingTool&&kick > .65 ? 1.8 : 0;
+    const flashFactor=adsFlashFactor(aim)*(suppressor.visible?.42:1);
+    flashMaterial.opacity=.92*flashFactor;
+    muzzleFlash.scale.setScalar((pistol?(pistol.heavy?.85:.57):1)*(.78+kick*.22)*Math.sqrt(flashFactor));
+    flashLight.intensity = !usingTool&&kick > .65 ? 1.8*flashFactor : 0;
   }
   function dispose(){
     for(const [id,rig] of rifles)void setWeaponSkin(rig.model,id,null);

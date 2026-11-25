@@ -16,7 +16,9 @@ export class EffectLights{
     while(this.lights.length>count){const light=this.lights.pop();light.removeFromParent();light.dispose?.();}
     while(this.lights.length<count){
       const light=new THREE.PointLight(0xffcc94,0,8,2);
-      light.name='S09 transient effect light';light.layers.enable(1);light.castShadow=false;
+      // World lighting must not illuminate the separate camera-space weapon pass.
+      // Layer 0 keeps the shader light count fixed in each pass, avoiding recompilation per shot.
+      light.name='S09 transient effect light';light.layers.set(0);light.castShadow=false;
       this.scene.add(light);this.lights.push(light);
     }
   }
