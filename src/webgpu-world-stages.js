@@ -99,26 +99,43 @@ fn worldHorizonOcclusion(at: vec2f, sceneDepth: texture_depth_2d, inverseProject
 }`,[viewAt,integrateHorizon]);
 
 const maskVariants=[];
-function mask(cascadeCount){
-  if(maskVariants[cascadeCount])return maskVariants[cascadeCount];
+function mask(cascadeCount,temporal=false){
+  const key=cascadeCount+(temporal?4:0);
+  if(maskVariants[key])return maskVariants[key];
   const volume=volumeSunWGSL(cascadeCount);
   const includes=[viewAt,horizonOcclusion,receiverNormal];
   if(cascadeCount){
     const [tap,sun]=volume.source.trim().split(/\n(?=fn worldVolumeSun)/);
     includes.push(wgslFn(sun,[wgslFn(tap)]));
   }
-  return maskVariants[cascadeCount]=wgslFn(`
+  return maskVariants[key]=wgslFn(`
 fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f,
   inverseProjection: mat4x4f, depthSize: vec2f, steps: vec3f, sunView: vec3f,
-  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32, airProfile:vec3f${volume.parameters}) -> vec4f {
+  upView: vec3f, sunScreen: vec2f, effectPixel: vec2f, atmosphereStrength: f32, cameraY: f32, airProfile:vec3f${volume.parameters}${temporal?',historyMask:texture_2d<f32>,historyReuse:f32,historyPhase:f32':''}) -> vec4f {
   let center=worldDepthCenter(at,depthSize);
   let depth=worldReadDepth(sceneDepth,center,depthSize);
   let pos=worldViewPosition(inverseProjection,center,depth);
   let range=-pos.z;
   var ao=0.; var contact=0.; var shaft=0.;
-  if (depth<.999999 && ((steps.x>0. && range<48.) || (steps.y>0. && range<36.))) {
+  ${temporal?`var reuse=false;var history=vec4f(0.);
+  let cell=vec2i(floor(at/effectPixel));
+  if(historyReuse>.5&&range>5.&&f32((cell.x+cell.y)%2)==historyPhase){
+    let size=vec2i(textureDimensions(historyMask));
+    history=textureLoad(historyMask,clamp(cell,vec2i(0),size-1),0);
+    reuse=abs(history.a-range)<max(.035,range*.0015);
+    if(reuse){for(var k=0;k<4;k++){
+      let offset=select(vec2i(0,(k-2)*2-1),vec2i(k*2-1,0),k<2);
+      let coord=clamp(cell+offset,vec2i(0),size-1);
+      let sampleAt=(vec2f(coord)+.5)*effectPixel;
+      let current=-worldViewAt(sceneDepth,inverseProjection,sampleAt,depthSize).z;
+      if(abs(textureLoad(historyMask,coord,0).a-current)>max(.035,current*.0015)){reuse=false;break;}
+    }}
+  }
+  let reuseAO=reuse&&steps.x>12.;let reuseShaft=reuse&&steps.z>=7.;
+  if(reuseAO){ao=history.r;}if(reuseShaft){shaft=history.b;}`:'let reuseAO=false;let reuseShaft=false;'}
+  if (depth<.999999 && ((!reuseAO && steps.x>0. && range<48.) || (steps.y>0. && range<36.))) {
     let n=worldReceiverNormal(sceneDepth,inverseProjection,center,pos,depthSize);
-    if (steps.x>0. && range<48.) {
+    if (!reuseAO && steps.x>0. && range<48.) {
       let radius=.83;
       var sum=0.;
       let footprint=vec2f(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
@@ -171,7 +188,7 @@ fn worldEffectsMask(at: vec2f, sceneDepth: texture_depth_2d, projection: mat4x4f
       contact*=smoothstep(.08,.27,sunFacing)*(1.-smoothstep(18.,36.,range));
     }
   }
-  if(steps.z>0. && atmosphereStrength>0.){
+  if(!reuseShaft && steps.z>0. && atmosphereStrength>0.){
     let direction=normalize(pos);
     let mu=max(0.,dot(direction,sunView));
     let angular=mix(pow(mu,10.),pow(mu,5.),airProfile.z*.45);
@@ -459,6 +476,8 @@ export function webGpuWorldStages(post, geometry, camera) {
   const at=uv(), source=texture(world.texture);
   const depthParams=world.depthTexture && {at, sceneDepth:texture(world.depthTexture), inverseProjection:params.inverseProjection, depthSize:params.depthSize};
   const masks=post.mask && [];
+  const historyTexture=post.maskHistory?texture(post.maskHistory.texture):null;
+  const currentMask=post.mask?texture(post.mask.texture):null;
   const maskParams=post.mask && {
     ...depthParams, projection:params.projection, steps:params.steps, sunView:params.sunView,
     upView:params.upView,sunScreen:params.sunScreen,effectPixel:params.effectPixel,atmosphereStrength:params.atmosphereStrength,cameraY:params.cameraY,airProfile:params.airProfile,
@@ -487,7 +506,7 @@ export function webGpuWorldStages(post, geometry, camera) {
     sunScreen:params.sunScreen,sunView:params.sunView,sunColor:params.sunColor});
   if(post.hasHeat)rgb=heatDistortion({...depthParams,color:rgb,source,sourceSampler:source,
     heatSources:params.heatSources,heatStrength:params.heatStrength,heatTime:params.heatTime});
-  if(post.mask)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:texture(post.mask.texture),
+  if(post.mask)rgb=applyDepthEffects({...depthParams,rgb,effectsMask:currentMask,
     effectPixel:params.effectPixel,sunColor:params.sunColor,fogColor:params.fogColor,steps:params.steps});
   if(reflected)rgb=applyReflection({...depthParams,...waterParams,rgb,reflected:texture(post.reflection.texture).sample(at)});
   if(post.heightFog)rgb=applyHeightFog({...depthParams,rgb,fogLayer:params.fogLayer,fogLayerUp:params.fogLayerUp,fogLayerTint:params.fogLayerTint,fogEyeY:params.fogEyeY});
@@ -511,6 +530,7 @@ export function webGpuWorldStages(post, geometry, camera) {
       params.time.value=state.time;
       params.heatTime.value=state.heatTime;
       params.reflectionSteps.value=state.reflectionSteps;
+      params.historyReuse.value=state.historyReuse;params.historyPhase.value=state.historyPhase;
       params.waterActive.value=state.waterActive;
       params.receiverActive.value=state.receiverActive;
       if(reflected&&(state.waterActive||state.receiverActive)){
@@ -531,10 +551,13 @@ export function webGpuWorldStages(post, geometry, camera) {
             values['volumeMap'+i]=maps[i];
             values['volumeMatrix'+i]=params['volumeMatrix'+i];
           }
-          return {scene:make(mask(count)(values)),maps};
+          if(historyTexture)Object.assign(values,{historyMask:historyTexture,historyReuse:params.historyReuse,historyPhase:params.historyPhase});
+          return {scene:make(mask(count,Boolean(historyTexture))(values)),maps};
         })();
         for(let i=0;i<count;i++)entry.maps[i].value=post.shadowMaps[i];
-        draw(post.mask,entry.scene,profiler,'depthEffects');
+        if(historyTexture)historyTexture.value=post.maskRead.texture;
+        const current=post.maskWrite??post.mask;
+        draw(current,entry.scene,profiler,'depthEffects');currentMask.value=current.texture;
       }
       draw(target,composite,profiler,'worldComposite');
     },

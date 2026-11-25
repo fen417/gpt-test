@@ -26,9 +26,10 @@ vec3 receiverNormal(vec2 center,vec3 pos){
   return lengthSquared>1.e-20?crossNormal*inversesqrt(lengthSquared):normalize(-pos);
 }
 `;
-const mask = (cascadeCount) => `
+const mask = (cascadeCount,temporal=false) => `
 varying vec2 vUv;
 uniform vec3 steps,sunView,upView;
+${temporal?'uniform sampler2D historyMask;uniform float historyReuse,historyPhase;uniform vec2 effectPixel;':''}
 uniform vec2 sunScreen;
 uniform float atmosphereStrength,cameraY;
 uniform vec3 airProfile;
@@ -81,9 +82,25 @@ void main(){
   float depth=readDepth(center);
   vec3 pos=viewPosition(center,depth);
   float range=-pos.z, ao=0., contact=0., shaft=0.;
-  if(depth<.999999 && ((steps.x>0. && range<48.) || (steps.y>0. && range<36.))){
+  ${temporal?`bool reuse=false;
+  vec4 history=vec4(0.);
+  if(historyReuse>.5&&range>5.&&mod(floor(gl_FragCoord.x)+floor(gl_FragCoord.y),2.)==historyPhase){
+    history=texture2D(historyMask,vUv);
+    float tolerance=max(.035,range*.0015);
+    reuse=abs(history.a-range)<tolerance;
+    // Reject nearby disocclusion, even if the centre pixel has unchanged depth.
+    if(reuse)for(int k=0;k<4;k++){
+      vec2 offset=k<2?vec2(float(k*2-1),0.):vec2(0.,float((k-2)*2-1));
+      vec2 at=clamp(vUv+offset*effectPixel,.5*effectPixel,1.-.5*effectPixel);
+      float current=-viewAt(at).z;
+      if(abs(texture2D(historyMask,at).a-current)>max(.035,current*.0015)){reuse=false;break;}
+    }
+  }
+  bool reuseAO=reuse&&steps.x>12.;bool reuseShaft=reuse&&steps.z>=7.;
+  if(reuseAO)ao=history.r;if(reuseShaft)shaft=history.b;`:'bool reuseAO=false;bool reuseShaft=false;'}
+  if(depth<.999999 && ((!reuseAO && steps.x>0. && range<48.) || (steps.y>0. && range<36.))){
     vec3 n=receiverNormal(center,pos);
-    if(steps.x>0. && range<48.){
+    if(!reuseAO && steps.x>0. && range<48.){
       float radius=.83, sum=0.;
       vec2 footprint=vec2(projection[0][0],projection[1][1])*.5*radius/max(.1,range);
       // Four evenly spaced orientations instead of uncorrelated pixel noise.
@@ -137,7 +154,7 @@ void main(){
       contact*=smoothstep(.08,.27,sunFacing)*(1.-smoothstep(18.,36.,range));
     }
   }
-  if(steps.z>0. && atmosphereStrength>0.){
+  if(!reuseShaft && steps.z>0. && atmosphereStrength>0.){
     vec3 direction=normalize(pos);
     float mu=max(0.,dot(direction,sunView));
     float angular=mix(pow(mu,10.),pow(mu,5.),airProfile.z*.45);
@@ -462,6 +479,7 @@ export function webGlWorldStages(post) {
       uniforms.time.value=state.time;
       uniforms.heatTime.value=state.heatTime;
       uniforms.reflectionSteps.value=state.reflectionSteps;
+      uniforms.historyReuse.value=state.historyReuse;uniforms.historyPhase.value=state.historyPhase;
       uniforms.waterActive.value=state.waterActive;
       uniforms.receiverActive.value=state.receiverActive;
       if(reflected&&(state.waterActive||state.receiverActive)){
@@ -473,10 +491,12 @@ export function webGlWorldStages(post) {
       }
       if(post.mask){
         const count=post.shadowMaps.length;
-        const depth=masks[count]??=stage(mask(count),{...uniforms,sceneDepth:{value:world.depthTexture},
+        const depth=masks[count]??=stage(mask(count,Boolean(post.maskHistory)),{...uniforms,sceneDepth:{value:world.depthTexture},historyMask:{value:post.maskRead?.texture},
           ...Object.fromEntries(post.shadowMaps.map((map,i)=>['volumeMap'+i,{value:map}]))});
         for(let i=0;i<count;i++)depth.uniforms['volumeMap'+i].value=post.shadowMaps[i];
-        draw(post.mask,depth,profiler,'depthEffects');
+        depth.uniforms.historyMask.value=post.maskRead?.texture;
+        const current=post.maskWrite??post.mask;
+        draw(current,depth,profiler,'depthEffects');output.uniforms.mask.value=current.texture;
       }
       draw(target,output,profiler,'worldComposite');
     },

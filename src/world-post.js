@@ -13,6 +13,10 @@ const bloomSettings = { off: [0, 0], low: [1, .075], medium: [2, .11], high: [3,
 // Fuse only when the display samples each pixel once. Adjacent-pixel filters
 // retain the precomposited HDR source rather than multiplying bloom taps.
 export const canFuseBloom=(levels,fxaa,sharpen)=>levels>0&&!fxaa&&!sharpen;
+// Without motion vectors, only reuse history for effectively stationary views.
+export function stableEffectHistory(previous,current){
+  return Boolean(previous&&current.time>previous.time&&current.time-previous.time<.08&&previous.key===current.key&&previous.position.distanceToSquared(current.position)<1e-6&&Math.abs(previous.orientation.dot(current.orientation))>1-1e-8&&previous.projection.equals(current.projection)&&previous.sun.distanceToSquared(current.sun)<1e-8&&Math.abs(previous.strength-current.strength)<.001);
+}
 export class WorldPost {
   constructor(renderer, Target, createStages, webgpu = false, createReceiver=makeGlReflectionReceiver) {
     this.renderer = renderer;
@@ -32,6 +36,7 @@ export class WorldPost {
       heatSources:new THREE.Matrix4(), heatStrength:new THREE.Vector4(), heatTime:0,
       atmosphereStrength: 0, airProfile:new THREE.Vector3(.012,21,.65), bloomGain: 0,
       fogLayer:new THREE.Vector4(),fogLayerUp:new THREE.Vector3(),fogEyeY:0,fogLayerTint:new THREE.Color(),
+      historyReuse:0,historyPhase:0,
       volumeSplits: new THREE.Vector3(),
       volumeMatrix0: new THREE.Matrix4(), volumeMatrix1: new THREE.Matrix4(), volumeMatrix2: new THREE.Matrix4(),
     };
@@ -41,6 +46,9 @@ export class WorldPost {
     this.previousProjection=new THREE.Matrix4();
     this.previousPosition=new THREE.Vector3();
     this.previousOrientation=new THREE.Quaternion();
+    this.temporalPrevious={position:new THREE.Vector3(),orientation:new THREE.Quaternion(),projection:new THREE.Matrix4(),sun:new THREE.Vector3()};
+    this.temporalView={position:new THREE.Vector3(),orientation:new THREE.Quaternion(),projection:new THREE.Matrix4(),sun:new THREE.Vector3()};
+    this.temporalValid=false;this.temporalFrame=0;this.temporalReused=0;
     this.passes = 0;
     this.memory = 0;
   }
@@ -56,6 +64,7 @@ export class WorldPost {
     const receiverMask=Boolean(reflections&&this.receiverMode);
     const hierarchy=reflections===32;
     const mask=ao+contact+atmosphere>0;
+    const temporal=ao>12||atmosphere>=7;
     const blur=(this.inMenu||this.cinematic)?cameraModes.blur[effects?.motionBlur]??0:0;
     const dof=(this.cinematic&&(effects?.depthOfField??'off')!=='off')||(this.inMenu&&effects?.depthOfField==='on');
     const flare=this.aiming?0:cameraModes.flare[effects?.lensFlare]??0;
@@ -70,13 +79,14 @@ export class WorldPost {
       if (this.world) this.dispose();
       return false;
     }
-    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + receiverMask + '/' + levels + '/' + this.heightFog + '/' + hierarchy;
+    const key = Boolean(depth) + '/' + this.cameraFX + '/' + this.hasHeat + '/' + mask + '/' + Boolean(reflections) + '/' + receiverMask + '/' + levels + '/' + this.heightFog + '/' + hierarchy + '/' + temporal;
     if (this.key !== key) {
       this.dispose();
       this.key = key;
       this.world = new this.Target(1, 1, { type: THREE.HalfFloatType, depthBuffer: true,
         depthTexture: depth ? new THREE.DepthTexture(1, 1, THREE.FloatType) : null });
       if (mask) this.mask = this.colorTarget(true);
+      if(temporal)this.maskHistory=this.colorTarget(true);
       if (reflections) this.reflection=this.colorTarget();
       if(hierarchy)this.depthHierarchy=[this.colorTarget(true),this.colorTarget(true)];
       if (receiverMask) this.receiverMask=new this.Target(1,1,{type:THREE.HalfFloatType,depthBuffer:true,
@@ -91,6 +101,8 @@ export class WorldPost {
     const world = this.world;
     if (world.samples !== worldSamples) { world.dispose(); world.samples = worldSamples; }
     this.resize(world, width, height);
+    const temporalKey=ao+'/'+contact+'/'+atmosphere+'/'+this.fogQuality+'/'+width+'/'+height;
+    if(this.temporalKey!==temporalKey){this.resetTemporal();this.temporalKey=temporalKey;}
     this.state.steps.set(ao, contact, atmosphere);
     this.state.cameraEffects.set(blur,Number(dof),flare);
     this.state.chromaticGain=chromatic;
@@ -106,6 +118,7 @@ export class WorldPost {
       this.resize(this.mask, Math.ceil(width / divisor), Math.ceil(height / divisor));
       this.state.effectPixel.set(1 / this.mask.width, 1 / this.mask.height);
       this.memory += this.mask.width * this.mask.height * 8;
+      if(this.maskHistory){this.resize(this.maskHistory,this.mask.width,this.mask.height);this.memory+=this.mask.width*this.mask.height*8;}
     }
     if(this.reflection){
       const divisor=effects.reflections==='low'?4:2;
@@ -137,6 +150,25 @@ export class WorldPost {
 
   resize(target, width, height) {
     if (target.width !== width || target.height !== height) target.setSize(width, height);
+  }
+
+  resetTemporal(){this.temporalValid=false;this.temporalFrame=0;this.state.historyReuse=0;}
+
+  prepareTemporal(camera,sunOffset,time){
+    this.maskWrite=this.mask;this.maskRead=this.maskHistory??null;this.state.historyReuse=0;
+    if(!this.maskHistory)return;
+    const view=this.temporalView;view.position.copy(camera.position);view.orientation.copy(camera.quaternion);view.projection.copy(camera.projectionMatrix);view.sun.copy(sunOffset).normalize();
+    view.time=time;view.strength=this.state.atmosphereStrength;view.key=this.temporalKey+'/'+this.shadowMaps.length;
+    const stable=this.temporalValid&&stableEffectHistory(this.temporalPrevious,view);
+    this.state.historyReuse=Number(stable);this.state.historyPhase=this.temporalFrame%2;
+    if(stable)this.temporalReused++;
+    this.maskWrite=this.temporalFrame%2?this.maskHistory:this.mask;
+    this.maskRead=this.temporalFrame%2?this.mask:this.maskHistory;
+  }
+  finishTemporal(){
+    if(!this.maskHistory)return;
+    const previous=this.temporalPrevious;this.temporalPrevious=this.temporalView;this.temporalView=previous;
+    this.temporalFrame++;this.temporalValid=true;
   }
 
   apply(output, camera, scene, sunOffset, sun, campaign, time, cascades, profiler) {
@@ -198,7 +230,9 @@ export class WorldPost {
     }
     try {
       if(state.receiverActive)this.receivers.render(r,this.receiverMask,camera,profiler);
+      this.prepareTemporal(camera,sunOffset,time);
       this.stages.render(output,profiler);
+      this.finishTemporal();
     } catch(error) {
       throw Object.assign(new Error('World screen effects failed',{cause:error}),{s09PostFault:'depth'});
     } finally {
@@ -216,7 +250,7 @@ export class WorldPost {
   dispose() {
     this.stages?.dispose();
     this.world?.dispose();
-    this.mask?.dispose();
+    this.mask?.dispose();this.maskHistory?.dispose();this.maskHistory=this.maskRead=this.maskWrite=null;this.resetTemporal();
     this.reflection?.dispose();
     this.receiverMask?.dispose();
     for(const target of this.depthHierarchy??[])target.dispose();this.depthHierarchy=null;

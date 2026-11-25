@@ -586,7 +586,7 @@ export class GameRenderer {
     this.localReflections.dispose();this.postPass.worldEffects.receivers.invalidate();
     this.interiorVisibility.restore();this.interiorVisibility.root=null;this.interiorVisibility.items=[];
     this.cachedShadows.invalidate(true);
-    this.postPass.worldEffects.previousClock=undefined;
+    this.postPass.worldEffects.previousClock=undefined;this.postPass.worldEffects.resetTemporal();
     for(const type of new Set(map.vehicleSpawns?.map(vehicle=>vehicle.type)))lightVehicleModels[type]?.load();
     let world = this.worlds.get(map.id);
     if (!world) {
@@ -2943,7 +2943,7 @@ export class GameRenderer {
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
       volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,localReflectionProbes:this.localReflections.stats(),gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
-      effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,subpixelParticles:this.subpixelParticles??0,reflectionReceivers:post.worldEffects.receivers.count,reflectionHierarchy:post.worldEffects.depthHierarchy?.map(t=>[t.width,t.height])??null,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
+      effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,subpixelParticles:this.subpixelParticles??0,reflectionReceivers:post.worldEffects.receivers.count,reflectionHierarchy:post.worldEffects.depthHierarchy?.map(t=>[t.width,t.height])??null,temporalEffects:{enabled:!!post.worldEffects.maskHistory,reusing:!!post.worldEffects.state.historyReuse,reusedFrames:post.worldEffects.temporalReused},waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postFusion:{bloom:post.worldEffects.bloomFused,directWorld:post.worldEffects.directWorld},
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
