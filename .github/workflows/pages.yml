@@ -3,10 +3,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_run:
-    workflows: [Prepare experimental PBR textures]
-    branches: [remaster/pbr-ktx2]
-    types: [completed]
+    inputs:
+      include_test:
+        description: 'Also publish the independent offline test branch (larger artifact)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   pages: write
@@ -16,7 +17,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,6 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Restore previous benchmark
-        if: github.event_name != 'workflow_run'
         uses: actions/cache@v4
         with:
           path: .perf-ci/baseline.json
@@ -37,13 +36,11 @@ jobs:
           restore-keys: |
             perf-v1-${{ runner.os }}-${{ runner.arch }}-node24-
       - name: Benchmark simulation and flag regressions
-        if: github.event_name != 'workflow_run'
         run: npm run bench -- --ci --baseline .perf-ci/baseline.json --output .perf-ci/current.json
       - name: Keep benchmark for next comparison
-        if: github.event_name != 'workflow_run'
         run: node -e "require('node:fs').copyFileSync('.perf-ci/current.json','.perf-ci/baseline.json')"
       - name: Upload performance report
-        if: always() && github.event_name != 'workflow_run'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: simulation-performance
@@ -63,15 +60,18 @@ jobs:
             .perf-local/build-budget.json
             .perf-local/bundle.html
       - name: Checkout experimental branch
+        if: github.event_name == 'workflow_dispatch' && inputs.include_test
         uses: actions/checkout@v4
         with:
           ref: remaster/pbr-ktx2
           path: preview-source
           persist-credentials: false
       - name: Install experimental dependencies
+        if: github.event_name == 'workflow_dispatch' && inputs.include_test
         working-directory: preview-source
         run: npm ci
       - name: Build offline experimental game
+        if: github.event_name == 'workflow_dispatch' && inputs.include_test
         working-directory: preview-source
         run: npm run build
         env:
@@ -79,8 +79,10 @@ jobs:
           VITE_TEST_BUILD: '1'
           VITE_SERVER_URL: ''
           VITE_FIREBASE_CONFIG: 'null'
-      - name: Assemble and validate independent Pages builds
+      - name: Assemble and validate Pages site
         shell: bash
+        env:
+          INCLUDE_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.include_test }}
         run: |
           set -euo pipefail
           test -f dist/index.html
@@ -88,26 +90,37 @@ jobs:
           test -f dist/gi-v1/manifest.json
           test -f dist/architecture-v1/manifest.json
           test -f dist/basis/basis_transcoder.wasm
-          test -f preview-source/dist/index.html
-          test -f preview-source/dist/pbr-v1/manifest.json
-          test -f preview-source/dist/basis/basis_transcoder.wasm
           test ! -e dist/test
-          mkdir -p dist/test
-          cp -a preview-source/dist/. dist/test/
-          printf '%s\n' '{"serverUrl":""}' > dist/test/network-config.json
           printf '%s\n' "$(git rev-parse HEAD)" > dist/build-revision.txt
-          git -C preview-source rev-parse HEAD > dist/test/build-revision.txt
+          mkdir -p dist/test
+          if [ "$INCLUDE_TEST" = true ]; then
+            test -f preview-source/dist/index.html
+            test -f preview-source/dist/pbr-v1/manifest.json
+            test -f preview-source/dist/basis/basis_transcoder.wasm
+            cp -a preview-source/dist/. dist/test/
+            printf '%s\n' '{"serverUrl":""}' > dist/test/network-config.json
+            git -C preview-source rev-parse HEAD > dist/test/build-revision.txt
+          else
+            cat > dist/test/index.html <<'HTML'
+          <!doctype html>
+          <html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SECTOR 09 — тестовая версия</title>
+          <body style="font:18px system-ui;background:#161c1e;color:#eee;max-width:650px;margin:10vh auto;padding:24px">
+          <h1>SECTOR 09</h1><p>Графический ремастер перенесён в основную игру. Отдельная тестовая сборка пока не опубликована.</p>
+          <p><a style="color:#9dd8ef" href="../">Открыть основную игру</a></p></body></html>
+          HTML
+          fi
           node --input-type=module -e '
             import {readFileSync,existsSync} from "node:fs";
             import {resolve} from "node:path";
-            for(const dir of ["dist","dist/test"]){
+            const roots=process.env.INCLUDE_TEST==="true"?["dist","dist/test"]:["dist"];
+            for(const dir of roots){
               const html=readFileSync(dir+"/index.html","utf8");
               for(const match of html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)){
                 const path=match[1];
                 if(path.startsWith("/")||!existsSync(resolve(dir,path)))throw Error("Invalid asset path "+dir+": "+path);
               }
             }
-            for(const root of ["dist","dist/test"]){
+            for(const root of roots){
             const m=JSON.parse(readFileSync(root+"/pbr-v1/manifest.json","utf8"));
             for(const [surface,channels] of Object.entries(m.files))
               for(const [channel,sizes] of Object.entries(channels))
@@ -118,7 +131,7 @@ jobs:
           '
           touch dist/.nojekyll
           echo "Stable: $(cat dist/build-revision.txt)"
-          echo "Test: $(cat dist/test/build-revision.txt)"
+          if [ "$INCLUDE_TEST" = true ]; then echo "Test: $(cat dist/test/build-revision.txt)"; fi
           du -sh dist dist/test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
