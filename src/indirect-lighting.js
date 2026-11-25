@@ -39,7 +39,7 @@ export class IndirectLighting{
     const collect=(o,eligible)=>{
       if(!o.isMesh||o.userData.waterReflection||o.userData.waterSurface||o.userData.architecturalSurface==='water'||o.name==='Port water')return;
       for(const m of Array.isArray(o.material)?o.material:[o.material]){
-        if(!m||m.transparent||!(m.isMeshStandardMaterial||m.isMeshLambertMaterial)||m.transmission>0||m.userData?.noGI)continue;
+        if(!m||m.transparent||!(m.isMeshStandardMaterial||m.isMeshLambertMaterial)||m.transmission>0||m.userData?.noGI||m.userData?.architectureLightmap)continue;
         eligible.add(m);
       }
     };

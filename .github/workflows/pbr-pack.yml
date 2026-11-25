@@ -44,6 +44,8 @@ jobs:
           key: pbr-pack-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Bake static diffuse irradiance probes for all maps
         run: npm run assets:gi
+      - name: Bake architecture lightmaps from exported visual meshes
+        run: npm run assets:architecture
       - name: Build experimental game
         run: npm run build
         env:
@@ -51,7 +53,7 @@ jobs:
       - name: Commit generated pack to the experimental branch only
         shell: bash
         run: |
-          git add public/pbr-v1 public/gi-v1
+          git add public/pbr-v1 public/gi-v1 public/architecture-v1
           if git diff --cached --quiet; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'

@@ -1,5 +1,5 @@
 const legacy = Object.freeze({
-  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', vegetation:'legacy', grassDensity:'off', grassDistance:'20', vegetationWind:'off', vegetationShadows:'off', foliageTransmission:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', gi:'off', ao: 'off', contact: 'off',
+  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', vegetation:'legacy', grassDensity:'off', grassDistance:'20', vegetationWind:'off', vegetationShadows:'off', foliageTransmission:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', gi:'off', architectureLight:'off', architectureAO:'off', ao: 'off', contact: 'off',
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
@@ -9,7 +9,7 @@ const legacy = Object.freeze({
 });
 
 const ultra = Object.freeze({
-  ...legacy, shaderWarmup:'full',surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', ao: 'gtao', contact: 'high', bloom: 'high',
+  ...legacy, shaderWarmup:'full',surfaceDetail:'ultra',mapWeathering:'high',vegetation:'ultra',grassDensity:'100',grassDistance:'100',vegetationWind:'high',vegetationShadows:'high',foliageTransmission:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', gi:'high', architectureLight:'high', architectureAO:'high', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
   sky: 'high', clouds:'high', heightFog:'high', water: 'high', waterRefraction:'high', waterFoam:'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high', muzzleEffects:'high', muzzleLights:'high', fireEffects:'high', fireLighting:'high', dust:'high',
 });
@@ -35,6 +35,8 @@ export const GRAPHICS_CONTROLS = [
     ['lighting', 'Освещение', 'Меняет баланс солнечного и рассеянного света. Почти не влияет на FPS.', choices(old, ['enhanced', 'Улучшенное'])],
     ['gi','Глобальное освещение (GI)','Запечённый непрямой свет и затенение от стен и крыш. Низкое — ближайший слой проб, высокое — плавное смешивание по высоте.',choices(off,low,high)],
     ['ao', 'Экранное затенение (SSAO)', 'Делает заметнее стыки и углубления. GTAO оценивает перекрытие по горизонту.', choices(off, ['low', 'SSAO · низкое'], ['high', 'SSAO · высокое'], ['gtao', 'GTAO'])],
+    ['architectureLight','Карты освещения архитектуры','Запечённый рассеянный свет по реальным треугольникам зданий. Не требует дополнительного экранного прохода.',choices(off,low,high)],
+    ['architectureAO','Запечённое AO архитектуры','Статические углы, стыки и затенение под крышами. На запечённых поверхностях заменяет AO фактуры; при отключении оно возвращается.',choices(off,low,high)],
     ['bakedAO', 'Запечённое AO материалов', 'Добавляет затенение в порах, швах и углублениях. Расходует текстурную память.', choices(off, low, high)],
     ['contact', 'Контактные тени', 'Уточняет мелкие тени рядом с камерой. Стоимость растёт с числом шагов.', choices(off, low, medium, high)],
     ['atmosphere', 'Атмосферное рассеивание', 'Добавляет высотную дымку и солнечные лучи. Высокие уровни учитывают перекрытие света при включённых каскадных тенях.', choices(off, low, medium, high, ['ultra','Ультра'])],

@@ -21,7 +21,8 @@
     "assets:pbr": "node scripts/prepare-pbr.mjs",
     "predev": "node scripts/prepare-pbr.mjs",
     "prebuild": "node scripts/prepare-pbr.mjs",
-    "assets:gi": "node scripts/bake-gi.mjs"
+    "assets:gi": "node scripts/bake-gi.mjs",
+    "assets:architecture": "node scripts/bake-architecture.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3",

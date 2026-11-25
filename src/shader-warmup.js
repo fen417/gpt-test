@@ -19,7 +19,7 @@ export function collectWarmupTextures(owner){
 }
 export function assetsPending(owner){
   const p=owner.enhancedSurfaces;
-  return Boolean(p?.latest&&(p.manifestPending||p.loadedRefresh||[...p.textures.values()].some(x=>x.pending))||owner.indirectLighting?.pending);
+  return Boolean(p?.latest&&(p.manifestPending||p.loadedRefresh||[...p.textures.values()].some(x=>x.pending))||owner.indirectLighting?.pending||owner.architectureLightmaps?.pending);
 }
 export async function waitForWarmupAssets(owner,signal,ms,frame=nextFrame,now=()=>performance.now()){
   const deadline=now()+ms;
@@ -91,6 +91,7 @@ export class ShaderWarmup{
       await stage(.18,'Загрузка PBR и световых проб');
       stats.assetsReady=await waitForWarmupAssets(owner,signal,limits.assets);
       // Flush deferred material refresh before taking the texture/variant set.
+      owner.architectureLightmaps?.update(owner);
       owner.indirectLighting.update(owner);
       owner.vegetation.prewarmAssets?.(owner);
       await stage(.44,'Загрузка текстур на GPU');

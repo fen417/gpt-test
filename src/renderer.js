@@ -1,3 +1,4 @@
+import {ArchitectureLightmaps} from './architecture-lightmaps.js';
 import {batchStaticWorld} from './static-batching.js';
 import {baseGraphicsQuality, graphicsEffects, gradeParameters, geometryQuality, GEOMETRY_QUALITY} from './graphics-settings.js';
 import {SoftSmokePass, SOFT_PARTICLE_LAYER} from './soft-smoke.js';
@@ -192,6 +193,7 @@ export class GameRenderer {
     this.waterReflectionPlane=new THREE.Vector2();
     this.localReflections=new LocalReflections();
     this.indirectLighting=new IndirectLighting(webgpu?.setWebGpuGI);
+    this.architectureLightmaps=new ArchitectureLightmaps();
     this.vegetation=new Vegetation(webgpu?.makeWebGpuFoliageMaterial);
     this.shaderWarmup=new ShaderWarmup(this);
     this.finishWorldEffects=profiler=>{
@@ -575,6 +577,7 @@ export class GameRenderer {
     if (this.map === map) return;
     this.vegetation?.clear();
     this.indirectLighting?.clear();
+    this.architectureLightmaps?.clear();
     this.enhancedSurfaces?.clear(); // Never clone a shared material with temporary PBR textures.
     this.waterAppearance?.restore();
     this.postPass.worldEffects.previousClock=undefined;
@@ -747,6 +750,7 @@ export class GameRenderer {
   }
 
   installBakedLayer(world,layer) {
+    if(world.root===this.staticRoot)this.architectureLightmaps?.suspend();
     world.root.add(layer);
     layer.updateMatrixWorld(true);
     layer.traverse(object=>{
@@ -837,6 +841,7 @@ export class GameRenderer {
     if(visible===Boolean(wanted))return;
     if(wanted)this.installBakedLayer(world,detail);
     else {
+      this.architectureLightmaps?.suspend();
       detail?.removeFromParent();
       detail?.traverse(object=>object.geometry?.dispose());
       this.invalidateBakedVisibility();
@@ -2034,6 +2039,7 @@ export class GameRenderer {
   applyQuality(low) {
     this.staticMaterialRevision++;
     this.indirectLighting?.suspend();
+    this.architectureLightmaps?.suspend();
     this.waterAppearance?.restore();
     this.lowQuality = low;
     this.adaptiveScale = 1;
@@ -2058,7 +2064,7 @@ export class GameRenderer {
     if(!settings)return;
     if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off'||settings.mapWeathering==='high'||settings.mapWeathering==='low')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief,this.webgpu?.setWebGpuWeathering,this.webgpu?.suspendWebGpuWeathering);
     if(this.enhancedSurfaces){
-      this.enhancedSurfaces.beforeUpdate=()=>{this.staticMaterialRevision++;this.indirectLighting?.suspend();};
+      this.enhancedSurfaces.beforeUpdate=()=>{this.staticMaterialRevision++;this.indirectLighting?.suspend();this.architectureLightmaps?.suspend();};
       this.enhancedSurfaces.update(this.staticRoot,settings,this.textureAnisotropy,this.map?.id);
     }
   }
@@ -2171,6 +2177,7 @@ export class GameRenderer {
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock,this.graphicsEffects?.clouds,this.map,this.scene.fog.color);
     const environment=this.scene.environment;
     const localEnvironment=this.localReflections.prepare(this,menu,warming);
+    this.architectureLightmaps.update(this);
     this.indirectLighting.update(this);
     if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene,this.staticRoot,this.staticMaterialRevision);
@@ -2761,12 +2768,12 @@ export class GameRenderer {
       adaptive:this.adaptiveGraphics?{reason:this.adaptiveGraphics.reason,scale:this.adaptiveGraphics.scale,
         cpuStep:this.adaptiveGraphics.cpuStep,gpuStep:this.adaptiveGraphics.gpuStep,p95:this.adaptiveGraphics.p95,p99:this.adaptiveGraphics.p99}:null,
       smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
-      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),vegetation:this.vegetation.stats(),
+      volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
       effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',
-      extraTextureBytes:this.enhancedSurfaces?.estimatedBytes()??0,
+      extraTextureBytes:(this.enhancedSurfaces?.estimatedBytes()??0)+(this.architectureLightmaps.stats()?.bytes??0),
       pbrTextures:this.enhancedSurfaces?.stats()??null,shaderWarmup:this.shaderWarmup.stats,
       visibleLights:this.perfEnabled?this.scene.children.filter(object=>object.isLight&&object.visible&&object.intensity>0).length:null,
       visibleObjects:this.perfEnabled?this.countVisibleObjects():null,
@@ -2788,6 +2795,7 @@ export class GameRenderer {
     this.waterAppearance?.dispose();
     this.vegetation?.dispose();
     this.indirectLighting?.dispose();
+    this.architectureLightmaps?.dispose();
     this.localReflections.dispose();
     for(const material of this.hotParticleMaterials?.values()??[])material.dispose();
     this.detailedSmokeTexture?.dispose();this.muzzleTexture?.dispose();this.fireballTexture?.dispose();this.effectLights?.dispose();
