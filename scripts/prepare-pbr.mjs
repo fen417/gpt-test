@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {PBR_SOURCES,PBR_PACK_VERSION} from '../src/pbr-library.js';
+import {sourceCandidates} from './polyhaven-source.mjs';
 
 const output='public/pbr-v1',cache='.perf-local/pbr-source';
 const basis=join('node_modules','basis_universal','bin',process.platform==='win32'?'basisu.exe':'basisu');
@@ -31,21 +32,36 @@ async function request(url){
 const index=new Map();
 async function source(asset,channel,sourceSize){
   const key=asset+'-'+channel+'-'+sourceSize;
-  if(!index.has(asset))index.set(asset,await (await request('https://api.polyhaven.com/files/'+asset)).json());
-  const options=index.get(asset);
-  const record=(channel==='diff'?(options.diff??options.diffuse):options[channel])?.[sourceSize/1024+'k'];
-  const file=record?.jpg??record?.png;
-  if(!file?.url)throw Error('No source: '+key);
-  const path=join(cache,key+(record.jpg?'.jpg':'.png'));
-  const hash=buffer=>createHash('md5').update(buffer).digest('hex');
-  let data=await readFile(path).catch(()=>null);
-  if(!data||(file.md5&&hash(data)!==file.md5)){
-    data=Buffer.from(await (await request(file.url)).arrayBuffer());
-    if(file.md5&&hash(data)!==file.md5)throw Error('Checksum mismatch '+key);
-    await writeFile(path,data);
+  if(!index.has(asset)){
+    const options=await request('https://api.polyhaven.com/files/'+asset)
+      .then(r=>r.json()).catch(error=>{console.warn('Poly Haven metadata unavailable',asset,error.message);return {};});
+    index.set(asset,options);
+    console.log('Poly Haven metadata',asset,Object.keys(options));
   }
-  sources[key]={url:file.url,md5:hash(data),license:'CC0-1.0'};
-  return path;
+  const candidates=sourceCandidates(index.get(asset),asset,channel,sourceSize);
+  const hash=buffer=>createHash('md5').update(buffer).digest('hex');
+  const prior=sources[key];
+  if(prior?.md5){
+    const path=join(cache,key+(prior.extension??'.jpg'));
+    const data=await readFile(path).catch(()=>null);
+    if(data&&hash(data)===prior.md5)return path;
+  }
+  const failures=[];
+  for(const file of candidates){
+    try{
+      const extension=file.extension;
+      const path=join(cache,key+extension);
+      const data=Buffer.from(await (await request(file.url)).arrayBuffer());
+      if(file.md5&&hash(data)!==file.md5)throw Error('Checksum mismatch '+key);
+      const image=await loadImage(data);
+      if(Math.max(image.width,image.height)<sourceSize)throw Error('Source below requested resolution: '+image.width+'x'+image.height);
+      await writeFile(path,data);
+      sources[key]={url:file.url,md5:hash(data),extension,width:image.width,height:image.height,license:'CC0-1.0'};
+      console.log('Verified source',key,image.width+'x'+image.height,file.url);
+      return path;
+    }catch(error){failures.push(error.message);}
+  }
+  throw Error('No usable native-resolution source: '+key+'; '+failures.join('; '));
 }
 async function encode(surface,channel,size,input,spec){
   const path=join(output,surface+'-'+channel+'-'+size+'.ktx2');
