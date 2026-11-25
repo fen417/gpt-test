@@ -51,6 +51,7 @@ document.body.append(panel);
         return sample?[`GPU ${label} · avg/p95: ${ms(sample.avg)} / ${ms(sample.p95)} мс (${sample.count})`]:[];
       }),
       `Draw calls: ${data.calls} · Треугольники: ${data.triangles} · Видимые объекты: ${data.visibleObjects??'н/д'}`,
+      `Частицы вне кадра: ${data.particlesCulled??0} · Отрисовано дыма: ${data.particleInstances??0}`,
       `Рендер: ${data.sceneWidth}×${data.sceneHeight} · FSR: ${data.fsr??'off'} · ×${ms(data.fsrScale)} · RCAS: ${data.fsrSharpness??'—'}%`,
       `AA: ${data.worldSamples??0}× MSAA мира · AA: ${data.smaa?'SMAA':data.fxaa?'FXAA':'—'} · AF: ${data.anisotropy??'—'}×`,
       `Постпроходы: ${data.postPasses??1} · Доп. буферы: ${ms((data.extraTargetBytes??0)/1048576)} МБ · Новые текстуры: ${ms((data.extraTextureBytes??0)/1048576)} МБ · Каскады: ${data.shadowCascades??0}`,

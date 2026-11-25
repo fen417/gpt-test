@@ -372,3 +372,24 @@ test('grass roots are below terrain while retaining the original scale',()=>{
   const plants=grassTile(map,createPlacement(map),0,0,1);assert.ok(plants.length>0);
   for(const p of plants){const sink=map.terrain.heightAt(p.x,p.z)-p.y;assert.ok(sink>=.054&&sink<=.141);assert.ok(p.scale>0);}
 });
+
+import {compactGeometryGroup} from '../src/compact-geometry.js';
+test('static material group compaction preserves triangle vertices, UVs and normalized colors',()=>{
+  const source=new THREE.BoxGeometry(2,3,4),count=source.attributes.position.count;
+  const colors=new Uint8Array(count*3);for(let i=0;i<colors.length;i++)colors[i]=i%255;
+  source.setAttribute('color',new THREE.BufferAttribute(colors,3,true));
+  for(const group of source.groups){
+    const result=compactGeometryGroup(source,group);
+    assert.equal(result.index.count,group.count);
+    assert.ok(result.attributes.position.count<count);
+    for(let i=0;i<group.count;i++){
+      const oldIndex=source.index.getX(group.start+i),newIndex=result.index.getX(i);
+      for(const name of ['position','normal','uv','color']){
+        const a=source.attributes[name],b=result.attributes[name];
+        for(let j=0;j<a.itemSize;j++)assert.equal(a.getComponent(oldIndex,j),b.getComponent(newIndex,j));
+      }
+    }
+    result.dispose();
+  }
+  source.dispose();
+});

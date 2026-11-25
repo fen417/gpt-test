@@ -6,10 +6,11 @@ import { SpatialIndex } from '../shared/spatial-index.js';
 // Every corner must be behind the SAME convex wall, so windows/doorways stay
 // visible. Apply only during the colour pass; shadow casters remain intact.
 export class InteriorVisibility {
-  constructor(){this.eye=new THREE.Vector3(Infinity,0,0);this.cursor=0;this.hidden=[];}
+  constructor(){this.eye=new THREE.Vector3(Infinity,0,0);this.orientation=new THREE.Quaternion();this.cursor=0;this.hidden=[];}
   apply(owner){
     const {staticRoot,map,camera,viewFrustum}=owner;if(map.id!=='village'&&map.missionId!=='m03')return;
-    if(this.root!==staticRoot){
+    if(this.root!==staticRoot||this.revision!==owner.staticMaterialRevision){
+      this.revision=owner.staticMaterialRevision;
       this.root=staticRoot;this.items=[];
       staticRoot.updateMatrixWorld(true);
       const flags=new Set([...owner.flags.values()].map(f=>f.group));
@@ -25,19 +26,23 @@ export class InteriorVisibility {
       this.eye.set(Infinity,0,0);this.cursor=0;this.remaining=0;
     }
     const eye=camera.position;
-    if(!this.eye.equals(eye)||this.previousDisabled!==this.disabled){
-      for(const item of this.items)item.blocked=false;this.eye.copy(eye);this.previousDisabled=this.disabled;this.remaining=this.items.length;this.cursor=0;
+    const moved=!this.eye.equals(eye)||this.previousDisabled!==this.disabled;
+    const turned=!this.orientation.equals(camera.quaternion);
+    if(moved){
+      for(const item of this.items)item.blocked=false;this.eye.copy(eye);this.previousDisabled=this.disabled;
     }
+    // Keep the cursor across movement to avoid starving later candidates.
+    if(moved||turned){this.remaining=this.items.length;this.orientation.copy(camera.quaternion);}
     if(this.remaining>0){
     const walls=this.walls.query(eye.x-24,eye.z-24,eye.x+24,eye.z+24)
       .filter(box=>!this.disabled?.has(box.id))
       .sort((a,b)=>(a.x-eye.x)**2+(a.z-eye.z)**2-((b.x-eye.x)**2+(b.z-eye.z)**2)).slice(0,12);
     const deadline=performance.now()+.6;let count=0;
-    // Test every candidate once for an unchanged eye. Do not reject by
-    // current view angle: turning in place must still produce correct results.
+    // Revisit the relevant candidates when the view changes; stationary
+    // frames reuse proven results instead of repeatedly spending the budget.
     while(this.remaining>0&&count++<this.items.length&&performance.now()<deadline){
       const item=this.items[this.cursor++%this.items.length];this.remaining--;
-      if(!item.mesh.visible)continue;
+      if(!item.mesh.visible||!viewFrustum.intersectsBox(item.box))continue;
       item.blocked=walls.some(wall=>item.corners.every(p=>{
         const dx=p.x-eye.x,dy=p.y-eye.y,dz=p.z-eye.z,length=Math.hypot(dx,dy,dz);
         if(length<.1)return false;
