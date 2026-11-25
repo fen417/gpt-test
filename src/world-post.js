@@ -10,6 +10,9 @@ const contactSteps = { off: 0, low: 4, medium: 7, high: 12 };
 const atmosphereSteps = { off: 0, low: 1, medium: 3, high: 7, ultra: 12 };
 const bloomSettings = { off: [0, 0], low: [1, .075], medium: [2, .11], high: [3, .155], ultra: [4, .19] };
 
+// Fuse only when the display samples each pixel once. Adjacent-pixel filters
+// retain the precomposited HDR source rather than multiplying bloom taps.
+export const canFuseBloom=(levels,fxaa,sharpen)=>levels>0&&!fxaa&&!sharpen;
 export class WorldPost {
   constructor(renderer, Target, createStages, webgpu = false, createReceiver=makeGlReflectionReceiver) {
     this.renderer = renderer;
@@ -81,7 +84,8 @@ export class WorldPost {
     }
     // r181 WebGPU has no sampled MSAA depth resolve. Use FXAA on the
     // composited world in both APIs when sampled world depth is needed.
-    const worldSamples = depth ? 0 : samples;
+    this.directWorld=Boolean(!depth&&levels);this.bloomFused=false;
+    const worldSamples = 0; // bloom output is single-sampled; direct world uses the main target
     const world = this.world;
     if (world.samples !== worldSamples) { world.dispose(); world.samples = worldSamples; }
     this.resize(world, width, height);
@@ -93,7 +97,7 @@ export class WorldPost {
     this.state.bloomGain = gain;
     this.state.waterActive=Number(Boolean(this.reflector));
     this.state.receiverActive=Number(receiverMask&&this.receivers.count>0);
-    this.passes = 1 + levels + Number(levels>0) + Number(mask) + Number(Boolean(reflections&&(this.state.waterActive||this.state.receiverActive))) + this.state.receiverActive + Number(Boolean(this.softSmoke));
+    this.passes = Number(!this.directWorld) + levels + Number(levels>0) + Number(mask) + Number(Boolean(reflections&&(this.state.waterActive||this.state.receiverActive))) + this.state.receiverActive + Number(Boolean(this.softSmoke));
     this.memory = width * height * (12 + worldSamples * 12);
     if (this.mask) {
       const divisor=ao<=4&&contact===0&&atmosphere<=1?4:2;
@@ -128,6 +132,7 @@ export class WorldPost {
   }
 
   apply(output, camera, scene, sunOffset, sun, campaign, time, cascades, profiler) {
+    if(this.directWorld)return;
     const r = this.renderer, state = this.state;
     if (this.mask||this.reflection||this.cameraFX||this.hasHeat||this.heightFog) {
       state.projection.copy(camera.projectionMatrix);
@@ -193,8 +198,10 @@ export class WorldPost {
     }
   }
 
-  finishBloom(input,profiler) {
-    try{return this.stages?.renderBloom(input,profiler)??input.texture;}
+  finishBloom(input,profiler,fuse=false) {
+    this.bloomFused=Boolean(fuse&&this.bloom?.length);
+    if(this.bloomFused)this.passes=Math.max(0,this.passes-1);
+    try{return this.stages?.renderBloom(input,profiler,!this.bloomFused)??input.texture;}
     catch(error){throw Object.assign(new Error('HDR bloom failed',{cause:error}),{s09PostFault:'bloom'});}
   }
 
@@ -208,6 +215,6 @@ export class WorldPost {
     this.world = this.mask = this.reflection = this.receiverMask = this.bloom = this.stages = this.key = null;
     this.shadowMaps.length=0;
     this.previousClock=undefined;
-    this.passes = this.memory = 0;
+    this.directWorld=false;this.bloomFused=false;this.passes = this.memory = 0;
   }
 }

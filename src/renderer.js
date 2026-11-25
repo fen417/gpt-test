@@ -2374,7 +2374,7 @@ export class GameRenderer {
         this.postPass.begin(this.quality);
         try {
           generator?.beginWorld(this.scene);
-          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world?this.finishWorldEffects:null,profiler);
+          drawWorldAndViewModel(this.renderer,this.scene,this.camera,this.weapon,this.worldRoot,this.postPass.worldEffects.world&&!this.postPass.worldEffects.directWorld?this.finishWorldEffects:null,profiler);
         } finally {generator?.endWorld();}
         this.postPass.end(this.clock,this.quality,profiler);
       };
@@ -2931,7 +2931,7 @@ export class GameRenderer {
       mapResidency:this.mapResidency??null,shadowCache:this.cachedShadows.stats?.()??null,
       drawCallSavings:{pickupTemplate:this.pickupDrawCallsSaved??0,infantryTemplates:[...this.infantry?.templates.values()??[]].reduce((sum,t)=>sum+(t.bodyBatch?.saved??0),0)},
       sceneColorFormat:post.compactActive?'R11G11B10F':'RGBA16F',compactColorSupported:post.compactSupported,
-      postSamples:post.target.samples,worldSamples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
+      postSamples:post.target.samples,worldSamples:post.worldEffects.directWorld?post.target.samples:post.worldEffects.world?.samples??post.target.samples,fxaa:isGPU?Boolean(post.useFxaa.value):Boolean(post.material.uniforms.useFxaa.value),
       anisotropy:this.textureAnisotropy,shadowsEnabled:r.shadowMap.enabled,shadowMode:this.shadowMode,shadowCascades:this.cascades?.csm?.cascades??0,cascadeSchedule:this.cascades?.stats?.()??null,
       worldCalls:r.info.worldRender?.drawCalls??r.info.worldRender?.calls,
       worldTriangles:r.info.worldRender?.triangles,calls:isGPU?r.info.render.drawCalls:r.info.render.calls,
@@ -2942,6 +2942,7 @@ export class GameRenderer {
       smaa:post.smaaActive??false,activeAA:post.activeAA,aaFallback:post.aaFallback,postFaults:[...(this.postFaults??[])],heatSources:post.worldEffects.heat.count,
       volumetricCascades:post.worldEffects.shadowMaps.length,localReflection:this.localReflections.active,localReflectionProbes:this.localReflections.stats(),gi:this.indirectLighting.stats(),architectureLightmaps:this.architectureLightmaps.stats(),vegetation:this.vegetation.stats(),
       effectLights:this.effectLights?.active??0,effectLightSlots:this.effectLights?.lights.length??0,particleInstances:this.effectBatches.smoke.count,particlesCulled:this.particleCulled,reflectionReceivers:post.worldEffects.receivers.count,waterQuality:this.lowQuality?'legacy':this.graphicsEffects?.water,waterSurfaces:this.waterAppearance?.entries.length??0,
+      postFusion:{bloom:post.worldEffects.bloomFused,directWorld:post.worldEffects.directWorld},
       postPasses:1+post.worldEffects.passes+(post.smaaActive?(isGPU?4:3):0)+((post.fsrQuality!=='off'&&post.fsrScale<.995)?2:0),
       extraTargetBytes:post.worldEffects.memory,
       shadowFilter:this.graphicsEffects?.shadowFilter??'auto',

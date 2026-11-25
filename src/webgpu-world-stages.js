@@ -492,7 +492,7 @@ export function webGpuWorldStages(post, geometry, camera) {
       }
       draw(target,composite,profiler,'worldComposite');
     },
-    renderBloom(input,profiler){
+    renderBloom(input,profiler,composite=true){
       if(!blurs.length)return input.texture;
       params.bloomGain.value=state.bloomGain;
       bloomSource.value=input.texture;blurs[0].tex.value=input.texture;
@@ -507,6 +507,7 @@ export function webGpuWorldStages(post, geometry, camera) {
           }
         }finally{if(timing)profiler.endPass();}
       }
+      if(!composite)return input.texture;
       draw(world,bloomComposite,profiler,'bloomComposite');
       return world.texture;
     },

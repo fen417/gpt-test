@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {compactColorEligible,supportsCompactWebGL,selectSceneColor,displayVariant} from './compact-color-target.js';
-import { WorldPost } from './world-post.js';
+import { WorldPost,canFuseBloom } from './world-post.js';
 import { renderTimed } from './gpu-pass-timing.js';
 import { webGlWorldStages } from './webgl-world-stages.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
@@ -21,8 +21,8 @@ export class PostPass {
       this.maxSamples=Math.max(0,...this.supportedSamples);
     }
     // FXAA must compare tone-mapped display luminance, not linear HDR values.
-    const fragment=('#include <tonemapping_pars_fragment>\nuniform float useFxaa;uniform float sharpen;uniform float grain;uniform float time;uniform vec3 gradeTint;uniform vec2 grading;uniform float vignetteGain;\n'+FXAAShader.fragmentShader)
-      .replace('return texture( tex2D, uv );','vec4 texel=texture(tex2D,uv);vec3 color=ACESFilmicToneMapping(texel.rgb); \n#ifdef S09_GRADE\n color=(color-.32)*grading.x+.32; color=max(mix(vec3(dot(color,vec3(.2126,.7152,.0722))),color,grading.y)*gradeTint,vec3(0.));\n#endif\n return linearToOutputTexel(vec4(color,texel.a));')
+    const fragment=('#include <tonemapping_pars_fragment>\nuniform float useFxaa;uniform float sharpen;uniform float grain;uniform float time;uniform vec3 gradeTint;uniform vec2 grading;uniform float vignetteGain;\n#if S09_BLOOM_LEVELS > 0\nuniform float bloomGain;uniform sampler2D bloom0,bloom1,bloom2,bloom3;\n#endif\n'+FXAAShader.fragmentShader)
+      .replace('return texture( tex2D, uv );','vec4 texel=texture(tex2D,uv);vec3 hdr=texel.rgb; \n#if S09_BLOOM_LEVELS > 0\n hdr+=texture2D(bloom0,uv).rgb*bloomGain*.62;\n#endif\n#if S09_BLOOM_LEVELS > 1\n hdr+=texture2D(bloom1,uv).rgb*bloomGain*.23;\n#endif\n#if S09_BLOOM_LEVELS > 2\n hdr+=texture2D(bloom2,uv).rgb*bloomGain*.10;\n#endif\n#if S09_BLOOM_LEVELS > 3\n hdr+=texture2D(bloom3,uv).rgb*bloomGain*.05;\n#endif\n vec3 color=ACESFilmicToneMapping(hdr); \n#ifdef S09_GRADE\n color=(color-.32)*grading.x+.32; color=max(mix(vec3(dot(color,vec3(.2126,.7152,.0722))),color,grading.y)*gradeTint,vec3(0.));\n#endif\n return linearToOutputTexel(vec4(color,texel.a));')
       .replace('gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );',`
       #ifdef S09_FXAA
       vec3 colour=ApplyFXAA(tDiffuse,resolution.xy,vUv).rgb;
@@ -46,7 +46,7 @@ export class PostPass {
       #endif
       gl_FragColor=vec4(colour,1.0);
       `);
-    this.material=new THREE.ShaderMaterial({vertexShader:FXAAShader.vertexShader,fragmentShader:fragment,toneMapped:false,depthTest:false,depthWrite:false,uniforms:{tDiffuse:{value:this.target.texture},resolution:{value:new THREE.Vector2()},useFxaa:{value:1},sharpen:{value:.12},grain:{value:.0015},time:{value:0},toneMappingExposure:{value:1.06},gradeTint:{value:new THREE.Vector3(1,1,1)},grading:{value:new THREE.Vector2(1,1)},vignetteGain:{value:.08}}});
+    this.material=new THREE.ShaderMaterial({vertexShader:FXAAShader.vertexShader,fragmentShader:fragment,toneMapped:false,depthTest:false,depthWrite:false,uniforms:{tDiffuse:{value:this.target.texture},resolution:{value:new THREE.Vector2()},useFxaa:{value:1},sharpen:{value:.12},grain:{value:.0015},time:{value:0},toneMappingExposure:{value:1.06},gradeTint:{value:new THREE.Vector3(1,1,1)},grading:{value:new THREE.Vector2(1,1)},vignetteGain:{value:.08},bloomGain:{value:0},bloom0:{value:null},bloom1:{value:null},bloom2:{value:null},bloom3:{value:null}}});
     const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,2,0,0,2],2));
     this.scene=new THREE.Scene();this.scene.add(new THREE.Mesh(geometry,this.material));this.camera=new THREE.Camera();
     this.size=new THREE.Vector2();
@@ -121,10 +121,10 @@ export class PostPass {
     this.material.uniforms.tDiffuse.value=this.target.texture;
     if(this.smaaActive)this.material.uniforms.useFxaa.value=0;
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.material.uniforms.useFxaa.value=1;
-    const worldSamples=effects?this.worldEffects.world.samples:samples;
+    const worldSamples=effects&&!this.worldEffects.directWorld?this.worldEffects.world.samples:samples;
     this.activeAA=this.smaaActive?'SMAA':this.material.uniforms.useFxaa.value>.5?'FXAA':worldSamples?'MSAA '+worldSamples+'×':'Выкл.';
     this.aaFallback=mode==='smaa'&&!this.smaaActive?'SMAA ещё недоступно':mode.startsWith('msaa')&&worldSamples!==Number(mode.slice(4))?'MSAA несовместимо с активными эффектами или GPU':null;
-    r.setRenderTarget(effects?this.worldEffects.world:this.target);
+    r.setRenderTarget(effects&&!this.worldEffects.directWorld?this.worldEffects.world:this.target);
   }
   end(time,quality,profiler){
     const r=this.renderer;r.setRenderTarget(null);const reset=r.info.autoReset;r.info.autoReset=false;
@@ -132,13 +132,16 @@ export class PostPass {
     this.material.uniforms.toneMappingExposure.value=r.toneMappingExposure;
     const u=this.material.uniforms,g=u.gradeTint.value;
     const variant=displayVariant({fxaa:u.useFxaa.value>.5,sharpen:u.sharpen.value>0,grade:u.grading.value.x!==1||u.grading.value.y!==1||g.x!==1||g.y!==1||g.z!==1,vignette:u.vignetteGain.value!==0,grain:u.grain.value!==0});
-    if(this.displayVariant!==variant){
-      this.displayVariant=variant;this.material.defines={};
+    const bloom=this.worldEffects.bloom??[],levels=canFuseBloom(bloom.length,u.useFxaa.value>.5,u.sharpen.value>0)?bloom.length:0;
+    const key=variant+':'+levels;
+    if(this.displayVariant!==key){
+      this.displayVariant=key;this.material.defines={S09_BLOOM_LEVELS:levels};
       ['S09_FXAA','S09_SHARPEN','S09_GRADE','S09_VIGNETTE','S09_GRAIN'].forEach((name,i)=>{if(variant[i]==='1')this.material.defines[name]=1;});
       this.material.needsUpdate=true;
     }
     try{
-      this.material.uniforms.tDiffuse.value=this.worldEffects.finishBloom(this.target,profiler);
+      this.material.uniforms.tDiffuse.value=this.worldEffects.finishBloom(this.target,profiler,levels>0);
+      if(levels){u.bloomGain.value=this.worldEffects.state.bloomGain;for(let i=0;i<levels;i++)u['bloom'+i].value=bloom[i].texture;}
       const output=this.smaaActive?this.smaa.input:null;
       if(this.fsrQuality!=='off'&&this.fsrScale<0.995){
         // Display-referred low-resolution image -> EASU at native resolution

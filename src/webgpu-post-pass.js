@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {compactColorEligible,selectSceneColor,displayVariant} from './compact-color-target.js';
-import { WorldPost } from './world-post.js';
+import { WorldPost,canFuseBloom } from './world-post.js';
 import { renderTimed } from './gpu-pass-timing.js';
 import { webGpuWorldStages, makeGpuReflectionReceiver } from './webgpu-world-stages.js';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
@@ -51,11 +51,13 @@ export class WebGpuPostPass {
     const source=texture(this.target.texture), sampled=source.sample(uv());
     this.sourceTexture=source; // Single attachment scene color; FG captures finished post output.
     this.displayStages=new Map();
-    this.buildDisplay=variant=>{
+    this.bloomGain=uniform(0);this.bloomInputs=Array.from({length:4},()=>texture(this.target.texture));
+    this.buildDisplay=(variant,levels=0)=>{
     const [useFxaa,useSharpen,useGrade,useVignette,useGrain]=[...variant].map(v=>v==='1');
     const filtered=useFxaa?fxaa(source):null;
     const postColor=Fn(()=>{
       const color=vec3(sampled.rgb).toVar();
+      for(let i=0;i<levels;i++)color.addAssign(this.bloomInputs[i].sample(uv()).rgb.mul(this.bloomGain).mul([.62,.23,.10,.05][i]));
       // Shader control flow matters on low-end GPUs: disabled FXAA/sharpening
       // must not execute their expensive texture samples.
       if(useFxaa)color.assign(filtered.rgb);
@@ -83,7 +85,7 @@ export class WebGpuPostPass {
     })();
     return stage(geometry,postColor);
     };
-    const initial=this.buildDisplay('11111');this.displayStages.set('11111',initial);this.scene=initial.scene;this.material=initial.material;
+    const initial=this.buildDisplay('11111');this.displayStages.set('11111:0',initial);this.scene=initial.scene;this.material=initial.material;
     const easu=stage(geometry,easuNode(texture(this.ldrTarget.texture),this.inputSize,this.outputSize));
     this.easuScene=easu.scene;this.easuMaterial=easu.material;
     const rcas=stage(geometry,rcasNode(texture(this.upscaledTarget.texture),this.outputSize,this.rcasSharpness));
@@ -143,10 +145,10 @@ export class WebGpuPostPass {
     this.sourceTexture.value=this.target.texture;
     if(this.smaaActive)this.useFxaa.value=0;
     else if(effects&&this.worldEffects.world.depthTexture&&mode!=='off')this.useFxaa.value=1;
-    const worldSamples=effects?this.worldEffects.world.samples:samples;
+    const worldSamples=effects&&!this.worldEffects.directWorld?this.worldEffects.world.samples:samples;
     this.activeAA=this.smaaActive?'SMAA':this.useFxaa.value>.5?'FXAA':worldSamples?'MSAA '+worldSamples+'×':'Выкл.';
     this.aaFallback=mode==='smaa'&&!this.smaaActive?'SMAA ещё недоступно':mode.startsWith('msaa')&&worldSamples!==Number(mode.slice(4))?'MSAA несовместимо с активными эффектами или GPU':null;
-    r.setRenderTarget(effects?this.worldEffects.world:this.target);
+    r.setRenderTarget(effects&&!this.worldEffects.directWorld?this.worldEffects.world:this.target);
   }
   end(time,quality,profiler){
     const r=this.renderer,reset=r.info.autoReset,oldToneMapping=r.toneMapping;
@@ -158,11 +160,14 @@ export class WebGpuPostPass {
     this.exposure.value=r.toneMappingExposure;
     const g=this.gradeTint.value,v=this.grading.value;
     const variant=displayVariant({fxaa:this.useFxaa.value>.5,sharpen:this.sharpen.value>0,grade:v.x!==1||v.y!==1||g.x!==1||g.y!==1||g.z!==1,vignette:this.vignetteGain.value!==0,grain:this.grain.value!==0});
-    let display=this.displayStages.get(variant);
-    if(!display){display=this.buildDisplay(variant);this.displayStages.set(variant,display);}
+    const bloom=this.worldEffects.bloom??[],levels=canFuseBloom(bloom.length,this.useFxaa.value>.5,this.sharpen.value>0)?bloom.length:0;
+    const key=variant+':'+levels;
+    let display=this.displayStages.get(key);
+    if(!display){display=this.buildDisplay(variant,levels);this.displayStages.set(key,display);}
     this.scene=display.scene;this.material=display.material;
     try {
-      this.sourceTexture.value=this.worldEffects.finishBloom(this.target,profiler);
+      this.sourceTexture.value=this.worldEffects.finishBloom(this.target,profiler,levels>0);
+      if(levels){this.bloomGain.value=this.worldEffects.state.bloomGain;for(let i=0;i<levels;i++)this.bloomInputs[i].value=bloom[i].texture;}
       const finalTarget=this.frameGeneration?.enabled?this.frameGeneration.nextRealTarget():null;
       const output=this.smaaActive?this.smaa.input:finalTarget;
       if(this.fsrQuality!=='off'&&this.fsrScale<.995){

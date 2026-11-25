@@ -431,7 +431,7 @@ export function webGlWorldStages(post) {
       }
       draw(target,output,profiler,'worldComposite');
     },
-    renderBloom(input,profiler){
+    renderBloom(input,profiler,composite=true){
       if(!blurs.length)return input.texture;
       uniforms.bloomGain.value=state.bloomGain;
       bloomOutput.uniforms.source.value=input.texture;
@@ -446,6 +446,7 @@ export function webGlWorldStages(post) {
           }
         }finally{if(timing)profiler.endPass();}
       }
+      if(!composite)return input.texture;
       draw(world,bloomOutput,profiler,'bloomComposite');
       return world.texture;
     },
