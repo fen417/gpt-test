@@ -21,6 +21,7 @@ export function createPlacement(map){
   const obstacles=(map.boxes??[]).filter(b=>b.w>.12&&b.d>.12&&b.h>.10&&!/scrub|grass|leaf|palm/i.test(b.kind??'')).map(boxBounds);
   for(const s of map.structures??[])if(s.w>1&&s.d>1)obstacles.push(boxBounds(s));
   const index=new SpatialIndex(obstacles,16,b=>b),near=[];
+  const trees=(map.furnishings??[]).filter(p=>p.type==='tree');
   const roads=(map.roads??[]).filter(b=>b.w>0&&b.d>0).map(b=>{
     const c=Math.cos(b.yaw??0),s=Math.sin(b.yaw??0),ex=(Math.abs(c)*b.w+Math.abs(s)*b.d)/2,ez=(Math.abs(s)*b.w+Math.abs(c)*b.d)/2;
     return {...b,c,s,minX:b.x-ex-2,maxX:b.x+ex+2,minZ:b.z-ez-2,maxZ:b.z+ez+2};
@@ -46,7 +47,8 @@ export function createPlacement(map){
     const hx=map.terrain?.heightAt(x+.45,z)??y,hz=map.terrain?.heightAt(x,z+.45)??y;
     return Math.abs(hx-y)<.32&&Math.abs(hz-y)<.32;
   }
-  return {area,allowed};
+  function shadeAt(x,z){let shade=1;for(const tree of trees){const d=Math.hypot(x-tree.x,z-tree.z);if(d<2.8)shade=Math.min(shade,.62+.38*d/2.8);}return shade;}
+  return {area,allowed,shadeAt};
 }
 export function grassTile(map,placement,cx,cz,density){
   const p=vegetationProfile(map),random=foliageRandom(Math.imul(cx+913,73856093)^Math.imul(cz+517,19349663)^map.id.length*911);
@@ -62,7 +64,7 @@ export function grassTile(map,placement,cx,cz,density){
     const half=.55*size/.77;
     const low=Math.min(y,map.terrain?.heightAt(x-half,z)??y,map.terrain?.heightAt(x+half,z)??y,map.terrain?.heightAt(x,z-half)??y,map.terrain?.heightAt(x,z+half)??y);
     const sink=Math.min(.14,.055+Math.max(0,y-low)*.7);
-    plants.push({x,y:y-sink,z,yaw,scale:size/.77,shade,color:p[3],kind:'grass'});
+    plants.push({x,y:y-sink,z,yaw,scale:size/.77,shade:shade*(placement.shadeAt?.(x,z)??1),color:p[3],kind:'grass'});
   }
   return plants;
 }
@@ -76,15 +78,14 @@ export function authoredPlants(map){
     const y=b.baseY??map.terrain?.heightAt(b.x,b.z)??0;
     plants.push({kind:palm?'palm':'scrub',x:b.x,y:y+(palm?height:0),z:b.z,yaw:random()*Math.PI*2,scale:palm?Math.max(.35,Math.min(1.55,height/7.6)):Math.min(1.2,Math.max(.25,height/.96)),shade:.83+random()*.30,color:p[3]});
   }
-  // The estate's garden layer combines ground and baked vegetation. Add
-  // leaf detail to existing crowns/planters without removing any mixed mesh.
+  // Replace matching legacy foliage, never the ground or trunks.
   for(const b of map.furnishings??[]){
-    if(b.type==='tree')plants.push({kind:'broadleaf',x:b.x,y:3.0,z:b.z,yaw:b.x*.37,scale:1.8,shade:1,color:0x9caf78});
+    if(b.type==='tree')plants.push({kind:'broadleaf',x:b.x,y:2.8,z:b.z,yaw:b.x*.37,scale:1.85,shade:.96,color:0x9caf78});
     else if(b.type==='planter'||b.type==='hedge'){
-      const count=Math.max(1,Math.floor((b.type==='hedge'?b.d:b.w)/1.0));
+      const count=Math.max(1,Math.ceil((b.type==='hedge'?b.d:b.w)/.68));
       for(let i=0;i<count;i++){
         const offset=(i+.5)/count-.5,hedge=b.type==='hedge';
-        plants.push({kind:'scrub',x:b.x+(hedge?0:offset*b.w*.85),y:(b.y??0)+(b.h??.75)-.06,z:b.z+(hedge?offset*b.d*.85:0),yaw:i*2.4,scale:.58,shade:1,color:0x9da979});
+        plants.push({kind:'scrub',x:b.x+(hedge?0:offset*b.w*.85),y:(b.y??0)+(b.h??.75)-(hedge?.42:.04),z:b.z+(hedge?offset*b.d*.85:0),yaw:i*2.4,scale:hedge?.84:.65,shade:1,color:0x9da979});
       }
     }
   }

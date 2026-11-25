@@ -28,8 +28,12 @@ export function proceduralReceiver(mesh){
 export function meshGeometryKey(mesh,geometry=mesh.geometry){
   return geometryKey(geometry)+'/'+mesh.matrixWorld.elements.map(v=>Math.round(v*4096)).join(',');
 }
-export function architectureIntensity(quality,{campaign=false,nightVision=false,sun=3.5,hemi=2}={}){
-  const base=quality==='high'?.85:quality==='low'?.45:0;
+export function architectureAOAmount(quality,{estate=false,screenAO=false,gi=false}={}){
+  const base=quality==='high'?.78:quality==='low'?.43:0;
+  return base*(estate?.56:1)*(screenAO?.80:1)*(gi?.90:1);
+}
+export function architectureIntensity(quality,{campaign=false,nightVision=false,sun=3.5,hemi=2,estate=false}={}){
+  const base=quality==='high'?(estate?1.85:.85):quality==='low'?(estate?1.05:.45):0;
   if(nightVision)return 0;
   return base*(campaign?Math.max(0,Math.min(1.15,(sun*.65+hemi*.35)/2.975)):1);
 }

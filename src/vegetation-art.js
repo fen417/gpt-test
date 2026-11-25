@@ -29,7 +29,7 @@ export function foliagePixels(kind,size=256){
     for(let i=0;i<12;i++){const a=TAU*i/12;shapes.push({x:.5+Math.cos(a)*.21,y:.53+Math.sin(a)*.18,w:.28,h:.063,a,t:random()});}
   }
   for(const b of shapes)if(b.a!=null){b.c=Math.cos(b.a);b.s=Math.sin(b.a);}
-  const palette=kind==='grass'?[[127,139,69],[192,163,96]]:kind==='scrub'?[[113,133,69],[177,159,100]]:kind==='broadleaf'?[[75,116,49],[151,165,74]]:[[93,132,62],[169,150,77]];
+  const palette=kind==='grass'?[[91,116,47],[147,155,73]]:kind==='scrub'?[[113,133,69],[177,159,100]]:kind==='broadleaf'?[[75,116,49],[151,165,74]]:[[93,132,62],[169,150,77]];
   for(let y=0;y<size;y++)for(let x=0;x<size;x++){
     const u=(x+.5)/size,v=(y+.5)/size;
     let alpha=0,tone=.5,vein=0;
@@ -57,7 +57,7 @@ export function foliagePixels(kind,size=256){
     // Stable isotropic fine grain and a gentle root-to-tip colour gradient.
     let grain=Math.imul(x+1,374761393)^Math.imul(y+1,668265263);grain=Math.imul(grain^(grain>>>13),1274126177);
     const noise=((grain^(grain>>>16))>>>0)/4294967295;
-    const shade=.89+.11*smooth(0,.92,v)+.035*(noise-.5)+vein;
+    const shade=(kind==='grass'?.58+.42*smooth(.02,.86,v):.82+.18*smooth(0,.92,v))+.035*(noise-.5)+vein;
     const i=(y*size+x)*4;
     for(let j=0;j<3;j++)data[i+j]=Math.round(clamp((palette[0][j]+(palette[1][j]-palette[0][j])*clamp(tone))*shade,0,255));
     data[i+3]=Math.round(clamp(alpha)*255);
@@ -91,6 +91,17 @@ export function foliageGeometry(kind,lod){
         }
       }
       for(let i=0;i<segments;i++)for(let k=0;k<cols-1;k++){const a=i*cols+k;b.quad(grid[a],grid[a+1],grid[a+cols+1],grid[a+cols]);}
+    }
+  }else if(kind==='broadleaf'&&lod<2){
+    const random=foliageRandom(4103),clusters=lod===0?13:7,cards=lod===0?3:2;
+    for(let j=0;j<clusters;j++){
+      const angle=j*2.399963,level=j/(clusters-1),rad=j===0?0:.58*Math.sin(Math.PI*level)*(.7+.3*random());
+      const x=Math.cos(angle)*rad,z=Math.sin(angle)*rad,y=.28+level*1.05;
+      const half=.36+.16*random(),height=.56+.25*random();
+      for(let k=0;k<cards;k++){
+        const a=angle+k*Math.PI/cards,dx=Math.cos(a)*half,dz=Math.sin(a)*half,tilt=(random()-.5)*.23;
+        const q=[b.vertex(x-dx,y-height*.5,z-dz,0,0,.25),b.vertex(x+dx,y-height*.5,z+dz,1,0,.25),b.vertex(x+dx+tilt,y+height*.5,z+dz,1,1,.85),b.vertex(x-dx+tilt,y+height*.5,z-dz,0,1,.85)];b.quad(...q);
+      }
     }
   }else{
     const palm=kind==='palm',grass=kind==='grass',count=lod===0?(grass?3:5):lod===1?2:2;

@@ -147,7 +147,7 @@ export class EnhancedSurfaces {
       const color=detail?get(surface,'diff',size):null;
       const normal=detail?get(surface,'nor_gl',size):null;
       const ready=Boolean(color&&normal&&pack);
-      const maps={map:ready?color:base.map,aoMap:aoSize&&pack?pack:base.aoMap};
+      const maps={map:ready&&!material.userData.preserveAlbedo?color:base.map,aoMap:aoSize&&pack?pack:base.aoMap};
       if(standard){
         maps.normalMap=ready?normal:base.normalMap;
         maps.roughnessMap=ready?pack:base.roughnessMap;
@@ -161,10 +161,10 @@ export class EnhancedSurfaces {
       if(Object.entries(maps).some(([key,value])=>material[key]!==value)){
         Object.assign(material,maps);material.needsUpdate=true;
       }
-      material.aoMapIntensity=aoSize&&pack?(settings.ao==='off'?.8:.5):base.aoMapIntensity;
+      material.aoMapIntensity=aoSize&&pack?(material.userData.estateFinish?.24:settings.architectureAO!=='off'?.38:settings.ao==='off'?.8:.5):base.aoMapIntensity;
       this.suspendWeathering(material);
       const steps=RELIEF_STEPS[settings.relief],scale=RELIEF_DEPTH[surface];
-      const relief=ready&&steps&&scale&&!['sand','earth','grass'].includes(surface)&&!material.userData.groundShadowPatched;
+      const relief=ready&&steps&&scale&&!['sand','earth','grass'].includes(surface)&&!material.userData.groundShadowPatched&&!material.userData.disableRelief;
       this.setRelief(material,relief?get(surface,'disp',Math.min(size,steps>8?1024:512)):null,steps,scale,RELIEF_RANGE[settings.relief]);
       const params=weather?weatherParameters(mapId,weatherSurface,settings.mapWeathering):null;
       this.setWeathering(material,params?this.weatherMask:null,params);

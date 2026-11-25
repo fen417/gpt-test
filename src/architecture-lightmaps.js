@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {gunzip} from 'fflate';
 import {setWebGlArchitectureAO} from './webgl-architecture-ao.js';
-import {ARCH_LIGHT_VERSION,ARCH_LIGHT_MAPS,decodeChartUV,geometryKey,meshGeometryKey,proceduralReceiver,architectureIntensity} from './architecture-lightmap-format.js';
+import {ARCH_LIGHT_VERSION,ARCH_LIGHT_MAPS,decodeChartUV,geometryKey,meshGeometryKey,proceduralReceiver,architectureIntensity,architectureAOAmount} from './architecture-lightmap-format.js';
 
 function tex(data,size,format){
   const t=new THREE.DataTexture(data,size,size,format,THREE.UnsignedByteType);
@@ -27,7 +27,7 @@ export class ArchitectureLightmaps{
   }
   clear(){
     this.serial++;this.suspend();this.light?.dispose();
-    this.light=null;this.meta=this.charts=null;this.map=null;this.pending=false;this.failed=false;
+    this.light=null;this.meta=this.charts=null;this.estateRelight=null;this.estateRelit=false;this.map=null;this.pending=false;this.failed=false;
   }
   async load(map,serial){
     try{
@@ -46,6 +46,9 @@ export class ArchitectureLightmaps{
       const bytesAligned=raw.byteOffset%2===0?raw:raw.slice();
       const charts=new Uint16Array(bytesAligned.buffer,bytesAligned.byteOffset,bytesAligned.byteLength/2);
       if(new Uint8Array(new Uint16Array([1]).buffer)[0]!==1)for(let i=0;i<charts.length;i++)charts[i]=(charts[i]>>>8)|(charts[i]<<8);
+      const estateRelight=map.id==='linden_estate'?await import('./estate-lighting.js'):null;
+      if(serial!==this.serial)return;
+      this.estateRelight=estateRelight;
       this.meta=meta;this.charts=charts;this.light=tex(rgba,meta.size,THREE.RGBAFormat);this.pending=false;this.appliedRevision=-1;
     }catch(error){if(serial===this.serial){this.pending=false;this.failed=true;console.warn('Architecture lightmaps unavailable:',map.id,error);}}
   }
@@ -60,7 +63,7 @@ export class ArchitectureLightmaps{
     }
     if(this.map!==map){this.clear();this.map=map;this.pending=true;this.load(map,this.serial);}
     if(!this.meta||(!procedural&&!world.model?.base))return;
-    const mode=lighting+'/'+occlusion;
+    const mode=[lighting,occlusion,settings.ao==='off',settings.gi==='off'].join('/');
     if(this.appliedRevision===owner.staticMaterialRevision&&this.mode===mode){this.updateIntensity(owner,lighting);return;}
     if(owner.deferAssetRefresh){this.updateIntensity(owner,lighting);return;}
     if(procedural)world.root.updateMatrixWorld(true);
@@ -82,6 +85,10 @@ export class ArchitectureLightmaps{
       candidates.push({mesh,entry});active.add(m);
     });
     if(!candidates.length){this.suspend();this.failed=true;this.appliedRevision=owner.staticMaterialRevision;return;}
+    if(lighting!=='off'&&this.estateRelight&&!this.estateRelit){
+      const originals=candidates.map(({mesh,entry})=>({mesh:{geometry:this.meshes.get(mesh)?.original??mesh.geometry,matrixWorld:mesh.matrixWorld},entry}));
+      this.estateRelit=this.estateRelight.relightEstateAtlas(this.light,this.charts,originals,map)>0;
+    }
     const targets=new Map(candidates.map(x=>[x.mesh,x.entry]));
     const visited=new Set();
     owner.staticRoot.traverse(mesh=>{
@@ -105,7 +112,7 @@ export class ArchitectureLightmaps{
     for(const m of active){
       this.materials.set(m,{lightMap:m.lightMap,lightMapIntensity:m.lightMapIntensity});
       if(lighting!=='off'){m.lightMap=this.light;m.userData.architectureLightmap=true;}
-      if(occlusion!=='off')this.setAO(m,this.light,occlusion==='high'?.78:.43);
+      if(occlusion!=='off')this.setAO(m,this.light,architectureAOAmount(occlusion,{estate:map.id==='linden_estate',screenAO:settings.ao!=='off',gi:settings.gi!=='off'}));
       m.needsUpdate=true;
     }
     this.updateIntensity(owner,lighting);
@@ -113,7 +120,7 @@ export class ArchitectureLightmaps{
   }
   updateIntensity(owner,lighting){
     if(lighting==='off')return;
-    const value=architectureIntensity(lighting,{campaign:owner.presentingCampaign,nightVision:owner.campaignNightVision,sun:owner.sun?.intensity,hemi:owner.hemiLight?.intensity});
+    const value=architectureIntensity(lighting,{campaign:owner.presentingCampaign,nightVision:owner.campaignNightVision,sun:owner.sun?.intensity,hemi:owner.hemiLight?.intensity,estate:owner.map?.id==='linden_estate'});
     for(const m of this.materials.keys())m.lightMapIntensity=value;
   }
   stats(){return this.map?{map:this.map.id,pending:this.pending,failed:this.failed,ready:!!this.meta,meshes:this.meshes.size,bakedTriangles:this.meta?.baked??0,bytes:this.meta?this.meta.size*this.meta.size*4:0}:null;}

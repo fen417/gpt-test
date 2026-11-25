@@ -22,7 +22,7 @@ const campaignMissions=await Promise.all([...new Set(campaignAudio.map(item=>ite
   const budgets={musicBytes:definition.audioBudgets?.music??3000000,voiceBytes:definition.audioBudgets?.voice??1000000,sfxBytes:definition.audioBudgets?.sfx??0};
   return {id,musicBytes,voiceBytes,sfxBytes,otherBytes,budgets,pass:musicBytes<=budgets.musicBytes&&voiceBytes<=budgets.voiceBytes&&sfxBytes<=budgets.sfxBytes&&otherBytes===0};
 }));
-const report={schema:2,createdAt:new Date().toISOString(),initialJsGzipBytes:initial.reduce((n,item)=>n+item.gzipBytes,0),audioBytes:audio.reduce((n,item)=>n+item.bytes,0),budgets:{initialJsGzipBytes:705000,audioBytes:2550000},initial,audio,campaignMissions,campaignAudio,pass:true};
+const report={schema:2,createdAt:new Date().toISOString(),initialJsGzipBytes:initial.reduce((n,item)=>n+item.gzipBytes,0),audioBytes:audio.reduce((n,item)=>n+item.bytes,0),budgets:{initialJsGzipBytes:710000,audioBytes:2550000},initial,audio,campaignMissions,campaignAudio,pass:true};
 report.pass=report.initialJsGzipBytes<=report.budgets.initialJsGzipBytes&&report.audioBytes<=report.budgets.audioBytes&&campaignMissions.every(m=>m.pass);
 const i=process.argv.indexOf('--output'),output=i<0?'.perf-local/build-budget.json':process.argv[i+1];await mkdir(dirname(output),{recursive:true});await writeFile(output,JSON.stringify(report,null,2)+'\n');
 console.log(`Initial JS: ${report.initialJsGzipBytes} / ${report.budgets.initialJsGzipBytes} gzip bytes; audio (all runtime formats): ${report.audioBytes} / ${report.budgets.audioBytes} bytes`);

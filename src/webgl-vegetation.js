@@ -19,10 +19,10 @@ export function makeGlFoliageMaterial(map,uniforms){
   setWebGlShaderPatch(material,'vegetation',shader=>{
     windShader(shader,uniforms);
     shader.uniforms.s09FoliageTransmission=uniforms.transmission;shader.uniforms.s09FoliageSun=uniforms.sun;
-    shader.fragmentShader='uniform float s09FoliageTransmission;\nuniform vec3 s09FoliageSun;\n'+shader.fragmentShader.replace('#include <emissivemap_fragment>',`
-      #include <emissivemap_fragment>
+    shader.fragmentShader='uniform float s09FoliageTransmission;\nuniform vec3 s09FoliageSun;\n'+shader.fragmentShader.replace('#include <lights_fragment_end>',`
+      #include <lights_fragment_end>
       float s09Back=pow(max(0.,-dot(normal,s09FoliageSun)),1.4);
-      totalEmissiveRadiance+=diffuseColor.rgb*s09FoliageTransmission*(.16+.84*s09Back)*vec3(1.,.91,.63);
+      reflectedLight.directDiffuse+=reflectedLight.directDiffuse*s09FoliageTransmission*(.20+.80*s09Back)*vec3(1.,.96,.83);
     `);
   });
   const depth=new THREE.MeshDepthMaterial({map,alphaTest:.40,side:THREE.DoubleSide,depthPacking:THREE.RGBADepthPacking});

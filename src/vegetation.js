@@ -30,11 +30,11 @@ export class Vegetation{
     }
     if(!mesh){mesh=new THREE.InstancedMesh(a.geometry,a.material,capacity);if(kind==='grass')mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);}
     mesh.geometry=a.geometry;mesh.material=a.material;mesh.count=plants.length;mesh.visible=true;mesh.castShadow=false;
-    mesh.name='S09 '+kind+' instances';mesh.userData.noBatch=true;mesh.userData.vegetation=true;mesh.receiveShadow=kind!=='grass';
+    mesh.name='S09 '+kind+' instances';mesh.userData.noBatch=true;mesh.userData.vegetation=true;mesh.receiveShadow=kind!=='grass'||this.receiveGrassShadow;
     for(let i=0;i<plants.length;i++){
       const p=plants[i],d=this.dummy;d.position.set(p.x,p.y,p.z);d.rotation.set(0,p.yaw,0);d.scale.setScalar(p.scale);d.updateMatrix();
       mesh.setMatrixAt(i,d.matrix);
-      this.tint.setHex(p.color).lerp(this.white,.57).multiplyScalar(p.shade);
+      this.tint.setHex(p.color).lerp(this.white,kind==='grass'?.35:.48).multiplyScalar(p.shade);
       mesh.setColorAt(i,this.tint);
     }
     if(kind==='grass'){mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);uploadPrefix(mesh.instanceMatrix,plants.length);uploadPrefix(mesh.instanceColor,plants.length);}
@@ -57,12 +57,14 @@ export class Vegetation{
     while(this.tileCache.size>160)this.tileCache.delete(this.tileCache.keys().next().value);
     return plants;
   }
-  restoreLegacy(){for(const [mesh,mask] of this.hidden)mesh.layers.mask=mask;this.hidden.clear();}
+  restoreLegacy(){for(const [mesh,state] of this.hidden){mesh.layers.mask=state.mask;mesh.castShadow=state.shadow;}this.hidden.clear();}
   hideLegacy(root){
-    if(!this.authored.some(e=>e.kind==='palm')||!root)return;
+    if(!root)return;
+    const palms=this.authored.some(e=>e.kind==='palm'),estate=this.map?.id==='linden_estate'&&this.authored.some(e=>e.kind==='broadleaf');
+    if(!palms&&!estate)return;
     root.traverse(o=>{
-      if(o.isMesh&&(o.userData.villageSurface==='leaf'||o.userData.legacyPalmLeaf)&&!this.hidden.has(o)){
-        this.hidden.set(o,o.layers.mask);o.layers.mask=0;
+      if(o.isMesh&&(palms&&(o.userData.villageSurface==='leaf'||o.userData.legacyPalmLeaf)||estate&&o.userData.estateLegacyLeaves)&&!this.hidden.has(o)){
+        this.hidden.set(o,{mask:o.layers.mask,shadow:o.castShadow});o.layers.mask=0;o.castShadow=false;
       }
     });
   }
@@ -89,13 +91,15 @@ export class Vegetation{
   update(owner){
     const settings=owner.graphicsEffects??{},requested=settings.vegetation??'legacy',quality=owner.lowQuality&&requested!=='legacy'?'low':requested;
     const level=FOLIAGE_LEVEL[quality]??0;
+    const receiveGrassShadow=!owner.lowQuality&&['low','high'].includes(settings.vegetationShadows)&&owner.renderer.shadowMap.enabled;
+    if(this.receiveGrassShadow!==receiveGrassShadow){this.receiveGrassShadow=receiveGrassShadow;for(const entry of this.tiles.values())if(entry.mesh)entry.mesh.receiveShadow=receiveGrassShadow;}
     if(!level||!owner.map){if(this.map){this.clear();return true;}return false;}
     const density=owner.map.id==='fy_pool_day'?0:Math.min(owner.lowQuality?.25:1,(Number(settings.grassDensity)||0)/100),radius=Math.min(owner.lowQuality?20:100,Number(settings.grassDistance)||20);
     let shadowChanged=this.configure(owner,quality,density,radius);
     if(this.dirty){this.hideLegacy(owner.staticRoot);this.dirty=false;shadowChanged=true;}
     const camera=owner.camera.position;this.uniforms.time.value=owner.clock;
     this.uniforms.wind.value=settings.vegetationWind==='high'?1:settings.vegetationWind==='low'?.43:0;
-    this.uniforms.transmission.value=settings.foliageTransmission==='high'?Math.min(.28,(owner.sun.intensity??0)*.072):0;
+    this.uniforms.transmission.value=settings.foliageTransmission==='high'?Math.min(.16,(owner.sun.intensity??0)*.045):0;
     this.uniforms.sun.value.copy(owner.sunOffset).normalize().transformDirection(owner.camera.matrixWorldInverse);
     const [cx,cz]=center(camera.x,camera.z,GRASS_CELL),moving=!this.last||Math.hypot(camera.x-this.last.x,camera.z-this.last.z)>7||owner.clock-this.last.time>.7;
     const shadowMode=settings.vegetationShadows,shadowModeChanged=this.lastShadowMode!==shadowMode;
@@ -152,7 +156,7 @@ export class Vegetation{
     // Samples are never added to the map or persistent authored/grass lists.
     for(const [kind,a] of this.assets)if(this.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))for(const g of a.geometries.values()){
       const mesh=new THREE.InstancedMesh(g,a.material,1);mesh.setMatrixAt(0,matrix);mesh.setColorAt(0,this.white);mesh.frustumCulled=false;
-      mesh.userData.vegetation=true;mesh.customDepthMaterial=a.depth;mesh.receiveShadow=kind!=='grass';mesh.castShadow=['low','high'].includes(owner.graphicsEffects?.vegetationShadows);
+      mesh.userData.vegetation=true;mesh.customDepthMaterial=a.depth;mesh.receiveShadow=kind!=='grass'||this.receiveGrassShadow;mesh.castShadow=['low','high'].includes(owner.graphicsEffects?.vegetationShadows);
       this.root.add(mesh);samples.push(mesh);
     }
     return ()=>{for(const mesh of samples){mesh.removeFromParent();mesh.dispose();}};
