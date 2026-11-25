@@ -375,22 +375,21 @@ export class Simulation {
     this.rayVisit=(this.rayVisit+1)>>>0;
     if(!this.rayVisit){this.rayVisited.fill(0);this.rayVisit=1;}
     const visit=this.rayVisit,seen=this.rayVisited;
-    const add=(bx,bz)=>{
-      if(bx<0||bz<0||bx>=size||bz>=size)return;
-      for(const box of this.collisionBins[bz*size+bx])if(seen[box.collisionIndex]!==visit){
-        seen[box.collisionIndex]=visit;result.push(box);
-      }
-    };
+    const bins=this.collisionBins;
     const sx=Math.sign(direction.x),sz=Math.sign(direction.z);
     const deltaX=sx?cell/Math.abs(direction.x):Infinity,deltaZ=sz?cell/Math.abs(direction.z):Infinity;
     let nextX=sx?((x+(sx>0?1:0))*cell-offset-origin.x)/direction.x:Infinity;
     let nextZ=sz?((z+(sz>0?1:0))*cell-offset-origin.z)/direction.z:Infinity;
     while(x>=0&&z>=0&&x<size&&z<size){
-      add(x,z);
+      for(const box of bins[z*size+x])if(seen[box.collisionIndex]!==visit){
+        seen[box.collisionIndex]=visit;result.push(box);
+      }
       if(Math.min(nextX,nextZ)>maximum)break;
       if(Math.abs(nextX-nextZ)<1e-9){
         // Include both sides of an exact corner, not only the diagonal cell.
-        add(x+sx,z);add(x,z+sz);
+        const sideX=x+sx,sideZ=z+sz;
+        if(sideX>=0&&sideX<size)for(const box of bins[z*size+sideX])if(seen[box.collisionIndex]!==visit){seen[box.collisionIndex]=visit;result.push(box);}
+        if(sideZ>=0&&sideZ<size)for(const box of bins[sideZ*size+x])if(seen[box.collisionIndex]!==visit){seen[box.collisionIndex]=visit;result.push(box);}
         x+=sx;z+=sz;nextX+=deltaX;nextZ+=deltaZ;
       }else if(nextX<nextZ){x+=sx;nextX+=deltaX;}
       else{z+=sz;nextZ+=deltaZ;}
@@ -424,7 +423,7 @@ export class Simulation {
     const needsShape=tilted||this.hasRotatedGeometry||
       this.vehicles.some(other=>nearAircraft(other)||other.modelRotation?.x||other.modelRotation?.z||other.compactWreck&&other.wreckTime>0);
     const pose=needsShape?{...vehicle,x,z,yaw,y:this.groundAt(x,z)}:null;
-    const shape=pose?vehicleShape({...pose,...vehicleBodyTilt(pose,this.map.terrain)}):null;
+    const shape=pose?vehicleShape(Object.assign(pose,vehicleBodyTilt(pose,this.map.terrain))):null;
     const bounds=shape?boxBounds({obb:shape}):null;
     if(tilted&&(bounds.minX<-limit||bounds.maxX>limit||bounds.minZ<-limit||bounds.maxZ>limit))return true;
     const radius=bounds?Math.max(Math.abs(bounds.minX-x),Math.abs(bounds.maxX-x),Math.abs(bounds.minZ-z),Math.abs(bounds.maxZ-z)):Math.max(dx,dz);

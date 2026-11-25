@@ -19,7 +19,7 @@ export function collectWarmupTextures(owner){
       }
     });
   }
-  for(const t of [owner.architectureLightmaps?.light,owner.indirectLighting?.field?.texture,owner.enhancedSurfaces?.weatherMask,owner.activeSmokeTexture,owner.muzzleTexture,owner.fireballTexture])add(t);
+  for(const t of [owner.architectureLightmaps?.light,owner.indirectLighting?.field?.texture,owner.enhancedSurfaces?.weatherMask,owner.activeSmokeTexture,owner.muzzleTexture,owner.fireballTexture,owner.bulletMarks?.texture])add(t);
   for(const x of owner.enhancedSurfaces?.textures?.values()??[])add(x.texture);
   for(const [kind,x] of owner.vegetation?.assets??[])if(owner.vegetation.warmupKinds?.has(kind==='palm-impostor'?'palm':kind))add(x.texture);
   return {textures:[...textures],materials:materials.size};
@@ -67,6 +67,7 @@ export function prepareWarmupSamples(owner){
     mesh.position.copy(position);mesh.scale.setScalar(.35);mesh.frustumCulled=false;owner.worldRoot.add(mesh);
     cleanup.push(()=>{mesh.removeFromParent();mesh.position.copy(previous);mesh.scale.copy(size);mesh.frustumCulled=culled;});
   }
+  const markCleanup=owner.bulletMarks?.warmupSample(owner.worldRoot,position);if(markCleanup)cleanup.push(markCleanup);
   const flash=owner.weaponRig?.muzzleFlash;
   if(flash&&owner.weapon.visible){const visible=flash.visible;flash.visible=true;cleanup.push(()=>{flash.visible=visible;});}
   const tracer=owner.effectPools.tracer?.[0]?.mesh;

@@ -482,12 +482,13 @@ export class GameRenderer {
   warmup() {
     for (let i = 0; i < 16; i++) this.effectPools.tracer.push(this.createTracerEffect());
     for (let i = 0; i < 12; i++) this.effectPools.shell.push({ mesh: new THREE.Mesh(this.geo.shell, this.shellMaterial), type: 'shell' });
-    for (let i = 0; i < 36; i++) this.effectPools.smoke.push({
+    for (let i = this.effectPools.smoke.length; i < 141; i++) this.effectPools.smoke.push({
       mesh: new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTexture, transparent: true, depthWrite: false })),
       type: 'smoke',
     });
     for (let i = 0; i < 32; i++) this.effectPools.spark.push({ mesh: new THREE.Mesh(this.geo.sphere, this.sparkMaterial), type: 'spark' });
 
+    this.bulletMarks.warmup();
     const sampleGrenade = this.createGrenadeMesh();
     const sampleGadgetGroup = new THREE.Group();
     for (const m of Object.values(this.gadgetAssets)) {
@@ -661,6 +662,7 @@ export class GameRenderer {
     if(this.webgpu)this.atmosphere.hazeAmount.value=map.theme==='desert-village'?.16:0;
     else this.atmosphere.sky.material.uniforms.hazeAmount.value = map.theme === 'desert-village' ? .16 : 0;
     this.staticRoot = world.root;this.staticMaterialRevision++;
+    this.bulletMarks.invalidateSurface();
     this.portWaterMesh=world.water?world.root.getObjectByName('Port water'):null;
     this.mapDetails=world.details;this.detailLevel=undefined;
     this.groundShadows.setMap(map);
@@ -917,6 +919,7 @@ export class GameRenderer {
 
   invalidateBakedVisibility() {
     this.staticMaterialRevision++;
+    this.bulletMarks.invalidateSurface();
     this.waterAppearance?.invalidate();
     this.localReflections.invalidate();
     this.indirectLighting?.invalidate();
@@ -1646,6 +1649,9 @@ export class GameRenderer {
     // Precompute the small textures on quality selection, not the first shot.
     if(e.muzzleEffects==='high')this.muzzleTexture??=makeParticleTexture('muzzle');
     if(e.fireEffects==='high'||e.explosions==='high'||e.explosions==='medium')this.fireballTexture??=makeParticleTexture('fire');
+    if(e.muzzleEffects==='high')this.prewarmHotParticles('muzzle');
+    if(e.explosions==='high'||e.explosions==='medium')this.prewarmHotParticles('flash');
+    if(e.fireEffects==='high'||e.explosions==='high')this.prewarmHotParticles('flame');
     const enhanced=particleQuality[e.smoke]>0;
     const texture=enhanced?(this.detailedSmokeTexture??=makeParticleTexture('smoke')):this.smokeTexture;
     if(!texture||texture===this.activeSmokeTexture)return;
@@ -1714,10 +1720,21 @@ export class GameRenderer {
     return this.hotParticleMaterials.get(kind);
   }
 
+  prewarmHotParticles(kind){
+    const material=this.getHotParticleMaterial(kind);
+    if(!material)return;
+    const pool=this.effectPools[kind]??(this.effectPools[kind]=[]);
+    const max=kind==='flash'?8:12;
+    let total=pool.length;
+    for(const effect of this.effects)if(effect.type===kind)total++;
+    while(total<max){pool.push({type:kind,mesh:new THREE.Sprite(material.clone())});total++;}
+  }
+
   hotParticle(kind,x,y,z,size,life,brightness=1){
     if(this.effects.length>=145)return;
     const max=kind==='muzzle'?12:kind==='flame'?12:8;
-    if(this.effects.filter(e=>e.type===kind).length>=max)return;
+    let active=0;
+    for(const effect of this.effects)if(effect.type===kind&&++active>=max)return;
     const texture=kind==='muzzle'?(this.muzzleTexture??=makeParticleTexture('muzzle')):(this.fireballTexture??=makeParticleTexture('fire'));
     const pool=this.effectPools[kind]??(this.effectPools[kind]=[]);
     const effect=pool.pop()??{type:kind,mesh:new THREE.Sprite(this.getHotParticleMaterial(kind).clone())};
