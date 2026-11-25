@@ -30,6 +30,9 @@ export function missionObjectives(definition,m){
 }
 
 export function mountObjectivesJournal(root,definition,locale,keyLabel){
+  const objective=root.querySelector('.campaign-objective,.m02-objective');
+  if(!objective)return null;
+  const dock=document.createElement('div');dock.className='campaign-objectives-dock';
   const panel=document.createElement('aside');
   panel.className='campaign-objectives-journal';panel.hidden=true;
   panel.setAttribute('aria-label','Журнал задач миссии');
@@ -37,29 +40,29 @@ export function mountObjectivesJournal(root,definition,locale,keyLabel){
   hint.className='campaign-objectives-hint';hint.hidden=true;
   const key=document.createElement('kbd');hint.append(key,document.createTextNode(' Задачи'));
   const header=document.createElement('header');
-  const kicker=document.createElement('small');kicker.textContent='ЖУРНАЛ ОПЕРАЦИИ';
-  const title=document.createElement('h2');title.textContent=definition.title??'Задачи миссии';
-  header.append(kicker,title);
+  const kicker=document.createElement('small');kicker.textContent='ЖУРНАЛ ЗАДАЧ';
+  header.append(kicker);
   const list=document.createElement('ol');list.className='campaign-objectives-list';
   const footer=document.createElement('footer');
-  panel.append(header,list,footer);root.append(hint,panel);
+  panel.append(header,list,footer);dock.append(hint,panel);objective.append(dock);
   let held=false,lastSignature='';
   const label=id=>locale.objectives?.[id]??id;
   const hide=()=>{panel.hidden=true;root.classList.remove('campaign-journal-open');};
   return {
     setHeld(value){held=value;if(!value)hide();},
     update(m,paused){
-      if(paused||!m||m.awaitingLoadout||m.failed||m.complete){
+      if(paused||!m||objective.hidden||m.cutscene||m.transfer!=null||m.disembark||m.awaitingLoadout||m.failed||m.complete){
         held=false;hint.hidden=true;hide();return;
       }
       const objectives=missionObjectives(definition,m);
       const binding=keyLabel();
       if(key.textContent!==binding)key.textContent=binding;
       // Keep the hint within the ordinary HUD; it is not shown in cutscenes.
-      hint.hidden=held||Boolean(m.cutscene)||(!objectives.current&&!objectives.done.length);
-      if(!held){hide();return;}
+      hint.hidden=!objectives.current&&!objectives.done.length;
+      if(!held||hint.hidden){hide();return;}
       const signature=JSON.stringify([objectives,binding]);
-      if(signature!==lastSignature){
+      const changed=signature!==lastSignature;
+      if(changed){
         lastSignature=signature;list.replaceChildren();
         const add=(text,done)=>{
           const item=document.createElement('li');item.className=done?'is-complete':'is-current';
@@ -73,8 +76,11 @@ export function mountObjectivesJournal(root,definition,locale,keyLabel){
         if(objectives.current)add(label(objectives.current),false);
         else if(!objectives.done.length)add('Ожидайте приказа',false);
         footer.textContent='Отпустите '+binding+', чтобы закрыть';
+
       }
+      const opening=panel.hidden;
       root.classList.add('campaign-journal-open');panel.hidden=false;
+      if(opening||changed)list.scrollTop=list.scrollHeight;
     }
   };
 }

@@ -1,33 +1,61 @@
-/* Same charcoal, warm sand accents and typography as the campaign HUD. */
+/* The journal is attached to the existing mission objective, not the viewport center.
+   Absolute positioning keeps the objective's own layout and dynamic height unchanged. */
+.campaign-objectives-dock{
+  position:absolute;left:-3px;top:calc(100% + 7px);
+  width:max(100%,min(320px,calc(100vw - 48px)));max-width:calc(100vw - 24px);
+  z-index:12;display:flex;flex-direction:column;align-items:flex-start;gap:6px;
+  pointer-events:none;
+}
+.campaign-objectives-hint{
+  display:flex;align-items:center;gap:6px;padding:4px 9px;
+  color:#e5d8b9;background:linear-gradient(90deg,#10171ecc,#10171e50);
+  border-left:2px solid #cfb375;text-shadow:0 1px 3px #000;
+  font:11px/1.3 monospace;
+}
+.campaign-objectives-hint kbd{
+  display:inline-block;border:1px solid #b39e7577;border-radius:2px;
+  padding:2px 5px;background:#111820b5;color:#d8bc81;font:700 10px monospace;
+}
 .campaign-objectives-journal{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:12;width:min(640px,88vw);max-height:82vh;box-sizing:border-box;
-  padding:20px 24px 14px;border:1px solid #b49a6577;border-left:3px solid #cfb375;
-  background:linear-gradient(125deg,#111920f5,#10171ef0);
-  box-shadow:0 15px 55px #0009;color:#f2e9cf;text-shadow:0 1px 3px #000;
+  width:100%;max-height:min(47vh,480px);box-sizing:border-box;
+  padding:11px 13px 9px;border-left:3px solid #cfb375;
+  background:linear-gradient(100deg,#10171eee,#10171ec9);
+  color:#f2e9cf;text-shadow:0 1px 3px #000;
   display:flex;flex-direction:column;pointer-events:none;
 }
 .campaign-objectives-journal[hidden],.campaign-objectives-hint[hidden]{display:none!important}
-.campaign-objectives-journal header{padding:0 0 12px;border-bottom:1px solid #baa16c44}
-.campaign-objectives-journal header small{font:700 11px monospace;letter-spacing:.19em;color:#d1b778}
-.campaign-objectives-journal h2{font:600 clamp(19px,2.4vw,28px)/1.18 Arial,sans-serif;margin:5px 0 0}
-.campaign-objectives-list{list-style:none;margin:10px 0;padding:0;display:grid;gap:4px;min-height:0;overflow:auto;pointer-events:auto;scrollbar-width:thin;scrollbar-color:#ae9569 #111920}
-.campaign-objectives-list li{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:7px 9px;border-left:2px solid transparent;font:400 14px/1.35 Arial,sans-serif}
-.campaign-objectives-list .is-complete{color:#b4baae}
-.campaign-objectives-list .is-complete .campaign-objective-label{text-decoration:line-through;text-decoration-thickness:1px;text-decoration-color:#a9ae9e}
-.campaign-objectives-list .campaign-objective-state{font:700 15px/1.35 monospace;color:#aebd9c}
-.campaign-objectives-list .is-current{border-left-color:#d7b777;background:#b99c6920;color:#fff2d2;padding-block:10px}
-.campaign-objectives-list .is-current .campaign-objective-state{color:#d7b777}
-.campaign-objectives-list .is-current small{display:block;font:700 9px monospace;letter-spacing:.13em;color:#d7b777;margin-bottom:5px}
-.campaign-objectives-list .is-current .campaign-objective-label{font-weight:600}
-.campaign-objectives-journal footer{border-top:1px solid #baa16c44;padding-top:10px;color:#bcb5a2;font:11px monospace}
-.campaign-objectives-hint{position:absolute;right:26px;bottom:14px;color:#e5d8b9;text-shadow:0 1px 3px #000;font:11px monospace;z-index:2}
-.campaign-objectives-hint kbd{display:inline-block;border:1px solid #b39e7577;border-radius:2px;padding:2px 5px;background:#111820b5;color:#d8bc81;font:700 10px monospace}
-.campaign-journal-open .campaign-mission-intro{visibility:hidden}
-@media(max-height:700px){
-  .campaign-objectives-journal{padding:12px 18px 10px;max-height:88vh}
-  .campaign-objectives-list{gap:2px;margin:6px 0}
-  .campaign-objectives-list li{padding-block:4px;font-size:12px}
-  .campaign-objectives-list .is-current{padding-block:7px}
+.campaign-objectives-journal header{padding:0 0 8px;border-bottom:1px solid #baa16c44}
+.campaign-objectives-dock .campaign-objectives-journal header small{
+  font:700 10px monospace;letter-spacing:.15em;color:#d1b778;
 }
-@media(max-width:700px){.campaign-objectives-journal{width:90vw;padding-inline:13px}.campaign-objectives-hint{right:9px;bottom:5px}}
+.campaign-objectives-list{
+  list-style:none;margin:6px 0;padding:0;display:grid;gap:2px;min-height:0;
+  overflow:auto;pointer-events:auto;scrollbar-width:thin;scrollbar-color:#ae9569 #111920;
+}
+.campaign-objectives-list li{
+  display:grid;grid-template-columns:17px minmax(0,1fr);gap:6px;
+  align-items:start;padding:4px 5px;border-left:2px solid transparent;
+  font:400 12px/1.35 Arial,sans-serif;
+}
+.campaign-objectives-list .is-complete{color:#b4baae}
+.campaign-objectives-list .is-complete .campaign-objective-label{
+  text-decoration:line-through;text-decoration-thickness:1px;text-decoration-color:#a9ae9e;
+}
+.campaign-objectives-list .campaign-objective-state{font:700 12px/1.35 monospace;color:#aebd9c}
+.campaign-objectives-list .is-current{
+  border-left-color:#d7b777;background:#b99c6920;color:#fff2d2;padding-block:7px;
+}
+.campaign-objectives-list .is-current .campaign-objective-state{color:#d7b777}
+.campaign-objectives-dock .campaign-objectives-list .is-current small{
+  display:block;font:700 9px monospace;letter-spacing:.11em;color:#d7b777;margin-bottom:4px;
+}
+.campaign-objectives-list .is-current .campaign-objective-label{font-weight:600}
+.campaign-objectives-journal footer{
+  border-top:1px solid #baa16c44;padding-top:7px;color:#bcb5a2;font:10px monospace;
+}
+.campaign-journal-open .campaign-mission-intro{visibility:hidden}
+@media(max-width:700px),(max-height:520px){
+  .campaign-objectives-dock{width:max(100%,min(260px,calc(100vw - 40px)));max-width:calc(100vw - 24px);gap:4px}
+  .campaign-objectives-journal{max-height:42vh;padding:8px 9px 7px}
+  .campaign-objectives-list li{font-size:11px;padding-block:3px}
+}
