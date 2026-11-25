@@ -56,6 +56,34 @@ export function findInfantryBones(root) {
   return result;
 }
 
+// Captures may have unequal endpoints after retargeting. Weld the seam
+// over a short window before extracting contacts or creating the body layers.
+function closeLoop(clip){
+  const duration=clip.duration;
+  if(!(duration>.05))return;
+  const window=Math.min(.14,duration*.14);
+  for(const track of clip.tracks){
+    const stride=track.getValueSize(),quat=track.ValueTypeName==='quaternion';
+    if(!stride||(!quat&&track.ValueTypeName!=='vector'&&track.ValueTypeName!=='number'))continue;
+    const sampler=track.createInterpolant();
+    const first=Array.from(sampler.evaluate(0)),last=Array.from(sampler.evaluate(duration));
+    const qa=new THREE.Quaternion(),qb=new THREE.Quaternion();
+    const mid=quat?qa.fromArray(first).slerp(qb.fromArray(last),.5).normalize().toArray():first.map((v,i)=>(v+last[i])*.5);
+    const gap=quat?qa.fromArray(first).angleTo(qb.fromArray(last)):Math.hypot(...first.map((v,i)=>v-last[i]));
+    if(gap<1e-5&&track.times[0]===0&&Math.abs(track.times[track.times.length-1]-duration)<1e-6)continue;
+    const times=[...new Set([0,window*.5,window,...track.times,duration-window,duration-window*.5,duration])]
+      .filter(t=>t>=0&&t<=duration).sort((a,b)=>a-b);
+    const values=new Float32Array(times.length*stride);
+    for(let i=0;i<times.length;i++){
+      const t=times[i],sample=sampler.evaluate(t);
+      const weight=1-THREE.MathUtils.smoothstep(Math.min(t,duration-t),0,window);
+      if(quat)qa.fromArray(sample).slerp(qb.fromArray(mid),weight).normalize().toArray(values,i*stride);
+      else for(let j=0;j<stride;j++)values[i*stride+j]=THREE.MathUtils.lerp(sample[j],mid[j],weight);
+    }
+    track.times=new Float32Array(times);track.values=values;
+  }
+}
+
 function split(clip, upper) {
   const tracks = clip.tracks.filter(track => {
     const { nodeName } = THREE.PropertyBinding.parseTrackName(track.name);
@@ -113,6 +141,8 @@ function sampleCycle(root, bones, clip, direction, floor) {
   const contact = samples.map(foot => foot.map((point, frame) =>
     (1 - THREE.MathUtils.smoothstep(point.height - lowest, .025, crouch ? .13 : .105)) *
     THREE.MathUtils.smoothstep(getSpeed(foot, frame), speed * .15, speed * (crouch ? .48 : .6))));
+  // Small circular filter avoids contact chatter on a single captured key.
+  for(const track of contact){const raw=track.slice();for(let i=0;i<track.length;i++)track[i]=.25*raw[(i+track.length-1)%track.length]+.5*raw[i]+.25*raw[(i+1)%track.length];}
   const left = contact[0];
   let strike = 0, rise = -Infinity;
   for (let i = 0; i < left.length; i++) {
@@ -129,8 +159,8 @@ function sampleCycle(root, bones, clip, direction, floor) {
       hipsTrack.values[i + 2] += offset.z;
     }
   }
-  const paths = forward ? samples.map(foot => foot.map(point =>
-    [point.position[0], point.position[1] + floor - lowest, point.position[2]])) : null;
+  const paths = samples.map(foot => foot.map(point =>
+    [point.position[0], point.position[1] + floor - lowest, point.position[2]]));
   return { distance: speed * clip.duration, duration: clip.duration, contact, paths, offset: strike / frameCount,
     hipsHeight: hipsHeight + (hipsTrack ? floor - lowest : 0) };
 }
@@ -162,6 +192,7 @@ function prepareBody({ scene, animations }) {
   for (const source of animations) {
     const name = source.name.split('@')[0];
     const clip = source.clone();
+    if(name.startsWith('mocap_')||name==='prone_crawl'||name==='ready_sprint')closeLoop(clip);
     // Vendor clips have baked hips curves and no scene-level root track.
     const upper = split(clip, true);
     const far = new THREE.AnimationClip(upper.name + ':far', upper.duration,

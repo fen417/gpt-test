@@ -1559,8 +1559,9 @@ export class GameRenderer {
         const yawDelta = Math.atan2(Math.sin(yawDifference), Math.cos(yawDifference));
         if (reset || !soldier.alive) group.rotation.y = player.yaw || 0;
         else {
-          const tolerance = infantryTurnTolerance(soldier, player.aim, player.sliding);
-          const turnRate = 1 - Math.exp(-dt * 12);
+          const movingSpeed=Math.hypot(player.velocityX??0,player.velocityZ??0);
+          const tolerance = movingSpeed>.45?Math.min(.055,infantryTurnTolerance(soldier,player.aim,player.sliding)):infantryTurnTolerance(soldier, player.aim, player.sliding);
+          const turnRate = 1 - Math.exp(-dt * (movingSpeed>.45?15:9));
           group.rotation.y += Math.sign(yawDelta) * Math.max(0, Math.abs(yawDelta) - tolerance) * turnRate;
         }
       } else {

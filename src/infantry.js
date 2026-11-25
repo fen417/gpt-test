@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { weaponSwitchPose } from '../shared/world.js';
+import { updateTravel, cycleTime, idleSample } from './infantry-motion.js';
 import { cloneInfantry, findInfantryBones, gaitClips, legNames } from './infantry-assets.js';
 import { CREW_CONTROLS } from './vehicles.js';
 import { LAUNCHER_POSE } from './gadget-poses.js';
@@ -343,7 +344,7 @@ export function createInfantry({ template, gun, kit }, player) {
     group, model, parts, details, bones, head, marker, rifle, flash, template, sharedSkeletons,
     mixer: new THREE.AnimationMixer(model), actions: new Map(), activeActions: new Set(), nextActions:new Set(),
     team: player.team, classId: player.classId, lod: 0, alive: true,
-    motion: { phase: 0, speed: 0, vx: 0, vz: 0, x: 0, z: 0, moving: 0, gait: new Map() },
+    motion: { phase: 0, speed: 0, vx: 0, vz: 0, x: 0, z: 0, moving: 0, travelling:false, stopTime:0, gait: new Map() },
     legs: legNames.map(side => newLeg(bones, side)), recoil: 0, shotAge: Infinity, hitAge: Infinity,
     actionAge: Infinity, jumpAge: Infinity, landAge: Infinity, slideAge: Infinity,
     lastShot: player.shotSeq, corrections: new Map(), correctionStorage:new Map(), hipsStorage:new THREE.Vector3(), contactWeights:[0,0], gaitNames:new Set(),
@@ -531,7 +532,7 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
   if (lowered) shiftHips(rig, -crouchDepth);
   const crouch = rig.crouchBlend;
   for (const [index, leg] of rig.legs.entries()) {
-    if (confidence[index] > lerp(.50, .36, crouch) && !leg.inContact) {
+    if (confidence[index] > lerp(.50, .36, crouch) && !leg.inContact && motion.travelling) {
       leg.inContact = true;
       leg.anchor.copy(leg.solved);
       const ground = terrain?.heightAt?.(leg.anchor.x, leg.anchor.z);
@@ -539,15 +540,20 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
       leg.anchor.y = y + leg.ankleHeight;
       leg.locked = true;
     }
-    if (confidence[index] < lerp(.24, .15, crouch)) {
+    if (!motion.travelling || confidence[index] < lerp(.24, .15, crouch)) {
       leg.inContact = false;
       leg.locked = false;
     }
     leg.upper.getWorldPosition(a);
     const reachLimit = a.distanceTo(leg.knee.getWorldPosition(b)) + b.distanceTo(leg.foot.getWorldPosition(c));
-    if (leg.anchor.distanceToSquared(leg.solved) > lerp(.24, .40, crouch) ** 2 ||
-      leg.anchor.distanceToSquared(a) > (reachLimit + .065) ** 2) leg.locked = false;
-    leg.weight = damp(leg.weight, leg.locked ? 1 : 0, leg.locked ? 48 : 22, dt);
+    // Fade contact before the leg runs out of reach; do not abruptly
+    // release a planted foot at a fixed world-space distance.
+    const reachDistance=Math.sqrt(leg.anchor.distanceToSquared(a));
+    const slip=Math.sqrt(leg.anchor.distanceToSquared(leg.solved));
+    const release=1-smoothstep(slip,lerp(.22,.30,crouch),lerp(.48,.52,crouch));
+    const reachable=1-smoothstep(reachDistance,reachLimit*.91,reachLimit+.035);
+    const planted=leg.locked?release*reachable:0;
+    leg.weight = damp(leg.weight, planted, planted>leg.weight ? 24 : 17, dt);
     if (rig.lod > 1 && !lowered && !leg.pathWeight && crouch < .02) continue;
     saveRotation(rig, leg.upper, leg.knee, leg.foot);
     if (lowered || leg.pathWeight > .001) {
@@ -576,13 +582,13 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
   }
 }
 
-function applyWeapon(rig, player, dt, reload, actionWeight) {
+function applyWeapon(rig, player, dt, reload, actionWeight, aimYaw=player.yaw, aimPitch=player.pitch) {
   const { bones, group, rifle } = rig;
   const launcher = (player.heldGadget ?? player.gadgetAction) === 'launcher';
   const pistol = rig.pistol && !launcher, foregrip = rig.foregrip && !launcher;
   const afterSwitch = weaponSwitchPose(player.equipTime).lowered;
-  const bodyAim = clamp(turn(group.rotation.y, player.yaw ?? group.rotation.y), -.67, .67);
-  const pitch = clamp(player.pitch ?? 0, -.9, .9);
+  const bodyAim = clamp(turn(group.rotation.y, aimYaw ?? group.rotation.y), -.67, .67);
+  const pitch = clamp(aimPitch ?? 0, -.9, .9);
   const sprint = player.sprint ? smoothstep(rig.motion.speed, 4.6, 6.1) : 0;
   const wantsAim = Number(Boolean(player.aim));
   const aimed = rig.gripAim = damp(rig.gripAim ?? wantsAim, wantsAim, 16, dt);
@@ -668,7 +674,8 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   rig.deathPose = null;
   dt = Math.max(dt, .001);
   if (reset) {
-    Object.assign(motion, { x: group.position.x, z: group.position.z, speed: 0, vx: 0, vz: 0, moving: 0, phase: 0 });
+    Object.assign(motion, { x: group.position.x, z: group.position.z, speed: 0, vx: 0, vz: 0, moving: 0, phase: 0, travelling:false, stopTime:0 });
+    rig.poseTime=0;rig.bodyAimYaw=player.yaw??group.rotation.y;rig.bodyAimPitch=player.pitch??0;
     motion.gait.clear();
     rig.upperWeights?.clear();
     rig.crouchBlend = Number(Boolean(player.crouch || player.crouching));
@@ -680,11 +687,11 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   const dx = group.position.x - motion.x, dz = group.position.z - motion.z;
   motion.x = group.position.x;
   motion.z = group.position.z;
-  motion.vx = damp(motion.vx, dx / dt, 17, dt);
-  motion.vz = damp(motion.vz, dz / dt, 17, dt);
-  const speed = Math.hypot(motion.vx, motion.vz);
-  motion.speed = damp(motion.speed, speed, 21, dt);
-  motion.moving = damp(motion.moving, smoothstep(motion.speed, .16, .68), 15, dt);
+  updateTravel(motion,dx,dz,dt,player,reset);
+  // Smooth aim independently of the feet, particularly for bots sweeping an
+  // area while crouched. Angle wrapping prevents a full-turn snap.
+  rig.bodyAimYaw=(rig.bodyAimYaw??group.rotation.y)+turn(rig.bodyAimYaw??group.rotation.y,player.yaw??group.rotation.y)*(1-Math.exp(-16*dt));
+  rig.bodyAimPitch=damp(rig.bodyAimPitch??0,player.pitch??0,14,dt);
   const crouched = Boolean(player.crouch || player.crouching);
   const prone = Boolean(player.prone || player.downed);
   const requested = locomotionWeights(rig.requested ??= new Map(), motion.speed, group.rotation.y,
@@ -708,14 +715,15 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   }
   // Increase distance per cycle when the game outruns a captured gait.
   // Resolve the remaining discrepancy where the boot touches the ground.
-  const maxCyclesPerSecond = crouched ? lerp(1.45, 1.9, smoothstep(motion.speed, .55, 3.15)) :
-    lerp(1.95, 2.40, smoothstep(motion.speed, 2.6, 6.4));
+  const maxCyclesPerSecond = crouched ? lerp(1.25, 1.65, smoothstep(motion.speed, .55, 3.15)) :
+    lerp(1.75, 2.10, smoothstep(motion.speed, 2.6, 6.4));
   const measured = weightSum ? stride / weightSum : 1;
   const cycleDistance = Math.max(measured, motion.speed / maxCyclesPerSecond);
   motion.cycleDistance = cycleDistance;
   // Smooth packet-sized changes in travel over the same short window used
   // for the blend. Its integral still tracks rendered travel at steady pace.
-  if (weightSum && motion.speed > .12) motion.phase = cycle(motion.phase + motion.speed * dt / cycleDistance);
+  if (weightSum && motion.travelling && motion.speed > .10) motion.phase = cycle(motion.phase + motion.speed * dt / cycleDistance);
+  rig.poseTime=(rig.poseTime??0)+dt;
 
   const active = nextPoseActions(rig);
   const contacts = rig.contactWeights??=[0,0];contacts[0]=contacts[1]=0;
@@ -734,20 +742,24 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   rig.landAge += dt;
   rig.slideAge += dt;
   rig.slideExit += dt;
-  const lowerAction = prone ? (motion.speed > .16 && !player.downed ? 'prone_crawl' : 'prone_idle') :
+  const lowerAction = prone ? (motion.travelling && motion.speed > .16 && !player.downed ? 'prone_crawl' : 'prone_idle') :
     air ? (rig.jumpAge < .19 ? 'jump_start' : 'jump_loop') :
       player.sliding ? (rig.slideAge < .23 ? 'slide_start' : 'slide_loop') :
         rig.slideExit < .23 ? 'slide_exit' : rig.landAge < .24 ? 'jump_land' : null;
+  let lowerTime=0;
   if (lowerAction) {
-    const time = air ? (lowerAction === 'jump_loop' ? rig.jumpAge - .19 : rig.jumpAge) :
+    const duration=rig.template.clips.get(lowerAction)?.lower.duration??1;
+    lowerTime = lowerAction==='prone_crawl'?cycleTime(motion.phase,duration):
+      lowerAction==='prone_idle'?idleSample(duration,rig.poseTime):
+      air ? (lowerAction === 'jump_loop' ? rig.jumpAge - .19 : rig.jumpAge) :
       player.sliding ? (lowerAction === 'slide_loop' ? rig.slideAge - .23 : rig.slideAge) :
-      prone ? (rig.poseTime ?? 0) : lowerAction === 'slide_exit' ? rig.slideExit : rig.landAge;
-    play(rig, active, lowerAction, false, time, 1);
+      lowerAction === 'slide_exit' ? rig.slideExit : rig.landAge;
+    play(rig, active, lowerAction, false, lowerTime, 1);
   } else {
     const moving = motion.moving;
     const crouchBlend = rig.crouchBlend = damp(rig.crouchBlend ?? Number(crouched), Number(crouched), 13, dt);
-    play(rig, active, 'ready_idle', false, (rig.poseTime ?? 0) % 1, (1 - moving) * (1 - crouchBlend));
-    play(rig, active, 'crouch_idle', false, (rig.poseTime ?? 0) % 1, (1 - moving) * crouchBlend);
+    play(rig, active, 'ready_idle', false, idleSample(rig.template.clips.get('ready_idle').lower.duration,rig.poseTime), (1 - moving) * (1 - crouchBlend));
+    play(rig, active, 'crouch_idle', false, idleSample(rig.template.clips.get('crouch_idle').lower.duration,rig.poseTime), (1 - moving) * crouchBlend);
     for (const [name, weight] of motion.gait) {
       const gait = rig.template.gaits.get(name);
       const phase = cycle(motion.phase + gait.offset), w = weight / weightSum * moving;
@@ -766,9 +778,8 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
       }
     }
   }
-  rig.poseTime = (rig.poseTime ?? 0) + dt;
-  const upper = prone || lowerAction?.startsWith('slide') ? lowerAction : crouched ? (player.aim ? 'aim_crouch_idle' : 'ready_crouch_idle') :
-    player.sprint && motion.speed > 5 ? 'ready_sprint' : player.aim ? 'aim_idle' : 'ready_idle';
+  const upper = lowerAction??(crouched ? (player.aim ? 'aim_crouch_idle' : 'ready_crouch_idle') :
+    player.sprint && motion.speed > 5 ? 'ready_sprint' : player.aim ? 'aim_idle' : 'ready_idle');
   if (player.shotSeq !== undefined && player.shotSeq !== rig.lastShot) {
     rig.shotAge = 0;
     rig.recoil = 1;
@@ -796,7 +807,8 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     }
     rig.upperWeights.set(name, weight);
     const duration = rig.template.clips.get(name)?.upper.duration ?? 1;
-    play(rig, active, name, true, rig.poseTime % duration, weight * (1 - overlay));
+    const sample=name===lowerAction?lowerTime:name==='ready_sprint'?cycleTime(motion.phase,duration):idleSample(duration,rig.poseTime,true);
+    play(rig, active, name, true, sample, weight * (1 - overlay));
   }
   if (overlay > 0) {
     if (overlay === actionWeight) play(rig, active, action, true, rig.actionAge, overlay);
@@ -831,7 +843,7 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     const stretch = clamp(cycleDistance / measured - 1, 0, .85) * crouchWeight * movingWeight;
     applyContacts(rig, dt, contacts, terrain, 1 - smoothstep(motion.moving, 0, .52), drop, stretch);
   }
-  applyWeapon(rig, player, dt, reloadWeight, actionWeight);
+  applyWeapon(rig, player, dt, reloadWeight, actionWeight,rig.bodyAimYaw,rig.bodyAimPitch);
 }
 
 export function infantryHit(rig) {
