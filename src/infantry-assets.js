@@ -64,6 +64,9 @@ function split(clip, upper) {
 }
 
 function sampleCycle(root, bones, clip, direction, floor) {
+  // split() appends ':lower' to the source clip name. Classify the
+  // original gait, not the layer suffix, or forward pairing never runs.
+  const forward = clip.name.split(':')[0].endsWith('_F');
   const frameCount = 60;
   const mixer = new THREE.AnimationMixer(root);
   const action = mixer.clipAction(clip).play();
@@ -85,7 +88,7 @@ function sampleCycle(root, bones, clip, direction, floor) {
   mixer.uncacheRoot(root);
   // Pair opposite steps from the capture to retain its swing while removing
   // unequal retargeted reach and contact timing between the two legs.
-  if (clip.name.endsWith('_F')) {
+  if (forward) {
     const original = samples.map(foot => foot.map(point => ({ ...point, position: [...point.position] })));
     for (let side = 0; side < 2; side++) for (let frame = 0; frame < frameCount; frame++) {
       const point = samples[side][frame], other = original[1 - side][(frame + frameCount / 2) % frameCount];
@@ -125,7 +128,7 @@ function sampleCycle(root, bones, clip, direction, floor) {
       hipsTrack.values[i + 2] += offset.z;
     }
   }
-  const paths = clip.name.endsWith('_F') ? samples.map(foot => foot.map(point =>
+  const paths = forward ? samples.map(foot => foot.map(point =>
     [point.position[0], point.position[1] + floor - lowest, point.position[2]])) : null;
   return { distance: speed * clip.duration, duration: clip.duration, contact, paths, offset: strike / frameCount,
     hipsHeight: hipsHeight + (hipsTrack ? floor - lowest : 0) };
