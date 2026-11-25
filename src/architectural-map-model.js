@@ -93,9 +93,10 @@ export class ArchitecturalMapModel {
       ...options,normalMap:source?.normalMap??null,normalScale:new THREE.Vector2(.28,.28),
       roughness:water?.21:name==='metal'?.68:name==='ceramic'?.79:.9,metalness:name==='metal'?.23:0,
     });
-    const enhanced={ceramic:'ceramic',stone:'rock',concrete:'concrete',garden:'grass',roof:'metal',metal:'metal',brick:'brick',wood:'wood',fabric:'cloth',cloth:'cloth',asphalt:'asphalt',ground:'earth',plaster:'stucco'}[name];
+    const enhanced={ceramic:'ceramic',stone:'rock',concrete:'concrete',garden:'grass',roof:'metal',metal:'metal',brick:'brick',wood:'wood',cloth:'cloth',asphalt:'asphalt',ground:'earth',plaster:'stucco'}[name];
     const low=new THREE.MeshLambertMaterial(options);
     if(enhanced)high.userData.remasterSurface=low.userData.remasterSurface=enhanced;
+    if(name==='fabric')high.userData.weatherSurface=low.userData.weatherSurface='cloth';
     this.materials.set(name,pairMaterials(high,low));
     return high;
   }

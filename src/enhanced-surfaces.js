@@ -1,4 +1,6 @@
 import {RELIEF_DEPTH, RELIEF_STEPS} from './surface-relief.js';
+import {makeWeatherMask,weatherParameters,surfaceRepeat} from './map-weathering.js';
+import {setWebGlWeathering} from './webgl-map-weathering.js';
 import {setWebGlRelief} from './webgl-surface-relief.js';
 import {SafeWebGpuKtx2Loader} from './webgpu-ktx2.js';
 import {DETAIL_SIZE,choosePbrSize,PBR_PACK_VERSION} from './pbr-library.js';
@@ -24,9 +26,9 @@ export class EnhancedSurfaces {
   loadedRefresh=false;
   manifest=null;
 
-  constructor(renderer,setRelief=setWebGlRelief) {
+  constructor(renderer,setRelief=setWebGlRelief,setWeathering=setWebGlWeathering,suspendWeathering=()=>{}) {
     this.renderer=renderer;
-    this.setRelief=setRelief;
+    this.setRelief=setRelief;this.setWeathering=setWeathering;this.suspendWeathering=suspendWeathering;
     const features=renderer.backend?.device?.features;
     const extensions=renderer.extensions;
     const compressed=renderer.isWebGPURenderer
@@ -90,23 +92,30 @@ export class EnhancedSurfaces {
     return [url,this.textures.get(url).texture];
   }
 
-  update(root,settings,anisotropy) {
+  update(root,settings,anisotropy,mapId) {
     if(!root)return;
     const size=DETAIL_SIZE[settings.surfaceDetail]??0;
     const aoSize={low:256,high:1024}[settings.bakedAO]??0;
-    if(!size&&!aoSize){this.clear();return;}
-    this.latest=[root,settings,anisotropy];
-    this.ensureManifest();
+    const weather=['low','high'].includes(settings.mapWeathering);
+    if(!size&&!aoSize&&!weather){this.clear();return;}
+    this.latest=[root,settings,anisotropy,mapId];
+    if(size||aoSize)this.ensureManifest();
+    if(weather&&!this.weatherMask)this.weatherMask=makeWeatherMask();
     const active=new Set(),updated=new Set();
     const get=(surface,channel,resolution)=>{
       const [key,tex]=this.load(surface,channel,resolution);
       if(key)active.add(key);
-      if(tex&&tex.anisotropy!==anisotropy){tex.anisotropy=anisotropy;tex.needsUpdate=true;}
+      if(tex){
+        if(tex.anisotropy!==anisotropy){tex.anisotropy=anisotropy;tex.needsUpdate=true;}
+        const repeat=surfaceRepeat(surface);
+        if(tex.repeat.x!==repeat||tex.repeat.y!==repeat)tex.repeat.set(repeat,repeat);
+      }
       return tex;
     };
     const updateMaterial=material=>{
       const surface=material?.userData.remasterSurface;
-      if(!surface||material.transparent||!(material.isMeshStandardMaterial||material.isMeshLambertMaterial)||updated.has(material))return;
+      const weatherSurface=material?.userData.weatherSurface??surface;
+      if(!weatherSurface||material.transparent||!(material.isMeshStandardMaterial||material.isMeshLambertMaterial)||updated.has(material))return;
       updated.add(material);
       const standard=material.isMeshStandardMaterial;
       if(!this.originals.has(material)){
@@ -116,8 +125,8 @@ export class EnhancedSurfaces {
         });
       }
       const base=this.originals.get(material);
-      const detail=size&&surface!=='ceramic'&&standard;
-      const pack=(aoSize||detail)?get(surface,'arm',Math.max(aoSize,detail?Math.min(size,2048):0)):null;
+      const detail=surface&&size&&surface!=='ceramic'&&standard;
+      const pack=surface&&(aoSize||detail)?get(surface,'arm',Math.max(aoSize,detail?Math.min(size,2048):0)):null;
       const color=detail?get(surface,'diff',size):null;
       const normal=detail?get(surface,'nor_gl',size):null;
       const ready=Boolean(color&&normal&&pack);
@@ -136,9 +145,12 @@ export class EnhancedSurfaces {
         Object.assign(material,maps);material.needsUpdate=true;
       }
       material.aoMapIntensity=aoSize&&pack?(settings.ao==='off'?.8:.5):base.aoMapIntensity;
+      this.suspendWeathering(material);
       const steps=RELIEF_STEPS[settings.relief],scale=RELIEF_DEPTH[surface];
       const relief=ready&&steps&&scale&&!material.userData.groundShadowPatched;
       this.setRelief(material,relief?get(surface,'disp',Math.min(size,steps>8?1024:512)):null,steps,scale);
+      const params=weather?weatherParameters(mapId,weatherSurface,settings.mapWeathering):null;
+      this.setWeathering(material,params?this.weatherMask:null,params);
     };
     root.traverse(object=>{
       if(!object.isMesh||!object.geometry.hasAttribute('uv'))return;
@@ -154,9 +166,11 @@ export class EnhancedSurfaces {
       if(active.has(key))continue;
       entry.texture?.dispose();this.textures.delete(key);
     }
+    if(!weather){this.weatherMask?.dispose();this.weatherMask=null;}
   }
 
   restore(material,base){
+    this.setWeathering(material,null);
     this.setRelief(material,null);
     const {normalScale,...values}=base;
     Object.assign(material,values);
@@ -171,6 +185,7 @@ export class EnhancedSurfaces {
       if(tex.mipmaps?.length&&tex.mipmaps.every(m=>m.data))bytes+=tex.mipmaps.reduce((sum,m)=>sum+m.data.byteLength,0);
       else bytes+=tex.image.width*tex.image.height*4*4/3;
     }
+    if(this.weatherMask)bytes+=this.weatherMask.image.data.byteLength*4/3;
     return Math.round(bytes);
   }
 
@@ -182,7 +197,7 @@ export class EnhancedSurfaces {
       loaded++;if(entry.texture.isCompressedTexture)compressed++;
       maxSize=Math.max(maxSize,entry.texture.image?.width??0,entry.texture.image?.height??0);
     }
-    return {pack:!!this.manifest,hardwareCompression:this.compressed,limit:this.limit,loaded,compressed,pending,maxSize,bytes:this.estimatedBytes()};
+    return {pack:!!this.manifest,hardwareCompression:this.compressed,limit:this.limit,loaded,compressed,pending,maxSize,bytes:this.estimatedBytes(),weathering:Boolean(this.weatherMask)};
   }
 
   clear(){
@@ -190,6 +205,7 @@ export class EnhancedSurfaces {
     for(const [material,base] of this.originals)this.restore(material,base);
     for(const entry of this.textures.values())entry.texture?.dispose();
     this.originals.clear();this.textures.clear();
+    this.weatherMask?.dispose();this.weatherMask=null;
   }
 
   dispose(){this.clear();this.ktx?.dispose();this.ktx=null;}

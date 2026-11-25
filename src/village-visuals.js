@@ -11,16 +11,17 @@ const palettes = new WeakMap();
 
 function palette(owner) {
   if (palettes.has(owner)) return palettes.get(owner);
-  const make = (map, color, tile, normalMap) => {
+  const make = (map, color, tile, normalMap,surface) => {
     const high = new THREE.MeshStandardMaterial({map,color,roughness:.98,normalMap,normalScale:new THREE.Vector2(.2,.2),bumpMap:normalMap?null:map,bumpScale:.025});
     const low = new THREE.MeshLambertMaterial({ map, color });
     high.userData.tileSize = low.userData.tileSize = tile;
+    high.userData.remasterSurface=low.userData.remasterSurface=surface;
     return pairMaterials(high, low);
   };
   const sand=owner.surfaces.maps['village-sand'],stucco=owner.surfaces.maps['village-stucco'];
   const result = {
-    sand: make(sand,0xd6bd90,7,owner.surfaces.villageNormals?.sand),
-    stucco: make(stucco,0xd0b88f,3.4,owner.surfaces.villageNormals?.stucco),
+    sand: make(sand,0xd6bd90,7,owner.surfaces.villageNormals?.sand,'sand'),
+    stucco: make(stucco,0xd0b88f,3.4,owner.surfaces.villageNormals?.stucco,'stucco'),
     stone: clonePairedMaterial(owner.surfaces.concrete, '#b9a380'),
     roof: clonePairedMaterial(owner.surfaces.concrete, '#b09b7b'),
     wood: clonePairedMaterial(owner.surfaces.wood, '#806249'),

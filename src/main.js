@@ -2215,6 +2215,7 @@ try{
       FrameGeneration:WebGpuFrameGeneration,Cascades:(await import('./webgpu-cascades.js')).WebGpuCascades,
       ...await import('./webgpu-campaign-fire.js'),
       ...await import('./webgpu-surface-relief.js'),
+      ...await import('./webgpu-map-weathering.js'),
       ...await import('./webgpu-penumbra.js')};
   }
   renderer=new GameRenderer(canvas,{antialias:read('gfx-aa','auto'),webgpu:gpuOptions});

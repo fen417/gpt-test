@@ -1,5 +1,5 @@
 const legacy = Object.freeze({
-  materials: 'auto', surfaceDetail:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', ao: 'off', contact: 'off',
+  materials: 'auto', surfaceDetail:'off', mapWeathering:'off', relief:'off', bakedAO:'off', anisotropy: 'auto', lighting: 'legacy', ao: 'off', contact: 'off',
   bloom: 'off', atmosphere: 'off', grade: 'standard', gradeMix: '100',
   motionBlur:'off', depthOfField:'off', lensFlare:'off', chromatic:'off',
   contrast: '100', saturation: '100', vignette: 'legacy', grain: 'legacy',
@@ -9,7 +9,7 @@ const legacy = Object.freeze({
 });
 
 const ultra = Object.freeze({
-  ...legacy, surfaceDetail:'ultra',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
+  ...legacy, surfaceDetail:'ultra',mapWeathering:'high',relief:'low',bakedAO:'high',cascades:'ultra', lighting: 'enhanced', ao: 'gtao', contact: 'high', bloom: 'high',
   atmosphere: 'ultra', grade: 'natural', vignette: 'off', grain: 'off',
   sky: 'high', water: 'high', reflections:'high', localReflections:'high', smoke:'high', heatDistortion:'high', softParticles:'high', explosions:'high', particleLighting:'high',
 });
@@ -43,6 +43,7 @@ export const GRAPHICS_CONTROLS = [
   ['Материалы и окружение', [
     ['materials', 'Материалы', 'Высокое качество использует PBR и рельеф поверхности.', choices(auto, low, high)],
     ['surfaceDetail', 'Фактуры окружения', 'Сжатые PBR-фактуры окружения. Ультра использует 4K только для крупных поверхностей; без аппаратного сжатия действует ограничение 2K.', choices(off, ['medium', '512 px'], ['standard', '1024 px'], ['high', '2048 px'], ['ultra','До 4096 px'])],
+    ['mapWeathering','Износ и разнообразие поверхностей','Пыль, пятна и мелкие трещины с учётом карты.',choices(off,low,high)],
     ['relief','Параллакс-рельеф','Добавляет видимую глубину камню и бетону при включённых фактурах окружения.',choices(off,['basic','Базовый'],['low','POM · 8 шагов'],['high','POM · 16 шагов'])],
     ['anisotropy', 'Анизотропная фильтрация', 'Повышает чёткость текстур под острым углом. Умеренная нагрузка.', choices(auto, ['1', 'Выкл.'], ...[2, 4, 8, 16].map(n => [String(n), n+'×']))],
     ['sky', 'Небо', 'Добавляет солнечный диск и атмосферное рассеивание. Умеренная нагрузка.', choices(old, high)],
@@ -86,9 +87,9 @@ export const GRAPHICS_GROUPS = [
   ['shadowStyle','Мягкость и дальность теней','Фильтр и размер области динамических теней.', ['shadowFilter','shadowDistance'], {
     auto:['Авто','auto','auto'], fast:['Ближние', 'hard','near'], soft:['Мягкие','soft','auto'], far:['Мягкие дальние','pcss','far'],
   }],
-  ['surfaceQuality','Качество поверхностей','Материалы, чёткость фактур и глубина рельефа.', ['materials','surfaceDetail','relief'], {
-    auto:['Как раньше','auto','off','off'], low:['Облегчённое','low','off','off'], medium:['Среднее','auto','standard','basic'],
-    high:['Высокое','auto','high','low'], ultra:['Ультра','auto','ultra','high'],
+  ['surfaceQuality','Качество поверхностей','Материалы, чёткость фактур и глубина рельефа.', ['materials','surfaceDetail','relief','mapWeathering'], {
+    auto:['Как раньше','auto','off','off','off'], low:['Облегчённое','low','off','off','off'], medium:['Среднее','auto','standard','basic','low'],
+    high:['Высокое','auto','high','low','high'], ultra:['Ультра','auto','ultra','high','high'],
   }],
   ['skyQuality','Небо и атмосфера','Облака, солнечный диск, лучи и дымка.', ['sky','atmosphere'], {
     legacy:['Как раньше','legacy','off'], low:['Низкое','high','low'], medium:['Среднее','high','medium'], high:['Высокое','high','high'], ultra:['Ультра','high','ultra'],

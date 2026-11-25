@@ -552,6 +552,7 @@ export class GameRenderer {
     if(['quarry','alhadra','alhadra-desert','tel-mazin','safra'].includes(mapId)&&!this.tankWarmup)this.tankWarmup=this.surfaces.ready.then(()=>warmTankAssets(this.renderer,this.scene,this.camera,optimizeLighting)).catch(error=>console.error('Tank assets:',error));
     const map = getMap(mapId);
     if (this.map === map) return;
+    this.enhancedSurfaces?.clear(); // Never clone a shared material with temporary PBR textures.
     this.postPass.worldEffects.previousClock=undefined;
     for(const type of new Set(map.vehicleSpawns?.map(vehicle=>vehicle.type)))lightVehicleModels[type]?.load();
     let world = this.worlds.get(map.id);
@@ -1909,8 +1910,8 @@ export class GameRenderer {
   refreshSurfaceEnhancements(){
     const settings=this.graphicsEffects;
     if(!settings)return;
-    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief);
-    this.enhancedSurfaces?.update(this.staticRoot,settings,this.textureAnisotropy);
+    if(settings.surfaceDetail!=='off'||settings.bakedAO!=='off'||settings.mapWeathering==='high'||settings.mapWeathering==='low')this.enhancedSurfaces??=new EnhancedSurfaces(this.renderer,this.webgpu?.setWebGpuRelief,this.webgpu?.setWebGpuWeathering,this.webgpu?.suspendWebGpuWeathering);
+    this.enhancedSurfaces?.update(this.staticRoot,settings,this.textureAnisotropy,this.map?.id);
   }
 
   maxAnisotropy(){return this.renderer.capabilities?.getMaxAnisotropy?.()??this.renderer.getMaxAnisotropy?.()??1;}
@@ -2118,8 +2119,9 @@ export class GameRenderer {
       previousEffects?.shadowDistance!==this.graphicsEffects.shadowDistance||previousEffects?.shadowFilter!==this.graphicsEffects.shadowFilter||
       previousEffects?.cascades!==this.graphicsEffects.cascades)this.applyShadows();
     if(previousQuality!==this.quality||previousEffects?.anisotropy!==this.graphicsEffects.anisotropy)this.updateTextureFiltering();
-    if (this.lowQuality !== low) this.applyQuality(low);
-    if(previousEffects!==this.graphicsEffects||this.gradedMap!==this.map){
+    const materialQualityChanged=this.lowQuality!==low;
+    if(materialQualityChanged)this.applyQuality(low);
+    if(previousEffects!==this.graphicsEffects||this.gradedMap!==this.map||materialQualityChanged){
       this.gradedMap=this.map;
       this.refreshSurfaceEnhancements();
       if(!this.presentingCampaign){

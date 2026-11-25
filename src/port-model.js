@@ -77,6 +77,7 @@ export class PortModel {
     let low = new THREE.MeshLambertMaterial(options);
     const enhanced={deck:'concrete',concrete:'concrete',asphalt:'asphalt',brick:'brick',wood:'wood',metal:'metal',cloth:'cloth',ground:'earth'}[name];
     if(enhanced)high.userData.remasterSurface=low.userData.remasterSurface=enhanced;
+    if(name==='painted')high.userData.weatherSurface=low.userData.weatherSurface='metal';
     if (name === 'deck' || name === 'asphalt') {
       const shadows = this.owner.groundShadows;
       high = shadows.apply(high) ?? high;

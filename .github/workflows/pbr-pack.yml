@@ -41,7 +41,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Check targeted graphics configuration
-        run: node --test test/pbr-library.test.js test/graphics-remaster.test.js test/webgpu-ktx2.test.js test/polyhaven-source.test.js
+        run: node --test test/pbr-library.test.js test/graphics-remaster.test.js test/webgpu-ktx2.test.js test/polyhaven-source.test.js test/map-weathering.test.js
       - name: Restore partial PBR pack
         uses: actions/cache/restore@v4
         with:
