@@ -73,3 +73,29 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m "Add generated CC0 KTX2 PBR texture pack"
           git push origin HEAD:refs/heads/remaster/pbr-ktx2
+  browser-weathering:
+    if: github.ref == 'refs/heads/remaster/pbr-ktx2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Install browser smoke tools
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install chromium --with-deps
+      - name: Start local server without regenerating PBR scans
+        run: |
+          S09_PBR_SKIP=1 npm run dev -- --host 127.0.0.1 > /tmp/weather-vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5173/test/map-weathering-smoke.html >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/weather-vite.log
+          exit 1
+      - name: Render and compare weathering off, low, high and off again
+        run: node scripts/verify-map-weathering.mjs

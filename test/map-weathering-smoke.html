@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SECTOR 09 weathering smoke</title></head>
+<body style="margin:0;background:#000"><canvas id="probe" style="display:block;width:480px;height:320px"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import {WebGPURenderer,MeshStandardNodeMaterial} from 'three/webgpu';
+import {makeWeatherMask,weatherParameters} from '../src/map-weathering.js';
+import {setWebGlWeathering} from '../src/webgl-map-weathering.js';
+import {setWebGpuWeathering} from '../src/webgpu-map-weathering.js';
+const canvas=document.getElementById('probe');
+let renderer,scene,camera,materials,mask,apply,device,lost,errors=[];
+const tick=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+window.initWeatherSmoke=async api=>{
+  if(api==='webgpu'){
+    const adapter=await navigator.gpu?.requestAdapter();
+    if(!adapter)return {skipped:'No WebGPU adapter'};
+    device=await adapter.requestDevice();
+    device.addEventListener('uncapturederror',e=>errors.push(String(e.error?.message??e.error)));
+    device.lost.then(info=>lost=info.message||info.reason);
+    renderer=new WebGPURenderer({canvas,device,antialias:false,alpha:false});
+    await renderer.init();
+    if(!renderer.backend?.isWebGPUBackend)throw Error('Not a WebGPU backend');
+    apply=setWebGpuWeathering;
+  }else{
+    renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:false,preserveDrawingBuffer:true});
+    apply=setWebGlWeathering;
+  }
+  renderer.setSize(480,320,false);
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.NoToneMapping;
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x182332);
+  camera=new THREE.PerspectiveCamera(45,1.5,.1,160);
+  camera.position.set(12,9,20);camera.lookAt(0,1,0);
+  scene.add(new THREE.HemisphereLight(0xffffff,0xc4b9a9,2.1));
+  const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(-5,10,5);scene.add(sun);
+  const color=0x888888;
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(70,70),new THREE.MeshStandardMaterial({color,roughness:1}));
+  floor.rotation.x=-Math.PI/2;scene.add(floor);
+  const wall=new THREE.Mesh(new THREE.BoxGeometry(15,5,2),api==='webgpu'?new MeshStandardNodeMaterial({color,roughness:1}):new THREE.MeshStandardMaterial({color,roughness:1}));
+  wall.position.set(0,2.5,-3);scene.add(wall);
+  materials=[floor.material,wall.material];
+  mask=makeWeatherMask();
+  return {api,ok:true};
+};
+window.drawWeatherSmoke=async quality=>{
+  const params=weatherParameters('quarry','concrete',quality);
+  for(const material of materials)apply(material,params?mask:null,params);
+  if(device)device.pushErrorScope('validation');
+  try{
+    await renderer.compileAsync(scene,camera);
+    renderer.render(scene,camera);
+    await tick();await tick();
+  }finally{
+    if(device){
+      const validation=await device.popErrorScope();
+      if(validation)errors.push(validation.message);
+    }
+  }
+  return {errors:[...errors],lost:lost??null};
+};
+</script></body></html>
