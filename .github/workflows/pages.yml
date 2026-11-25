@@ -3,15 +3,20 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_run:
+    workflows: [Prepare experimental PBR textures]
+    branches: [remaster/pbr-ktx2]
+    types: [completed]
 permissions:
   contents: read
   pages: write
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +29,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Restore previous benchmark
+        if: github.event_name != 'workflow_run'
         uses: actions/cache@v4
         with:
           path: .perf-ci/baseline.json
@@ -31,11 +37,13 @@ jobs:
           restore-keys: |
             perf-v1-${{ runner.os }}-${{ runner.arch }}-node24-
       - name: Benchmark simulation and flag regressions
+        if: github.event_name != 'workflow_run'
         run: npm run bench -- --ci --baseline .perf-ci/baseline.json --output .perf-ci/current.json
       - name: Keep benchmark for next comparison
+        if: github.event_name != 'workflow_run'
         run: node -e "require('node:fs').copyFileSync('.perf-ci/current.json','.perf-ci/baseline.json')"
       - name: Upload performance report
-        if: always()
+        if: always() && github.event_name != 'workflow_run'
         uses: actions/upload-artifact@v4
         with:
           name: simulation-performance
@@ -52,6 +60,58 @@ jobs:
           path: |
             .perf-local/build-budget.json
             .perf-local/bundle.html
+      - name: Checkout experimental branch
+        uses: actions/checkout@v4
+        with:
+          ref: remaster/pbr-ktx2
+          path: preview-source
+          persist-credentials: false
+      - name: Install experimental dependencies
+        working-directory: preview-source
+        run: npm ci
+      - name: Build offline experimental game
+        working-directory: preview-source
+        run: npm run build
+        env:
+          S09_PBR_SKIP: '1'
+          VITE_TEST_BUILD: '1'
+          VITE_SERVER_URL: ''
+          VITE_FIREBASE_CONFIG: 'null'
+      - name: Assemble and validate independent Pages builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          test -f preview-source/dist/index.html
+          test -f preview-source/dist/pbr-v1/manifest.json
+          test -f preview-source/dist/basis/basis_transcoder.wasm
+          test ! -e dist/test
+          mkdir -p dist/test
+          cp -a preview-source/dist/. dist/test/
+          printf '%s\n' '{"serverUrl":""}' > dist/test/network-config.json
+          printf '%s\n' "$(git rev-parse HEAD)" > dist/build-revision.txt
+          git -C preview-source rev-parse HEAD > dist/test/build-revision.txt
+          node --input-type=module -e '
+            import {readFileSync,existsSync} from "node:fs";
+            import {resolve,dirname} from "node:path";
+            for(const dir of ["dist","dist/test"]){
+              const html=readFileSync(dir+"/index.html","utf8");
+              for(const match of html.matchAll(/(?:src|href)="([^"]+\\.(?:js|css))"/g)){
+                const path=match[1];
+                if(path.startsWith("/")||!existsSync(resolve(dir,path)))throw Error("Invalid asset path "+dir+": "+path);
+              }
+            }
+            const m=JSON.parse(readFileSync("dist/test/pbr-v1/manifest.json","utf8"));
+            for(const [surface,channels] of Object.entries(m.files))
+              for(const [channel,sizes] of Object.entries(channels))
+                for(const size of sizes)
+                  if(!existsSync("dist/test/pbr-v1/"+surface+"-"+channel+"-"+size+".ktx2"))
+                    throw Error("Missing experimental texture "+surface+"/"+channel+"/"+size);
+          '
+          touch dist/.nojekyll
+          echo "Stable: $(cat dist/build-revision.txt)"
+          echo "Test: $(cat dist/test/build-revision.txt)"
+          du -sh dist dist/test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
