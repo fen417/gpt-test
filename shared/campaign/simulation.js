@@ -155,8 +155,21 @@ export class CampaignDirector {
   get radioActive(){return Boolean(this.dialogue.active);}
   get alertLevel(){return Math.max(...Object.values(this.alerts).map(z=>z.level));}
   initialize(){
-    const p=this.sim.addPlayer('local','Ян Мартен',0,'assault',this.options.loadout==='loud'?'ak12':'ar416','p19');
-    Object.assign(p,{syringes:this.tuning.syringes,medkits:this.tuning.medkits,medkitCapacity:4,suppressed:this.options.loadout!=='loud',grenades:this.options.loadout==='loud'?5:2,invulnerableUntil:0});
+    // The menu selects both weapons before the briefing; retain the legacy
+    // silent/loud mode in saves and mission conditions.
+    const selected=this.options.loadout?.primary;
+    const primary=Object.hasOwn(WEAPONS,selected)&&!WEAPONS[selected].sidearm?selected:
+      this.options.loadout==='loud'?'ak12':'ar416';
+    const sidearm=SIDEARMS.includes(this.options.loadout?.sidearm)?this.options.loadout.sidearm:'p19';
+    const p=this.sim.addPlayer('local','Ян Мартен',0,'assault',primary,sidearm);
+    const suppressed=primary==='ar416';
+    const main=resolveWeaponModules(WEAPONS[primary],p.weaponModules?.[primary]);
+    const secondary=resolveWeaponModules(WEAPONS[sidearm],p.weaponModules?.[sidearm]);
+    this.options.loadout=suppressed?'silent':'loud';
+    Object.assign(p,{syringes:this.tuning.syringes,medkits:this.tuning.medkits,medkitCapacity:4,
+      suppressed,primaryWeaponId:primary,sidearmId:sidearm,weaponId:primary,weaponSlot:1,
+      ammo:main.mag,reserve:main.reserve,stowedAmmo:{ammo:secondary.mag,reserve:secondary.reserve},
+      grenades:suppressed?2:5,reloading:false,equipTime:0,invulnerableUntil:0});
     this.place(p,-200,-140);p.yaw=-2.35;p.input.yaw=p.yaw;
     for(const [i,id] of this.definition.allies.entries()){const a=this.addAlly(id,-203-i%2*2,-144-Math.floor(i/2)*2);a.yaw=p.yaw;}
     const courier=this.addAlly('courier',107,66);this.down(courier,true);courier.downedTimer=1e6;courier.invulnerableUntil=1e8;
@@ -499,24 +512,13 @@ export class CampaignDirector {
     const id=this.cutscene?.id;if(!id)return;
     if(id==='midpoint'&&this.flags.depotCinematicArmed&&!this.flags.depotDestroyed){this.detonateDepot();this.runtime.tick();if(this.pendingCheckpoint){const n=this.pendingCheckpoint;this.pendingCheckpoint=null;this.save(n);}}
     this.cutscene=null;this.dialogue={queue:[],active:null,remaining:0};
-    if(id==='briefing'){this.awaitingLoadout=true;return;}
+    if(id==='briefing'){this.startCutscene('landing');return;}
     if(id==='landing'){this.flags.landed=true;this.runtime.tick();this.initialSave=this.serialize();}
     if(id==='midpoint')this.say('m01.duran.village');
     if(id==='finale'){this.complete=true;this.saveRevision++;}
   }
   command(command){
     if(command.type==='skip'&&this.cutscene)this.finishCutscene();
-    if(command.type==='loadout'&&this.awaitingLoadout){
-      const primary=Object.hasOwn(WEAPONS,command.primary)&&!WEAPONS[command.primary].sidearm?command.primary:'ar416';
-      const sidearm=SIDEARMS.includes(command.sidearm)?command.sidearm:'p19';
-      const suppressed=primary==='ar416',p=this.player;
-      const main=resolveWeaponModules(WEAPONS[primary],p.weaponModules?.[primary]);
-      const secondary=resolveWeaponModules(WEAPONS[sidearm],p.weaponModules?.[sidearm]);
-      this.awaitingLoadout=false;this.options.loadout=suppressed?'silent':'loud';
-      Object.assign(p,{suppressed,primaryWeaponId:primary,sidearmId:sidearm,weaponId:primary,weaponSlot:1,
-        ammo:main.mag,reserve:main.reserve,stowedAmmo:{ammo:secondary.mag,reserve:secondary.reserve},grenades:suppressed?2:5,reloading:false,equipTime:0});
-      this.startCutscene('landing');
-    }
     if(command.type==='nightVision'&&!this.cutscene&&!this.awaitingLoadout&&!this.failed&&!this.complete)this.nightVision=!this.nightVision;
     if(command.type==='retry'&&this.failed)this.restore(this.latestSave??this.initialSave);
   }

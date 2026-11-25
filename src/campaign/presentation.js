@@ -8,17 +8,16 @@ import {createVehicleRig,updateVehicleRig,disposeVehicleRig,tankAssetsReady} fro
 import {vehicleBodyTilt} from '../../shared/vehicles.js';
 import {CampaignFire} from './fire.js';
 import {placeCampaignMarker} from './markers.js';
-import {SIDEARMS,WEAPONS} from '../../shared/world.js';
 
 const presets={night:{fog:'#101b30',sun:'#a8c9ef',hemi:'#a2b9d7',ground:'#45434a',sunPower:.8,hemiPower:.52,ambient:.16,environment:.09},alarm:{fog:'#202538',sun:'#a4bfdf',hemi:'#b0bed5',ground:'#67564a',sunPower:1,hemiPower:.72,ambient:.22,environment:.12},dawn:{fog:'#a58e7c',sun:'#ffd19d',hemi:'#b8c5dd',ground:'#8e7560',sunPower:2,hemiPower:1.3,ambient:.3,environment:.45}};
 export class CampaignPresentation {
   static loadDepot=loadDepotProps;
 
-  constructor(session,{renderer,audio,leave,clearControls,resume,depotAsset}){
+  constructor(session,{renderer,audio,leave,clearControls,depotAsset}){
     this.session=session;this.renderer=renderer;this.leave=leave;this.clearControls=clearControls;this.locale=session.locale;this.definition=session.definition;
     this.audio=new CampaignAudio(audio,new URL(`${import.meta.env.BASE_URL}campaign/m01/`,location.href),this.definition);
     this.root=document.createElement('section');this.root.className='campaign-ui';this.root.setAttribute('aria-label','Сюжетная миссия');
-    this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-choice campaign-card hidden"><small>СНАРЯЖЕНИЕ / РЯДОВОЙ ЯН МАРТЕН</small><h2>Выберите вооружение</h2><p>Основное и дополнительное оружие доступны без ограничений класса.</p><div class="campaign-loadout-selects"><label>ОСНОВНОЕ <select data-primary></select></label><label>ДОПОЛНИТЕЛЬНОЕ <select data-sidearm></select></label></div><button data-loadout="custom">Начать операцию</button><p>ПТ-90 и ящик патронов выдаются обязательно. N в миссии — ПНВ.</p></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
+    this.root.innerHTML='<div class="campaign-objective"><small>ОПЕРАЦИЯ «ВЫСАДКА У ВАДИ»</small><strong></strong><span></span><p class="campaign-optional"></p></div><div class="campaign-subtitle" role="status" aria-live="polite"><b></b><span></span></div><div class="campaign-prompt"></div><div class="campaign-progress"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle class="campaign-progress-fill" cx="50" cy="50" r="44"/></svg><span></span></div><div class="campaign-injury"><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div><div class="campaign-supplies"></div><div class="campaign-world-markers"></div><div class="campaign-cutscene"><span></span><button>Пробел / Enter · пропустить</button></div><div class="campaign-ending campaign-card hidden"><small></small><h2></h2><p></p><div class="campaign-final-stats"></div><button class="campaign-retry">С последнего контрольного пункта</button><button class="campaign-exit">В главное меню</button></div>';
     document.body.append(this.root);this.$=selector=>this.root.querySelector(selector);
     this.minimap=new InfantryMinimap(renderer);
     this.storySubtitle=this.$('.campaign-subtitle');
@@ -29,11 +28,8 @@ export class CampaignPresentation {
     this.storySubtitle.before(subtitles);
     subtitles.append(this.reactionSubtitle,this.storySubtitle);
     this.fade=document.createElement('div');this.fade.className='campaign-camera-fade';this.root.append(this.fade);
-    this.$('.campaign-cutscene button').onclick=()=>this.session.command({type:'skip'});
-    const primary=this.$('[data-primary]'),sidearm=this.$('[data-sidearm]');
-    for(const weapon of Object.values(WEAPONS))if(!weapon.sidearm)primary.add(new Option(`${weapon.name} · ${weapon.type}`,weapon.id));
-    for(const id of SIDEARMS){const weapon=WEAPONS[id];sidearm.add(new Option(weapon.name,weapon.id));}
-    for(const b of this.root.querySelectorAll('[data-loadout]'))b.onclick=()=>{this.clearControls();this.session.command({type:'loadout',primary:primary.value,sidearm:sidearm.value});resume();};
+    this.$('.campaign-cutscene button').onclick=()=>this.skipCutscene();
+    this.skipCutscene=()=>{this.clearControls();this.session.command({type:'skip'});};
     this.$('.campaign-retry').onclick=()=>{this.clearControls();this.session.command({type:'retry'});};
     this.$('.campaign-exit').onclick=leave;
     this.original={environment:renderer.scene.environment,environmentIntensity:renderer.scene.environmentIntensity,sun:renderer.sun.intensity,hemi:renderer.hemiLight.intensity,ambient:renderer.ambientLight.intensity,sunColor:renderer.sun.color.clone(),hemiColor:renderer.hemiLight.color.clone(),groundColor:renderer.hemiLight.groundColor.clone(),sunOffset:renderer.sunOffset.clone(),skyVisible:renderer.atmosphere.sky.visible,
@@ -137,12 +133,11 @@ export class CampaignPresentation {
   }
   key(event){
     const m=this.session.state?.campaign;if(!m)return false;
-    if(m.awaitingLoadout&&(event.code==='Tab'||event.target?.closest?.('.campaign-choice')))return false;
     if(!m.cutscene&&!m.awaitingLoadout&&!m.failed&&!m.complete&&event.code==='KeyN'){
       if(!event.repeat)this.session.command({type:'nightVision'});
       return true;
     }
-    if(m.cutscene&&['Space','Enter'].includes(event.code)&&!event.repeat){this.clearControls();this.session.command({type:'skip'});return true;}
+    if(m.cutscene&&['Space','Enter'].includes(event.code)&&!event.repeat){this.skipCutscene();return true;}
     if(m.failed&&event.code==='Enter'&&!event.repeat){this.clearControls();this.session.command({type:'retry'});return true;}
     return Boolean((m.cutscene||m.awaitingLoadout||m.failed||m.complete)&&event.code!=='Escape');
   }
@@ -170,7 +165,6 @@ export class CampaignPresentation {
     this.minimap.update(state,p,{hidden:paused||Boolean(m.cutscene||m.awaitingLoadout||m.failed||m.complete),radius:m.nightVision?70:55});
     this.$('.campaign-supplies').textContent=`АПТЕЧКИ ${p.medkits} · ШПРИЦЫ ${p.syringes}${m.nightVision&&!m.cutscene?' · ПНВ ВКЛ':''}${m.fuze>0?' · ЗАРЯДЫ '+Math.ceil(m.fuze)+' с':''}`;
     this.$('.campaign-cutscene').classList.toggle('hidden',!m.cutscene);this.$('.campaign-cutscene > span').textContent=m.cutscene?.id==='briefing'?'02:00 / БРИФИНГ':m.cutscene?.id==='finale'?'05:40 / РАССВЕТ':'АЛЬ-ХАДРА / ЭКСПЕДИЦИОННАЯ БРИГАДА';
-    this.$('.campaign-choice').classList.toggle('hidden',!m.awaitingLoadout);
     const ending=this.$('.campaign-ending');ending.classList.toggle('hidden',!m.failed&&!m.complete);
     if(m.failed||m.complete){ending.querySelector('small').textContent=m.failed?'ПОПЫТКА НЕ ЗАВЕРШЕНА':'МИССИЯ 1 ЗАВЕРШЕНА';ending.querySelector('h2').textContent=m.failed?'Возвращаемся к контрольной точке.':'Радиостанция наша.';ending.querySelector('p').textContent=m.failed??`Колонна снабжения в пути. ${m.flags.documents?'Документы сохранены для следующей миссии. ':''}${m.flags.courierSaved?'Связной эвакуирован. ':''}Продолжение следует.`;this.$('.campaign-retry').classList.toggle('hidden',!m.failed);
       const stats=m.stats??{},seconds=Math.max(0,Math.floor(stats.elapsedSeconds??0));
@@ -180,7 +174,6 @@ export class CampaignPresentation {
     if(blocking&&!this.blocking){
       this.clearControls();
       document.exitPointerLock?.();
-      if(m.awaitingLoadout)this.$('[data-primary]').focus();
     }
     this.blocking=blocking;
     this.audio.update(state,this.locale,paused||m.awaitingLoadout,this.renderer,this.briefingSpeaker);

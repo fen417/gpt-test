@@ -498,7 +498,9 @@ function receive(next){
   if(state&&next.time<state.time-1){reconMarks.clear();pendingDamage.clear();seen.clear();audio.seen.clear();renderer.seenEvents.clear();renderer.lastShot=-1;feed=[];scoreFeed=[];scoreStreakTotal=0;scoreStreakExpires=0;finished=false;wasAlive=false;lastDeathPos=null;show('result',false);show('death',false);toast(next.campaign?'Контрольная точка восстановлена':'Новая операция началась');}
   const previousPlayer=local();
   const previousVehicle=state?.vehicles?.find(v=>v.id===previousPlayer?.vehicleId);
+  const landingEnded=next.campaign?.missionId==='m01'&&state?.campaign?.cutscene?.id==='landing'&&!next.campaign.cutscene;
   state=next;const player=local();
+  if(landingEnded&&active&&player?.alive&&!locked&&!unlocked&&$('pause').classList.contains('hidden'))void requestControl(true);
   const legacyRound=mode==='server'&&!next.weaponKills?localRoundId+'/'+multiplayer.epoch:null;
   if(active&&player)trackWeaponProgress(legacyRound?{weaponRoundId:legacyRound,weaponKills:{}}:next);
   const vehicle=next.vehicles?.find(v=>v.id===player?.vehicleId);
@@ -902,8 +904,7 @@ async function startCampaign(options){
     }else if(fourth){
       campaignPresentation=new presentations.Mission4Presentation(session,{renderer,audio,leave,clearControls,stationPickups,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
-    }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,depotAsset,
-      resume:()=>requestControl(true)});
+    }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,depotAsset});
     await prepareMatchFrame(ticket);
     campaignPresentation.missionIntro=mountMissionIntro(campaignPresentation.root,options.missionId,{resumed:Boolean(options.save)});
     campaignPresentation.objectivesJournal=mountObjectivesJournal(campaignPresentation.root,data.definition,data.locale,()=>formatKeyCode(keybinds.score));
