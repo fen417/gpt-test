@@ -33,7 +33,7 @@ test('POM restores material hooks and uses consistent packed channels',()=>{
   const original=m.onBeforeCompile;
   setWebGlRelief(m,tex,24,.03,52);
   const shader={uniforms:{},fragmentShader:'void main() {\n#include <map_fragment>\n}'};
-  m.onBeforeCompile(shader);assert.ok(shader.fragmentShader.includes('vMetalnessMapUv s09ReliefUV'));assert.ok(shader.fragmentShader.includes('vAoMapUv s09ReliefUV'));assert.equal(shader.uniforms.reliefRange.value,52);
+  m.onBeforeCompile(shader);assert.ok(shader.fragmentShader.includes('vMetalnessMapUv s09ReliefUV'));assert.ok(shader.fragmentShader.includes('vAoMapUv s09ReliefAO'));assert.equal(shader.uniforms.reliefRange.value,52);
   setWebGlRelief(m,null);assert.equal(m.onBeforeCompile,original);
   const gpu=new MeshStandardNodeMaterial({map:tex,normalMap:tex,roughnessMap:tex,aoMap:tex,metalnessMap:tex});
   const base=gpu.colorNode;setWebGpuRelief(gpu,tex,24,.03,52);assert.notEqual(gpu.colorNode,base);

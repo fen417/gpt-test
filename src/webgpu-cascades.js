@@ -12,7 +12,7 @@ class SizedCsm extends CSMShadowNode {
   counters={rendered:0,reused:0,frames:0,lastMask:0};
 
   _init(builder) {
-    super._init(builder);
+    super._init({renderer:builder.renderer,camera:this.owner.camera});
     for(let i=0;i<this.lights.length;i++){
       const shadow=this.lights[i].shadow;
       shadow.mapSize.setScalar(this.sizes[i]);
@@ -100,8 +100,9 @@ export class WebGpuCascades {
     if(csm.camera&&!this.projection.equals(camera.projectionMatrix)){
       this.projection.copy(camera.projectionMatrix);csm.updateFrustums();
     }
-    // Scheduling runs inside CSM.updateBefore, after the stock code computes
-    // candidate matrices and before child ShadowNodes render their maps.
+    // Commit transforms before any child shadow node renders, regardless of
+    // node traversal order. Lazy first initialization still uses updateBefore.
+    if(csm.camera)csm.updateBefore({camera:csm.camera});
   }
   invalidate(){this.csm.invalidated=true;}
   stats(){return {...this.csm.counters,cascades:this.csm.cascades};}

@@ -7,6 +7,10 @@ import {WebGPURenderer,MeshStandardNodeMaterial} from 'three/webgpu';
 import {makeWeatherMask,weatherParameters} from '../src/map-weathering.js';
 import {setWebGlWeathering} from '../src/webgl-map-weathering.js';
 import {setWebGpuWeathering} from '../src/webgpu-map-weathering.js';
+import {setWebGlRelief} from '../src/webgl-surface-relief.js';
+import {setWebGpuRelief} from '../src/webgpu-surface-relief.js';
+import {WebGpuCascades} from '../src/webgpu-cascades.js';
+import {shadowCascadeOptions} from '../src/shadow-cascades.js';
 import {WaterAppearance} from '../src/water-appearance.js';
 import {graphicsEffects,gradeParameters} from '../src/graphics-settings.js';
 import {PostPass} from '../src/post-pass.js';
@@ -91,6 +95,46 @@ window.drawWeatherSmoke=async quality=>{
   const params=weatherParameters('quarry','concrete',quality);
   for(const material of materials)apply(material,params?mask:null,params);
   return renderChecked(async()=>{await renderer.compileAsync(scene,camera);renderer.render(scene,camera);});
+};
+let reliefScene,reliefCamera,reliefMaterial,reliefHeight;
+window.drawReliefSmoke=async mode=>{
+  if(!reliefScene){
+    reliefScene=new THREE.Scene();reliefScene.background=new THREE.Color(0x20252c);
+    reliefCamera=new THREE.PerspectiveCamera(43,1.5,.1,70);reliefCamera.position.set(3,2.5,3.5);reliefCamera.lookAt(0,1,0);
+    reliefScene.add(new THREE.HemisphereLight(0xffffff,0xbab5a7,2.3));
+    const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(2,5,4);reliefScene.add(sun);
+    const size=64,data=new Uint8Array(size*size*4),color=new Uint8Array(size*size*4),arm=new Uint8Array(size*size*4);
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+      const i=(y*size+x)*4,h=(Math.sin(x*Math.PI/8)*Math.cos(y*Math.PI/8)*.5+.5);
+      data.set([Math.round(h*255),Math.round(h*255),Math.round(h*255),255],i);
+      color.set([Math.round(65+h*155),Math.round(54+h*138),Math.round(40+h*100),255],i);
+      arm.set([Math.round(145+90*h),Math.round(170+60*h),Math.round(h*25),255],i);
+    }
+    const tex=(pixels,srgb=false)=>{const t=new THREE.DataTexture(pixels,size,size);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.minFilter=t.magFilter=THREE.LinearFilter;t.colorSpace=srgb?THREE.SRGBColorSpace:THREE.NoColorSpace;t.needsUpdate=true;return t;};
+    reliefHeight=tex(data);const packed=tex(arm);
+    reliefMaterial=device?new MeshStandardNodeMaterial({map:tex(color,true),roughnessMap:packed,aoMap:packed,metalnessMap:packed,metalness:.2}):
+      new THREE.MeshStandardMaterial({map:tex(color,true),roughnessMap:packed,aoMap:packed,metalnessMap:packed,metalness:.2});
+    const wall=new THREE.Mesh(new THREE.PlaneGeometry(5,4),reliefMaterial);wall.position.y=1.5;reliefScene.add(wall);
+  }
+  const applyRelief=device?setWebGpuRelief:setWebGlRelief;
+  applyRelief(reliefMaterial,mode==='off'?null:reliefHeight,mode==='ultra'?24:8,.075,52);
+  return renderChecked(async()=>{await renderer.compileAsync(reliefScene,reliefCamera);renderer.render(reliefScene,reliefCamera);});
+};
+window.drawCascadeScheduleSmoke=async()=>{
+  if(!device)return {skipped:true};
+  const world=new THREE.Scene(),view=new THREE.PerspectiveCamera(50,1.5,.1,150);
+  view.position.set(3,4,8);view.lookAt(0,0,0);
+  const sun=new THREE.DirectionalLight(0xffffff,3);sun.position.set(-10,20,12);sun.castShadow=true;world.add(sun,sun.target);
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new MeshStandardNodeMaterial({color:0xbcbcbc}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;world.add(floor);
+  const cube=new THREE.Mesh(new THREE.BoxGeometry(2,3,2),new MeshStandardNodeMaterial({color:0x787878}));cube.position.y=1.5;cube.castShadow=true;cube.receiveShadow=true;world.add(cube);
+  const old=renderer.shadowMap.enabled;renderer.shadowMap.enabled=true;
+  const owner={scene:world,camera:view,sun,frameCount:0},options=shadowCascadeOptions('ultra','near');options.sizes=[256,256,256];
+  const cascades=new WebGpuCascades(owner,options);
+  const result=await renderChecked(async()=>{
+    for(let i=0;i<9;i++){owner.frameCount=i;view.position.x+=.002;view.updateMatrixWorld(true);cascades.update();renderer.render(world,view);}
+  });
+  const stats=cascades.stats();cascades.dispose();renderer.shadowMap.enabled=old;
+  return {...result,stats};
 };
 window.drawWaterSmoke=async quality=>{
   const map=getMap('fy_pool_day');

@@ -2,7 +2,7 @@ import {setWebGlShaderPatch} from './webgl-shader-patches.js';
 const bindings=new WeakMap();
 const shader=`
 uniform sampler2D reliefMap;
-uniform float reliefScale,reliefRange;
+uniform float reliefScale,reliefRange,reliefPackedAO;
 uniform int reliefSteps;
 
 vec2 reliefUv(vec2 baseUv, vec3 viewPosition, vec3 normal) {
@@ -49,12 +49,12 @@ export function setWebGlRelief(material,map,steps,scale,range=46){
   let binding=bindings.get(material);
   if(!map){if(binding){setWebGlShaderPatch(material,'relief',null);bindings.delete(material);}return;}
   const packedAO=Boolean(material.aoMap&&material.aoMap===material.roughnessMap);
-  if(binding&&binding.packedAO!==packedAO){setWebGlShaderPatch(material,'relief',null);bindings.delete(material);binding=null;}
+
   if(!binding){
-    binding={packedAO,reliefMap:{value:map},reliefSteps:{value:steps},reliefScale:{value:scale},reliefRange:{value:range}};
+    binding={reliefPackedAO:{value:Number(packedAO)},reliefMap:{value:map},reliefSteps:{value:steps},reliefScale:{value:scale},reliefRange:{value:range}};
     bindings.set(material,binding);
     setWebGlShaderPatch(material,'relief',source=>{
-      Object.assign(source.uniforms,{reliefMap:binding.reliefMap,reliefSteps:binding.reliefSteps,reliefScale:binding.reliefScale,reliefRange:binding.reliefRange});
+      Object.assign(source.uniforms,{reliefMap:binding.reliefMap,reliefSteps:binding.reliefSteps,reliefScale:binding.reliefScale,reliefRange:binding.reliefRange,reliefPackedAO:binding.reliefPackedAO});
       source.fragmentShader=source.fragmentShader.replace('void main() {',shader+'\nvoid main() {')
         .replace('#include <map_fragment>',`
           #if defined(USE_MAP) && !defined(FLAT_SHADED)
@@ -63,11 +63,14 @@ export function setWebGlRelief(material,map,steps,scale,range=46){
             #define vNormalMapUv s09ReliefUV
             #define vRoughnessMapUv s09ReliefUV
             #define vMetalnessMapUv s09ReliefUV
-            ${packedAO?'#define vAoMapUv s09ReliefUV':''}
+            #ifdef USE_AOMAP
+              vec2 s09ReliefAO=mix(vAoMapUv,s09ReliefUV,reliefPackedAO);
+              #define vAoMapUv s09ReliefAO
+            #endif
           #endif
           #include <map_fragment>
         `);
     });
   }
-  binding.reliefMap.value=map;binding.reliefSteps.value=steps;binding.reliefScale.value=scale;binding.reliefRange.value=range;
+  binding.reliefMap.value=map;binding.reliefSteps.value=steps;binding.reliefScale.value=scale;binding.reliefRange.value=range;binding.reliefPackedAO.value=Number(packedAO);
 }

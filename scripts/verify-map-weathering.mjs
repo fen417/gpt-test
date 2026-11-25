@@ -69,6 +69,32 @@ async function run(api){
     assert.ok(high.changed>.025,api+' high weathering did not change the rendered image');
     assert.ok(restored.mean<.3,api+' disabling weathering failed to restore original frame');
     assert.deepEqual(networkErrors,[],api+' resource loading errors');
+    const reliefFrames={};
+    for(const q of ['off','low','ultra','offAgain']){
+      const result=await page.evaluate(q=>window.drawReliefSmoke(q==='offAgain'?'off':q),q);
+      assert.deepEqual(result.errors,[],api+' POM GPU validation errors');
+      assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' POM shader/browser errors');
+      if(result.lost){
+        if(api==='webgpu'&&info.software)return {inconclusive:'software device lost during POM '+q+': '+result.lost};
+        assert.fail(api+' POM GPU lost: '+result.lost);
+      }
+      reliefFrames[q]=await pixels(page);
+    }
+    const reliefLow=compare(reliefFrames.off,reliefFrames.low),reliefUltra=compare(reliefFrames.off,reliefFrames.ultra),reliefRestore=compare(reliefFrames.off,reliefFrames.offAgain);
+    console.log('POM',api,JSON.stringify({low:reliefLow,ultra:reliefUltra,restored:reliefRestore}));
+    assert.ok(reliefLow.changed>.01&&reliefUltra.changed>.01,api+' POM did not change projected texture');
+    assert.ok(reliefRestore.mean<.5,api+' POM did not restore original shading');
+    if(api==='webgpu'){
+      const result=await page.evaluate(()=>window.drawCascadeScheduleSmoke());
+      assert.deepEqual(result.errors,[],api+' CSM GPU validation errors');
+      assert.deepEqual(errors.filter(e=>!info.software||!softwareLoss(e)),[],api+' CSM shader/browser errors');
+      if(result.lost){
+        if(info.software)return {inconclusive:'software device lost during CSM: '+result.lost};
+        assert.fail(api+' CSM GPU lost: '+result.lost);
+      }
+      console.log('CSM schedule',JSON.stringify(result.stats));
+      assert.ok(result.stats.frames>=7&&result.stats.reused>0,api+' CSM did not reuse distant maps');
+    }
     const waterFrames={};
     for(const q of ['legacy','high','legacy']){
       const result=await page.evaluate(q=>window.drawWaterSmoke(q),q);
