@@ -93,3 +93,12 @@ test('sandbox uses real simulation collision and path finding',()=>{
  registerLocalMap(map);const sim=new Simulation({mapId:map.id,bots:0});
  const path=findBotPath(sim,{x:-12,y:0,z:0},{x:12,y:0,z:0});assert.ok(path.length);assert.equal(path.at(-1).x,12);
 });
+
+test('individual prop transform composes with the baked batch transform',()=>{
+ const prop={id:'m05-dress-yard-2',x:5,y:0,z:0,yaw:0,scale:1,detail:false};
+ const base={props:[prop],boxes:[{id:prop.id,x:5,z:0,baseY:0,w:2,d:2,h:2,visualModel:true}]};
+ const d=emptyM05Edits();d.dressingProps={[prop.id]:{position:[7,0,0],rotation:[0,0,0],scale:2,removed:false}};
+ d.dressingBatches={'m05_set_0_0':{position:[10,0,0],rotation:[0,Math.PI/2,0],scale:1,removed:false}};
+ const result=editableMapBoxes(base,d)[0];assert.ok(Math.abs(result.x-10)<1e-6);assert.ok(Math.abs(result.z+7)<1e-6);assert.equal(result.h,4);
+ d.dressingProps[prop.id].removed=true;assert.equal(editableMapBoxes(base,d).length,0);
+});

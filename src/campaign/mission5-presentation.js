@@ -99,7 +99,7 @@ export class Mission5Presentation{
     quarryDressing.traverse(o=>{
       if(!o.isMesh)return;
       let imported=false;for(let n=o;n;n=n.parent)if(n.userData.worldEditor){imported=true;break;}
-      if(!imported)o.castShadow=!o.name.startsWith('m05_detail_')&&!o.parent?.name.startsWith('m05_detail_');
+      if(!imported){let detail=false;for(let n=o;n;n=n.parent)if(n.name.startsWith('m05_detail_')){detail=true;break;}o.castShadow=!detail;}
       o.receiveShadow=true;geometries.add(o.geometry);
       for(const m of [o.material].flat())materials.add(m);
     });

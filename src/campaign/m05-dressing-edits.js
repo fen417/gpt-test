@@ -49,14 +49,15 @@ export function expandDressing(scene,source,props,edits={},editor=false){
   const original=originals.get(p.id),node=original.clone(true);
   node.name=p.id;node.userData.editorProp=p.id;applyPropNode(node,p,edits[p.id]);expanded.get(name).add(node);
  }
+ scene.updateMatrixWorld(true);
  if(!editor)for(const [name,group] of expanded){
   // Merge by material + attribute layout to preserve the original shading.
-  const buckets=new Map();
+  const buckets=new Map();let unsupported=false;
   for(const node of group.children){
    if(!node.visible)continue;
    node.updateMatrixWorld(true);
    node.traverse(mesh=>{
-    if(!mesh.isMesh||Array.isArray(mesh.material))return;
+    if(!mesh.isMesh)return;if(Array.isArray(mesh.material)||mesh.isSkinnedMesh){unsupported=true;return;}
     const g=mesh.geometry.clone();
     // The group's parent may itself be transformed by the batch editor.
     const inverse=group.matrixWorld.clone().invert(),matrix=new Matrix4().multiplyMatrices(inverse,mesh.matrixWorld);
@@ -72,7 +73,7 @@ export function expandDressing(scene,source,props,edits={},editor=false){
    for(const geo of geometries)geo.dispose();const mesh=new Mesh(g,mat);mesh.name=name+'-merged';merged.push(mesh);
   }
   // If merging is unsupported, preserve the unmerged objects instead.
-  if(merged.length===buckets.size&&merged.length){group.clear();group.add(...merged);}else for(const mesh of merged)mesh.geometry.dispose();
+  if(!unsupported&&merged.length===buckets.size&&merged.length){group.clear();group.add(...merged);}else for(const mesh of merged)mesh.geometry.dispose();
  }
  return expanded;
 }
