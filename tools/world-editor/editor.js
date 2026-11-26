@@ -8,6 +8,9 @@ import {FBXLoader} from 'three/addons/loaders/FBXLoader.js';
 import {OBJLoader} from 'three/addons/loaders/OBJLoader.js';
 import {MTLLoader} from 'three/addons/loaders/MTLLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+import {loadFPSHands} from '../../src/fps-hands.js';
+import {loadWeaponModels} from '../../src/weapon-models.js';
+import {loadEquipmentModels} from '../../src/gadget-models.js';
 import {GameRenderer} from '../../src/renderer.js';
 import {graphicsEffects,baseGraphicsQuality,geometryQuality,gradeParameters} from '../../src/graphics-settings.js';
 import {buildQuarryMissionScene} from '../../src/campaign/quarry-m05-scene.js';
@@ -244,6 +247,7 @@ function tick(t){requestAnimationFrame(tick);if(!game||!root)return;const dt=Mat
  if(t-(tick.stats??0)>400){tick.stats=t;const info=game.renderer.info.render;$('stats').textContent='Draw calls: '+info.calls+' | Треугольники: '+info.triangles+' | Текстуры: '+game.renderer.info.memory.textures;$('overlay').textContent='M05 · '+activeQuality.toUpperCase()+' · WebGL2\nX '+game.camera.position.x.toFixed(1)+'  Y '+game.camera.position.y.toFixed(1)+'  Z '+game.camera.position.z.toFixed(1)+'\nПКМ + WASD · колесо · F';}}
 async function init(){
  const loaded=await api('map');data=loaded.data;revision=loaded.revision;initialPaintCount=data.paint.length;liveTerrain=terrain();
+ await Promise.all([loadFPSHands(),loadWeaponModels(),loadEquipmentModels()]);
  game=new GameRenderer(canvas,{onError:e=>status(String(e))});game.presentingCampaign=true;game.setMap(QUARRY_M05.id);
  await game.surfaces.ready;
  // The game builder is used directly, without the irreversible runtime static merge.
