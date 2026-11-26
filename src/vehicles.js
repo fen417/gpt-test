@@ -444,8 +444,8 @@ const riderColors = [
   { uniform: 0xc1ab85, riderArmor: 0x827252, riderHelmet: 0x796c51 },
 ];
 
-export function createVehicleRig(type, material, teamColors) {
-  if(type===BLACK_HAWK)return createBlackHawkRig();
+export function createVehicleRig(type, material, teamColors, prepare) {
+  if(type===BLACK_HAWK)return createBlackHawkRig(prepare);
   if(type==='tank'){
     if(tankLibrary)return tankPool.pop()??tankLibrary.createTankRig(tankMaterialFactory,tankPrepare);
     const group=new THREE.Group(),body=new THREE.Group(),m=new THREE.MeshLambertMaterial({color:0x788368});group.add(body);const hull=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.4,7),m);hull.position.y=1;body.add(hull);

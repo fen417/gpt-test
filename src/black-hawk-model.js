@@ -20,7 +20,16 @@ function wreckMaterial(base) {
   return burnt.get(base);
 }
 
-export function createBlackHawkRig() {
+function blackHawkLevel(root){
+  const parts=Object.fromEntries(['Cabin','MainRotor','TailRotor','Minigun','MinigunBarrels'].map(part=>[
+    part,root.getObjectByName(root.name+'_'+part),
+  ]));
+  const meshes=[];
+  root.traverse(mesh=>{if(mesh.isMesh)meshes.push({mesh,base:mesh.material});});
+  return {root,meshes,...parts};
+}
+
+export function createBlackHawkRig(prepare) {
   const group = new THREE.Group(), body = new THREE.Group(), controls = new THREE.Group();
   body.rotation.order='YXZ';
   group.add(body);
@@ -28,16 +37,7 @@ export function createBlackHawkRig() {
   body.add(controls);
   const model = blackHawkModel.clone();
   body.add(model);
-  const lods = [0,1,2].map(i=>{
-    const prefix=`LOD${i}`;
-    const root=model.getObjectByName(prefix);
-    const parts=Object.fromEntries(['Cabin','MainRotor','TailRotor','Minigun','MinigunBarrels'].map(part=>[
-      part,model.getObjectByName(prefix+'_'+part),
-    ]));
-    const meshes=[];
-    root.traverse(mesh=>{if(mesh.isMesh)meshes.push({mesh,base:mesh.material});});
-    return {root,meshes,...parts};
-  });
+  const lods = [0,1,2].map(i=>blackHawkLevel(model.getObjectByName(`LOD${i}`)));
   const mount = new THREE.Group(), gun = new THREE.Group();
   mount.position.set(BLACK_HAWK_GUN.x,BLACK_HAWK_GUN.y,BLACK_HAWK_GUN.z);
   mount.add(gun);
@@ -56,7 +56,7 @@ export function createBlackHawkRig() {
   rotorDisk.position.set(0,4.39,.08);
   body.add(rotorDisk);
   return {
-    blackHawk:true,assetReady:true,group,body,controls,lods,rotorDisk,wheels:[],riders:[],
+    blackHawk:true,assetReady:true,group,body,controls,lods,prepare,rotorDisk,wheels:[],riders:[],
     turret:{gun,grips},mount,flash,rotorSpeed:0,rotorAngle:0,tailAngle:0,barrelAngle:0,barrelSpeed:0,
     materialsToDispose:new Set([flash.material,rotorDisk.material]),
   };
@@ -77,7 +77,16 @@ export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
   const occupied=player?.vehicleId===vehicle.id;
   const quality=view.quality??'high', detail=view.gfx?.detail==='auto'||!view.gfx?.detail?quality:view.gfx.detail;
   const dist=occupied?0:Math.hypot((player?.x??vehicle.x)-vehicle.x,(player?.y??vehicle.y)-vehicle.y,(player?.z??vehicle.z)-vehicle.z);
-  const lod=quality==='high'&&detail==='high'&&dist<72?0:quality!=='low'&&detail!=='low'&&dist<155?1:2;
+  const highDetail=view.highVehicleDetail??(quality==='high'&&detail==='high');
+  const lod=highDetail&&dist<72?0:quality!=='low'&&detail!=='low'&&dist<155?1:2;
+  if(lod===0&&!rig.detail){
+    const detailedRoot=blackHawkModel.cloneDetail();
+    if(detailedRoot){
+      rig.detail=blackHawkLevel(detailedRoot);
+      if(rig.prepare)detailedRoot.traverse(rig.prepare);
+      body.add(detailedRoot);
+    }else void blackHawkModel.loadDetail();
+  }
   const wrecked=vehicle.hp<=0;
   const ground=terrain?.heightAt(vehicle.x,vehicle.z)??0;
   const powered=!wrecked&&(vehicle.seats[0]!=null||vehicle.y-ground>1);
@@ -100,27 +109,29 @@ export function updateBlackHawkRig(rig,vehicle,player,dt,blend,view,terrain) {
   rig.barrelAngle=(rig.barrelAngle-dt*rig.barrelSpeed)%(Math.PI*2);
   flash.visible=!wrecked&&rig.flashTime>0;
   flash.material.opacity=rig.flashTime/.046;
-  const low=quality!=='high';
-  for(let i=0;i<lods.length;i++){
-    const level=lods[i];
-    level.root.visible=i===lod;
+  const active=lod===0&&rig.detail?rig.detail:lods[lod];
+  const fast=rig.rotorSpeed>19;
+  for(let i=0;i<lods.length+(rig.detail?1:0);i++){
+    const level=lods[i]??rig.detail;
+    level.root.visible=level===active;
+    if(!level.root.visible)continue;
+    const low=level!==rig.detail&&quality!=='high';
     level.Cabin.visible=occupied||dist<120;
     level.MainRotor.rotation.y=rig.rotorAngle;
     level.TailRotor.rotation.x=rig.tailAngle;
     level.Minigun.rotation.set(aim.pitch,aim.yaw,0,'YXZ');
     if(level.MinigunBarrels)level.MinigunBarrels.rotation.z=rig.barrelAngle;
-    const fast=rig.rotorSpeed>19;
-    if(rig.fastRotor!==fast)for (const rotor of [level.MainRotor,level.TailRotor]){
+    if(level.fastRotor!==fast)for (const rotor of [level.MainRotor,level.TailRotor]){
       rotor.traverse(mesh=>{if(mesh.isMesh)mesh.castShadow=!fast;});
     }
-    if(rig.wrecked!==wrecked||rig.low!==low){
+    if(level.wrecked!==wrecked||level.low!==low){
       for(const {mesh,base} of level.meshes){
         const mat=low?(base._lowMaterial??base):base;
         mesh.material=wrecked?wreckMaterial(mat):mat;
       }
     }
+    level.wrecked=wrecked;
+    level.low=low;
+    level.fastRotor=fast;
   }
-  rig.wrecked=wrecked;
-  rig.low=low;
-  rig.fastRotor=rig.rotorSpeed>19;
 }

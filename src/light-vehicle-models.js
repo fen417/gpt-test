@@ -54,49 +54,75 @@ export const atvModel = vehicleModel(new URL('./assets/atv/atv.glb',import.meta.
   'Body','BodyDetail','Controls','ControlDetail','Wheel','WheelLow','Badge',
 ],'Body');
 
-let blackHawkScene, blackHawkLoading;
+const blackHawkParts=['Airframe','Cabin','MainRotor','TailRotor','Minigun','MinigunBarrels'];
+
+function prepareBlackHawkScene(scene,prefixes,detailed=false) {
+  for(const prefix of prefixes){
+    if(!scene.getObjectByName(prefix))throw Error('Missing Black Hawk root '+prefix);
+    for(const part of blackHawkParts){
+      if(!scene.getObjectByName(`${prefix}_${part}`))throw Error(`Missing Black Hawk part ${part} in ${prefix}`);
+    }
+  }
+  const interiorMaterials=new Map();
+  scene.traverse(mesh=>{
+    if(!mesh.isMesh)return;
+    mesh.geometry.userData.sharedVehicleGeometry=true;
+    let high=mesh.material;
+    let parent=mesh,interior=false;
+    while(parent&&parent!==scene){
+      if((detailed?/_Cabin$/:/_Cabin$|_Airframe$/).test(parent.name)){interior=true;break;}
+      parent=parent.parent;
+    }
+    const cabinFinish=detailed?/liner|rubber|canvas|webbing/i:/enamel|liner|rubber|canvas|webbing/i;
+    if(interior&&!high.transparent&&cabinFinish.test(high.name)){
+      const original=high;
+      high=interiorMaterials.get(original);
+      if(!high){
+        high=original.clone();
+        if(!detailed){
+          high.metalness=Math.min(high.metalness??0,.12);
+          high.color.lerp(new THREE.Color(0x6b7063),.18);
+        }
+        high.emissive.copy(high.color);
+        high.emissiveIntensity=.075;
+        high.emissiveMap=high.map;
+        interiorMaterials.set(original,high);
+      }
+      mesh.material=high;
+    }
+    if(detailed)high.envMapIntensity=high.transparent ? .65 : .42;
+    if(high.transparent){
+      high.side=THREE.DoubleSide;
+      high.depthWrite=false;
+    }
+    mesh.castShadow=mesh.receiveShadow=!high.transparent;
+    if(detailed||high._lowMaterial)return;
+    pairMaterials(high,new THREE.MeshLambertMaterial({
+      color:high.color,map:high.map,emissive:high.emissive,emissiveMap:high.emissiveMap,emissiveIntensity:high.emissiveIntensity,
+      transparent:high.transparent,opacity:high.opacity,depthWrite:high.depthWrite,side:high.side,
+    }));
+  });
+}
+
+let blackHawkScene, blackHawkLoading, blackHawkDetail, blackHawkDetailLoading;
 export const blackHawkModel = {
   load() {
     return blackHawkLoading ??= loader.loadAsync(new URL('./assets/black-hawk/black-hawk.glb',import.meta.url).href)
       .then(({scene})=>{
-        for(let lod=0;lod<3;lod++){
-          for(const part of ['Airframe','Cabin','MainRotor','TailRotor','Minigun']){
-            if(!scene.getObjectByName(`LOD${lod}_${part}`))throw Error(`Missing Black Hawk part ${part} in LOD${lod}`);
-          }
-        }
-        const interiorMaterials=new Map();
-        scene.traverse(mesh=>{
-          if(!mesh.isMesh)return;
-          mesh.geometry.userData.sharedVehicleGeometry=true;
-          let high=mesh.material;
-          let parent=mesh,interior=false;
-          while(parent&&parent!==scene){if(/_Cabin$|_Airframe$/.test(parent.name)){interior=true;break;}parent=parent.parent;}
-          if(interior&&!high.transparent&&/enamel|liner|rubber|canvas|webbing/i.test(high.name)){
-            const original=high;
-            high=interiorMaterials.get(original);
-            if(!high){
-              high=original.clone();high.metalness=Math.min(high.metalness??0,.12);
-              high.color.lerp(new THREE.Color(0x6b7063),.18);
-              high.emissive.copy(high.color);high.emissiveIntensity=.075;
-              high.emissiveMap=high.map;interiorMaterials.set(original,high);
-            }
-            mesh.material=high;
-          }
-          if(high.transparent){
-            high.side=THREE.DoubleSide;
-            high.depthWrite=false;
-          }
-          mesh.castShadow=mesh.receiveShadow=!high.transparent;
-          pairMaterials(high,new THREE.MeshLambertMaterial({
-            color:high.color,map:high.map,emissive:high.emissive,emissiveMap:high.emissiveMap,emissiveIntensity:high.emissiveIntensity,
-            transparent:high.transparent,opacity:high.opacity,depthWrite:high.depthWrite,side:high.side,
-          }));
-        });
+        prepareBlackHawkScene(scene,['LOD0','LOD1','LOD2']);
         blackHawkScene=scene;
       }).catch(error=>{blackHawkLoading=null;console.error('Black Hawk model:',error);});
   },
+  loadDetail() {
+    return blackHawkDetailLoading ??= loader.loadAsync(new URL('./assets/black-hawk/black-hawk-high.glb',import.meta.url).href)
+      .then(({scene})=>{
+        prepareBlackHawkScene(scene,['HD'],true);
+        blackHawkDetail=scene.getObjectByName('HD');
+      }).catch(error=>console.error('Detailed Black Hawk model:',error));
+  },
   ready:()=>Boolean(blackHawkScene),
   clone:()=>blackHawkScene.clone(true),
+  cloneDetail:()=>blackHawkDetail?.clone(true),
 };
 
 export const lightVehicleModels = {atv:atvModel,humvee:humveeModel,'black-hawk':blackHawkModel};

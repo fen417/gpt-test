@@ -329,7 +329,7 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   if(rig.level===1&&distance>far*1.06)rig.level=2;else if(rig.level===2&&distance<far*.94)rig.level=1;
   if(p?.vehicleId===v.id)rig.level=0;
   const tilt=reset?1:1-Math.exp(-dt*14);rig.body.rotation.x+=((v.bodyPitch??0)-rig.body.rotation.x)*tilt;rig.body.rotation.z+=((v.bodyRoll??0)-rig.body.rotation.z)*tilt;
-  const wantDetail=view.tankDetail&&rig.level===0;
+  const wantDetail=view.highVehicleDetail&&rig.level===0;
   if(wantDetail&&!rig.detail){
     if(detailAssets){
       const desertCamo={value:false};

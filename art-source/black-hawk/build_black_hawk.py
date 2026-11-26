@@ -14,6 +14,11 @@ from mathutils import Vector
 
 HERE = Path(__file__).resolve().parent
 EXPORT = HERE.parents[1] / "src/assets/black-hawk/black-hawk.glb"
+PART_PIVOTS = {
+    "MainRotor": (0, 4.26, .08),
+    "TailRotor": (-.61, 4.01, 7.17),
+    "Minigun": (-1.19, 2.09, -.65),
+}
 MATERIALS = {
     "Olive enamel": ("#454a36", .57, .30),
     "Dark enamel": ("#30362b", .62, .23),
@@ -389,7 +394,7 @@ class Aircraft:
                 self.rod("Harness lap strap",TAPE,p(side*.22,.07,-.03),p(0,.081,-.095),.024)
             pad("harness buckle",STEEL,.089,.055,.078,.092,-.095)
 
-    def systems(self):
+    def rotors(self):
         self.group = "MainRotor"
         self.rod("Rotor head",METAL,(0,0,0),(0,.19,0),.23)
         for i in range(4):
@@ -411,6 +416,8 @@ class Aircraft:
                 return (-.075,y*math.cos(t)-z*math.sin(t),y*math.sin(t)+z*math.cos(t))
             self.panel("Tail rotor blade",DARK,[tail(*p) for p in [(.12,-.072),(1.02,-.115),
                        (1.11,.081),(.15,.100)]],.028)
+    def systems(self):
+        self.rotors()
         self.group = "Minigun"
         self.rod("Drive housing",METAL,(0,0,.19),(0,0,-.24),.113,sides=12)
         self.rod("Rear plate",STEEL,(0,0,.197),(0,0,.225),.093,sides=12)
@@ -440,13 +447,11 @@ class Aircraft:
             self.rod("Pintle brace",STEEL,(-1.19,1.60,-.65),(-1.05,1.42,-.34),.037)
 
     def export_groups(self, root):
-        pivots = {"MainRotor":(0,4.26,.08),"TailRotor":(-.61,4.01,7.17),
-                  "Minigun":(-1.19,2.09,-.65)}
         copies = []
         groups = {}
         for part, objects in self.parts.items():
             parent = groups["Minigun"] if part == "MinigunBarrels" else root
-            group = empty(root.name+"_"+part, self.collection, parent, pivots.get(part,(0,0,0)))
+            group = empty(root.name+"_"+part, self.collection, parent, PART_PIVOTS.get(part,(0,0,0)))
             groups[part] = group
             if part == "Minigun":
                 group.rotation_euler.z = math.pi/2
@@ -511,9 +516,7 @@ def build(texture_directory):
         anchors = {}
         for part, objects in model.parts.items():
             parent = anchors["Minigun"] if part == "MinigunBarrels" else None
-            anchor = empty(part+" source",collection,parent,{
-                "MainRotor":(0,4.26,.08),"TailRotor":(-.61,4.01,7.17),
-                "Minigun":(-1.19,2.09,-.65)}.get(part,(0,0,0)))
+            anchor = empty(part+" source",collection,parent,PART_PIVOTS.get(part,(0,0,0)))
             anchors[part] = anchor
             if part == "Minigun":
                 anchor.rotation_euler.z = math.pi/2

@@ -814,11 +814,13 @@ export class GameRenderer {
     }
     const vehicleTypes=new Set([...(state.vehicles??[]),...(this.map.vehicleSpawns??[])].map(vehicle=>vehicle.type));
     if(state.campaign?.missionId==='m03')vehicleTypes.add(BLACK_HAWK);
+    const detail=geometryQuality(view.quality,view.gfx?.detail)==='high';
     await Promise.allSettled([
       this.parachutes.load(),
       ...(graphicsEffects(view.quality,view.gfx?.customGraphics).shaderWarmup==='full'||state.gameMode==='tdm'?[this.infantry.warm()]:[]),
       ...Array.from(units.values(),([team,weapon])=>this.infantry.load(team,weapon)),
       ...Array.from(vehicleTypes,type=>lightVehicleModels[type]?.load()),
+      ...(detail&&vehicleTypes.has(BLACK_HAWK)?[lightVehicleModels[BLACK_HAWK].loadDetail()]:[]),
     ]);
   }
 
@@ -1343,7 +1345,7 @@ export class GameRenderer {
     const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
     const vehicleView = {
       ...view,
-      tankDetail: this.geometryQuality === 'high',
+      highVehicleDetail: this.geometryQuality === 'high',
     };
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
@@ -1367,7 +1369,7 @@ export class GameRenderer {
       }
       if (!rig || (model?.ready() && !rig.assetReady)) {
         const previous = rig;
-        rig = createVehicleRig(vehicle.type, material, TEAM_COLORS);
+        rig = createVehicleRig(vehicle.type, material, TEAM_COLORS, optimizeLighting);
         if (previous) {
           rig.group.position.copy(previous.group.position);
           rig.group.rotation.copy(previous.group.rotation);
