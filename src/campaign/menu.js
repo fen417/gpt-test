@@ -192,7 +192,7 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
     dialog.querySelector('.campaign-continue').disabled=!mission.implemented||!canStartCampaignMission(id,progress,unlocked);
     const play=dialog.querySelector('.campaign-play');
     play.disabled=!canStartCampaignMission(id,progress,unlocked);
-    dialog.querySelector('.campaign-mission-loadout').hidden=!['m01','m03','m04'].includes(id)||play.disabled;
+    dialog.querySelector('.campaign-mission-loadout').hidden=!['m01','m03','m04','m05'].includes(id)||play.disabled;
     dialog.querySelector('.campaign-boarding-seat').hidden=id!=='m04';
     play.textContent=status==='planned'?'В РАЗРАБОТКЕ':status==='locked'?'ЗАКРЫТО':status==='complete'?'ПЕРЕИГРАТЬ ↗':'НАЧАТЬ МИССИЮ ↗';
     dialog.dataset.mission=id;
@@ -204,7 +204,7 @@ export async function openCampaignMenu(onStart,{unlockAll=false,casePanel}={}){
     const save=resume?readCampaignSave(missionId):null;
     if(resume&&!save){dialog.querySelector('.campaign-menu-error').textContent='Контрольная точка недоступна. Начните миссию заново.';return;}
     if(!resume&&readCampaignSave(missionId)&&!window.confirm('Начать миссию сначала? Последняя контрольная точка будет перезаписана.'))return;
-    const loadout=!resume&&['m01','m03','m04'].includes(missionId)?{
+    const loadout=!resume&&['m01','m03','m04','m05'].includes(missionId)?{
       primary:dialog.querySelector('.campaign-mission-loadout [name="primary"]').value,
       sidearm:dialog.querySelector('.campaign-mission-loadout [name="sidearm"]').value,
       ...(missionId==='m04'?{seat:Number(dialog.querySelector('.campaign-boarding-seat select').value)}:{}),

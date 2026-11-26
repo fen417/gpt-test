@@ -22,7 +22,7 @@ export function missionObjectives(definition,m){
     if(completed.has('intel'))done.push('debrief');
     return {done,current:m.complete||m.phase==='finale'?null:m.objective??m.phase};
   }
-  const order=id==='m03'?['ride',...(definition.stages??[]).map(s=>s.id)]:id==='m04'?M04_STAGES:null;
+  const order=id==='m03'?['ride',...(definition.stages??[]).map(s=>s.id)]:id==='m04'?M04_STAGES:id==='m05'?definition.objectives:null;
   if(!order)return {done:[],current:m.complete?null:m.objective??null};
   const current=m.objective??m.stage,at=order.indexOf(current);
   if(current==='finale'||m.complete)return {done:[...order],current:null};

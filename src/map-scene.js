@@ -39,6 +39,10 @@ export function buildMapScene(owner, map, { editable = false, skipObjectives = f
   owner.scene = background;
   owner.map = map;
   try {
+    if(map.buildScene){
+      map.buildScene(owner,map,background);
+      return {root,groups,owner,roadSurface};
+    }
     if(map.theme==='linden-estate'){
       buildLindenEstate(map,background);
       return {root,groups,owner,roadSurface};

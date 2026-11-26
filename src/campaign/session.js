@@ -44,7 +44,7 @@ export class CampaignSession {
       }
       if(m.type==='state'){
         const next=m.state,previous=this.state;
-        if(!previous||next.campaign.epoch!==previous.campaign.epoch||next.time<previous.time||
+        if(!previous||next.campaign.epoch!==previous.campaign.epoch||next.campaign.controlledActorId!==previous.campaign.controlledActorId||next.time<previous.time||
           Boolean(next.campaign.cutscene)!==Boolean(previous.campaign.cutscene)||
           (next.campaign.cutscene?.extractionElapsed!=null)!==(previous.campaign.cutscene?.extractionElapsed!=null))this.resetPlayback();
         this.state=next;
@@ -66,7 +66,7 @@ export class CampaignSession {
           markCampaignComplete(this.missionId,{elapsedSeconds:stats.elapsedSeconds??m.state.time,
             losses:stats.losses??m.state.campaign.alliedLosses??0,stealth:stats.stealth??null,outcome:campaignOutcome(m.state)},flags);
           onComplete(this.missionId,save?.difficulty??options.difficulty);
-          if(['m03','m04'].includes(this.missionId))try{localStorage.removeItem(saveKey(this.missionId));}catch{}
+          if(['m03','m04','m05'].includes(this.missionId))try{localStorage.removeItem(saveKey(this.missionId));}catch{}
         }
         if(!this.started){this.started=true;clearTimeout(this.timer);this.resolve(this.state);}else onState(this.state);
       }
@@ -108,7 +108,7 @@ export class CampaignSession {
         const a=oldPlayers.get(p.id),b=newPlayers.get(p.id);
         if(!a||!b||a.alive!==p.alive||b.alive!==p.alive||Math.hypot(a.x-b.x,a.z-b.z)>8)return p;
         const pose={...p,x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),z:lerp(a.z,b.z,t)};
-        if(campaign.missionId==='m04'&&p.id!=='local'&&!p.vehicleId){
+        if(['m04','m05'].includes(campaign.missionId)&&p.id!=='local'&&!p.vehicleId){
           pose.yaw=lerpAngle(a.yaw,b.yaw,t);
           pose.pitch=lerp(a.pitch,b.pitch,t);
         }

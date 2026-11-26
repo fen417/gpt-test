@@ -1476,9 +1476,10 @@ export class GameRenderer {
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
     const m03Finale=state.campaign?.missionId==='m03'&&state.campaign.cutscene?.id==='finale';
+    const quarryCinematic=state.campaign?.missionId==='m05'&&state.campaign.cutscene;
     for (const player of state.players) {
       if(m03Finale&&player.inExtractionCabin)continue;
-      if (player.id === localId&&!m03Finale&&!(this.tankThirdPerson&&player.vehicleSeat===0&&
+      if (player.id === localId&&!m03Finale&&!quarryCinematic&&!(this.tankThirdPerson&&player.vehicleSeat===0&&
         ['tank',BLACK_HAWK].includes(vehiclesById.get(player.vehicleId)?.type))) continue;
       active.add(player.id);
       // Only the tank's enclosed driver and gunner are hidden under its armour.
@@ -1605,7 +1606,7 @@ export class GameRenderer {
       const mustReset = reset || respawned || returning;
       soldier.marker.material.color.setHex(sameSquad(local, player) ? 0x91dc78 :
         player.team === localTeam ? 0x79c5d2 : TEAM_COLORS[player.team] ?? COLORS.friendly);
-      soldier.marker.visible = player.team === localTeam&&!m03Finale;
+      soldier.marker.visible = player.team === localTeam&&!m03Finale&&!quarryCinematic;
       soldier.marker.position.y = player.downed || player.prone ? .6 :
         (player.crouching || player.crouch ? 1.48 : 1.94) + Math.sin(this.clock * 2) * .025;
       soldier.rifle.scale.setScalar(1);
@@ -1626,7 +1627,13 @@ export class GameRenderer {
       if (mustReset || externalScene || this.scoped || urgent || soldier.animationDt >= (soldier.animationThreshold??interval)) {
         soldier.animationFlags=poseFlags;soldier.animationShot=player.shotSeq;soldier.animationGadget=player.gadgetAction;
         soldier.animationThreshold=mustReset?interval*(.5+.5*soldier.animationPhase):interval;
+        const action=player.campaignAction;
+        if(action&&state.time-action.at<action.duration&&soldier.campaignActionAt!==action.at){
+          infantryAction(soldier,action.key);
+          soldier.campaignActionAt=action.at;
+        }
         updateInfantry(soldier, player, soldier.animationDt, mustReset, this.map.terrain);
+        if(player.campaignCivilian)soldier.rifle.visible=false;
         if(state.gameMode==='tdm'&&!player.weaponId){
           if(soldier.weaponModel)soldier.weaponModel.visible=false;
           if(soldier.distantWeapon)soldier.distantWeapon.visible=false;

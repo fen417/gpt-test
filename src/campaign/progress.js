@@ -55,7 +55,7 @@ export function markCampaignComplete(missionId,results={},flags={}){
   if(results.outcome)(progress.outcomes??={})[record]=results.outcome;
   const allowed=new Set(['kane_alive','lasko_alive','bruno_alive','duran_alive','tanks_alive','enemy_order',
     'marten_wounded','m3_done','harranti_alive','brigade_saved','m3_documents','m4_done','m4_radio_code','m4_tanks_killed','sappers_alive',
-    'm4_dispatcher_alive','m4_signal_sent']);
+    'm4_dispatcher_alive','m4_signal_sent','m5_done','m5_fuel_saved','m5_fuel_reserve','m5_mayak_compromised','vos_alive','timo_alive','rafa_alive']);
   for(const [key,value] of Object.entries(flags))if(allowed.has(key))progress.carry[key]=value;
   saveCampaignProgress(progress);
   globalThis.dispatchEvent?.(new CustomEvent(CAMPAIGN_PROFILE_EVENT,{detail:{missionId,completed:true,bestSeconds:elapsed}}));

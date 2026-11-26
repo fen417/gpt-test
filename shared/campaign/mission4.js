@@ -817,7 +817,13 @@ class NaharDirector{
         this.setStage('finale');this.say('marten.exit');
       }
     }else this.exitAt=null;
-    if(this.stage==='finale'&&!this.radio&&!this.queue.length&&this.age>=6){this.flags.m4_done=true;this.complete=true;}
+    if(this.stage==='finale'&&!this.radio&&!this.queue.length&&this.age>=6){
+      for(const id of ['duran','lasko','bruno']){
+        const actor=this.sim.players.get(id);
+        if(this.carry[id+'_alive']!==false&&actor)this.flags[id+'_alive']=actor.alive;
+      }
+      this.flags.m4_done=true;this.complete=true;
+    }
   }
   updateTransmission(dt){
     const length=this.settings.hold;

@@ -859,6 +859,10 @@ class ColumnDirector{
     if(harranti)Object.assign(harranti,{x:175.23,y,z:-11,yaw:Math.PI/2,grounded:true,vy:0});
     for(const id of Object.keys(allies))this.flags[`${id}_alive`]=this.sim.players.get(id)?.alive===true;
     const vos=this.sim.players.get('vos');
+    for(const id of Object.keys(crew)){
+      const actor=this.sim.players.get(id);
+      if(actor&&this.carry[id+'_alive']!==false)this.flags[id+'_alive']=actor.alive;
+    }
     this.setPanel('hq-gate','open');this.queue=[];this.radio=null;
     this.say('harranti.final');
     if(vos?.alive&&['timo','rafa'].every(id=>this.sim.players.get(id)?.alive)){

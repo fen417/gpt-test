@@ -1,0 +1,871 @@
+{
+  "engine": "ElevenLabs",
+  "model": "eleven_v4",
+  "language": "ru",
+  "voice_settings": {
+    "stability": 0.5
+  },
+  "clips": [
+    {
+      "id": "vos.reunion",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Марте́н? А я думал, вас до вечера из Наха́ра не вытащат",
+      "status": "pending"
+    },
+    {
+      "id": "marten.reunion",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Сам удивлён. А где остальные?",
+      "status": "pending"
+    },
+    {
+      "id": "vos.crew",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Кто на ремонте, кто у медиков. Собираем роту по частям",
+      "status": "pending"
+    },
+    {
+      "id": "timo.warn",
+      "speaker": "timo",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "Если ещё кто-нибудь скажет, что самое страшное уже позади, я его лично из танка высажу",
+      "status": "pending"
+    },
+    {
+      "id": "rafa.coffee",
+      "speaker": "rafa",
+      "voiceId": "bIHbv24MWmeRgasZH58o",
+      "spoken": "А кофе у нас так и не появился",
+      "status": "pending"
+    },
+    {
+      "id": "marten.coffee",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Помню. Ты мне обещал",
+      "status": "pending"
+    },
+    {
+      "id": "lasko.check",
+      "speaker": "lasko",
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "spoken": "Как нога? Дай глянуть, пока нас опять не погнали",
+      "status": "pending"
+    },
+    {
+      "id": "marten.check",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Держится. Лучше посмотри, чтобы остальные не развалились",
+      "status": "pending"
+    },
+    {
+      "id": "harranti.fuel",
+      "speaker": "harranti",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Через этот карьер проходит почти всё снабжение Корпуса в регионе. Нам нужны их запасы",
+      "status": "pending"
+    },
+    {
+      "id": "vos.fuel",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Сколько топлива осталось у нас?",
+      "status": "pending"
+    },
+    {
+      "id": "harranti.range",
+      "speaker": "harranti",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Чтобы добраться туда. Обратно — уже не уверен",
+      "status": "pending"
+    },
+    {
+      "id": "marten.risk",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "А если они уничтожат склад?",
+      "status": "pending"
+    },
+    {
+      "id": "harranti.plan",
+      "speaker": "harranti",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Поэтому вы пойдёте первыми. Откройте проезд, „Сокол“ войдёт следом. Топливные машины не трогать",
+      "status": "pending"
+    },
+    {
+      "id": "duran.ready",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Проверили магазины? Держимся вместе. Марте́н, идёшь со мной",
+      "status": "pending"
+    },
+    {
+      "id": "vos.depart",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Увидимся внизу. На этот раз не потеряем друг друга",
+      "status": "pending"
+    },
+    {
+      "id": "orlov.overlook",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "На краю открывается весь узел. Осмотрите склад, дробилку и проезд для техники",
+      "status": "pending"
+    },
+    {
+      "id": "kane.trucks",
+      "speaker": "kane",
+      "voiceId": "N2lVS1w4EtoT3dr4eOWO",
+      "spoken": "Странно. Грузовики загружены, но никто не уезжает",
+      "status": "pending"
+    },
+    {
+      "id": "duran.order",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Может, ждут приказа",
+      "status": "pending"
+    },
+    {
+      "id": "bruno.wait",
+      "speaker": "bruno",
+      "voiceId": "TX3LPaxmHKxFdv7VOQHJ",
+      "spoken": "Или нас",
+      "status": "pending"
+    },
+    {
+      "id": "marten.gate",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Ворота закрыты. Похоже, придётся идти через цех",
+      "status": "pending"
+    },
+    {
+      "id": "orlov.route",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "Вижу по схеме. Есть техническая лестница. Ведите группу туда",
+      "status": "pending"
+    },
+    {
+      "id": "worker.appear",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Не стреляйте! Мы здесь работаем. Они нас заперли",
+      "status": "pending"
+    },
+    {
+      "id": "marten.worker",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Нам нужен проезд к машинам. Вы можете открыть ворота?",
+      "status": "pending"
+    },
+    {
+      "id": "worker.warning",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Они ещё утром начали вывозить документы. Потом приказали всем спуститься вниз",
+      "status": "pending"
+    },
+    {
+      "id": "marten.who",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Кто отдавал приказ?",
+      "status": "pending"
+    },
+    {
+      "id": "worker.major",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Не знаю имени. Майор какой-то. Все его боялись. Если уйдут, сожгут всё топливо",
+      "status": "pending"
+    },
+    {
+      "id": "duran.dargo",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Дарго. Мы уже слышали это имя",
+      "status": "pending"
+    },
+    {
+      "id": "worker.power",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Питание пошло. Слышите конвейер? Створки теперь можно открыть.",
+      "status": "pending"
+    },
+    {
+      "id": "marten.coverWorker",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Давай. Мы прикроем",
+      "status": "pending"
+    },
+    {
+      "id": "worker.live",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Есть! Слышите? Теперь можно открыть ворота с нижней площадки",
+      "status": "pending"
+    },
+    {
+      "id": "duran.move",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "На верхний уровень. Не отставайте",
+      "status": "pending"
+    },
+    {
+      "id": "duran.mount",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Марте́н, видишь пулемёт на площадке? Займи его. Мы пойдём снизу",
+      "status": "pending"
+    },
+    {
+      "id": "marten.exposed",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Вас оттуда будет видно как на ладони",
+      "status": "pending"
+    },
+    {
+      "id": "duran.aim",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Вот именно. Поэтому не промахивайся",
+      "status": "pending"
+    },
+    {
+      "id": "marten.mounted",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "На месте. Вижу ваш маршрут",
+      "status": "pending"
+    },
+    {
+      "id": "duran.cross",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Первый участок! Пошли, пошли!",
+      "status": "pending"
+    },
+    {
+      "id": "bruno.middle",
+      "speaker": "bruno",
+      "voiceId": "TX3LPaxmHKxFdv7VOQHJ",
+      "spoken": "У укрытия. Дальше держат проход!",
+      "status": "pending"
+    },
+    {
+      "id": "medic.cross",
+      "speaker": "lasko",
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "spoken": "Я с раненым! Дайте пару секунд!",
+      "status": "pending"
+    },
+    {
+      "id": "marten.hot",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Пулемёт нагрелся. Придержите движение!",
+      "status": "pending"
+    },
+    {
+      "id": "bruno.vehicle",
+      "speaker": "bruno",
+      "voiceId": "TX3LPaxmHKxFdv7VOQHJ",
+      "spoken": "Марте́н! У нас машина на дороге!",
+      "status": "pending"
+    },
+    {
+      "id": "duran.almost",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Не прекращай огонь! Мы почти дошли!",
+      "status": "pending"
+    },
+    {
+      "id": "duran.panel",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Мы у пульта. Ворота пошли!",
+      "status": "pending"
+    },
+    {
+      "id": "holt.inbound",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "„Сокол“, проезд открывается. Заходим. Пехота, держитесь подальше от дороги",
+      "status": "pending"
+    },
+    {
+      "id": "holt.gate",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Проезд открыт. „Сокол“, держим колонну. Во́с, не отставай",
+      "status": "pending"
+    },
+    {
+      "id": "timo.road",
+      "speaker": "timo",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "Мне одному кажется, что эта дорога слишком узкая для танка?",
+      "status": "pending"
+    },
+    {
+      "id": "rafa.down",
+      "speaker": "rafa",
+      "voiceId": "bIHbv24MWmeRgasZH58o",
+      "spoken": "Не смотри вниз",
+      "status": "pending"
+    },
+    {
+      "id": "timo.thanks",
+      "speaker": "timo",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "Спасибо. Очень помогло",
+      "status": "pending"
+    },
+    {
+      "id": "marten.crusher",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Во́с, мы у дробилки. Дальше пройти не можем!",
+      "status": "pending"
+    },
+    {
+      "id": "vos.clear",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Вижу вашу площадку. Сейчас расчистим",
+      "status": "pending"
+    },
+    {
+      "id": "marten.passed",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Проход чист. Спасибо, седьмой!",
+      "status": "pending"
+    },
+    {
+      "id": "holt.storage",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "К складу. Не повреждайте машины с топливом",
+      "status": "pending"
+    },
+    {
+      "id": "harranti.abort",
+      "speaker": "harranti",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Марте́н, забудьте про резервуары! Нам нужны машины с топливом!",
+      "status": "pending"
+    },
+    {
+      "id": "marten.fire",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Здесь всё горит!",
+      "status": "pending"
+    },
+    {
+      "id": "vos.needFuel",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Без этих машин мы никуда не поедем",
+      "status": "pending"
+    },
+    {
+      "id": "worker.trucks",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Три машины уже заправлены. Одна у ворот, две в грузовых боксах!",
+      "status": "pending"
+    },
+    {
+      "id": "duran.drivers",
+      "speaker": "duran",
+      "voiceId": "pNInz6obpgDQGcFmaJgB",
+      "spoken": "Водители по машинам! Марте́н, прикрой выезд",
+      "status": "pending"
+    },
+    {
+      "id": "driver.aReady",
+      "speaker": "driverA",
+      "voiceId": "hpp4J3VqNfWAUOO0d1Us",
+      "spoken": "Двигатель есть! Жду, пока освободите дорогу",
+      "status": "pending"
+    },
+    {
+      "id": "driver.bGate",
+      "speaker": "driverB",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "Створку заклинило. Мне отсюда не выйти!",
+      "status": "pending"
+    },
+    {
+      "id": "marten.gateOpen",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Проезд открыт. Двигай!",
+      "status": "pending"
+    },
+    {
+      "id": "driver.cWait",
+      "speaker": "driverC",
+      "voiceId": "FGY2WhTYpPnrIDTdsKH5",
+      "spoken": "Нас прижали! Я не могу добраться до кабины!",
+      "status": "pending"
+    },
+    {
+      "id": "vos.guard",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Седьмой прикрывает дорогу. Выходите по одному!",
+      "status": "pending"
+    },
+    {
+      "id": "harranti.count",
+      "speaker": "harranti",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Принял. Сколько топлива спасли?",
+      "status": "pending"
+    },
+    {
+      "id": "marten.count3",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Все три машины на выходе.",
+      "status": "pending"
+    },
+    {
+      "id": "marten.count2",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Две вышли. Одну потеряли.",
+      "status": "pending"
+    },
+    {
+      "id": "marten.count1",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Одна вышла. Остальное потеряно.",
+      "status": "pending"
+    },
+    {
+      "id": "harranti.withdraw",
+      "speaker": "harranti",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Этого должно хватить. Выводите людей. Сбор на гряде",
+      "status": "pending"
+    },
+    {
+      "id": "vos.relief",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Ну что, сержант. Теперь можно выдохнуть?",
+      "status": "pending"
+    },
+    {
+      "id": "marten.relief",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Ты в прошлый раз тоже так говорил?",
+      "status": "pending"
+    },
+    {
+      "id": "vos.promise",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Нет. В прошлый раз я вообще ничего не обещал",
+      "status": "pending"
+    },
+    {
+      "id": "rafa.cups",
+      "speaker": "rafa",
+      "voiceId": "bIHbv24MWmeRgasZH58o",
+      "spoken": "Нашёл кофе. Не спрашивайте где",
+      "status": "pending"
+    },
+    {
+      "id": "marten.cups",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Вот теперь операция действительно успешна",
+      "status": "pending"
+    },
+    {
+      "id": "orlov.falseOrder",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "[короткие непривычные паузы] „Сокол“, говорит „Маяк“. Получен приказ изменить маршрут. Следуйте через южный перевал. Немедленно.",
+      "status": "pending"
+    },
+    {
+      "id": "vos.confirm",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Маяк, принял. Подтвердите распоряжение Харранти",
+      "status": "pending"
+    },
+    {
+      "id": "orlov.falseConfirm",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "Подтверждаю. Южный перевал. Не задерживайтесь",
+      "status": "pending"
+    },
+    {
+      "id": "bruno.notOrlov",
+      "speaker": "bruno",
+      "voiceId": "TX3LPaxmHKxFdv7VOQHJ",
+      "spoken": "Подождите. Это не Орлов",
+      "status": "pending"
+    },
+    {
+      "id": "marten.why",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "В смысле?",
+      "status": "pending"
+    },
+    {
+      "id": "bruno.code",
+      "speaker": "bruno",
+      "voiceId": "TX3LPaxmHKxFdv7VOQHJ",
+      "spoken": "Он ни разу не назвал наш номер подтверждения",
+      "status": "pending"
+    },
+    {
+      "id": "vos.notOrlov",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Стоп. Орлов не подтвердил номер. Мы так не работаем.",
+      "status": "pending"
+    },
+    {
+      "id": "vos.code",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Он повторяет приказ, но не подтверждает его.",
+      "status": "pending"
+    },
+    {
+      "id": "dargo.mayak",
+      "speaker": "dargo",
+      "voiceId": "JBFqnCBsd6RMkjVDRZzb",
+      "spoken": "Я же говорил вам, что „Маяк“ не останется вашим",
+      "status": "pending"
+    },
+    {
+      "id": "timo.storm",
+      "speaker": "timo",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "Во́с… Посмотри туда",
+      "status": "pending"
+    },
+    {
+      "id": "vos.moveOut",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Всем по машинам. Живо",
+      "status": "pending"
+    },
+    {
+      "id": "vos.answer-return",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Я тоже. Хорошо, что ошибся.",
+      "status": "pending"
+    },
+    {
+      "id": "vos.answer-tanks",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Меньше, чем хотелось бы, но хватит.",
+      "status": "pending"
+    },
+    {
+      "id": "vos.answer-later",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Договорились. Теперь держимся вместе.",
+      "status": "pending"
+    },
+    {
+      "id": "dispatcher.quarry",
+      "speaker": "dispatcher",
+      "voiceId": "bIHbv24MWmeRgasZH58o",
+      "spoken": "Ваши координаты верны. Дорога проходит через нижние ворота.",
+      "status": "pending"
+    },
+    {
+      "id": "orlov.recording",
+      "speaker": "orlov",
+      "voiceId": "onwK4e9ZLuTAKqWW03F9",
+      "spoken": "Запись диспетчера подтверждена. Ищите нижние ворота.",
+      "status": "pending"
+    },
+    {
+      "id": "support.casualty",
+      "speaker": "support",
+      "voiceId": "SAz9YHcvj6GT2YYXdXww",
+      "spoken": "У нас раненый! Прикройте, пока его поднимают.",
+      "status": "pending"
+    },
+    {
+      "id": "support.revive",
+      "speaker": "support",
+      "voiceId": "SAz9YHcvj6GT2YYXdXww",
+      "spoken": "Держись. Сейчас встанешь.",
+      "status": "pending"
+    },
+    {
+      "id": "lasko.revive",
+      "speaker": "lasko",
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "spoken": "Дыши ровно. Я рядом.",
+      "status": "pending"
+    },
+    {
+      "id": "lasko.medkitDrop",
+      "speaker": "lasko",
+      "voiceId": "cjVigY5qzO86Huf0OWal",
+      "spoken": "Аптечка у укрытия!",
+      "status": "pending"
+    },
+    {
+      "id": "medic.medkitDrop",
+      "speaker": "medic",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "Я оставил аптечку рядом.",
+      "status": "pending"
+    },
+    {
+      "id": "worker.order",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Начальник приказал взорвать резервуары, если вы войдёте. Машины уже полные.",
+      "status": "pending"
+    },
+    {
+      "id": "worker.panel",
+      "speaker": "worker",
+      "voiceId": "pqHfZKP75CvOlQylNhV4",
+      "spoken": "Сначала запитаю цех. Главный проезд открывается с нижнего пульта.",
+      "status": "pending"
+    },
+    {
+      "id": "driver.safeA",
+      "speaker": "driverA",
+      "voiceId": "hpp4J3VqNfWAUOO0d1Us",
+      "spoken": "Первый заправщик вышел. Иду к сбору.",
+      "status": "pending"
+    },
+    {
+      "id": "driver.safeB",
+      "speaker": "driverB",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "spoken": "Машина B за воротами. До встречи наверху.",
+      "status": "pending"
+    },
+    {
+      "id": "driver.safeC",
+      "speaker": "driverC",
+      "voiceId": "FGY2WhTYpPnrIDTdsKH5",
+      "spoken": "Третий вышел. Дорога свободна.",
+      "status": "pending"
+    },
+    {
+      "id": "driver.lost",
+      "speaker": "support",
+      "voiceId": "SAz9YHcvj6GT2YYXdXww",
+      "spoken": "Машина больше не идёт! Уходим из двора!",
+      "status": "pending"
+    },
+    {
+      "id": "vos.cups",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Наконец нашли кофе. Помнишь разговор в Тель-Мази́не?",
+      "status": "pending"
+    },
+    {
+      "id": "vos.storm",
+      "speaker": "vos",
+      "voiceId": "iP95p4xoKVk53GoZ742B",
+      "spoken": "Посмотрите на горизонт. Песок идёт сюда.",
+      "status": "pending"
+    },
+    {
+      "id": "medic.crossReserve",
+      "speaker": "medic",
+      "voiceId": "CwhRBWXzGAHq8TQ4Fs17",
+      "spoken": "Я с раненым. Прикройте нас!",
+      "status": "pending"
+    },
+    {
+      "id": "marten.workerPower",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "Питание есть. Теперь на верхнюю площадку.",
+      "status": "pending"
+    },
+    {
+      "id": "marten.workerTrucks",
+      "speaker": "marten",
+      "voiceId": "SOYHLrjzK2X1ezoPC6cr",
+      "spoken": "У нас три заправщика. Один во дворе, ещё два в боксах.",
+      "status": "pending"
+    },
+    {
+      "id": "holt.fuel",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Через этот карьер проходит почти всё снабжение Корпуса в регионе. Нам нужны их запасы",
+      "status": "pending"
+    },
+    {
+      "id": "holt.range",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Чтобы добраться туда. Обратно — уже не уверен",
+      "status": "pending"
+    },
+    {
+      "id": "holt.plan",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Поэтому вы пойдёте первыми. Откройте проезд, „Сокол“ войдёт следом. Топливные машины не трогать",
+      "status": "pending"
+    },
+    {
+      "id": "wing.ready",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Проверили магазины? Держимся вместе. Марте́н, идёшь со мной",
+      "status": "pending"
+    },
+    {
+      "id": "reserve.trucks",
+      "speaker": "reserve",
+      "voiceId": "Xb7hH8MSUJpSbSDYk0k2",
+      "spoken": "Странно. Грузовики загружены, но никто не уезжает",
+      "status": "pending"
+    },
+    {
+      "id": "wing.order",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Может, ждут приказа",
+      "status": "pending"
+    },
+    {
+      "id": "signal.wait",
+      "speaker": "signal",
+      "voiceId": "XrExE9yKIg1WjnnlVkGX",
+      "spoken": "Или нас",
+      "status": "pending"
+    },
+    {
+      "id": "wing.dargo",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Дарго. Мы уже слышали это имя",
+      "status": "pending"
+    },
+    {
+      "id": "wing.move",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "На верхний уровень. Не отставайте",
+      "status": "pending"
+    },
+    {
+      "id": "wing.mount",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Марте́н, видишь пулемёт на площадке? Займи его. Мы пойдём снизу",
+      "status": "pending"
+    },
+    {
+      "id": "wing.aim",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Вот именно. Поэтому не промахивайся",
+      "status": "pending"
+    },
+    {
+      "id": "wing.cross",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Первый участок! Пошли, пошли!",
+      "status": "pending"
+    },
+    {
+      "id": "signal.middle",
+      "speaker": "signal",
+      "voiceId": "XrExE9yKIg1WjnnlVkGX",
+      "spoken": "У укрытия. Дальше держат проход!",
+      "status": "pending"
+    },
+    {
+      "id": "signal.vehicle",
+      "speaker": "signal",
+      "voiceId": "XrExE9yKIg1WjnnlVkGX",
+      "spoken": "Марте́н! У нас машина на дороге!",
+      "status": "pending"
+    },
+    {
+      "id": "wing.almost",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Не прекращай огонь! Мы почти дошли!",
+      "status": "pending"
+    },
+    {
+      "id": "wing.panel",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Мы у пульта. Ворота пошли!",
+      "status": "pending"
+    },
+    {
+      "id": "holt.abort",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Марте́н, забудьте про резервуары! Нам нужны машины с топливом!",
+      "status": "pending"
+    },
+    {
+      "id": "wing.drivers",
+      "speaker": "wing",
+      "voiceId": "IKne3meq5aSn9XLyUdCD",
+      "spoken": "Водители по машинам! Марте́н, прикрой выезд",
+      "status": "pending"
+    },
+    {
+      "id": "holt.count",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Принял. Сколько топлива спасли?",
+      "status": "pending"
+    },
+    {
+      "id": "holt.withdraw",
+      "speaker": "holt",
+      "voiceId": "nPczCjzI2devNBz1zQrb",
+      "spoken": "Этого должно хватить. Выводите людей. Сбор на гряде",
+      "status": "pending"
+    }
+  ]
+}

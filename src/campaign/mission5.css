@@ -1,0 +1,14 @@
+.campaign-m05 [hidden]{display:none!important}
+.campaign-m05 .campaign-subtitle{z-index:3}
+.campaign-m05 .campaign-cutscene{z-index:1}
+.m05-fade{position:absolute;inset:0;background:#080b10;z-index:2;pointer-events:none}
+.m05-marker{position:absolute;left:0;top:0;white-space:nowrap;font:11px monospace;color:#ffe3a7;background:#0f171ccb;padding:5px 8px;border-left:1px solid #d1a666}
+.m05-heat,.m05-trucks,.m05-choices{position:absolute;right:32px;top:90px;display:grid;gap:7px;padding:12px 16px;background:#10191edb;border-left:2px solid #c0aa7b;font:12px monospace}
+.m05-heat{top:auto;bottom:110px;right:50%;transform:translateX(50%);text-align:center}
+.m05-heat meter{width:148px}
+.m05-trucks [data-status="lost"]{color:#f0977e}
+.m05-trucks [data-status="saved"]{color:#a8d69f}
+.m05-choices{right:auto;left:32px;top:153px;gap:9px}
+.m05-choices kbd{padding:2px 5px;border:1px solid #c6ac71}
+.m05-mounted #hud .bottom-right .ammo{visibility:hidden}
+@media(max-width:700px){.m05-choices{left:12px;top:135px}.m05-trucks{right:12px;top:120px}}

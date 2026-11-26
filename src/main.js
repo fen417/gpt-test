@@ -499,7 +499,12 @@ function receive(next){
   const previousPlayer=local();
   const previousVehicle=state?.vehicles?.find(v=>v.id===previousPlayer?.vehicleId);
   const landingEnded=next.campaign?.missionId==='m01'&&state?.campaign?.cutscene?.id==='landing'&&!next.campaign.cutscene;
+  const quarryTransition=next.campaign?.missionId==='m05'&&next.campaign.epoch!==state?.campaign?.epoch;
   state=next;const player=local();
+  if(quarryTransition&&player){
+    clearControls();yaw=player.yaw;pitch=player.pitch;weaponSlot=player.weaponSlot||1;toolSlot=0;
+    lastInput={};vehicleLook.id=null;
+  }
   if(landingEnded&&active&&player?.alive&&!locked&&!unlocked&&$('pause').classList.contains('hidden'))void requestControl(true);
   const legacyRound=mode==='server'&&!next.weaponKills?localRoundId+'/'+multiplayer.epoch:null;
   if(active&&player)trackWeaponProgress(legacyRound?{weaponRoundId:legacyRound,weaponKills:{}}:next);
@@ -866,6 +871,7 @@ async function startCampaign(options){
   const second=options.missionId==='m02';
   const third=options.missionId==='m03';
   const fourth=options.missionId==='m04';
+  const fifth=options.missionId==='m05';
   try{
     const {CampaignSession,CampaignPresentation,campaignData}=await import('./campaign/menu.js');
     const [{mountMissionIntro},{mountObjectivesJournal}]=await Promise.all([
@@ -876,10 +882,10 @@ async function startCampaign(options){
     // Local campaign maps are lazy; multiplayer/lobby map selection stays unchanged.
     const map=second?import('../shared/campaign/alhadra-desert.js'):
       third?import('../shared/campaign/tel-mazin.js'):
-      fourth?import('../shared/campaign/nahar.js'):null;
+      fourth?import('../shared/campaign/nahar.js'):fifth?import('../shared/campaign/quarry-m05.js'):null;
     const presentation=second?import('./campaign/mission2-presentation.js'):
       third?import('./campaign/mission3-presentation.js'):
-      fourth?import('./campaign/mission4-presentation.js'):null;
+      fourth?import('./campaign/mission4-presentation.js'):fifth?import('./campaign/mission5-presentation.js'):null;
     const depot=presentation?null:CampaignPresentation.loadDepot();
     const [,presentations,depotAsset]=await Promise.all([map,presentation,depot]);
     signal.throwIfAborted();
@@ -890,8 +896,9 @@ async function startCampaign(options){
     await session.ready;
     signal.throwIfAborted();
     state=session.snapshot();
-    const [,stationPickups]=await Promise.all([
+    const [,stationPickups,quarryDressing]=await Promise.all([
       prepareMatchMap(ticket,state.mapId),fourth?presentations.loadStationPickups():null,
+      fifth?presentations.loadQuarryDressing():null,
     ]);
     signal.throwIfAborted();
     if(second){
@@ -904,6 +911,10 @@ async function startCampaign(options){
     }else if(fourth){
       campaignPresentation=new presentations.Mission4Presentation(session,{renderer,audio,leave,clearControls,stationPickups,
         resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
+    }else if(fifth){
+      campaignPresentation=new presentations.Mission5Presentation(session,{renderer,audio,leave,clearControls,quarryDressing,
+        resume:()=>requestControl(true),getBindings:()=>keybinds,keyLabel:formatKeyCode});
+      vehicleThirdPerson=true;
     }else campaignPresentation=new CampaignPresentation(session,{renderer,audio,leave,clearControls,depotAsset});
     await prepareMatchFrame(ticket);
     campaignPresentation.missionIntro=mountMissionIntro(campaignPresentation.root,options.missionId,{resumed:Boolean(options.save)});
@@ -1868,6 +1879,14 @@ function updateVehicleHud(player,renderState){
   if(state.campaign?.missionId==='m02'&&vehicle?.type==='tank'){
     show('vehicle-prompt',false);
     return vehicle?VEHICLE_TYPES.tank.seats[0]:null;
+  }
+  if(state.campaign?.missionId==='m05'){
+    show('vehicle-prompt',vehicle?.type==='tank');
+    if(vehicle?.type==='tank'){
+      text('vehicle-prompt',formatKeyCode(keybinds.vehicleCamera)+' · КАМЕРА     ПКМ · ПРИЦЕЛ     ЛКМ · ОГОНЬ');
+      return VEHICLE_TYPES.tank.seats[0];
+    }
+    return null;
   }
   const key=formatKeyCode(keybinds.interact);
   const nearby=!vehicle&&player.alive&&Math.abs(player.y-(currentMap.terrain?.heightAt(player.x,player.z)??0))<=.8&&getVehicleBoardingSeat(player,vehicles,currentMap.terrain);

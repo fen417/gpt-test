@@ -1,0 +1,542 @@
+{
+  "speakers": {
+    "marten": "Ян Мартен",
+    "vos": "Ирвин Вос · «Сокол-7»",
+    "timo": "Тимо Рэй",
+    "rafa": "Рафа Ким",
+    "lasko": "Тео Ласко",
+    "harranti": "Полковник Харранти",
+    "duran": "Сержант Дюран",
+    "orlov": "Лейтенант Орлов · «Маяк»",
+    "dispatcher": "Диспетчер Нахара",
+    "kane": "Рядовой Кейн",
+    "bruno": "Бруно Валь",
+    "worker": "Самир",
+    "medic": "Санитар",
+    "holt": "Капитан Холт",
+    "driverA": "Водитель A",
+    "driverB": "Водитель B",
+    "driverC": "Водитель C",
+    "support": "Боец прикрытия",
+    "dargo": "Дарго",
+    "wing": "Командир отделения",
+    "signal": "Радист",
+    "reserve": "Боец прикрытия"
+  },
+  "objectives": {
+    "arrival": "Встретьтесь с экипажем «Сокола-7»",
+    "reunion": "Встретьтесь с экипажем «Сокола-7»",
+    "brief": "Подойдите к командиру у карты",
+    "briefing": "Выслушайте инструктаж",
+    "departure": "Выйдите к обзорной гряде",
+    "survey": "Осмотрите склад, дробилку и ворота",
+    "descend": "Спуститесь к технической галерее",
+    "workers": "Найдите рабочих",
+    "power": "Прикройте запуск оборудования",
+    "route": "Доберитесь до верхней площадки",
+    "station": "Займите станковый пулемёт",
+    "cross": "Прикройте перебежку отделения",
+    "ready": "Дождитесь колонны у нижних ворот",
+    "gate": "Проведите «Сокол-7» через ворота",
+    "crusher": "Прикройте Мартена у дробилки",
+    "storage": "Выйдите к топливному узлу",
+    "blast": "Взрыв у склада",
+    "evacuate": "Обеспечьте выход заправщиков",
+    "withdraw": "Выйдите к колонне",
+    "assembly": "Соберитесь у выезда"
+  },
+  "lines": {
+    "vos.reunion": {
+      "speaker": "vos",
+      "text": "Мартен? А я думал, вас до вечера из Нахара не вытащат"
+    },
+    "marten.reunion": {
+      "speaker": "marten",
+      "text": "Сам удивлён. А где остальные?"
+    },
+    "vos.crew": {
+      "speaker": "vos",
+      "text": "Кто на ремонте, кто у медиков. Собираем роту по частям"
+    },
+    "timo.warn": {
+      "speaker": "timo",
+      "text": "Если ещё кто-нибудь скажет, что самое страшное уже позади, я его лично из танка высажу"
+    },
+    "rafa.coffee": {
+      "speaker": "rafa",
+      "text": "А кофе у нас так и не появился"
+    },
+    "marten.coffee": {
+      "speaker": "marten",
+      "text": "Помню. Ты мне обещал"
+    },
+    "lasko.check": {
+      "speaker": "lasko",
+      "text": "Как нога? Дай глянуть, пока нас опять не погнали"
+    },
+    "marten.check": {
+      "speaker": "marten",
+      "text": "Держится. Лучше посмотри, чтобы остальные не развалились"
+    },
+    "harranti.fuel": {
+      "speaker": "harranti",
+      "text": "Через этот карьер проходит почти всё снабжение Корпуса в регионе. Нам нужны их запасы"
+    },
+    "vos.fuel": {
+      "speaker": "vos",
+      "text": "Сколько топлива осталось у нас?"
+    },
+    "harranti.range": {
+      "speaker": "harranti",
+      "text": "Чтобы добраться туда. Обратно — уже не уверен"
+    },
+    "marten.risk": {
+      "speaker": "marten",
+      "text": "А если они уничтожат склад?"
+    },
+    "harranti.plan": {
+      "speaker": "harranti",
+      "text": "Поэтому вы пойдёте первыми. Откройте проезд, „Сокол“ войдёт следом. Топливные машины не трогать"
+    },
+    "duran.ready": {
+      "speaker": "duran",
+      "text": "Проверили магазины? Держимся вместе. Мартен, идёшь со мной"
+    },
+    "vos.depart": {
+      "speaker": "vos",
+      "text": "Увидимся внизу. На этот раз не потеряем друг друга"
+    },
+    "orlov.overlook": {
+      "speaker": "orlov",
+      "text": "На краю открывается весь узел. Осмотрите склад, дробилку и проезд для техники"
+    },
+    "kane.trucks": {
+      "speaker": "kane",
+      "text": "Странно. Грузовики загружены, но никто не уезжает"
+    },
+    "duran.order": {
+      "speaker": "duran",
+      "text": "Может, ждут приказа"
+    },
+    "bruno.wait": {
+      "speaker": "bruno",
+      "text": "Или нас"
+    },
+    "marten.gate": {
+      "speaker": "marten",
+      "text": "Ворота закрыты. Похоже, придётся идти через цех"
+    },
+    "orlov.route": {
+      "speaker": "orlov",
+      "text": "Вижу по схеме. Есть техническая лестница. Ведите группу туда"
+    },
+    "worker.appear": {
+      "speaker": "worker",
+      "text": "Не стреляйте! Мы здесь работаем. Они нас заперли"
+    },
+    "marten.worker": {
+      "speaker": "marten",
+      "text": "Нам нужен проезд к машинам. Вы можете открыть ворота?"
+    },
+    "worker.warning": {
+      "speaker": "worker",
+      "text": "Они ещё утром начали вывозить документы. Потом приказали всем спуститься вниз"
+    },
+    "marten.who": {
+      "speaker": "marten",
+      "text": "Кто отдавал приказ?"
+    },
+    "worker.major": {
+      "speaker": "worker",
+      "text": "Не знаю имени. Майор какой-то. Все его боялись. Если уйдут, сожгут всё топливо"
+    },
+    "duran.dargo": {
+      "speaker": "duran",
+      "text": "Дарго. Мы уже слышали это имя"
+    },
+    "worker.power": {
+      "speaker": "worker",
+      "text": "Питание пошло. Слышите конвейер? Створки теперь можно открыть."
+    },
+    "marten.coverWorker": {
+      "speaker": "marten",
+      "text": "Давай. Мы прикроем"
+    },
+    "worker.live": {
+      "speaker": "worker",
+      "text": "Есть! Слышите? Теперь можно открыть ворота с нижней площадки"
+    },
+    "duran.move": {
+      "speaker": "duran",
+      "text": "На верхний уровень. Не отставайте"
+    },
+    "duran.mount": {
+      "speaker": "duran",
+      "text": "Мартен, видишь пулемёт на площадке? Займи его. Мы пойдём снизу"
+    },
+    "marten.exposed": {
+      "speaker": "marten",
+      "text": "Вас оттуда будет видно как на ладони"
+    },
+    "duran.aim": {
+      "speaker": "duran",
+      "text": "Вот именно. Поэтому не промахивайся"
+    },
+    "marten.mounted": {
+      "speaker": "marten",
+      "text": "На месте. Вижу ваш маршрут"
+    },
+    "duran.cross": {
+      "speaker": "duran",
+      "text": "Первый участок! Пошли, пошли!"
+    },
+    "bruno.middle": {
+      "speaker": "bruno",
+      "text": "У укрытия. Дальше держат проход!"
+    },
+    "medic.cross": {
+      "speaker": "lasko",
+      "text": "Я с раненым! Дайте пару секунд!"
+    },
+    "marten.hot": {
+      "speaker": "marten",
+      "text": "Пулемёт нагрелся. Придержите движение!"
+    },
+    "bruno.vehicle": {
+      "speaker": "bruno",
+      "text": "Мартен! У нас машина на дороге!"
+    },
+    "duran.almost": {
+      "speaker": "duran",
+      "text": "Не прекращай огонь! Мы почти дошли!"
+    },
+    "duran.panel": {
+      "speaker": "duran",
+      "text": "Мы у пульта. Ворота пошли!"
+    },
+    "holt.inbound": {
+      "speaker": "holt",
+      "text": "„Сокол“, проезд открывается. Заходим. Пехота, держитесь подальше от дороги"
+    },
+    "holt.gate": {
+      "speaker": "holt",
+      "text": "Проезд открыт. „Сокол“, держим колонну. Вос, не отставай"
+    },
+    "timo.road": {
+      "speaker": "timo",
+      "text": "Мне одному кажется, что эта дорога слишком узкая для танка?"
+    },
+    "rafa.down": {
+      "speaker": "rafa",
+      "text": "Не смотри вниз"
+    },
+    "timo.thanks": {
+      "speaker": "timo",
+      "text": "Спасибо. Очень помогло"
+    },
+    "marten.crusher": {
+      "speaker": "marten",
+      "text": "Вос, мы у дробилки. Дальше пройти не можем!"
+    },
+    "vos.clear": {
+      "speaker": "vos",
+      "text": "Вижу вашу площадку. Сейчас расчистим"
+    },
+    "marten.passed": {
+      "speaker": "marten",
+      "text": "Проход чист. Спасибо, седьмой!"
+    },
+    "holt.storage": {
+      "speaker": "holt",
+      "text": "К складу. Не повреждайте машины с топливом"
+    },
+    "harranti.abort": {
+      "speaker": "harranti",
+      "text": "Мартен, забудьте про резервуары! Нам нужны машины с топливом!"
+    },
+    "marten.fire": {
+      "speaker": "marten",
+      "text": "Здесь всё горит!"
+    },
+    "vos.needFuel": {
+      "speaker": "vos",
+      "text": "Без этих машин мы никуда не поедем"
+    },
+    "worker.trucks": {
+      "speaker": "worker",
+      "text": "Три машины уже заправлены. Одна у ворот, две в грузовых боксах!"
+    },
+    "duran.drivers": {
+      "speaker": "duran",
+      "text": "Водители по машинам! Мартен, прикрой выезд"
+    },
+    "driver.aReady": {
+      "speaker": "driverA",
+      "text": "Двигатель есть! Жду, пока освободите дорогу"
+    },
+    "driver.bGate": {
+      "speaker": "driverB",
+      "text": "Створку заклинило. Мне отсюда не выйти!"
+    },
+    "marten.gateOpen": {
+      "speaker": "marten",
+      "text": "Проезд открыт. Двигай!"
+    },
+    "driver.cWait": {
+      "speaker": "driverC",
+      "text": "Нас прижали! Я не могу добраться до кабины!"
+    },
+    "vos.guard": {
+      "speaker": "vos",
+      "text": "Седьмой прикрывает дорогу. Выходите по одному!"
+    },
+    "harranti.count": {
+      "speaker": "harranti",
+      "text": "Принял. Сколько топлива спасли?"
+    },
+    "marten.count3": {
+      "speaker": "marten",
+      "text": "Все три машины на выходе."
+    },
+    "marten.count2": {
+      "speaker": "marten",
+      "text": "Две вышли. Одну потеряли."
+    },
+    "marten.count1": {
+      "speaker": "marten",
+      "text": "Одна вышла. Остальное потеряно."
+    },
+    "harranti.withdraw": {
+      "speaker": "harranti",
+      "text": "Этого должно хватить. Выводите людей. Сбор на гряде"
+    },
+    "vos.relief": {
+      "speaker": "vos",
+      "text": "Ну что, сержант. Теперь можно выдохнуть?"
+    },
+    "marten.relief": {
+      "speaker": "marten",
+      "text": "Ты в прошлый раз тоже так говорил?"
+    },
+    "vos.promise": {
+      "speaker": "vos",
+      "text": "Нет. В прошлый раз я вообще ничего не обещал"
+    },
+    "rafa.cups": {
+      "speaker": "rafa",
+      "text": "Нашёл кофе. Не спрашивайте где"
+    },
+    "marten.cups": {
+      "speaker": "marten",
+      "text": "Вот теперь операция действительно успешна"
+    },
+    "orlov.falseOrder": {
+      "speaker": "orlov",
+      "text": "„Сокол“, говорит „Маяк“. Получен приказ изменить маршрут. Следуйте через южный перевал. Немедленно."
+    },
+    "vos.confirm": {
+      "speaker": "vos",
+      "text": "Маяк, принял. Подтвердите распоряжение Харранти"
+    },
+    "orlov.falseConfirm": {
+      "speaker": "orlov",
+      "text": "Подтверждаю. Южный перевал. Не задерживайтесь"
+    },
+    "bruno.notOrlov": {
+      "speaker": "bruno",
+      "text": "Подождите. Это не Орлов"
+    },
+    "marten.why": {
+      "speaker": "marten",
+      "text": "В смысле?"
+    },
+    "bruno.code": {
+      "speaker": "bruno",
+      "text": "Он ни разу не назвал наш номер подтверждения"
+    },
+    "vos.notOrlov": {
+      "speaker": "vos",
+      "text": "Стоп. Орлов не подтвердил номер. Мы так не работаем."
+    },
+    "vos.code": {
+      "speaker": "vos",
+      "text": "Он повторяет приказ, но не подтверждает его."
+    },
+    "dargo.mayak": {
+      "speaker": "dargo",
+      "text": "Я же говорил вам, что „Маяк“ не останется вашим"
+    },
+    "timo.storm": {
+      "speaker": "timo",
+      "text": "Вос… Посмотри туда"
+    },
+    "vos.moveOut": {
+      "speaker": "vos",
+      "text": "Всем по машинам. Живо"
+    },
+    "vos.answer-return": {
+      "speaker": "vos",
+      "text": "Я тоже. Хорошо, что ошибся."
+    },
+    "vos.answer-tanks": {
+      "speaker": "vos",
+      "text": "Меньше, чем хотелось бы, но хватит."
+    },
+    "vos.answer-later": {
+      "speaker": "vos",
+      "text": "Договорились. Теперь держимся вместе."
+    },
+    "dispatcher.quarry": {
+      "speaker": "dispatcher",
+      "text": "Ваши координаты верны. Дорога проходит через нижние ворота."
+    },
+    "orlov.recording": {
+      "speaker": "orlov",
+      "text": "Запись диспетчера подтверждена. Ищите нижние ворота."
+    },
+    "support.casualty": {
+      "speaker": "support",
+      "text": "У нас раненый! Прикройте, пока его поднимают."
+    },
+    "support.revive": {
+      "speaker": "support",
+      "text": "Держись. Сейчас встанешь."
+    },
+    "lasko.revive": {
+      "speaker": "lasko",
+      "text": "Дыши ровно. Я рядом."
+    },
+    "lasko.medkitDrop": {
+      "speaker": "lasko",
+      "text": "Аптечка у укрытия!"
+    },
+    "medic.medkitDrop": {
+      "speaker": "medic",
+      "text": "Я оставил аптечку рядом."
+    },
+    "worker.order": {
+      "speaker": "worker",
+      "text": "Начальник приказал взорвать резервуары, если вы войдёте. Машины уже полные."
+    },
+    "worker.panel": {
+      "speaker": "worker",
+      "text": "Сначала запитаю цех. Главный проезд открывается с нижнего пульта."
+    },
+    "driver.safeA": {
+      "speaker": "driverA",
+      "text": "Первый заправщик вышел. Иду к сбору."
+    },
+    "driver.safeB": {
+      "speaker": "driverB",
+      "text": "Машина B за воротами. До встречи наверху."
+    },
+    "driver.safeC": {
+      "speaker": "driverC",
+      "text": "Третий вышел. Дорога свободна."
+    },
+    "driver.lost": {
+      "speaker": "support",
+      "text": "Машина больше не идёт! Уходим из двора!"
+    },
+    "vos.cups": {
+      "speaker": "vos",
+      "text": "Наконец нашли кофе. Помнишь разговор в Тель-Мазине?"
+    },
+    "vos.storm": {
+      "speaker": "vos",
+      "text": "Посмотрите на горизонт. Песок идёт сюда."
+    },
+    "medic.crossReserve": {
+      "speaker": "medic",
+      "text": "Я с раненым. Прикройте нас!"
+    },
+    "marten.workerPower": {
+      "speaker": "marten",
+      "text": "Питание есть. Теперь на верхнюю площадку."
+    },
+    "marten.workerTrucks": {
+      "speaker": "marten",
+      "text": "У нас три заправщика. Один во дворе, ещё два в боксах."
+    },
+    "holt.fuel": {
+      "speaker": "holt",
+      "text": "Через этот карьер проходит почти всё снабжение Корпуса в регионе. Нам нужны их запасы"
+    },
+    "holt.range": {
+      "speaker": "holt",
+      "text": "Чтобы добраться туда. Обратно — уже не уверен"
+    },
+    "holt.plan": {
+      "speaker": "holt",
+      "text": "Поэтому вы пойдёте первыми. Откройте проезд, „Сокол“ войдёт следом. Топливные машины не трогать"
+    },
+    "wing.ready": {
+      "speaker": "wing",
+      "text": "Проверили магазины? Держимся вместе. Мартен, идёшь со мной"
+    },
+    "reserve.trucks": {
+      "speaker": "reserve",
+      "text": "Странно. Грузовики загружены, но никто не уезжает"
+    },
+    "wing.order": {
+      "speaker": "wing",
+      "text": "Может, ждут приказа"
+    },
+    "signal.wait": {
+      "speaker": "signal",
+      "text": "Или нас"
+    },
+    "wing.dargo": {
+      "speaker": "wing",
+      "text": "Дарго. Мы уже слышали это имя"
+    },
+    "wing.move": {
+      "speaker": "wing",
+      "text": "На верхний уровень. Не отставайте"
+    },
+    "wing.mount": {
+      "speaker": "wing",
+      "text": "Мартен, видишь пулемёт на площадке? Займи его. Мы пойдём снизу"
+    },
+    "wing.aim": {
+      "speaker": "wing",
+      "text": "Вот именно. Поэтому не промахивайся"
+    },
+    "wing.cross": {
+      "speaker": "wing",
+      "text": "Первый участок! Пошли, пошли!"
+    },
+    "signal.middle": {
+      "speaker": "signal",
+      "text": "У укрытия. Дальше держат проход!"
+    },
+    "signal.vehicle": {
+      "speaker": "signal",
+      "text": "Мартен! У нас машина на дороге!"
+    },
+    "wing.almost": {
+      "speaker": "wing",
+      "text": "Не прекращай огонь! Мы почти дошли!"
+    },
+    "wing.panel": {
+      "speaker": "wing",
+      "text": "Мы у пульта. Ворота пошли!"
+    },
+    "holt.abort": {
+      "speaker": "holt",
+      "text": "Мартен, забудьте про резервуары! Нам нужны машины с топливом!"
+    },
+    "wing.drivers": {
+      "speaker": "wing",
+      "text": "Водители по машинам! Мартен, прикрой выезд"
+    },
+    "holt.count": {
+      "speaker": "holt",
+      "text": "Принял. Сколько топлива спасли?"
+    },
+    "holt.withdraw": {
+      "speaker": "holt",
+      "text": "Этого должно хватить. Выводите людей. Сбор на гряде"
+    }
+  }
+}

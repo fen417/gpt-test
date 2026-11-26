@@ -8,14 +8,14 @@ const characters={
 const knownTankCrew={'sokol-1':'holt','sokol-4':'grey','sokol-8':'bale'};
 
 export function campaignCharacter(player){
-  return characters[player.id.replace(/^m02-/,'')]??player.name;
+  return characters[(player.actorId??player.id).replace(/^m02-/,'')]??player.name;
 }
 
 export function campaignOutcome(state){
   const {missionId,tanksAlive}=state.campaign;
   const fallen=[];
   for(const player of state.players){
-    if(player.team===0&&player.alive===false&&Object.hasOwn(characters,player.id.replace(/^m02-/,'')))
+    if(player.team===0&&player.alive===false&&Object.hasOwn(characters,(player.actorId??player.id).replace(/^m02-/,'')))
       fallen.push(campaignCharacter(player));
   }
   if(missionId==='m02')for(const v of state.vehicles){
@@ -24,13 +24,14 @@ export function campaignOutcome(state){
   }
   const count=state.vehicles.filter(vehicle=>vehicle.team===0&&vehicle.type==='tank'&&vehicle.hp>0).length;
   const tanks=missionId==='m01'||missionId==='m04'?null:missionId==='m02'?tanksAlive??count:count;
-  return {tanks,fallen:[...new Set(fallen)]};
+  return {tanks,fallen:[...new Set(fallen)],...(missionId==='m05'?{fuelSaved:state.campaign.fuelSaved}:{})};
 }
 
 export function describeCampaignOutcome(outcome){
   if(!outcome)return '';
   const tanks=Number.isFinite(outcome.tanks)?`Союзных танков в строю ${outcome.tanks} · `:'';
-  return tanks+(outcome.fallen.length?`Погибли — ${outcome.fallen.join(', ')}`:'Ключевые бойцы выжили');
+  const fuel=Number.isInteger(outcome.fuelSaved)?`Заправщики ${outcome.fuelSaved}/3 · `:'';
+  return fuel+tanks+(outcome.fallen.length?`Погибли — ${outcome.fallen.join(', ')}`:'Ключевые бойцы выжили');
 }
 
 export function showCampaignOutcome(root,state){

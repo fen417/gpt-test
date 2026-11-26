@@ -3,16 +3,19 @@ import {Mission2Simulation,validMission2Save} from '../../shared/campaign/missio
 import {Mission3Simulation,validMission3Save} from '../../shared/campaign/mission3.js';
 import {Mission4Simulation,validMission4Save} from '../../shared/campaign/mission4.js';
 
-const missions={m01:[CampaignSimulation,validCampaignSave],m02:[Mission2Simulation,validMission2Save],
-  m03:[Mission3Simulation,validMission3Save],m04:[Mission4Simulation,validMission4Save]};
+import {Mission5Simulation,validMission5Save} from '../../shared/campaign/mission5.js';
 
-let sim,paused=true,last=0,accumulator=0,tick=0,input={},lastSaveRevision=-1;
+const missions={m01:[CampaignSimulation,validCampaignSave],m02:[Mission2Simulation,validMission2Save],
+  m03:[Mission3Simulation,validMission3Save],m04:[Mission4Simulation,validMission4Save],m05:[Mission5Simulation,validMission5Save]};
+
+let inputEpoch=-1,sim,paused=true,last=0,accumulator=0,tick=0,input={},lastSaveRevision=-1;
 function send(){
   if(!sim)return;
   const state=sim.snapshot();
-  state.weaponKills=sim.weaponKills.get('local')??{};
+  const m05=state.campaign?.missionId==='m05';
+  state.weaponKills=sim.weaponKills.get(m05?'marten':'local')??{};
   const player=state.players.find(p=>p.id==='local');
-  if(player)player.weaponModules=sim.weaponAttachments.get('local');
+  if(player)player.weaponModules=sim.weaponAttachments.get(m05?state.campaign.activeHero:'local');
   self.postMessage({type:'state',state});
   if(sim.campaign.saveRevision!==lastSaveRevision){
     lastSaveRevision=sim.campaign.saveRevision;
@@ -42,7 +45,8 @@ self.onmessage=event=>{
       const liveCommand=id==='m01'&&m.command?.type==='nightVision'||
         id==='m02'&&['weapon','order','repair','targetLock','cruise'].includes(m.command?.type)||
         id==='m03'&&['order','smoke','talk','answer'].includes(m.command?.type)||
-        id==='m04'&&m.command?.type==='order';
+        id==='m04'&&m.command?.type==='order'||
+        id==='m05'&&['order','answer'].includes(m.command?.type);
       if(!liveCommand){input={};sim.setInput('local',{});}
       sim.campaign.command(m.command);
       if(sim.weaponAttachments.has('local'))sim.setWeaponAttachments('local',sim.weaponAttachments.get('local'));
@@ -58,6 +62,9 @@ setInterval(()=>{
   accumulator=Math.min(.1,accumulator+elapsed);let steps=0,sendState=false;
   try{
     while(accumulator>=1/60&&steps++<5){
+      if(sim.campaign.definition.id==='m05'&&sim.campaign.epoch!==inputEpoch){
+        inputEpoch=sim.campaign.epoch;input={};
+      }
       sim.setInput('local',input);sim.step(1/60);accumulator-=1/60;tick++;
       const blocked=sim.campaign.awaitingLoadout||sim.campaign.failed||sim.campaign.complete;
       sendState||=tick%2===0||blocked;

@@ -40,6 +40,10 @@ function dialogueActor(state,speaker){
     }
     return actor;
   }
+  if(missionId==='m05'){
+    const id=speaker.startsWith('driver')?'driver-'+speaker.slice(6):speaker;
+    return players.find(p=>p.actorId===id);
+  }
   const id=speaker==='marten'?'local':missionId==='m02'?`m02-${speaker}`:speaker;
   return players.find(p=>p.id===id)??players.find(p=>p.id===`stand-in-${id}`);
 }
@@ -241,11 +245,15 @@ export class CampaignAudio {
   update(state,locale,paused,renderer,briefingPosition){
     this.ensureGraph();if(!this.bus)return;
     const c=this.combat.ctx,mission=state.campaign;
-    if(['m02','m03','m04'].includes(mission.missionId)){
+    if(['m02','m03','m04','m05'].includes(mission.missionId)){
       this.paused=paused;this.bus.gain.setTargetAtTime(!paused&&this.combat.enabled?this.combat.volume*.9:0,c.currentTime,.04);
       this.voiceBus.gain.setTargetAtTime(this.combat.effectsVolume,c.currentTime,.05);
       this.musicBus.gain.setTargetAtTime(this.combat.musicVolume*.15,c.currentTime,.2);
-      if(!this.prefetched){this.prefetched=true;for(const line of Object.values(locale.lines))if(line.audio)this.buffer(line.audio);}
+      if(!this.prefetched){
+        this.prefetched=true;
+        const lines=Object.values(locale.lines);
+        for(const line of mission.missionId==='m05'?lines.slice(0,12):lines)if(line.audio)this.buffer(line.audio);
+      }
       if(this.epoch!==mission.epoch){this.epoch=mission.epoch;this.stopVoice();this.key=null;}
       if(paused){if(this.sources.length)this.stopVoice();this.key=null;return;}
       this.updateDialogue(state,locale,mission.radio,mission.radioRemaining,renderer,briefingPosition);

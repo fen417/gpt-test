@@ -1,0 +1,476 @@
+{
+  "version": 1,
+  "contentRevision": 1,
+  "id": "m05",
+  "title": "Карьер",
+  "map": "quarry-m05",
+  "audioBudgets": {"music": 1600000, "voice": 1680000, "sfx": 260000},
+  "objectives": [
+    "arrival",
+    "reunion",
+    "brief",
+    "briefing",
+    "departure",
+    "survey",
+    "descend",
+    "workers",
+    "power",
+    "route",
+    "station",
+    "cross",
+    "ready",
+    "gate",
+    "crusher",
+    "storage",
+    "blast",
+    "evacuate",
+    "withdraw",
+    "assembly"
+  ],
+  "music": {},
+  "cinematics": {
+    "C1": {
+      "duration": 38,
+      "shots": [
+        {
+          "id": "C1-1",
+          "end": 10,
+          "camera": [
+            [
+              -250,
+              1,
+              -224
+            ],
+            [
+              -246,
+              1.4,
+              -225
+            ],
+            [
+              -242,
+              1.8,
+              -223
+            ]
+          ],
+          "lookAt": [
+            -240,
+            0.9,
+            -222
+          ],
+          "fov": 49
+        },
+        {
+          "id": "C1-2",
+          "end": 22,
+          "camera": [
+            [
+              -253,
+              5,
+              -214
+            ],
+            [
+              -247,
+              4,
+              -215
+            ],
+            [
+              -244,
+              3,
+              -218
+            ]
+          ],
+          "lookAt": "sokol-7",
+          "fov": 55
+        },
+        {
+          "id": "C1-3",
+          "end": 31,
+          "camera": [
+            [
+              -239,
+              2,
+              -218
+            ],
+            [
+              -235,
+              2.2,
+              -218
+            ],
+            [
+              -233,
+              1.8,
+              -220
+            ]
+          ],
+          "lookAt": "vos",
+          "fov": 46
+        },
+        {
+          "id": "C1-4",
+          "end": 38,
+          "camera": [
+            [
+              -231,
+              2,
+              -221
+            ],
+            [
+              -234,
+              1.8,
+              -224
+            ],
+            [
+              -241,
+              1.7,
+              -227
+            ]
+          ],
+          "lookAt": "vos",
+          "fov": 54
+        }
+      ]
+    },
+    "C2": {
+      "duration": 16,
+      "shots": [
+        {
+          "id": "C2-1",
+          "end": 5,
+          "camera": [
+            [
+              53,
+              2.4,
+              -76
+            ],
+            [
+              58,
+              3,
+              -72
+            ],
+            [
+              65,
+              4.5,
+              -66
+            ]
+          ],
+          "lookAt": [
+            145,
+            2.1,
+            5
+          ],
+          "fov": 54
+        },
+        {
+          "id": "C2-2",
+          "end": 11,
+          "camera": [
+            [
+              24,
+              38,
+              -110
+            ],
+            [
+              72,
+              41,
+              -132
+            ],
+            [
+              127,
+              38,
+              -135
+            ]
+          ],
+          "lookAt": [
+            100,
+            1,
+            12
+          ],
+          "fov": 63
+        },
+        {
+          "id": "C2-3",
+          "end": 16,
+          "camera": [
+            [
+              201,
+              1.7,
+              -116
+            ],
+            [
+              184,
+              2.6,
+              -104
+            ],
+            [
+              175,
+              3.2,
+              -100
+            ]
+          ],
+          "lookAt": "sokol-7",
+          "fov": 49
+        }
+      ]
+    },
+    "C3": {
+      "duration": 12,
+      "shots": [
+        {
+          "id": "C3-1",
+          "end": 5,
+          "camera": [
+            [
+              -23,
+              4,
+              130
+            ],
+            [
+              -30,
+              4.7,
+              135
+            ],
+            [
+              -41,
+              5,
+              140
+            ]
+          ],
+          "lookAt": [
+            -112,
+            7,
+            148
+          ],
+          "fov": 56
+        },
+        {
+          "id": "C3-2",
+          "end": 12,
+          "camera": [
+            [
+              -57,
+              2.3,
+              151
+            ],
+            [
+              -55,
+              1.8,
+              149
+            ],
+            [
+              -54,
+              1.65,
+              147
+            ]
+          ],
+          "lookAt": "marten",
+          "fov": 52
+        }
+      ]
+    },
+    "C4": {
+      "duration": 88,
+      "shots": [
+        {
+          "id": "C4-1",
+          "end": 9,
+          "camera": [
+            [
+              145,
+              8,
+              204
+            ],
+            [
+              148,
+              7,
+              209
+            ],
+            [
+              156,
+              5,
+              212
+            ]
+          ],
+          "lookAt": [
+            170,
+            1,
+            225
+          ],
+          "fov": 61
+        },
+        {
+          "id": "C4-2",
+          "end": 22,
+          "camera": [
+            [
+              160,
+              2,
+              215
+            ],
+            [
+              162,
+              2,
+              217
+            ],
+            [
+              163,
+              1.8,
+              220
+            ]
+          ],
+          "lookAt": "vos",
+          "fov": 48
+        },
+        {
+          "id": "C4-3",
+          "end": 35,
+          "camera": [
+            [
+              173,
+              2,
+              224
+            ],
+            [
+              169,
+              1.8,
+              223
+            ],
+            [
+              165,
+              1.75,
+              221
+            ]
+          ],
+          "lookAt": "marten",
+          "fov": 43
+        },
+        {
+          "id": "C4-4",
+          "end": 53,
+          "camera": [
+            [
+              159,
+              1.9,
+              216
+            ],
+            [
+              161,
+              1.7,
+              217
+            ],
+            [
+              163,
+              1.7,
+              219
+            ]
+          ],
+          "lookAt": "vos",
+          "fov": 44
+        },
+        {
+          "id": "C4-5",
+          "end": 70,
+          "camera": [
+            [
+              166,
+              1.7,
+              229
+            ],
+            [
+              166,
+              1.7,
+              225
+            ],
+            [
+              165,
+              1.65,
+              222
+            ]
+          ],
+          "lookAt": "vos",
+          "fov": 43
+        },
+        {
+          "id": "C4-6",
+          "end": 88,
+          "camera": [
+            [
+              174,
+              5,
+              218
+            ],
+            [
+              177,
+              8,
+              217
+            ],
+            [
+              181,
+              13,
+              214
+            ]
+          ],
+          "lookAt": [
+            613,
+            27,
+            400
+          ],
+          "fov": 62
+        }
+      ]
+    }
+  },
+  "cues": {
+    "C4": [
+      [
+        33,
+        "orlov.falseOrder",
+        "vos.confirm",
+        "orlov.falseConfirm"
+      ],
+      [
+        51,
+        "bruno.notOrlov",
+        "marten.why",
+        "bruno.code"
+      ],
+      [
+        65,
+        "dargo.mayak"
+      ],
+      [
+        75,
+        "timo.storm",
+        "vos.moveOut"
+      ]
+    ]
+  },
+  "fallbacks": {
+    "bruno.notOrlov": "vos.notOrlov",
+    "bruno.code": "vos.code",
+    "rafa.cups": "vos.cups",
+    "timo.storm": "vos.storm",
+    "medic.cross": "medic.crossReserve",
+    "worker.power": "marten.workerPower",
+    "worker.trucks": "marten.workerTrucks",
+    "harranti.fuel": "holt.fuel",
+    "harranti.range": "holt.range",
+    "harranti.plan": "holt.plan",
+    "duran.ready": "wing.ready",
+    "kane.trucks": "reserve.trucks",
+    "duran.order": "wing.order",
+    "bruno.wait": "signal.wait",
+    "duran.dargo": "wing.dargo",
+    "duran.move": "wing.move",
+    "duran.mount": "wing.mount",
+    "duran.aim": "wing.aim",
+    "duran.cross": "wing.cross",
+    "bruno.middle": "signal.middle",
+    "bruno.vehicle": "signal.vehicle",
+    "duran.almost": "wing.almost",
+    "duran.panel": "wing.panel",
+    "harranti.abort": "holt.abort",
+    "duran.drivers": "wing.drivers",
+    "harranti.count": "holt.count",
+    "harranti.withdraw": "holt.withdraw"
+  }
+}
