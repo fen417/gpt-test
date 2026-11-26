@@ -2,7 +2,7 @@ import {CAMPAIGN_CASE_MISSIONS,CASE_TYPES,CASE_RARITIES,FIELD_RESERVE,POLAR_CIRC
 import {WEAPONS} from '../shared/world.js';
 import {requestCases} from './network.js';
 import {mountWeaponPreview} from './weapon-preview.js';
-import {cloneWeaponModel,loadWeaponDetail,loadWeaponModels} from './weapon-models.js';
+import {cloneWeaponModel,hasWeaponDetail,loadWeaponDetail,loadWeaponModels} from './weapon-models.js';
 import {setWeaponSkin,weaponSkinUrl} from './weapon-skins.js';
 import './case-panel.css';
 
@@ -42,7 +42,7 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,getLowWe
         const {id,weaponId,name}=showing;
         const lowDetail=getLowWeaponDetail();
         return {
-          key:id+(weaponId==='ar416'?(lowDetail?':low':':detailed'):''),name:`${WEAPONS[weaponId].name} · ${name}`,
+          key:id+(hasWeaponDetail(weaponId)?(lowDetail?':low':':detailed'):''),name:`${WEAPONS[weaponId].name} · ${name}`,
           async load(){
             await Promise.all([loadWeaponModels(),lowDetail?null:loadWeaponDetail(weaponId)]);
             const model=cloneWeaponModel(weaponId,!lowDetail);

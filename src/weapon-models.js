@@ -34,7 +34,10 @@ const moduleSlots = {
   stock: {mount:'Mount_Stock',stock:['Stock']},
 };
 const templates = new Map();
-const detailUrls = { ar416: new URL('./assets/infantry/ar416-high.glb', import.meta.url).href };
+const detailUrls = {
+  ar416: new URL('./assets/infantry/ar416-high.glb', import.meta.url).href,
+  ak12: new URL('./assets/infantry/ak12m-high.glb', import.meta.url).href,
+};
 const detailTemplates = new Map(), detailLoads = new Map(), detailInstances = new WeakMap();
 const mountedParts = new WeakMap();
 const upgradeTemplates = new Map();
@@ -84,8 +87,10 @@ export function loadWeaponModels() {
   return pending;
 }
 
+export const hasWeaponDetail = id => Object.hasOwn(detailUrls,id);
+
 export function loadWeaponDetail(id) {
-  if (!Object.hasOwn(detailUrls,id)) return;
+  if (!hasWeaponDetail(id)) return;
   if (!detailLoads.has(id)) {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     detailLoads.set(id, loader.loadAsync(detailUrls[id]).then(({scene}) => {
@@ -106,7 +111,7 @@ export function cloneWeaponModel(id, detailed=false) {
 // Both exports use the same named slots, origins and animation pivots.
 // Keep the active hierarchy and switch the geometry on those meshes.
 export function setWeaponDetail(root, id, detailed) {
-  if (!root || !Object.hasOwn(detailUrls,id)) return false;
+  if (!root || !hasWeaponDetail(id)) return false;
   const template = detailTemplates.get(id);
   if (detailed && !template) {
     if (!detailLoads.has(id)) void loadWeaponDetail(id);

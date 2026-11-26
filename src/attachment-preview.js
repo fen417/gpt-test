@@ -1,6 +1,6 @@
 import {WEAPONS} from '../shared/world.js';
 import {loadCollimatorModel,mountCollimator} from './collimator.js';
-import {cloneWeaponModel,loadWeaponDetail,showWeaponUpgrades} from './weapon-models.js';
+import {cloneWeaponModel,hasWeaponDetail,loadWeaponDetail,showWeaponUpgrades} from './weapon-models.js';
 import {setWeaponSkin} from './weapon-skins.js';
 
 const optics=new WeakMap();
@@ -9,7 +9,7 @@ const loading=new WeakSet();
 export function attachmentPreviewItem(weaponId,attachments,refresh,lowDetail=false,skinId=null){
   if(!WEAPONS[weaponId])return null;
   return {
-    key:'weapon:'+weaponId+':'+(skinId??'')+(weaponId==='ar416'?(lowDetail?':low':':detailed'):''),
+    key:'weapon:'+weaponId+':'+(skinId??'')+(hasWeaponDetail(weaponId)?(lowDetail?':low':':detailed'):''),
     name:WEAPONS[weaponId].name,
     async load(){
       if(!lowDetail)await loadWeaponDetail(weaponId);
