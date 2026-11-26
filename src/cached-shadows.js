@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {collectStaticCasters,withoutCasters} from './render-work.js';
+import {collectStaticCasters,withoutCasters,staticShadowPrunePlan,withStaticShadowPruned,frameShadowCandidates} from './render-work.js';
 
 // Keep the stock Three depth materials (skinning, alpha tests and sidedness).
 // Merge packed depths BEFORE PCF, so overlapping static/dynamic shadows retain
@@ -12,10 +12,10 @@ export class CachedShadows {
       uniforms:{staticDepth:{value:null},dynamicDepth:{value:null}},
       vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
       fragmentShader:'#include <packing>\nuniform sampler2D staticDepth; uniform sampler2D dynamicDepth; varying vec2 vUv; void main(){vec4 a=texture2D(staticDepth,vUv),b=texture2D(dynamicDepth,vUv);gl_FragColor=unpackRGBAToDepth(a)<unpackRGBAToDepth(b)?a:b;}' });
-    this.counters={staticRefresh:0,staticReuse:0,dynamicRefresh:0,combined:0};
+    this.counters={staticRefresh:0,staticReuse:0,dynamicRefresh:0,combined:0,prunedBranches:0};
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),this.material);this.quadScene.add(this.quad);
   }
-  invalidate(rebuildCasters=false){this.key=null;if(rebuildCasters){this.root=null;this.mediumRoot=null;this.casters=[];this.casterSet=null;this.mediumCasters=[];}}
+  invalidate(rebuildCasters=false){this.key=null;if(rebuildCasters){this.root=null;this.mediumRoot=null;this.casters=[];this.casterSet=null;this.prunePlan=null;this.mediumCasters=[];}}
   install(owner){
     if(this.installed===owner.renderer.shadowMap)return;
     this.uninstall();this.installed=owner.renderer.shadowMap;
@@ -53,7 +53,8 @@ export class CachedShadows {
       staticRoot.traverse(o=>{if(!o.isMesh||!o.castShadow)return;
         for(let p=o;p;p=p.parent)if(flagGroups.has(p))return;
         this.casters.push(o);
-      });this.casterSet=new Set(this.casters);this.invalidate();
+      });this.casterSet=new Set(this.casters);
+      this.prunePlan=staticShadowPrunePlan(staticRoot,this.casterSet,flagGroups);this.invalidate();
     }
     const key=[sun.position.x,sun.position.y,sun.position.z,sun.target.position.x,sun.target.position.y,sun.target.position.z,size,...sun.shadow.camera.projectionMatrix.elements].join('/');
     const mask=camera.layers.mask;camera.layers.set(0);
@@ -66,7 +67,7 @@ export class CachedShadows {
         light.shadow.camera.copy(sun.shadow.camera);light.shadow.mapSize.copy(sun.shadow.mapSize);
         light.shadow.bias=sun.shadow.bias;light.shadow.normalBias=sun.shadow.normalBias;
         const hidden=[];
-        scene.traverse(o=>{if(o.isMesh&&o.castShadow&&!this.casterSet.has(o)){hidden.push(o);o.castShadow=false;}});
+        for(const o of frameShadowCandidates(owner))if(o.castShadow&&!this.casterSet.has(o)){hidden.push(o);o.castShadow=false;}
         try{renderer.shadowMap.needsUpdate=true;light.shadow.needsUpdate=true;renderShadow([light],scene,camera);}
         finally{for(const o of hidden)o.castShadow=true;}
         this.key=key;this.counters.staticRefresh++;
@@ -74,7 +75,8 @@ export class CachedShadows {
       // The public sun samples the combined map; native rendering writes only
       // to its private dynamic target on the next frame.
       sun.shadow.map=this.dynamic??null;
-      withoutCasters(this.casters,()=>{renderer.shadowMap.needsUpdate=true;sun.shadow.needsUpdate=true;renderShadow([sun],scene,camera);this.dynamic=sun.shadow.map;});
+      withStaticShadowPruned(this.prunePlan,()=>{renderer.shadowMap.needsUpdate=true;sun.shadow.needsUpdate=true;renderShadow([sun],scene,camera);this.dynamic=sun.shadow.map;});
+      this.counters.prunedBranches=this.prunePlan.branches.length;
       this.counters.dynamicRefresh++;
       this.material.uniforms.staticDepth.value=this.staticLight.shadow.map.texture;
       this.material.uniforms.dynamicDepth.value=this.dynamic.texture;

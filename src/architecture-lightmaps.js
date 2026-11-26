@@ -23,7 +23,7 @@ export class ArchitectureLightmaps{
       this.setAO(m,null);
       Object.assign(m,base);delete m.userData.architectureLightmap;m.needsUpdate=true;
     }
-    this.materials.clear();this.appliedRevision=-1;
+    this.materials.clear();this.appliedRevision=-1;this.lastIntensity=undefined;
   }
   clear(){
     this.serial++;this.suspend();this.light?.dispose();
@@ -121,7 +121,9 @@ export class ArchitectureLightmaps{
   updateIntensity(owner,lighting){
     if(lighting==='off')return;
     const value=architectureIntensity(lighting,{campaign:owner.presentingCampaign,nightVision:owner.campaignNightVision,sun:owner.sun?.intensity,hemi:owner.hemiLight?.intensity,estate:owner.map?.id==='linden_estate'});
+    if(this.lastIntensity===value&&this.lastIntensityMaterials===this.materials.size&&this.lastIntensityRevision===this.appliedRevision)return;
     for(const m of this.materials.keys())m.lightMapIntensity=value;
+    this.lastIntensity=value;this.lastIntensityMaterials=this.materials.size;this.lastIntensityRevision=this.appliedRevision;
   }
   stats(){return this.map?{map:this.map.id,pending:this.pending,failed:this.failed,ready:!!this.meta,meshes:this.meshes.size,bakedTriangles:this.meta?.baked??0,bytes:this.meta?this.meta.size*this.meta.size*4:0}:null;}
   dispose(){this.clear();}

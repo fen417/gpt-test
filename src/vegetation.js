@@ -90,24 +90,26 @@ export class Vegetation{
     return true;
   }
   update(owner){
+    this.staticShadowChanged=false;
     const settings=owner.graphicsEffects??{},requested=settings.vegetation??'legacy',quality=owner.lowQuality&&requested!=='legacy'?'low':requested;
     const level=FOLIAGE_LEVEL[quality]??0;
     const receiveGrassShadow=!owner.lowQuality&&['low','high'].includes(settings.vegetationShadows)&&owner.renderer.shadowMap.enabled;
     if(this.receiveGrassShadow!==receiveGrassShadow){this.receiveGrassShadow=receiveGrassShadow;for(const entry of this.tiles.values())if(entry.mesh)entry.mesh.receiveShadow=receiveGrassShadow;}
-    if(!level||!owner.map){if(this.map){this.clear();return true;}return false;}
+    if(!level||!owner.map){if(this.map){this.clear();this.staticShadowChanged=true;return true;}return false;}
     const density=owner.map.id==='fy_pool_day'?0:Math.min(owner.lowQuality?.25:1,(Number(settings.grassDensity)||0)/100),radius=Math.min(owner.lowQuality?20:100,Number(settings.grassDistance)||20);
     let shadowChanged=this.configure(owner,quality,density,radius);
-    if(this.dirty){this.hideLegacy(owner.staticRoot);this.dirty=false;shadowChanged=true;}
+    if(shadowChanged)this.staticShadowChanged=true;
+    if(this.dirty){this.hideLegacy(owner.staticRoot);this.dirty=false;this.staticShadowChanged=true;shadowChanged=true;}
     const camera=owner.camera.position;this.uniforms.time.value=owner.clock;
     this.uniforms.wind.value=settings.vegetationWind==='high'?1:settings.vegetationWind==='low'?.43:0;
     this.uniforms.transmission.value=settings.foliageTransmission==='high'?Math.min(.16,(owner.sun.intensity??0)*.045):0;
     this.uniforms.sun.value.copy(owner.sunOffset).normalize().transformDirection(owner.camera.matrixWorldInverse);
-    const [cx,cz]=center(camera.x,camera.z,GRASS_CELL),moving=!this.last||Math.hypot(camera.x-this.last.x,camera.z-this.last.z)>7||owner.clock-this.last.time>.7;
+    const moving=!this.last||Math.hypot(camera.x-this.last.x,camera.z-this.last.z)>7||owner.clock-this.last.time>.7;
     const shadowMode=settings.vegetationShadows,shadowModeChanged=this.lastShadowMode!==shadowMode;
     this.lastShadowMode=shadowMode;
     if(moving||shadowModeChanged){
       this.last={x:camera.x,z:camera.z,time:owner.clock};
-      const wanted=new Map(),limit=Math.ceil(radius/GRASS_CELL)+1;
+      const [cx,cz]=center(camera.x,camera.z,GRASS_CELL),wanted=new Map(),limit=Math.ceil(radius/GRASS_CELL)+1;
       if(density>0){
         for(let z=cz-limit;z<=cz+limit;z++)for(let x=cx-limit;x<=cx+limit;x++){
           const dx=(x+.5)*GRASS_CELL-camera.x,dz=(z+.5)*GRASS_CELL-camera.z,d=Math.hypot(dx,dz);
@@ -118,7 +120,7 @@ export class Vegetation{
       this.selectedTiles=new Map([...wanted].sort((a,b)=>a[1].d-b[1].d).slice(0,cap));
       for(const [key,e] of this.tiles)if(!this.selectedTiles.has(key)){this.remove(e,true);this.tiles.delete(key);if(e.mesh?.castShadow)shadowChanged=true;}
     }
-    if(this.selectedTiles){
+    if(this.selectedTiles&&(moving||shadowModeChanged||this.tiles.size!==this.selectedTiles.size)){
       // Spread grass generation across consecutive frames instead of bursts
       // of five allocations every movement update. Do not reduce coverage.
       let created=0;const start=performance.now(),limit=owner.deferAssetRefresh?1:5;

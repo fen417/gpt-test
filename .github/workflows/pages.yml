@@ -28,6 +28,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: CPU rendering regression tests
+        run: node --test test/optimization-regression.test.js
       - name: Restore previous benchmark
         uses: actions/cache@v4
         with:

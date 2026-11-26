@@ -23,6 +23,7 @@ export function createPlacement(map){
   for(const s of map.structures??[])if(s.w>1&&s.d>1)obstacles.push(boxBounds(s));
   const index=new SpatialIndex(obstacles,16,b=>b),near=[];
   const trees=(map.furnishings??[]).filter(p=>p.type==='tree');
+  const treeIndex=new SpatialIndex(trees,8),treeNear=[];
   const roads=(map.roads??[]).filter(b=>b.w>0&&b.d>0).map(b=>{
     const c=Math.cos(b.yaw??0),s=Math.sin(b.yaw??0),ex=(Math.abs(c)*b.w+Math.abs(s)*b.d)/2,ez=(Math.abs(s)*b.w+Math.abs(c)*b.d)/2;
     return {...b,c,s,minX:b.x-ex-2,maxX:b.x+ex+2,minZ:b.z-ez-2,maxZ:b.z+ez+2};
@@ -48,7 +49,7 @@ export function createPlacement(map){
     const hx=map.terrain?.heightAt(x+.45,z)??y,hz=map.terrain?.heightAt(x,z+.45)??y;
     return Math.abs(hx-y)<.32&&Math.abs(hz-y)<.32;
   }
-  function shadeAt(x,z){let shade=1;for(const tree of trees){const d=Math.hypot(x-tree.x,z-tree.z);if(d<2.8)shade=Math.min(shade,.62+.38*d/2.8);}return shade;}
+  function shadeAt(x,z){let shade=1;for(const tree of treeIndex.query(x-2.8,z-2.8,x+2.8,z+2.8,treeNear)){const d=Math.hypot(x-tree.x,z-tree.z);if(d<2.8)shade=Math.min(shade,.62+.38*d/2.8);}return shade;}
   return {area,allowed,shadeAt};
 }
 export function grassTile(map,placement,cx,cz,density){

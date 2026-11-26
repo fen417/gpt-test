@@ -79,12 +79,12 @@ export class ReflectionReceivers {
       const geometry=source.geometry;proxy.geometry=geometry;
       if(!geometry.boundingSphere)geometry.computeBoundingSphere();
       this.sphere.copy(geometry.boundingSphere).applyMatrix4(source.matrixWorld);
-      if(camera.position.distanceTo(this.sphere.center)>this.sphere.radius+75||!this.frustum.intersectsSphere(this.sphere))continue;
+      if(camera.position.distanceToSquared(this.sphere.center)>(this.sphere.radius+75)**2||!this.frustum.intersectsSphere(this.sphere))continue;
       const side=source.material.side;
       const id=roughness+'/'+side;
       if(!this.materials.has(id))this.materials.set(id,this.createMaterial(roughness,side));
       proxy.material=this.materials.get(id);
-      proxy.matrix.copy(source.matrixWorld);proxy.matrixWorldNeedsUpdate=true;
+      if(!proxy.matrix.equals(source.matrixWorld)){proxy.matrix.copy(source.matrixWorld);proxy.matrixWorldNeedsUpdate=true;}
       proxy.visible=true;this.count++;
     }
     return true;

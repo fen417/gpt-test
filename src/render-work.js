@@ -51,3 +51,35 @@ export function uploadChangedPrefix(attribute,count){
   attribute.addUpdateRange(first,last-first+1);
   attribute.needsUpdate=true;history.version=attribute.version;
 }
+
+// Static world branches can be skipped entirely by the native shadow visitor.
+// Keep objective/flag subtrees and any non-static caster reachable.
+export function staticShadowPrunePlan(root,staticCasters,dynamicRoots){
+  const protectedNodes=new Set();
+  const protect=node=>{for(let p=node;p;p=p.parent){protectedNodes.add(p);if(p===root)break;}};
+  for(const node of dynamicRoots)protect(node);
+  root.traverse(node=>{if(node.castShadow&&!staticCasters.has(node))protect(node);});
+  const branches=[],casters=[];
+  const walk=node=>{
+    if(dynamicRoots.has(node))return;
+    if(!protectedNodes.has(node)){branches.push(node);return;}
+    if(staticCasters.has(node))casters.push(node);
+    for(const child of node.children)walk(child);
+  };
+  walk(root);return {branches,casters};
+}
+export function withStaticShadowPruned(plan,callback){
+  const changed=[];
+  for(const node of plan.branches)if(node.visible){node.visible=false;changed.push(node);}
+  try{return withoutCasters(plan.casters,callback);}
+  finally{for(const node of changed)node.visible=true;}
+}
+// Several cascade static refreshes in one frame see the same scene graph.
+// Reuse the candidate list rather than traversing the whole scene per cascade.
+const shadowCandidates=new WeakMap();
+export function frameShadowCandidates(owner){
+  const previous=shadowCandidates.get(owner);
+  if(previous?.frame===owner.frameCount&&previous.scene===owner.scene)return previous.meshes;
+  const meshes=[];owner.scene.traverse(node=>{if(node.isMesh&&node.castShadow)meshes.push(node);});
+  shadowCandidates.set(owner,{frame:owner.frameCount,scene:owner.scene,meshes});return meshes;
+}

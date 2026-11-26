@@ -2439,9 +2439,15 @@ export class GameRenderer {
       this.renderer.shadowMap.needsUpdate=true;
     }
     if(this.vegetation.update(this)){
-      this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);
+      // Streamed vegetation lives outside staticRoot. Its LOD and tile changes
+      // belong to the dynamic passes, not the expensive baked caster cache.
+      // A legacy foliage replacement/configuration really changes staticRoot.
+      if(this.vegetation.staticShadowChanged){
+        this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);
+      }
       this.sun.shadow.needsUpdate=true;this.renderer.shadowMap.needsUpdate=true;
     }
+    checkpoint('vegetation');
     const waterQuality=this.lowQuality?'legacy':this.graphicsEffects?.water;
     const waterKey=[this.map.id,waterQuality,this.graphicsEffects?.waterRefraction,this.graphicsEffects?.waterFoam].join('/');
     if(this.waterKey!==waterKey){this.waterKey=waterKey;this.postPass.worldEffects.receivers.invalidate();}
@@ -2503,12 +2509,15 @@ export class GameRenderer {
     }
     this.atmosphere.update(this.graphicsEffects?.sky,this.sunOffset,this.clock,this.graphicsEffects?.clouds,this.map,this.scene.fog.color);
     const environment=this.scene.environment;
+    checkpoint('waterAtmosphereParticles');
     const localEnvironment=this.localReflections.prepare(this,false,warming);
     this.architectureLightmaps.update(this);
     this.indirectLighting.update(this);
+    checkpoint('indirectAndBakedLighting');
     if(this.map.id==='fy_pool_day'&&this.waterAppearance?.material)this.waterAppearance.material.envMap=localEnvironment??this.atmosphere.envTexture;
     if(this.renderer.shadowMap.enabled)this.penumbra?.update(this.scene,this.staticRoot,this.staticMaterialRevision);
     this.cascades?.update();
+    checkpoint('shadowPreparation');
     if(warming&&!this.webgpu){
       // The normal visitor skips invisible subtrees. At load time bind all
       // existing weapon materials (not only the currently equipped one).
@@ -2697,6 +2706,7 @@ export class GameRenderer {
     const detailLevel=Math.max(0,(detail==='high'?2:detail==='medium'?1:0)-(this.adaptiveGraphics?.cpuStep??0));
     this.geometryQuality=GEOMETRY_QUALITY[detailLevel];
     if(this.detailLevel!==detailLevel||previousQuality!==this.quality){
+      if(this.detailLevel!==undefined&&this.detailLevel!==detailLevel){this.cachedShadows.invalidate(true);this.cascades?.invalidate(true);}
       this.detailLevel=detailLevel;
       for(const object of this.mapDetails??[])object.visible=object.userData.detailLevel<=detailLevel;
       const world=this.worlds.get(this.map.id);

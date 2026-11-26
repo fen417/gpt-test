@@ -62,7 +62,7 @@ export function setWebGpuRelief(material,map,steps,scale,range=46){
   // texture space, then undo the repeat before MaterialNode's UV transform.
   const repeat=uniform(map.repeat),offset=uniform(map.offset);
   const coordinates=reliefUv({heightMap:height,heightSampler:height,baseUv:uv().mul(repeat).add(offset),viewPosition:positionView,
-    normal:normalViewGeometry,scale:depth,steps:stepCount,range:reach}).sub(offset).div(repeat).toVar();
+    normal:normalViewGeometry,scale:depth,stepsMax:stepCount,range:reach}).sub(offset).div(repeat).toVar();
   const context={getUV:()=>coordinates};
   material.colorNode=(base.colorNode??materialColor).context(context);
   material.normalNode=(base.normalNode??materialNormal).context(context);
