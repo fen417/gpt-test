@@ -11,6 +11,7 @@ const color=v=>typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v);
 export const editableBox=b=>!b.visualModel&&!b.missionDynamic&&/^(barrier-|ridge-parapet|middle-cover|armor-infantry-cover|hall-cover)/.test(b.id);
 export const modelAssetOk=s=>typeof s==='string'&&/^[a-f0-9]{64}\.glb$/.test(s);
 const materialRules={color:color,emissive:color,roughness:v=>finite(v,0,1),metalness:v=>finite(v,0,1),opacity:v=>finite(v,0,1),alphaTest:v=>finite(v,0,1),emissiveIntensity:v=>finite(v,0,20),normalStrength:v=>finite(v,0,5),aoMapIntensity:v=>finite(v,0,3),doubleSide:v=>typeof v==='boolean'};
+export const TERRAIN_LAYERS=['ground','concrete','asphalt','sand'];
 export function validateM05Edits(d){
   const e=[];
   if(!record(d)||d.version!==1)return ['Неподдерживаемый формат карты'];
@@ -20,6 +21,8 @@ export function validateM05Edits(d){
   if(!Array.isArray(d.paint)||d.paint.length>10000)bad('paint');
   if(e.length)return e;
   if(d.assets!==undefined&&(!record(d.assets)||Object.entries(d.assets).some(([asset,meta])=>!modelAssetOk(asset)||!record(meta)||typeof meta.name!=='string'||meta.name.length>200)))bad('Библиотека ресурсов');
+  if(d.layers!==undefined&&(!Array.isArray(d.layers)||d.layers.length>10000||d.layers.some(p=>!record(p)||!['erase',...TERRAIN_LAYERS].includes(p.layer)||!finite(p.x)||!finite(p.z)||!finite(p.radius,1,200)||!finite(p.strength,0,1)||!finite(p.hardness,0,1))))bad('Слои грунта');
+  if(d.roads!==undefined&&(!Array.isArray(d.roads)||d.roads.length>128||d.roads.some(r=>!record(r)||!keyOk(r.id)||!TERRAIN_LAYERS.includes(r.layer)||!finite(r.width,1,80)||!Array.isArray(r.points)||r.points.length<2||r.points.length>200||!r.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(n=>finite(n))))||new Set(d.roads.map(r=>r.id)).size!==d.roads.length))bad('Дороги');
   const ids=new Set();
   for(const m of d.models){
     if(!record(m)||!keyOk(m.id)||ids.has(m.id)||!modelAssetOk(m.asset)||typeof m.name!=='string'||m.name.length>200||
@@ -136,4 +139,29 @@ export function inspectM05Edits(base,grid,heights,d){
     }
   }
   return issues.slice(0,300);
+}
+
+export function sampleRoad(points){
+ const out=[];for(let i=0;i<points.length-1;i++){
+  const a=points[Math.max(0,i-1)],b=points[i],c=points[i+1],d=points[Math.min(points.length-1,i+2)];
+  const steps=Math.max(2,Math.ceil(Math.hypot(c[0]-b[0],c[1]-b[1])/2));
+  for(let j=0;j<steps;j++){const t=j/steps,t2=t*t,t3=t2*t;out.push(b.map((v,k)=>.5*(2*v+(-a[k]+c[k])*t+(2*a[k]-5*v+4*c[k]-d[k])*t2+(-a[k]+3*v-3*c[k]+d[k])*t3)));}
+ }out.push(points.at(-1).slice());return out;
+}
+export function gradeRoad(grid,base,edits,road,shoulder=4){
+ const points=sampleRoad(road.points),t=terrainWithEdits(grid,base,edits),result={...edits},stride=grid.count+1;
+ // Smooth the centre-line heights in both directions before grading.
+ let ys=points.map(([x,z])=>t.heightAt(x,z));if(ys.some(y=>!Number.isFinite(y)))throw Error('Дорога выходит за heightfield');
+ for(let pass=0;pass<4;pass++)ys=ys.map((y,i)=>(ys[Math.max(0,i-1)]+2*y+ys[Math.min(ys.length-1,i+1)])/4);
+ const radius=road.width/2+shoulder,best=new Map();
+ for(let i=0;i<points.length;i++){
+  const [x,z]=points[i],min=grid.min,cell=grid.cell;
+  for(let row=Math.max(0,Math.floor((z-radius-min)/cell));row<=Math.min(grid.count,Math.ceil((z+radius-min)/cell));row++)
+   for(let col=Math.max(0,Math.floor((x-radius-min)/cell));col<=Math.min(grid.count,Math.ceil((x+radius-min)/cell));col++){
+    const dist=Math.hypot(min+col*cell-x,min+row*cell-z),key=row*stride+col;if(dist>radius||best.has(key)&&best.get(key).dist<=dist)continue;
+    best.set(key,{dist,y:ys[i]});
+   }
+ }
+ for(const [i,{dist,y}] of best){const w=Math.min(1,Math.max(0,(radius-dist)/shoulder)),old=edits[i]??base[i];result[i]=Math.round((old+(y-old)*w)*1000)/1000;}
+ return result;
 }

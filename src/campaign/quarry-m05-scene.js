@@ -1,4 +1,5 @@
 import {BoxGeometry,Color,Mesh,MeshLambertMaterial,MeshStandardMaterial,PlaneGeometry,Vector2} from 'three';
+import {prepareTerrainLayers,applyTerrainLayers} from './m05-terrain-layers.js';
 import {clonePairedMaterial,pairMaterials} from '../visuals.js';
 
 const sand=new Color('#f0dfc3'),stone=new Color('#a9957e'),roadColor=new Color('#b2a794');
@@ -17,7 +18,7 @@ export function buildQuarryMissionScene(owner,map,root){
     x,z,w,d,c:Math.cos(yaw),s:Math.sin(yaw),color:new Color(tint),radius:Math.max(w,d),
   }));
   const roads=map.roads.map(r=>({...r,sin:Math.sin(r.yaw),cos:Math.cos(r.yaw)}));
-  const color=new Color();
+  const color=new Color(),layers=prepareTerrainLayers(map.editorLayers,map.editorRoads);
   for(let tz=-6;tz<6;tz++)for(let tx=-6;tx<6;tx++){
     const tileX=(tx+.5)*size,tileZ=(tz+.5)*size;
     const coarse=Math.max(Math.abs(tileX),Math.abs(tileZ))>5*size/2;
@@ -57,7 +58,7 @@ export function buildQuarryMissionScene(owner,map,root){
     }
     geometry.setAttribute('color',positions.clone().set(colors));
     const tile=new Mesh(geometry,ground);
-    tile.name='m05-terrain-'+tx+'-'+tz;tile.position.set(tileX,0,tileZ);tile.receiveShadow=true;root.add(tile);
+    tile.name='m05-terrain-'+tx+'-'+tz;tile.position.set(tileX,0,tileZ);tile.receiveShadow=true;root.add(tile);applyTerrainLayers(owner,tile,layers);
   }
   const materials=new Map();
   for(const b of map.boxes){

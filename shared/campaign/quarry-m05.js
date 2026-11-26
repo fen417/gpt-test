@@ -191,7 +191,7 @@ for(const m of editorData.models)editedBoxes.push(...modelColliders(m));
 
 export const QUARRY_M05=registerLocalMap({
   id:'quarry-m05',missionId:'m05',name:'Карьер',theme:'desert-village',campaign:true,
-  size:1200,width:1040,depth:920,terrain,roads,boxes:editedBoxes,surfacePatches:[...M05_SURFACE_PATCHES,...editorData.paint],structures:[],points:[],districts:[],signs:[],
+  size:1200,width:1040,depth:920,terrain,roads,editorLayers:editorData.layers??[],editorRoads:editorData.roads??[],boxes:editedBoxes,surfacePatches:[...M05_SURFACE_PATCHES,...editorData.paint],structures:[],points:[],districts:[],signs:[],
   navigationCell:3,navigationSize:660,navigationClearance:.66,stepHeight:.38,
   playArea:{minX:-300,maxX:290,minZ:-270,maxZ:265},
   spawns:[M05_SITES.camp,M05_SITES.crusher],vehicleSpawns:[],

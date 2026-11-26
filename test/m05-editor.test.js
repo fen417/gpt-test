@@ -1,7 +1,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {emptyM05Edits,validateM05Edits,applySculpt,terrainWithEdits,modelColliders,applyBoxEdit,scatterPositions,inspectM05Edits} from '../shared/campaign/m05-editor.js';
+import {emptyM05Edits,validateM05Edits,applySculpt,terrainWithEdits,modelColliders,applyBoxEdit,scatterPositions,inspectM05Edits,sampleRoad,gradeRoad} from '../shared/campaign/m05-editor.js';
 import {rayAffineBox} from '../shared/geometry.js';
 test('empty editor schema and invalid duplicate ids',()=>{
  const d=emptyM05Edits();assert.deepEqual(validateM05Edits(d),[]);
@@ -46,4 +46,11 @@ test('material overrides validated; hidden solid rejected',()=>{
  d.models=[m];assert.deepEqual(validateM05Edits(d),[]);
  m.materials['0:0'].roughness=2;assert.ok(validateM05Edits(d).length);m.materials['0:0'].roughness=.4;
  m.detail='high';m.colliders.push({center:[0,0,0],size:[1,1,1]});assert.ok(validateM05Edits(d).length);
+});
+
+test('spline reaches endpoints and grading preserves source',()=>{
+ const road={points:[[4,4],[12,4],[20,12]],width:4};
+ const p=sampleRoad(road.points);assert.deepEqual(p[0],[4,4]);assert.deepEqual(p.at(-1),[20,12]);assert.ok(p.length>3);
+ const grid={min:0,cell:4,count:8},h=new Float32Array(81);h[1*9+3]=10;
+ const result=gradeRoad(grid,h,{},road);assert.ok(Object.keys(result).length>0);assert.equal(h[12],10);
 });
