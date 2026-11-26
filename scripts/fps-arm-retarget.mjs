@@ -1,7 +1,8 @@
 import * as T from 'three';
 
 export const positionScale = 40000;
-const wristCut = -.296;
+const wristAnchor = -.296;
+const cuffEdge = -.284;
 const digits = {
   L: [
     ['joint5_05', 'joint18_04', 'joint19_07', 'joint20_06'],
@@ -47,7 +48,7 @@ export function retargetGlove(rig, source, side, toGame, rotation, mirror) {
 export function fitGlove(source, side, targetWrist, targets, surfaceScale, toGame, rotation, mirror) {
   const authored = digits[side].map(chain => chain.map(name => point(source.joints[name])));
   const sourceWrist = point(source.joints[side === 'L' ? 'joint3_03' : 'joint26_024']);
-  sourceWrist.y = wristCut;
+  sourceWrist.y = wristAnchor;
   const originalFrame = palmFrame(sourceWrist, authored[0][0], authored[1][0], authored[3][0]);
   const fittedFrame = palmFrame(targetWrist, targets[0][0], targets[1][0], targets[3][0]);
   const palm = new T.Quaternion().setFromRotationMatrix(fittedFrame.clone().multiply(originalFrame.clone().transpose()));
@@ -78,9 +79,8 @@ export function fitGlove(source, side, targetWrist, targets, surfaceScale, toGam
   }
   return ([position, normal, uv, weights]) => {
     const base = point(position), baseNormal = point(normal);
-    // The sleeve rotates independently during reloads. Tuck the glove's
-    // hidden wrist edge into the cuff even when their axes diverge.
-    const taper = T.MathUtils.lerp(.70, 1, T.MathUtils.smoothstep(wristCut - base.y, .006, .033));
+    // Tuck the wrist seam into the cuff, which follows the forearm separately.
+    const taper = T.MathUtils.lerp(.88, 1, T.MathUtils.smoothstep(cuffEdge - base.y, 0, .036));
     base.x = T.MathUtils.lerp(sourceWrist.x, base.x, taper);
     base.z = T.MathUtils.lerp(sourceWrist.z, base.z, taper);
     const p = new T.Vector3(), n = new T.Vector3();
@@ -117,13 +117,13 @@ export function shapeSleeve(source, side) {
     const fraction = T.MathUtils.clamp((p[1] - start[1]) / (end[1] - start[1]), 0, 1);
     const x = p[0] - T.MathUtils.lerp(start[0], end[0], fraction);
     return {
-      p: [x * 1.1, p[2] * 1.1, (.275 - p[1]) / (.275 - wristCut) * .6],
-      n: point([n[0], n[2], -n[1] * 1.1 * (.275 - wristCut) / .6]).normalize().toArray(), uv,
+      p: [x * 1.1, p[2] * 1.1, (.275 - p[1]) / (.275 - cuffEdge) * .6],
+      n: point([n[0], n[2], -n[1] * 1.1 * (.275 - cuffEdge) / .6]).normalize().toArray(), uv,
     };
   };
 }
 
-export function packArmPart(source, vertices, cut, mirror = false) {
+export function packArmPart(vertices, sourceIndices, mirror = false) {
   const names = Object.keys(fields).filter(name => Object.hasOwn(vertices[0], name));
   const arrays = Object.fromEntries(names.map(name => [name, []]));
   const indices = [], lookup = new Map();
@@ -135,22 +135,9 @@ export function packArmPart(source, vertices, cut, mirror = false) {
     for (const name of names) arrays[name].push(...vertex[name]);
     return i;
   }
-  for (let i = 0; i < source.indices.length; i += 3) {
-    const triangle = source.indices.slice(i, i + 3);
-    const clipped = [];
-    for (let k = 0; k < 3; k++) {
-      const a = triangle[k], b = triangle[(k + 1) % 3];
-      const start = cut(source.vertices[a][0][1]), end = cut(source.vertices[b][0][1]);
-      if (start >= 0) clipped.push(vertices[a]);
-      if ((start >= 0) !== (end >= 0)) {
-        const t = start / (start - end);
-        clipped.push(Object.fromEntries(names.map(name => [name, vertices[a][name].map((value, axis) =>
-          T.MathUtils.lerp(value, vertices[b][name][axis], t))])));
-      }
-    }
-    for (let k = 1; k < clipped.length - 1; k++) {
-      indices.push(add(clipped[0]), add(clipped[mirror ? k + 1 : k]), add(clipped[mirror ? k : k + 1]));
-    }
+  for (let i = 0; i < sourceIndices.length; i += 3) {
+    const [a, b, c] = sourceIndices.slice(i, i + 3);
+    indices.push(add(vertices[a]), add(vertices[mirror ? c : b]), add(vertices[mirror ? b : c]));
   }
   if (!indices.length || lookup.size > 65535) throw new Error('Invalid FPS arm index count');
   for (const key of ['p', 'morph']) {
@@ -160,6 +147,3 @@ export function packArmPart(source, vertices, cut, mirror = false) {
   }
   return { ...Object.fromEntries(names.map(name => [name, pack(arrays[name], ...fields[name])])), index: pack(indices, Uint16Array) };
 }
-
-export const gloveCut = y => wristCut + .004 - y;
-export const sleeveCut = y => y - wristCut + .015;

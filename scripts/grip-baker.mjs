@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RIFLE_SUPPORT_POSE, RIFLE_TRIGGER_WRIST, SUPPLY_POSE, DEFIB_POSE, BINOCULAR_POSE } from '../src/gadget-poses.js';
-import { fitGlove, gloveCut, packArmPart, retargetGlove, shapeSleeve, sleeveCut } from './fps-arm-retarget.mjs';
+import { fitGlove, packArmPart, retargetGlove } from './fps-arm-retarget.mjs';
 
 globalThis.self = globalThis;
 const root = new URL('../', import.meta.url);
@@ -146,7 +146,7 @@ export async function bakeIK(source,pose){
     vertex.morph = morph[i].p.map((value, axis) => value - vertex.p[axis]);
     vertex.morphN = morph[i].n.map((value, axis) => value - vertex.n[axis]);
   }
-  return packArmPart(authored, vertices, gloveCut, pose.mirror);
+  return packArmPart(vertices, authored.gloveIndices, pose.mirror);
 }
 export function bakeFixed(source, wrist, joints, { side = 'L', mirror = false, origin = [0, 0, 0], morph = null } = {}) {
   const arm = source.hands[side];
@@ -165,7 +165,7 @@ export function bakeFixed(source, wrist, joints, { side = 'L', mirror = false, o
       vertex.morphN = moved[i].n.map((value, axis) => value - vertex.n[axis]);
     }
   }
-  return packArmPart(arm, vertices, gloveCut, mirror);
+  return packArmPart(vertices, arm.gloveIndices, mirror);
 }
 
 // The cuff approaches the fore-end from behind. The palm supports the lower

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import {loadArmSource,poses,bakeIK,bakeFixed,foreEnd,openForeEnd,firingGrip,firingMorph} from './grip-baker.mjs';
 import {RIFLE_SUPPORT_POSE,RIFLE_TRIGGER_WRIST,DEFIB_POSE,BINOCULAR_POSE} from '../src/gadget-poses.js';
-import {packArmPart,shapeSleeve,sleeveCut} from './fps-arm-retarget.mjs';
+import {packArmPart,shapeSleeve} from './fps-arm-retarget.mjs';
 const root=new URL('../',import.meta.url),source=loadArmSource(),encoded={};
 for(const [name,pose] of Object.entries(poses))encoded[name]=await bakeIK(source,pose);
 encoded.support=bakeFixed(source,RIFLE_SUPPORT_POSE.wrist,foreEnd,{origin:RIFLE_SUPPORT_POSE.origin,morph:openForeEnd});
@@ -31,7 +31,7 @@ for (const [side, mirror] of [['Left', false], ['Right', true]]) {
 }
 for (const [name, side] of [['sleeveLeft', 'L'], ['sleeveRight', 'R']]) {
   const authored = source.hands[side];
-  encoded[name] = packArmPart(authored, authored.vertices.map(shapeSleeve(source, side)), sleeveCut);
+  encoded[name] = packArmPart(authored.vertices.map(shapeSleeve(source, side)), authored.sleeveIndices);
 }
 
 const buffers=new Map(), declarations=[];

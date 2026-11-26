@@ -70,7 +70,16 @@ def export_geometry(scene, output):
                     vertices.append([game_axes(obj.matrix_world @ vertex.co, .01), normal, uv, weights])
                 indices.append(corners[key])
         close_shoulder(obj, 'joint_00' if side == 'L' else 'joint24_023', vertices, indices)
-        data[side] = {'vertices': vertices, 'indices': indices}
+        glove_indices, sleeve_indices = [], []
+        for start in range(0, len(indices), 3):
+            triangle = indices[start:start + 3]
+            # The glove islands near the hand meet the camouflage cuff at a UV seam.
+            # Use whole faces so the binding and the original edge loop stay intact.
+            is_glove = all(vertices[i][0][1] < -.27 and vertices[i][2][1] < .55
+                           for i in triangle)
+            (glove_indices if is_glove else sleeve_indices).extend(triangle)
+        data[side] = {'vertices': vertices, 'gloveIndices': glove_indices,
+                      'sleeveIndices': sleeve_indices}
     Path(output).write_text(json.dumps({'joints': joints, 'hands': data}, separators=(',', ':')),
                             encoding='utf-8')
 
