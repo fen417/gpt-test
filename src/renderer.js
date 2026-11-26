@@ -821,7 +821,7 @@ export class GameRenderer {
       ...(graphicsEffects(view.quality,view.gfx?.customGraphics).shaderWarmup==='full'||state.gameMode==='tdm'?[this.infantry.warm()]:[]),
       ...Array.from(units.values(),([team,weapon])=>this.infantry.load(team,weapon)),
       ...Array.from(vehicleTypes,type=>lightVehicleModels[type]?.load()),
-      ...(detail&&vehicleTypes.has(BLACK_HAWK)?[lightVehicleModels[BLACK_HAWK].loadDetail()]:[]),
+      ...(detail?Array.from(vehicleTypes,type=>lightVehicleModels[type]?.loadDetail?.()):[]),
     ]);
   }
 
@@ -1344,12 +1344,13 @@ export class GameRenderer {
     const active = this.activeVehicles;active.clear();
     this.wreckFire?.begin();
     const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
+    const quarryCamera=state.campaign?.missionId==='m05'&&state.campaign.cutscene?this.camera.position:null;
     const vehicleView = {
       ...view,
       highVehicleDetail: this.geometryQuality === 'high',
+      vehicleDetailCamera: quarryCamera,
     };
     let mounted = null;
-    const quarryCamera=state.campaign?.missionId==='m05'&&state.campaign.cutscene?this.camera.position:null;
     for (const vehicle of state.vehicles ?? []) {
       if(vehicle.type==='tank'&&!tankAssetsReady())continue;
       const model=lightVehicleModels[vehicle.type];

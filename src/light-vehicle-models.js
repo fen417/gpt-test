@@ -26,6 +26,7 @@ function vehicleModel(url, names, paintPart) {
     },
     ready: () => Boolean(parts),
     geometry,
+    material: name => parts.get(name).material,
     finish(tint) {
       const high=parts.get(paintPart).material.clone();
       if(tint)high.color.setHex(tint);
@@ -48,6 +49,11 @@ export const humveeModel = vehicleModel(new URL('./assets/humvee/humvee.glb',imp
   'BodyPaint','Chassis','ExteriorDetail','Cabin','CabinDetail','Steering',
   'Wheel','WheelLow','Turret','GunVisual','SpeedNeedle','Markings',
   ...Array.from({length:7},(_,i)=>'glass'+i),
+],'BodyPaint');
+
+export const humveeRemaster = vehicleModel(new URL('./assets/humvee/humvee-high.glb',import.meta.url).href,[
+  'BodyPaint','Chassis','ExteriorDetail','Cabin','CabinDetail','Instruments',
+  'Steering','Wheel','Turret','GunVisual','SpeedNeedle','Markings','glass0',
 ],'BodyPaint');
 
 export const atvModel = vehicleModel(new URL('./assets/atv/atv.glb',import.meta.url).href,[
@@ -125,4 +131,8 @@ export const blackHawkModel = {
   cloneDetail:()=>blackHawkDetail?.clone(true),
 };
 
-export const lightVehicleModels = {atv:atvModel,humvee:humveeModel,'black-hawk':blackHawkModel};
+export const lightVehicleModels = {
+  atv:atvModel,
+  humvee:{...humveeModel,loadDetail:humveeRemaster.load},
+  'black-hawk':blackHawkModel,
+};
