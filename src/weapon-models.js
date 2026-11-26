@@ -1,7 +1,7 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { LONG_BARREL_ID, WEAPON_MODULES } from '../shared/weapon-modules.js';
-import {prepareSkinProjection,unpaintedMaterial,updateStockSkin} from './weapon-skins.js';
+import {prepareSkinProjection,setWeaponSkin,unpaintedMaterial,updateStockSkin} from './weapon-skins.js';
 
 export const weaponModelUrls = {
   ak12: new URL('./assets/infantry/ak12m.glb', import.meta.url).href,
@@ -34,11 +34,26 @@ const moduleSlots = {
   stock: {mount:'Mount_Stock',stock:['Stock']},
 };
 const templates = new Map();
+const detailUrls = { ar416: new URL('./assets/infantry/ar416-high.glb', import.meta.url).href };
+const detailTemplates = new Map(), detailLoads = new Map(), detailInstances = new WeakMap();
 const mountedParts = new WeakMap();
 const upgradeTemplates = new Map();
 const upgradeInstances = new WeakMap();
 const housingVariants = new WeakMap();
 let pending;
+
+function prepareTemplate(scene, id) {
+  if (!animatedParts[id].every(part => scene.getObjectByName(part))) {
+    throw new Error('Missing animated weapon parts');
+  }
+  if (!Object.values(moduleSlots).every(slot=>scene.getObjectByName(slot.mount))
+      || scene.getObjectByName('Mount_Magazine').parent!==scene.getObjectByName('Magazine')
+      || scene.getObjectByName('MagazineBody')?.parent!==scene.getObjectByName('Magazine')) {
+    throw new Error('Missing weapon module mounts');
+  }
+  prepareSkinProjection(scene,id);
+  return scene;
+}
 
 export function loadWeaponModels() {
   if (pending) return pending;
@@ -46,16 +61,7 @@ export function loadWeaponModels() {
   const baseModels = Object.entries(weaponModelUrls).map(async ([id, url]) => {
     try {
       const {scene} = await loader.loadAsync(url);
-      if (!animatedParts[id].every(part => scene.getObjectByName(part))) {
-        throw new Error('Missing animated weapon parts');
-      }
-      if (!Object.values(moduleSlots).every(slot=>scene.getObjectByName(slot.mount))
-          || scene.getObjectByName('Mount_Magazine').parent!==scene.getObjectByName('Magazine')
-          || scene.getObjectByName('MagazineBody')?.parent!==scene.getObjectByName('Magazine')) {
-        throw new Error('Missing weapon module mounts');
-      }
-      prepareSkinProjection(scene,id);
-      templates.set(id, scene);
+      templates.set(id, prepareTemplate(scene,id));
     } catch (error) {
       console.warn('Weapon model:', id, error);
     }
@@ -78,8 +84,53 @@ export function loadWeaponModels() {
   return pending;
 }
 
-export function cloneWeaponModel(id) {
-  return templates.get(id)?.clone(true);
+export function loadWeaponDetail(id) {
+  if (!Object.hasOwn(detailUrls,id)) return;
+  if (!detailLoads.has(id)) {
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    detailLoads.set(id, loader.loadAsync(detailUrls[id]).then(({scene}) => {
+      const surfaces = new Map();
+      prepareTemplate(scene,id).traverse(mesh => {
+        if (mesh.isMesh) surfaces.set(mesh.name,mesh);
+      });
+      detailTemplates.set(id,{scene,surfaces});
+    }).catch(error=>console.warn('Detailed weapon model:',id,error)));
+  }
+  return detailLoads.get(id);
+}
+
+export function cloneWeaponModel(id, detailed=false) {
+  return ((detailed ? detailTemplates.get(id)?.scene : null) ?? templates.get(id))?.clone(true);
+}
+
+// Both exports use the same named slots, origins and animation pivots.
+// Keep the active hierarchy and switch the geometry on those meshes.
+export function setWeaponDetail(root, id, detailed) {
+  if (!root || !Object.hasOwn(detailUrls,id)) return false;
+  const template = detailTemplates.get(id);
+  if (detailed && !template) {
+    if (!detailLoads.has(id)) void loadWeaponDetail(id);
+    return false;
+  }
+  let instance = detailInstances.get(root);
+  if ((instance?.detailed ?? false) === detailed) return false;
+  void setWeaponSkin(root,id,null);
+  if (!instance) {
+    const pairs = [];
+    for (const [name, high] of template.surfaces) {
+      const mesh = root.getObjectByName(name);
+      if (mesh?.isMesh) pairs.push({mesh, high, low:{geometry:mesh.geometry,material:mesh.material}});
+    }
+    instance = {pairs,detailed:false};
+    detailInstances.set(root,instance);
+  }
+  for (const {mesh,low,high} of instance.pairs) {
+    const source = detailed ? high : low;
+    mesh.geometry = source.geometry;
+    mesh.material = source.material;
+  }
+  instance.detailed = detailed;
+  return true;
 }
 
 export function weaponModuleMount(root,slot) {

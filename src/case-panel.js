@@ -2,7 +2,7 @@ import {CAMPAIGN_CASE_MISSIONS,CASE_TYPES,CASE_RARITIES,FIELD_RESERVE,POLAR_CIRC
 import {WEAPONS} from '../shared/world.js';
 import {requestCases} from './network.js';
 import {mountWeaponPreview} from './weapon-preview.js';
-import {cloneWeaponModel,loadWeaponModels} from './weapon-models.js';
+import {cloneWeaponModel,loadWeaponDetail,loadWeaponModels} from './weapon-models.js';
 import {setWeaponSkin,weaponSkinUrl} from './weapon-skins.js';
 import './case-panel.css';
 
@@ -25,7 +25,7 @@ function rewardLabel(reward,tag='div'){
   return item;
 }
 
-export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify}){
+export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,getLowWeaponDetail,notify}){
   const open=$('case-open'),retry=$('case-retry'),status=$('case-status');
   const roulette=$('case-roulette'),tape=$('case-tape'),result=$('case-result');
   const readyEvents=new EventTarget();
@@ -40,11 +40,12 @@ export function mountCasePanel({getUrl,getToken,getAccount,getGpuDevice,notify})
     getItem:()=>{
       if(showing){
         const {id,weaponId,name}=showing;
+        const lowDetail=getLowWeaponDetail();
         return {
-          key:id,name:`${WEAPONS[weaponId].name} · ${name}`,
+          key:id+(weaponId==='ar416'?(lowDetail?':low':':detailed'):''),name:`${WEAPONS[weaponId].name} · ${name}`,
           async load(){
-            await loadWeaponModels();
-            const model=cloneWeaponModel(weaponId);
+            await Promise.all([loadWeaponModels(),lowDetail?null:loadWeaponDetail(weaponId)]);
+            const model=cloneWeaponModel(weaponId,!lowDetail);
             if(!model)throw Error('Модель оружия недоступна.');
             await setWeaponSkin(model,weaponId,id);
             return {model,angle:[.045,Math.PI/2-.11,0],dispose:()=>void setWeaponSkin(model,weaponId,null)};

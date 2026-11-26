@@ -4,7 +4,7 @@ import { updateTravel, cycleTime, idleSample, upperPoseTargets, blendUpperWeight
 import { cloneInfantry, findInfantryBones, gaitClips, legNames } from './infantry-assets.js';
 import { CREW_CONTROLS } from './vehicles.js';
 import { LAUNCHER_POSE } from './gadget-poses.js';
-import { upgradeMuzzle, showWeaponUpgrades } from './weapon-models.js';
+import { setWeaponDetail, upgradeMuzzle, showWeaponUpgrades } from './weapon-models.js';
 import { setWeaponSkin } from './weapon-skins.js';
 import { weaponAttachmentsFromFlags } from '../shared/weapon-modules.js';
 
@@ -405,6 +405,9 @@ function updateInfantryUpgrades(rig, flags, lowDetail=rig.lowWeaponDetail??false
 }
 
 export function setInfantryLod(rig, level, shadows, lowWeaponDetail=false) {
+  if (setWeaponDetail(rig.weaponModel,rig.weaponId,level===0&&!lowWeaponDetail)&&rig.weaponSkin) {
+    void setWeaponSkin(rig.weaponModel,rig.weaponId,rig.weaponSkin).catch(error=>console.warn('Weapon skin unavailable',error));
+  }
   if(rig.lowWeaponDetail!==lowWeaponDetail)updateInfantryUpgrades(rig,rig.attachmentFlags,lowWeaponDetail);
   const unchanged=rig.lod===level&&rig.lodShadows===shadows;
   rig.lod = level;

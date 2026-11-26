@@ -623,7 +623,7 @@ const profile=mountPlayerProfile({
 const casePanel=mountCasePanel({
   getUrl:async()=>TEST_BUILD?'':normalizeServerUrl($('server-url').value.trim()||await configuredServerUrl()),
   getToken:profile.tokenForServer,getAccount:()=>profile.caseAccount,
-  getGpuDevice:()=>renderer?.webgpu?.device??null,notify:toast,
+  getGpuDevice:()=>renderer?.webgpu?.device??null,getLowWeaponDetail,notify:toast,
 });
 casePanel.events.addEventListener('change',profile.refreshSkins);
 const weaponSkinFor=(playerId,weaponId)=>mode==='server'

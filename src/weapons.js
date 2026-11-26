@@ -9,7 +9,7 @@ import { createFPSHand, createFPSSleeve, fpsHandTextures } from './fps-hands.js'
 import { LAUNCHER_POSE, RIFLE_SUPPORT_POSE, RIFLE_TRIGGER_WRIST, SUPPLY_POSE,
   DEFIB_POSE, BINOCULAR_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
-import { cloneWeaponModel, upgradeMuzzle, upgradeOpticEye, showWeaponUpgrades } from './weapon-models.js';
+import { cloneWeaponModel, setWeaponDetail, upgradeMuzzle, upgradeOpticEye, showWeaponUpgrades } from './weapon-models.js';
 import { setWeaponSkin } from './weapon-skins.js';
 import { mountCollimator } from './collimator.js';
 import { isPlacementGadget } from '../shared/gadgets.js';
@@ -1192,7 +1192,8 @@ export function createWeaponRig(owner = {}) {
     }
     activeOptic?.aim(aim>.75);
     const weaponRoot=rifle?.model??pistol?.root;
-    if(paintRoot!==weaponRoot||paintId!==skinId){
+    const detailChanged=setWeaponDetail(weaponRoot,key,owner.detailLevel>0);
+    if(detailChanged||paintRoot!==weaponRoot||paintId!==skinId){
       paintRoot=weaponRoot;
       paintId=skinId;
       paintReady=setWeaponSkin(weaponRoot,key,skinId).catch(error=>console.warn('Weapon skin unavailable',error));

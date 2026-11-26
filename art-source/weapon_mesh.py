@@ -99,7 +99,7 @@ def surface_mark(mesh, text, x, y, z, step, color, fill=.40):
 
 
 def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, parents=None,
-                  glass=None, modular=False, view_distance=2.1, finish_rows=None):
+                  glass=None, modular=False, view_distance=2.1, finish_rows=None, finish_shader=None):
     if modular:
         for slot in ('Optic', 'Barrel', 'Magazine', 'Stock'):
             if f'Mount_{slot}' not in mounts:
@@ -122,7 +122,7 @@ def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, p
     if finish_rows is not None:
         from weapon_finish import finish_uv, shader_finish
         row_count = max(3, max(finish_rows.values(), default=0)+1)
-        shader_finish(material, shader, row_count)
+        (finish_shader or shader_finish)(material, shader, row_count)
     for name, assembly in parts:
         obj = assembly.object(name, collection)
         if finish_rows is not None:

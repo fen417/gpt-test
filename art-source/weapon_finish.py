@@ -13,28 +13,29 @@ FINISHES = ((.49, .48, .105), (.78, .04, .22), (.38, .69, .10))
 FABRIC = (.90, .0, .19)
 
 
-def finish_image(name, pixels):
+def finish_image(name, pixels, size=SIZE):
     data = array('f', chain.from_iterable(pixels))
-    image = bpy.data.images.new(name, width=SIZE, height=len(pixels)//SIZE, alpha=False)
+    image = bpy.data.images.new(name, width=size, height=len(pixels)//size, alpha=False)
     image.colorspace_settings.name = 'Non-Color'
     image.pixels.foreach_set(data)
     image.pack()
     return image
 
 
-def shader_finish(material, shader, row_count, finishes=(*FINISHES,FABRIC)):
+def shader_finish(material, shader, row_count, finishes=(*FINISHES,FABRIC), *,
+                  fabric_rows=(3,), size=SIZE, roughness_variation=1):
     rng = random.Random(416)
     normal, orm = [], []
     for row, (roughness, metalness, strength) in enumerate(finishes[:row_count]):
-        grain = [rng.uniform(-1, 1) for _ in range(SIZE * SIZE)]
-        for y in range(SIZE):
+        grain = [rng.uniform(-1, 1) for _ in range(size * size)]
+        for y in range(size):
             machining = .42 * math.sin(y * math.tau / 8)
-            for x in range(SIZE):
-                point = y * SIZE + x
+            for x in range(size):
+                point = y * size + x
                 value = grain[point]
-                dx = grain[y * SIZE + (x + 1) % SIZE] - value
-                dy = grain[((y + 1) % SIZE) * SIZE + x] - value
-                if row == 3:
+                dx = grain[y * size + (x + 1) % size] - value
+                dy = grain[((y + 1) % size) * size + x] - value
+                if row in fabric_rows:
                     # Crossed threads catch light along both axes of the weave.
                     dx = .38*dx + .8*math.sin(x*math.tau/4)*math.cos(y*math.tau/8)
                     dy = .38*dy + .8*math.sin(y*math.tau/4)*math.cos(x*math.tau/8)
@@ -45,16 +46,16 @@ def shader_finish(material, shader, row_count, finishes=(*FINISHES,FABRIC)):
                 normal.append((.5 + dx * strength / (2 * depth),
                                .5 + dy * strength / (2 * depth), .5 + .5 / depth, 1))
                 mottling = math.sin(x * math.tau / 48) * math.sin(y * math.tau / 32)
-                orm.append((1, roughness + .072 * value + .029 * mottling, metalness, 1))
+                orm.append((1, roughness + roughness_variation * (.072*value + .029*mottling), metalness, 1))
     graph = material.node_tree
     normal_texture = graph.nodes.new('ShaderNodeTexImage')
-    normal_texture.image = finish_image('Surface grain normal', normal)
+    normal_texture.image = finish_image('Surface grain normal', normal, size)
     normals = graph.nodes.new('ShaderNodeNormalMap')
     normals.inputs['Strength'].default_value = .78
     graph.links.new(normal_texture.outputs['Color'], normals.inputs['Color'])
     graph.links.new(normals.outputs['Normal'], shader.inputs['Normal'])
     orm_texture = graph.nodes.new('ShaderNodeTexImage')
-    orm_texture.image = finish_image('Metal and polymer roughness', orm)
+    orm_texture.image = finish_image('Metal and polymer roughness', orm, size)
     channels = graph.nodes.new('ShaderNodeSeparateColor')
     graph.links.new(orm_texture.outputs['Color'], channels.inputs['Color'])
     graph.links.new(channels.outputs['Green'], shader.inputs['Roughness'])
