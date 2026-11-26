@@ -953,7 +953,7 @@ export function createWeaponRig(owner = {}) {
   const applyPistolRight=createGripApplier(pistolGripMesh,pistolWrist,ownedGeometries);
   let gripLeftOffset=new THREE.Vector3(),gripRightOffset=new THREE.Vector3();
   const adjustedLeftWrist=new THREE.Vector3();
-  const profile=(key,side)=>owner.gripProfiles ? owner.gripProfiles[key]?.[side]??null : savedGrip(key,side);
+  const getGripProfile=(key,side)=>owner.gripProfiles ? owner.gripProfiles[key]?.[side]??null : savedGrip(key,side);
   const pistolShoulderCamera=new THREE.Vector3(.42,-.52,.12),pistolShoulderLocal=new THREE.Vector3();
   const pistolArmInverse=new THREE.Matrix4();
   const supplyLeftWrist=new THREE.Vector3(),supplyRightWrist=new THREE.Vector3();
@@ -1115,7 +1115,7 @@ export function createWeaponRig(owner = {}) {
     const key = pistol || Object.hasOwn(loadouts,weaponId) ? weaponId : defaultByClass[classId];
     const rifle=rifles.get(key);
     const useGrip=!unarmed&&!(gadgetKind&&gadgetPhase>0&&gadgetPhase<1)&&!(throwPhase>0&&throwPhase<1);
-    const leftProfile=useGrip?profile(key,'left'):null,rightProfile=useGrip?profile(key,'right'):null;
+    const leftProfile=useGrip?getGripProfile(key,'left'):null,rightProfile=useGrip?getGripProfile(key,'right'):null;
     // Reset inactive/gadget meshes; custom hands must not leak into other poses.
     const rl=applyRifleLeft(pistol?null:leftProfile),rr=applyRifleRight(pistol?null:rightProfile);
     const pl=applyPistolLeft(pistol?leftProfile:null),pr=applyPistolRight(pistol?rightProfile:null);
