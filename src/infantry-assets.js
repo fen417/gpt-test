@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-import { SafeWebGpuKtx2Loader } from './webgpu-ktx2.js';
+import { withTextureTranscoder } from './texture-transcoder.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -363,11 +362,8 @@ const prepareKit = ({ scene }) => ({ model: scene });
 
 export class InfantryAssets {
   constructor(renderer) {
+    this.renderer=renderer;
     this.loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-    const KtxLoader=renderer.isWebGPURenderer ? SafeWebGpuKtx2Loader : KTX2Loader;
-    this.ktx = new KtxLoader().setWorkerLimit(2)
-      .setTranscoderPath(new URL('basis/', document.baseURI).href).detectSupport(renderer);
-    this.loader.setKTX2Loader(this.ktx);
     this.templates = new Map();
     this.pending = new Map();
     this.disposed = false;
@@ -376,7 +372,7 @@ export class InfantryAssets {
   request(name, prepare) {
     if (!this.pending.has(name)) {
       const url = assetUrls[name];
-      const load = this.loader.loadAsync(url).then(gltf => {
+      const load = withTextureTranscoder(this.renderer,ktx=>this.loader.setKTX2Loader(ktx).loadAsync(url)).then(gltf => {
         const data = prepare(gltf, name);
         if (this.disposed) this.disposeTemplate(data);
         else this.templates.set(name, data);
@@ -441,7 +437,6 @@ export class InfantryAssets {
     this.disposed = true;
     for (const template of this.templates.values()) this.disposeTemplate(template);
     this.templates.clear();
-    Promise.allSettled(this.pending.values()).then(() => this.ktx.dispose());
   }
 }
 

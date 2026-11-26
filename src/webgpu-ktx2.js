@@ -54,3 +54,9 @@ export class SafeWebGpuKtx2Loader extends KTX2Loader {
     },onError);
   }
 }
+
+export function createTextureTranscoder(renderer){
+  const loader=renderer.isWebGPURenderer?new SafeWebGpuKtx2Loader():new KTX2Loader();
+  loader.allowCompression=true;
+  return loader.setTranscoderPath(new URL('basis/',document.baseURI).href).setWorkerLimit(2).detectSupport(renderer);
+}

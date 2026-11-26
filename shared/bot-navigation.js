@@ -229,13 +229,29 @@ export function moveBot(sim,p,goal,dt,{sprint=true,look=true,cautious=false,foll
 
 // Build immutable navigation before the match starts, never in a combat tick.
 export function prepareNavigation(sim){navigation(sim);}
-export function resetNavigation(sim){
+function cancelNavigationPaths(sim){
   for(const {job} of sim.navigationQueue??[])job.return();
   sim.navigationQueue=[];
   for(const p of sim.players.values())if(p.ai){
     p.ai.pathJob=null;p.ai.pathResult=null;p.ai.pathUntil=0;p.ai.repathAt=0;p.botPath=[];
   }
-  caches.delete(sim);
+}
+export function resetNavigation(sim){
+  cancelNavigationPaths(sim);caches.delete(sim);
+}
+export function refreshNavigationAtGate(sim,gate){
+  cancelNavigationPaths(sim);
+  const nav=caches.get(sim);if(!nav)return;
+  const size=sim.gridSize,cell=sim.gridCell,origin=sim.gridOrigin;
+  const padding=cell*2+sim.playerRadius;
+  const index=x=>Math.min(size-1,Math.max(0,Math.floor((x-origin)/cell)));
+  const x0=index(gate.x-gate.w/2-padding),x1=index(gate.x+gate.w/2+padding);
+  const z0=index(gate.z-gate.d/2-padding),z1=index(gate.z+gate.d/2+padding);
+  for(let z=z0;z<=z1;z++)for(let x=x0;x<=x1;x++){
+    const id=z*size+x;
+    nav.ground.delete(id);delete nav.byId[id];nav.adjacency.delete(id);
+    for(const node of nav.layers.get(id)??[])nav.adjacency.delete(node.id);
+  }
 }
 export function findBotPath(sim,start,goal){if(start.bot&&start.ai)return resumeBotPath(sim,start,goal)??start.botPath??[];const job=pathJob(sim,start,goal);let result;do{result=job.next();}while(!result.done);return result.value;}
 function resumeBotPath(sim,p,goal){

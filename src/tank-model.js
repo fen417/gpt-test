@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
-import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
+import {loadCompressedTexture} from './texture-transcoder.js';
 import {vehicleAimDirection,TANK_TURRET_BASE_Y} from '../shared/vehicles.js';
 import trackPath from './assets/tank/track-path.json' with {type:'json'};
 export {placeTankDriverCamera} from './tank-camera.js';
@@ -63,12 +63,7 @@ export function loadTankAtlas(renderer) {
     if(webgpu){
       texture=makeWebGpuTankAtlas();
     }else{
-      const loader=new KTX2Loader().setWorkerLimit(1)
-        .setTranscoderPath(import.meta.env.BASE_URL+'basis/')
-        .detectSupport(renderer);
-      try{
-        texture=await loader.loadAsync(new URL('./assets/tank/atlas.ktx2',import.meta.url).href);
-      }finally{loader.dispose();}
+      texture=await loadCompressedTexture(renderer,new URL('./assets/tank/atlas.ktx2',import.meta.url).href);
     }
     texture.colorSpace=THREE.SRGBColorSpace;
     texture.wrapS=texture.wrapT=THREE.RepeatWrapping;

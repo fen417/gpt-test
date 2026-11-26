@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM,NAHAR_WATER} from '../../shared/campaign/nahar.js';
-import {NAHAR_TUNNEL} from '../../shared/campaign/nahar-district.js';
 import {bulletHeight} from '../../shared/ballistics.js';
 import {BLACK_HAWK_GUN,blackHawkGunPose,getVehicleSeatPose,vehiclePartPose} from '../../shared/vehicles.js';
 import {EYE_HEIGHT} from '../../shared/world.js';
@@ -103,13 +102,6 @@ export class Mission4Presentation{
       }
       return [name,gate];
     }));
-    this.tunnelLighting=new THREE.Group();
-    this.dressing.add(this.tunnelLighting);
-    this.tunnelLighting.visible=false;
-    this.tunnelLights=Array.from({length:3},()=>{
-      const light=new THREE.PointLight(0xffd5a2,5.5,10,1.75);
-      this.tunnelLighting.add(light);return light;
-    });
     this.original={sun:renderer.sun.intensity,sunOffset:renderer.sunOffset.clone(),hemi:renderer.hemiLight.intensity,
       ambient:renderer.ambientLight.intensity,fogColor:renderer.scene.fog.color.clone(),fogDensity:renderer.scene.fog.density,
       haze:this.sky.hazeAmount.value,hazeTint:this.sky.hazeTint.value.clone()};
@@ -315,15 +307,6 @@ export class Mission4Presentation{
     if(m.cutscene?.id==='finale'){
       const e=NAHAR_SITES.exit,t=smooth(m.cutscene.elapsed,0,5.8);
       r.camera.position.set(e.x-6+t*3,1.78,e.z+2.3-t*.8);r.camera.lookAt(e.x+9,1.34,e.z-.4);r.weapon.visible=false;
-    }
-    const viewPoint=r.camera.position,tunnel=NAHAR_TUNNEL;
-    this.tunnelLighting.visible=!m.airborne&&!r.lowQuality&&viewPoint.y<6&&
-      viewPoint.x>tunnel.start-7&&viewPoint.x<tunnel.end+2&&Math.abs(viewPoint.z-tunnel.z)<6;
-    if(this.tunnelLighting.visible){
-      const lights=tunnel.lampX;
-      const first=THREE.MathUtils.clamp(Math.round((viewPoint.x-lights[0])/(lights[1]-lights[0]))-1,0,lights.length-3);
-      for(const [index,light] of this.tunnelLights.entries())
-        light.position.set(lights[first+index],2.5,tunnel.z-3.65);
     }
     this.updateStorm(r,m.time,view.quality);
     this.water.update(r.clock,r.scene.fog.density,r.lowQuality,r.graphicsEffects?.water);

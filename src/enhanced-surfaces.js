@@ -2,9 +2,8 @@ import {RELIEF_DEPTH, RELIEF_STEPS, RELIEF_RANGE} from './surface-relief.js';
 import {makeWeatherMask,weatherParameters,surfaceRepeat} from './map-weathering.js';
 import {setWebGlWeathering} from './webgl-map-weathering.js';
 import {setWebGlRelief} from './webgl-surface-relief.js';
-import {SafeWebGpuKtx2Loader} from './webgpu-ktx2.js';
+import {loadCompressedTexture} from './texture-transcoder.js';
 import {DETAIL_SIZE,choosePbrSize,PBR_PACK_VERSION} from './pbr-library.js';
-import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
 import * as THREE from 'three';
 
 let urls={};
@@ -50,15 +49,6 @@ export class EnhancedSurfaces {
       .finally(()=>{this.manifestPending=false;if(this.loadedRefresh)this.scheduleRefresh();});
   }
 
-  getKtxLoader() {
-    if(!this.ktx){
-      this.ktx=this.renderer.isWebGPURenderer?new SafeWebGpuKtx2Loader():new KTX2Loader();
-      this.ktx.allowCompression=true;
-      this.ktx.setTranscoderPath(new URL('basis/',document.baseURI).href).setWorkerLimit(2).detectSupport(this.renderer);
-    }
-    return this.ktx;
-  }
-
   // Coalesce all completed requests into one material pass. A slow
   // texture may finish mid-match; never rebuild the map's material graphs
   // in an ordinary active frame. Apply pending work on a loading/pause frame.
@@ -89,7 +79,7 @@ export class EnhancedSurfaces {
     if(!this.textures.has(url)){
       const entry={texture:null,pending:true};
       this.textures.set(url,entry);
-      const request=selected?this.getKtxLoader().loadAsync(url):this.loader.loadAsync(url);
+      const request=selected?loadCompressedTexture(this.renderer,url):this.loader.loadAsync(url);
       request.catch(error=>{
         if(selected&&fallback&&this.textures.get(url)===entry)return this.loader.loadAsync(fallback);
         throw error;
@@ -228,5 +218,5 @@ export class EnhancedSurfaces {
     this.weatherMask?.dispose();this.weatherMask=null;
   }
 
-  dispose(){this.clear();this.ktx?.dispose();this.ktx=null;}
+  dispose(){this.clear();}
 }

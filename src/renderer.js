@@ -16,6 +16,7 @@ import {ShaderWarmup} from './shader-warmup.js';
 import {uploadPrefix,uploadChangedPrefix,billboardRadius} from './render-work.js';
 import {atmosphereProfile} from './atmosphere-profile.js';
 import {EnhancedSurfaces} from './enhanced-surfaces.js';
+import {disposeTextureTranscoder} from './texture-transcoder.js';
 import {LocalReflections} from './local-reflections.js';
 import {applyTextureFiltering} from './texture-quality.js';
 import {applyPistolSprintPose} from './pistol-pose.js';
@@ -3189,6 +3190,7 @@ export class GameRenderer {
     skeletons.forEach(skeleton => skeleton.dispose());
     this.weaponRig?.dispose?.();
     this.atmosphere.target.dispose();
-    this.groundShadows.dispose();this.frameGeneration?.dispose();this.postPass.dispose();this.gpuTimer.dispose();this.renderer.dispose();
+    this.groundShadows.dispose();this.frameGeneration?.dispose();this.postPass.dispose();this.gpuTimer.dispose();
+    disposeTextureTranscoder(this.renderer);this.renderer.dispose();
   }
 }

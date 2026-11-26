@@ -1,6 +1,6 @@
 import {atmosphereProfile,CLOUD_LEVEL,makeCloudTexture,ensureCloudTexture} from './atmosphere-profile.js';
 import * as THREE from 'three';
-import {KTX2Loader} from 'three/addons/loaders/KTX2Loader.js';
+import {loadCompressedTexture} from './texture-transcoder.js';
 import {drawVillageSurface} from './village-surface-paint.js';
 
 function rand(seed) { return () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; }; }
@@ -77,11 +77,11 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
   // game deliberately requests no optional features so older adapters can run.
   // Upload regular WebP textures instead of transcoding KTX2 into a format
   // that the active device did not enable. Preserve WebGL's existing KTX2 path.
-  const compressed=bake||renderer.isWebGPURenderer?null:new KTX2Loader().setTranscoderPath(new URL('basis/',document.baseURI).href).setWorkerLimit(1).detectSupport(renderer);
+  const compressed=!bake&&!renderer.isWebGPURenderer;
   const surfaceTexture=(draw,repeat=1)=>{
     const name=names[slot++];if(bake)return texture(draw,repeat,name==='ground'||name==='village-sand'?1024:512);
     const map=new THREE.Texture();map.colorSpace=THREE.SRGBColorSpace;map.wrapS=map.wrapT=THREE.RepeatWrapping;map.repeat.set(repeat,repeat);
-    const loaded=!compressed||name==='cloth'?new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}.webp`,import.meta.url).href):compressed.loadAsync(new URL(`./assets/surfaces/${name}.ktx2`,import.meta.url).href);
+    const loaded=!compressed||name==='cloth'?new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}.webp`,import.meta.url).href):loadCompressedTexture(renderer,new URL(`./assets/surfaces/${name}.ktx2`,import.meta.url).href);
     pending.push(loaded.catch(()=>new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}.webp`,import.meta.url).href)).then(image=>{map.image=image.image;map.mipmaps=image.mipmaps;map.format=image.format;map.type=image.type;map.isCompressedTexture=image.isCompressedTexture;map.generateMipmaps=!image.isCompressedTexture;map.needsUpdate=true;}));
     return map;
   };
@@ -159,7 +159,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     const normalMap=bake?null:new THREE.Texture();
     if(normalMap){
       normalMap.wrapS=normalMap.wrapT=THREE.RepeatWrapping;normalMap.anisotropy=anisotropy;
-      pending.push((compressed?compressed.loadAsync(new URL(`./assets/surfaces/${name}-normal.ktx2`,import.meta.url).href):Promise.reject(new Error('WebGPU uses WebP normals'))).catch(()=>new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}-normal.webp`,import.meta.url).href)).then(image=>{normalMap.image=image.image;normalMap.mipmaps=image.mipmaps;normalMap.format=image.format;normalMap.type=image.type;normalMap.isCompressedTexture=image.isCompressedTexture;normalMap.generateMipmaps=!image.isCompressedTexture;normalMap.needsUpdate=true;}));
+      pending.push((compressed?loadCompressedTexture(renderer,new URL(`./assets/surfaces/${name}-normal.ktx2`,import.meta.url).href):Promise.reject(new Error('WebGPU uses WebP normals'))).catch(()=>new THREE.TextureLoader().loadAsync(new URL(`./assets/surfaces/${name}-normal.webp`,import.meta.url).href)).then(image=>{normalMap.image=image.image;normalMap.mipmaps=image.mipmaps;normalMap.format=image.format;normalMap.type=image.type;normalMap.isCompressedTexture=image.isCompressedTexture;normalMap.generateMipmaps=!image.isCompressedTexture;normalMap.needsUpdate=true;}));
     }
     return normalMap;
   };
@@ -184,7 +184,7 @@ export function createSurfaceMaterials(renderer, { useBump = true, anisotropy:an
     ground: make(ground, 0x9da58d, 9, .98, 0, .045), cloth: make(cloth, 0x7c8979, .65, .98, 0, .012), wood: make(wood, 0xc9b594, 2, .95, 0, .04),
     villageNormals:{sand:normalTexture('village-sand'),stucco:normalTexture('village-stucco')},
     maps: { concrete, brick, metal, asphalt, ground, cloth, wood,'village-sand':villageSand,'village-stucco':villageStucco },
-    ready:Promise.all(pending).finally(()=>compressed?.dispose()),
+    ready:Promise.all(pending),
   };
 }
 

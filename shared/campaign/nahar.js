@@ -1,6 +1,7 @@
 import {makeTerrain} from '../terrain.js';
 import {registerLocalMap} from '../world.js';
 import {addNaharGroundDistrict, NAHAR_DISTRICT_ROADS, NAHAR_TUNNEL} from './nahar-district.js';
+import {addNaharDepot} from './nahar-depot.js';
 
 const size=4096,cell=8,boxes=[],structures=[],roads=[],navigationNodes=[];
 const landforms=[
@@ -241,14 +242,8 @@ for(const y of [2.9,6.2,8.9]){
 part('water-tower-tank',-147,-64,6.7,6.7,4.15,9.22,'#557d83',{surface:'metal',shape:'cylinder'});
 part('water-tower-cap',-147,-64,6.9,6.9,.26,13.37,'#889287',{surface:'metal',shape:'cylinder'});
 
-// Repair halls and the station remain open to infantry and bot navigation.
 const concrete='#afa18c',beam='#4c5858',iron={surface:'metal'};
-for(const [id,x,z,w,d] of [['shed-west',-104,23,30,19],['shed-east',-68,25,25,17]]){
-  for(const side of [-1,1])wall(id+'-side-'+side,x+side*w/2,z,d,.27,4.8,concrete,{axis:'z',gap:5});
-  for(const side of [-1,1])wall(id+'-front-'+side,x,z+side*d/2,w,.27,4.8,concrete,{gap:7});
-  part(id+'-roof',x,z,w+.8,d+.86,.26,4.8,id==='shed-west'?'#375d70':'#80796b',iron);
-  for(const dz of [-5,5])part(id+'-workbench-'+dz,x-4,z+dz,6.5,1.12,.91,0,'#796747');
-}
+addNaharDepot(part,paving,wall,structures);
 function railPoint(x,offset){
   const z=railZ(x)+(offset-1.5);
   return [x,terrain.heightAt(x,z),z];
@@ -354,38 +349,6 @@ function shelves(id,x,z,y,color='#6c7567'){
     part(id+'-shelf-'+level,x,z,2.96,.79,.075,y+level,color,iron);
     for(const dx of [-.81,.42,1.08])
       part(id+'-stock-'+level+'-'+dx,x+dx,z,.45,.54,.22+Math.abs(dx)*.21,y+level+.075,dx>0?'#968468':'#70614a',timber);
-  }
-}
-for(const [id,x,z] of [['west',-104,23],['east',-68,25]]){
-  const depth=id==='west'?19:17,width=id==='west'?30:25;
-  for(const dx of [-width*.37,-width*.19,width*.19,width*.37]){
-    const wallZ=z-depth/2+.18;
-    part(id+'-shop-pilaster-'+dx,x+dx,wallZ,.26,.21,4.54,0,beam,fittings);
-    part(id+'-shop-skirt-'+dx,x+dx,wallZ+.14,3.3,.08,.88,0,'#70786b',trim('concrete'));
-  }
-  cabinet(id+'-tool-locker',x+8,z+5,0,{paint:'#6d755f'});
-  shelves(id+'-parts-rack',x-9,z-6.6,0);
-  shelves(id+'-bin-rack',x+7.4,z-6.5,0,'#7c7466');
-  part(id+'-pegboard',x-7.6,z-depth/2+.30,3.2,.11,1.47,1.26,'#817257',timber);
-  for(const row of [.25,.53,.84,1.14]){
-    part(id+'-pegboard-rail-'+row,x-7.6,z-depth/2+.37,2.88,.05,.036,1.26+row,'#a09878',fittings);
-  }
-  for(const [i,dy] of [.72,.47,.61,.87].entries()){
-    const toolX=x-8.73+i*.67,toolZ=z-depth/2+.39;
-    part(id+'-tool-shank-'+i,toolX,toolZ,.07,.07,dy,1.58,'#5e6664',fittings);
-    part(id+'-tool-head-'+i,toolX,toolZ,.19,.09,.08,1.58+dy,'#a5987b',fittings);
-  }
-  for(const [dx,tone] of [[-.29,'#716d56'],[.29,'#9c7557']]){
-    part(id+'-welding-bottle-'+dx,x+9.1+dx,z+5.2,.37,.37,1.24,0,tone,{...iron,shape:'cylinder'});
-    part(id+'-welding-valve-'+dx,x+9.1+dx,z+5.2,.13,.13,.18,1.24,'#9a917d',{...fittings,shape:'cylinder'});
-  }
-  part(id+'-safety-panel',x+7.5,z-depth/2+.24,2.4,.09,.84,2.86,'#a79a77',trim());
-  for(const dx of [-.68,0,.68])part(id+'-safety-print-'+dx,x+7.5+dx,z-depth/2+.30,.39,.025,.48,3.02,'#985c42',fittings);
-  part(id+'-worktop',x-4,z-5,6.6,1.14,.08,.87,'#74685b',timber);
-  for(const dx of [-2.4,-1.8,1.3,2.35])part(id+'-bench-parts-'+dx,x-4+dx,z-5,.31,.42,.18,.95,'#56656a',fittings);
-  for(const offset of [-5,2,6]){
-    part(id+'-roof-girder-'+offset,x,z+offset,23,.17,.26,4.5,beam,fittings);
-    part(id+'-shop-lamp-'+offset,x,z+offset,5,.24,.11,4.38,'#ecd7af',{surface:'unlit',noCollision:true});
   }
 }
 for(const [x,z] of [[-1,16],[4,43],[39,15]]){

@@ -317,6 +317,28 @@ export class Simulation {
     const colliders=getAssetColliders(this.map).filter(box=>!disabled.has(box.id)).map(box=>({...box}));
     initializeCollisionWorld(this,true,colliders);
   }
+  setCampaignGateCollider(id,enabled){
+    const source=getAssetColliders(this.map);
+    const box=source.find(b=>b.id===id);
+    if(!box||this.colliders.includes(box)===enabled)return;
+    if(this.colliders===source)this.colliders=source.slice();
+    const grenadeBox=enabled?expandCollider(box,GRENADE_RADIUS):this.grenadeColliders.find(b=>b.id===id);
+    grenadeBox.grenadeIndex=box.collisionIndex;
+    const size=this.collisionSize,edge=this.map.size/2;
+    const cell=value=>clamp(Math.floor((value+edge)/this.collisionCell),0,size-1);
+    const update=(list,item)=>{
+      if(enabled)list.push(item);
+      else{
+        const index=list.indexOf(item);
+        if(index>=0)list.splice(index,1);
+      }
+    };
+    for(const [item,list,bins] of [[box,this.colliders,this.collisionBins],[grenadeBox,this.grenadeColliders,this.grenadeBins]]){
+      update(list,item);
+      for(let z=cell(item.minZ);z<=cell(item.maxZ);z++)
+        for(let x=cell(item.minX);x<=cell(item.maxX);x++)update(bins[z*size+x],item);
+    }
+  }
   stairHeightAt(x,z,y,bodyHeight){
     const step=this.stepHeight;
     if(!step)return y;

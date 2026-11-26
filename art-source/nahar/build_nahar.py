@@ -2,7 +2,7 @@
 
 import json
 from collections import defaultdict
-from math import ceil, cos, floor, hypot, pi, sin
+from math import ceil, cos, exp, floor, hypot, pi, sin
 from pathlib import Path
 import sys
 
@@ -19,6 +19,29 @@ def color(value):
     return tuple(linear(int(value[i:i + 2], 16)) for i in (1, 3, 5))
 
 
+def tunnel_tint(tunnel, point, tone):
+    x, y, z = point
+    across = z - tunnel['z']
+    if not (tunnel['start'] <= x <= tunnel['end'] and abs(across) <= 4.67 and y < 4.9):
+        return tone
+    light = sum(exp(-(((x - lamp) * .46) ** 2 + ((y - 2.5) * .43) ** 2 + ((across + 3.65) * .24) ** 2))
+                for lamp in tunnel['lampX'])
+    ambient = .57 + .26 * max(0, 1-(x-tunnel['start'])/8)
+    return tuple(base*ambient + light*warm for base,warm in zip(tone,(.22,.145,.077)))
+
+
+def cut_at_x(points, boundary, left):
+    result = []
+    for a,b in zip(points,points[1:]+points[:1]):
+        inside = a[0] <= boundary if left else a[0] >= boundary
+        if inside:
+            result.append(a)
+        if (a[0]<boundary<b[0]) or (b[0]<boundary<a[0]):
+            f=(boundary-a[0])/(b[0]-a[0])
+            result.append((boundary,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f))
+    return result
+
+
 class Batch:
     def __init__(self):
         self.points, self.faces, self.colors, self.uv = [], [], [], []
@@ -32,10 +55,38 @@ class Batch:
             self.colors.extend((*[c * shade for c in (tints[i] if tints else tone)], 1))
             self.uv.extend((p[axis[0]] / uv_scale, p[axis[1]] / uv_scale))
 
-    def block(self, part, tint):
+    def block(self, part, tint, tunnel=None):
+        def polygon(points,tone,axis,uv_scale=4):
+            if tunnel and part['surface']!='unlit':
+                x0,x1=min(p[0] for p in points),max(p[0] for p in points)
+                cuts=range(floor(x0/2)*2+2,ceil(x1),2)
+                for boundary in cuts:
+                    if boundary>=x1:
+                        break
+                    slab=cut_at_x(points,boundary,True)
+                    if len(slab)>=3:
+                        self.polygon(slab,tone,axis,uv_scale,[tunnel_tint(tunnel,p,tone) for p in slab])
+                    points=cut_at_x(points,boundary,False)
+                if len(points)>=3:
+                    self.polygon(points,tone,axis,uv_scale,[tunnel_tint(tunnel,p,tone) for p in points])
+            else:
+                self.polygon(points,tone,axis,uv_scale)
+
         x, z, y = (part[k] for k in ('x', 'z', 'baseY'))
         w, d, h = (part[k] for k in ('w', 'd', 'h'))
         shape = part.get('shape')
+        if shape == 'beam':
+            a,b=map(Vector,part['ends'])
+            side=Vector((0,0,part['beamWidth']/2))
+            up=(b-a).normalized().cross(side)
+            rim=[-side-up,side-up,side+up,-side+up]
+            near,far=[tuple(a+v) for v in rim],[tuple(b+v) for v in rim]
+            polygon(near[::-1],tint,(2,1))
+            polygon(far,tint,(2,1))
+            for i in range(4):
+                j=(i+1)%4
+                polygon([near[i],near[j],far[j],far[i]],tint,(0,2) if i%2==0 else (0,1))
+            return
         if shape == 'arrow':
             side = part['facing']
             face = [(x-w/2*side,y,z-d/2),(x+w/2*side,y+h/2,z-d/2),(x-w/2*side,y+h,z-d/2)]
@@ -51,12 +102,12 @@ class Batch:
                 profile = profile[::-1]
             near = [(x-w/2, y+py, z+pz) for py,pz in profile]
             far = [(x+w/2, y+py, z+pz) for py,pz in profile]
-            self.polygon(near[::-1], tint, (2, 1))
-            self.polygon(far, tint, (2, 1))
+            polygon(near[::-1], tint, (2, 1))
+            polygon(far, tint, (2, 1))
             for i in range(len(profile)):
                 j = (i+1) % len(profile)
                 axis = (0, 2) if abs(profile[i][1]-profile[j][1]) > abs(profile[i][0]-profile[j][0]) else (0, 1)
-                self.polygon([near[i], near[j], far[j], far[i]], tint, axis)
+                polygon([near[i], near[j], far[j], far[i]], tint, axis)
             return
         if shape == 'beveled':
             a,b,c,e = x-w/2,x+w/2,z-d/2,z+d/2
@@ -65,12 +116,12 @@ class Batch:
                        (b-bevel,e),(a+bevel,e),(a,e-bevel),(a,c+bevel)]
             low = [(px,y,pz) for px,pz in outline]
             high = [(px,y+h,pz) for px,pz in outline]
-            self.polygon(low,tint,(0,2))
-            self.polygon(high[::-1],tint,(0,2))
+            polygon(low,tint,(0,2))
+            polygon(high[::-1],tint,(0,2))
             for i in range(len(low)):
                 j = (i+1) % len(low)
                 axis = (0,1) if abs(low[i][0]-low[j][0]) > abs(low[i][2]-low[j][2]) else (2,1)
-                self.polygon([low[j],low[i],high[i],high[j]],tint,axis)
+                polygon([low[j],low[i],high[i],high[j]],tint,axis)
             return
         if part.get('shape') == 'rail-strip':
             (ax, ay, az), (bx, by, bz) = part['ends']
@@ -129,7 +180,7 @@ class Batch:
         for face, axis in [((0, 1, 2, 3), (0, 2)), ((7, 6, 5, 4), (0, 2)),
                            ((1, 0, 4, 5), (0, 1)), ((3, 2, 6, 7), (0, 1)),
                            ((0, 3, 7, 4), (2, 1)), ((2, 1, 5, 6), (2, 1))]:
-            self.polygon([pts[i] for i in face], tint, axis)
+            polygon([pts[i] for i in face], tint, axis)
 
     def make_mesh(self, name, surface, cast, collection, material):
         mesh = bpy.data.meshes.new(name)
@@ -151,7 +202,7 @@ def bake_terrain(plan, batches):
     for part in sorted((b for b in plan['parts'] if 'groundLayer' in b), key=lambda b: b['groundLayer']):
         x, z, w, d = (part[k] for k in ('x', 'z', 'w', 'd'))
         left, right, near, far = x-w/2, x+w/2, z-d/2, z+d/2
-        entry = left,right,near,far,part['surface'],color(part['color'])
+        entry = left,right,near,far,part['surface'],color(part['color']),part['id']=='tunnel-roadbed'
         for j in range(max(0,floor((near+limit)/spacing)),min(divisions,ceil((far+limit)/spacing))):
             for i in range(max(0,floor((left+limit)/spacing)),min(divisions,ceil((right+limit)/spacing))):
                 tiled_paving[i,j].append(entry)
@@ -253,6 +304,9 @@ def bake_terrain(plan, batches):
             # coplanar asphalt overlays. Keep the same triangle seam as terrain.js.
             xs=sorted({x,x+spacing,*road_cuts(lanes,0,x),*(v for layer in layers for v in layer[:2] if x<v<x+spacing)})
             zs=sorted({z,z+spacing,*road_cuts(lanes,1,z),*(v for layer in layers for v in layer[2:4] if z<v<z+spacing)})
+            if any(layer[-1] for layer in layers):
+                xs=sorted(set(xs).union(range(x+2,x+spacing,2)))
+                zs=sorted(set(zs).union(range(z+2,z+spacing,2)))
             seam=x+z+spacing
 
             def triangled(rect, below):
@@ -279,7 +333,7 @@ def bake_terrain(plan, batches):
                 for near,far in zip(zs,zs[1:]):
                     mx,mz=(left+right)/2,(near+far)/2
                     paint=next((t for t in reversed(layers) if t[0]<mx<t[1] and t[2]<mz<t[3]),None)
-                    surface,tone=paint[4:] if paint else ('village-sand',sand)
+                    surface,tone,lit=paint[4:] if paint else ('village-sand',sand,False)
                     tile=batches['Base',surface,False,*tile_key]
                     rect=[(left,near),(left,far),(right,far),(right,near)]
                     scale=10 if surface=='village-sand' else 8
@@ -288,6 +342,8 @@ def bake_terrain(plan, batches):
                         if len(points)>=3:
                             points=lifted(points)
                             tints=None if paint else [terrain_tint(p,lanes) for p in points]
+                            if lit:
+                                tints=[tunnel_tint(plan['tunnel'],p,tone) for p in points]
                             tile.polygon(points,tone,(0,2),scale,tints=tints)
 
 
@@ -319,7 +375,8 @@ def main():
         x, z = part['x'], part['z']
         zone = 92 if abs(x) < 440 and abs(z) < 285 else 245
         cast = (not detail and part['h'] > .18 and abs(x) < 438 and abs(z) < 280)
-        batches[category, part['surface'], cast, int(x // zone), int(z // zone)].block(part, color(part['color']))
+        tunnel=plan['tunnel'] if part['id'].startswith(('tunnel-','vault-rib-','exit-')) else None
+        batches[category, part['surface'], cast, int(x // zone), int(z // zone)].block(part,color(part['color']),tunnel)
 
     bake_terrain(plan,batches)
 

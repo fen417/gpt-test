@@ -2,6 +2,7 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {NAHAR} from '../shared/campaign/nahar.js';
+import {NAHAR_TUNNEL} from '../shared/campaign/nahar-district.js';
 import {villageLayoutKey} from '../src/village-layout-key.js';
 import {packMap} from './pack-map.mjs';
 
@@ -17,7 +18,7 @@ for(let z=-limit;z<=limit;z+=spacing){
   heights.push(row);
 }
 const plan=resolve(stage,'plan.json');
-await writeFile(plan,JSON.stringify({spacing,limit,heights,roads:NAHAR.roads,
+await writeFile(plan,JSON.stringify({spacing,limit,heights,roads:NAHAR.roads,tunnel:NAHAR_TUNNEL,
   parts:NAHAR.boxes.filter(b=>!b.missionDynamic&&!b.collisionOnly)}));
 const result=spawnSync(blender,['--background','--factory-startup','--python-exit-code','1','--python',
   resolve('art-source/nahar/build_nahar.py'),'--',plan,stage,stage,...options],{stdio:'inherit',windowsHide:true});

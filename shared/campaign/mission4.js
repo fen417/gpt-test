@@ -1,6 +1,6 @@
 import {Simulation,sanitizeInput} from '../simulation.js';
 import {ensureBotState} from '../bot-ai.js';
-import {moveBot,resetNavigation} from '../bot-navigation.js';
+import {moveBot,refreshNavigationAtGate,resetNavigation} from '../bot-navigation.js';
 import {activateGadget} from '../gadgets.js';
 import {aimBullet} from '../ballistics.js';
 import {shotRandom} from '../fire-control.js';
@@ -723,6 +723,7 @@ class NaharDirector{
   botGoal(p){
     if(p.team===0)return this.squadGoal(p);
     if(p.assaultRoute?.length){
+      if(p.role==='serviceStreet'&&this.stage==='workshops')return p.home;
       const route=p.assaultRoute;
       while(p.assaultStep<route.length-1&&close(p,route[p.assaultStep],2.6))p.assaultStep++;
       return route[p.assaultStep];
@@ -797,11 +798,10 @@ class NaharDirector{
   }
   openGate(name){
     if(this.gates[name])return;
-    this.gates[name]=true;this.syncGates();
-  }
-  syncGates(){
-    this.sim.refreshCampaignColliders(new Set(Object.entries(NAHAR_GATES).filter(([id])=>this.gates[id]).map(([,b])=>b.id)));
-    resetNavigation(this.sim);for(const p of this.sim.players.values()){p.ai=null;p.botPath=[];}
+    const gate=NAHAR_GATES[name];
+    this.gates[name]=true;
+    this.sim.setCampaignGateCollider(gate.id,false);
+    refreshNavigationAtGate(this.sim,gate);
   }
   acquire(source){
     if(this.stage!=='station')return;
@@ -1065,7 +1065,8 @@ class NaharDirector{
     Object.assign(this,{failed:null,complete:false,input:{},lastSwap:false,lastOrder:false,
       switchAt:null,threatId:null,prompt:'',progress:0,interaction:null,medicCare:0,exitAt:null,
       landingClearSince:null,rescuerId:null,rescuePatientId:null,rescueGoal:null,disembark:null,squadPatientId:null,nextReinforcementCheck:0});
-    this.eventsDone=new Set(save.mission.eventsDone);this.syncGates();
+    this.eventsDone=new Set(save.mission.eventsDone);
+    for(const [name,gate] of Object.entries(NAHAR_GATES))sim.setCampaignGateCollider(gate.id,!this.gates[name]);
     this.addEscort();
     this.latestSave=this.checkpoint?structuredClone(save):null;this.saveRevision++;this.epoch++;
     return true;
