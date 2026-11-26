@@ -8,7 +8,8 @@ import {validEditorMapId,validEditorMapConfig} from '../shared/editor-map-config
 import {emptyM05Edits,validateM05Edits,modelAssetOk} from '../shared/campaign/m05-editor.js';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const file=join(root,'shared/campaign/m05-editor-data.json'),assets=join(root,'public/world-editor-assets'),backups=join(root,'.perf-local/world-editor-backups');
-const registry=join(root,'shared/editor-maps.json');
+const registry=join(root,'shared/editor-maps.json'),dressingSource=join(root,'public/campaign/m05/dressing-source.glb');
+const hasDressingSource=()=>stat(dressingSource).then(s=>s.isFile(),()=>false);
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const reply=(res,status,data)=>{res.statusCode=status;res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify(data));};
 async function body(req,max){const parts=[];let n=0;for await(const p of req){n+=p.length;if(n>max)throw Error('Слишком большой файл');parts.push(p);}return Buffer.concat(parts);}
@@ -41,7 +42,7 @@ export function worldEditorPlugin(){
       if(mapId&&mapId!=='quarry-m05'&&!validEditorMapId(mapId))throw Error('Неизвестная карта');
       if(mapId&&req.method==='GET'){
         const b=await readFile(mapId==='quarry-m05'?file:registry),r=JSON.parse(b);
-        if(mapId==='quarry-m05')return reply(res,200,{data:r,revision:hash(b)});
+        if(mapId==='quarry-m05')return reply(res,200,{data:r,revision:hash(b),sourceAvailable:await hasDressingSource()});
         if(!Object.hasOwn(r.maps,mapId))throw Error('Неизвестная карта');
         return reply(res,200,{...r.maps[mapId],revision:hash(b)});
       }
@@ -55,6 +56,7 @@ export function worldEditorPlugin(){
       if(mapId&&req.method==='POST'){
         if(!String(req.headers['content-type']).startsWith('application/json'))throw Error('Требуется JSON');
         const {data,revision}=JSON.parse((await body(req,16*1024*1024)).toString('utf8'));
+        if(Object.keys(data?.dressingProps??{}).length&&(mapId!=='quarry-m05'||!await hasDressingSource()))throw Error('Требуется экспорт исходных декораций M05');
         const errors=validateM05Edits(data);if(errors.length)throw Error(errors.slice(0,10).join('; '));
         for(const asset of new Set([...data.models.map(m=>m.asset),...Object.keys(data.assets??{})]))if(!(await stat(join(assets,asset))).isFile())throw Error('Нет ресурса '+asset);
         const target=mapId==='quarry-m05'?file:registry,current=await readFile(target);if(hash(current)!==revision)return reply(res,409,{error:'Файл изменён извне. Скачайте черновик и заново откройте карту.'});

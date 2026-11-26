@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
-import {M05_GATES,M05_SITES as sites,QUARRY_M05} from '../../shared/campaign/quarry-m05.js';
+import {M05_GATES,M05_SITES as sites,QUARRY_M05,M05_DRESSING} from '../../shared/campaign/quarry-m05.js';
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {CampaignFire} from './fire.js';
@@ -14,7 +14,7 @@ import {QuarryAmbience} from './quarry-m05-audio.js';
 import {QuarryActing} from './quarry-m05-acting.js';
 import './mission5.css';
 import {createEditorLights,updateEditorLights,disposeEditorLights} from './m05-editor-lights.js';
-import {wrapDressingBatches} from './m05-dressing-edits.js';
+import {wrapDressingBatches,loadDressingSource,expandDressing} from './m05-dressing-edits.js';
 import editorData from '../../shared/campaign/m05-editor-data.json';
 import {loadEditorModels,updateEditorModelVisibility} from './m05-editor-models.js';
 
@@ -22,10 +22,11 @@ QUARRY_M05.buildScene=buildQuarryMissionScene;
 
 const modelUrl=new URL('../assets/quarry-m05/industrial.glb',import.meta.url);
 const dressingUrl=new URL('../assets/quarry-m05/dressing.glb',import.meta.url);
-export async function loadQuarryDressing(){
+export async function loadQuarryDressing({editor=false,sourceAvailable=false}={}){
   const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const [industrial,dressing]=await Promise.all([loader.loadAsync(modelUrl.href),loader.loadAsync(dressingUrl.href)]);
   dressing.scene.name='quarry-set-dressing';wrapDressingBatches(dressing.scene,editorData.dressingBatches);
+  if(Object.keys(editorData.dressingProps??{}).length||editor&&sourceAvailable)expandDressing(dressing.scene,await loadDressingSource(),M05_DRESSING,editorData.dressingProps,editor);
   industrial.scene.add(dressing.scene);
   industrial.scene.add(await loadEditorModels());
   const lights=createEditorLights(editorData.lights);industrial.scene.add(lights);updateEditorLights(lights,'high');

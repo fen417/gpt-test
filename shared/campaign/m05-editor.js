@@ -25,6 +25,7 @@ export function validateM05Edits(d){
   if(d.roads!==undefined&&(!Array.isArray(d.roads)||d.roads.length>128||d.roads.some(r=>!record(r)||!keyOk(r.id)||!TERRAIN_LAYERS.includes(r.layer)||!finite(r.width,1,80)||!Array.isArray(r.points)||r.points.length<2||r.points.length>200||!r.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(n=>finite(n))))||new Set(d.roads.map(r=>r.id)).size!==d.roads.length))bad('Дороги');
   if(d.dressingBatches!==undefined&&(!record(d.dressingBatches)||Object.entries(d.dressingBatches).some(([id,e])=>!/^m05_(set|detail)_-?\d+_-?\d+$/.test(id)||!record(e)||typeof e.removed!=='boolean'||!vec(e.position)||!vec(e.rotation,-100,100)||!finite(e.scale,.05,20))))bad('Группы декораций M05');
   if(d.lights!==undefined&&(!Array.isArray(d.lights)||d.lights.length>24||d.lights.some(l=>!record(l)||!keyOk(l.id)||typeof l.name!=='string'||l.name.length>100||!['point','spot'].includes(l.type)||!vec(l.position)||!vec(l.rotation,-100,100)||!color(l.color)||!finite(l.intensity,0,1000)||!finite(l.distance,.5,200)||!finite(l.angle,.05,1.55)||!finite(l.penumbra,0,1)||!['low','medium','high'].includes(l.detail)||typeof l.shadow!=='boolean')||new Set(d.lights.map(l=>l.id)).size!==d.lights.length))bad('Локальные источники света');
+  if(d.dressingProps!==undefined&&(!record(d.dressingProps)||Object.entries(d.dressingProps).some(([id,e])=>!/^m05-dress-[a-zA-Z0-9_-]+-\d+$/.test(id)||!record(e)||typeof e.removed!=='boolean'||!vec(e.position)||!vec(e.rotation,-100,100)||!finite(e.scale,.05,20))))bad('Отдельные декорации M05');
   const ids=new Set();
   for(const m of d.models){
     if(!record(m)||!keyOk(m.id)||ids.has(m.id)||!modelAssetOk(m.asset)||typeof m.name!=='string'||m.name.length>200||
@@ -132,13 +133,27 @@ export function applyDressingBatchEdit(box,edit,name){
  const b=boxBounds({obb});
  return {...box,x:obb.center.x,z:obb.center.z,baseY:b.minY,w:b.maxX-b.minX,h:b.h-b.minY,d:b.maxZ-b.minZ,obb};
 }
+export function dressingPropTransform(p){
+ const pivot=dressingBatchPivot(dressingBatchName(p));
+ return {position:[p.x-pivot[0],p.y,p.z-pivot[2]],rotation:[0,p.yaw,0],scale:p.scale,removed:false};
+}
+export function applyDressingPropEdit(box,p,edit){
+ if(!edit)return box;if(edit.removed)return null;
+ const origin=dressingBatchPivot(dressingBatchName(p)),shape=shapeForBox(box),old=rotationMatrix({y:-p.yaw});
+ const [rx,ry,rz]=edit.rotation,basis=multiplyMatrix(rotationMatrix({x:rx,y:ry,z:rz}),old),scale=edit.scale/p.scale;
+ const c=shape.center,delta=transformVector(basis,{x:(c.x-p.x)*scale,y:(c.y-p.y)*scale,z:(c.z-p.z)*scale});
+ const obb=affineBox({x:origin[0]+edit.position[0]+delta.x,y:edit.position[1]+delta.y,z:origin[2]+edit.position[2]+delta.z},shape.half.map(v=>v*scale),multiplyMatrix(basis,shape.matrix));
+ const b=boxBounds({obb});
+ return {...box,x:obb.center.x,z:obb.center.z,baseY:b.minY,w:b.maxX-b.minX,h:b.h-b.minY,d:b.maxZ-b.minZ,obb};
+}
 export function editableMapBoxes(base,data){
  const index=dressingBatchIndex(base.props??[]);
- const boxes=[];
+ const boxes=[],props=new Map((base.props??[]).map(p=>[p.id,p]));
  for(const b of base.boxes){
   const prop=b.id?.match(/^(m05-dress-.+?-\d+)(?:-part-\d+|-\d+)?$/)?.[1];
   const batch=index.byProp.get(prop);
-  const next=batch?applyDressingBatchEdit(b,data.dressingBatches?.[batch],batch):applyBoxEdit(b,data.boxes[b.id]);
+  const edited=props.has(prop)?applyDressingPropEdit(b,props.get(prop),data.dressingProps?.[prop]):b;
+  const next=!edited?null:batch?applyDressingBatchEdit(edited,data.dressingBatches?.[batch],batch):applyBoxEdit(edited,data.boxes[b.id]);
   if(next)boxes.push(next);
  }
  for(const m of data.models)boxes.push(...modelColliders(m));
@@ -150,6 +165,8 @@ export function inspectM05Edits(base,grid,heights,d){
   const terrain=terrainWithEdits(grid,heights,d.terrain),boxes=editableMapBoxes(base,d).filter(b=>!b.noCollision);
   const known=dressingBatchIndex(base.props??[]).names;
   for(const name of Object.keys(d.dressingBatches??{}))if(!known.has(name))issues.push({level:'error',message:'Неизвестная группа '+name});
+  const propIds=new Set((base.props??[]).map(p=>p.id));
+  for(const id of Object.keys(d.dressingProps??{}))if(!propIds.has(id))issues.push({level:'error',message:'Неизвестная декорация '+id});
   const solids=boxes.map(b=>({b,shape:shapeForBox(b),bounds:boxBounds(b)}));
   const hits=(x,y,z,r=.42,h=1.65)=>{const body=uprightBox(x,y+.04,z,r,h-.04);
     return solids.find(({bounds,shape})=>x+r>bounds.minX&&x-r<bounds.maxX&&z+r>bounds.minZ&&z-r<bounds.maxZ&&y+h>bounds.minY&&y+.04<bounds.h&&overlapsAffine(body,shape))?.b.id;};
