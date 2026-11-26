@@ -66,3 +66,10 @@ test('sandbox gameplay points become real simulation spawns and objectives',()=>
  const map=createEditorSandbox('editor-0123456789abcdef',{name:'Test',size:256},d);
  assert.equal(map.tdmLoadout,undefined);assert.equal(map.points[0].id,'A');assert.equal(map.spawnPoints[0].length,2);assert.equal(map.vehicleSpawns[0].type,'humvee');
 });
+
+import {encodeHeightmap,decodePGM,importHeightmap} from '../shared/editor-heightmap.js';
+test('16 bit heightmap round trip preserves terrain within quantization',()=>{
+ const grid={min:0,cell:4,count:2},base=new Float32Array([0,1,2,3,4,5,6,7,8]),edits={4:11.125};
+ const image=decodePGM(encodeHeightmap(grid,base,edits,{min:0,max:20}));
+ const next=importHeightmap(grid,base,{},image,{min:0,max:20});assert.ok(Math.abs(next[4]-11.125)<.005);assert.equal(Object.keys(next).length,1);
+});

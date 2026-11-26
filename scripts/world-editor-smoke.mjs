@@ -23,7 +23,7 @@ try{
  page.on('pageerror',e=>console.error('PAGE ERROR',e));
  page.on('console',m=>{if(m.type()==='error')console.error('BROWSER',m.text());});
  await page.goto('http://127.0.0.1:5178/world-editor.html',{timeout:120000});
- await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Карта загружена')||!document.querySelector('#fatal')?.classList.contains('hidden'),{},{timeout:120000});
+ await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Карта загружена')||(document.querySelector('#fatal')&&!document.querySelector('#fatal').classList.contains('hidden')),{},{timeout:120000});
  assert.equal(await page.locator('#fatal').isVisible(),false,await page.locator('#fatal').textContent());
  await page.waitForFunction(()=>document.querySelector('#stats')?.textContent.includes('Draw calls'),{},{timeout:90000});
  await page.selectOption('#quality','low');
@@ -38,7 +38,7 @@ try{
  const data=JSON.parse(await readFile(file,'utf8')),model=data.models.find(m=>m.name==='world-editor-smoke.glb');
  assert.ok(model);assert.equal(model.colliders.length,1);assert.equal(model.materials['0:0'].roughness,.42);
  await page.reload({timeout:120000});
- await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Карта загружена')||!document.querySelector('#fatal')?.classList.contains('hidden'),{},{timeout:120000});
+ await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Карта загружена')||(document.querySelector('#fatal')&&!document.querySelector('#fatal').classList.contains('hidden')),{},{timeout:120000});
  assert.equal(await page.locator('#fatal').isVisible(),false,await page.locator('#fatal').textContent());
  assert.ok(await page.locator('#tree').getByRole('button',{name:/world-editor-smoke/}).count());
  await page.waitForFunction(()=>document.querySelector('#stats')?.textContent.includes('Draw calls'),{},{timeout:90000});
@@ -47,7 +47,7 @@ try{
  let answers=['Smoke sandbox','256'];page.on('dialog',d=>d.accept(answers.shift()??''));
  await page.locator('#newMap').click();
  await page.waitForURL(/map=editor-/,{timeout:90000});
- await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Карта загружена')||!document.querySelector('#fatal')?.classList.contains('hidden'),{},{timeout:120000});
+ await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Карта загружена')||(document.querySelector('#fatal')&&!document.querySelector('#fatal').classList.contains('hidden')),{},{timeout:120000});
  assert.equal(await page.locator('#fatal').isVisible(),false,await page.locator('#fatal').textContent());
  assert.ok(await page.locator('#tree').getByRole('button',{name:/spawnA/}).count());
  await page.waitForFunction(()=>document.querySelector('#stats')?.textContent.includes('Draw calls'),{},{timeout:90000});
@@ -56,10 +56,12 @@ try{
  await page.locator('#roadMode').click();
  await page.mouse.click(rect.x+rect.width*.45,rect.y+rect.height*.5);await page.mouse.click(rect.x+rect.width*.55,rect.y+rect.height*.55);
  await page.locator('#finishRoad').click();
+ await page.selectOption('#gameMode','conquest');await page.locator('#addCapture').click();await page.mouse.click(rect.x+rect.width*.5,rect.y+rect.height*.5);
+ await page.locator('#addVehicle').click();await page.mouse.click(rect.x+rect.width*.6,rect.y+rect.height*.55);
  await page.locator('#save').click();
  await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Сохранено в проект'),{},{timeout:90000});
  const entry=Object.values(JSON.parse(await readFile(registry,'utf8')).maps).find(m=>m.config.name==='Smoke sandbox');
- assert.equal(entry.data.layers.length,1);assert.equal(entry.data.roads.length,1);
+ assert.equal(entry.data.layers.length,1);assert.equal(entry.data.roads.length,1);assert.equal(entry.data.gameplay.mode,'conquest');assert.equal(entry.data.gameplay.items.length,2);
  assert.equal(await page.locator('#fatal').isVisible(),false);
  console.log('Editor smoke: new map, textured terrain and road save OK');
 }catch(error){

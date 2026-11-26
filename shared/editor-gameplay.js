@@ -11,8 +11,8 @@ export function validateGameplay(g,size){
   if(p.kind==='vehicle'&&!EDITOR_VEHICLES.includes(p.type))errors.push('Тип техники '+p.id);
   if(p.kind==='capture'&&(typeof p.name!=='string'||!p.name.trim()||p.name.length>60))errors.push('Название точки '+p.id);
  }
- if(g.items.filter(p=>p.kind==='capture').length>26)errors.push('Не более 26 точек захвата');
- if(g.mode==='conquest'&&!g.items.some(p=>p.kind==='capture'))errors.push('Для захвата нужна хотя бы одна точка');
+ if(g.items.filter(p=>p?.kind==='capture').length>26)errors.push('Не более 26 точек захвата');
+ if(g.mode==='conquest'&&!g.items.some(p=>p?.kind==='capture'))errors.push('Для захвата нужна хотя бы одна точка');
  return errors;
 }
 export function gameplayMap(data,baseSpawns,terrain){

@@ -28,5 +28,6 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps:{entries:['index.html','world-editor.html'],include:['three/addons/controls/TransformControls.js','three/addons/controls/OrbitControls.js','three/addons/exporters/GLTFExporter.js','three/addons/loaders/FBXLoader.js','three/addons/loaders/OBJLoader.js','three/addons/loaders/MTLLoader.js']},
   server: { host: '127.0.0.1' },
 });
