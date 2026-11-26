@@ -84,3 +84,12 @@ test('baked batch edits transform all matching collider parts, leave unrelated b
  const result=editableMapBoxes(base,d);assert.ok(Math.abs(result[0].x-10)<1e-6);assert.ok(Math.abs(result[0].z+2)<1e-6);assert.equal(result[0].h,4);assert.equal(result[1],base.boxes[1]);
  d.dressingBatches['m05_set_0_0'].removed=true;assert.equal(editableMapBoxes(base,d).length,1);
 });
+
+import {Simulation} from '../shared/simulation.js';
+import {registerLocalMap} from '../shared/world.js';
+import {findBotPath} from '../shared/bot-navigation.js';
+test('sandbox uses real simulation collision and path finding',()=>{
+ const d=emptyM05Edits(),map=createEditorSandbox('editor-1234567890abcdef',{name:'Nav',size:128},d);
+ registerLocalMap(map);const sim=new Simulation({mapId:map.id,bots:0});
+ const path=findBotPath(sim,{x:-12,y:0,z:0},{x:12,y:0,z:0});assert.ok(path.length);assert.equal(path.at(-1).x,12);
+});
