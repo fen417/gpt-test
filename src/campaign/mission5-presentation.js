@@ -13,6 +13,7 @@ import {buildQuarryMissionScene} from './quarry-m05-scene.js';
 import {QuarryAmbience} from './quarry-m05-audio.js';
 import {QuarryActing} from './quarry-m05-acting.js';
 import './mission5.css';
+import {createEditorLights,updateEditorLights,disposeEditorLights} from './m05-editor-lights.js';
 import {wrapDressingBatches} from './m05-dressing-edits.js';
 import editorData from '../../shared/campaign/m05-editor-data.json';
 import {loadEditorModels,updateEditorModelVisibility} from './m05-editor-models.js';
@@ -27,6 +28,7 @@ export async function loadQuarryDressing(){
   dressing.scene.name='quarry-set-dressing';wrapDressingBatches(dressing.scene,editorData.dressingBatches);
   industrial.scene.add(dressing.scene);
   industrial.scene.add(await loadEditorModels());
+  const lights=createEditorLights(editorData.lights);industrial.scene.add(lights);updateEditorLights(lights,'high');
   return industrial.scene;
 }
 const orders={F1:'follow',F2:'hold',KeyQ:'assist'};
@@ -271,6 +273,7 @@ export class Mission5Presentation{
       r.scoped=r.collimatorAiming=r.binocularAiming=false;
     }else this.top.rotation.set(-.13,-Math.PI*.75,0,'YXZ');
     if(scene){this.renderScene(r,state,scene,view);r.weapon.visible=false;r.scoped=r.collimatorAiming=r.binocularAiming=false;}
+    updateEditorLights(this.dressing.getObjectByName('world-editor-lights'),r.geometryQuality);
     const custom=this.dressing.getObjectByName('world-editor-models');if(custom)updateEditorModelVisibility(custom,r.geometryQuality);
     const detailRange=r.geometryQuality==='high'?192:r.geometryQuality==='medium'?112:0;
     for(const batch of this.detailDressing){
@@ -363,7 +366,7 @@ export class Mission5Presentation{
     this.renderer.scene.fog.color.copy(this.fog);this.renderer.scene.fog.density=this.fogDensity;
     document.body.classList.remove('campaign-active','campaign-cinematic','campaign-downed','m05-mounted');
     if(this.skyColor&&this.renderer.scene.background?.isColor)this.renderer.scene.background.copy(this.skyColor);
-    this.slats.dispose();this.dressing.traverse(o=>{if(o.isInstancedMesh)o.dispose();});this.dressing.removeFromParent();
+    this.slats.dispose();disposeEditorLights(this.dressing.getObjectByName('world-editor-lights'));this.dressing.traverse(o=>{if(o.isInstancedMesh)o.dispose();});this.dressing.removeFromParent();
     this.materials.forEach(m=>m.dispose());this.geometries.forEach(g=>g.dispose());this.root.remove();
   }
 }

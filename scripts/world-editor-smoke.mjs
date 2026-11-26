@@ -63,7 +63,15 @@ try{
  const entry=Object.values(JSON.parse(await readFile(registry,'utf8')).maps).find(m=>m.config.name==='Smoke sandbox');
  assert.equal(entry.data.layers.length,1);assert.equal(entry.data.roads.length,1);assert.equal(entry.data.gameplay.mode,'conquest');assert.equal(entry.data.gameplay.items.length,2);
  assert.equal(await page.locator('#fatal').isVisible(),false);
- console.log('Editor smoke: new map, textured terrain and road save OK');
+ await page.locator('#navBuild').click();
+ await page.waitForFunction(()=>document.querySelector('#navStatus')?.textContent.startsWith('Стоя'),{},{timeout:90000});
+ await page.locator('#navPath').click();await page.mouse.click(rect.x+rect.width*.4,rect.y+rect.height*.5);await page.mouse.click(rect.x+rect.width*.6,rect.y+rect.height*.5);
+ await page.waitForFunction(()=>/Путь до цели найден|Путь неполный/.test(document.querySelector('#navStatus')?.textContent??''),{},{timeout:90000});
+ await page.locator('#addSpotLight').click();await page.mouse.click(rect.x+rect.width*.5,rect.y+rect.height*.5);
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Сохранено в проект'),{},{timeout:90000});
+ const lit=Object.values(JSON.parse(await readFile(registry,'utf8')).maps).find(m=>m.config.name==='Smoke sandbox');
+ assert.equal(lit.data.lights.length,1);assert.equal(lit.data.lights[0].type,'spot');
+ console.log('Editor smoke: new map, textured terrain, roads, gameplay, navigation and lights OK');
 }catch(error){
  await mkdir('.perf-local',{recursive:true});await page?.screenshot({path:'.perf-local/world-editor-failure.png'}).catch(()=>{});
  throw error;

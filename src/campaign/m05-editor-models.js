@@ -2,10 +2,11 @@
 import {Group,InstancedMesh,Matrix4,Object3D} from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+import {createEditorLights,updateEditorLights} from './m05-editor-lights.js';
 import {applyEditorMaterials} from './m05-editor-materials.js';
 import data from '../../shared/campaign/m05-editor-data.json';
 const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-export async function loadEditorModels(models=data.models){
+export async function loadEditorModels(models=data.models,lights=[]){
   const root=new Group();root.name='world-editor-models';
   const cached=new Map();
   const buckets=new Map();
@@ -43,10 +44,12 @@ export async function loadEditorModels(models=data.models){
       inst.castShadow=first.shadow;inst.receiveShadow=true;batch.add(inst);
     });root.add(batch);
   }
+  if(lights.length)root.add(createEditorLights(lights));
   return root;
 }
 export function updateEditorModelVisibility(root,quality){
   for(const n of root.children){
+    if(n.name==='world-editor-lights'){updateEditorLights(n,quality);continue;}
     const d=n.userData.editorDetail;n.visible=d==='low'||d==='medium'&&quality!=='low'||d==='high'&&quality==='high';
   }
 }

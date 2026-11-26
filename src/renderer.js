@@ -798,7 +798,7 @@ export class GameRenderer {
     signal.throwIfAborted();
     this.setMap(mapId);
     const world=this.worlds.get(this.map.id);
-    if(import.meta.env.DEV&&this.map.editorSandbox&&!world.editorModels){const {loadEditorModels,updateEditorModelVisibility}=await import('./campaign/m05-editor-models.js');world.editorModels=await loadEditorModels(this.map.editorData.models);world.root.add(world.editorModels);world.updateEditorModelVisibility=updateEditorModelVisibility;updateEditorModelVisibility(world.editorModels,geometryQuality(view.quality,view.gfx?.detail));}
+    if(import.meta.env.DEV&&this.map.editorSandbox&&!world.editorModels){const {loadEditorModels,updateEditorModelVisibility}=await import('./campaign/m05-editor-models.js');world.editorModels=await loadEditorModels(this.map.editorData.models,this.map.editorData.lights);world.root.add(world.editorModels);world.updateEditorModelVisibility=updateEditorModelVisibility;updateEditorModelVisibility(world.editorModels,geometryQuality(view.quality,view.gfx?.detail));}
     if(!this.effectsWarmed){this.warmup();this.effectsWarmed=true;}
     const detail=geometryQuality(view.quality,view.gfx?.detail)==='high';
     if(world.model)this.updateBakedDetail(world,detail);
