@@ -1,0 +1,35 @@
+
+name: Export editable M05 source
+on:
+  workflow_dispatch:
+  push:
+    branches: ['editor/world-editor']
+    paths:
+      - 'art-source/quarry-m05/dressing.blend'
+      - 'art-source/quarry-m05/export_editor_source.py'
+      - 'scripts/check-m05-editor-source.mjs'
+      - '.github/workflows/world-editor-source.yml'
+permissions:
+  contents: read
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - run: python -m pip install bpy==4.5.3
+      - run: python art-source/quarry-m05/export_editor_source.py
+      - run: node scripts/check-m05-editor-source.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m05-editor-source
+          path: public/campaign/m05/dressing-source.glb
+          if-no-files-found: error

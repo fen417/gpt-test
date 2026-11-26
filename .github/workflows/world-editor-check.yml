@@ -15,7 +15,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --check tools/world-editor/editor.js && node --check scripts/world-editor-server.mjs
-      - run: node --test test/m05-editor.test.js test/mission5.test.js
+      - run: node --test test/m05-editor.test.js test/mission5.test.js test/world-editor-assets.test.js
       - run: npm run build
         env:
           S09_PBR_SKIP: '1'

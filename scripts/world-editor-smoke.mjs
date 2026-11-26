@@ -31,6 +31,9 @@ try{
  await page.waitForFunction(()=>/Импортировано|Ошибка:/.test(document.querySelector('#status')?.textContent??''),{},{timeout:90000});
  assert.ok((await page.locator('#status').textContent()).includes('Импортировано'),await page.locator('#status').textContent());
  await page.getByRole('button',{name:'+ Пустой Box',exact:true}).click();
+ assert.ok(await page.locator('#inspector').getByText(/Треугольники: 1/).count());
+ const packed=await page.evaluate(async asset=>{const r=await fetch('/__world-editor/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({asset})});return {ok:r.ok,data:await r.json()};},asset.split('/').at(-1));
+ assert.ok(packed.ok,JSON.stringify(packed.data));
  const colorField=page.locator('#inspector .field').filter({hasText:'Шероховатость'}).locator('input');await colorField.fill('0.42');await colorField.blur();
  await page.waitForFunction(()=>document.querySelector('#inspector')?.textContent.includes('PBR-материалы'),{},{timeout:30000});
  await page.locator('#save').click();
