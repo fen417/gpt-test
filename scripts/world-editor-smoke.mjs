@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 
 // CI uses a clean checkout. Restore editor data and delete our synthetic
 // resource even if the browser or editor fails.
-const file='shared/campaign/m05-editor-data.json',original=await readFile(file);
+const file='shared/campaign/m05-editor-data.json',original=await readFile(file),registry='shared/editor-maps.json',originalRegistry=await readFile(registry);
 const vertices=new Float32Array([-1,0,0,1,0,0,0,2,0]),bin=Buffer.from(vertices.buffer);
 const gltf={asset:{version:'2.0'},scene:0,scenes:[{nodes:[0]}],nodes:[{mesh:0,name:'SmokeMesh'}],meshes:[{primitives:[{attributes:{POSITION:0},material:0}]}],materials:[{name:'SmokeMaterial',pbrMetallicRoughness:{baseColorFactor:[.5,.5,.5,1],metallicFactor:0,roughnessFactor:.8}}],buffers:[{byteLength:bin.length}],bufferViews:[{buffer:0,byteOffset:0,byteLength:bin.length,target:34962}],accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[-1,0,0],max:[1,2,0]}]};
 let json=Buffer.from(JSON.stringify(gltf));json=Buffer.concat([json,Buffer.alloc((4-json.length%4)%4,32)]);
@@ -42,9 +42,28 @@ try{
  assert.ok(await page.locator('#tree').getByRole('button',{name:/world-editor-smoke/}).count());
  await page.waitForFunction(()=>document.querySelector('#stats')?.textContent.includes('Draw calls'),{},{timeout:90000});
  console.log('Editor smoke: render, import, collider, material, save and reload OK');
+ // Create a new map via the actual editor UI, then verify it opens.
+ let answers=['Smoke sandbox','256'];page.on('dialog',d=>d.accept(answers.shift()??''));
+ await page.locator('#newMap').click();
+ await page.waitForURL(/map=editor-/,{timeout:90000});
+ await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Карта загружена')||!document.querySelector('#fatal')?.classList.contains('hidden'),{},{timeout:120000});
+ assert.equal(await page.locator('#fatal').isVisible(),false,await page.locator('#fatal').textContent());
+ assert.ok(await page.locator('#tree').getByRole('button',{name:/spawnA/}).count());
+ await page.waitForFunction(()=>document.querySelector('#stats')?.textContent.includes('Draw calls'),{},{timeout:90000});
+ const rect=await page.locator('#canvas').boundingBox();await page.locator('#layerMode').click();
+ await page.mouse.click(rect.x+rect.width/2,rect.y+rect.height/2);
+ await page.locator('#roadMode').click();
+ await page.mouse.click(rect.x+rect.width*.45,rect.y+rect.height*.5);await page.mouse.click(rect.x+rect.width*.55,rect.y+rect.height*.55);
+ await page.locator('#finishRoad').click();
+ await page.locator('#save').click();
+ await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Сохранено в проект'),{},{timeout:90000});
+ const entry=Object.values(JSON.parse(await readFile(registry,'utf8')).maps).find(m=>m.config.name==='Smoke sandbox');
+ assert.equal(entry.data.layers.length,1);assert.equal(entry.data.roads.length,1);
+ assert.equal(await page.locator('#fatal').isVisible(),false);
+ console.log('Editor smoke: new map, textured terrain and road save OK');
 }catch(error){
  await mkdir('.perf-local',{recursive:true});await page?.screenshot({path:'.perf-local/world-editor-failure.png'}).catch(()=>{});
  throw error;
 }finally{
- await browser?.close();await server.close();await writeFile(file,original);await rm(asset,{force:true});
+ await browser?.close();await server.close();await writeFile(file,original);await writeFile(registry,originalRegistry);await rm(asset,{force:true});
 }
