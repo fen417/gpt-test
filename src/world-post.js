@@ -199,7 +199,7 @@ export class WorldPost {
       const far=Math.min(cascade.maxFar,camera.far);
       for(let i=0;i<cascade.lights.length;i++){
         const shadow=cascade.lights[i].shadow;
-        const map=this.webgpu?cascade._shadowNodes[i]?.shadowMap?.depthTexture:shadow.map?.texture;
+        const map=this.webgpu?cascade._shadowNodes[i]?.shadowMap?.depthTexture:shadow.map?.depthTexture;
         if(!map){this.shadowMaps.length=0;break;}
         this.shadowMaps.push(map);
         state['volumeMatrix'+i].multiplyMatrices(shadow.matrix,camera.matrixWorld);

@@ -10,7 +10,7 @@ ${cascades.map(i => `uniform sampler2D volumeMap${i}; uniform mat4 volumeMatrix$
 float volumeTap(sampler2D map, mat4 fromView, vec3 position) {
   vec3 p=(fromView*vec4(position,1.)).xyz;
   if(any(lessThan(p,vec3(0.)))||any(greaterThan(p,vec3(1.))))return 1.;
-  return step(p.z-.0005,unpackRGBAToDepth(textureLod(map,p.xy,0.)));
+  return step(p.z-.0005,textureLod(map,p.xy,0.).r);
 }
 float volumeSun(vec3 position){
   ${cascades.slice(0,-1).map(i => `if(-position.z<volumeSplits[${i}])return volumeTap(volumeMap${i},volumeMatrix${i},position);`).join('\n')}

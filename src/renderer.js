@@ -328,7 +328,7 @@ export class GameRenderer {
     }
     this.updatePixelRatio();
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = this.integratedGpu ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = webgpu ? THREE.PCFShadowMap : THREE.BasicShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -2283,8 +2283,9 @@ export class GameRenderer {
     const mode = requestedMode==='auto'&&this.graphicsEffects?.cascades ? this.graphicsEffects.cascades : requestedMode;
     const filter = this.graphicsEffects?.shadowFilter;
     const pcss=filter==='pcss';
-    const filterType = {pcss:THREE.BasicShadowMap,hard:THREE.BasicShadowMap,pcf:THREE.PCFShadowMap,soft:THREE.PCFSoftShadowMap}[filter]
-      ?? (this.integratedGpu ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap);
+    // WebGL's cache merges raw native depth, then applies PCF/PCSS in the
+    // directional shader. WebGPU can use r187's native hardware PCF directly.
+    const filterType = !this.webgpu||pcss||filter==='hard' ? THREE.BasicShadowMap : THREE.PCFShadowMap;
     if(this.renderer.shadowMap.type!==filterType){
       this.renderer.shadowMap.type=filterType;
       this.cachedShadows.invalidate();
@@ -2304,8 +2305,10 @@ export class GameRenderer {
     }
     const level = mode === 'auto' ? (this.quality==='low'?'off':this.quality==='medium'?'low':this.integratedGpu?'medium':'high') : mode;
     const cascaded = level==='very-high'||level==='ultra';
-    if(!this.webgpu&&pcss)this.penumbra??=new WebGlPenumbra();
-    this.penumbra?.setEnabled(pcss);
+    if(!this.webgpu){
+      this.penumbra??=new WebGlPenumbra();
+      this.penumbra.setMode(pcss?'pcss':filter==='hard'?'off':'pcf');
+    }
     const gpuFilter=pcss?this.webgpu?.webGpuPcss:undefined;
     if(this.webgpu&&this.sun.shadow.filterNode!==gpuFilter){
       this.cascades?.dispose();this.cascades=null;this.cascadeKey=undefined;
@@ -3103,7 +3106,7 @@ export class GameRenderer {
     const gpuPassMs=this.perfEnabled?this.gpuTimer.passSamples.summary():null;
     const frameGeneration=this.frameGeneration?.stats()??null;
     if(frameGeneration?.enabled)frameGeneration.gpuMs=gpuPassMs?.frameGeneration?.p95??null;
-    return {api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
+    return {threeRevision:THREE.REVISION,api:this.api,backend:isGPU?(r.backend?.isWebGPUBackend?'WebGPU':'WebGL fallback'):'WebGL 2',
       gpuRenderer:this.gpuName??(isGPU?null:r.getContext().getParameter(r.getContext().RENDERER)),
       shaderPrograms:r.info.programs?.length??null,renderStalls:this.renderStalls??[],
       staticSectorSize:this.staticRoot?.userData.staticSectorSize??this.staticRoot?.children.find(child=>child.userData.staticSectorSize)?.userData.staticSectorSize??null,

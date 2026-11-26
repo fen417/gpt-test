@@ -1,0 +1,35 @@
+name: Three.js upgrade verification
+on:
+  push:
+    branches: ['upgrade/three-r187']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Migration and rendering regression tests
+        run: node --test test/three-r187.test.js test/optimization-regression.test.js test/cascade-relief.test.js test/shadow-bias.test.js test/graphics-api.test.js test/graphics-remaster.test.js
+      - name: Full application test suite
+        if: success() || failure()
+        run: npm test
+      - name: Production build (with existing budgets)
+        if: success() || failure()
+        run: npm run build
+        env:
+          S09_PBR_SKIP: '1'
+          VITE_TEST_BUILD: '0'
+          VITE_SERVER_URL: ${{ vars.SECTOR_SERVER_URL }}
+          VITE_FIREBASE_CONFIG: ${{ vars.SECTOR_FIREBASE_WEB_CONFIG }}
+      - uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: three-r187-build-report
+          path: .perf-local/build-budget.json
