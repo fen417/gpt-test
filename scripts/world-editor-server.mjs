@@ -3,7 +3,7 @@ import {readFile,writeFile,mkdir,rename,realpath,stat} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {join,relative,isAbsolute,sep} from 'node:path';
-import {validEditorMapId,validEditorMapConfig} from '../shared/editor-maps.js';
+import {validEditorMapId,validEditorMapConfig} from '../shared/editor-map-config.js';
 import {emptyM05Edits,validateM05Edits,modelAssetOk} from '../shared/campaign/m05-editor.js';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const file=join(root,'shared/campaign/m05-editor-data.json'),assets=join(root,'public/world-editor-assets'),backups=join(root,'.perf-local/world-editor-backups');

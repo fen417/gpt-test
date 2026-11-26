@@ -3,8 +3,8 @@ import registry from './editor-maps.json' with {type:'json'};
 import {emptyM05Edits,terrainWithEdits,modelColliders,validateM05Edits} from './campaign/m05-editor.js';
 export const EDITOR_GRID={min:-816,cell:4,count:408};
 export const FLAT_HEIGHTS=new Float32Array((EDITOR_GRID.count+1)**2);
-export const validEditorMapId=id=>typeof id==='string'&&/^editor-[a-f0-9]{16}$/.test(id);
-export function validEditorMapConfig(config){return config&&typeof config.name==='string'&&config.name.trim().length>0&&config.name.length<=100&&Number.isInteger(config.size)&&config.size>=128&&config.size<=1024&&config.size%32===0;}
+import {validEditorMapId,validEditorMapConfig} from './editor-map-config.js';
+export {validEditorMapId,validEditorMapConfig};
 export function sandboxBase(config){
  const a=config.size*.32;
  return {boxes:[],sites:{spawnA:{x:-a,y:0,z:-a},spawnB:{x:a,y:0,z:a}},routes:{},fuelRoutes:{}};
