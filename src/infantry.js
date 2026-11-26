@@ -431,7 +431,7 @@ export function disposeInfantry(rig) {
 }
 
 // Direction weights wrap around the four measured cardinal cycles. Adjacent
-// cycles share a left-strike phase so a diagonal blend preserves step order.
+// cycles share both strikes so a diagonal blend preserves step order.
 export function locomotionWeights(out, speed, yaw, vx, vz, crouched, sprinting) {
   out.clear();
   const x = vx * Math.cos(yaw) - vz * Math.sin(yaw);
@@ -514,12 +514,8 @@ function shiftHips(rig, worldDelta) {
   Hips.updateWorldMatrix(false, true);
 }
 
-function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouchStride) {
+function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth) {
   const { group, motion } = rig;
-  const planarSpeed = crouchStride > 0 ? Math.hypot(motion.vx, motion.vz) : 0;
-  const stretch = planarSpeed > .05;
-  const forwardX = stretch ? motion.vx / planarSpeed : 0;
-  const forwardZ = stretch ? motion.vz / planarSpeed : 0;
   for (const leg of rig.legs) {
     leg.foot.getWorldPosition(leg.solved);
     if (leg.pathWeight > .001) {
@@ -528,12 +524,6 @@ function applyContacts(rig, dt, confidence, terrain, stance, crouchDepth, crouch
       leg.solved.lerp(target, leg.pathWeight);
     }
     leg.pitch = bootPitchFor(leg);
-    if (stretch) {
-      const travel = (leg.solved.x - group.position.x) * forwardX + (leg.solved.z - group.position.z) * forwardZ;
-      const extension = clamp(travel * crouchStride, -.16, .16);
-      leg.solved.x += extension * forwardX;
-      leg.solved.z += extension * forwardZ;
-    }
   }
   const lowered = crouchDepth > .001;
   if (lowered) shiftHips(rig, -crouchDepth);
@@ -746,13 +736,14 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     if (weight < .004) motion.gait.delete(name);
     else motion.gait.set(name, weight);
   }
-  let stride = 0, weightSum = 0, crouchDepth = 0, crouchWeight = 0;
+  let stride = 0, weightSum = 0, crouchDepth = 0, directionX = 0, directionZ = 0;
   for (const [name, weight] of motion.gait) {
     const gait = rig.template.gaits.get(name);
     stride += weight * gait.distance;
+    directionX += weight * gait.direction.x;
+    directionZ += weight * gait.direction.z;
     if (name.startsWith('mocap_crouch_')) {
       crouchDepth += weight * Math.max(0, gait.hipsHeight - .695);
-      crouchWeight += weight;
     }
     weightSum += weight;
   }
@@ -762,6 +753,10 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     lerp(1.75, 2.10, smoothstep(motion.speed, 2.6, 6.4));
   const measured = weightSum ? stride / weightSum : 1;
   const cycleDistance = Math.max(measured, motion.speed / maxCyclesPerSecond);
+  // Cardinal strides shorten when blended on a diagonal. Match the path to
+  // the shared stride clock, with a limited correction for very fast strafes.
+  const directionBlend = weightSum ? Math.max(Math.SQRT1_2, Math.hypot(directionX, directionZ) / weightSum) : 1;
+  const pathDistance = cycleDistance / directionBlend;
   motion.cycleDistance = cycleDistance;
   // Smooth packet-sized changes in travel over the same short window used
   // for the blend. Its integral still tracks rendered travel at steady pace.
@@ -805,19 +800,18 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
     play(rig, active, 'crouch_idle', false, idleSample(rig.template.clips.get('crouch_idle').lower.duration,rig.poseTime), (1 - moving) * crouchBlend);
     for (const [name, weight] of motion.gait) {
       const gait = rig.template.gaits.get(name);
-      const phase = cycle(motion.phase + gait.offset), w = weight / weightSum * moving;
+      const phase = motion.phase, w = weight / weightSum * moving;
       play(rig, active, name, false, phase * gait.duration, w);
+      const strideScale = clamp(pathDistance / gait.distance - 1, -.35, 1.2);
       for (const [i, track] of gait.contact.entries()) {
         const sample = phase * track.length, index = Math.floor(sample);
-        const confidence = lerp(track[index], track[(index + 1) % track.length], sample - index);
-        if (gait.paths) {
-          const path = gait.paths[i], leg = rig.legs[i];
-          a.fromArray(path[index]).lerp(b.fromArray(path[(index + 1) % path.length]), sample - index);
-          leg.path.addScaledVector(a, w);
-          leg.pathWeight += w;
-        }
-        const stretch = clamp(gait.distance / cycleDistance, .4, 1);
-        contacts[i] += smoothstep(confidence, lerp(.55, .1, stretch), 1) * w;
+        const next = (index + 1) % track.length, fraction = sample - index;
+        contacts[i] += lerp(track[index], track[next], fraction) * w;
+        const path = gait.paths[i], leg = rig.legs[i];
+        a.fromArray(path[index]).lerp(b.fromArray(path[next]), fraction);
+        const extension = clamp((a.dot(gait.direction) - gait.strideCenters[i]) * strideScale, -.16, .16);
+        leg.path.addScaledVector(a.addScaledVector(gait.direction, extension), w);
+        leg.pathWeight += w;
       }
     }
   }
@@ -889,8 +883,7 @@ export function updateInfantry(rig, player, dt, reset = false, terrain = null) {
   } else {
     const movingWeight = weightSum ? motion.moving / weightSum : 0;
     const drop = crouchDepth * movingWeight;
-    const stretch = clamp(cycleDistance / measured - 1, 0, .85) * crouchWeight * movingWeight;
-    applyContacts(rig, dt, contacts, terrain, 1 - smoothstep(motion.moving, 0, .52), drop, stretch);
+    applyContacts(rig, dt, contacts, terrain, 1 - smoothstep(motion.moving, 0, .52), drop);
   }
   if(!lowerAction)animateUpperTorso(rig,baseWeight);
   applyWeapon(rig, player, dt, reloadWeight, actionWeight,rig.bodyAimYaw,rig.bodyAimPitch,true);

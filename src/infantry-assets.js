@@ -40,7 +40,7 @@ const from = array => new THREE.Vector3().fromArray(array);
 
 export const gaitClips = {
   walk: ['mocap_walk_F', 'mocap_walk_R', 'mocap_walk_B', 'mocap_walk_L'],
-  run: ['mocap_run_F', 'mocap_walk_R', 'mocap_jog_B', 'mocap_walk_L'],
+  run: ['mocap_jog_F', 'mocap_walk_R', 'mocap_jog_B', 'mocap_walk_L'],
   sprint: ['mocap_run_F', 'mocap_walk_R', 'mocap_jog_B', 'mocap_walk_L'],
   crouch: ['mocap_crouch_F', 'mocap_crouch_R', 'mocap_crouch_B', 'mocap_crouch_L'],
 };
@@ -92,10 +92,90 @@ function split(clip, upper) {
   return new THREE.AnimationClip(clip.name + (upper ? ':upper' : ':lower'), clip.duration, tracks);
 }
 
+// Select the sustained stance rather than a steep edge from a single key.
+function measureStance(confidence, name) {
+  const count = confidence.length;
+  const threshold = .5;
+  let best = null;
+  for (let i = 0; i < count; i++) {
+    const previous = confidence[(i + count - 1) % count];
+    if (previous >= threshold || confidence[i] < threshold) continue;
+    let end = i + 1;
+    while (end < i + count && confidence[end % count] >= threshold) end++;
+    const start = i - 1 + (threshold - previous) / (confidence[i] - previous);
+    const last = confidence[(end - 1) % count], next = confidence[end % count];
+    const release = end - 1 + (last - threshold) / (last - next);
+    if (!best || release - start > best.duration) best = { start, duration: release - start };
+  }
+  if (!best) throw new Error('No measured stance for ' + name);
+  return { start: best.start / count, duration: best.duration / count };
+}
+
+const wrapPhase = phase => THREE.MathUtils.euclideanModulo(phase, 1);
+const phaseBetween = (phase, split, middle, end) => phase < split
+  ? middle * phase / split
+  : THREE.MathUtils.lerp(middle, end, (phase - split) / (1 - split));
+
+function synchronizeGait(clip, samples, stances, direction, heightOffset) {
+  const frameCount = samples[0].length;
+  const duty = (stances[0].duration + stances[1].duration) / 2;
+  const rightStrike = wrapPhase(stances[1].start - stances[0].start);
+  const legPhase = (phase, side) => {
+    const stance = stances[side];
+    const relative = wrapPhase(phase - side * .5);
+    return wrapPhase(stance.start + phaseBetween(relative, duty, stance.duration, 1));
+  };
+  // Retiming the bones and their IK targets together keeps the knee and boot
+  // poses aligned. The pelvis follows both strikes on the same half-cycles.
+  const times = Float32Array.from({ length: frameCount + 1 }, (_, i) => i / frameCount * clip.duration);
+  for (const track of clip.tracks) {
+    const node = keyOf(THREE.PropertyBinding.parseTrackName(track.name).nodeName);
+    const side = legNames.findIndex(name => node.startsWith(name));
+    const sampler = track.createInterpolant();
+    const size = track.getValueSize();
+    const values = new Float32Array(times.length * size);
+    for (let i = 0; i <= frameCount; i++) {
+      const phase = (i % frameCount) / frameCount;
+      const source = side < 0
+        ? wrapPhase(stances[0].start + phaseBetween(phase, .5, rightStrike, 1))
+        : legPhase(phase, side);
+      values.set(sampler.evaluate(source * clip.duration), i * size);
+    }
+    track.times = times;
+    track.values = values;
+  }
+
+  const paths = samples.map((foot, side) => foot.map((_, i) => {
+    const frame = legPhase(i / frameCount, side) * frameCount;
+    const index = Math.floor(frame);
+    return foot[index].map((value, axis) =>
+      THREE.MathUtils.lerp(value, foot[(index + 1) % frameCount][axis], frame - index));
+  }));
+  for (let i = 0; i < frameCount; i++) {
+    const left = paths[0][i], right = paths[1][(i + frameCount / 2) % frameCount];
+    left[1] = right[1] = (left[1] + right[1]) / 2 + heightOffset;
+    // Reflecting a sidestep would reverse its direction. Keep the lead and
+    // trailing foot trajectories, pairing only their lift and contact timing.
+    if (!direction.x) {
+      left[0] = (left[0] - right[0]) / 2;
+      right[0] = -left[0];
+      left[2] = right[2] = (left[2] + right[2]) / 2;
+    }
+  }
+  const contact = paths.map((foot, side) => foot.map((_, i) => {
+    const phase = wrapPhase(i / frameCount - side * .5 + .04) - .04;
+    return THREE.MathUtils.smoothstep(phase, -.035, .035) *
+      (1 - THREE.MathUtils.smoothstep(phase, duty - .055, duty + .015));
+  }));
+  const strideCenters = paths.map((foot, side) => {
+    const strike = foot[side * frameCount / 2];
+    const release = foot[Math.round(wrapPhase(side * .5 + duty) * frameCount) % frameCount];
+    return ((strike[0] + release[0]) * direction.x + (strike[2] + release[2]) * direction.z) / 2;
+  });
+  return { contact, paths, direction, strideCenters };
+}
+
 function sampleCycle(root, bones, clip, direction, floor) {
-  // split() appends ':lower' to the source clip name. Classify the
-  // original gait, not the layer suffix, or forward pairing never runs.
-  const forward = clip.name.split(':')[0].endsWith('_F');
   const frameCount = 60;
   const mixer = new THREE.AnimationMixer(root);
   const action = mixer.clipAction(clip).play();
@@ -115,17 +195,6 @@ function sampleCycle(root, bones, clip, direction, floor) {
     }
   }
   mixer.uncacheRoot(root);
-  // Pair opposite steps from the capture to retain its swing while removing
-  // unequal retargeted reach and contact timing between the two legs.
-  if (forward) {
-    const original = samples.map(foot => foot.map(point => ({ ...point, position: [...point.position] })));
-    for (let side = 0; side < 2; side++) for (let frame = 0; frame < frameCount; frame++) {
-      const point = samples[side][frame], other = original[1 - side][(frame + frameCount / 2) % frameCount];
-      point.height = (point.height + other.height) / 2;
-      point.across = (point.across + other.across) / 2;
-      point.position = point.position.map((value, axis) => (value + other.position[axis] * (axis === 0 ? -1 : 1)) / 2);
-    }
-  }
   const lowest = Math.min(...samples.flatMap(foot => foot.map(point => point.height)));
   const getSpeed = (foot, frame) => {
     const previous = (frame + frameCount - 1) % frameCount;
@@ -141,14 +210,8 @@ function sampleCycle(root, bones, clip, direction, floor) {
   const contact = samples.map(foot => foot.map((point, frame) =>
     (1 - THREE.MathUtils.smoothstep(point.height - lowest, .025, crouch ? .13 : .105)) *
     THREE.MathUtils.smoothstep(getSpeed(foot, frame), speed * .15, speed * (crouch ? .48 : .6))));
-  // Small circular filter avoids contact chatter on a single captured key.
-  for(const track of contact){const raw=track.slice();for(let i=0;i<track.length;i++)track[i]=.25*raw[(i+track.length-1)%track.length]+.5*raw[i]+.25*raw[(i+1)%track.length];}
-  const left = contact[0];
-  let strike = 0, rise = -Infinity;
-  for (let i = 0; i < left.length; i++) {
-    const diff = left[(i + 2) % left.length] - left[(i + left.length - 2) % left.length];
-    if (diff > rise) { rise = diff; strike = i; }
-  }
+  const stances = contact.map(track => measureStance(track.map((value, i) =>
+    .25 * track[(i + frameCount - 1) % frameCount] + .5 * value + .25 * track[(i + 1) % frameCount]), clip.name));
   if (hipsTrack) {
     root.updateMatrixWorld(true);
     const inverse = new THREE.Matrix3().setFromMatrix4(bones.Hips.parent.matrixWorld.clone().invert());
@@ -159,9 +222,9 @@ function sampleCycle(root, bones, clip, direction, floor) {
       hipsTrack.values[i + 2] += offset.z;
     }
   }
-  const paths = samples.map(foot => foot.map(point =>
-    [point.position[0], point.position[1] + floor - lowest, point.position[2]]));
-  return { distance: speed * clip.duration, duration: clip.duration, contact, paths, offset: strike / frameCount,
+  const synchronized = synchronizeGait(clip, samples.map(foot => foot.map(point => point.position)),
+    stances, direction, floor - lowest);
+  return { ...synchronized, distance: speed * clip.duration, duration: clip.duration,
     hipsHeight: hipsHeight + (hipsTrack ? floor - lowest : 0) };
 }
 
