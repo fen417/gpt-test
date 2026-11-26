@@ -247,7 +247,7 @@ export class Simulation {
       const candidates=this.map.spawnPoints?.[p.team]??[this.map.spawns[p.team]];
       const safe=candidates.filter(q=>
         q&&Number.isFinite(q.x)&&Number.isFinite(q.z)&&
-        (p.team===0?q.x<0:q.x>0)&&
+        (this.map.editorSandbox||(p.team===0?q.x<0:q.x>0))&&
         Number.isFinite(this.groundAt(q.x,q.z))&&
         !this.collides(q.x,q.z,this.groundAt(q.x,q.z))&&
         !this.vehicleAt(q.x,q.z,this.groundAt(q.x,q.z))&&
@@ -275,7 +275,8 @@ export class Simulation {
     p.weaponModules=this.weaponAttachments.get(p.id);
     p.weaponId=p.primaryWeaponId=wep.id;p.sidearmId=sidearm.id;p.weaponSlot=1;p.equipTime=0;
     p.stowedAmmo={ammo:sidearm.mag,reserve:sidearm.reserve};
-    const base=p.tdmSpawn||beacon||point||this.map.spawns[p.team];let x=base.x,z=base.z,spawnY=this.groundAt(x,z),placed=!beacon;
+    const options=this.map.editorSandbox&&!point&&!beacon?this.map.spawnPoints?.[p.team]:null;
+    const base=p.tdmSpawn||beacon||point||(options?.length?options[Math.floor(this.random()*options.length)]:this.map.spawns[p.team]);let x=base.x,z=base.z,spawnY=this.groundAt(x,z),placed=!beacon&&(!this.map.editorSandbox||!this.collides(x,z,spawnY)&&!this.vehicleAt(x,z,spawnY));
     for(let n=0;this.gameMode!=='tdm'&&n<25;n++){
       const radius=beacon?3.2:8,tx=base.x+(this.random()-.5)*radius,tz=base.z+(this.random()-.5)*radius;
       const ty=beacon?supportHeight(this,tx,tz,beacon.y):this.groundAt(tx,tz);
@@ -283,7 +284,7 @@ export class Simulation {
     }
     if(!placed)return false;
     p.damagers=new Map();p.spottedBy=null;
-    Object.assign(p,{x,y:this.groundAt(x,z),z,yaw:p.team===0?0:Math.PI,pitch:0,hp:100,alive:true,ammo:wep.mag,reserve:wep.reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
+    Object.assign(p,{x,y:this.groundAt(x,z),z,yaw:base.yaw??(p.team===0?0:Math.PI),pitch:0,hp:100,alive:true,ammo:wep.mag,reserve:wep.reserve,respawnIn:0,reloading:false,reloadTime:0,cooldown:0,grenades:2,vy:0,grounded:true,input:sanitizeInput(),lastHurt:this.time,invulnerableUntil:this.time+2,botTargetId:null,botObjective:null,botGoal:null,botWatchYaw:p.team===0?0:Math.PI,botHoldCrouch:false,botPath:[],nextThink:0,jumpHeld:false,grenadeHeld:false});
     Object.assign(p,{bloom:0,moveSpeed:0,jumpFatigue:0,jumpCooldown:0,lastShotAt:-Infinity,fireHeld:false,vehicleId:null,vehicleSeat:null,interactHeld:false,switchSeatHeld:false});
     Object.assign(p,{slideTime:0,slideCooldown:0,slideVx:0,slideVz:0,crouchHeld:false,crouching:false,wasSprinting:false,
       parachuteOpen:false,parachuteReady:false,parachuteHold:0});

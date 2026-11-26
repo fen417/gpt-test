@@ -3,6 +3,7 @@ import {readFile,writeFile,mkdir,rename,realpath,stat} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {join,relative,isAbsolute,sep} from 'node:path';
+import {validateGameplay} from '../shared/editor-gameplay.js';
 import {validEditorMapId,validEditorMapConfig} from '../shared/editor-map-config.js';
 import {emptyM05Edits,validateM05Edits,modelAssetOk} from '../shared/campaign/m05-editor.js';
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -58,7 +59,7 @@ export function worldEditorPlugin(){
         for(const asset of new Set([...data.models.map(m=>m.asset),...Object.keys(data.assets??{})]))if(!(await stat(join(assets,asset))).isFile())throw Error('Нет ресурса '+asset);
         const target=mapId==='quarry-m05'?file:registry,current=await readFile(target);if(hash(current)!==revision)return reply(res,409,{error:'Файл изменён извне. Скачайте черновик и заново откройте карту.'});
         let output=data;
-        if(mapId!=='quarry-m05'){output=JSON.parse(current);if(!Object.hasOwn(output.maps,mapId))throw Error('Неизвестная карта');output.maps[mapId].data=data;}
+        if(mapId!=='quarry-m05'){output=JSON.parse(current);if(!Object.hasOwn(output.maps,mapId))throw Error('Неизвестная карта');const errors=validateGameplay(data.gameplay,output.maps[mapId].config.size);if(errors.length)throw Error(errors.join('; '));output.maps[mapId].data=data;}
         return reply(res,200,{revision:await atomic(target,output,current)});
       }
       reply(res,404,{error:'Неизвестная операция'});

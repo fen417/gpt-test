@@ -60,3 +60,9 @@ test('new sandbox has two opposite team spawns and real collision data',()=>{
  const d=emptyM05Edits();d.sites.spawnA=[-20,0,10];const map=createEditorSandbox('editor-0123456789abcdef',{name:'Test map',size:256},d);
  assert.equal(map.tdmLoadout,'class');assert.equal(map.size,256);assert.deepEqual(map.spawns[0],{x:-20,y:0,z:10});assert.equal(map.terrain.heightAt(0,0),0);assert.equal(FLAT_HEIGHTS.length,(EDITOR_GRID.count+1)**2);
 });
+
+test('sandbox gameplay points become real simulation spawns and objectives',()=>{
+ const d=emptyM05Edits();d.gameplay={mode:'conquest',items:[{id:'ep-0000000000000001',kind:'capture',x:0,z:0,yaw:0,name:'Center'},{id:'ep-0000000000000002',kind:'spawn',team:0,x:-10,z:15,yaw:1},{id:'ep-0000000000000003',kind:'vehicle',team:1,x:20,z:20,yaw:2,type:'humvee'}]};
+ const map=createEditorSandbox('editor-0123456789abcdef',{name:'Test',size:256},d);
+ assert.equal(map.tdmLoadout,undefined);assert.equal(map.points[0].id,'A');assert.equal(map.spawnPoints[0].length,2);assert.equal(map.vehicleSpawns[0].type,'humvee');
+});
