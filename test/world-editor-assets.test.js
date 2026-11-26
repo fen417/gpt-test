@@ -37,3 +37,12 @@ test('individual runtime dressing rebuild keeps untouched baked batches',()=>{
  assert.equal(edited.size,1);assert.equal(scene.getObjectByName('m05_set_0_0-mesh').visible,false);assert.equal(scene.getObjectByName('m05_set_1_0-mesh').visible,true);
  assert.equal(edited.get('m05_set_0_0').children.length,1);
 });
+
+import {alignToTerrain,dropToTerrain,localBounds} from '../tools/world-editor/placement.js';
+import {Vector3,Quaternion} from 'three';
+test('slope alignment keeps yaw and aligns local up with ground normal',()=>{
+ const node=new Group();node.add(new Mesh(new BoxGeometry(2,2,2),new MeshStandardMaterial()));node.rotation.y=.7;node.position.set(5,0,0);
+ const h=(x,z)=>x*.5+z*.25;const n=alignToTerrain(node,h);dropToTerrain(node,h);
+ const up=new Vector3(0,1,0).applyQuaternion(node.getWorldQuaternion(new Quaternion()));assert.ok(up.distanceTo(n)<1e-7);assert.ok(n.distanceTo(new Vector3(-.5,1,-.25).normalize())<1e-7);
+ assert.deepEqual(localBounds(node).getSize(new Vector3()).toArray().map(x=>Math.round(x)),[2,2,2]);
+});
