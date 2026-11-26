@@ -361,7 +361,7 @@ export class Mission5Presentation{
     this.renderer.scene.fog.color.copy(this.fog);this.renderer.scene.fog.density=this.fogDensity;
     document.body.classList.remove('campaign-active','campaign-cinematic','campaign-downed','m05-mounted');
     if(this.skyColor&&this.renderer.scene.background?.isColor)this.renderer.scene.background.copy(this.skyColor);
-    this.slats.dispose();this.dressing.removeFromParent();
+    this.slats.dispose();this.dressing.traverse(o=>{if(o.isInstancedMesh)o.dispose();});this.dressing.removeFromParent();
     this.materials.forEach(m=>m.dispose());this.geometries.forEach(g=>g.dispose());this.root.remove();
   }
 }
