@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {getAssetColliders} from '../../shared/asset-colliders.js';
 import {NAHAR_GATES,NAHAR_SITES,NAHAR_STORM,NAHAR_WATER} from '../../shared/campaign/nahar.js';
+import {NAHAR_TUNNEL} from '../../shared/campaign/nahar-district.js';
 import {bulletHeight} from '../../shared/ballistics.js';
 import {BLACK_HAWK_GUN,blackHawkGunPose,getVehicleSeatPose,vehiclePartPose} from '../../shared/vehicles.js';
 import {EYE_HEIGHT} from '../../shared/world.js';
@@ -89,8 +90,26 @@ export class Mission4Presentation{
     this.doorMeshes=Object.fromEntries(Object.entries(NAHAR_GATES).map(([name,b])=>{
       const gate=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h,b.d),new THREE.MeshStandardMaterial({color:b.color,metalness:.16,roughness:.84}));
       gate.position.set(b.x,b.baseY+b.h/2,b.z);gate.castShadow=true;gate.receiveShadow=true;this.dressing.add(gate);
+      if(name==='tunnel'){
+        const bracing=new THREE.MeshStandardMaterial({color:0x535b54,metalness:.34,roughness:.79});
+        const latch=new THREE.MeshStandardMaterial({color:0xa18855,metalness:.36,roughness:.7});
+        const add=(y,z,h,d,material)=>{
+          const piece=new THREE.Mesh(new THREE.BoxGeometry(.075,h,d),material);
+          piece.position.set(-b.w/2,y-b.h/2,z);piece.receiveShadow=true;gate.add(piece);
+        };
+        for(const z of [-3.7,-2.46,-1.23,0,1.23,2.46,3.7])add(1.78,z,3.28,.068,bracing);
+        for(const y of [.18,1.52,2.94,3.44])add(y,0,.096,9.21,bracing);
+        add(1.14,.21,.31,.46,latch);
+      }
       return [name,gate];
     }));
+    this.tunnelLighting=new THREE.Group();
+    this.dressing.add(this.tunnelLighting);
+    this.tunnelLighting.visible=false;
+    this.tunnelLights=Array.from({length:3},()=>{
+      const light=new THREE.PointLight(0xffd5a2,5.5,10,1.75);
+      this.tunnelLighting.add(light);return light;
+    });
     this.original={sun:renderer.sun.intensity,sunOffset:renderer.sunOffset.clone(),hemi:renderer.hemiLight.intensity,
       ambient:renderer.ambientLight.intensity,fogColor:renderer.scene.fog.color.clone(),fogDensity:renderer.scene.fog.density,
       haze:this.sky.hazeAmount.value,hazeTint:this.sky.hazeTint.value.clone()};
@@ -119,7 +138,7 @@ export class Mission4Presentation{
     objective.querySelector('strong').textContent=this.locale.objectives[m.objective];
     const stageNote=m.airborne?(m.landing?names[m.landing]:p.vehicleSeat===2?'ЛЕВЫЙ БОРТ':'ПРАВЫЙ БОРТ'):
       m.target?`${Math.round(Math.hypot(p.x-m.target.x,p.z-m.target.z))} м`:'';
-    objective.querySelector('span').textContent=[m.checkpoint?`КП ${m.checkpoint}/5`:'',stageNote].filter(Boolean).join(' · ');
+    objective.querySelector('span').textContent=[m.checkpoint?`КП ${m.checkpoint}/${m.checkpointTotal}`:'',stageNote].filter(Boolean).join(' · ');
     const subtitle=this.$('.campaign-subtitle'),line=this.locale.lines[m.radio?.key];
     subtitle.classList.toggle('hidden',!line||end);
     subtitle.querySelector('b').textContent=line?this.locale.speakers[line.speaker]:'';
@@ -297,6 +316,15 @@ export class Mission4Presentation{
       const e=NAHAR_SITES.exit,t=smooth(m.cutscene.elapsed,0,5.8);
       r.camera.position.set(e.x-6+t*3,1.78,e.z+2.3-t*.8);r.camera.lookAt(e.x+9,1.34,e.z-.4);r.weapon.visible=false;
     }
+    const viewPoint=r.camera.position,tunnel=NAHAR_TUNNEL;
+    this.tunnelLighting.visible=!m.airborne&&!r.lowQuality&&viewPoint.y<6&&
+      viewPoint.x>tunnel.start-7&&viewPoint.x<tunnel.end+2&&Math.abs(viewPoint.z-tunnel.z)<6;
+    if(this.tunnelLighting.visible){
+      const lights=tunnel.lampX;
+      const first=THREE.MathUtils.clamp(Math.round((viewPoint.x-lights[0])/(lights[1]-lights[0]))-1,0,lights.length-3);
+      for(const [index,light] of this.tunnelLights.entries())
+        light.position.set(lights[first+index],2.5,tunnel.z-3.65);
+    }
     this.updateStorm(r,m.time,view.quality);
     this.water.update(r.clock,r.scene.fog.density,r.lowQuality,r.graphicsEffects?.water);
     r.camera.updateMatrixWorld();
@@ -369,7 +397,11 @@ export class Mission4Presentation{
     r.scene.fog.color.copy(o.fogColor);r.scene.fog.density=o.fogDensity;
     this.sky.hazeAmount.value=o.haze;this.sky.hazeTint.value.copy(o.hazeTint);
     for(const {sprite} of this.dustBanks)sprite.material.dispose();
-    for(const gate of Object.values(this.doorMeshes)){gate.geometry.dispose();gate.material.dispose();}
+    const gateMaterials=new Set();
+    for(const gate of Object.values(this.doorMeshes))gate.traverse(mesh=>{
+      mesh.geometry.dispose();gateMaterials.add(mesh.material);
+    });
+    for(const material of gateMaterials)material.dispose();
     this.water.dispose();
     for(const {geometries,materials} of this.stationPickups){
       for(const geometry of geometries)geometry.dispose();

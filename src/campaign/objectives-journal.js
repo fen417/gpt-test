@@ -1,6 +1,6 @@
 import './objectives-journal.css';
 
-const M04_STAGES=['approach','right','transfer','orbit','landing','disembark','depot','station','freight','canal','relay','tunnel'];
+const M04_STAGES=['approach','right','transfer','orbit','landing','disembark','depot','station','freight','canal','relay','workshops','serviceStreet','tunnel'];
 
 // Derive the journal from the current authoritative snapshot, never from
 // remembered UI history: checkpoint restoration also restores the task list.

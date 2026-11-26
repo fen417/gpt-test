@@ -23,18 +23,55 @@ class Batch:
     def __init__(self):
         self.points, self.faces, self.colors, self.uv = [], [], [], []
 
-    def polygon(self, points, tone, axis, uv_scale=4):
+    def polygon(self, points, tone, axis, uv_scale=4, tints=None):
         offset = len(self.points)
         self.points.extend((x, -z, y) for x, y, z in points)
         self.faces.append(tuple(range(offset, offset + len(points))))
         for i, p in enumerate(points):
             shade = 0.93 if axis != (0, 2) and i in (0, 1) else 1
-            self.colors.extend((*[c * shade for c in tone], 1))
+            self.colors.extend((*[c * shade for c in (tints[i] if tints else tone)], 1))
             self.uv.extend((p[axis[0]] / uv_scale, p[axis[1]] / uv_scale))
 
     def block(self, part, tint):
         x, z, y = (part[k] for k in ('x', 'z', 'baseY'))
         w, d, h = (part[k] for k in ('w', 'd', 'h'))
+        shape = part.get('shape')
+        if shape == 'arrow':
+            side = part['facing']
+            face = [(x-w/2*side,y,z-d/2),(x+w/2*side,y+h/2,z-d/2),(x-w/2*side,y+h,z-d/2)]
+            self.polygon(face if side < 0 else face[::-1],tint,(0,1))
+            return
+        if shape in ('profile-x', 'cylinder-x'):
+            if shape == 'profile-x':
+                profile = part['profile']
+            else:
+                profile = [(h * (.5 + .5 * sin(i * pi / 8)), -d * .5 * cos(i * pi / 8))
+                           for i in range(16)]
+            if sum(ay*bz - az*by for (ay,az),(by,bz) in zip(profile,profile[1:]+profile[:1])) < 0:
+                profile = profile[::-1]
+            near = [(x-w/2, y+py, z+pz) for py,pz in profile]
+            far = [(x+w/2, y+py, z+pz) for py,pz in profile]
+            self.polygon(near[::-1], tint, (2, 1))
+            self.polygon(far, tint, (2, 1))
+            for i in range(len(profile)):
+                j = (i+1) % len(profile)
+                axis = (0, 2) if abs(profile[i][1]-profile[j][1]) > abs(profile[i][0]-profile[j][0]) else (0, 1)
+                self.polygon([near[i], near[j], far[j], far[i]], tint, axis)
+            return
+        if shape == 'beveled':
+            a,b,c,e = x-w/2,x+w/2,z-d/2,z+d/2
+            bevel = min(w*.18,d*.18,.22)
+            outline = [(a+bevel,c),(b-bevel,c),(b,c+bevel),(b,e-bevel),
+                       (b-bevel,e),(a+bevel,e),(a,e-bevel),(a,c+bevel)]
+            low = [(px,y,pz) for px,pz in outline]
+            high = [(px,y+h,pz) for px,pz in outline]
+            self.polygon(low,tint,(0,2))
+            self.polygon(high[::-1],tint,(0,2))
+            for i in range(len(low)):
+                j = (i+1) % len(low)
+                axis = (0,1) if abs(low[i][0]-low[j][0]) > abs(low[i][2]-low[j][2]) else (2,1)
+                self.polygon([low[j],low[i],high[i],high[j]],tint,axis)
+            return
         if part.get('shape') == 'rail-strip':
             (ax, ay, az), (bx, by, bz) = part['ends']
             length = hypot(bx - ax, bz - az)
@@ -119,9 +156,56 @@ def bake_terrain(plan, batches):
             for i in range(max(0,floor((left+limit)/spacing)),min(divisions,ceil((right+limit)/spacing))):
                 tiled_paving[i,j].append(entry)
 
-    sand, silt = color('#cdb28e'), color('#9b886d')
+    tiled_roads = defaultdict(list)
+    for road in plan['roads']:
+        x,z,w,d = (road[k] for k in ('x','z','w','d'))
+        edge = 2.6
+        pad = edge+.5
+        left,right,near,far = x-w/2-pad,x+w/2+pad,z-d/2-pad,z+d/2+pad
+        lane = (x,z,w,d,edge)
+        for j in range(max(0,floor((near+limit)/spacing)),min(divisions,ceil((far+limit)/spacing))):
+            for i in range(max(0,floor((left+limit)/spacing)),min(divisions,ceil((right+limit)/spacing))):
+                tiled_roads[i,j].append(lane)
+
+    sand, silt, compacted = color('#cdb28e'), color('#9b886d'), color('#a8906e')
     low,high=(limit-896)//spacing,(limit+896)//spacing
     stride=4
+
+    def smooth(a,b,value):
+        t=max(0,min(1,(value-a)/(b-a)))
+        return t*t*(3-2*t)
+
+    def blend(a,b,amount):
+        return tuple(v+(w-v)*amount for v,w in zip(a,b))
+
+    def terrain_tint(point, roads):
+        x,y,z=point
+        tint=blend(silt,sand,smooth(-2.6,-.16,y))
+        wear=0
+        for cx,cz,w,d,edge in roads:
+            across,along,width,length=(z-cz,x-cx,d,w) if w>d else (x-cx,z-cz,w,d)
+            jitter=.30*sin(along*.24)+.17*sin(along*.79)
+            center=abs(across+jitter)
+            shoulder=1-smooth(width*.30,width*.5+edge,center)
+            rut=1-smooth(width*.035,width*.145,abs(center-width*.22))
+            end=1-smooth(length/2-1.7,length/2+edge,abs(along))
+            mottling=.93+.07*sin(x*.93+z*.43)*cos(z*.89-x*.52)
+            wear=max(wear,end*shoulder*(.42+.52*rut)*mottling)
+        return blend(tint,compacted,wear)
+
+    def road_cuts(lanes,axis,base):
+        lo,hi=base,base+spacing
+        cuts=set()
+        for cx,cz,w,d,edge in lanes:
+            center,span=(cx,w) if axis==0 else (cz,d)
+            across=(d>w) if axis==0 else (w>d)
+            if across:
+                distances=(0,span*.08,span*.22,span*.34,span*.50,span*.50+edge)
+            else:
+                distances=(span*.5-1.7,span*.5,span*.5+edge)
+            for offset in distances:
+                cuts.update(value for value in (center-offset,center+offset) if lo<value<hi)
+        return cuts
 
     def coarse_tile(i,j):
         end_i,end_j=i+stride,j+stride
@@ -156,17 +240,19 @@ def bake_terrain(plan, batches):
             x,z=i*spacing-limit,j*spacing-limit
             a,b,c,d=heights[j][i],heights[j][i+1],heights[j+1][i],heights[j+1][i+1]
             layers=tiled_paving.get((i,j),())
-            tint=sand if a>-1 else silt
+            lanes=tiled_roads.get((i,j),())
             tile_key=(i//32+50,j//32+50)
-            if not layers:
+            if not layers and not lanes:
                 tile=batches['Base','village-sand',False,*tile_key]
-                tile.polygon([(x,a,z),(x,c,z+spacing),(x+spacing,b,z)],tint,(0,2),10)
-                tile.polygon([(x+spacing,b,z),(x,c,z+spacing),(x+spacing,d,z+spacing)],tint,(0,2),10)
+                corners=[(x,a,z),(x,c,z+spacing),(x+spacing,b,z),(x+spacing,d,z+spacing)]
+                for indices in [(0,1,2),(2,1,3)]:
+                    points=[corners[k] for k in indices]
+                    tile.polygon(points,sand,(0,2),10,tints=[terrain_tint(p,()) for p in points])
                 continue
             # A single triangulated surface under every road and marking avoids
             # coplanar asphalt overlays. Keep the same triangle seam as terrain.js.
-            xs=sorted({x,x+spacing,*(v for layer in layers for v in layer[:2] if x<v<x+spacing)})
-            zs=sorted({z,z+spacing,*(v for layer in layers for v in layer[2:4] if z<v<z+spacing)})
+            xs=sorted({x,x+spacing,*road_cuts(lanes,0,x),*(v for layer in layers for v in layer[:2] if x<v<x+spacing)})
+            zs=sorted({z,z+spacing,*road_cuts(lanes,1,z),*(v for layer in layers for v in layer[2:4] if z<v<z+spacing)})
             seam=x+z+spacing
 
             def triangled(rect, below):
@@ -193,14 +279,16 @@ def bake_terrain(plan, batches):
                 for near,far in zip(zs,zs[1:]):
                     mx,mz=(left+right)/2,(near+far)/2
                     paint=next((t for t in reversed(layers) if t[0]<mx<t[1] and t[2]<mz<t[3]),None)
-                    surface,tone=paint[4:] if paint else ('village-sand',tint)
+                    surface,tone=paint[4:] if paint else ('village-sand',sand)
                     tile=batches['Base',surface,False,*tile_key]
                     rect=[(left,near),(left,far),(right,far),(right,near)]
-                    scale=8 if paint else 10
+                    scale=10 if surface=='village-sand' else 8
                     for below in (True,False):
                         points=triangled(rect,below)
                         if len(points)>=3:
-                            tile.polygon(lifted(points),tone,(0,2),scale)
+                            points=lifted(points)
+                            tints=None if paint else [terrain_tint(p,lanes) for p in points]
+                            tile.polygon(points,tone,(0,2),scale,tints=tints)
 
 
 def main():

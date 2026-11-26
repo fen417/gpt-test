@@ -1,5 +1,6 @@
 import {makeTerrain} from '../terrain.js';
 import {registerLocalMap} from '../world.js';
+import {addNaharGroundDistrict, NAHAR_DISTRICT_ROADS, NAHAR_TUNNEL} from './nahar-district.js';
 
 const size=4096,cell=8,boxes=[],structures=[],roads=[],navigationNodes=[];
 const landforms=[
@@ -40,6 +41,7 @@ const roadPlan=[
   ['north-avenue',-142,-166,1080,13],['depot-road',-41,-13,210,7],
   ['station-road',5,64,206,8],['canal-road',91,153,740,8],['bridge-road',104,78,8,82],
   ['bridge-north-road',104,-66,8,206],['bridge-south-road',104,145,8,16],
+  ...NAHAR_DISTRICT_ROADS,
   ...[-492,-397,-300,-221,225,306,387,468,549].map(z=>['cross-street-'+z,0,z,1660,9.2]),
   ...[-704,-545,-380,-216,251,421,580,733].flatMap(x=>[[-680,96],[137,670]].map(([start,end])=>
     [`district-street-${x}-${start}`,x,(start+end)/2,9.3,end-start])),
@@ -50,13 +52,14 @@ export const NAHAR_SITES={
   log:{x:24.21,y:3.12,z:25.83,surfaceY:4.17,yaw:.06},
   recording:{x:37,y:0,z:42,surfaceY:.68,yaw:-.3},freight:{x:37,z:58},
   bridge:{x:104,z:93},power:{x:124,z:164},relay:{x:142,z:157},
-  tunnelGate:{x:177,z:194},exit:{x:209,z:194},
+  workshopCorner:{x:232,z:153},workshops:{x:232,z:214},serviceStreet:{x:166,z:214},
+  tunnelGate:{x:177,z:194},exit:{x:216,z:194},
 };
 
 function part(id,x,z,w,d,h,baseY,color,{surface='village-stucco',kind='city-box',detail=0,
-  noCollision=false,dynamic=false,shape,facing,groundLayer}={}){
+  noCollision=false,dynamic=false,shape,facing,groundLayer,profile,collisionOnly}={}){
   const b={id,kind,x,z,w,d,h,baseY,color,surface,detailLevel:detail,noCollision,missionDynamic:dynamic,shape,
-    facing,groundLayer,overhead:baseY>.5,assetMapId:'nahar'};
+    facing,groundLayer,profile,collisionOnly,overhead:baseY>.5,assetMapId:'nahar'};
   boxes.push(b);return b;
 }
 
@@ -78,14 +81,6 @@ function wall(id,x,z,width,depth,height,color,{baseY=0,gap=0,offset=0,axis='x',h
 
 function street(id,x,z,w,d){
   roads.push({id,x,z,w,d,yaw:0});
-  const alongX=w>d,span=alongX?d:w;
-  paving(id+'-shoulder',x,z,w+(alongX?0:2.4),d+(alongX?2.4:0),'#c0a781','village-sand');
-  paving(id,x,z,w,d,'#ae9470','village-sand',2);
-  for(const side of [-1,1]){
-    const offset=side*span*.23,rut=Math.max(.75,span*.135);
-    paving(id+'-rut-'+side,x+(alongX?0:offset),z+(alongX?offset:0),alongX?w:rut,alongX?rut:d,
-      '#a78c68','village-sand',3);
-  }
 }
 
 const masonry=['#bcaa8c','#c9ae8b','#9f8e79','#d6c09d','#a2a49b','#bfb3a3','#bf977a','#a2ab9a','#c1a490'];
@@ -200,15 +195,24 @@ for(const [x,z,w,d] of [[-153,-37,27,56],[-32,-79,38,18],[103,51,23,22],[137,134
 
 function parkedVehicle(id,x,z,color,bus=false){
   const w=bus?2.48:1.78,d=bus?8.2:4.16,h=bus?2.62:1.38;
-  const metal={surface:'metal'},visual=trim();
-  part(id+'-body',x,z,w,d,h-.41,.4,color,metal);
-  part(id+'-roof',x,z,w-.14,d-.44,.15,h,'#c0b99f',visual);
+  const metal={surface:'metal'},visual=trim('metal');
+  part(id+'-body',x,z,w,d,h-.41,.4,color,{...metal,shape:'beveled'});
+  part(id+'-roof',x,z,w-.14,d-.44,.15,h,'#c0b99f',{...visual,shape:'beveled'});
   for(const side of [-1,1]){
     for(const dz of bus?[-2.45,-.87,.73,2.3]:[-.89,.35]){
       part(`${id}-window-${side}-${dz}`,x+side*(w/2+.04),z+dz,.075,bus?1.28:.78,bus?.72:.36,h*.67,'#536164',visual);
     }
-    for(const dz of [-d*.31,d*.31])part(`${id}-wheel-${side}-${dz}`,x+side*w*.46,z+dz,.24,bus?.78:.62,bus?.69:.55,0,'#494642',visual);
+    part(id+'-waist-'+side,x+side*(w/2+.02),z,.057,d-.32,.11,h*.49,'#9a8e74',visual);
+    for(const dz of [-d*.31,d*.31]){
+      const diameter=bus?.76:.60;
+      part(`${id}-wheel-${side}-${dz}`,x+side*w*.46,z+dz,.30,diameter,diameter,0,'#41423b',{...visual,shape:'cylinder-x'});
+      part(`${id}-hub-${side}-${dz}`,x+side*(w*.46+.157),z+dz,.035,diameter*.44,diameter*.44,
+        diameter*.28,'#7e8070',{...visual,shape:'cylinder-x',detail:1});
+    }
     part(id+'-windscreen-'+side,x,z+side*(d/2+.05),w*.72,.09,bus?.7:.36,h*.67,'#59686b',visual);
+    part(id+'-bumper-'+side,x,z+side*d/2,w+.02,.18,.15,.35,'#6f7063',{...visual,shape:'beveled'});
+    for(const dx of [-w*.37,w*.37])
+      part(id+'-lamp-'+side+'-'+dx,x+dx,z+side*(d/2+.04),w*.12,.085,.13,.62,side>0?'#876052':'#bdb498',visual);
   }
 }
 parkedVehicle('depot-bus',-67,-12,'#7b8d79',true);
@@ -225,7 +229,8 @@ function planter(id,x,z){
 }
 for(const [id,x,z] of [['north-corner',-199,-144],['roof-line',-128,-133],['yard-lip',-10,-8],
   ['station-front',2,15],['clock-square',45,15],['freight-entry',57,50],['canal-approach',93,74],
-  ['south-quay',144,134],['tunnel-walk',184,169]])planter(id,x,z);
+  ['south-quay',144,134],['workshop-walk',219,164],['repair-corner',226,218.5],
+  ['tunnel-walk',158,197]])planter(id,x,z);
 
 for(const dx of [-2.05,2.05])for(const dz of [-2.05,2.05])
   part(`water-tower-leg-${dx}-${dz}`,-147+dx,-64+dz,.28,.28,9.25,0,'#647273',{surface:'metal'});
@@ -479,17 +484,14 @@ for(const [id,x,z] of [['freight-cable',95,72],['pump-cable',151,170]]){
   for(const height of [.27,.51,.74])part(id+'-wire-'+height,x,z,1.03,1.03,.13,height,'#424949',
     {surface:'metal',shape:'cylinder',noCollision:true});
 }
-for(const [id,x,z] of [['depot',-40,-9],['station',7,-5],['freight',46,60],['canal',124,148],['tunnel',175,185]]){
+for(const [id,x,z] of [['depot',-40,-9],['station',7,-5],['freight',46,60],['canal',124,148]]){
   part(id+'-sign-post',x,z,.08,.08,2.6,0,beam,{...iron,detail:1,noCollision:true});
   part(id+'-sign-board',x,z,1.8,.105,.52,2.04,'#6c827b',{...iron,detail:1,noCollision:true});
   part(id+'-sign-inset',x,z-.06,1.45,.03,.08,2.31,'#e0d4a5',{detail:1,noCollision:true});
 }
-for(const side of [-1,1])part('tunnel-side-'+side,200,194+side*4.85,46,.45,4.1,0,'#6d6d64');
-part('tunnel-roof',200,194,46.4,10.5,.55,4.1,'#797267');
-part('tunnel-back',223,194,.48,9.7,4.1,0,'#484942');
 export const NAHAR_GATES={
   service:part('nahar-service-gate',-4,34.5,.28,5,2.6,0,'#637675',{...iron,dynamic:true}),
-  tunnel:part('nahar-tunnel-gate',177.8,194,.27,9.6,3.4,0,'#756b59',{...iron,dynamic:true}),
+  tunnel:part('nahar-tunnel-gate',178.2,NAHAR_TUNNEL.z,.27,9.4,4.9,0,'#756b59',{...iron,dynamic:true}),
 };
 
 // Infill follows the side streets and the rail approaches. Keep the actual
@@ -498,6 +500,7 @@ const sightlines=[
   ...Object.values(NAHAR_LANDING).map(p=>({...p,w:50,d:42})),
   {x:-48,z:-5,w:185,d:24},{x:31,z:54,w:43,d:21},{x:97,z:90,w:23,d:51},
   {x:138,z:156,w:70,d:29},{x:177,z:189,w:22,d:24},
+  {x:202,z:NAHAR_TUNNEL.z,w:51,d:12.2},
 ];
 for(const [row,z] of [-149,-126,-74,-12,42,72,88,154,198,226].entries()){
   for(let column=-15;column<=13;column++){
@@ -527,6 +530,10 @@ for(const [id,building,portTarget=false] of [
 airPosts['market-crossing']={x:-195,y:terrain.heightAt(-195,-102),z:-102};
 export const NAHAR_AIR_POSTS=airPosts;
 
+addNaharGroundDistrict(part,paving,({id,x,z,w,d,h,baseY},enterable=false)=>{
+  structures.push({id,kind:'city-block',x,z,w,d,h,baseY,assetMapId:'nahar',enterable});
+});
+
 export const NAHAR=registerLocalMap({
   id:'nahar',missionId:'m04',name:'Нахар',theme:'desert-village',campaign:true,size,width:1900,depth:1660,
   terrain,terrainPads,landforms,terrainMargin:90,navigationCell:2,navigationSize:744,navigationClearance:.78,
@@ -535,5 +542,8 @@ export const NAHAR=registerLocalMap({
   boxes,structures,roads,navigationNodes,points:[],districts:[],signs:[],vehicleSpawns:[],
   spawns:[{x:-39,z:-34},{x:70,z:70}],
   landmarks:[{id:'depot',name:'Трамвайное депо',x:-35,z:-35},{id:'station',name:'Железнодорожная станция',x:19,z:19},
-    {id:'pump',name:'Водомерная станция',x:125,z:164}],
+    {id:'pump',name:'Водомерная станция',x:125,z:164},
+    {id:'workshops',name:'Улица Мастерских',x:232,z:185},
+    {id:'service-street',name:'Ремонтная улица',x:191,z:214},
+    {id:'service-tunnel',name:'Служебный тоннель',x:178,z:194}],
 });

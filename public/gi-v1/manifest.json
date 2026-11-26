@@ -166,11 +166,11 @@
       "depth": 1660,
       "groundMin": -4.199999809265137,
       "groundRange": 36.19999980926514,
-      "source": "15c194e80ade0463eb5a5bb653700be48e3100e28be2bf8adedea94f27c420c9",
+      "source": "5d26279b3ee4f3899eb68ead71a63a233665fbab48d6d0e2ffa7ad4da33c0011",
       "file": "nahar.rgba",
       "bytes": 1179648,
-      "sha256": "a8c21f5ac79b8beaf96c281e16e362811f07ee852617d2569f1f50ea883c8b8b",
-      "triangles": 329402
+      "sha256": "7a3f04ef6c53d9494829e2b3bce8d94b77be95426a36c51b18fe79f49f337889",
+      "triangles": 399156
     },
     "safra": {
       "version": 2,

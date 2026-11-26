@@ -11,8 +11,9 @@ import {aimAt,departingPose,flightPath,LANDING_SECONDS,landingPose,orbitPose,tar
 import {dropCampaignMedkit,reviveDuration} from './medical.js';
 
 export const M04_SAVE_VERSION=2;
-const STAGES=['approach','right','transfer','orbit','landing','disembark','depot','station','freight','canal','relay','tunnel','finale'];
-const CHECKPOINT_STAGES=['approach','right','transfer','depot','freight','canal'];
+const STAGES=['approach','right','transfer','orbit','landing','disembark','depot','station','freight','canal','relay','workshops','serviceStreet','tunnel','finale'];
+const CHECKPOINT_STAGES=['approach','right','transfer','depot','freight','canal','workshops'];
+const GROUND_GARRISONS=new Set(['depot','station','freight','canal']);
 const MAIN='m03-extraction-1',WING='m03-extraction-2';
 const CALLSIGNS={[MAIN]:'Чёрный ястреб-1',[WING]:'Чёрный ястреб-2'};
 const ESCORT_INFANTRY=[
@@ -20,7 +21,6 @@ const ESCORT_INFANTRY=[
   {id:'escort-volkov',name:'Семён Волков',classId:'support',weapon:'mg36',seat:4},
 ];
 const SQUAD_SLOTS=[['duran','wing'],['lasko','medic'],['bruno'],['escort-rudin'],['escort-volkov'],['dispatcher']];
-const RELAY_WAVE_TIMINGS=[0,.31,.62];
 const LEFT=BLACK_HAWK_GUN.index;
 const KNOCKOUT_SECONDS={recruit:35,regular:25,veteran:18};
 const DEPARTURE_DELAY=4,DEPARTURE_DURATION=24.5;
@@ -28,7 +28,7 @@ const EXIT_DURATION=1.45;
 const GUNNER_HIT_AT=1.75,GUNNER_REMOVED_AT=3.45;
 const SAVE_FIELDS=['stage','stageAt','checkpoint','flags','gates','supplyUsed','enemySerial','order','knowledge','sent','waves',
   'power','source','orbitAt','combatOrbitAt','landing','departAt','nextRocketAt','lastHullBlast',
-  'radio','radioEnd','radioSerial','queue','transmitting','roofWarningIndex'];
+  'radio','radioEnd','radioSerial','queue','transmitting','roofWarningIndex','groundDeployments'];
 const ROOF_WARNINGS=['pilot.roofDanger','pilot.roofDangerEdge','pilot.roofDangerReady'];
 const ptWarning='ПТ-90 ГОТОВИТ ВЫСТРЕЛ';
 const RADIO_CUES={
@@ -38,7 +38,6 @@ const RADIO_CUES={
   landing:[[7,'marten.yard']],
   disembark:[[8,'pilot.clear']],
   relay:[[18,'marten.relayHold']],
-  tunnel:[[9,'orlov.tunnel']],
 };
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const close=(a,b,r=3)=>dist(a,b)<r&&Math.abs(a.y-(b.y??0))<1.55;
@@ -153,6 +152,7 @@ class NaharDirector{
     this.input={};this.radio=null;this.radioEnd=0;this.radioSerial=0;this.queue=[];this.eventsDone=new Set();
     this.gates={service:false,tunnel:false};this.progress=0;this.supplyUsed=false;this.enemySerial=0;
     this.order='follow';this.knowledge={log:false,recording:false};this.sent=0;this.waves=0;this.power=false;
+    this.groundDeployments=[];
     this.nextReinforcementCheck=0;
     const {approach,right,turn,orbit}=definition.flight;
     this.approachSeconds=approach.at(-1)[0];
@@ -475,7 +475,7 @@ class NaharDirector{
     if(this.carry.bruno_alive!==false){
       const bruno=this.add('bruno','Бруно Валь',0,'support','pkp',{x:v.x+12,z:v.z+12},'signals');bruno.squadMember=true;
     }
-    this.spawnGround('depot');this.say('marten.onFoot');this.say(this.medic.id+'.down');this.say('orlov.routes');
+    this.say('marten.onFoot');this.say(this.medic.id+'.down');this.say('orlov.routes');
     if(this.carry.m3_documents)this.say(this.sim.players.has('bruno')?'bruno.route':'wing.route');
     this.save(3);
   }
@@ -685,7 +685,6 @@ class NaharDirector{
   squadGoal(p){
     const player=this.player,slot=SQUAD_SLOTS.findIndex(ids=>ids.includes(p.id));
     const ownPosition={x:p.x,y:p.y,z:p.z},leaderPosition={x:player.x,y:player.y,z:player.z};
-    if(this.stage==='tunnel'&&this.gates.tunnel)return sites.exit;
     if(this.order==='hold'&&p!==this.dispatcher)return p.holdAt??ownPosition;
     if((this.stage==='depot'||this.stage==='station')&&p.x>-55&&p.x<51&&player.x>-55&&player.x<51){
       const crossZ=player.z>=11&&p.z<10.9?11.7:player.z<=-8&&p.z>-7.7?-9.8:null;
@@ -723,47 +722,78 @@ class NaharDirector{
   }
   botGoal(p){
     if(p.team===0)return this.squadGoal(p);
-    if(p.assaultGoal)return p.assaultGoal;
+    if(p.assaultRoute?.length){
+      const route=p.assaultRoute;
+      while(p.assaultStep<route.length-1&&close(p,route[p.assaultStep],2.6))p.assaultStep++;
+      return route[p.assaultStep];
+    }
     return dist(p,p.home)>9?p.home:{x:p.home.x+Math.sin(this.time*.12+p.botSlot)*3,z:p.home.z+Math.cos(p.botSlot)*3,y:p.home.y};
   }
-  spawnGround(key,points=this.definition.ground[key]){
-    for(const [i,[x,z,y]] of points.entries()){
-      const cls=i%5===3?'support':i%5===4?'recon':'assault';
-      const weapon=cls==='support'?'mg36':cls==='recon'?'dmr12':'ar416';
-      const p=this.add(`nahar-enemy-${++this.enemySerial}`,'Боец Корпуса',1,cls,weapon,{x,y,z},key);
-      p.home={x:p.x,y:p.y,z:p.z};p.grenades=i%5===3?1:0;p.rockets=0;
-      if(key==='relay'||key==='tunnel'){
-        const goal=key==='tunnel'?{x:172,z:190}:i%2?sites.relay:sites.power;
-        const offset=i*2.4,x=goal.x+Math.cos(offset)*2.2,z=goal.z+Math.sin(offset)*2.2;
-        const y=this.sim.groundAt(x,z);
-        p.assaultGoal=this.sim.collides(x,z,y+.023)?goal:{x,y,z};
-      }
+  spawnGround(role,point,slot,waypoints){
+    const cls=slot%5===3?'support':slot%5===4?'recon':'assault';
+    const weapon=cls==='support'?'mg36':cls==='recon'?'dmr12':'ar416';
+    const p=this.add(`nahar-enemy-${++this.enemySerial}`,'Боец Корпуса',1,cls,weapon,point,role);
+    p.home={x:p.x,y:p.y,z:p.z};p.grenades=cls==='support'?1:0;p.rockets=0;
+    if(waypoints?.length){
+      const offset=(slot%3-1)*1.4;
+      p.assaultRoute=waypoints.map(([x,z],index)=>{
+        const [previousX,previousZ]=waypoints[index-1]??[point.x,point.z];
+        const length=Math.hypot(x-previousX,z-previousZ)||1;
+        const sx=x-(z-previousZ)*offset/length,sz=z+(x-previousX)*offset/length;
+        const sy=this.sim.groundAt(sx,sz);
+        if(!this.sim.collides(sx,sz,sy+.023,this.sim.playerRadius+.12))return {x:sx,y:sy,z:sz};
+        return {x,y:this.sim.groundAt(x,z),z};
+      });
+      p.assaultStep=0;
+      Object.assign(p,aimAt(p,p.assaultRoute[0]));
     }
+    return p;
   }
-  spawnReinforcements(key,preferred,alternates){
-    if(this.time<this.nextReinforcementCheck)return false;
-    this.nextReinforcementCheck=this.time+.65;
+  deployGround(key,role,lanes,minDistance){
     const sim=this.sim,player=this.player;
-    const observer=eye(player,player.crouching?CROUCH_EYE_HEIGHT:EYE_HEIGHT);
-    const actors=[...sim.players.values()].filter(p=>p.alive&&!p.vehicleId&&!p.campaignHidden);
-    const selected=[];
-    for(const [x,z] of [...preferred,...alternates.flat()]){
-      const y=sim.groundAt(x,z),point={x,y,z};
-      if(dist(player,point)<42||selected.some(([sx,sz])=>Math.hypot(x-sx,z-sz)<2.3)||
-        actors.some(p=>close(p,point,p.team===0?10:2.3))||
-        sim.collides(x,z,y+.023)||sim.vehicleAt(x,z,y))continue;
-      const dx=x-player.x,dz=z-player.z,length=Math.hypot(dx,dz);
-      const shoulderX=dz/length*.36,shoulderZ=-dx/length*.36;
-      if(sim.lineClear(observer,eye(point,EYE_HEIGHT))||sim.lineClear(observer,eye(point,.98))||
-        sim.lineClear(observer,{x:x+shoulderX,y:y+.98,z:z+shoulderZ})||
-        sim.lineClear(observer,{x:x-shoulderX,y:y+.98,z:z-shoulderZ}))continue;
-      selected.push([x,z,y]);
-      if(selected.length===preferred.length){
-        this.spawnGround(key,selected);
-        return true;
+    const observers=[eye(player,EYE_HEIGHT),eye(player,CROUCH_EYE_HEIGHT)];
+    const actors=[...sim.players.values()].filter(p=>p.alive&&!p.vehicleId&&!p.campaignHidden&&p.id!=='local');
+    let deployed=0;
+    for(const [laneIndex,{positions,route}] of lanes.entries()){
+      for(const [index,[x,z,height]] of positions.entries()){
+        const id=`${key}-${laneIndex}-${index}`;
+        if(this.groundDeployments.includes(id))continue;
+        const y=height??sim.groundAt(x,z),point={x,y,z};
+        const range=dist(player,point);
+        if(range<minDistance||actors.some(p=>close(p,point,p.team===0?13:2.45))||
+          sim.collides(x,z,y+.023,sim.playerRadius+.12)||sim.vehicleAt(x,z,y))continue;
+        const sx=(z-player.z)*.38/range,sz=(player.x-x)*.38/range;
+        const silhouette=[eye(point,EYE_HEIGHT+.1),eye(point,.45),eye(point,1.08),
+          {x:x+sx,y:y+1.1,z:z+sz},{x:x-sx,y:y+1.1,z:z-sz}];
+        if(observers.some(from=>silhouette.some(to=>sim.lineClear(from,to))))continue;
+        actors.push(this.spawnGround(role,point,laneIndex*3+index,route));
+        this.groundDeployments.push(id);
+        deployed++;
+        if(!route&&deployed>=3)return deployed;
       }
     }
-    return false;
+    return deployed;
+  }
+  updateGroundDeployment(){
+    if(this.time<this.nextReinforcementCheck)return;
+    this.nextReinforcementCheck=this.time+.85;
+    const {ground}=this.definition;
+    if(GROUND_GARRISONS.has(this.stage)){
+      this.deployGround(this.stage,this.stage,[{positions:ground[this.stage]}],32);
+    }else if(this.stage==='relay'&&this.transmitting){
+      for(const [index,wave] of ground.relay.entries()){
+        if(this.sent<this.settings.hold*wave.at)break;
+        const key=`relay-${index}`;
+        if(this.deployGround(key,'relay',wave.lanes,46)&&!this.eventsDone.has(key)){
+          this.eventsDone.add(key);this.waves++;
+          this.say(`${this.wingSpeaker}.pressure`);
+        }
+      }
+    }else if(this.stage==='workshops'||this.stage==='serviceStreet'){
+      // Establish the street defenders while the squad is still around the corner.
+      if(this.stage==='workshops')this.deployGround('workshops','workshops',ground.workshops,44);
+      this.deployGround('serviceStreet','serviceStreet',ground.serviceStreet,44);
+    }
   }
   openGate(name){
     if(this.gates[name])return;
@@ -777,7 +807,7 @@ class NaharDirector{
     if(this.stage!=='station')return;
     this.flags.m4_dispatcher_alive=Boolean(this.dispatcher?.alive);
     this.source=source;
-    this.setStage('freight');this.spawnGround('freight');
+    this.setStage('freight');
     this.say(source==='dispatcher'?'dispatcher.live':'marten.copy');
     if(source==='dispatcher'){this.say('marten.moveDispatcher');this.say('dispatcher.walk');}
     this.say('orlov.freight');this.save(4);
@@ -791,12 +821,12 @@ class NaharDirector{
   updateGround(dt){
     const p=this.player;
     if(this.stage==='depot'&&dist(p,sites.station)<55){
-      this.setStage('station');this.spawnGround('station');
+      this.setStage('station');
       const d=this.add('dispatcher','Диспетчер',0,'medic','mcx9',sites.dispatcher,'dispatcher');
       Object.assign(d,{wounded:true,hp:42,prone:true,invulnerableUntil:this.time+9});
       this.say('orlov.dispatch');this.say('orlov.stationIn');
     }else if(this.stage==='freight'&&p.z>52&&p.x>12){
-      this.setStage('canal');this.spawnGround('canal');this.say('orlov.channel');this.save(5);
+      this.setStage('canal');this.say('orlov.channel');this.save(5);
     }
     if(this.dispatcher?.wounded&&this.dispatcher.alive&&this.order==='assist'){
       const medic=this.medic;
@@ -805,10 +835,16 @@ class NaharDirector{
       }else this.medicCare=0;
     }
     if(this.stage==='station'&&this.knowledge.log&&this.knowledge.recording)this.acquire('recording');
+    this.updateGroundDeployment();
     if(this.stage==='relay'&&this.transmitting)this.updateTransmission(dt);
-    if(this.stage==='tunnel'&&!this.eventsDone.has('tunnel-reinforcements')&&!close(p,sites.exit,8)&&
-      this.spawnReinforcements('tunnel',this.definition.ground.tunnel,this.definition.ground.relay)){
-      this.eventsDone.add('tunnel-reinforcements');
+    if(this.stage==='workshops'){
+      if(close(p,sites.workshopCorner,10))this.eventsDone.add('workshops-corner');
+      if(this.eventsDone.has('workshops-corner')&&close(p,sites.workshops,6))this.setStage('serviceStreet');
+    }else if(this.stage==='serviceStreet'&&close(p,sites.serviceStreet,6)){
+      this.setStage('tunnel');this.say('orlov.tunnel');
+    }
+    if(this.stage==='tunnel'&&!this.gates.tunnel&&this.dispatcher?.alive&&this.dispatcher.rescued&&close(p,sites.tunnelGate,5)){
+      this.openGate('tunnel');this.say('dispatcher.gate');
     }
     if(this.stage==='tunnel'&&this.gates.tunnel&&close(p,sites.exit,5)){
       this.exitAt??=this.time;
@@ -827,13 +863,7 @@ class NaharDirector{
   }
   updateTransmission(dt){
     const length=this.settings.hold;
-    const waves=this.definition.ground.relay;
     if(!this.power||dist(this.player,sites.relay)>32)return;
-    if(this.waves<waves.length&&this.sent>=length*RELAY_WAVE_TIMINGS[this.waves]&&
-      this.spawnReinforcements('relay',waves[this.waves],waves.filter((_,index)=>index!==this.waves))){
-      this.waves++;
-      this.say(`${this.wingSpeaker}.pressure`);
-    }
     const threat=[...this.sim.players.values()].find(p=>p.team===1&&p.alive&&p.role==='relay'&&close(p,sites.power,5.5));
     if(threat&&this.sent>length*.37&&!this.eventsDone.has('power-cut')){
       this.power=false;this.eventsDone.add('power-cut');this.say(`${this.wingSpeaker}.broken`,true);return;
@@ -843,9 +873,8 @@ class NaharDirector{
       this.eventsDone.add('signal-almost');this.say('orlov.signalAlmost');
     }
     if(this.sent>=length){
-      this.flags.m4_signal_sent=true;this.setStage('tunnel');this.nextReinforcementCheck=0;
-      this.say('orlov.received',true);
-      if(this.dispatcher?.alive&&this.dispatcher.rescued){this.say('dispatcher.gate');this.openGate('tunnel');}
+      this.flags.m4_signal_sent=true;this.setStage('workshops');this.nextReinforcementCheck=0;
+      this.say('orlov.received',true);this.save(6);
     }
   }
   get supply(){return this.landing?.kind==='alternate'?sites.supplyAlternate:sites.supplyPrimary;}
@@ -971,6 +1000,8 @@ class NaharDirector{
       case 'freight':return sites.freight;
       case 'canal':return this.player.z<132?sites.bridge:sites.power;
       case 'relay':return this.power?sites.relay:sites.power;
+      case 'workshops':return this.eventsDone.has('workshops-corner')?sites.workshops:sites.workshopCorner;
+      case 'serviceStreet':return sites.serviceStreet;
       case 'tunnel':return this.gates.tunnel?sites.exit:sites.tunnelGate;
       default:return null;
     }
@@ -980,7 +1011,8 @@ class NaharDirector{
     const player=this.player,craft=this.aircraft;
     const transfer=this.checkpointShifting?Math.max(0,1-(this.switchAt-this.time)/1.65):null;
     return {missionId:'m04',objective:this.stage,stage:this.stage,stageAt:this.stageAt,time:this.time,
-      epoch:this.epoch,checkpoint:this.checkpoint,complete:this.complete,failed:this.failed,cutscene:this.stage==='finale'?{id:'finale',elapsed:this.age}:null,
+      epoch:this.epoch,checkpoint:this.checkpoint,checkpointTotal:CHECKPOINT_STAGES.length-1,
+      complete:this.complete,failed:this.failed,cutscene:this.stage==='finale'?{id:'finale',elapsed:this.age}:null,
       airborne:this.airborne,transfer,transferReady:this.stage==='transfer'&&this.age>=3.6,
       groundElapsed:this.departAt==null?0:Math.max(0,this.time-this.departAt+DEPARTURE_DELAY),
       disembark:this.disembark?{...this.disembark,progress:Math.min(1,(this.time-this.disembark.at)/EXIT_DURATION)}:null,
@@ -1027,6 +1059,9 @@ class NaharDirector{
     sim.time=save.time;sim.rngState=save.rngState;sim.events=[];sim.eventId=0;sim.botTeams=null;sim.botTeamAt=0;
     sim.weaponKills=new Map(Object.entries(save.weaponKills??{}));
     for(const key of SAVE_FIELDS)this[key]=structuredClone(save.mission[key]);
+    // Earlier checkpoints already contain the whole garrison for their current phase.
+    this.groundDeployments??=GROUND_GARRISONS.has(this.stage)?
+      this.definition.ground[this.stage].map((_,index)=>`${this.stage}-0-${index}`):[];
     Object.assign(this,{failed:null,complete:false,input:{},lastSwap:false,lastOrder:false,
       switchAt:null,threatId:null,prompt:'',progress:0,interaction:null,medicCare:0,exitAt:null,
       landingClearSince:null,rescuerId:null,rescuePatientId:null,rescueGoal:null,disembark:null,squadPatientId:null,nextReinforcementCheck:0});
@@ -1046,6 +1081,8 @@ export function validMission4Save(save,definition){
     !Number.isInteger(save.rngState)||!m||!Number.isInteger(m.checkpoint)||CHECKPOINT_STAGES[m.checkpoint]!==m.stage||
     !Number.isFinite(m.stageAt)||m.stageAt>save.time||!Array.isArray(m.eventsDone)||m.eventsDone.length>64||
     !m.flags||!m.gates||!m.knowledge||!Array.isArray(m.queue)||!['follow','hold','assist'].includes(m.order)||
+    (m.groundDeployments!=null&&(!Array.isArray(m.groundDeployments)||m.groundDeployments.length>100||
+      m.groundDeployments.some(id=>typeof id!=='string'||id.length>45)))||
     !list(save.players,100)||!list(save.vehicles,2))return false;
   const aircraft=save.vehicles;
   if(!aircraft.every(v=>(v.id===MAIN||v.id===WING)&&v.type===BLACK_HAWK&&v.seats?.length===5&&Number.isFinite(v.hp)))return false;

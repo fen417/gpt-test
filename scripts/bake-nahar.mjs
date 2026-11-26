@@ -17,7 +17,8 @@ for(let z=-limit;z<=limit;z+=spacing){
   heights.push(row);
 }
 const plan=resolve(stage,'plan.json');
-await writeFile(plan,JSON.stringify({spacing,limit,heights,parts:NAHAR.boxes.filter(b=>!b.missionDynamic)}));
+await writeFile(plan,JSON.stringify({spacing,limit,heights,roads:NAHAR.roads,
+  parts:NAHAR.boxes.filter(b=>!b.missionDynamic&&!b.collisionOnly)}));
 const result=spawnSync(blender,['--background','--factory-startup','--python-exit-code','1','--python',
   resolve('art-source/nahar/build_nahar.py'),'--',plan,stage,stage,...options],{stdio:'inherit',windowsHide:true});
 if(result.error)throw result.error;
