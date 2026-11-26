@@ -365,7 +365,13 @@ def main():
     for name, part in parts.items():
         obj = part.object('HD_'+name,collection)
         author_surface(obj,part.colors,shared)
+    bpy.context.view_layer.update()
+    for name in ('mg_mount','mg_barrel'):
+        obj = bpy.data.objects[f'HD_{name}']
+        obj.hide_set(True)
+        obj.hide_render = True
     bpy.ops.export_scene.gltf(filepath=str(glb.resolve()),export_format='GLB',export_vertex_color='ACTIVE',
+                              use_visible=True,
                               export_meshopt_compression_enable=True,export_meshopt_extension='EXT_meshopt_compression')
     arrange_source(collection,parts)
     for screen in bpy.data.screens:

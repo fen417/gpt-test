@@ -14,7 +14,7 @@ const barrelVertex=new THREE.Vector3();
 const desertSand={value:new THREE.Color(0xe0c897)},desertBrown={value:new THREE.Color(0xa8875e)};
 let atlas,atlasPromise,modelPromise,detailPromise,detailAssets;
 const modelParts=new Map();
-const tankParts=['hull','turret','cannon','hatch','belt','wheel','mg_mount','mg_barrel'];
+const tankParts=['hull','turret','cannon','hatch','belt','wheel'];
 const trackSegments=[];
 let trackLength=0;
 for(let i=0;i<trackPath.points.length;i++){
@@ -110,7 +110,9 @@ export function loadTankModel(){
     .then(({scene})=>{
       scene.traverse(mesh=>{
         if(!mesh.isMesh)return;
-        modelParts.set(mesh.name,tankGeometry(mesh));
+        const part=mesh.name.slice(mesh.name.indexOf('_')+1);
+        if(tankParts.includes(part))modelParts.set(mesh.name,tankGeometry(mesh));
+        else mesh.geometry.dispose();
         mesh.material.dispose();
       });
       for(let level=0;level<3;level++){
@@ -195,14 +197,11 @@ function buildLevel(level,material,parts=modelParts){
   const prefix=detailed?'HD':'LOD'+level;
   const group=new THREE.Group(),body=new THREE.Group();
   const turret=new THREE.Group(),gun=new THREE.Group();
-  const machineGun=new THREE.Group(),machineGunBarrel=new THREE.Group();
   group.add(body);
-  body.add(turret,machineGun);
+  body.add(turret);
   turret.position.set(0,TANK_TURRET_BASE_Y,-.4);
   turret.add(gun);
   gun.position.set(0,.34,-.9);
-  machineGun.position.set(.45,TANK_TURRET_BASE_Y+1.13,-.4);
-  machineGun.add(machineGunBarrel);
   const geometry=name=>parts.get(prefix+'_'+name);
   const attach=(parent,name,mergeAtDistance=false)=>{
     const source=geometry(name);
@@ -216,8 +215,6 @@ function buildLevel(level,material,parts=modelParts){
   };
   const hull=attach(body,'hull',true),hatch=attach(body,'hatch',true),tracks=attach(body,'belt',true);
   const turretMesh=attach(turret,'turret',true),barrel=attach(gun,'cannon',true);
-  attach(machineGun,'mg_mount');
-  attach(machineGunBarrel,'mg_barrel');
   const wheels=new THREE.InstancedMesh(geometry('wheel'),material,12);
   wheels.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   for(let i=0;i<wheels.count;i++){
@@ -233,7 +230,7 @@ function buildLevel(level,material,parts=modelParts){
       mesh.receiveShadow=true;
     }
   }
-  return {group,body,turret,gun,machineGun,machineGunBarrel,hull,turretMesh,hatch,tracks,wheels,updateBarrel,updateShoes};
+  return {group,body,turret,gun,hull,turretMesh,hatch,tracks,wheels,updateBarrel,updateShoes};
 }
 
 function addTrackShoes(body,geometry,material){
@@ -349,7 +346,6 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
   rig.travel.value.x+=(v.speed+(v.steer??0)*1.8)*dt*.35;rig.travel.value.y+=(v.speed-(v.steer??0)*1.8)*dt*.35;
   const pose=rig.aimPose??={};pose.yaw=group.rotation.y;pose.modelScale=v.modelScale;pose.bodyPitch=rig.body.rotation.x;pose.bodyRoll=rig.body.rotation.z;
   const direction=vehicleAimDirection(pose,v.aimYaw??v.yaw,v.aimPitch??0,modelDirection),delta=Math.atan2(-direction.x,-direction.z),pitch=Math.atan2(direction.y,Math.hypot(direction.x,direction.z));
-  const machineGunDirection=vehicleAimDirection(pose,v.gunAimYaw??v.yaw,v.gunAimPitch??0,modelDirection),machineGunYaw=Math.atan2(-machineGunDirection.x,-machineGunDirection.z),machineGunPitch=Math.atan2(machineGunDirection.y,Math.hypot(machineGunDirection.x,machineGunDirection.z));
   if(reset){rig.cannonSeq=v.cannonSeq;rig.recoil=0;}
   if(rig.cannonSeq!==undefined&&rig.cannonSeq!==v.cannonSeq)rig.recoil=.4;
   rig.wreckAge=v.hp<=0?(rig.wreckAge??0)+dt:0;
@@ -360,8 +356,6 @@ export function updateTankRig(rig,v,p,dt,blend,view,low,terrain){
     if(!l.group.visible)continue;
     l.body.rotation.copy(rig.body.rotation);
     l.turret.rotation.y=delta;l.gun.rotation.x=pitch;
-    l.machineGun.visible=!view.hideTankMachineGun&&v.controlScheme!=='wot';
-    l.machineGun.rotation.y=machineGunYaw;l.machineGunBarrel.rotation.x=machineGunPitch;
     l.turret.position.set(v.hp<=0?Math.min(3.2,rig.wreckAge*3.2):0,v.hp<=0?Math.max(.15,TANK_TURRET_BASE_Y+rig.wreckAge*8-rig.wreckAge**2*10):TANK_TURRET_BASE_Y,-.4+(v.hp<=0?Math.min(2,rig.wreckAge*2):0));l.turret.rotation.z=v.hp<=0?Math.min(1.1,rig.wreckAge):0;
     l.gun.position.z=-.9+(rig.recoil??0);l.hatch.visible=!(p?.vehicleSeat===0&&p.vehicleId===v.id&&!view.vehicleThirdPerson);
     l.updateBarrel?.();

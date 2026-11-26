@@ -1344,7 +1344,6 @@ export class GameRenderer {
     const vehicleView = {
       ...view,
       tankDetail: this.geometryQuality === 'high',
-      hideTankMachineGun: state.campaign ? true : view.hideTankMachineGun,
     };
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
