@@ -22,6 +22,8 @@ RECESS = (.023, .028, .027)
 RUBBER = (.035, .031, .027)
 GRIP = (.063, .043, .027)
 STIPPLE = (.048, .033, .023)
+STOCK_TUBE = (.055, .061, .059)
+STOCK_COMB = (.123, .089, .056)
 MARK = (.268, .225, .177)
 SELECTOR = (.280, .048, .023)
 
@@ -60,8 +62,8 @@ def round_slot(mesh, side, z, color):
         mesh.colors.extend([tint]*len(faces))
 
 
-def stock_and_grip():
-    grip, stock = AR416Assembly(), AR416Assembly()
+def pistol_grip():
+    grip = AR416Assembly()
     molded_grip(grip,[(-.083,.100,.046,.0215),(-.090,.100,.040,.0227),
                       (-.101,.101,.035,.024),(-.119,.104,.033,.0245),
                       (-.126,.106,.034,.0246),(-.145,.109,.036,.0246),
@@ -75,39 +77,88 @@ def stock_and_grip():
     grip.box((0,-.237,.092),(.042,.004,.053),POLYMER,.0015)
     grip.box((0,-.239,.097),(.019,.0018,.021),RECESS,.0006)
 
-    # Preserve the original stock envelope and draw the tube with continuous
-    # circular shading, a seam near the collar and a different steel finish.
-    stock.tube((0,.015,0),[(.085,.027),(.088,.031),(.095,.032),(.105,.032),
-                         (.108,.030),(.114,.030),(.117,.032),(.208,.032),
-                         (.228,.028),(.274,.027),(.282,.022)],'z',STEEL,64)
-    stock.tube((0,.015,0),[(.100,.031),(.103,.036),(.116,.036),(.120,.034),
-                         (.124,.033),(.126,.031)],'z',POLYMER,64)
-    profile = [(.211,.032),(.225,.043),(.417,.046),(.445,.041),(.456,.027),
-               (.448,-.025),(.399,-.037),(.344,-.034),(.286,-.023),(.225,-.021),(.211,-.015)]
-    sections = [(-.041,.87),(-.040,.94),(-.036,.982),(-.030,1),
-                (.030,1),(.036,.982),(.040,.94),(.041,.87)]
-    stock.rings([[(x,.012+(y-.012)*scale,.339+(z-.339)*scale) for z,y in profile]
-                  for x,scale in sections],FURNITURE)
-    side_profile(stock,[(.241,-.021),(.270,-.021),(.398,-.121),(.426,-.140),
-                        (.435,-.155),(.401,-.162),(.387,-.145)],.059,FURNITURE)
-    side_profile(stock,[(.443,.038),(.465,.034),(.472,.025),(.468,-.031),
-                        (.460,-.127),(.450,-.161),(.433,-.168),(.422,-.160),
-                        (.432,-.132),(.436,-.035)],.076,RUBBER)
-    stock.box((0,-.055,.304),(.040,.014,.059),POLYMER,.004)
-    stock.cylinder((0,-.051,.320),.008,.038,'x',STEEL,18)
+    return grip
+
+
+def stock_model():
+    stock = AR416Assembly()
+    angles = [i*math.tau/48 for i in range(48)]
+    cross_section = [(math.copysign(abs(math.cos(a))**.64,math.cos(a)),
+                      math.copysign(abs(math.sin(a))**.66,math.sin(a))) for a in angles]
+    stock.tube((0,.015,0),[(.084,.026),(.087,.030),(.093,.032),(.119,.032),
+                         (.126,.0305),(.202,.0305),(.230,.030),(.282,.025)],'z',STOCK_TUBE,72)
+    stock.tube((0,.015,0),[(.097,.032),(.099,.0348),(.104,.035),
+                         (.107,.0335),(.111,.0335),(.114,.035),(.118,.0346),
+                         (.123,.032)],'z',STOCK_TUBE,72)
+    for i in range(6):
+        angle = i*math.tau/6
+        stock.cylinder((.033*math.cos(angle),.015+.033*math.sin(angle),.106),
+                       .0034,.008,'z',POLYMER,10)
+
+    # Rounded molded shell with a raised top comb, narrowing into the tube.
+    shell = [(.208,.042,-.016,.030),(.214,.048,-.022,.034),(.226,.052,-.026,.038),
+             (.248,.053,-.030,.040),(.287,.052,-.036,.041),(.331,.051,-.040,.042),
+             (.375,.051,-.042,.042),(.411,.050,-.042,.040),(.432,.045,-.039,.036),
+             (.447,.035,-.035,.032)]
+    stock.rings([[(u*width*(.93+.07*v), (top+bottom+(top-bottom)*v)/2, z)
+                  for u,v in cross_section] for z,top,bottom,width in shell],FURNITURE)
+    comb = [(.240,.047,.030,.030),(.249,.054,.027,.032),(.273,.056,.026,.034),
+            (.328,.056,.025,.035),(.381,.056,.025,.035),(.411,.054,.025,.033),
+            (.427,.047,.022,.031)]
+    stock.rings([[(u*width, (top+bottom+(top-bottom)*v)/2,z)
+                  for u,v in cross_section] for z,top,bottom,width in comb],STOCK_COMB)
+
+    side_profile(stock,[(.237,-.016),(.294,-.028),(.369,-.092),(.410,-.120),
+                        (.438,-.127),(.440,-.152),(.418,-.160),(.397,-.146),
+                        (.354,-.113),(.288,-.069),(.248,-.048)],.059,FURNITURE)
+    stock.box((0,-.051,.309),(.041,.012,.060),POLYMER,.003)
+    stock.tube((0,-.052,.318),[(-.025,.004),(-.023,.007),(.023,.007),
+                             (.025,.004)],'x',STOCK_TUBE,32)
+
+    # Concave rubber pad, molded flange and a separate backing plate.
+    for color,layers in (
+        (POLYMER,[(-.026,.86),(-.023,.96),(-.016,1),(-.013,.98)]),
+        (RECESS,[(-.014,.975),(-.012,.975),(-.010,.97)]),
+        (RUBBER,[(-.011,.957),(-.008,1),(.001,1),(.006,.972),(.009,.91)]),
+    ):
+        stock.rings([[(u*size*(.034+.004*v),-.061+.109*v*size,
+                      .454+.009*v+.007*v*v+depth) for u,v in cross_section]
+                     for depth,size in layers],color)
+    for i in range(13):
+        v = .82-i*.132
+        width = .056*(1-abs(v)**2)**.46
+        stock.box((0,-.061+.106*v,.463+.009*v+.007*v*v),
+                  (width,.0063,.0045),RUBBER,.0011)
+
     for side in (-1,1):
-        panel = [(z,y) for z,y in [(.267,.022),(.409,.025),(.426,.017),(.420,.002),
-                                  (.389,-.007),(.278,-.007),(.259,.001)]]
-        side_profile(stock,panel,.0025,POLYMER,side*.040)
-        stock.cylinder((side*.042,.008,.395),.011,.004,'x',STEEL,20)
-        stock.cylinder((side*.0445,.008,.395),.006,.0014,'x',RECESS,20)
-        for z in (.312,.326,.340):
-            side_profile(stock,[(z,-.003),(z+.008,.018),(z+.003,.018),(z-.005,-.003)],
-                         .0024,FURNITURE,side*.041)
-        for i in range(8):
-            t = i/7
-            stock.box((side*.036,.013-t*.151,.467-t*.012),(.004,.007,.007),RUBBER,.0014)
-    return grip, stock
+        side_profile(stock,[(.257,.012),(.282,.024),(.391,.026),(.415,.017),
+                            (.416,.003),(.399,-.012),(.342,-.016),(.278,-.010)],
+                     .008,STOCK_COMB,side*.039)
+        side_profile(stock,[(.276,.012),(.290,.019),(.378,.020),(.395,.014),
+                            (.394,.002),(.369,-.008),(.288,-.004)],.003,FURNITURE,side*.043)
+        side_profile(stock,[(.278,-.045),(.303,-.048),(.383,-.106),(.412,-.124),
+                            (.405,-.130),(.376,-.114),(.306,-.068)],.003,STOCK_COMB,side*.028)
+        # Open rim around the sling socket, with the dark wall and floor behind it.
+        profile = [(.042,.0124),(.045,.0133),(.047,.0122),(.048,.0105),
+                   (.0475,.0082),(.0455,.007),(.042,.007)]
+        rings = [[(side*x,.002+r*math.cos(a),.399+r*math.sin(a)) for a in angles]
+                 for x,r in profile]
+        count = len(angles)
+        faces = []
+        for row in range(len(rings)):
+            start, next_start = row*count, ((row+1)%len(rings))*count
+            for i in range(count):
+                j = (i+1)%count
+                faces.append((start+i,start+j,next_start+j,next_start+i)[::side])
+        stock.add([point for ring in rings for point in ring],faces,STOCK_TUBE)
+        stock.cylinder((side*.044,.002,.399),.0083,.002,'x',RECESS,18)
+        for i in range(5):
+            z = .306+i*.013
+            side_profile(stock,[(z,-.014),(z+.003,-.004),(z+.007,-.004),
+                                (z+.004,-.014)],.0025,STOCK_COMB,side*.0445)
+        stock.cylinder((side*.032,-.141,.415),.0063,.005,'x',STOCK_TUBE,12)
+        stock.box((side*.035,-.141,.415),(.0009,.0016,.0067),RECESS,.0003)
+    return stock
 
 
 def magazine():
@@ -132,7 +183,8 @@ def magazine():
 def finish(material, shader, rows):
     material.name = 'AR-416 · anodized alloy / polymer / steel / rubber'
     shader_finish(material, shader, rows, finishes=((.52,.45,.034),(.76,.015,.064),
-                                                   (.36,.86,.028),(.86,0,.072),(.72,.012,.89)),
+                                                   (.36,.86,.028),(.86,0,.072),(.72,.012,.89),
+                                                   (.59,.54,.020)),
                   fabric_rows=(),stipple_rows=(4,),size=384,roughness_variation=.44)
 
 
@@ -180,14 +232,14 @@ def main():
     bolt.box((0,.072,.113),(.095,.017,.024),STEEL,.004)
     for side in (-1,1):
         bolt.box((side*.046,.069,.101),(.016,.015,.031),FRAME,.003)
-    grip, stock = stock_and_grip()
-    parts = [('Receiver',receiver),('Handguard',guard),('Barrel',barrel),('Grip',grip),('Stock',stock),
+    parts = [('Receiver',receiver),('Handguard',guard),('Barrel',barrel),
+             ('Grip',pistol_grip()),('Stock',stock_model()),
              ('Sights',base.sights()),('Magazine',magazine()),('Bolt',bolt)]
     anchors = {'Mount_Optic':(0,.095,-.087),'Mount_Barrel':(0,.015,-.207),
                'Mount_Magazine':(0,-.075,-.139),'Mount_Stock':(0,.015,.084)}
     export_weapon(parts,glb,blend,mounts=anchors,modular=True,finish_shader=finish,finish_projection=project_finishes,
                   finish_rows={FURNITURE:1,POLYMER:1,RECESS:1,MARK:1,SELECTOR:1,
-                               GRIP:1,STEEL:2,BOLT:2,RUBBER:3,STIPPLE:4})
+                               GRIP:1,STEEL:2,BOLT:2,RUBBER:3,STIPPLE:4,STOCK_TUBE:5,STOCK_COMB:1})
 
 
 if __name__ == '__main__':
