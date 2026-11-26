@@ -111,6 +111,6 @@ export class WebGlPenumbra {
         .replace(/getShadow\(\s*directionalShadowMap\[/g,'s09DirectionalShadow( directionalShadowMap[')
         .replace('#include <shadowmap_pars_fragment>',
           ShaderChunk.shadowmap_pars_fragment+'\n#ifdef USE_SHADOWMAP\n'+depthCompare+(this.mode==='pcss'?softShadow:pcfShadow)+'\n#endif\n');
-    });
+    },this.mode);
   }
 }

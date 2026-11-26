@@ -29,7 +29,19 @@ jobs:
           cache: npm
       - run: npm ci
       - name: CPU rendering regression tests
-        run: node --test test/optimization-regression.test.js
+        run: node --test test/optimization-regression.test.js test/three-r187-cache.test.js
+      - name: WebGL sampler browser regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5174 --strictPort >/tmp/s09-vite.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:5174/test/three-r187-samplers.html >/dev/null && break; sleep 1; done
+          browser=$(command -v google-chrome || command -v chromium)
+          timeout 90 "$browser" --headless --no-sandbox --disable-dev-shm-usage --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --virtual-time-budget=30000 --dump-dom http://127.0.0.1:5174/test/three-r187-samplers.html >/tmp/s09-sampler.html
+          cat /tmp/s09-sampler.html
+          grep -Fq '<pre id="result">S09_SAMPLER_SMOKE_PASS</pre>' /tmp/s09-sampler.html
       - name: Restore previous benchmark
         uses: actions/cache@v4
         with:

@@ -5,6 +5,7 @@
   "type": "module",
   "description": "SECTOR 09 — conquest in your browser",
   "scripts": {
+    "postinstall": "node scripts/patch-three-r187.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build && node scripts/check-budgets.mjs",
     "preview": "vite preview --host 127.0.0.1",
@@ -19,8 +20,8 @@
     "assets:explosion": "node scripts/align-explosion-audio.mjs",
     "assets:infantry": "node scripts/import-infantry.mjs",
     "assets:pbr": "node scripts/prepare-pbr.mjs",
-    "predev": "node scripts/prepare-pbr.mjs",
-    "prebuild": "node scripts/prepare-pbr.mjs",
+    "predev": "node scripts/patch-three-r187.mjs && node scripts/prepare-pbr.mjs",
+    "prebuild": "node scripts/patch-three-r187.mjs && node scripts/prepare-pbr.mjs",
     "assets:gi": "node scripts/bake-gi.mjs",
     "assets:architecture": "node scripts/bake-architecture.mjs"
   },

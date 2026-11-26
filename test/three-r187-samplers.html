@@ -1,0 +1,43 @@
+<!doctype html>
+<html><meta charset="utf-8"><body><pre id="result">RUNNING</pre><script type="module">
+import * as THREE from 'three';
+const result=document.querySelector('#result');
+try {
+  const renderer=new THREE.WebGLRenderer({antialias:false});
+  renderer.setSize(64,64);
+  document.body.append(renderer.domElement);
+  const gl=renderer.getContext();
+  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(55,1,.1,20);
+  camera.position.z=3;
+  const cubeTarget=new THREE.WebGLCubeRenderTarget(8);
+  const cubeScene=new THREE.Scene();cubeScene.background=new THREE.Color(0x004400);
+  new THREE.CubeCamera(.1,10,cubeTarget).update(renderer,cubeScene);
+  const tex=new THREE.DataTexture(new Uint8Array([255,0,0,255]),1,1);
+  tex.needsUpdate=true;
+  const material=new THREE.MeshBasicMaterial({map:tex});
+  let variant='cubeA';
+  material.customProgramCacheKey=()=>variant;
+  material.onBeforeCompile=shader=>{
+    if(variant==='cubeA'){
+      shader.uniforms.s09CubeA={value:cubeTarget.texture};
+      shader.fragmentShader='uniform samplerCube s09CubeA;\n'+shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n diffuseColor.rgb += textureCube(s09CubeA,vec3(1.,0.,0.)).rgb;');
+    }else{
+      shader.uniforms.s09CubeB={value:cubeTarget.texture};
+      shader.fragmentShader='uniform samplerCube s09CubeB;\n'+shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n diffuseColor.rgb += textureCube(s09CubeB,vec3(1.,0.,0.)).rgb;');
+    }
+  };
+  scene.add(new THREE.Mesh(new THREE.BoxGeometry(),material));
+  for(const name of ['cubeA','cubeB','cubeA','cubeB','cubeA']){
+    variant=name;material.needsUpdate=true;
+    renderer.render(scene,camera);
+    const error=gl.getError();
+    if(error!==gl.NO_ERROR)throw Error('GL error '+error+' in '+name);
+    const program=gl.getParameter(gl.CURRENT_PROGRAM);
+    const map=gl.getUniform(program,gl.getUniformLocation(program,'map'));
+    const cube=gl.getUniform(program,gl.getUniformLocation(program,name==='cubeA'?'s09CubeA':'s09CubeB'));
+    if(map===cube)throw Error('sampler alias '+name+': '+map);
+  }
+  result.textContent='S09_SAMPLER_SMOKE_PASS';
+  renderer.dispose();cubeTarget.dispose();material.dispose();tex.dispose();
+}catch(error){result.textContent='S09_SAMPLER_SMOKE_FAIL '+error.stack;console.error(error);}
+</script></body></html>
