@@ -93,7 +93,7 @@ export class Vegetation{
     this.staticShadowChanged=false;
     const settings=owner.graphicsEffects??{},requested=settings.vegetation??'legacy',quality=owner.lowQuality&&requested!=='legacy'?'low':requested;
     const level=FOLIAGE_LEVEL[quality]??0;
-    const receiveGrassShadow=!owner.lowQuality&&['low','high'].includes(settings.vegetationShadows)&&owner.renderer.shadowMap.enabled;
+    const receiveGrassShadow=!owner.lowQuality&&['low','high'].includes(settings.vegetationShadows)&&Boolean(owner.renderer?.shadowMap.enabled);
     if(this.receiveGrassShadow!==receiveGrassShadow){this.receiveGrassShadow=receiveGrassShadow;for(const entry of this.tiles.values())if(entry.mesh)entry.mesh.receiveShadow=receiveGrassShadow;}
     if(!level||!owner.map){if(this.map){this.clear();this.staticShadowChanged=true;return true;}return false;}
     const density=owner.map.id==='fy_pool_day'?0:Math.min(owner.lowQuality?.25:1,(Number(settings.grassDensity)||0)/100),radius=Math.min(owner.lowQuality?20:100,Number(settings.grassDistance)||20);

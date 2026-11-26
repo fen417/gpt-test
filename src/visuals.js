@@ -316,7 +316,7 @@ export function makeSky(scene, renderer) {
     texture: pmremTarget.texture,
     dispose() { pmremTarget.dispose(); cubeTarget.dispose(); bakedShader.dispose(); cloudMap.dispose(); },
   };
-  return { sky, target, envTexture: pmremTarget.texture,
+  return { sky, target, environmentTarget:pmremTarget, envTexture: pmremTarget.texture,
     update(mode, direction, time,cloudQuality,map,fogColor) {
       const u=bakedShader.uniforms;
       u.advancedSky.value=mode==='high'?1:0;

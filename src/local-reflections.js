@@ -9,26 +9,50 @@ export function zonesFor(map) {
   return [];
 }
 
-function preserveSkyIrradiance(renderer, sky, local) {
-  // The r181 CubeUV atlas ends in a row of 16 px faces. Copy the three
-  // roughest slots (mips 0 to -2) from the sky into the local probe. Three
-  // uses mip -2 for diffuse IBL, so room transitions only change reflections.
-  const tile = 16, first = 4 * 3 * tile, end = 7 * 3 * tile;
-  const skyY=sky.image.height-4*tile, localY=local.image.height-4*tile;
-  const region=new THREE.Box2(new THREE.Vector2(first,skyY),new THREE.Vector2(end,skyY+2*tile));
-  renderer.copyTextureToTexture(sky,local,region,new THREE.Vector2(first,localY));
+// r187 PMREM is a cubemap with a prefiltered mip chain. The roughest
+// mip supplies diffuse irradiance; copy only that mip from the sky.
+// Retain local specular reflections without changing the diffuse lighting.
+export function preserveSkyIrradiance(renderer, sky, local) {
+  const source=sky?.texture,destination=local?.texture;
+  if(!source?.isPMREMTexture||!destination?.isPMREMTexture)return;
+  const srcLevel=source.mipmaps.length-1,dstLevel=destination.mipmaps.length-1;
+  const size=source.mipmaps[srcLevel]?.width;
+  if(!size||size!==destination.mipmaps[dstLevel]?.width)throw Error('Incompatible PMREM irradiance mips');
+  if(renderer.isWebGPURenderer){
+    // Copy all six array layers of the cubemap, not only the first face.
+    const region=new THREE.Box3(new THREE.Vector3(),new THREE.Vector3(size,size,6));
+    renderer.copyTextureToTexture(source,destination,region,new THREE.Vector3(),srcLevel,dstLevel);
+    return;
+  }
+  // WebGLRenderer.copyTextureToTexture uses TEXTURE_2D for non-array
+  // render-target textures. Copy cubemap faces through framebuffer blits.
+  const gl=renderer.getContext(),previous=renderer.getRenderTarget();
+  const oldFace=renderer.getActiveCubeFace(),oldMip=renderer.getActiveMipmapLevel();
+  const oldRead=gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
+  try{
+    for(let face=0;face<6;face++){
+      renderer.setRenderTarget(sky,face,srcLevel);
+      const read=gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+      renderer.setRenderTarget(local,face,dstLevel);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER,read);
+      gl.blitFramebuffer(0,0,size,size,0,0,size,size,gl.COLOR_BUFFER_BIT,gl.NEAREST);
+    }
+  }finally{
+    renderer.setRenderTarget(previous,oldFace,oldMip);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER,oldRead);
+  }
 }
-
-// WebGL r181 includes envMapCubeUVHeight in its program key. Keep the sky
-// and room probes on one atlas layout so crossing a zone swaps a texture
-// uniform, not the shader program. WebGPU retains its existing quality tiers.
 export function localProbeSize(skyTexture,quality,webgpu=false){
   const requested=quality==='high'?128:64;
   if(webgpu)return requested;
-  const size=skyTexture?.image?.height/4;
+  // WebGL's shader key includes the PMREM base size and maximum mip.
+  const size=skyTexture?.mipmaps?.[0]?.width;
   return Number.isInteger(size)&&size>=requested&&size<=512&&(size&(size-1))===0?size:requested;
 }
-const atlasKey=texture=>texture?.image?texture.image.width+'x'+texture.image.height:null;
+const atlasKey=texture=>{
+  const size=texture?.mipmaps?.[0]?.width;
+  return size?size+'px/'+texture.mipmaps.length+'mips':null;
+};
 export class LocalReflections {
   targets=new Map();
   failed=new Set();
@@ -43,7 +67,7 @@ export class LocalReflections {
   async prewarm(owner,signal,yieldFrame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),fence=async()=>{}){
     const quality=this.requested(owner);
     if(!quality)return;
-    const skyKey=owner.webgpu?null:atlasKey(owner.atmosphere.envTexture);
+    const skyKey=owner.webgpu?null:atlasKey(owner.atmosphere?.envTexture);
     const map=owner.map,world=owner.worlds.get(map.id);
     if(!world||world.model&&!world.model.base&&!world.fallback)return;
     if(this.map!==map||this.quality!==quality||this.skyKey!==skyKey||this.dirty){
@@ -81,8 +105,7 @@ export class LocalReflections {
   }
 
   warmupEnvironments(){
-    // Sky and local CubeUV atlases can have different dimensions and shader
-    // variants. One representative per atlas size suffices for local probes.
+    // One representative per PMREM resolution/mip layout suffices for warmup.
     const variants=[null],sizes=new Set();
     if(this.skyKey)sizes.add(this.skyKey);
     for(const target of this.targets.values()){
@@ -106,7 +129,8 @@ export class LocalReflections {
     const intensities=keyLights.map(light=>light.intensity);
     const transient=scene.children.filter(light=>light.isPointLight),transientIntensity=transient.map(light=>light.intensity);
     // Keep capture cost bounded: one static capture per zone/quality, no per-frame cube render.
-    const cube=new THREE.WebGLCubeRenderTarget(localProbeSize(owner.atmosphere.envTexture,this.quality,Boolean(owner.webgpu)),{type:THREE.HalfFloatType});
+    const CubeTarget=owner.webgpu?.CubeRenderTarget??THREE.WebGLCubeRenderTarget;
+    const cube=new CubeTarget(localProbeSize(owner.atmosphere.envTexture,this.quality,Boolean(owner.webgpu)),{type:THREE.HalfFloatType});
     const camera=new THREE.CubeCamera(.15,180,cube);
     camera.position.set(zone.x,zone.y,zone.z);
     const Generator=owner.webgpu?.PMREMGenerator??THREE.PMREMGenerator;
@@ -123,7 +147,7 @@ export class LocalReflections {
       camera.update(renderer,scene);
       generator=new Generator(renderer);
       target=generator.fromCubemap(cube.texture);
-      preserveSkyIrradiance(renderer,owner.atmosphere.envTexture,target.texture);
+      preserveSkyIrradiance(renderer,owner.atmosphere.environmentTarget,target);
       return target;
     }catch(error){
       target?.dispose();

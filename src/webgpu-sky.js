@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {atmosphereProfile,CLOUD_LEVEL,makeCloudTexture,ensureCloudTexture} from './atmosphere-profile.js';
-import { MeshBasicNodeMaterial, PMREMGenerator } from 'three/webgpu';
-export { PMREMGenerator } from 'three/webgpu';
+import { MeshBasicNodeMaterial, PMREMGenerator, CubeRenderTarget } from 'three/webgpu';
+export { PMREMGenerator, CubeRenderTarget } from 'three/webgpu';
 import { Fn, vec2, vec3, vec4, uniform, positionLocal, cubeTexture, texture,
   floor, fract, dot, sin, mix, pow, max, smoothstep, normalize, exp, clamp, If } from 'three/tsl';
 
@@ -49,7 +49,7 @@ export function makeWebGpuSky(scene, renderer) {
   const envMesh=new THREE.Mesh(new THREE.SphereGeometry(100,24,12),sourceMaterial);
   environmentScene.add(envMesh);
   // Cubemap is computed once per world, just like the WebGL path.
-  const cubeTarget=new THREE.WebGLCubeRenderTarget(256);
+  const cubeTarget=new CubeRenderTarget(256);
   cubeTarget.texture.colorSpace=THREE.SRGBColorSpace;
   new THREE.CubeCamera(.1,200,cubeTarget).update(renderer,environmentScene);
   const generator=new PMREMGenerator(renderer);
@@ -103,7 +103,7 @@ export function makeWebGpuSky(scene, renderer) {
   })();
   const sky=new THREE.Mesh(new THREE.SphereGeometry(700,20,12),baked);
   sky.renderOrder=1000;sky.frustumCulled=false;sky.userData.noBatch=true;scene.add(sky);
-  return {sky,hazeAmount,hazeTint,envTexture:pmremTarget.texture,
+  return {sky,hazeAmount,hazeTint,environmentTarget:pmremTarget,envTexture:pmremTarget.texture,
     update(mode, direction, time,cloudQuality,map,fogColor) {
       advancedSky.value=mode==='high'?1:0;
       if(mode==='high'){

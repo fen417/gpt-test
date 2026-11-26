@@ -295,7 +295,7 @@ test('grass placement excludes roads, walls, water and objectives; density is de
 test('vegetation switching preserves legacy leaf layers and releases instance batches',()=>{
   const map={id:'village',size:64,terrain:{heightAt:()=>0},boxes:[{kind:'village-palm',x:3,z:4,h:7.6,baseY:0}]};
   const root=new THREE.Group(),world=new THREE.Group();world.add(root);const leaf=new THREE.Mesh(new THREE.PlaneGeometry(),new THREE.MeshBasicMaterial());leaf.userData.legacyPalmLeaf=true;root.add(leaf);
-  const camera=new THREE.PerspectiveCamera();camera.updateMatrixWorld();const owner={map,staticRoot:root,worldRoot:world,camera,clock:1,sun:{intensity:3},sunOffset:new THREE.Vector3(1,2,1),graphicsEffects:{vegetation:'high',grassDensity:'off',grassDistance:'20',vegetationWind:'high',vegetationShadows:'low'}};
+  const camera=new THREE.PerspectiveCamera();camera.updateMatrixWorld();const owner={map,staticRoot:root,worldRoot:world,camera,renderer:{shadowMap:{enabled:true}},clock:1,sun:{intensity:3},sunOffset:new THREE.Vector3(1,2,1),graphicsEffects:{vegetation:'high',grassDensity:'off',grassDistance:'20',vegetationWind:'high',vegetationShadows:'low'}};
   const veg=new Vegetation();veg.update(owner);assert.equal(leaf.layers.mask,0);assert.equal(veg.stats().authored,1);
   owner.graphicsEffects={vegetation:'legacy'};veg.update(owner);assert.equal(leaf.layers.mask,1);assert.equal(veg.stats().authored,0);veg.dispose();leaf.geometry.dispose();leaf.material.dispose();
 });
