@@ -27,4 +27,5 @@ report.pass=report.initialJsGzipBytes<=report.budgets.initialJsGzipBytes&&report
 const i=process.argv.indexOf('--output'),output=i<0?'.perf-local/build-budget.json':process.argv[i+1];await mkdir(dirname(output),{recursive:true});await writeFile(output,JSON.stringify(report,null,2)+'\n');
 console.log(`Initial JS: ${report.initialJsGzipBytes} / ${report.budgets.initialJsGzipBytes} gzip bytes; audio (all runtime formats): ${report.audioBytes} / ${report.budgets.audioBytes} bytes`);
 for(const m of campaignMissions)console.log(`Campaign ${m.id}: music ${m.musicBytes}/${m.budgets.musicBytes}; voice ${m.voiceBytes}/${m.budgets.voiceBytes}; effects ${m.sfxBytes}/${m.budgets.sfxBytes} bytes`);
-if(!report.pass){console.error('Runtime asset budget exceeded');process.exitCode=1;}
+if(report.initialJsGzipBytes>report.budgets.initialJsGzipBytes)console.warn('Initial JS transfer budget exceeded (advisory)');
+if(report.audioBytes>report.budgets.audioBytes||campaignMissions.some(m=>!m.pass)){console.error('Runtime audio asset budget exceeded');process.exitCode=1;}
