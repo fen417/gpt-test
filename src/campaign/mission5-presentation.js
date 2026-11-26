@@ -16,8 +16,13 @@ import './mission5.css';
 QUARRY_M05.buildScene=buildQuarryMissionScene;
 
 const modelUrl=new URL('../assets/quarry-m05/industrial.glb',import.meta.url);
+const dressingUrl=new URL('../assets/quarry-m05/dressing.glb',import.meta.url);
 export async function loadQuarryDressing(){
-  return (await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(modelUrl.href)).scene;
+  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const [industrial,dressing]=await Promise.all([loader.loadAsync(modelUrl.href),loader.loadAsync(dressingUrl.href)]);
+  dressing.scene.name='quarry-set-dressing';
+  industrial.scene.add(dressing.scene);
+  return industrial.scene;
 }
 const orders={F1:'follow',F2:'hold',KeyQ:'assist'};
 const names={waiting:'ожидает',moving:'движется',saved:'спасён',lost:'потерян'};
@@ -59,6 +64,8 @@ export class Mission5Presentation{
     });
     this.minimap=new InfantryMinimap(renderer);
     this.dressing=quarryDressing;renderer.worldRoot.add(quarryDressing);
+    this.detailDressing=quarryDressing.getObjectByName('quarry-set-dressing').children
+      .filter(node=>node.name.startsWith('m05_detail_'));
     this.base=quarryDressing.getObjectByName('gun_base');this.top=quarryDressing.getObjectByName('gun_top');
     this.base.position.set(sites.mount.x,sites.mount.y,sites.mount.z);
     this.top.position.set(sites.mount.x,sites.mount.y+1.54,sites.mount.z);
@@ -81,7 +88,8 @@ export class Mission5Presentation{
     const materials=new Set(),geometries=new Set();
     quarryDressing.traverse(o=>{
       if(!o.isMesh)return;
-      o.castShadow=true;o.receiveShadow=true;geometries.add(o.geometry);
+      o.castShadow=!o.name.startsWith('m05_detail_')&&!o.parent?.name.startsWith('m05_detail_');
+      o.receiveShadow=true;geometries.add(o.geometry);
       for(const m of [o.material].flat())materials.add(m);
     });
     this.materials=materials;this.geometries=geometries;
@@ -240,6 +248,11 @@ export class Mission5Presentation{
       r.scoped=r.collimatorAiming=r.binocularAiming=false;
     }else this.top.rotation.set(-.13,-Math.PI*.75,0,'YXZ');
     if(scene){this.renderScene(r,state,scene);r.weapon.visible=false;r.scoped=r.collimatorAiming=r.binocularAiming=false;}
+    const detailRange=r.geometryQuality==='high'?192:r.geometryQuality==='medium'?112:0;
+    for(const batch of this.detailDressing){
+      const {x,z}=batch.position,camera=r.camera.position;
+      batch.visible=detailRange>0&&(x-camera.x)**2+(z-camera.z)**2<detailRange**2;
+    }
     for(const [i,light] of this.lamps.entries())light.intensity=m.power&&(!r.lowQuality||i%2===0)?19:2.2;
     const dust=scene?.id==='C4'?THREE.MathUtils.smoothstep(scene.elapsed,65,85):0;
     r.scene.fog.color.copy(this.fog).lerp(this.dustColor,dust*.7);

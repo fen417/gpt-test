@@ -4,7 +4,7 @@ import {moveBot,resetNavigation} from '../bot-navigation.js';
 import {dropCampaignMedkit,reviveDuration} from './medical.js';
 import {WEAPONS,getSidearm} from '../world.js';
 import {VEHICLE_TYPES,vehicleBodyTilt} from '../vehicles.js';
-import {M05_GATES,M05_ROUTES,M05_SITES as sites,QUARRY_M05,quarryPoint} from './quarry-m05.js';
+import {M05_FUEL_ROUTES,M05_GATES,M05_ROUTES,M05_SITES as sites,QUARRY_M05,quarryPoint} from './quarry-m05.js';
 
 export const M05_SAVE_VERSION=1;
 const heroes=['marten','vos'];
@@ -24,11 +24,6 @@ const gun={id:'m05-mounted',weapon:'СТАНКОВЫЙ ПУЛЕМЁТ',range:235
 const coverPath=M05_ROUTES.assault.slice(1).map(point);
 const armorPath=M05_ROUTES.armor.map(([x,z])=>[x,z]);
 const exitPath=M05_ROUTES.exit.map(([x,z])=>[x,z]);
-const fuelRoutes={
-  A:[[-69,184],[-56,188],...exitPath.slice(1,-1),[185,235]],
-  B:[[-90,177],[-82,192],[-51,192],...exitPath.slice(1,-1),[175,243]],
-  C:[[-103,194],[-86,202],[-56,208],...exitPath.slice(2,-1),[160,243]],
-};
 const squad=[
   ['duran','Гари Дюран','assault','ar416','wing','Командир отделения'],
   ['lasko','Тео Ласко','medic','ar416','medic','Санитар'],
@@ -524,7 +519,7 @@ class QuarryMission{
           this.hostiles('fuel').every(p=>this.safer(p,sites.fuelCPost,30));
         if(clear)record.readyAt??=this.time;
         if(record.readyAt!=null&&near(driver,v,3.5)&&this.time-record.readyAt>1.25&&this.seat(driver,v,0)){
-          record.status='moving';this.drive(v,fuelRoutes[id],7.4);
+          record.status='moving';this.drive(v,M05_FUEL_ROUTES[id],7.4);
         }
       }
       if(record.status==='moving'&&this.arrived(v)){record.status='saved';this.say('driver.safe'+id);}

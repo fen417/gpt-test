@@ -1,5 +1,6 @@
 import {registerLocalMap} from '../world.js';
 import {terrainHeightfield} from '../terrain-heightfield.js';
+import {buildM05Dressing,M05_SURFACE_PATCHES} from './quarry-m05-dressing.js';
 
 const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 const mix=(a,b,t)=>a+(b-a)*t;
@@ -131,9 +132,26 @@ for(const [i,x,z] of [[0,-76,163],[1,-61,155],[2,-107,171],[3,-63,177],[4,-81,18
 for(const [i,x,z] of [[0,-260,-215],[1,-248,-198],[2,-225,-202]])
   part('camp-tent-'+i,x,z,7.5,6.3,3.15,sand,{visualModel:true,noCollision:true});
 
+const exitPath=M05_ROUTES.exit.map(([x,z])=>[x,z]);
+export const M05_FUEL_ROUTES={
+  A:[[-69,184],[-56,188],...exitPath.slice(1,-1),[185,235]],
+  B:[[-90,177],[-82,192],[-51,192],...exitPath.slice(1,-1),[175,243]],
+  C:[[-103,194],[-86,202],[-56,208],...exitPath.slice(2,-1),[160,243]],
+};
+const convoyLanes=Object.entries(M05_FUEL_ROUTES).flatMap(([id,route])=>{
+  const start=M05_SITES['fuel'+id],points=[[start.x,start.z],...route];
+  return points.slice(1).map(([x,z],i)=>{
+    const [ax,az]=points[i],dx=x-ax,dz=z-az;
+    return {x:(ax+x)/2,z:(az+z)/2,w:6,d:Math.hypot(dx,dz)+2,yaw:Math.atan2(dx,dz)};
+  });
+});
+const {props,solids}=buildM05Dressing(terrain,[...roads,...convoyLanes],boxes,M05_SITES);
+boxes.push(...solids);
+export const M05_DRESSING=props;
+
 export const QUARRY_M05=registerLocalMap({
   id:'quarry-m05',missionId:'m05',name:'Карьер',theme:'desert-village',campaign:true,
-  size:1200,width:1040,depth:920,terrain,roads,boxes,structures:[],points:[],districts:[],signs:[],
+  size:1200,width:1040,depth:920,terrain,roads,boxes,surfacePatches:M05_SURFACE_PATCHES,structures:[],points:[],districts:[],signs:[],
   navigationCell:3,navigationSize:660,navigationClearance:.66,stepHeight:.38,
   playArea:{minX:-300,maxX:290,minZ:-270,maxZ:265},
   spawns:[M05_SITES.camp,M05_SITES.crusher],vehicleSpawns:[],
