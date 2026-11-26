@@ -257,7 +257,7 @@ function tick(t){requestAnimationFrame(tick);if(!game||!root)return;const dt=Mat
  if(t-(tick.stats??0)>400){tick.stats=t;const info=game.renderer.info.render;$('stats').textContent='Draw calls: '+info.calls+' | Треугольники: '+info.triangles+' | Текстуры: '+game.renderer.info.memory.textures;$('overlay').textContent=activeMap.name+' · '+activeQuality.toUpperCase()+' · WebGL2\nX '+game.camera.position.x.toFixed(1)+'  Y '+game.camera.position.y.toFixed(1)+'  Z '+game.camera.position.z.toFixed(1)+'\nПКМ + WASD · колесо · F';}}
 async function init(){
  const loaded=await api(mapEndpoint);data=loaded.data;revision=loaded.revision;initialPaintCount=data.paint.length;
- if(!isM05){base=sandboxBase(loaded.config);grid=EDITOR_GRID;baseHeights=FLAT_HEIGHTS;activeMap=createEditorSandbox(mapId,loaded.config,data);registerLocalMap(activeMap);}
+ if(!isM05){base=sandboxBase(loaded.config);grid=EDITOR_GRID;baseHeights=FLAT_HEIGHTS;activeMap=createEditorSandbox(mapId,loaded.config,data);activeMap.buildScene=buildQuarryMissionScene;registerLocalMap(activeMap);}
  liveTerrain=terrain();const choices=await api('maps');$('mapPicker').replaceChildren(...choices.maps.map(m=>new Option(m.name,m.id)));$('mapPicker').value=mapId;$('mapTitle').textContent='Карта · '+activeMap.name;
  await Promise.all([loadFPSHands(),loadWeaponModels(),loadEquipmentModels()]);
  game=new GameRenderer(canvas,{onError:e=>status(String(e))});game.presentingCampaign=isM05;game.setMap(activeMap.id);

@@ -35,8 +35,6 @@ import { InteriorVisibility } from './interior-visibility.js';
 import { gadgetPalette, createGadgetModel, gadgetTemplates } from './gadget-models.js';
 import { buildSpecialProp, SPECIAL_PROP_KINDS } from '../shared/prop-models.js';
 import { getAssetColliders } from '../shared/asset-colliders.js';
-import {buildQuarryMissionScene} from './campaign/quarry-m05-scene.js';
-import {loadEditorModels,updateEditorModelVisibility} from './campaign/m05-editor-models.js';
 import { buildMapScene } from './map-scene.js';
 import { VillageModel, dryWindAssets, alhadraAssets, alhadraDesertAssets, telMazinAssets, naharAssets } from './village-model.js';
 import { hasPortAsset, PortModel } from './port-model.js';
@@ -800,7 +798,7 @@ export class GameRenderer {
     signal.throwIfAborted();
     this.setMap(mapId);
     const world=this.worlds.get(this.map.id);
-    if(this.map.editorSandbox&&!world.editorModels){world.editorModels=await loadEditorModels(this.map.editorData.models);world.root.add(world.editorModels);updateEditorModelVisibility(world.editorModels,geometryQuality(view.quality,view.gfx?.detail));}
+    if(import.meta.env.DEV&&this.map.editorSandbox&&!world.editorModels){const {loadEditorModels,updateEditorModelVisibility}=await import('./campaign/m05-editor-models.js');world.editorModels=await loadEditorModels(this.map.editorData.models);world.root.add(world.editorModels);world.updateEditorModelVisibility=updateEditorModelVisibility;updateEditorModelVisibility(world.editorModels,geometryQuality(view.quality,view.gfx?.detail));}
     if(!this.effectsWarmed){this.warmup();this.effectsWarmed=true;}
     const detail=geometryQuality(view.quality,view.gfx?.detail)==='high';
     if(world.model)this.updateBakedDetail(world,detail);
@@ -1088,7 +1086,6 @@ export class GameRenderer {
   }
 
   buildWorld() {
-    if(this.map.editorSandbox){buildQuarryMissionScene(this,this.map,this.scene);return;}
     buildMapScene(this, this.map);
   }
 
@@ -2704,7 +2701,7 @@ export class GameRenderer {
       const world=this.worlds.get(this.map.id);
       const highDetail=detailLevel===2;
       if(world?.model)this.updateBakedDetail(world,highDetail);
-      if(world?.editorModels)updateEditorModelVisibility(world.editorModels,this.geometryQuality);
+      if(import.meta.env.DEV&&world?.editorModels)world.updateEditorModelVisibility(world.editorModels,this.geometryQuality);
       if(world&&this.map.id==='quarry')this.updateQuarryDetail(world,this.map,highDetail);
     }
     if (gfx && (gfx.shadows !== this.gfx.shadows || gfx.resolution !== this.gfx.resolution || gfx.fsr !== this.gfx.fsr || gfx.fsrQuality !== this.gfx.fsrQuality || gfx.fsrSharpness !== this.gfx.fsrSharpness || gfx.frameGeneration !== this.gfx.frameGeneration)) {

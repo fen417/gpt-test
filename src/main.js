@@ -17,7 +17,6 @@ import {GameRenderer} from './renderer.js';
 import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, GRAPHICS_GROUPS, GRAPHICS_FINE_ONLY, GRAPHICS_IMPACT, LEGACY_GRAPHICS_DEFAULTS, graphicsEffects, graphicsGroupValue, validateCustomGraphics} from './graphics-settings.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
-import {EDITOR_MAPS} from '../shared/editor-maps.js';
 import {MAPS,DEFAULT_MAP_ID,getMap,registerLocalMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
 import {Multiplayer,configuredServerUrl,defaultServerUrl,normalizeServerUrl,resetNetworkProfile} from './network.js';
 import {CombatAudio} from './audio.js';
@@ -45,7 +44,7 @@ import {BINOCULAR_ZOOM} from '../shared/recon-optics.js';
 import {mountReconMarks} from './recon-marks.js';
 import './recon.css';
 
-if(import.meta.env.DEV)for(const map of Object.values(EDITOR_MAPS))registerLocalMap(map);
+let EDITOR_MAPS={};
 const $=id=>document.getElementById(id);
 mountChangelog();
 if(TEST_BUILD){
@@ -2328,6 +2327,11 @@ try{
     window.__S09_POOL_REVIEW={renderer,snapshot:()=>state};
   }
   if(!read('quality','')&&renderer.integratedGpu){quality='low';syncGraphicsPreset();}
+  if(import.meta.env.DEV){
+    const [{EDITOR_MAPS:maps},{buildQuarryMissionScene}]=await Promise.all([import('../shared/editor-maps.js'),import('./campaign/quarry-m05-scene.js')]);
+    EDITOR_MAPS=maps;
+    for(const map of Object.values(maps)){map.buildScene=buildQuarryMissionScene;registerLocalMap(map);}
+  }
   initializeMapPickers();
   setBattleMap(DEFAULT_MAP_ID,true);
   selectClass(selectedClass,false);updateKeybindUI();audio.setMode?.('menu');status('Сектор готов к высадке.');requestAnimationFrame(frame);
