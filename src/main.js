@@ -2330,7 +2330,8 @@ try{
   if(import.meta.env.DEV){
     const [{EDITOR_MAPS:maps},{buildQuarryMissionScene}]=await Promise.all([import('../shared/editor-maps.js'),import('./campaign/quarry-m05-scene.js')]);
     EDITOR_MAPS=maps;
-    for(const map of Object.values(maps)){map.buildScene=buildQuarryMissionScene;registerLocalMap(map);}
+    const {buildMapScene}=await import('./map-scene.js');
+    for(const map of Object.values(maps)){map.buildScene=map.editorSource?(owner,m,root)=>{const old=owner.scene;owner.scene=root;try{buildMapScene(owner,m.editorRenderMap);}finally{owner.scene=old;}}:buildQuarryMissionScene;registerLocalMap(map);}
   }
   initializeMapPickers();
   setBattleMap(DEFAULT_MAP_ID,true);

@@ -102,3 +102,11 @@ test('individual prop transform composes with the baked batch transform',()=>{
  const result=editableMapBoxes(base,d)[0];assert.ok(Math.abs(result.x-10)<1e-6);assert.ok(Math.abs(result.z+7)<1e-6);assert.equal(result.h,4);
  d.dressingProps[prop.id].removed=true;assert.equal(editableMapBoxes(base,d).length,0);
 });
+
+import {BASE_MAPS} from '../shared/world.js';
+test('existing map fork retains original geometry and does not mutate source',()=>{
+ const source=BASE_MAPS.port,first=source.boxes.find(b=>b.id&&!b.editorParent&&b.kind!=='port-roof'),x=first.x;
+ const d=emptyM05Edits();d.legacyEdits={version:1,moves:{['box:'+first.id]:{x:first.x+1,z:first.z,rotation:{x:.1,y:.2,z:.3}}},added:{},removed:[]};
+ const map=createEditorSandbox('editor-1111111111111111',{name:'Port copy',source:'port',size:360},d);
+ assert.equal(map.editorSource,'port');assert.equal(map.editorRenderMap.id,'port');assert.equal(source.boxes.find(b=>b.id===first.id).x,x);assert.equal(map.boxes.find(b=>b.id===first.id).x,x+1);assert.ok(map.boxes.find(b=>b.id===first.id).obb);
+});

@@ -1,4 +1,5 @@
 
+import {createExistingMap} from './editor-existing.js';
 import {validateGameplay,gameplayMap} from './editor-gameplay.js';
 import registry from './editor-maps.json' with {type:'json'};
 import {emptyM05Edits,terrainWithEdits,modelColliders,validateM05Edits} from './campaign/m05-editor.js';
@@ -12,6 +13,7 @@ export function sandboxBase(config){
 }
 export function createEditorSandbox(id,config,data=emptyM05Edits()){
  if(!validEditorMapId(id)||!validEditorMapConfig(config)||validateM05Edits(data).length||validateGameplay(data.gameplay,config.size).length)throw Error('Invalid editor sandbox '+id);
+ if(config.source)return createExistingMap(id,config,data);
  const base=sandboxBase(config),terrain=terrainWithEdits(EDITOR_GRID,FLAT_HEIGHTS,data.terrain),size=config.size;
  const spawns=Object.entries(base.sites).map(([key,p])=>{const [x,,z]=data.sites[key]??[p.x,p.y,p.z];return {x,y:terrain.heightAt(x,z),z};});
  return {id,name:config.name,editorSandbox:true,editorData:data,theme:'desert-village',size,width:size,depth:size,terrain,roads:[],boxes:data.models.flatMap(modelColliders),surfacePatches:data.paint,editorLayers:data.layers??[],editorRoads:data.roads??[],structures:[],points:[],districts:[],signs:[],landmarks:[],spawns,...gameplayMap(data,spawns,terrain),navigationCell:3,navigationSize:size,navigationClearance:.66,stepHeight:.38,playArea:{minX:-size/2,maxX:size/2,minZ:-size/2,maxZ:size/2},fogColor:'#c3a483',fogDensity:.00132,sunColor:'#ffe0a9',...data.lighting};
