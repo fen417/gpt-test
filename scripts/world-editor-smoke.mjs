@@ -28,7 +28,8 @@ try{
  await page.waitForFunction(()=>document.querySelector('#stats')?.textContent.includes('Draw calls'),{},{timeout:90000});
  await page.selectOption('#quality','low');
  await page.locator('#files').setInputFiles({name:'world-editor-smoke.glb',mimeType:'model/gltf-binary',buffer:glb});
- await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Импортировано'),{},{timeout:90000});
+ await page.waitForFunction(()=>/Импортировано|Ошибка:/.test(document.querySelector('#status')?.textContent??''),{},{timeout:90000});
+ assert.ok((await page.locator('#status').textContent()).includes('Импортировано'),await page.locator('#status').textContent());
  await page.getByRole('button',{name:'+ Пустой Box',exact:true}).click();
  const colorField=page.locator('#inspector .field').filter({hasText:'Шероховатость'}).locator('input');await colorField.fill('0.42');await colorField.blur();
  await page.waitForFunction(()=>document.querySelector('#inspector')?.textContent.includes('PBR-материалы'),{},{timeout:30000});

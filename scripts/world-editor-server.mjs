@@ -4,7 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {join,relative,isAbsolute,sep} from 'node:path';
 import {validEditorMapId,validEditorMapConfig} from '../shared/editor-maps.js';
-import {emptyM05Edits,validateM05Edits} from '../shared/campaign/m05-editor.js';
+import {emptyM05Edits,validateM05Edits,modelAssetOk} from '../shared/campaign/m05-editor.js';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const file=join(root,'shared/campaign/m05-editor-data.json'),assets=join(root,'public/world-editor-assets'),backups=join(root,'.perf-local/world-editor-backups');
 const registry=join(root,'shared/editor-maps.json');
@@ -66,7 +66,16 @@ export function worldEditorPlugin(){
   }
   return {name:'sector09-world-editor',apply:'serve',handleHotUpdate(ctx){if(ctx.file===file||ctx.file===registry)return [];},configureServer(server){
     server.middlewares.use((req,res,next)=>{
-      const path=(req.url??'').split('?')[0],prefix='/__world-editor/';if(!path.startsWith(prefix))return next();
+      const path=(req.url??'').split('?')[0],prefix='/__world-editor/';
+      // Vite's public file index is not guaranteed to notice a newly created
+      // file immediately. Serve content-addressed uploads directly in dev.
+      const assetPrefix='/world-editor-assets/';
+      if(path.startsWith(assetPrefix)){
+        const asset=path.slice(assetPrefix.length);
+        if(!modelAssetOk(asset)||!['GET','HEAD'].includes(req.method))return reply(res,404,{error:'Неизвестный ресурс'});
+        readFile(join(assets,asset)).then(b=>{res.statusCode=200;res.setHeader('Content-Type','model/gltf-binary');res.setHeader('Content-Length',b.length);res.setHeader('Cache-Control','public, max-age=31536000, immutable');res.end(req.method==='HEAD'?undefined:b);},()=>reply(res,404,{error:'Ресурс не найден'}));return;
+      }
+      if(!path.startsWith(prefix))return next();
       const host=req.headers.host??'',origin=req.headers.origin;
       if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host)||(origin&&origin!=='http://'+host&&origin!=='https://'+host)||req.method==='POST'&&!origin)return reply(res,403,{error:'Только локальный редактор'});
       queue=queue.then(()=>handle(req,res,path.slice(prefix.length)),()=>handle(req,res,path.slice(prefix.length)));
