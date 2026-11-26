@@ -1,48 +1,49 @@
-// Bake the licensed, UV-mapped DJMaesen mesh into the game's grip space.
-// Only a wrist-length section is retained: the existing animated sleeves cover
-// the cut. Fingers stay part of the palm, including during trigger morphs.
+// Bake the new glove geometry onto the existing FPS poses and trigger morphs.
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { SUPPLY_POSE, DEFIB_POSE } from '../src/gadget-poses.js';
+import { RIFLE_SUPPORT_POSE, RIFLE_TRIGGER_WRIST, SUPPLY_POSE, DEFIB_POSE, BINOCULAR_POSE } from '../src/gadget-poses.js';
+import { fitGlove, gloveCut, packArmPart, retargetGlove, shapeSleeve, sleeveCut } from './fps-arm-retarget.mjs';
 
 globalThis.self = globalThis;
 const root = new URL('../', import.meta.url);
+const sourceDir = fileURLToPath(new URL('art-source/fps-arms/', root));
+const windowsBlender = 'C:/Program Files/Blender Foundation/Blender 5.3/blender.exe';
+const blender = process.env.BLENDER_EXE ?? (fs.existsSync(windowsBlender) ? windowsBlender : 'blender');
+const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'sector09-hands-'));
+const geometryFile = path.join(temporary, 'geometry.json');
+let source;
+try {
+  execFileSync(blender, ['--factory-startup', '-b', path.join(sourceDir, 'bobeer.blend'), '-t', '4',
+    '--python-exit-code', '1', '--python', path.join(sourceDir, 'export_geometry.py'), '--', geometryFile],
+    { stdio: 'inherit' });
+  source = JSON.parse(fs.readFileSync(geometryFile, 'utf8'));
+} finally {
+  if (fs.existsSync(geometryFile)) fs.unlinkSync(geometryFile);
+  fs.rmdirSync(temporary);
+}
 const poses = {
-  support: { source: 'rifle', side: 'L', scale: .45, rotation: [-.04, -Math.PI/2, 0], wrist: [-.104, -.067, -.455], cutStart: .045, origin: [-.018, -.075, -.36], index: [.063,.047,-.081], indexWrap: true, fingers: [[.058,.045,-.060],[.051,.043,-.042],[.036,.035,-.023]], fingerPole: [1,0,0], thumb: [-.038,.053,-.127], thumbDirection: [0,.08,-1] },
-  trigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.202, .145], origin: [0, 0, 0], index: [.008, -.090, .018], fingers: [[-.024,-.149,.047],[-.024,-.178,.052],[-.022,-.199,.045]], thumb: [-.024,-.129,.055] },
   pistolSupport: { source: 'pistol', side: 'R', mirror: true, scale: .48, rotation: [.35, .02, 0], wrist: [-.035, -.053, -.014], origin: [0, 0, 0], index: [.002,.012,-.064], fingers: [[.004,-.003,-.060],[.002,-.019,-.057],[-.003,-.035,-.050]], thumb: [-.010,.050,-.047] },
   pistolTrigger: { source: 'pistol', side: 'R', scale: .48, rotation: [.35, .02, 0], wrist: [.010, -.195, .175], origin: [0, 0, 0], index: [.006, -.122, .034], fingers: [[-.024,-.157,.081],[-.024,-.177,.087],[-.023,-.198,.092]], thumb: [-.024,-.136,.088] },
   // Palms face the case sides; fingers rise around its lower corners. The
   // thumbs form horizontal shelves underneath (an L on each lower corner).
-  supplyLeft: { source:'rifle',side:'L',scale:.45,rotation:[Math.PI/2,0,-Math.PI/2],wrist:SUPPLY_POSE.leftWrist,origin:[0,0,0],cutStart:.01,index:[-.144,.117,.090],indexWrap:true,fingers:[[-.144,.108,.069],[-.144,.094,.051],[-.144,.071,.035]],fingerPole:[-1,0,0],thumb:[-.062,-.012,.085],thumbPole:[0,0,1] },
-  supplyRight: { source:'rifle',side:'L',mirror:true,scale:.45,rotation:[Math.PI/2,0,-Math.PI/2],wrist:SUPPLY_POSE.rightWrist,origin:[0,0,0],cutStart:.01,index:[.144,.117,.090],indexWrap:true,fingers:[[.144,.108,.069],[.144,.094,.051],[.144,.071,.035]],fingerPole:[1,0,0],thumb:[.062,-.012,.085],thumbPole:[0,0,1] },
+  supplyLeft: { source:'rifle',side:'L',scale:.45,rotation:[Math.PI/2,0,-Math.PI/2],wrist:SUPPLY_POSE.leftWrist,origin:[0,0,0],index:[-.144,.117,.090],indexWrap:true,fingers:[[-.144,.108,.069],[-.144,.094,.051],[-.144,.071,.035]],fingerPole:[-1,0,0],thumb:[-.062,-.012,.085],thumbPole:[0,0,1] },
+  supplyRight: { source:'rifle',side:'L',mirror:true,scale:.45,rotation:[Math.PI/2,0,-Math.PI/2],wrist:SUPPLY_POSE.rightWrist,origin:[0,0,0],index:[.144,.117,.090],indexWrap:true,fingers:[[.144,.108,.069],[.144,.094,.051],[.144,.071,.035]],fingerPole:[1,0,0],thumb:[.062,-.012,.085],thumbPole:[0,0,1] },
 };
 const encoded = {};
-// A matched pair of closed grips around the horizontal paddle handles.
-for(const [name,mirror] of [['defibLeft',false],['defibRight',true]])poses[name]={
-  source:'rifle',side:'L',mirror,scale:.45,rotation:[0,0,-.04],
-  wrist:mirror?DEFIB_POSE.rightWrist:DEFIB_POSE.leftWrist,origin:[0,0,0],cutStart:.015,
-  index:[.020,.070,-.047],indexWrap:true,
-  fingers:[[.024,.068,-.020],[.024,.068,.006],[.024,.070,.030]],
-  fingerPole:[1,0,0],thumb:[-.025,.102,-.030],thumbPole:[0,1,0],
-};
-// Mirror targets along with the wrist; the baking transform mirrors the mesh.
-poses.defibRight.index=poses.defibRight.index.map((v,i)=>i===0?-v:v);
-poses.defibRight.fingers=poses.defibRight.fingers.map(p=>p.map((v,i)=>i===0?-v:v));
-poses.defibRight.thumb[0]*=-1;poses.defibRight.fingerPole[0]*=-1;
-const pack = (values, Type, scale) => Buffer.from(new Type(values.map(v => Math.round(v * scale))).buffer).toString('base64');
 for (const [name, pose] of Object.entries(poses)) {
   const buffer = fs.readFileSync(new URL(`art-source/djmaesen-arms/${pose.source}-arms.glb`, root));
   const gltf = await new GLTFLoader().parseAsync(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength), '');
   gltf.scene.updateMatrixWorld(true);
   const mesh = gltf.scene.getObjectByName('FPArms');
-  const geo = mesh.geometry, skeleton = mesh.skeleton;
+  const skeleton = mesh.skeleton;
   skeleton.update();
   const hand = gltf.scene.getObjectByName(`Hand_${pose.side}`);
   const wrist = hand.getWorldPosition(new T.Vector3());
-  const forearm = gltf.scene.getObjectByName(`BoneTwist_01${pose.side}`).getWorldPosition(new T.Vector3());
-  const wristAxis = wrist.clone().sub(forearm).normalize();
   const rotation = new T.Quaternion().setFromEuler(new T.Euler(...pose.rotation));
   const target = new T.Vector3(...pose.wrist).sub(new T.Vector3(...pose.origin));
   const transform = p => { p.sub(wrist).multiplyScalar(pose.scale).applyQuaternion(rotation); if(pose.mirror) p.x *= -1; return p.add(target); };
@@ -111,35 +112,10 @@ for (const [name, pose] of Object.entries(poses)) {
     const end=11+i*4, number=n=>String(n).padStart(3,'0');
     fingerIK(pose.fingers[i],[number(end),number(end-1),number(end-2)],`${number(end)}_end`,true);
   }
-  const position = geo.getAttribute('position'), skinIndex = geo.getAttribute('skinIndex'), skinWeight = geo.getAttribute('skinWeight');
-  const normal = geo.getAttribute('normal'), uv = geo.getAttribute('uv'), uv1 = geo.getAttribute('uv1') || uv;
-  const boneMatrix = new T.Matrix4(), skinMatrix = new T.Matrix4(), nMatrix = new T.Matrix3();
-  const v = new T.Vector3(), n = new T.Vector3();
-  const vertices = [];
-  for (let i = 0; i < position.count; i++) {
-    let left = 0, right = 0;
-    skinMatrix.elements.fill(0);
-    for (let k = 0; k < 4; k++) {
-      const weight = skinWeight.getComponent(i, k), joint = skinIndex.getComponent(i, k);
-      if (!weight) continue;
-      const boneName = skeleton.bones[joint].name;
-      if (/L(?:_end)?$/.test(boneName) || boneName.includes('_L')) left += weight;
-      if (/R(?:_end)?$/.test(boneName) || boneName.includes('_R')) right += weight;
-      boneMatrix.fromArray(skeleton.boneMatrices, joint * 16);
-      for (let e = 0; e < 16; e++) skinMatrix.elements[e] += boneMatrix.elements[e] * weight;
-    }
-    mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld);
-    // The underhand sleeve now reaches the palm heel. Remove the old lateral
-    // wrist extension beneath it without moving any of the grip vertices.
-    const cut = v.clone().sub(wrist).dot(wristAxis) - (pose.cutStart ?? -.065);
-    // Skin the authored normals as well as positions, retaining UV seam normals.
-    skinMatrix.premultiply(mesh.bindMatrixInverse).multiply(mesh.bindMatrix).premultiply(mesh.matrixWorld);
-    n.fromBufferAttribute(normal, i).applyNormalMatrix(nMatrix.getNormalMatrix(skinMatrix)).applyQuaternion(rotation).normalize();
-    if(pose.mirror) n.x *= -1;
-    vertices.push({ side: left > right ? 'L' : 'R', cut, p: transform(v.clone()).toArray(), n: n.toArray(), uv: [uv.getX(i), uv.getY(i)], uv1: [uv1.getX(i), uv1.getY(i)], source: i });
-  }
-  // Connected-finger deformation: the trigger and release poses use the source
-  // finger bones offline, then become one GPU morph on the welded hand mesh.
+  const authored = source.hands[pose.side];
+  const fit = () => retargetGlove(gltf.scene, source, pose.side, transform, rotation, pose.mirror);
+  const vertices = authored.vertices.map(fit());
+  // Bake both ends of the trigger/release motion on the same imported topology.
   for (const bone of skeleton.bones) {
     if (!bone.name.startsWith(`Bone_${pose.side}`)) continue;
     const finger = bone.name.slice(`Bone_${pose.side}`.length);
@@ -149,54 +125,93 @@ for (const [name, pose] of Object.entries(poses)) {
   }
   gltf.scene.updateMatrixWorld(true); skeleton.update();
   if(pose.index && !pose.mirror) fingerIK([pose.index[0]-.008,pose.index[1],pose.index[2]+.004]);
-  for (let i = 0; i < vertices.length; i++) {
-    mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld);
-    vertices[i].morph = transform(v.clone()).sub(new T.Vector3(...vertices[i].p)).toArray();
-    skinMatrix.elements.fill(0);
-    for(let k=0;k<4;k++) {
-      const weight=skinWeight.getComponent(i,k), joint=skinIndex.getComponent(i,k);
-      boneMatrix.fromArray(skeleton.boneMatrices,joint*16);
-      for(let e=0;e<16;e++) skinMatrix.elements[e]+=boneMatrix.elements[e]*weight;
-    }
-    skinMatrix.premultiply(mesh.bindMatrixInverse).multiply(mesh.bindMatrix).premultiply(mesh.matrixWorld);
-    n.fromBufferAttribute(normal,i).applyNormalMatrix(nMatrix.getNormalMatrix(skinMatrix)).applyQuaternion(rotation).normalize();
-    if(pose.mirror) n.x *= -1;
-    vertices[i].morphN=n.sub(new T.Vector3(...vertices[i].n)).toArray();
+  const morph = authored.vertices.map(fit());
+  for (const [i, vertex] of vertices.entries()) {
+    vertex.morph = morph[i].p.map((value, axis) => value - vertex.p[axis]);
+    vertex.morphN = morph[i].n.map((value, axis) => value - vertex.n[axis]);
   }
-  const lerp = (a, b, t) => {
-    const out = { cut: 0 };
-    for (const attr of ['p', 'n', 'uv', 'uv1', 'morph', 'morphN']) out[attr] = a[attr].map((x, i) => T.MathUtils.lerp(x, b[attr][i], t));
-    return out;
-  };
-  const arrays = { p: [], n: [], uv: [], uv1: [], morph: [], morphN: [], index: [] }, lookup = new Map();
-  function add(vertex) {
-    const key = ['p', 'n', 'uv', 'uv1'].flatMap(attr => vertex[attr]).map(x => Math.round(x * 1000000)).join(',');
-    if (lookup.has(key)) return lookup.get(key);
-    const i = arrays.p.length / 3; lookup.set(key, i);
-    for (const attr of ['p', 'n', 'uv', 'uv1', 'morph', 'morphN']) arrays[attr].push(...vertex[attr]);
-    return i;
-  }
-  for (let i = 0; i < geo.index.count; i += 3) {
-    const triangle = [0, 1, 2].map(k => vertices[geo.index.getX(i + k)]);
-    if (triangle.some(v => v.side !== pose.side)) continue;
-    const clipped = [];
-    for (let k = 0; k < 3; k++) {
-      const a = triangle[k], b = triangle[(k + 1) % 3];
-      if (a.cut >= 0) clipped.push(a);
-      if ((a.cut >= 0) !== (b.cut >= 0)) clipped.push(lerp(a, b, a.cut / (a.cut - b.cut)));
-    }
-    for (let k = 1; k < clipped.length - 1; k++) arrays.index.push(add(clipped[0]), add(clipped[pose.mirror ? k + 1 : k]), add(clipped[pose.mirror ? k : k + 1]));
-  }
-  for (const x of [...arrays.p, ...arrays.morph]) if (Math.abs(x * 100000) > 32767) throw new Error(`${name}: position outside packing range`);
-  for (const x of [...arrays.uv,...arrays.uv1]) if(x<-.00001||x>1.00001) throw new Error(`${name}: UV outside packing range`);
-  encoded[name] = {
-    p: pack(arrays.p, Int16Array, 100000), n: pack(arrays.n, Int16Array, 32767),
-    uv: pack(arrays.uv, Uint16Array, 65535), uv1: pack(arrays.uv1, Uint16Array, 65535),
-    morph: pack(arrays.morph, Int16Array, 100000), morphN: pack(arrays.morphN, Int16Array, 16000), index: pack(arrays.index, Uint16Array, 1),
-  };
-  console.log(`${name}: ${arrays.p.length / 3} vertices, ${arrays.index.length / 3} triangles`);
+  encoded[name] = packArmPart(authored, vertices, gloveCut, pose.mirror);
 }
-// UV/index buffers shared by multiple grips are emitted only once.
+// Fixed landmarks are in the same local axes as each held model.
+// The thumb is the final chain. The other chains run from index to pinky.
+function bakeGrip(name, wrist, joints, { side = 'L', mirror = false, origin = [0, 0, 0], morph = null } = {}) {
+  const arm = source.hands[side];
+  const offset = new T.Vector3(...origin);
+  const transform = position => {
+    if (mirror) position.x *= -1;
+    return position.sub(offset);
+  };
+  const fit = chains => fitGlove(source, side, new T.Vector3(...wrist),
+    chains.map(chain => chain.map(p => new T.Vector3(...p))), .80, transform, new T.Quaternion(), mirror);
+  const vertices = arm.vertices.map(fit(joints));
+  if (morph) {
+    const moved = arm.vertices.map(fit(morph));
+    for (const [i, vertex] of vertices.entries()) {
+      vertex.morph = moved[i].p.map((value, axis) => value - vertex.p[axis]);
+      vertex.morphN = moved[i].n.map((value, axis) => value - vertex.n[axis]);
+    }
+  }
+  encoded[name] = packArmPart(arm, vertices, gloveCut, mirror);
+}
+
+// The cuff approaches the fore-end from behind. The palm supports the lower
+// rail and the fingertips curl up the opposite side.
+const foreEnd = [
+  [[-.016,-.072,-.448],[.010,-.064,-.464],[.029,-.052,-.473],[.030,-.032,-.476]],
+  [[.001,-.070,-.426],[.027,-.062,-.440],[.044,-.046,-.448],[.043,-.026,-.449]],
+  [[.013,-.072,-.406],[.037,-.064,-.419],[.051,-.044,-.425],[.049,-.027,-.426]],
+  [[.018,-.077,-.386],[.040,-.070,-.396],[.053,-.052,-.401],[.052,-.037,-.404]],
+  [[-.068,-.091,-.397],[-.062,-.071,-.427],[-.052,-.052,-.449],[-.049,-.040,-.471]],
+];
+const openForeEnd = foreEnd.map((chain, finger) => {
+  if (finger === 4) return chain;
+  const root = new T.Vector3(...chain[0]);
+  const direction = new T.Vector3(.74, .14, -.66);
+  return chain.map((p, i) => i === 0 ? p : root.clone()
+    .addScaledVector(direction, [0,.030,.052,.069][i] * (finger === 3 ? .86 : 1)).toArray());
+});
+bakeGrip('support', RIFLE_SUPPORT_POSE.wrist, foreEnd, { origin: RIFLE_SUPPORT_POSE.origin, morph: openForeEnd });
+
+// The glove comes around the back strap. The thumb opposes the fingers
+// across the grip, and the index moves independently when the trigger cycles.
+const firingGrip = [
+  [[.036,-.119,.083],[.034,-.109,.055],[.025,-.107,.034],[.012,-.110,.021]],
+  [[.034,-.140,.090],[.030,-.145,.058],[.013,-.149,.042],[-.009,-.152,.048]],
+  [[.034,-.160,.099],[.028,-.165,.070],[.011,-.171,.054],[-.010,-.175,.059]],
+  [[.034,-.181,.109],[.027,-.186,.083],[.012,-.193,.066],[-.007,-.196,.071]],
+  [[.034,-.174,.132],[.012,-.150,.130],[-.013,-.137,.122],[-.027,-.126,.109]],
+];
+const firingMorph = [...firingGrip];
+firingMorph[0] = [...firingGrip[0].slice(0, 2), [.022,-.108,.036],[.007,-.109,.029]];
+bakeGrip('trigger', RIFLE_TRIGGER_WRIST, firingGrip, { side:'R', morph:firingMorph });
+
+// The paddle handle spans x ±.021 and y .073-.099. The index is on its
+// near end and the fingers curl down its inner wall.
+const paddle = [
+  [[.011,.113,.043],[.028,.107,.037],[.031,.086,.034],[.013,.071,.033]],
+  [[.012,.115,.020],[.030,.106,.015],[.031,.081,.010],[.011,.070,.008]],
+  [[.009,.114,-.002],[.030,.106,-.006],[.030,.083,-.011],[.010,.071,-.013]],
+  [[.001,.111,-.024],[.025,.104,-.028],[.028,.086,-.032],[.013,.074,-.034]],
+  [[-.048,.108,.074],[-.036,.087,.062],[-.030,.079,.047],[-.016,.078,.041]],
+];
+
+// Finger pads follow the barrel. The thumb stays under the eyepiece.
+const binocular = [
+  [[-.111,.047,.069],[-.109,.069,.047],[-.099,.083,.038],[-.082,.093,.034]],
+  [[-.112,.039,.044],[-.108,.063,.021],[-.094,.079,.010],[-.076,.087,.006]],
+  [[-.109,.025,.026],[-.104,.050,.003],[-.093,.070,-.010],[-.077,.082,-.016]],
+  [[-.103,.009,.015],[-.100,.029,-.007],[-.091,.047,-.021],[-.077,.057,-.027]],
+  [[-.105,-.014,.107],[-.086,-.012,.087],[-.073,.001,.067],[-.058,.010,.056]],
+];
+for (const [side, mirror] of [['Left', false], ['Right', true]]) {
+  bakeGrip('defib' + side, DEFIB_POSE.leftWrist, paddle, { mirror });
+  bakeGrip('binocular' + side, BINOCULAR_POSE.leftWrist, binocular, { mirror });
+}
+for (const [name, side] of [['sleeveLeft', 'L'], ['sleeveRight', 'R']]) {
+  const authored = source.hands[side];
+  encoded[name] = packArmPart(authored, authored.vertices.map(shapeSleeve(source, side)), sleeveCut);
+}
+
 const buffers=new Map(), declarations=[];
 const entries=Object.entries(encoded).map(([pose,attributes])=>{
   const fields=Object.entries(attributes).map(([name,value])=>{
@@ -206,4 +221,4 @@ const entries=Object.entries(encoded).map(([pose,attributes])=>{
   return `${pose}:{${fields.join(',')}}`;
 });
 fs.mkdirSync(new URL('art-source/generated/',root),{recursive:true});
-fs.writeFileSync(new URL('art-source/generated/fps-hands-data.js', root), `// Generated by scripts/build-fps-hands.mjs. DJMaesen / CC BY 4.0; see art-source/djmaesen-arms/README.md.\n${declarations.join('\n')}\nexport const FPS_HANDS={${entries.join(',')}};\n`);
+fs.writeFileSync(new URL('art-source/generated/fps-hands-data.js', root), `// Generated by scripts/build-fps-hands.mjs. bobeer / CC BY 4.0; see art-source/fps-arms/README.md.\n${declarations.join('\n')}\nexport const FPS_HANDS={${entries.join(',')}};\n`);
