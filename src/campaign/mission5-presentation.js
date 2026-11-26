@@ -13,6 +13,7 @@ import {buildQuarryMissionScene} from './quarry-m05-scene.js';
 import {QuarryAmbience} from './quarry-m05-audio.js';
 import {QuarryActing} from './quarry-m05-acting.js';
 import './mission5.css';
+import {loadEditorModels,updateEditorModelVisibility} from './m05-editor-models.js';
 
 QUARRY_M05.buildScene=buildQuarryMissionScene;
 
@@ -23,6 +24,7 @@ export async function loadQuarryDressing(){
   const [industrial,dressing]=await Promise.all([loader.loadAsync(modelUrl.href),loader.loadAsync(dressingUrl.href)]);
   dressing.scene.name='quarry-set-dressing';
   industrial.scene.add(dressing.scene);
+  industrial.scene.add(await loadEditorModels());
   return industrial.scene;
 }
 const orders={F1:'follow',F2:'hold',KeyQ:'assist'};
@@ -91,7 +93,8 @@ export class Mission5Presentation{
     const materials=new Set(),geometries=new Set();
     quarryDressing.traverse(o=>{
       if(!o.isMesh)return;
-      o.castShadow=!o.name.startsWith('m05_detail_')&&!o.parent?.name.startsWith('m05_detail_');
+      let imported=false;for(let n=o;n;n=n.parent)if(n.userData.worldEditor){imported=true;break;}
+      if(!imported)o.castShadow=!o.name.startsWith('m05_detail_')&&!o.parent?.name.startsWith('m05_detail_');
       o.receiveShadow=true;geometries.add(o.geometry);
       for(const m of [o.material].flat())materials.add(m);
     });
@@ -266,6 +269,7 @@ export class Mission5Presentation{
       r.scoped=r.collimatorAiming=r.binocularAiming=false;
     }else this.top.rotation.set(-.13,-Math.PI*.75,0,'YXZ');
     if(scene){this.renderScene(r,state,scene,view);r.weapon.visible=false;r.scoped=r.collimatorAiming=r.binocularAiming=false;}
+    const custom=this.dressing.getObjectByName('world-editor-models');if(custom)updateEditorModelVisibility(custom,r.geometryQuality);
     const detailRange=r.geometryQuality==='high'?192:r.geometryQuality==='medium'?112:0;
     for(const batch of this.detailDressing){
       const {x,z}=batch.position,camera=r.camera.position;

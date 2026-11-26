@@ -57,7 +57,7 @@ export function buildQuarryMissionScene(owner,map,root){
     }
     geometry.setAttribute('color',positions.clone().set(colors));
     const tile=new Mesh(geometry,ground);
-    tile.position.set(tileX,0,tileZ);tile.receiveShadow=true;root.add(tile);
+    tile.name='m05-terrain-'+tx+'-'+tz;tile.position.set(tileX,0,tileZ);tile.receiveShadow=true;root.add(tile);
   }
   const materials=new Map();
   for(const b of map.boxes){
@@ -72,6 +72,7 @@ export function buildQuarryMissionScene(owner,map,root){
     }
     const mesh=new Mesh(geometry,materials.get(key));
     mesh.name=b.id;mesh.position.set(b.x,b.baseY+b.h/2,b.z);
+    if(b.editorRotation)mesh.rotation.fromArray([...b.editorRotation,'XYZ']);
     mesh.castShadow=!b.noCollision&&b.w*b.d<100;mesh.receiveShadow=true;
     root.add(mesh);
   }

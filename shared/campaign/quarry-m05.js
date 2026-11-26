@@ -1,6 +1,8 @@
 import {registerLocalMap} from '../world.js';
 import {terrainHeightfield} from '../terrain-heightfield.js';
 import {buildM05Dressing,M05_SURFACE_PATCHES} from './quarry-m05-dressing.js';
+import editorData from './m05-editor-data.json' with {type:'json'};
+import {validateM05Edits,terrainWithEdits,applyBoxEdit,modelColliders} from './m05-editor.js';
 import {M05_ROCKS} from './quarry-m05-rocks.js';
 
 const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
@@ -54,6 +56,7 @@ export const M05_GRID={min:-816,cell:4,count:408};
 const {min,cell,count}=M05_GRID;
 const heights=new Float32Array((count+1)**2);
 for(let z=0;z<=count;z++)for(let x=0;x<=count;x++)heights[z*(count+1)+x]=rawHeight(min+x*cell,min+z*cell);
+export const M05_BASE_HEIGHTS=heights;
 const terrain={cell,...terrainHeightfield({x:min,z:min,columns:count,rows:count,stepX:cell,stepZ:cell,heights})};
 export const quarryPoint=(x,z)=>({x,y:terrain.heightAt(x,z),z});
 const roads=paths.map(({id,a,b,dx,dz,length,w})=>({id,x:(a[0]+b[0])/2,z:(a[1]+b[1])/2,w,d:length+1.5,yaw:Math.atan2(dx,dz)}));
@@ -176,13 +179,24 @@ for(const id of ['panel','gatePanel','fuelRelease']){
 }
 export const M05_DRESSING=props;
 
+export const M05_EDITOR_BASE={boxes:boxes.map(b=>({...b})),sites:structuredClone(M05_SITES),routes:structuredClone(M05_ROUTES),fuelRoutes:structuredClone(M05_FUEL_ROUTES)};
+const editErrors=validateM05Edits(editorData);
+if(editErrors.length)throw Error('M05 editor data: '+editErrors.slice(0,5).join(', '));
+if(Object.keys(editorData.terrain).length)Object.assign(terrain,terrainWithEdits(M05_GRID,heights,editorData.terrain));
+for(const [id,p] of Object.entries(editorData.sites))if(Object.hasOwn(M05_SITES,id))Object.assign(M05_SITES[id],{x:p[0],y:p[1],z:p[2]});
+for(const [id,r] of Object.entries(editorData.routes))if(Object.hasOwn(M05_ROUTES,id))M05_ROUTES[id]=r;
+for(const [id,r] of Object.entries(editorData.fuelRoutes))if(Object.hasOwn(M05_FUEL_ROUTES,id))M05_FUEL_ROUTES[id]=r;
+const editedBoxes=boxes.map(b=>applyBoxEdit(b,editorData.boxes[b.id])).filter(Boolean);
+for(const m of editorData.models)editedBoxes.push(...modelColliders(m));
+
 export const QUARRY_M05=registerLocalMap({
   id:'quarry-m05',missionId:'m05',name:'Карьер',theme:'desert-village',campaign:true,
-  size:1200,width:1040,depth:920,terrain,roads,boxes,surfacePatches:M05_SURFACE_PATCHES,structures:[],points:[],districts:[],signs:[],
+  size:1200,width:1040,depth:920,terrain,roads,boxes:editedBoxes,surfacePatches:[...M05_SURFACE_PATCHES,...editorData.paint],structures:[],points:[],districts:[],signs:[],
   navigationCell:3,navigationSize:660,navigationClearance:.66,stepHeight:.38,
   playArea:{minX:-300,maxX:290,minZ:-270,maxZ:265},
   spawns:[M05_SITES.camp,M05_SITES.crusher],vehicleSpawns:[],
   fogColor:'#c3a483',fogDensity:.00132,sunColor:'#ffe0a9',
+  ...editorData.lighting,
   landmarks:[['camp','Полевой лагерь'],['overlook','Обзорная гряда'],['panel','Дробильный цех'],
     ['gate','Нижние ворота'],['blast','Топливный двор'],['finale','Сбор колонны']]
     .map(([id,name])=>({id,name,...M05_SITES[id]})),
