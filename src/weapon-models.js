@@ -37,6 +37,7 @@ const templates = new Map();
 const detailUrls = {
   ar416: new URL('./assets/infantry/ar416-high.glb', import.meta.url).href,
   ak12: new URL('./assets/infantry/ak12m-high.glb', import.meta.url).href,
+  vk45: new URL('./assets/infantry/vk45-high.glb', import.meta.url).href,
 };
 const detailTemplates = new Map(), detailLoads = new Map(), detailInstances = new WeakMap();
 const mountedParts = new WeakMap();

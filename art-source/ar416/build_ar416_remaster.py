@@ -6,8 +6,8 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_ar416 as base
-from weapon_finish import shader_finish
-from weapon_detail import DetailedAssembly, engraved_mark, round_aperture
+from weapon_finish import grip_finish_uv, shader_finish
+from weapon_detail import DetailedAssembly, engraved_mark, molded_grip, round_aperture
 from weapon_mesh import export_weapon, side_profile
 
 
@@ -20,6 +20,8 @@ FURNITURE = (.104, .070, .040)
 POLYMER = (.035, .041, .041)
 RECESS = (.023, .028, .027)
 RUBBER = (.035, .031, .027)
+GRIP = (.063, .043, .027)
+STIPPLE = (.048, .033, .023)
 MARK = (.268, .225, .177)
 SELECTOR = (.280, .048, .023)
 
@@ -60,24 +62,18 @@ def round_slot(mesh, side, z, color):
 
 def stock_and_grip():
     grip, stock = AR416Assembly(), AR416Assembly()
-    rings = []
-    for y, rear, front, width in [
-        (-.083,.100,.046,.043), (-.098,.101,.035,.048),
-        (-.127,.105,.033,.048), (-.185,.118,.047,.047),
-        (-.224,.130,.061,.045), (-.235,.119,.063,.040),
-    ]:
-        ring = []
-        for i in range(40):
-            a = i*math.tau/40
-            x, z = math.cos(a), math.sin(a)
-            ring.append((math.copysign(abs(x)**.56,x)*width/2, y,
-                         (rear+front)/2+math.copysign(abs(z)**.56,z)*(rear-front)/2))
-        rings.append(ring)
-    grip.rings(rings, FURNITURE)
-    for i in range(6):
-        t = i/5
-        grip.box((0,-.144-t*.069,.037+t*.019),(.033,.004,.004),POLYMER,.0015)
-    grip.box((0,-.236,.091),(.036,.004,.044),POLYMER,.0012)
+    molded_grip(grip,[(-.083,.100,.046,.0215),(-.090,.100,.040,.0227),
+                      (-.101,.101,.035,.024),(-.119,.104,.033,.0245),
+                      (-.126,.106,.034,.0246),(-.145,.109,.036,.0246),
+                      (-.185,.118,.047,.024),(-.207,.124,.051,.0236),
+                      (-.219,.128,.058,.0233),(-.227,.128,.062,.0225),
+                      (-.234,.122,.063,.021),(-.237,.118,.066,.0195)],
+                GRIP,STIPPLE,panel=(-.220,-.124))
+    for i in range(10):
+        t = i/9
+        grip.box((0,-.141-t*.073,.0358+t*.021),(.029,.0021,.0026),GRIP,.00065)
+    grip.box((0,-.237,.092),(.042,.004,.053),POLYMER,.0015)
+    grip.box((0,-.239,.097),(.019,.0018,.021),RECESS,.0006)
 
     # Preserve the original stock envelope and draw the tube with continuous
     # circular shading, a seam near the collar and a different steel finish.
@@ -136,8 +132,12 @@ def magazine():
 def finish(material, shader, rows):
     material.name = 'AR-416 · anodized alloy / polymer / steel / rubber'
     shader_finish(material, shader, rows, finishes=((.52,.45,.034),(.76,.015,.064),
-                                                   (.36,.86,.028),(.86,0,.072)),
-                  fabric_rows=(),size=256,roughness_variation=.44)
+                                                   (.36,.86,.028),(.86,0,.072),(.72,.012,.89)),
+                  fabric_rows=(),stipple_rows=(4,),size=384,roughness_variation=.44)
+
+
+def project_finishes(mesh, colors, rows, row_count):
+    grip_finish_uv(mesh,colors,rows,row_count,STIPPLE,depth=(.029,.134),height=(-.221,-.119))
 
 
 def main():
@@ -185,9 +185,9 @@ def main():
              ('Sights',base.sights()),('Magazine',magazine()),('Bolt',bolt)]
     anchors = {'Mount_Optic':(0,.095,-.087),'Mount_Barrel':(0,.015,-.207),
                'Mount_Magazine':(0,-.075,-.139),'Mount_Stock':(0,.015,.084)}
-    export_weapon(parts,glb,blend,mounts=anchors,modular=True,finish_shader=finish,
+    export_weapon(parts,glb,blend,mounts=anchors,modular=True,finish_shader=finish,finish_projection=project_finishes,
                   finish_rows={FURNITURE:1,POLYMER:1,RECESS:1,MARK:1,SELECTOR:1,
-                               STEEL:2,BOLT:2,RUBBER:3})
+                               GRIP:1,STEEL:2,BOLT:2,RUBBER:3,STIPPLE:4})
 
 
 if __name__ == '__main__':

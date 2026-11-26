@@ -76,3 +76,27 @@ def round_aperture(mesh, y, z, inner, outer, depth, color):
                         (rear-bevel,outer),(rear,outer-bevel)],
                 [(front,inner+bevel),(front+bevel,inner),(rear-bevel,inner),
                  (rear,inner+bevel)],color,sides=64)
+
+
+def molded_grip(mesh, outlines, shell, texture, *, panel):
+    """Loft the grip and assign the rough flank in the same continuous surface."""
+    angles = [math.tau*i/64 for i in range(64)]
+    offset = len(mesh.vertices)
+    for y,rear,front,half_width in outlines:
+        for angle in angles:
+            x,z = math.cos(angle),math.sin(angle)
+            mesh.vertices.append((math.copysign(abs(x)**.66,x)*half_width,y,
+                                  (rear+front)/2 + math.copysign(abs(z)**.66,z)*(rear-front)/2))
+    count = len(angles)
+    faces, colors = [tuple(reversed(range(count)))], [shell]
+    for band, (upper, lower) in enumerate(zip(outlines,outlines[1:])):
+        inside = panel[0] <= (upper[0]+lower[0])/2 <= panel[1]
+        for i, angle in enumerate(angles):
+            j = (i+1)%count
+            faces.append((band*count+i,band*count+j,(band+1)*count+j,(band+1)*count+i))
+            colors.append(texture if inside and abs(math.cos(angle+math.pi/count)) > .69 else shell)
+    end = (len(outlines)-1)*count
+    faces.append(tuple(end+i for i in range(count)))
+    colors.append(shell)
+    mesh.faces.extend(tuple(offset+i for i in face) for face in faces)
+    mesh.colors.extend(colors)

@@ -99,7 +99,8 @@ def surface_mark(mesh, text, x, y, z, step, color, fill=.40):
 
 
 def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, parents=None,
-                  glass=None, modular=False, view_distance=2.1, finish_rows=None, finish_shader=None):
+                  glass=None, modular=False, view_distance=2.1, finish_rows=None, finish_shader=None,
+                  finish_projection=None):
     if modular:
         for slot in ('Optic', 'Barrel', 'Magazine', 'Stock'):
             if f'Mount_{slot}' not in mounts:
@@ -126,7 +127,7 @@ def export_weapon(parts, glb, blend, *, pivots=None, mounts=None, groups=None, p
     for name, assembly in parts:
         obj = assembly.object(name, collection)
         if finish_rows is not None:
-            finish_uv(obj.data, assembly.colors, finish_rows, row_count)
+            (finish_projection or finish_uv)(obj.data, assembly.colors, finish_rows, row_count)
         else:
             obj.data.uv_layers.remove(obj.data.uv_layers.active)
         if pivots and name in pivots:
