@@ -20,6 +20,11 @@ function validateGlb(b){
   const g=JSON.parse(b.subarray(20,20+len).toString('utf8'));
   for(const a of [...(g.buffers??[]),...(g.images??[])])if(a.uri&&!a.uri.startsWith('data:'))throw Error('GLB содержит внешние файлы; упакуйте текстуры');
 }
+async function storeAsset(b){
+  validateGlb(b);await safeDir(assets);const name=hash(b)+'.glb',dest=join(assets,name);
+  try{await writeFile(dest,b,{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;if(hash(await readFile(dest))!==hash(b))throw Error('Конфликт ресурса');}
+  return {asset:name,bytes:b.length};
+}
 async function atomic(target,output,current){
   await safeDir(backups);await writeFile(join(backups,Date.now()+'-'+randomUUID()+'.json'),current,{flag:'wx'});
   const next=Buffer.from(JSON.stringify(output,null,2)+'\n'),tmp=target+'.'+randomUUID()+'.tmp';
@@ -48,10 +53,17 @@ export function worldEditorPlugin(){
       }
       if(action==='asset'&&req.method==='POST'){
         if(req.headers['content-type']!=='application/octet-stream')throw Error('Неверный тип файла');
-        const b=await body(req,64*1024*1024);validateGlb(b);
-        await safeDir(assets);const name=hash(b)+'.glb',dest=join(assets,name);
-        try{await writeFile(dest,b,{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;if(hash(await readFile(dest))!==hash(b))throw Error('Конфликт ресурса');}
-        return reply(res,200,{asset:name,bytes:b.length});
+        const b=await body(req,64*1024*1024);return reply(res,200,await storeAsset(b));
+      }
+      if(action==='optimize'&&req.method==='POST'){
+        if(!String(req.headers['content-type']).startsWith('application/json'))throw Error('Требуется JSON');
+        const {asset}=JSON.parse((await body(req,4096)).toString('utf8'));
+        if(!modelAssetOk(asset))throw Error('Неверный ресурс');
+        const input=await readFile(join(assets,asset));if(input.length>64*1024*1024)throw Error('Ресурс слишком большой');
+        const {optimizeEditorAsset}=await import('./world-editor-optimize.mjs');
+        const out=await optimizeEditorAsset(input);
+        if(out.length>=input.length)return reply(res,200,{asset,bytes:input.length,originalBytes:input.length,optimized:false});
+        return reply(res,200,{...await storeAsset(out),originalBytes:input.length,optimized:true});
       }
       if(mapId&&req.method==='POST'){
         if(!String(req.headers['content-type']).startsWith('application/json'))throw Error('Требуется JSON');
