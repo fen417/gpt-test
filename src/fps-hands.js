@@ -1,6 +1,56 @@
 import * as THREE from 'three';
-import { FPS_HANDS, FPS_ARM_POSITION_SCALE } from './fps-hands-data.js';
-export {loadFPSHands} from './fps-hands-data.js';
+import { FPS_HANDS, FPS_ARM_POSITION_SCALE, loadFPSHands as loadDefaultHands } from './fps-hands-data.js';
+let gripProfiles={};
+let pendingProfiles;
+export async function loadFPSHands(){
+  pendingProfiles??=fetch(new URL('./assets/grip-overrides.json',import.meta.url))
+    .then(response=>{if(!response.ok)throw Error('Grip profiles '+response.status);return response.json();})
+    .then(data=>{gripProfiles=data;})
+    .catch(error=>{console.warn('Custom FPS grips unavailable',error);});
+  await Promise.all([loadDefaultHands(),pendingProfiles]);
+}
+export function savedGrip(weapon,side){return gripProfiles[weapon]?.[side]??null;}
+
+// Each editor/weapon rig owns its custom geometry; defaults remain intact.
+function decodedGripGeometry(fields){
+  const data=Object.fromEntries(Object.entries(fields).map(([name,encoded])=>[name,Uint8Array.from(atob(encoded),c=>c.charCodeAt(0))]));
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(unpack(data.p,Int16Array,FPS_ARM_POSITION_SCALE),3));
+  geometry.setAttribute('normal',new THREE.BufferAttribute(unpack(data.n,Int16Array,32767),3));
+  geometry.setAttribute('uv',new THREE.BufferAttribute(unpack(data.uv,Uint16Array,65535),2));
+  geometry.setIndex(new THREE.BufferAttribute(unpack(data.index,Uint16Array,1),1));
+  if(data.morph){
+    geometry.morphAttributes.position=[new THREE.BufferAttribute(unpack(data.morph,Int16Array,FPS_ARM_POSITION_SCALE),3)];
+    geometry.morphAttributes.normal=[new THREE.BufferAttribute(unpack(data.morphN,Int16Array,16000),3)];
+    geometry.morphTargetsRelative=true;
+  }
+  geometry.computeBoundingBox();geometry.computeBoundingSphere();
+  return geometry;
+}
+export function createGripApplier(mesh,wrist,owned){
+  const base=mesh.geometry,offset=new THREE.Vector3(),rotatedWrist=new THREE.Vector3();
+  const euler=new THREE.Euler();
+  let previous=null,fields=null;
+  return entry=>{
+    if(entry===previous)return offset;
+    previous=entry;
+    if((entry?.geometry??null)!==fields){
+      fields=entry?.geometry??null;
+      if(mesh.geometry!==base){owned.delete(mesh.geometry);mesh.geometry.dispose();}
+      mesh.geometry=fields?decodedGripGeometry(fields):base;
+      if(fields)owned.add(mesh.geometry);
+      mesh.updateMorphTargets();
+    }
+    const p=entry?.params;
+    offset.fromArray(p?.position??[0,0,0]);
+    const r=p?.rotation??[0,0,0];
+    mesh.quaternion.setFromEuler(euler.set(...r.map(THREE.MathUtils.degToRad)));
+    // Rotate around the cuff, not around the weapon origin.
+    rotatedWrist.copy(wrist).applyQuaternion(mesh.quaternion);
+    mesh.position.copy(wrist).sub(rotatedWrist).add(offset);
+    return offset;
+  };
+}
 
 const geometries = new Map();
 let textures;

@@ -1,10 +1,11 @@
 import {defineConfig} from 'vite';
 import {fileURLToPath} from 'node:url';
 import {visualizer} from 'rollup-plugin-visualizer';
+import {gripEditorPlugin} from './scripts/grip-editor-server.mjs';
 
 export default defineConfig({
   base: './',
-  plugins:[visualizer({filename:'.perf-local/bundle.html',gzipSize:true})],
+  plugins:[gripEditorPlugin(),visualizer({filename:'.perf-local/bundle.html',gzipSize:true})],
   build: {
     target: 'es2022',
     manifest:true,

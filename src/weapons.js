@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { anatomicalGeometry } from './soldier-anatomy.js';
 import { HEAVY_GRIP_SECTIONS, COMPACT_GRIP_SECTIONS, pistolGripSectionAt } from './pistol-grip.js';
-import { createFPSHand, createFPSSleeve, fpsHandTextures } from './fps-hands.js';
+import { createFPSHand, createFPSSleeve, fpsHandTextures, createGripApplier, savedGrip } from './fps-hands.js';
 import { LAUNCHER_POSE, RIFLE_SUPPORT_POSE, RIFLE_TRIGGER_WRIST, SUPPLY_POSE,
   DEFIB_POSE, BINOCULAR_POSE } from './gadget-poses.js';
 import { createEquipmentCable } from './equipment-cable.js';
@@ -947,6 +947,13 @@ export function createWeaponRig(owner = {}) {
   const rightRotation=new THREE.Quaternion().setFromUnitVectors(armAxis,rightAxis.normalize());
   const rightRestInverse=new THREE.Matrix4().compose(rightShoulder,rightRotation,new THREE.Vector3(1,1,1)).invert();
   const rightDirection=new THREE.Vector3(),rightScale=new THREE.Vector3(1,1,1);
+  const applyRifleLeft=createGripApplier(supportGlove,wristLocal,ownedGeometries);
+  const applyRifleRight=createGripApplier(triggerGloveModel,rightWrist,ownedGeometries);
+  const applyPistolLeft=createGripApplier(pistolSupportMesh,pistolWristLocal,ownedGeometries);
+  const applyPistolRight=createGripApplier(pistolGripMesh,pistolWrist,ownedGeometries);
+  let gripLeftOffset=new THREE.Vector3(),gripRightOffset=new THREE.Vector3();
+  const adjustedLeftWrist=new THREE.Vector3();
+  const profile=(key,side)=>owner.gripProfiles ? owner.gripProfiles[key]?.[side]??null : savedGrip(key,side);
   const pistolShoulderCamera=new THREE.Vector3(.42,-.52,.12),pistolShoulderLocal=new THREE.Vector3();
   const pistolArmInverse=new THREE.Matrix4();
   const supplyLeftWrist=new THREE.Vector3(),supplyRightWrist=new THREE.Vector3();
@@ -966,7 +973,7 @@ export function createWeaponRig(owner = {}) {
     if(!visiblePistol||!pistolRight.visible||weight<=0)return;
     weapon.updateMatrix();pistolArmInverse.copy(weapon.matrix).invert();
     pistolShoulderLocal.copy(pistolShoulderCamera).applyMatrix4(pistolArmInverse).lerp(rightShoulder,1-weight);
-    rightDirection.copy(pistolWrist);rightDirection.x-=.008;rightDirection.sub(pistolShoulderLocal);
+    rightDirection.copy(pistolWrist).add(gripRightOffset);rightDirection.x-=.008;rightDirection.sub(pistolShoulderLocal);
     fitRightSleeve(pistolShoulderLocal);
   }
 
@@ -1063,7 +1070,7 @@ export function createWeaponRig(owner = {}) {
     leftHand.position.copy(palmTarget).sub(palmOffset);
 
     // Keep the shoulder anchored while the cuff follows the rotating wrist.
-    fitLeftSleeve(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolWristLocal : wristLocal,pistol?.024:.017);
+    fitLeftSleeve(adjustedLeftWrist.copy(pistol&&!(throwPhase>0&&throwPhase<1) ? pistolWristLocal : wristLocal).add(gripLeftOffset),pistol?.024:.017);
   }
 
   const defaultByClass = { assault: 'ar416', medic: 'mcx9', support: 'mg36', recon: 'dmr12' };
@@ -1107,6 +1114,12 @@ export function createWeaponRig(owner = {}) {
     const pistol = Object.hasOwn(pistols,weaponId) ? pistols[weaponId] : null;
     const key = pistol || Object.hasOwn(loadouts,weaponId) ? weaponId : defaultByClass[classId];
     const rifle=rifles.get(key);
+    const useGrip=!unarmed&&!(gadgetKind&&gadgetPhase>0&&gadgetPhase<1)&&!(throwPhase>0&&throwPhase<1);
+    const leftProfile=useGrip?profile(key,'left'):null,rightProfile=useGrip?profile(key,'right'):null;
+    // Reset inactive/gadget meshes; custom hands must not leak into other poses.
+    const rl=applyRifleLeft(pistol?null:leftProfile),rr=applyRifleRight(pistol?null:rightProfile);
+    const pl=applyPistolLeft(pistol?leftProfile:null),pr=applyPistolRight(pistol?rightProfile:null);
+    gripLeftOffset=pistol?pl:rl;gripRightOffset=pistol?pr:rr;
     if(!pistol){classId=['mg36','pkp'].includes(key)?'support':['dmr12','sv98'].includes(key)?'recon':['mcx9','vk45'].includes(key)?'medic':'assault';}
     const loadout = loadouts[key] ?? loadouts[classId];
     const support = !pistol && classId === 'support', recon = !pistol && classId === 'recon';
@@ -1284,7 +1297,7 @@ export function createWeaponRig(owner = {}) {
       fitLeftSleeve(supplyLeftWrist,.017,.92);
     }
     rightArm.visible=!usingTool||usingSupply||gadgetKind==='defibrillator'||gadgetKind==='launcher';
-    rightDirection.copy(usingDefib?defibRightWrist:usingSupply?supplyRightWrist:pistol&&!usingTool ? pistolWrist : rightWrist);
+    rightDirection.copy(usingDefib?defibRightWrist:usingSupply?supplyRightWrist:pistol&&!usingTool ? pistolWrist : rightWrist).add(gripRightOffset);
     if(pistol&&!usingTool)rightDirection.x-=.008;else rightDirection.applyQuaternion(rightHand.quaternion).add(rightHand.position);
     rightDirection.sub(rightShoulder);
     fitRightSleeve(rightShoulder,usingSupply?.78:1);
