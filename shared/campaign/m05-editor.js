@@ -29,6 +29,7 @@ export function validateM05Edits(d){
       !vec(m.position)||!vec(m.rotation,-100,100)||!vec(m.scale,.001,100)||!Array.isArray(m.colliders)||m.colliders.length>64||
       !['low','medium','high'].includes(m.detail)||typeof m.shadow!=='boolean'){bad('Модель '+m?.id);continue;}
     ids.add(m.id);
+    if(m.group!==undefined&&(typeof m.group!=='string'||!m.group.trim()||m.group.length>100))bad('Группа '+m.id);
     if(m.colliders.length&&m.detail!=='low')bad('Коллизии должны быть видимы на Low: '+m.id);
     if(m.scatter!==undefined&&typeof m.scatter!=='boolean')bad('scatter '+m.id);
     if(m.materials!==undefined&&(!record(m.materials)||Object.entries(m.materials).some(([i,o])=>!/^\d+:\d+$/.test(i)||!record(o)||Object.entries(o).some(([k,v])=>!Object.hasOwn(materialRules,k)||!materialRules[k](v)))))bad('Материал '+m.id);
