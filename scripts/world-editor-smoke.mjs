@@ -75,6 +75,21 @@ try{
  const lit=Object.values(JSON.parse(await readFile(registry,'utf8')).maps).find(m=>m.config.name==='Smoke sandbox');
  assert.equal(lit.data.lights.length,1);assert.equal(lit.data.lights[0].type,'spot');
  console.log('Editor smoke: new map, textured terrain, roads, gameplay, navigation and lights OK');
+ await page.selectOption('#newTemplate','port');answers.push('Smoke port copy');await page.locator('#newMap').click();
+ await page.waitForFunction(()=>document.querySelector('#mapTitle')?.textContent.includes('Smoke port copy')&&(document.querySelector('#status')?.textContent.includes('Карта загружена')||!document.querySelector('#fatal')?.classList.contains('hidden')),{},{timeout:120000});
+ assert.equal(await page.locator('#fatal').isVisible(),false,await page.locator('#fatal').textContent());
+ await page.selectOption('#filter','legacy');const object=page.locator('#tree .item').filter({hasText:/box ·/}).first();await object.click();
+ const tilt=page.locator('#inspector .triplet').nth(1).locator('input').first();await tilt.fill('12');await tilt.blur();
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Сохранено в проект'),{},{timeout:90000});
+ const port=Object.values(JSON.parse(await readFile(registry,'utf8')).maps).find(m=>m.config.name==='Smoke port copy');
+ assert.equal(port.config.source,'port');assert.ok(Object.values(port.data.legacyEdits.moves).some(m=>Math.abs(m.rotation.x-12*Math.PI/180)<.001));
+ await page.locator('#importScale').fill('2');await page.locator('#importAlign').check();await page.locator('#importCollider').check();
+ await page.locator('#files').setInputFiles({name:'world-editor-smoke.glb',mimeType:'model/gltf-binary',buffer:glb});
+ await page.waitForFunction(()=>/Импортировано|Ошибка:/.test(document.querySelector('#status')?.textContent??''),{},{timeout:90000});assert.ok((await page.locator('#status').textContent()).includes('Импортировано'),await page.locator('#status').textContent());
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('Сохранено в проект'),{},{timeout:90000});
+ const copy=Object.values(JSON.parse(await readFile(registry,'utf8')).maps).find(m=>m.config.name==='Smoke port copy');
+ assert.deepEqual(copy.data.models[0].scale,[2,2,2]);assert.equal(copy.data.models[0].colliders.length,1);
+ console.log('Editor smoke: existing map fork, tilt and imported collider OK');
 }catch(error){
  await mkdir('.perf-local',{recursive:true});await page?.screenshot({path:'.perf-local/world-editor-failure.png'}).catch(()=>{});
  throw error;

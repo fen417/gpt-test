@@ -45,4 +45,5 @@ test('slope alignment keeps yaw and aligns local up with ground normal',()=>{
  const h=(x,z)=>x*.5+z*.25;const n=alignToTerrain(node,h);dropToTerrain(node,h);
  const up=new Vector3(0,1,0).applyQuaternion(node.getWorldQuaternion(new Quaternion()));assert.ok(up.distanceTo(n)<1e-7);assert.ok(n.distanceTo(new Vector3(-.5,1,-.25).normalize())<1e-7);
  assert.deepEqual(localBounds(node).getSize(new Vector3()).toArray().map(x=>Math.round(x)),[2,2,2]);
+ node.updateMatrixWorld(true);const a=node.children[0].geometry.attributes.position,v=new Vector3();let min=Infinity;for(let i=0;i<a.count;i++){v.fromBufferAttribute(a,i).applyMatrix4(node.children[0].matrixWorld);min=Math.min(min,v.y-h(v.x,v.z));}assert.ok(Math.abs(min)<1e-6);
 });

@@ -17,7 +17,15 @@ export function dropToTerrain(node,heightAt,offset=0){
  node.updateWorldMatrix(true,true);
  const p=node.getWorldPosition(new Vector3()),b=new Box3().setFromObject(node,true);
  const y=heightAt(p.x,p.z);if(!Number.isFinite(y)||b.isEmpty())throw Error('Модель пустая или вне карты');
- p.y+=y-b.min.y+offset;
+ // Measure the actual contact against the slope, rather than the bottom
+ // of the world AABB (which would lift a tilted model above the surface).
+ let gap=Infinity;const v=new Vector3();
+ node.traverse(mesh=>{
+  if(!mesh.isMesh||!mesh.geometry.attributes.position)return;
+  const a=mesh.geometry.attributes.position,step=Math.max(1,Math.floor(a.count/50000));
+  for(let i=0;i<a.count;i+=step){v.fromBufferAttribute(a,i).applyMatrix4(mesh.matrixWorld);const h=heightAt(v.x,v.z);if(Number.isFinite(h))gap=Math.min(gap,v.y-h);}
+ });
+ p.y+=(Number.isFinite(gap)?-gap:y-b.min.y)+offset;
  node.position.copy(node.parent?node.parent.worldToLocal(p):p);node.updateWorldMatrix(true,true);
 }
 export function localBounds(node){
