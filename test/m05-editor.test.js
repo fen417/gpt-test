@@ -54,3 +54,9 @@ test('spline reaches endpoints and grading preserves source',()=>{
  const grid={min:0,cell:4,count:8},h=new Float32Array(81);h[1*9+3]=10;
  const result=gradeRoad(grid,h,{},road);assert.ok(Object.keys(result).length>0);assert.equal(h[12],10);
 });
+
+import {createEditorSandbox,EDITOR_GRID,FLAT_HEIGHTS} from '../shared/editor-maps.js';
+test('new sandbox has two opposite team spawns and real collision data',()=>{
+ const d=emptyM05Edits();d.sites.spawnA=[-20,0,10];const map=createEditorSandbox('editor-0123456789abcdef',{name:'Test map',size:256},d);
+ assert.equal(map.tdmLoadout,'class');assert.equal(map.size,256);assert.deepEqual(map.spawns[0],{x:-20,y:0,z:10});assert.equal(map.terrain.heightAt(0,0),0);assert.equal(FLAT_HEIGHTS.length,(EDITOR_GRID.count+1)**2);
+});

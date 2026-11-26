@@ -17,7 +17,8 @@ import {GameRenderer} from './renderer.js';
 import {GRAPHICS_PRESETS, GRAPHICS_CONTROLS, GRAPHICS_GROUPS, GRAPHICS_FINE_ONLY, GRAPHICS_IMPACT, LEGACY_GRAPHICS_DEFAULTS, graphicsEffects, graphicsGroupValue, validateCustomGraphics} from './graphics-settings.js';
 import {preferredGraphicsApi,createWebGpuRenderer,graphicsApiName} from './graphics-api.js';
 import {SoloSession} from './solo-session.js';
-import {MAPS,DEFAULT_MAP_ID,getMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
+import {EDITOR_MAPS} from '../shared/editor-maps.js';
+import {MAPS,DEFAULT_MAP_ID,getMap,registerLocalMap,CLASSES,WEAPONS,CLASS_WEAPONS,SIDEARMS,getSidearm,defaultWeaponId,getWeapon,CAPTURE_RADIUS,canSpawnAtPoint} from '../shared/world.js';
 import {Multiplayer,configuredServerUrl,defaultServerUrl,normalizeServerUrl,resetNetworkProfile} from './network.js';
 import {CombatAudio} from './audio.js';
 import {mountChangelog} from './changelog.js';
@@ -44,6 +45,7 @@ import {BINOCULAR_ZOOM} from '../shared/recon-optics.js';
 import {mountReconMarks} from './recon-marks.js';
 import './recon.css';
 
+if(import.meta.env.DEV)for(const map of Object.values(EDITOR_MAPS))registerLocalMap(map);
 const $=id=>document.getElementById(id);
 mountChangelog();
 if(TEST_BUILD){
@@ -360,7 +362,7 @@ function getDeployTarget(player){
 }
 function filterModeMaps(mapId,modeId,limitId,preferred){
   const mode=$(modeId).value,select=$(mapId);
-  const maps=Object.values(MAPS).filter(map=>Boolean(map.tdmLoadout)===(mode==='tdm'));
+  const maps=[...Object.values(MAPS),...(mapId==='map-select'&&import.meta.env.DEV?Object.values(EDITOR_MAPS):[])].filter(map=>Boolean(map.tdmLoadout)===(mode==='tdm'));
   const choice=preferred??select.value;
   if(select.dataset.mode!==mode){
     select.replaceChildren(...maps.map(map=>new Option(map.name,map.id)));
@@ -1611,7 +1613,8 @@ function setBattleMap(mapId,force=false){
   drawMinimapBackground();drawDeployBackground();
 }
 function initializeMapPickers(){
-  const saved=getMap(read('map',DEFAULT_MAP_ID));
+  const requested=import.meta.env.DEV?new URLSearchParams(location.search).get('editorMap'):null;
+  const saved=getMap(requested&&Object.hasOwn(EDITOR_MAPS,requested)?requested:read('map',DEFAULT_MAP_ID));
   $('solo-mode').value=saved.tdmLoadout?'tdm':'conquest';
   filterModeMaps('map-select','solo-mode','solo-kill-limit',saved.id);
   const update=()=>{
