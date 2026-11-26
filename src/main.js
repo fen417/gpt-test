@@ -361,7 +361,7 @@ function getDeployTarget(player){
 }
 function filterModeMaps(mapId,modeId,limitId,preferred){
   const mode=$(modeId).value,select=$(mapId);
-  const maps=[...Object.values(MAPS),...(mapId==='map-select'&&import.meta.env.DEV?Object.values(EDITOR_MAPS):[])].filter(map=>Boolean(map.tdmLoadout)===(mode==='tdm'));
+  const maps=(import.meta.env.DEV&&mapId==='map-select'?Object.values(MAPS).concat(Object.values(EDITOR_MAPS)):Object.values(MAPS)).filter(map=>Boolean(map.tdmLoadout)===(mode==='tdm'));
   const choice=preferred??select.value;
   if(select.dataset.mode!==mode){
     select.replaceChildren(...maps.map(map=>new Option(map.name,map.id)));
@@ -1613,7 +1613,7 @@ function setBattleMap(mapId,force=false){
 }
 function initializeMapPickers(){
   const requested=import.meta.env.DEV?new URLSearchParams(location.search).get('editorMap'):null;
-  const saved=getMap(requested&&Object.hasOwn(EDITOR_MAPS,requested)?requested:read('map',DEFAULT_MAP_ID));
+  const saved=import.meta.env.DEV&&requested&&Object.hasOwn(EDITOR_MAPS,requested)?getMap(requested):getMap(read('map',DEFAULT_MAP_ID));
   $('solo-mode').value=saved.tdmLoadout?'tdm':'conquest';
   filterModeMaps('map-select','solo-mode','solo-kill-limit',saved.id);
   const update=()=>{
