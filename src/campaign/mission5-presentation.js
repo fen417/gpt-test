@@ -13,6 +13,8 @@ import {buildQuarryMissionScene} from './quarry-m05-scene.js';
 import {QuarryAmbience} from './quarry-m05-audio.js';
 import {QuarryActing} from './quarry-m05-acting.js';
 import './mission5.css';
+import {wrapDressingBatches} from './m05-dressing-edits.js';
+import editorData from '../../shared/campaign/m05-editor-data.json';
 import {loadEditorModels,updateEditorModelVisibility} from './m05-editor-models.js';
 
 QUARRY_M05.buildScene=buildQuarryMissionScene;
@@ -22,7 +24,7 @@ const dressingUrl=new URL('../assets/quarry-m05/dressing.glb',import.meta.url);
 export async function loadQuarryDressing(){
   const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const [industrial,dressing]=await Promise.all([loader.loadAsync(modelUrl.href),loader.loadAsync(dressingUrl.href)]);
-  dressing.scene.name='quarry-set-dressing';
+  dressing.scene.name='quarry-set-dressing';wrapDressingBatches(dressing.scene,editorData.dressingBatches);
   industrial.scene.add(dressing.scene);
   industrial.scene.add(await loadEditorModels());
   return industrial.scene;
@@ -273,7 +275,7 @@ export class Mission5Presentation{
     const detailRange=r.geometryQuality==='high'?192:r.geometryQuality==='medium'?112:0;
     for(const batch of this.detailDressing){
       const {x,z}=batch.position,camera=r.camera.position;
-      batch.visible=detailRange>0&&(x-camera.x)**2+(z-camera.z)**2<detailRange**2;
+      batch.visible=!batch.userData.dressingRemoved&&detailRange>0&&(x-camera.x)**2+(z-camera.z)**2<detailRange**2;
     }
     for(const [i,light] of this.lamps.entries())light.intensity=m.power&&(!r.lowQuality||i%2===0)?19:2.2;
     const dust=scene?.id==='C4'?THREE.MathUtils.smoothstep(scene.elapsed,65,85):0;

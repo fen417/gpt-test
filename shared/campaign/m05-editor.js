@@ -23,6 +23,7 @@ export function validateM05Edits(d){
   if(d.assets!==undefined&&(!record(d.assets)||Object.entries(d.assets).some(([asset,meta])=>!modelAssetOk(asset)||!record(meta)||typeof meta.name!=='string'||meta.name.length>200)))bad('Библиотека ресурсов');
   if(d.layers!==undefined&&(!Array.isArray(d.layers)||d.layers.length>10000||d.layers.some(p=>!record(p)||!['erase',...TERRAIN_LAYERS].includes(p.layer)||!finite(p.x)||!finite(p.z)||!finite(p.radius,1,200)||!finite(p.strength,0,1)||!finite(p.hardness,0,1))))bad('Слои грунта');
   if(d.roads!==undefined&&(!Array.isArray(d.roads)||d.roads.length>128||d.roads.some(r=>!record(r)||!keyOk(r.id)||!TERRAIN_LAYERS.includes(r.layer)||!finite(r.width,1,80)||!Array.isArray(r.points)||r.points.length<2||r.points.length>200||!r.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(n=>finite(n))))||new Set(d.roads.map(r=>r.id)).size!==d.roads.length))bad('Дороги');
+  if(d.dressingBatches!==undefined&&(!record(d.dressingBatches)||Object.entries(d.dressingBatches).some(([id,e])=>!/^m05_(set|detail)_-?\d+_-?\d+$/.test(id)||!record(e)||typeof e.removed!=='boolean'||!vec(e.position)||!vec(e.rotation,-100,100)||!finite(e.scale,.05,20))))bad('Группы декораций M05');
   const ids=new Set();
   for(const m of d.models){
     if(!record(m)||!keyOk(m.id)||ids.has(m.id)||!modelAssetOk(m.asset)||typeof m.name!=='string'||m.name.length>200||
@@ -106,11 +107,48 @@ export function scatterPositions({x,z,radius,count,seed,minScale,maxScale,minSpa
   }return out;
 }
 
+// Python's round() used by the original Blender exporter rounds ties to even.
+export function dressingBatchName(p){
+ const round=x=>{const n=Math.floor(x),f=x-n;return f===.5?n+(Math.abs(n)%2):Math.round(x);};
+ return 'm05_'+(p.detail?'detail':'set')+'_'+round(p.x/48)+'_'+round(p.z/48);
+}
+export function dressingBatchIndex(props){
+ const names=new Map(),byProp=new Map();
+ for(const p of props){const name=dressingBatchName(p);byProp.set(p.id,name);if(!names.has(name))names.set(name,[]);names.get(name).push(p.id);}
+ return {names,byProp};
+}
+export function dressingBatchPivot(name){
+ const m=/^m05_(set|detail)_(-?\d+)_(-?\d+)$/.exec(name);
+ if(!m)throw Error('Unknown dressing batch '+name);
+ return [Number(m[2])*48,0,Number(m[3])*48];
+}
+export function applyDressingBatchEdit(box,edit,name){
+ if(!edit)return box;if(edit.removed)return null;
+ const origin=dressingBatchPivot(name),shape=shapeForBox(box),[rx,ry,rz]=edit.rotation,[x,y,z]=edit.position;
+ const basis=rotationMatrix({x:rx,y:ry,z:rz}),scale=edit.scale;
+ const p=shape.center,offset=transformVector(basis,{x:(p.x-origin[0])*scale,y:(p.y-origin[1])*scale,z:(p.z-origin[2])*scale});
+ const obb=affineBox({x:x+offset.x,y:y+offset.y,z:z+offset.z},shape.half.map(n=>n*scale),multiplyMatrix(basis,shape.matrix));
+ const b=boxBounds({obb});
+ return {...box,x:obb.center.x,z:obb.center.z,baseY:b.minY,w:b.maxX-b.minX,h:b.h-b.minY,d:b.maxZ-b.minZ,obb};
+}
+export function editableMapBoxes(base,data){
+ const index=dressingBatchIndex(base.props??[]);
+ const boxes=[];
+ for(const b of base.boxes){
+  const prop=b.id?.match(/^(m05-dress-.+?-\d+)(?:-part-\d+|-\d+)?$/)?.[1];
+  const batch=index.byProp.get(prop);
+  const next=batch?applyDressingBatchEdit(b,data.dressingBatches?.[batch],batch):applyBoxEdit(b,data.boxes[b.id]);
+  if(next)boxes.push(next);
+ }
+ for(const m of data.models)boxes.push(...modelColliders(m));
+ return boxes;
+}
 export function inspectM05Edits(base,grid,heights,d){
   const issues=validateM05Edits(d).map(message=>({level:'error',message}));
   if(issues.length)return issues;
-  const terrain=terrainWithEdits(grid,heights,d.terrain),boxes=base.boxes.map(b=>applyBoxEdit(b,d.boxes[b.id])).filter(b=>b&&!b.noCollision);
-  for(const m of d.models)boxes.push(...modelColliders(m));
+  const terrain=terrainWithEdits(grid,heights,d.terrain),boxes=editableMapBoxes(base,d).filter(b=>!b.noCollision);
+  const known=dressingBatchIndex(base.props??[]).names;
+  for(const name of Object.keys(d.dressingBatches??{}))if(!known.has(name))issues.push({level:'error',message:'Неизвестная группа '+name});
   const solids=boxes.map(b=>({b,shape:shapeForBox(b),bounds:boxBounds(b)}));
   const hits=(x,y,z,r=.42,h=1.65)=>{const body=uprightBox(x,y+.04,z,r,h-.04);
     return solids.find(({bounds,shape})=>x+r>bounds.minX&&x-r<bounds.maxX&&z+r>bounds.minZ&&z-r<bounds.maxZ&&y+h>bounds.minY&&y+.04<bounds.h&&overlapsAffine(body,shape))?.b.id;};

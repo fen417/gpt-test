@@ -2,7 +2,7 @@ import {registerLocalMap} from '../world.js';
 import {terrainHeightfield} from '../terrain-heightfield.js';
 import {buildM05Dressing,M05_SURFACE_PATCHES} from './quarry-m05-dressing.js';
 import editorData from './m05-editor-data.json' with {type:'json'};
-import {validateM05Edits,terrainWithEdits,applyBoxEdit,modelColliders} from './m05-editor.js';
+import {validateM05Edits,terrainWithEdits,editableMapBoxes} from './m05-editor.js';
 import {M05_ROCKS} from './quarry-m05-rocks.js';
 
 const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
@@ -179,15 +179,14 @@ for(const id of ['panel','gatePanel','fuelRelease']){
 }
 export const M05_DRESSING=props;
 
-export const M05_EDITOR_BASE={boxes:boxes.map(b=>({...b})),sites:structuredClone(M05_SITES),routes:structuredClone(M05_ROUTES),fuelRoutes:structuredClone(M05_FUEL_ROUTES)};
+export const M05_EDITOR_BASE={props,boxes:boxes.map(b=>({...b})),sites:structuredClone(M05_SITES),routes:structuredClone(M05_ROUTES),fuelRoutes:structuredClone(M05_FUEL_ROUTES)};
 const editErrors=validateM05Edits(editorData);
 if(editErrors.length)throw Error('M05 editor data: '+editErrors.slice(0,5).join(', '));
 if(Object.keys(editorData.terrain).length)Object.assign(terrain,terrainWithEdits(M05_GRID,heights,editorData.terrain));
 for(const [id,p] of Object.entries(editorData.sites))if(Object.hasOwn(M05_SITES,id))Object.assign(M05_SITES[id],{x:p[0],y:p[1],z:p[2]});
 for(const [id,r] of Object.entries(editorData.routes))if(Object.hasOwn(M05_ROUTES,id))M05_ROUTES[id]=r;
 for(const [id,r] of Object.entries(editorData.fuelRoutes))if(Object.hasOwn(M05_FUEL_ROUTES,id))M05_FUEL_ROUTES[id]=r;
-const editedBoxes=boxes.map(b=>applyBoxEdit(b,editorData.boxes[b.id])).filter(Boolean);
-for(const m of editorData.models)editedBoxes.push(...modelColliders(m));
+const editedBoxes=editableMapBoxes(M05_EDITOR_BASE,editorData);
 
 export const QUARRY_M05=registerLocalMap({
   id:'quarry-m05',missionId:'m05',name:'Карьер',theme:'desert-village',campaign:true,

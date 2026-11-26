@@ -73,3 +73,14 @@ test('16 bit heightmap round trip preserves terrain within quantization',()=>{
  const image=decodePGM(encodeHeightmap(grid,base,edits,{min:0,max:20}));
  const next=importHeightmap(grid,base,{},image,{min:0,max:20});assert.ok(Math.abs(next[4]-11.125)<.005);assert.equal(Object.keys(next).length,1);
 });
+
+import {dressingBatchName,editableMapBoxes} from '../shared/campaign/m05-editor.js';
+test('baked batch edits transform all matching collider parts, leave unrelated boxes intact',()=>{
+ const props=[{id:'m05-dress-yard-2',x:24,z:-24,detail:false},{id:'m05-dress-yard-3',x:96,z:0,detail:false}];
+ assert.equal(dressingBatchName(props[0]),'m05_set_0_0');
+ const box={id:'m05-dress-yard-2-part-0',x:1,z:0,baseY:0,w:2,d:2,h:2,visualModel:true};
+ const base={props,boxes:[box,{...box,id:'m05-dress-yard-3'}]},d=emptyM05Edits();
+ d.dressingBatches={'m05_set_0_0':{position:[10,0,0],rotation:[0,Math.PI/2,0],scale:2,removed:false}};
+ const result=editableMapBoxes(base,d);assert.ok(Math.abs(result[0].x-10)<1e-6);assert.ok(Math.abs(result[0].z+2)<1e-6);assert.equal(result[0].h,4);assert.equal(result[1],base.boxes[1]);
+ d.dressingBatches['m05_set_0_0'].removed=true;assert.equal(editableMapBoxes(base,d).length,1);
+});
