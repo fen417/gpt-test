@@ -1,0 +1,22 @@
+name: World editor validation
+on:
+  push:
+    branches: ['editor/world-editor']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --check tools/world-editor/editor.js && node --check scripts/world-editor-server.mjs
+      - run: node --test test/m05-editor.test.js test/mission5.test.js
+      - run: npm run build
+        env:
+          S09_PBR_SKIP: '1'
+      - run: test ! -f dist/world-editor.html

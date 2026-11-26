@@ -71,14 +71,14 @@ function list(){const query=$('search').value.toLowerCase(),filter=$('filter').v
  const b=document.createElement('button');b.className='item'+(selected===key?' selected':'')+(e.locked?' locked':'');b.textContent=({model:'◆ ',box:'▣ ',site:'⚑ ',route:'• ',reference:'🔒 '}[e.kind]??'')+e.name;b.onclick=()=>select(key);b.ondblclick=focus;t.append(b);}
 }
 function select(key){selected=key;gizmo.detach();selectionBox.visible=false;const e=entries.get(key);if(e){
- if(!e.locked&&mode==='select')gizmo.attach(e.node);
+ if(!e.locked&&mode==='select'){if(e.kind==='site'||e.kind==='route')gizmo.setMode('translate');gizmo.attach(e.node);}
  if(e.kind==='model'||e.kind==='box'||e.kind==='reference'){selectionBox.setFromObject(e.node);selectionBox.visible=true;}
  }list();inspect();}
 function focus(){const e=entries.get(selected);if(!e)return;const pos=e.node.getWorldPosition(new THREE.Vector3());const size=new THREE.Box3().setFromObject(e.node).getSize(new THREE.Vector3()).length();orbit.target.copy(pos);game.camera.position.copy(pos).add(new THREE.Vector3(1,.75,1).normalize().multiplyScalar(Math.max(5,size*1.6)));orbit.update();}
 function storeTransform(e){
  const o=e.node,p=o.position.toArray(),r=[o.rotation.x,o.rotation.y,o.rotation.z];
  if(e.kind==='model'){const m=modelBy(e.id);m.position=p;m.rotation=r;m.scale=o.scale.toArray();}
- if(e.kind==='box'){const b=baseBox(e.id);data.boxes[e.id]={position:p,rotation:r,size:[b.w*o.scale.x,b.h*o.scale.y,b.d*o.scale.z]};}
+ if(e.kind==='box'){const b=baseBox(e.id);data.boxes[e.id]={position:p,rotation:r,size:[b.w*Math.max(.001,o.scale.x),b.h*Math.max(.001,o.scale.y),b.d*Math.max(.001,o.scale.z)]};}
  if(e.kind==='site')data.sites[e.id]=p;
  if(e.kind==='route'){const route=clone(data[e.type][e.id]??base[e.type][e.id]);route[e.index]=e.type==='routes'?[p[0],p[2],p[1]]:[p[0],p[2]];data[e.type][e.id]=route;}
 }
@@ -173,7 +173,7 @@ function setMode(next){mode=next;for(const [id,m] of [['selectMode','select'],['
 function sculptAt(p){const radius=Math.max(4,Math.min(150,Number($('radius').value)||16)),strength=Math.max(.01,Math.min(5,Number($('strength').value)||1));if(mode==='paint'){data.paint.push([p.x,p.z,radius,radius,0,$('paintColor').value]);}else data.terrain=applySculpt(M05_GRID,M05_BASE_HEIGHTS,data.terrain,{x:p.x,z:p.z,radius,strength,mode:$('brush').value,target:Number($('target').value)||0,hardness:Number($('hardness').value)});refreshTerrain();}
 function pick(e){const rect=canvas.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);ray.setFromCamera(pointer,game.camera);
  const visible= [...entries.entries()].filter(([,e])=>e.node.visible&&((e.kind!=='site'&&e.kind!=='route')||$('markers').checked));const nodes=visible.map(([,e])=>e.node),hits=ray.intersectObjects(nodes,true);for(const hit of hits){let n=hit.object;while(n){const entry=visible.find(([,e])=>e.node===n);if(entry){select(entry[0]);return;}n=n.parent;}}select(null);}
-function configureQuality(){activeQuality=$('quality').value;game.quality=baseGraphicsQuality(activeQuality);game.graphicsEffects=graphicsEffects(activeQuality);game.geometryQuality=geometryQuality(activeQuality);game.configureEffects();game.applyQuality(game.quality!=='high');game.postPass.setImage(game.graphicsEffects,gradeParameters(game.graphicsEffects,game.map));lighting();}
+function configureQuality(){activeQuality=$('quality').value;game.quality=baseGraphicsQuality(activeQuality);game.graphicsEffects=graphicsEffects(activeQuality);game.geometryQuality=geometryQuality(activeQuality);game.configureEffects();game.applyQuality(game.quality!=='high');game.postPass.setImage(game.graphicsEffects,gradeParameters(game.graphicsEffects,game.map));game.refreshSurfaceEnhancements();lighting();}
 function tick(t){requestAnimationFrame(tick);if(!game||!root)return;const dt=Math.min(.05,(t-(tick.last??t))/1000);tick.last=t;game.clock+=dt;
  if(keys.has('rightMouse')){const speed=(keys.has('ShiftLeft')?55:15)*dt,dir=new THREE.Vector3();game.camera.getWorldDirection(dir);const side=new THREE.Vector3().crossVectors(dir,game.camera.up).normalize(),step=new THREE.Vector3();if(keys.has('KeyW'))step.add(dir);if(keys.has('KeyS'))step.sub(dir);if(keys.has('KeyA'))step.sub(side);if(keys.has('KeyD'))step.add(side);if(keys.has('Space'))step.y++;if(keys.has('ControlLeft'))step.y--;if(step.lengthSq()){step.normalize().multiplyScalar(speed);game.camera.position.add(step);orbit.target.add(step);}}
  orbit.update();game.updateSunShadow(game.camera.position.x,game.camera.position.z);
@@ -187,7 +187,7 @@ async function init(){
  game=new GameRenderer(canvas,{onError:e=>status(String(e))});game.presentingCampaign=true;game.setMap(QUARRY_M05.id);
  await game.surfaces.ready;
  // The game builder is used directly, without the irreversible runtime static merge.
- game.staticRoot.visible=false;root=new THREE.Group();root.name='M05 editable world';game.worldRoot.add(root);
+ game.staticRoot.removeFromParent();root=new THREE.Group();root.name='M05 editable world';game.worldRoot.add(root);
  const rawMap={...QUARRY_M05,terrain:liveTerrain,boxes:base.boxes,surfacePatches:QUARRY_M05.surfacePatches};buildQuarryMissionScene(game,rawMap,root);
  game.staticRoot=root;game.mapDetails=[];game.weapon.visible=false;
  root.traverse(o=>{if(o.name.startsWith('m05-terrain-'))terrainMeshes.push(o);else if(o.isMesh){boxMeshes.set(o.name,o);if(!editableBox(baseBox(o.name)??{id:''}))entries.set('reference:box:'+o.name,{kind:'reference',id:o.name,name:o.name,node:o,locked:true});}});

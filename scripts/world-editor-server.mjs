@@ -2,14 +2,14 @@
 import {readFile,writeFile,mkdir,rename,realpath,stat} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {join} from 'node:path';
+import {join,relative,isAbsolute,sep} from 'node:path';
 import {validateM05Edits} from '../shared/campaign/m05-editor.js';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const file=join(root,'shared/campaign/m05-editor-data.json'),assets=join(root,'public/world-editor-assets'),backups=join(root,'.perf-local/world-editor-backups');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const reply=(res,status,data)=>{res.statusCode=status;res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify(data));};
 async function body(req,max){const parts=[];let n=0;for await(const p of req){n+=p.length;if(n>max)throw Error('Слишком большой файл');parts.push(p);}return Buffer.concat(parts);}
-async function safeDir(path){await mkdir(path,{recursive:true});const actual=await realpath(path),base=await realpath(root);if(!actual.startsWith(base+(/\\/.test(base)?'\\':'/')))throw Error('Папка вне проекта');}
+async function safeDir(path){await mkdir(path,{recursive:true});const actual=await realpath(path),base=await realpath(root);const rel=relative(base,actual);if(!rel||rel==='..'||rel.startsWith('..'+sep)||isAbsolute(rel))throw Error('Папка вне проекта');}
 function validateGlb(b){
   if(b.length<20||b.readUInt32LE(0)!==0x46546c67||b.readUInt32LE(4)!==2||b.readUInt32LE(8)!==b.length||b.readUInt32LE(16)!==0x4e4f534a)throw Error('Требуется корректный GLB 2.0');
   const len=b.readUInt32LE(12);if(len> b.length-20)throw Error('Повреждён GLB');
