@@ -1,6 +1,7 @@
 import {registerLocalMap} from '../world.js';
 import {terrainHeightfield} from '../terrain-heightfield.js';
 import {buildM05Dressing,M05_SURFACE_PATCHES} from './quarry-m05-dressing.js';
+import {M05_ROCKS} from './quarry-m05-rocks.js';
 
 const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 const mix=(a,b,t)=>a+(b-a)*t;
@@ -60,7 +61,7 @@ const roads=paths.map(({id,a,b,dx,dz,length,w})=>({id,x:(a[0]+b[0])/2,z:(a[1]+b[
 export const M05_SITES=Object.fromEntries(Object.entries({
   camp:[-247,-228],reunion:[-238,-221],brief:[-221,-218],campExit:[-205,-177],overlook:[-155,-145],
   tunnel:[-92,-7],workerDoor:[-72,2],panel:[-45,-8],worksExit:[-15,0],mount:[60,-68],mountExit:[60,-72],mountEntry:[53,-74],
-  gate:[145,5],gatePanel:[132,5],bend:[134,54],crusher:[36,65],armorMeet:[-34,134],martenCover:[-52,146],
+  gate:[145,5],gatePanel:[132,3.85],bend:[134,54],crusher:[36,65],armorMeet:[-34,134],martenCover:[-52,146],
   tankYard:[-36,135],blast:[-112,148],fuelA:[-69,174],fuelB:[-90,157],fuelC:[-103,181],
   fuelGate:[-90,165],fuelRelease:[-84,169],fuelCPost:[-98,176],withdraw:[153,215],
   finale:[170,215],storm:[614,400],
@@ -147,6 +148,32 @@ const convoyLanes=Object.entries(M05_FUEL_ROUTES).flatMap(([id,route])=>{
 });
 const {props,solids}=buildM05Dressing(terrain,[...roads,...convoyLanes],boxes,M05_SITES);
 boxes.push(...solids);
+const modeled={visualModel:true};
+for(const [i,x,z] of [[0,-260,-215],[1,-248,-198],[2,-225,-202]]){
+  const baseY=terrain.heightAt(x,z);
+  for(const side of [-1,1])part(`canvas-side-${i}-${side}`,x+side*3.75,z,.08,6.3,2,sand,{...modeled,baseY});
+  part(`canvas-back-${i}`,x,z-3.15,7.5,.08,2,sand,{...modeled,baseY});
+}
+for(const [i,[x,z,w,d,h]] of M05_ROCKS.entries()){
+  const baseY=terrain.heightAt(x,z)-.09;
+  for(const [layer,factor,bottom,span] of [[0,1,0,.58],[1,.55,.58,.42]]){
+    part(`limestone-${i}-${layer}`,x,z,w*factor,d*factor,h*span,concrete,{...modeled,baseY:baseY+h*bottom});
+  }
+}
+for(const [i,[x,z]] of [[-123,152],[-94,145],[-99,170]].entries())
+  part('pump-skid-'+i,x,z,1.95,1.26,1.11,iron,{...modeled,baseY:2});
+for(const [i,x] of [-121,-112,-102].entries()){
+  const z=[130,148,124][i],end=z+3.9;
+  part('feed-branch-'+i,x,(end+120)/2,.38,end-120,.37,iron,{...modeled,baseY:2.33});
+}
+part('pipe-header',-113,119.8,32,.69,.68,iron,{...modeled,baseY:2.2});
+part('belt-trough',-42,5.3,36,4.65,.5,iron,{...modeled,baseY:15.25,overhead:true});
+for(let i=0;i<8;i++)for(const z of [3.2,7.4])
+  part(`belt-leg-${i}-${z}`,-58+i*4.6,z,.24,.24,3.4,iron,{...modeled,baseY:12.1});
+for(const id of ['panel','gatePanel','fuelRelease']){
+  const {x,z}=M05_SITES[id];
+  part(`control-${id}`,x,z+.74,.61,.42,1.25,iron,modeled);
+}
 export const M05_DRESSING=props;
 
 export const QUARRY_M05=registerLocalMap({

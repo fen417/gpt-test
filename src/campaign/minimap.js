@@ -89,11 +89,12 @@ export class InfantryMinimap{
   dispose(){this.canvas.remove();}
 }
 
-export function drawArmoredMinimap(canvas,renderer,state,vehicle){
+export function drawArmoredMinimap(canvas,renderer,state,vehicle,radius=state.campaign.phase==='village'?220:430){
   const ctx=canvas.getContext('2d'),m=state.campaign,size=canvas.width,half=size/2;
   ctx.clearRect(0,0,size,size);ctx.save();ctx.beginPath();ctx.arc(half,half,half-2,0,Math.PI*2);ctx.clip();
-  const {x,z,inView}=chart(ctx,renderer,vehicle,m.phase==='village'?220:430,size);
-  const visible=new Set(m.visibleEnemies);
+  const {x,z,inView}=chart(ctx,renderer,vehicle,radius,size);
+  const visible=new Set(m.visibleEnemies??[...state.vehicles,...state.players]
+    .filter(item=>item.team!==vehicle.team&&inView(item.x,item.z)&&enemyVisible(renderer,item)).map(item=>item.id));
   for(const t of state.vehicles){
     if(t.id===vehicle.id||t.hp<=0||!inView(t.x,t.z)||t.team!==vehicle.team&&!visible.has(t.id))continue;
     heading(ctx,x(t.x),z(t.z),t.yaw,t.team===vehicle.team?'#9be9ca':'#f09c77',5);

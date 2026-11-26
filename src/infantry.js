@@ -350,6 +350,15 @@ export function createInfantry({ template, gun, kit }, player) {
     lastShot: player.shotSeq, corrections: new Map(), correctionStorage:new Map(), hipsStorage:new THREE.Vector3(), contactWeights:[0,0], gaitNames:new Set(),
     support: new THREE.Vector3(), muzzle: new THREE.Vector3(),
     rightHand: bindHand(bones, 'Right'), leftHand: bindHand(bones, 'Left'),
+    poseContact(side, frame, palm, weight){
+      const hand=side===1?this.rightHand:this.leftHand;
+      gripHand(this,hand,palm,side===1?rightGrip:leftGrip,side,weight,frame);
+      closeFingers(this,hand,weight*.7);
+    },
+    poseJoint(bone,pitch,yaw,roll){
+      saveBoneRotation(this,bone);bone.rotateX(pitch);bone.rotateY(yaw);bone.rotateZ(roll);
+      bone.updateWorldMatrix(false,true);
+    },
   };
   setInfantryWeapon(rig, gun, player.weaponId);
   return rig;

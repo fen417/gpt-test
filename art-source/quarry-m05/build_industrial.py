@@ -111,7 +111,9 @@ for b in (box_info for box_info in layout['boxes'] if box_info['id'].startswith(
               (x-3.75,y+2,z-3.15),(x+3.75,y+2,z-3.15),(x+3.75,y+2,z+3.15),(x-3.75,y+2,z+3.15),
               (x,y+3.1,z-3.15),(x,y+3.1,z+3.15)]
     mesh=bpy.data.meshes.new('Canvas shelter')
-    mesh.from_pydata([coords(p) for p in vertices],[],[(0,4,7,3),(1,2,6,5),(4,8,9,7),(8,5,6,9),(4,5,8),(7,9,6),(0,1,5,4)])
+    faces=[(0,4,7,3),(1,2,6,5),(4,8,9,7),(8,5,6,9),(4,5,8),(7,9,6),(0,1,5,4)]
+    mesh.from_pydata([coords(p) for p in vertices],[],[face[::-1] for face in faces])
+    mesh.update()
     obj=bpy.data.objects.new('Canvas shelter',mesh)
     bpy.context.collection.objects.link(obj)
     obj.data.materials.append(canvas)
@@ -124,9 +126,6 @@ for x,z in [(-250,-221),(-241,-220),(-224,-218),(-233,-204),(-255,-207)]:
     for j in range(3):
         box(camp,'Supply can',(x+j*.36,y+.27,z),(.29,.53,.4),yellow if j==2 else steel)
         box(camp,'Supply can handle',(x+j*.36,y+.55,z),(.14,.055,.26),steel)
-box(camp,'Folded field map',(-221,32.97,-217),(1.16,.025,.72),white,.005)
-for i in range(5):
-    box(camp,'Map route',(-221.45+i*.19,32.986,-217.22+i*.092),(.13,.012,.045),red,.002)
 parent_group('camp_dressing',camp)
 
 works=[]
@@ -193,27 +192,40 @@ box(gun_top,'Front sight',(0,.084,-.78),(.045,.095,.045),steel)
 parent_group('gun_top',gun_top)
 
 truck=[]
+truck_lights=[]
 box(truck,'Chassis',(0,.68,.1),(2.18,.31,4.84),steel)
-box(truck,'Tanker cab',(0,1.42,-1.5),(2.16,1.58,1.44),tan,.08)
+box(truck,'Cab floor',(0,.83,-1.5),(2.16,.39,1.44),tan,.06)
+box(truck,'Cab roof',(0,2.19,-1.5),(2.16,.15,1.44),tan,.07)
+box(truck,'Cab right panel',(.89,1.43,-1.5),(.38,1.18,1.44),tan,.055)
+for z in (-2.14,-.81):
+    box(truck,'Cab bulkhead',(0,1.47,z),(2.16,1.32,.18),tan,.03)
+box(truck,'Cab bench',(-.25,1.04,-1.27),(1.3,.19,.47),rubber,.035)
 box(truck,'Cab windscreen',(0,1.91,-2.231),(1.82,.44,.028),glass,.01)
 box(truck,'Bumper',(0,.68,-2.29),(2.28,.22,.24),steel)
 box(truck,'Radiator grille',(0,1.23,-2.237),(1.03,.45,.035),rubber)
 for x in (-.82,.82):
-    box(truck,'Headlight',(x,1.19,-2.26),(.31,.24,.08),lamp)
-for x in (-1.085,1.085):
+    box(truck,'Headlight lens',(x,1.19,-2.26),(.31,.24,.08),glass)
+    box(truck_lights,'Running headlight',(x,1.19,-2.306),(.27,.2,.012),lamp,.017)
+for x in (1.085,):
     box(truck,'Door window',(x,1.88,-1.56),(.027,.49,.94),glass,.014)
     box(truck,'Door handle',(x,1.45,-1.24),(.065,.06,.22),steel)
-for z in (-1.56,.85,1.68):
+for axle,z in enumerate((-1.56,.85,1.68)):
+    wheels=[]
     for x in (-1,1):
-        cylinder(truck,'Wheel',(x-.19,.49,z),(x+.19,.49,z),.49,rubber,16)
+        cylinder(wheels,'Wheel',(x-.19,0,0),(x+.19,0,0),.49,rubber,20)
         outside=x+math.copysign(.194,x)
-        cylinder(truck,'Rim',(outside,.49,z),(outside+math.copysign(.025,x),.49,z),.265,steel,12)
+        cylinder(wheels,'Rim',(outside,0,0),(outside+math.copysign(.025,x),0,0),.265,steel,16)
+        for bolt in range(8):
+            a=math.tau*bolt/8
+            box(wheels,'Wheel stud',(outside+math.copysign(.03,x),.14*math.cos(a),.14*math.sin(a)),(.024,.031,.031),sand,.004)
+    parent_group(f'fuel_axle_{axle}',wheels)
 cylinder(truck,'Fuel cylinder',(0,1.56,-.71),(0,1.56,2.17),.94,tan,20)
 for z in (-.52,.6,1.96):
     cylinder(truck,'Tank strap',(0,1.56,z),(0,1.56,z+.09),.949,steel,20)
 cylinder(truck,'Fuel cap',(0,2.48,.44),(0,2.59,.44),.24,steel,12)
 box(truck,'Rear plate',(0,1.12,2.365),(1.7,.31,.16),red)
 parent_group('fuel_truck',truck)
+parent_group('fuel_running_lights',truck_lights)
 
 bpy.ops.object.select_all(action='DESELECT')
 # External conveyor, fuel pipes and service gallery.
@@ -320,6 +332,7 @@ rng=random.Random(90527)
 limestone=[material('Calcareous strata '+str(i),p) for i,p in
            enumerate(('77614c','9c7f61','bea485','8f755b','ad8d6b'))]
 rocks=[]
+rock_colliders=[]
 for cx,cz,clusters,radius in [(-167,-126,9,21),(-105,-29,10,17),(-183,-49,12,30),
                                (100,-103,9,21),(176,-53,10,22),(202,48,15,34),
                                (83,119,12,32),(-130,176,10,26),(-210,78,12,32),
@@ -336,6 +349,8 @@ for cx,cz,clusters,radius in [(-167,-126,9,21),(-105,-29,10,17),(-183,-49,12,30)
         positions=[]
         rx,rz,height=rng.uniform(.55,4.7),rng.uniform(.6,4.0),rng.uniform(.43,3.35)
         azimuth=rng.uniform(0,math.tau)
+        if -39 < x < -38 and 207.8 < z < 208.4:
+            z=215.75  # Clear the bend used by the third tanker.
         for layer,mult in enumerate((.90,1,.75,.23)):
             for j in range(7):
                 a=j*math.tau/7+azimuth
@@ -353,6 +368,8 @@ for cx,cz,clusters,radius in [(-167,-126,9,21),(-105,-29,10,17),(-183,-49,12,30)
         for mat in limestone:mesh.materials.append(mat)
         for i,face in enumerate(mesh.polygons):face.material_index=(i//7+rng.randrange(2)+y_index)%len(limestone)
         rocks.append(obj)
+        if height>=.73:
+            rock_colliders.append([round(value,3) for value in (x,z,rx*1.43,rz*1.43,height*.76)])
 rock_points = [(obj['terrainX'],obj['terrainZ']) for obj in rocks]
 rock_heights = json.loads(subprocess.check_output(
     ['node','--input-type=module','-e',
@@ -369,6 +386,11 @@ for i in range(0,len(rocks),12):
     bpy.context.view_layer.objects.active=rocks[i]
     bpy.ops.object.join()
     bpy.context.object.name='quarry_rocks_'+str(i//12)
+
+collider_output=ROOT/'shared/campaign/quarry-m05-rocks.js'
+collider_output.write_text('// Exported by art-source/quarry-m05/build_industrial.py.\nexport const M05_ROCKS=[\n'+
+                           ''.join('  '+json.dumps(row,separators=(',', ':'))+',\n' for row in rock_colliders)+'];\n',
+                           encoding='utf-8')
 
 wrench=[]
 box(wrench,'Forged tool handle',(0,-.13,0),(.028,.29,.017),steel,.005)
@@ -391,6 +413,42 @@ box(door,'Pressed truck door',(0,.61,.46),(.055,1.12,.89),tan,.016)
 box(door,'Truck door window',(-.035,.89,.46),(.026,.43,.65),glass,.009)
 box(door,'Outside latch',(-.063,.61,.72),(.043,.045,.15),steel,.009)
 parent_group('fuel_cab_door',door)
+
+panel=[]
+box(panel,'Drive control pedestal',(0,.44,.12),(.42,.87,.4),steel,.04)
+box(panel,'Drive control enclosure',(0,1.07,.13),(.72,.42,.45),tan,.033)
+box(panel,'Recessed face',(0,1.07,-.105),(.58,.31,.04),rubber,.01)
+for i,x in enumerate((-.2,-.13,-.06)):
+    box(panel,'Pilot light',(x,1.16,-.133),(.034,.031,.018),lamp if i==0 else red,.005)
+parent_group('drive_panel',panel)
+lid=[]
+box(lid,'Hinged cover',(0,-.19,0),(.73,.39,.04),steel,.025)
+box(lid,'Cover pull',(.22,-.31,-.044),(.12,.032,.046),sand,.007)
+parent_group('drive_panel_lid',lid)
+lever=[]
+beam(lever,'Selector lever',(0,0,0),(0,.13,-.1),.029,steel)
+box(lever,'Selector handle',(0,.14,-.1),(.094,.049,.043),red,.01)
+parent_group('drive_panel_lever',lever)
+
+map_sheet=[]
+box(map_sheet,'Creased field map',(0,0,0),(1.1,.011,.68),white,.002)
+for i in range(4):
+    beam(map_sheet,'Contour',(-.43,.011,-.24+i*.14),(.46,.011,-.18+i*.128),.010,canvas)
+for a,b in [((-.44,.017,-.18),(-.15,.017,.16)),((-.15,.017,.16),(.19,.017,.1)),((.19,.017,.1),(.38,.017,-.18))]:
+    beam(map_sheet,'Marked route',a,b,.014,red)
+parent_group('briefing_map',map_sheet)
+
+radio=[]
+box(radio,'Handset body',(0,.062,0),(.055,.137,.045),rubber,.012)
+box(radio,'Transmit paddle',(.028,.065,-.002),(.009,.045,.035),steel,.005)
+for y in (.097,.108,.119):
+    box(radio,'Microphone grille',(0,y,-.026),(.034,.004,.006),steel,.001)
+parent_group('radio_handset',radio)
+
+bandage=[]
+cylinder(bandage,'Field dressing roll',(0,-.019,0),(0,.019,0),.031,white,16)
+box(bandage,'Gauze end',(0,.015,-.054),(.05,.007,.074),white,.002)
+parent_group('field_dressing',bandage)
 
 bpy.context.preferences.filepaths.save_version = 0
 bpy.ops.wm.save_as_mainfile(filepath=str(SOURCE/'industrial.blend'))

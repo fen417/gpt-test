@@ -9,7 +9,7 @@ const reconstruct = `
 uniform sampler2D sceneDepth;
 uniform mat4 projection, inverseProjection;
 uniform vec2 depthSize;
-float readDepth(vec2 uv){return texture2D(sceneDepth,clamp(uv,vec2(0.),vec2(1.))).r;}
+float readDepth(vec2 uv){return textureLod(sceneDepth,clamp(uv,vec2(0.),vec2(1.)),0.).r;}
 vec3 viewPosition(vec2 uv,float depth){
   vec4 p=inverseProjection*vec4(uv*2.-1.,depth*2.-1.,1.);
   return p.xyz/p.w;
@@ -85,7 +85,7 @@ void main(){
   ${temporal?`bool reuse=false;
   vec4 history=vec4(0.);
   if(historyReuse>.5&&range>5.&&mod(floor(gl_FragCoord.x)+floor(gl_FragCoord.y),2.)==historyPhase){
-    history=texture2D(historyMask,vUv);
+    history=textureLod(historyMask,vUv,0.);
     float tolerance=max(.035,range*.0015);
     reuse=abs(history.a-range)<tolerance;
     // Reject nearby disocclusion, even if the centre pixel has unchanged depth.
@@ -93,7 +93,7 @@ void main(){
       vec2 offset=k<2?vec2(float(k*2-1),0.):vec2(0.,float((k-2)*2-1));
       vec2 at=clamp(vUv+offset*effectPixel,.5*effectPixel,1.-.5*effectPixel);
       float current=-viewAt(at).z;
-      if(abs(texture2D(historyMask,at).a-current)>max(.035,current*.0015)){reuse=false;break;}
+      if(abs(textureLod(historyMask,at,0.).a-current)>max(.035,current*.0015)){reuse=false;break;}
     }
   }
   bool reuseAO=reuse&&steps.x>12.;bool reuseShaft=reuse&&steps.z>=7.;
@@ -241,7 +241,7 @@ uniform sampler2D depthFine,depthCoarse;
 bool emptyDepthBlock(vec2 at,vec2 endAt,float farRange,float blockSize,sampler2D hierarchy){
   vec2 a=floor(at*depthSize/blockSize),b=floor(endAt*depthSize/blockSize);
   if(any(notEqual(a,b)))return false;
-  float nearest=texture2D(hierarchy,(a+.5)/ceil(depthSize/blockSize)).r;
+  float nearest=textureLod(hierarchy,(a+.5)/ceil(depthSize/blockSize),0.).r;
   return farRange<nearest-max(.02,nearest*.0015);
 }`;
 const reflection = (receivers,hierarchy=false) => `

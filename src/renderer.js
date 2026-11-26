@@ -1348,6 +1348,7 @@ export class GameRenderer {
       highVehicleDetail: this.geometryQuality === 'high',
     };
     let mounted = null;
+    const quarryCamera=state.campaign?.missionId==='m05'&&state.campaign.cutscene?this.camera.position:null;
     for (const vehicle of state.vehicles ?? []) {
       if(vehicle.type==='tank'&&!tankAssetsReady())continue;
       const model=lightVehicleModels[vehicle.type];
@@ -1359,7 +1360,8 @@ export class GameRenderer {
       const distance = player ? Math.hypot(vehicle.x - player.x,vehicle.type===BLACK_HAWK?vehicle.y-player.y:0,vehicle.z - player.z) : 0;
       const drawDistance=vehicle.type===BLACK_HAWK?(this.lowQuality?420:680):
         vehicle.type==='tank'?(state.campaign?.missionId==='m02'?1000:this.lowQuality?320:600):190;
-      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > drawDistance)) {
+      if ((vehicle.hp <= 0 && vehicle.wreckTime <= 0) || (!local && distance > drawDistance&&
+        (!quarryCamera||Math.hypot(vehicle.x-quarryCamera.x,vehicle.z-quarryCamera.z)>drawDistance))) {
         if (rig) {
           rig.group.visible = false;
           rig.initialized = false;
@@ -1476,7 +1478,7 @@ export class GameRenderer {
     const viewScale = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) /
       Math.tan(THREE.MathUtils.degToRad(85 / 2));
     const m03Finale=state.campaign?.missionId==='m03'&&state.campaign.cutscene?.id==='finale';
-    const quarryCinematic=state.campaign?.missionId==='m05'&&state.campaign.cutscene;
+    const quarryCinematic=state.campaign?.missionId==='m05'&&(state.campaign.cutscene||state.campaign.mounted);
     for (const player of state.players) {
       if(m03Finale&&player.inExtractionCabin)continue;
       if (player.id === localId&&!m03Finale&&!quarryCinematic&&!(this.tankThirdPerson&&player.vehicleSeat===0&&
@@ -1624,12 +1626,12 @@ export class GameRenderer {
       const poseFlags=(player.grounded===false?1:0)|(player.sliding?2:0)|(player.prone?4:0)|(player.downed?8:0)|(player.aim?16:0)|(player.reloading?32:0)|(player.crouch||player.crouching?64:0);
       const urgent=poseFlags!==soldier.animationFlags||player.shotSeq!==soldier.animationShot||player.gadgetAction!==soldier.animationGadget;
       soldier.animationDt = mustReset ? dt : (soldier.animationDt || 0) + dt;
-      if (mustReset || externalScene || this.scoped || urgent || soldier.animationDt >= (soldier.animationThreshold??interval)) {
+      if (mustReset || externalScene || this.scoped || urgent || player.campaignAction || soldier.animationDt >= (soldier.animationThreshold??interval)) {
         soldier.animationFlags=poseFlags;soldier.animationShot=player.shotSeq;soldier.animationGadget=player.gadgetAction;
         soldier.animationThreshold=mustReset?interval*(.5+.5*soldier.animationPhase):interval;
         const action=player.campaignAction;
         if(action&&state.time-action.at<action.duration&&soldier.campaignActionAt!==action.at){
-          infantryAction(soldier,action.key);
+          if(action.key==='revive_kneel'||action.key==='bandage-medic')infantryAction(soldier,'revive_kneel');
           soldier.campaignActionAt=action.at;
         }
         updateInfantry(soldier, player, soldier.animationDt, mustReset, this.map.terrain);
@@ -3054,6 +3056,7 @@ export class GameRenderer {
     this.processEvents(state, localId); this.syncEquipment(state,localId,dt); this.updateEffects(dt,true);
     this.wreckFire?.update(this.camera,this.clock,this.lowQuality||this.integratedGpu);
     this.parachutes.update(this.worldRoot,state.players,dt,this.lowQuality);
+    view.campaignRender?.pose?.(this,state);
     this.atmosphere.sky.position.copy(this.camera.position);
     if(view.warming)this.drawWarmupScene();else this.drawScene();
   }

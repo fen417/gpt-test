@@ -27,10 +27,10 @@ float s09DirectionalShadow(sampler2D shadowMap, vec2 size, float intensity, floa
   for(int i=0;i<${p.blockerTaps};i++){
     vec2 offset=searchDisk[i]*${p.searchRadius};
     vec2 sampleUV=point.xy+offset*texel;
-    float depth=unpackRGBAToDepth(texture2D(shadowMap,sampleUV))-dot(slope,offset);
+    float depth=unpackRGBAToDepth(textureLod(shadowMap,sampleUV,0.))-dot(slope,offset);
     if(depth<point.z-.45*depthPerTexel){average+=depth;blockers+=1.;}
   }
-  float center=unpackRGBAToDepth(texture2D(shadowMap,point.xy));
+  float center=unpackRGBAToDepth(textureLod(shadowMap,point.xy,0.));
   if(center<point.z-.45*depthPerTexel){average+=center;blockers+=1.;}
   if(blockers==0.)return 1.;
   float penumbra=clamp((point.z-average/blockers)*spread,${p.minRadius},${p.maxRadius}.);
@@ -82,7 +82,8 @@ export class WebGlPenumbra {
         .replace('#include <lights_fragment_begin>',ShaderChunk.lights_fragment_begin)
         .replace(/getShadow\(\s*directionalShadowMap\[/g,'s09DirectionalShadow( directionalShadowMap[')
         .replace('#include <shadowmap_pars_fragment>',
-          ShaderChunk.shadowmap_pars_fragment.replace('float getShadow(',softShadow+'\nfloat getShadow('));
+          ShaderChunk.shadowmap_pars_fragment.replace('texture2D( depths, uv )','textureLod( depths, uv, 0. )')
+            .replace('float getShadow(',softShadow+'\nfloat getShadow('));
     });
   }
 }

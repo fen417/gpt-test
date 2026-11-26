@@ -6,11 +6,12 @@ import {M05_GATES,M05_SITES as sites,QUARRY_M05} from '../../shared/campaign/qua
 import {CampaignAudio} from './audio.js';
 import {ColumnMusic} from './column-music.js';
 import {CampaignFire} from './fire.js';
-import {cinematicCameraPose} from './camera.js';
+import {cameraHasClearance,cameraSegmentClear,cinematicCameraPose} from './camera.js';
 import {placeCampaignMarker} from './markers.js';
-import {InfantryMinimap} from './minimap.js';
+import {drawArmoredMinimap,InfantryMinimap} from './minimap.js';
 import {buildQuarryMissionScene} from './quarry-m05-scene.js';
 import {QuarryAmbience} from './quarry-m05-audio.js';
+import {QuarryActing} from './quarry-m05-acting.js';
 import './mission5.css';
 
 QUARRY_M05.buildScene=buildQuarryMissionScene;
@@ -27,6 +28,7 @@ export async function loadQuarryDressing(){
 const orders={F1:'follow',F2:'hold',KeyQ:'assist'};
 const names={waiting:'ожидает',moving:'движется',saved:'спасён',lost:'потерян'};
 const scanLabels={fuel:'Топливный узел',works:'Дробильный цех',gate:'Нижние ворота'};
+const {lerp,smoothstep}=THREE.MathUtils;
 const sceneTitles={C1:'Окрестности карьера. Несколько часов после Нахара',C2:'Ирвин Вос · «Сокол-7»',C3:'Ян Мартен · Топливный двор'};
 const groupTracks={camp:'reunion',overlook:'reunion',works:'underground',cover:'cover',armor:'breakthrough',fuel:'breakthrough',finale:'final'};
 const mix=(state)=>{
@@ -51,7 +53,7 @@ export class Mission5Presentation{
       <div class="m05-trucks" hidden><b>ЗАПРАВЩИКИ</b><span></span><span></span><span></span></div>
       <div class="campaign-injury" hidden><b>ТЯЖЁЛОЕ РАНЕНИЕ</b><strong></strong><span></span></div>
       <div class="m05-choices" hidden><div><kbd>1</kbd> Думал, что не встретимся</div><div><kbd>2</kbd> Сколько осталось машин?</div><div><kbd>3</kbd> Поговорим после задания</div></div>
-      <div class="campaign-cutscene" hidden><span></span><button type="button" class="m05-skip">Пропустить · Enter</button></div>
+    <div class="campaign-cutscene" hidden><span></span><button type="button" class="m05-skip">Пропустить · удерживайте Enter</button></div>
       <div class="m05-fade" hidden></div>
       <section class="campaign-ending campaign-card hidden"><small></small><h2>Карьер</h2><p></p><div class="campaign-final-stats"></div>
         <button type="button" class="campaign-retry">С контрольной точки</button><button type="button" class="campaign-exit">К экрану кампании</button></section>`;
@@ -72,19 +74,20 @@ export class Mission5Presentation{
     this.top.rotation.order='YXZ';
     const tanker=quarryDressing.getObjectByName('fuel_truck');
     const door=quarryDressing.getObjectByName('fuel_cab_door');
+    const lights=quarryDressing.getObjectByName('fuel_running_lights');
+    const axles=[-1.56,.85,1.68].map((z,i)=>({z,node:quarryDressing.getObjectByName('fuel_axle_'+i)}));
     this.doors={};
     this.trucks=Object.fromEntries(['A','B','C'].map(id=>{
       const clone=tanker.clone(true);quarryDressing.add(clone);
       if(door){
         const hinge=this.doors[id]=door.clone(true);hinge.position.set(-1.087,.69,-2.0);clone.add(hinge);
       }
+      const lamps=lights.clone(true);lamps.visible=false;clone.add(lamps);
+      for(const {z,node} of axles){const axle=node.clone(true);axle.position.set(0,.49,z);clone.add(axle);}
       return [id,clone];
     }));
-    tanker.removeFromParent();door?.removeFromParent();
-    this.repairTool=quarryDressing.getObjectByName('repair_tool');
-    this.cups=[quarryDressing.getObjectByName('coffee_cup')].filter(Boolean);
-    if(this.cups.length){this.cups.push(this.cups[0].clone(true));quarryDressing.add(this.cups[1]);}
-    for(const prop of [this.repairTool,...this.cups])if(prop)prop.visible=false;
+    tanker.removeFromParent();door?.removeFromParent();lights.removeFromParent();axles.forEach(({node})=>node.removeFromParent());
+    this.acting=new QuarryActing(quarryDressing);
     const materials=new Set(),geometries=new Set();
     quarryDressing.traverse(o=>{
       if(!o.isMesh)return;
@@ -135,13 +138,21 @@ export class Mission5Presentation{
     this.slats.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     quarryDressing.add(this.slats);materials.add(slatMaterial);geometries.add(slatGeometry);
     this.renderHook=(r,s,dt,v)=>this.render(r,s,dt,v);
+    this.renderHook.pose=(r,s)=>this.acting.update(r,s,this.top);
   }
   retry(){this.clearControls();this.session.command({type:'retry'});this.resume();}
   key(event){
     const m=this.session.state?.campaign;
-    if(!m||event.repeat||m.complete)return false;
+    if(!m||m.complete)return false;
+    if(m.cutscene&&event.code==='Enter'){
+      if(!event.repeat){this.skipAt=m.time;this.skipScene=m.cutscene.id;}
+      if(this.skipScene===m.cutscene.id&&m.cutscene.skippable&&m.time-this.skipAt>=.65){
+        this.skipAt=Infinity;this.session.command({type:'skip'});
+      }
+      return true;
+    }
+    if(event.repeat)return false;
     if(m.failed&&event.code==='Enter'){this.retry();return true;}
-    if(m.cutscene&&event.code==='Enter'){this.session.command({type:'skip'});return true;}
     if(m.cutscene||m.failed)return false;
     const choice={Digit1:'return',Digit2:'tanks',Digit3:'later'}[event.code];
     if(m.choice&&choice){this.session.command({type:'answer',value:choice});return true;}
@@ -186,40 +197,32 @@ export class Mission5Presentation{
     const showTitle=scene&&(scene.id==='C1'?scene.elapsed<7:scene.elapsed>this.definition.cinematics[scene.id].duration-4);
     set('.campaign-cutscene > span',showTitle?(sceneTitles[scene.id]??''):'');
     this.$('.m05-skip').hidden=!scene?.skippable||scene.elapsed<3;
-    const fade=this.$('.m05-fade'),fadeAmount=scene?.id==='C1'?Math.max(0,1-scene.elapsed/3):scene?.id==='C4'?
-      THREE.MathUtils.smoothstep(scene.elapsed,84,88):0;
+    const fade=this.$('.m05-fade'),shotTime=scene?.elapsed??0;
+    const fadeAmount=scene?.id==='C1'?1-smoothstep(shotTime,.6,4):scene?.id==='C4'?smoothstep(shotTime,84,88):
+      scene?.id==='C2'?.74*(1-smoothstep(Math.abs(shotTime-11),0,.38)):
+      scene?.id==='C3'?.44*(1-smoothstep(shotTime,0,.55)):0;
     fade.hidden=paused||end||!fadeAmount;fade.style.opacity=String(fadeAmount);
     const ending=this.$('.campaign-ending');ending.classList.toggle('hidden',!end);
     if(end){
       set('.campaign-ending small',m.failed?'МИССИЯ ПРЕРВАНА':'МИССИЯ ВЫПОЛНЕНА');
       set('.campaign-ending p',m.failed??'Бригада получила топливо. Связь по частоте «Маяк» скомпрометирована.');
       const time=m.stats.elapsedSeconds;
-      set('.campaign-final-stats',m.failed?'':`${Math.floor(time/60)}:${String(time%60).padStart(2,'0')} · Устранения ${m.stats.kills} · Потери ${m.stats.losses} · Реанимации ${m.stats.revives}`);
+      const kills=m.stats.killsByHero;
+      set('.campaign-final-stats',m.failed?'':`${Math.floor(time/60)}:${String(time%60).padStart(2,'0')} · Устранения (Мартен / Вос) ${kills.marten} / ${kills.vos} · Потери ${m.stats.losses} · Реанимации ${m.stats.revives}`);
       this.$('.campaign-retry').hidden=!m.failed;
       if(!this.ended){this.clearControls();document.exitPointerLock?.();}
     }
     this.ended=end;
-    if(!paused)this.updateHeldProps(state);
-    this.minimap.update(state,p,{hidden:hidden||Boolean(p.vehicleId),radius:72});
+    const tank=p.vehicleId&&state.vehicles.find(v=>v.id===p.vehicleId&&v.type==='tank');
+    if(tank&&!hidden){
+      this.minimap.canvas.hidden=false;
+      if(performance.now()>=(this.minimap.nextDraw??0)){
+        this.minimap.nextDraw=performance.now()+140;
+        drawArmoredMinimap(this.minimap.canvas,this.renderer,state,tank,200);
+      }
+    }else this.minimap.update(state,p,{hidden:hidden||Boolean(p.vehicleId),radius:72});
     this.voice.update(state,this.locale,paused||end,this.renderer);
     this.score.update(state,paused||end);this.ambience.update(m,this.renderer.camera,this.renderer.lowQuality,paused||end);
-  }
-  updateHeldProps(state){
-    const scene=state.campaign.cutscene;
-    const place=(prop,id,side,visible)=>{
-      if(!prop)return;
-      const actor=visible&&state.players.find(p=>p.actorId===id&&p.alive);
-      const rig=actor&&this.renderer.soldiers.get(actor.id),hand=rig?.bones?.[side+'Hand'];
-      prop.visible=Boolean(hand&&rig.group.visible);
-      if(!prop.visible)return;
-      hand.getWorldPosition(prop.position);hand.getWorldQuaternion(prop.quaternion);
-      prop.translateY(.032);prop.rotateZ(side==='Right'?.35:-.35);
-    };
-    place(this.repairTool,'mechanic','Right',scene?.id==='C1'&&scene.elapsed<11);
-    const coffee=scene?.id==='C4'&&scene.elapsed>=18&&scene.elapsed<34;
-    const rafa=state.players.some(p=>p.actorId==='rafa'&&p.alive)?'rafa':'rafa-reserve';
-    place(this.cups[0],scene?.elapsed>=27?'marten':rafa,'Right',coffee);
-    place(this.cups[1],scene?.elapsed>=28?'vos':rafa,'Left',coffee);
   }
   render(r,state,dt,view){
     const m=state.campaign;if(m?.missionId!=='m05')return;
@@ -237,17 +240,32 @@ export class Mission5Presentation{
       node.visible=Boolean(v&&(v.hp>0||v.wreckTime>0));
       if(node.visible){
         node.position.set(v.x,v.y,v.z);node.rotation.set(v.bodyPitch??0,v.yaw,v.bodyRoll??0,'YXZ');
-        const entry=m.convoy[id],age=entry.readyAt==null?-1:state.time-entry.readyAt;
-        if(this.doors[id])this.doors[id].rotation.y=entry.status==='waiting'&&age>=0?.9*Math.min(1,age*3):0;
+        const entry=m.convoy[id],age=state.time-(entry.boardAt??Infinity);
+        const open=THREE.MathUtils.smoothstep(age,0,.44)*(1-THREE.MathUtils.smoothstep(age,1.53,2.1));
+        if(this.doors[id])this.doors[id].rotation.y=-1.12*open;
+        node.getObjectByName('fuel_running_lights').visible=v.hp>0&&(entry.status==='moving'||entry.status==='saved'||age>1.55);
+        const wheels=node.userData,position=wheels.last??=new THREE.Vector3().copy(node.position);
+        const distance=position.distanceTo(node.position);
+        wheels.roll=(wheels.roll??0)+(distance<2?distance/.49:0);position.copy(node.position);
+        for(let i=0;i<3;i++)node.getObjectByName('fuel_axle_'+i).rotation.x=-wheels.roll;
       }
     }
-    if(m.mounted){
+    const gunRelease=p?.campaignAction?.key==='gun-release'?p.campaignAction:null;
+    this.top.position.set(sites.mount.x,sites.mount.y+1.54,sites.mount.z);
+    if(m.mounted||gunRelease){
+      const grab=p.campaignAction?.key==='gun-grab'?p.campaignAction:null;
+      const transition=gunRelease?1-smoothstep(state.time-gunRelease.at,0,gunRelease.duration):
+        grab?smoothstep(state.time-grab.at,0,grab.duration):1;
       this.top.rotation.set(p.pitch,p.yaw,0,'YXZ');
-      r.camera.position.set(p.x+Math.sin(p.yaw)*.29,p.y+1.73,p.z+Math.cos(p.yaw)*.29);
-      r.camera.rotation.set(p.pitch,p.yaw,0,'YXZ');r.weapon.visible=false;
+      const shot=state.events.findLast(e=>e.mounted&&e.type==='shot');
+      const recoil=shot ? .033*(1-smoothstep(state.time-shot.time,0,.10)) : 0;
+      this.top.translateZ(recoil);
+      r.camera.position.lerp(new THREE.Vector3(sites.mount.x+Math.sin(p.yaw)*.22,sites.mount.y+1.74,sites.mount.z+Math.cos(p.yaw)*.22),transition);
+      if(m.mounted)r.camera.rotation.set(p.pitch,p.yaw,0,'YXZ');
+      r.weapon.visible=!m.mounted&&transition<.3;
       r.scoped=r.collimatorAiming=r.binocularAiming=false;
     }else this.top.rotation.set(-.13,-Math.PI*.75,0,'YXZ');
-    if(scene){this.renderScene(r,state,scene);r.weapon.visible=false;r.scoped=r.collimatorAiming=r.binocularAiming=false;}
+    if(scene){this.renderScene(r,state,scene,view);r.weapon.visible=false;r.scoped=r.collimatorAiming=r.binocularAiming=false;}
     const detailRange=r.geometryQuality==='high'?192:r.geometryQuality==='medium'?112:0;
     for(const batch of this.detailDressing){
       const {x,z}=batch.position,camera=r.camera.position;
@@ -286,7 +304,7 @@ export class Mission5Presentation{
         node.style.transform=`translate3d(${projected.x}px,${projected.y}px,0) translate(-50%,-50%)`;}
     }
   }
-  renderScene(r,state,scene){
+  renderScene(r,state,scene,view){
     const config=this.definition.cinematics[scene.id],index=Math.max(0,config.shots.findIndex(s=>scene.elapsed<s.end));
     const i=scene.elapsed>=config.duration?config.shots.length-1:index,shot=config.shots[i],begin=config.shots[i-1]?.end??0;
     let camera=this.cameraShots.get(shot);
@@ -297,11 +315,40 @@ export class Mission5Presentation{
     }
     const previous=this.lastShot===shot&&scene.elapsed>this.lastShotElapsed&&scene.elapsed-this.lastShotElapsed<.2
       ?this.lastShotPosition:null;
-    const pose=cinematicCameraPose(this.map,camera,scene.elapsed-begin,previous);
-    this.lastShot=shot;this.lastShotElapsed=scene.elapsed;this.lastShotPosition=pose.position;
+    const shotTime=scene.elapsed-begin,span=shot.end-begin;
+    const pose=cinematicCameraPose(this.map,camera,smoothstep(shotTime,0,span)*span,previous);
     const target=typeof shot.lookAt==='string'&&(state.players.find(a=>a.actorId===shot.lookAt)||state.vehicles.find(v=>v.id===shot.lookAt));
-    if(target)pose.lookAt.set(target.x,target.y+(target.vehicleId?.5:1.45),target.z);
-    r.camera.position.copy(pose.position);r.camera.lookAt(pose.lookAt);r.camera.fov=shot.fov;r.camera.updateProjectionMatrix();
+    if(target){
+      const rig=r.soldiers.get(target.id),bone=rig?.group.parent&&rig.group.visible&&rig.bones.Head;
+      if(bone)bone.getWorldPosition(pose.lookAt);
+      else pose.lookAt.set(target.x,target.y+(target.vehicleId?.65:1.55),target.z);
+    }
+    if(scene.id==='C2'&&i===2&&target){
+      const push=smoothstep(shotTime,0,span),s=Math.sin(target.yaw),c=Math.cos(target.yaw);
+      const x=lerp(4.8,.8,push),z=lerp(4.5,.8,push);
+      const approach=new THREE.Vector3(target.x+x*c+z*s,target.y+lerp(2.4,3.33,push),target.z-x*s+z*c);
+      if(cameraHasClearance(this.map,approach)){
+        pose.position.copy(approach);
+        pose.lookAt.set(target.x-4.2*s*push,target.y+lerp(1.4,2.8,push),target.z-4.2*c*push);
+      }
+    }
+    let fov=lerp(config.shots[i-1]?.fov??shot.fov,shot.fov,smoothstep(shotTime,0,.75));
+    const gameplay=scene.id!=='C4'&&i===config.shots.length-1;
+    if(gameplay){
+      const blend=smoothstep(shotTime,span-1.45,span);
+      fov=lerp(fov,r.camera.fov,blend);
+      if(scene.id!=='C2'&&blend>0&&cameraSegmentClear(this.map,pose.position,r.camera.position)){
+        pose.position.lerp(r.camera.position,blend);
+        const front=r.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(8).add(r.camera.position);
+        pose.lookAt.lerp(front,blend);
+      }
+    }
+    if(scene.id==='C3'&&i===0&&view.shake!==false){
+      const strength=.096*(1-smoothstep(shotTime,0,.66));
+      pose.position.y+=Math.sin(shotTime*56)*strength;
+    }
+    this.lastShot=shot;this.lastShotElapsed=scene.elapsed;this.lastShotPosition=pose.position;
+    r.camera.position.copy(pose.position);r.camera.lookAt(pose.lookAt);r.camera.fov=fov;r.camera.updateProjectionMatrix();
   }
   dispose(){
     this.voice.dispose();this.score.dispose();this.ambience.dispose();this.flames.dispose();this.minimap.dispose();

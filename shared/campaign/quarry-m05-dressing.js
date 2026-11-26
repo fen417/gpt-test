@@ -20,6 +20,11 @@ const sizes={
 const solidTypes=new Set(['crate','crateStack','caseStack','oilRack','water','pipeRack','skip','screenRack',
   'bench','shelf','locker','case','oil','spool','board','bollard','compressor','generator','office','hopper','blockStack','barrier','rail','chain','flood','aggregate']);
 const lightTypes=new Set(['can','ammo','barrelSide','hose','pallet','scrub','stone','stakes']);
+const frameParts={
+  shade:[[-2.14,-1.58,.11,.11,2.48],[2.14,-1.58,.11,.11,2.48],[-2.14,1.58,.11,.11,2.48],[2.14,1.58,.11,.11,2.48]],
+  mast:[[0,0,.58,.58,2.1]],survey:[[0,0,.66,.62,1.2]],
+  sackPile:[[0,0,1.98,1.27,.52]],scrap:[[0,0,2.3,1.38,.58]],
+};
 const colors=['#736458','#667072','#8e5941','#ac914d','#55615a','#554c43','#827659'];
 
 const clusters={
@@ -330,6 +335,16 @@ export function buildM05Dressing(terrain,roads,baseBoxes,sites){
       const px=x+Math.cos(angle)*w*radial,pz=z+Math.sin(angle)*d*radial;
       if(roads.some(r=>routeDistance(px,pz,r)<.55))continue;
       add('shoulder',j%4===0?'scrub':j%5===0?'rubble':'stone',px,pz,angle,'',.55+random()*.85);
+    }
+  }
+  for(const p of props){
+    const pieces=frameParts[p.type];if(!pieces)continue;
+    const {x,z,y,yaw,scale}=p,c=Math.cos(yaw),s=Math.sin(yaw),basis=rotationMatrix({y:yaw});
+    for(const [i,[dx,dz,w,d,h]] of pieces.entries()){
+      const cx=x+(dx*c+dz*s)*scale,cz=z+(-dx*s+dz*c)*scale;
+      const obb=affineBox({x:cx,y:y+h*scale/2,z:cz},[w*scale/2,h*scale/2,d*scale/2],basis);
+      solids.push({id:p.id+'-part-'+i,x:cx,z:cz,w:w*scale,d:d*scale,h:h*scale,baseY:y,
+        visualModel:true,kind:'quarry-m05-part',obb});
     }
   }
   return {props,solids};
