@@ -19,6 +19,7 @@ export function validateM05Edits(d){
   if(!Array.isArray(d.models)||d.models.length>4000)bad('models');
   if(!Array.isArray(d.paint)||d.paint.length>10000)bad('paint');
   if(e.length)return e;
+  if(d.assets!==undefined&&(!record(d.assets)||Object.entries(d.assets).some(([asset,meta])=>!modelAssetOk(asset)||!record(meta)||typeof meta.name!=='string'||meta.name.length>200)))bad('Библиотека ресурсов');
   const ids=new Set();
   for(const m of d.models){
     if(!record(m)||!keyOk(m.id)||ids.has(m.id)||!modelAssetOk(m.asset)||typeof m.name!=='string'||m.name.length>200||

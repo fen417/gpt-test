@@ -32,7 +32,7 @@ export function worldEditorPlugin(){
         if(!String(req.headers['content-type']).startsWith('application/json'))throw Error('Требуется JSON');
         const {data,revision}=JSON.parse((await body(req,16*1024*1024)).toString('utf8'));
         const errors=validateM05Edits(data);if(errors.length)throw Error(errors.slice(0,10).join('; '));
-        for(const m of data.models)if(!(await stat(join(assets,m.asset))).isFile())throw Error('Нет ресурса '+m.asset);
+        for(const asset of new Set([...data.models.map(m=>m.asset),...Object.keys(data.assets??{})]))if(!(await stat(join(assets,asset))).isFile())throw Error('Нет ресурса '+asset);
         const current=await readFile(file);if(hash(current)!==revision)return reply(res,409,{error:'Файл изменён извне. Скачайте черновик и заново откройте карту.'});
         await safeDir(backups);await writeFile(join(backups,Date.now()+'-'+randomUUID()+'.json'),current,{flag:'wx'});
         const next=Buffer.from(JSON.stringify(data,null,2)+'\n'),tmp=file+'.'+randomUUID()+'.tmp';
