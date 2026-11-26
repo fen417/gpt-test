@@ -21,13 +21,14 @@ export const CREW_CONTROLS = {
   gunner: { origin: [0, 2.18, .19], grip: [.11, -.012, .07] },
   pilot: { origin: [-.59, 1.77, -2.45], grip: [.07, .015, 0] },
 };
-let tankLibrary,tankLoading,tankMaterialFactory=null;const tankPool=[];
+let tankLibrary,tankLoading,tankPrepare,tankMaterialFactory=null;const tankPool=[];
 export function warmTankAssets(renderer,scene,camera,prepare){return tankLoading??=import('./tank-model.js').then(async library=>{
   if(renderer.isWebGPURenderer){
     ({createWebGpuTankMaterial:tankMaterialFactory}=await import('./tank-webgpu-material.js'));
   }
   await Promise.all([library.loadTankAtlas(renderer),library.loadTankModel()]);
-  for(let i=0;i<2;i++)tankPool.push(library.createTankRig(tankMaterialFactory));
+  tankPrepare=prepare;
+  for(let i=0;i<2;i++)tankPool.push(library.createTankRig(tankMaterialFactory,tankPrepare));
   if(scene&&camera&&renderer.compileAsync){const warm=new THREE.Scene();for(const child of scene.children)if(child.isLight)warm.add(child.clone());for(const rig of tankPool){rig.group.traverse(o=>prepare?.(o));warm.add(rig.group);}await renderer.compileAsync(warm,camera);for(const rig of tankPool)rig.group.removeFromParent();}
   tankLibrary=library;
 }).catch(error=>{tankLoading=null;throw error;});}
@@ -446,7 +447,7 @@ const riderColors = [
 export function createVehicleRig(type, material, teamColors) {
   if(type===BLACK_HAWK)return createBlackHawkRig();
   if(type==='tank'){
-    if(tankLibrary)return tankPool.pop()??tankLibrary.createTankRig(tankMaterialFactory);
+    if(tankLibrary)return tankPool.pop()??tankLibrary.createTankRig(tankMaterialFactory,tankPrepare);
     const group=new THREE.Group(),body=new THREE.Group(),m=new THREE.MeshLambertMaterial({color:0x788368});group.add(body);const hull=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.4,7),m);hull.position.y=1;body.add(hull);
     return{tankPending:true,group,body,riders:[],materialsToDispose:new Set([m])};
   }
@@ -612,6 +613,7 @@ export function disposeVehicleRig(rig) {
   rig.group.removeFromParent();
   if(rig.tank&&tankPool.length<2){rig.initialized=false;tankPool.push(rig);return;}
   rig.group.traverse(node=>{
+    if(rig.tank&&node.isInstancedMesh)node.dispose();
     if (node.geometry && node.geometry !== sphereGeometry &&
       !node.geometry.userData.sharedTankGeometry && !node.geometry.userData.sharedVehicleGeometry) node.geometry.dispose();
   });

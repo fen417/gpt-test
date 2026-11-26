@@ -15,6 +15,7 @@ METAL = (0.065, 0.079, 0.062)
 RUBBER = (0.022, 0.029, 0.026)
 GLASS = (0.033, 0.087, 0.095)
 LENS = (0.62, 0.59, 0.40)
+TAIL = (.29,.042,.021)
 
 
 class Assembly:
@@ -100,9 +101,9 @@ class Assembly:
         return obj
 
 
-def make_level(level, collection):
+def assemble_level(level, assembly=Assembly, *, detailed=False):
     sides = (24, 14, 8)[level]
-    hull, turret, cannon, hatch, tracks, wheel, mount, mg = [Assembly() for _ in range(8)]
+    hull, turret, cannon, hatch, tracks, wheel, mount, mg = [assembly() for _ in range(8)]
 
     # Sloped glacis, narrow lower tub and the rear transmission compartment.
     contours = [(-3.40,.56,.92,1.36,1.10),(-2.11,.40,1.49,1.46,1.16),
@@ -116,25 +117,25 @@ def make_level(level, collection):
             span=6.22/sections
             z=-3.11+(i+.5)*span
             hull.box((side*1.737,1.145,z),(.112,.54,span-.035),PAINT if i%2 else PANEL)
-            if level==0:
+            if level==0 and not detailed:
                 for end in (-1,1):
                     hull.cylinder((side*1.797,1.34,z+end*(span/2-.13)),.046,.035,'x',METAL,6)
                 hull.box((side*1.768,.88,z),(.057,.048,span-.12),METAL)
         hull.box((side*1.24,1.09,-3.28),(.29,.24,.18),METAL)
         hull.cylinder((side*1.24,1.12,-3.4),.082,.07,'z',LENS,sides)
         hull.box((side*.96,.82,3.34),(.25,.34,.30),PANEL)
-        hull.cylinder((side*1.0,1.10,3.45),.061,.035,'z',(.29,.042,.021),8)
+        hull.cylinder((side*1.0,1.10,3.45),.061,.035,'z',TAIL,8)
         if level<2:
             hull.cylinder((side*.89,1.02,3.18),.259,.60,'z',PANEL,sides)
             for z in (2.98,3.39):
                 hull.cylinder((side*.89,1.02,z),.271,.058,'z',METAL,sides)
             hull.box((side*1.14,1.54,2.01),(.28,.10,1.09),PANEL)
-        if level==0:
+        if level==0 and not detailed:
             for i in range(4):
                 z=-3.02+i*.216
                 hull.box((side*.56,1.11+i*.095,z),(.96,.105,.175),EDGE)
     hull.box((0,1.493,2.12),(1.86,.040,1.42),METAL)
-    for i in range((13,7,3)[level]):
+    for i in range(0 if detailed else (13,7,3)[level]):
         count=(13,7,3)[level]
         hull.box((0,1.527,1.47+i*1.29/(count-1)),(1.86,.05,.065 if level==0 else .11),PANEL,.008)
     hull.box((0,.69,3.43),(.73,.20,.12),METAL)
@@ -193,7 +194,7 @@ def make_level(level, collection):
                 a,b=ring*n,(ring+1)%4*n
                 faces.append((a+i,a+j,b+j,b+i))
         tracks.add([p for ring in rings for p in ring],faces,METAL)
-        if level==0:
+        if level==0 and not detailed:
             for i in range(23):
                 z=-2.99+i*.261
                 for y in (.036,.934):
@@ -220,8 +221,12 @@ def make_level(level, collection):
     mg.cylinder((0,.12,-.79),.034,.86,'z',METAL,sides)
     mg.cylinder((0,.12,-1.245),.055,.07,'z',RUBBER,sides)
 
-    for name, part in (('hull',hull),('turret',turret),('cannon',cannon),('hatch',hatch),
-                       ('belt',tracks),('wheel',wheel),('mg_mount',mount),('mg_barrel',mg)):
+    return dict(hull=hull,turret=turret,cannon=cannon,hatch=hatch,
+                belt=tracks,wheel=wheel,mg_mount=mount,mg_barrel=mg)
+
+
+def make_level(level, collection):
+    for name, part in assemble_level(level).items():
         part.object(f'LOD{level}_{name}', collection)
 
 

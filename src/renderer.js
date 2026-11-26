@@ -1341,7 +1341,11 @@ export class GameRenderer {
     const active = this.activeVehicles;active.clear();
     this.wreckFire?.begin();
     const blend = view.networkInterpolated ? 1 : 1 - Math.exp(-dt * 22);
-    const vehicleView = state.campaign ? { ...view, hideTankMachineGun: true } : view;
+    const vehicleView = {
+      ...view,
+      tankDetail: this.geometryQuality === 'high',
+      hideTankMachineGun: state.campaign ? true : view.hideTankMachineGun,
+    };
     let mounted = null;
     for (const vehicle of state.vehicles ?? []) {
       if(vehicle.type==='tank'&&!tankAssetsReady())continue;
