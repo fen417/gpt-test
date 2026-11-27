@@ -94,3 +94,27 @@ test('prediction backlog requests a full state without closing the socket',()=>{
   multiplayer.reconcileLatest=()=>{};multiplayer.sequence=120;multiplayer.accumulator=1/60;
   multiplayer.advance({},1/60);assert.equal(closed,false);assert(multiplayer.awaitingResync);assert.equal(sent.length,1);
 });
+
+test('remote infantry locomotion follows snapshot motion despite private zero velocities',()=>{
+  const client=new Multiplayer();client.id='local';
+  const a={id:'remote',x:0,y:0,z:0,yaw:0,alive:true,grounded:true,vehicleId:null,reviveSeq:0,velocityX:0,velocityZ:0,moveSpeed:0};
+  const b={...a,x:.15,z:.2};
+  const samples=[{time:1,pose:a},{time:1.05,pose:b}];
+  client.motion=new Map([['players/remote',{samples}]]);
+  const moving=client.sampleMotion('players',b,1.025,1/60);
+  assert.ok(Math.abs(moving.velocityX-3)<1e-8);
+  assert.ok(Math.abs(moving.velocityZ-4)<1e-8);
+  assert.ok(Math.abs(moving.moveSpeed-5)<1e-8);
+  assert.equal(client.sampleMotion('players',b,.99,1/60).moveSpeed,0);
+  assert.ok(client.sampleMotion('players',b,1.1,1/60).moveSpeed>4.99);
+  assert.equal(client.sampleMotion('players',b,1.2,1/60).moveSpeed,0);
+  samples.push({time:1.1,pose:b});
+  assert.equal(client.sampleMotion('players',b,1.075,1/60).moveSpeed,0);
+  const revived={...b,x:3,reviveSeq:1};samples.push({time:1.15,pose:revived});
+  assert.equal(client.sampleMotion('players',revived,1.125,1/60).moveSpeed,0);
+  assert.equal(client.sampleMotion('players',revived,1.17,1/60).moveSpeed,0);
+  const seated={...revived,vehicleId:'car',x:4};samples.push({time:1.2,pose:seated},{time:1.25,pose:{...seated,x:4.2}});
+  assert.equal(client.sampleMotion('players',seated,1.225,1/60).moveSpeed,0);
+  client.id='remote';
+  assert.equal(client.sampleMotion('players',{...b,velocityX:2,moveSpeed:2},1.025,1/60).velocityX,2);
+});
